@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
@@ -19,17 +20,19 @@ import (
 type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
-	// Columns to read from the Dataset. It is invalid to provide a Column that
-	// is not in Dataset.
+	// ProjectedColumns are the columns that a RowReader returns. Row.Values holds one Value per
+	// projected column, in this order. It is invalid to provide a Column that is not in Dataset.
 	//
-	// The set of Columns can include columns not used in Predicate; such columns
-	// are considered non-predicate columns.
-	Columns []Column
+	// A predicate can read a column that is not projected. The reader reads that column to run
+	// the predicate, and leaves it out of the rows it returns.
+	ProjectedColumns []Column
 
 	// Predicates filter the data returned by a RowReader. Predicates are
-	// optional; if nil, all rows from Columns are returned.
+	// optional; if nil, all rows from ProjectedColumns are returned.
 	//
-	// Expressions in Predicate may only reference columns in Columns.
+	// Each column that a predicate reads must be in Dataset. It does not need to be in
+	// ProjectedColumns.
+	//
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
@@ -60,9 +63,13 @@ type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	origColumnLookup     map[Column]int      // Find the index of a column in opts.Columns.
-	primaryColumnIndexes []int               // Indexes of primary columns in opts.Columns.
+	columns              []Column            // opts.ProjectedColumns, then the columns that only predicates read.
+	projectedColumns     []Column            // Prefix of columns: the columns that Read keeps in Row.Values.
+	columnsLookup        map[Column]int      // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
+	primaryColumnIndexes []int               // Indexes of primary columns in columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
+	batchPredicates      []*batchPredicate   // One per predicate, nil for a row by row predicate.
+	keepScratch          []int32             // Scratch for the indexes that KeepBatch returns.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -102,7 +109,7 @@ func (r *RowReader) Open(ctx context.Context) error {
 // Dataset, Read returns 0, [io.EOF].
 //
 // Read returns an error if [RowReader.Open] was not called first.
-func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
+func (r *RowReader) Read(ctx context.Context, s []Row) (passCount int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -126,7 +133,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	// If a predicate is defined, primary columns are those used in the
 	// predicate, and secondary columns are those not used in the predicate. If
 	// there isn't a predicate, all columns are primary and no columns are
-	// secondary.
+	// secondary. A column that only a predicate reads is primary, and Read cuts
+	// it off the rows it returns.
 	//
 	// This approach means that one call to Read may return 0, nil if the
 	// predicate filters out all rows, even if there are more rows in the dataset
@@ -140,6 +148,10 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	// Improvements on this process must consider the trade-offs between less
 	// calls to [RowReader.Read] while permitting the buffer to be as big as
 	// possible on each call.
+
+	// Trim the rows on every return path. The deferred call runs after the stats below, which
+	// index Row.Values by position in r.columns.
+	defer func() { r.trimToProjectedColumns(s[:passCount]) }()
 
 	row, err := r.alignRow()
 	if err != nil {
@@ -163,10 +175,7 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	}
 	r.dl.SetReadRange(readRange)
 
-	var (
-		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
-		passCount int // tracks how many rows passed the predicate
-	)
+	var rowsRead int // tracks max rows accessed to move the [r.row] cursor
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
@@ -228,6 +237,18 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	return passCount, nil
 }
 
+// trimToProjectedColumns cuts the values of the columns that only predicates read off the end of
+// Row.Values for each of rows. The capacity of Row.Values keeps them, so a Read into the same Row
+// reuses their memory.
+func (r *RowReader) trimToProjectedColumns(rows []Row) {
+	if len(r.columns) == len(r.projectedColumns) {
+		return
+	}
+	for i := range rows {
+		rows[i].Values = rows[i].Values[:len(r.projectedColumns)]
+	}
+}
+
 // readAndFilterPrimaryColumns reads the primary columns from the dataset
 // and filters the rows by sequentially applying the predicates.
 //
@@ -235,65 +256,55 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 // Rows are filtered at each step with subsequent predicates only having to fill
 // the columns on the reduced row range.
 //
-// It returns the max rows read, rows that passed all the predicates, and any error
+// It returns three values:
+//   - the number of rows read, including the rows that fail a predicate, because the caller must
+//     move past them,
+//   - the number of rows that pass every predicate,
+//   - an error.
+//
+// The rows that pass are at the front of s, in ascending Row.Index order. It returns io.EOF, with
+// both counts zero, when every column of the first predicate has no more rows.
+//
+// r.opts.Predicates must not be empty, and the first predicate must reference at least one column.
 func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row) (int, int, error) {
 	var (
-		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
 		primaryColumnBytes int64
-		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
-		region             = xcap.RegionFromContext(ctx)
+		// filledColumns lists the columns that every row in s[:readSize] already holds.
+		filledColumns = make(map[Column]struct{}, len(r.primaryColumnIndexes))
+		region        = xcap.RegionFromContext(ctx)
 	)
 
-	// sequentially apply the predicates.
+	// Use ReadColumns for the first predicate, not Fill. ReadColumns sets Row.Index, which Fill
+	// needs.
+	columns, idxs := r.predicateColumns(r.opts.Predicates[0], func(Column) bool { return true })
+
+	rowsRead, err := r.inner.ReadColumns(ctx, columns, s[:readSize])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, 0, err
+	} else if rowsRead == 0 && errors.Is(err, io.EOF) {
+		return 0, 0, io.EOF
+	}
+	for _, c := range columns {
+		filledColumns[c] = struct{}{}
+	}
+	for j := range rowsRead {
+		primaryColumnBytes += s[j].SizeOfColumns(idxs)
+	}
+	readSize = rowsRead
+
+	// The first predicate finds its columns already filled, so it only filters.
 	for i, p := range r.opts.Predicates {
-		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
-			// keep only columns that haven't been filled yet.
-			_, ok := filledColumns[c]
-			return !ok
-		})
+		var readBytes int64
+		if r.batchPredicates[i] != nil {
+			passCount, readBytes, err = r.evalBatchPredicate(ctx, r.batchPredicates[i], s[:readSize])
+		} else {
+			passCount, readBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
+		}
 		if err != nil {
 			return rowsRead, 0, err
 		}
-
-		var count int
-		// read the requested number of rows for the first predicate.
-		if i == 0 {
-			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
-			if err != nil && !errors.Is(err, io.EOF) {
-				return 0, 0, err
-			} else if count == 0 && errors.Is(err, io.EOF) {
-				return 0, 0, io.EOF
-			}
-
-			rowsRead = count
-		} else if len(columns) > 0 {
-			count, err = r.inner.Fill(ctx, columns, s[:readSize])
-			if err != nil && !errors.Is(err, io.EOF) {
-				return rowsRead, 0, err
-			} else if count != readSize {
-				return rowsRead, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", readSize, count)
-			}
-		} else {
-			count = readSize // required columns are already filled
-		}
-
-		compiled := r.compiledPredicates[i]
-
-		passCount = 0
-		for j := range count {
-			size := s[j].SizeOfColumns(idxs)
-			primaryColumnBytes += size
-
-			if !compiled.eval(s[j]) {
-				continue
-			}
-			// We move s[j] to s[passCount] by *swapping* the rows. Copying would
-			// result in the Row.Values slice existing in two places in the buffer,
-			// which causes memory corruption when filling in rows.
-			s[passCount], s[j] = s[j], s[passCount]
-			passCount++
-		}
+		primaryColumnBytes += readBytes
 
 		// Track rows that are relevant to the stream matchers.
 		// This is updated only if the first predicate is streamID
@@ -307,10 +318,6 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 			break
 		}
 
-		for _, c := range columns {
-			filledColumns[c] = struct{}{}
-		}
-
 		readSize = passCount
 	}
 
@@ -318,6 +325,98 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 	region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
+}
+
+// evalPredicate moves the rows that pass p to the front of rows and returns how many pass.
+//
+// compiled must be the compiled form of p. Every row must have Row.Index set to its dataset row,
+// because Fill reads it. filledColumns lists the columns that every row already holds.
+//
+// evalPredicate fills the columns of p that filledColumns lacks and adds them to filledColumns. It
+// returns the size in bytes of the values it filled, summed over rows. On error it returns zero
+// values and leaves filledColumns unchanged. Rows can be partly filled but are not reordered.
+//
+// The rows that pass keep their relative order, so their Row.Index values stay ascending. Fill
+// reads each column forward, and the page mask of the secondary columns needs ascending indexes.
+// The order of the other rows is undefined.
+func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled compiledPredicate, rows []Row, filledColumns map[Column]struct{}) (int, int64, error) {
+	columns, idxs := r.predicateColumns(p, func(c Column) bool {
+		// keep only columns that haven't been filled yet.
+		_, ok := filledColumns[c]
+		return !ok
+	})
+
+	if len(columns) > 0 {
+		count, err := r.inner.Fill(ctx, columns, rows)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, 0, err
+		} else if count != len(rows) {
+			return 0, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", len(rows), count)
+		}
+	}
+
+	var (
+		passCount   int
+		filledBytes int64
+	)
+	for j := range rows {
+		filledBytes += rows[j].SizeOfColumns(idxs)
+
+		if !compiled.eval(rows[j]) {
+			continue
+		}
+		// We move rows[j] to rows[passCount] by *swapping* the rows. Copying would
+		// result in the Row.Values slice existing in two places in the buffer,
+		// which causes memory corruption when filling in rows.
+		rows[passCount], rows[j] = rows[j], rows[passCount]
+		passCount++
+	}
+
+	for _, c := range columns {
+		filledColumns[c] = struct{}{}
+	}
+
+	return passCount, filledBytes, nil
+}
+
+// evalBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
+// passing rows to the front of rows. It returns the number of passing rows and the size in
+// bytes of the values it read. It copies the value of a passing row into the row only when the
+// column is projected. On error it returns zero values.
+func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, rows []Row) (int, int64, error) {
+	var (
+		pass      = 0
+		readBytes int64
+		keep      = r.keepScratch
+	)
+	_, err := r.inner.visitColumn(ctx, r.allColumns()[bp.index], rows, func(offset int, values *columnar.UTF8) error {
+		readBytes += int64(values.DataLen())
+
+		keep = bp.predicate.KeepBatch(bp.predicate.Column, values, keep[:0])
+		prev := int32(-1)
+		for _, k := range keep {
+			if k <= prev || int(k) >= values.Len() {
+				return fmt.Errorf("batch predicate kept index %d of %d values after index %d, want ascending indexes in range", k, values.Len(), prev)
+			}
+			prev = k
+
+			// Ascending indexes guarantee pass <= j. We move rows[j] to rows[pass] by *swapping* the
+			// rows. Copying would result in the Row.Values slice existing in two places in the
+			// buffer, which causes memory corruption when filling in rows.
+			j := offset + int(k)
+			rows[pass], rows[j] = rows[j], rows[pass]
+			if bp.projected {
+				copyUTF8Value(&rows[pass].Values[bp.index], values, int(k))
+			}
+			pass++
+		}
+		return nil
+	})
+	r.keepScratch = keep[:0]
+	if err != nil {
+		return 0, 0, err
+	}
+	return pass, readBytes, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
@@ -336,18 +435,73 @@ func (r *RowReader) alignRow() (uint64, error) {
 }
 
 // compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
-// references resolved to Row value indexes. It returns an error if a predicate references a
-// column absent from [RowReaderOptions]. The caller must clear r.compiledPredicates first;
-// Reset does this.
+// references resolved to Row value indexes. It returns an error if a predicate column is missing
+// from r.columnsLookup. initColumns adds every predicate column, so this error means a bug in
+// the reader.
 func (r *RowReader) compilePredicates() error {
 	for _, p := range r.opts.Predicates {
-		cp, err := compilePredicate(p, r.origColumnLookup)
+		cp, err := compilePredicate(p, r.columnsLookup)
 		if err != nil {
 			return err
 		}
 		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
 	return nil
+}
+
+// initBatchPredicates decides which predicates run on an array of values at once.
+func (r *RowReader) initBatchPredicates() {
+	r.batchPredicates = make([]*batchPredicate, len(r.opts.Predicates))
+
+	// predicatesPerColumn counts the leaf predicates that read each column.
+	predicatesPerColumn := make(map[Column]int)
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) { predicatesPerColumn[c]++ })
+	}
+
+	for i, p := range r.opts.Predicates {
+		// Only a FuncPredicate with a KeepBatch function can run on an array. A predicate inside
+		// an And, Or or Not is not a FuncPredicate here, so it stays on the row path.
+		fp, ok := p.(FuncPredicate)
+		if !ok || fp.KeepBatch == nil {
+			continue
+		}
+
+		// ReadColumns reads the columns of the first predicate into every row before the predicates
+		// run. KeepBatch would have nothing left to skip there.
+		if i == 0 {
+			continue
+		}
+
+		// The batch path does not mark its column as filled. A second predicate on the same column
+		// would read it again and count its bytes twice. So predicates that share a column stay on
+		// the row path.
+		if predicatesPerColumn[fp.Column] != 1 {
+			continue
+		}
+
+		// KeepBatch tests an array of binary values.
+		if fp.Column.ColumnDesc().Type.Physical != datasetmd.PHYSICAL_TYPE_BINARY {
+			continue
+		}
+
+		index, ok := r.columnsLookup[fp.Column]
+		if !ok {
+			continue
+		}
+		r.batchPredicates[i] = &batchPredicate{
+			predicate: fp,
+			index:     index,
+			projected: index < len(r.projectedColumns),
+		}
+	}
+}
+
+// batchPredicate is a predicate that the reader tests on an array of values at once.
+type batchPredicate struct {
+	predicate FuncPredicate
+	index     int  // Index of the column of predicate in the values of a Row.
+	projected bool // Whether the column is projected, so the value goes into the rows that pass.
 }
 
 // buildMask returns an iterator that yields row ranges from full that are not
@@ -406,31 +560,41 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	// retrieve page info. We'll defer this work to an init function. This also
 	// unfortunately means that we might not reset page readers until the first
 	// call to Open.
-	if r.origColumnLookup == nil {
-		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
-	}
-	clear(r.origColumnLookup)
-	for i, c := range opts.Columns {
-		r.origColumnLookup[c] = i
-	}
+	r.clearInitState()
 
 	r.row = 0
 	r.ranges.Reset()
+	r.ready = false
+}
+
+// clearInitState clears the state that init builds from the options.
+func (r *RowReader) clearInitState() {
+	clear(r.columnsLookup)
+	r.columns = sliceclear.Clear(r.columns)
+	r.projectedColumns = nil
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
-	r.ready = false
+	r.batchPredicates = sliceclear.Clear(r.batchPredicates)
 }
 
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
 
-	// r.compilePredicates must be called before initializing anything else; for
-	// simplicity, other functions assume that the predicates are valid and can
-	// panic if they aren't.
+	// A failed Open leaves its state behind. Clear it, so that an Open that runs again starts clean.
+	r.clearInitState()
+
+	// r.compilePredicates reads the lookup that r.initColumns fills, so call r.initColumns first.
+	if err := r.initColumns(); err != nil {
+		return err
+	}
+
+	// Compile the predicates before any other step. Other functions assume that the predicates
+	// are valid and can panic if they are not.
 	if err := r.compilePredicates(); err != nil {
 		return err
 	}
+	r.initBatchPredicates()
 
 	if err := r.initDownloader(ctx); err != nil {
 		return err
@@ -446,6 +610,43 @@ func (r *RowReader) init(ctx context.Context) error {
 	}
 
 	r.ready = true
+	return nil
+}
+
+// initColumns fills r.columns, r.projectedColumns and r.columnsLookup. It returns an error if a
+// predicate reads a nil column.
+//
+// r.columns holds the projected columns, then the columns that only predicates read. The projected
+// columns come first, so Read can drop the other values by cutting the end of Row.Values. A Row
+// keeps the order of r.opts.ProjectedColumns.
+func (r *RowReader) initColumns() error {
+	if r.columnsLookup == nil {
+		r.columnsLookup = make(map[Column]int, len(r.opts.ProjectedColumns))
+	}
+
+	for _, c := range r.opts.ProjectedColumns {
+		r.columnsLookup[c] = len(r.columns)
+		r.columns = append(r.columns, c)
+	}
+	projected := len(r.columns)
+
+	var err error
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) {
+			switch _, ok := r.columnsLookup[c]; {
+			case c == nil:
+				err = errors.New("predicate reads a nil column")
+			case !ok:
+				r.columnsLookup[c] = len(r.columns)
+				r.columns = append(r.columns, c)
+			}
+		})
+	}
+	if err != nil {
+		return err
+	}
+
+	r.projectedColumns = r.columns[:projected]
 	return nil
 }
 
@@ -472,7 +673,7 @@ func (r *RowReader) secondaryColumns() []Column {
 }
 
 // initDownloader initializes the reader's [rowReaderDownloader]. initDownloader is
-// always used to reduce the number of conditions.
+// always used to reduce the number of conditions. It reads r.columns, so call initColumns first.
 func (r *RowReader) initDownloader(ctx context.Context) error {
 	// The downloader is initialized in three steps:
 	//
@@ -493,10 +694,10 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.targetCompressedBytes = 0
 	}
 
-	mask := bitmask.New(len(r.opts.Columns))
+	mask := bitmask.New(len(r.columns))
 	r.fillPrimaryMask(mask)
 
-	for i, column := range r.opts.Columns {
+	for i, column := range r.columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
@@ -551,10 +752,10 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 
 func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 	process := func(c Column) {
-		idx, ok := r.origColumnLookup[c]
+		idx, ok := r.columnsLookup[c]
 		if !ok {
-			// This shouldn't be reachable: before we initialize anything we ensure
-			// that all columns in the predicate are available in r.opts.Columns.
+			// This shouldn't be reachable: initColumns adds every column that a predicate
+			// reads to r.columns.
 			panic("fillPrimaryMask: column not found")
 		}
 		mask.Set(idx)
@@ -562,34 +763,15 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 
 	// If there's no predicate, all columns are primary.
 	if len(r.opts.Predicates) == 0 {
-		for _, c := range r.opts.Columns {
+		for _, c := range r.columns {
 			process(c)
 		}
 		return
 	}
 
-	for _, pp := range r.opts.Predicates {
-		// If there is a predicate, primary columns are those used in the predicate.
-		WalkPredicate(pp, func(p Predicate) bool {
-			switch p := p.(type) {
-			case EqualPredicate:
-				process(p.Column)
-			case InPredicate:
-				process(p.Column)
-			case GreaterThanPredicate:
-				process(p.Column)
-			case LessThanPredicate:
-				process(p.Column)
-			case FuncPredicate:
-				process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-				// No columns to process.
-			default:
-				panic(fmt.Sprintf("dataset.RowReader.fillPrimaryMask: unsupported predicate type %T", p))
-			}
-
-			return true // Continue walking the Predicate.
-		})
+	// If there is a predicate, primary columns are those used in the predicate.
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, process)
 	}
 }
 
@@ -657,7 +839,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
-		// We use r.dl.AllColumns instead of r.opts.Columns because the downloader
+		// We use r.dl.AllColumns instead of r.columns because the downloader
 		// will cache metadata.
 		var rowsCount uint64
 		for _, column := range r.allColumns() {
@@ -745,7 +927,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 // true for each page in a column.
 func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
-	if idx, ok := r.origColumnLookup[c]; ok {
+	if idx, ok := r.columnsLookup[c]; ok {
 		c = r.allColumns()[idx]
 	} else {
 		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
@@ -878,33 +1060,15 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 	return
 }
 
-func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
+func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int) {
 	columns := make(map[Column]struct{})
 
-	WalkPredicate(p, func(p Predicate) bool {
-		switch p := p.(type) {
-		case EqualPredicate:
-			columns[p.Column] = struct{}{}
-		case InPredicate:
-			columns[p.Column] = struct{}{}
-		case GreaterThanPredicate:
-			columns[p.Column] = struct{}{}
-		case LessThanPredicate:
-			columns[p.Column] = struct{}{}
-		case FuncPredicate:
-			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-			// No columns to process.
-		default:
-			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
-		}
-		return true
-	})
+	WalkPredicateColumn(p, func(c Column) { columns[c] = struct{}{} })
 
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
-		idx, ok := r.origColumnLookup[c]
+		idx, ok := r.columnsLookup[c]
 		if !ok {
 			panic(fmt.Errorf("predicateColumns: column %v not found in RowReader columns", c))
 		}
@@ -918,7 +1082,7 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 		ret = append(ret, c)
 	}
 
-	return ret, idxs, nil
+	return ret, idxs
 }
 
 func isStreamIDPredicate(p Predicate) bool {

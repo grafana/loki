@@ -46,9 +46,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -230,7 +230,7 @@ type Interface interface {
 	logproto.StreamDataServer
 
 	CheckReady(ctx context.Context) error
-	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	FlushHandler(w http.ResponseWriter, r *http.Request)
 	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
@@ -253,6 +253,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
+	// indexFlushMtx allows one flush_index request (/flush or /flush/tenant) at a
+	// time; concurrent ones are rejected rather than queued (see tryLockIndexFlush).
+	indexFlushMtx sync.Mutex
+
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -264,7 +268,8 @@ type Ingester struct {
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
+	// pick a queue, so a stream is always flushed by the same
+	// queue and only one flush op operates on it at a time.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
@@ -382,13 +387,16 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.partitionRingLifecycler, err = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
 			PartitionRingKey,
 			partitionRingKV,
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		if err != nil {
+			return nil, fmt.Errorf("creating ingester partition ring lifecycler: %w", err)
+		}
 
 		i.partitionReader, err = partition.NewReaderService(
 			cfg.KafkaIngestion.KafkaConfig,
@@ -478,7 +486,14 @@ func (i *Ingester) setupAutoForget() {
 		defer ticker.Stop()
 
 		var forgetList []string
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-i.loopQuit:
+				// the ring entry goes away with the ingester, nothing left to clean
+				return
+			}
+
 			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
@@ -773,7 +788,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) // #nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -999,8 +1014,20 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	return services.StopAndAwaitTerminated(context.Background(), i)
 }
 
+type TimestampedPush struct {
+	*logproto.PushRequest
+	// IngestedAt is the timestamp of the Kafka record the push was read from, or zero if there is none.
+	IngestedAt time.Time
+}
+
 // Push implements logproto.Pusher.
+// NOTE: gRPC pushes don't carry a record timestamp.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp pushes a request along with the timestamp of the Kafka record it was read from.
+func (i *Ingester) PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1022,7 +1049,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	return &logproto.PushResponse{}, instance.PushWithTimestamp(ctx, push)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate

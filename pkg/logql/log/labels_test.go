@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func TestLabelsBuilder_Get(t *testing.T) {
@@ -86,7 +86,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
-		logqlmodel.ErrorLabel, "err",
+		logqlerr.ErrorLabel, "err",
 		"already", "in",
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
@@ -94,7 +94,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	require.Equal(t, labels.StableHash(expectedLbs), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
-	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
+	require.Equal(t, labels.FromStrings(logqlerr.ErrorLabel, "err"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
@@ -106,12 +106,12 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	b.Reset()
 
 	// This works for any category
-	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"))
+	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlerr.ErrorLabel, "test error", logqlerr.ErrorDetailsLabel, "test details"))
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
-		logqlmodel.ErrorLabel, "test error",
-		logqlmodel.ErrorDetailsLabel, "test details",
+		logqlerr.ErrorLabel, "test error",
+		logqlerr.ErrorDetailsLabel, "test details",
 		"already", "in",
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
@@ -119,7 +119,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	require.Equal(t, labels.StableHash(expectedLbs), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
-	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
+	require.Equal(t, labels.FromStrings(logqlerr.ErrorLabel, "test error", logqlerr.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
@@ -195,7 +195,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	b.Reset()
 	assertLabelResult(t, lbs, b.LabelsResult())
 	b.SetErr("err", nil)
-	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
+	withErr := labels.FromStrings(append(strs, logqlerr.ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.LabelsResult())
 
 	b.Set(StructuredMetadataLabel, "foo", "bar")
@@ -212,7 +212,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 		"foo", "bar",
 	)
 	expectedParsedLbls := labels.FromStrings(
-		logqlmodel.ErrorLabel, "err",
+		logqlerr.ErrorLabel, "err",
 		"buzz", "fuzz",
 		"ToReplace", "other",
 	)
@@ -390,16 +390,64 @@ func sortLabelSlice(l []labels.Label) {
 	})
 }
 
+// A future vendor
+// bump that changes StableHash's internal separator byte would only be
+// caught here, not by the compiler - see the comment on hashSep in
+// labels_stringlabels.go.
+func TestHashSorted_MatchesStableHash(t *testing.T) {
+	h := newHasher()
+
+	cases := map[string][]labels.Label{
+		"empty": {},
+		"single": {
+			{Name: "level", Value: "info"},
+		},
+		"typical": {
+			{Name: "namespace", Value: "loki"},
+			{Name: "job", Value: "us-central1/loki"},
+			{Name: "cluster", Value: "us-central1"},
+			{Name: "level", Value: "info"},
+		},
+		"empty values": {
+			{Name: "foo", Value: ""},
+			{Name: "bar", Value: ""},
+		},
+		"non-ascii": {
+			{Name: "msg", Value: "héllo wörld"},
+			{Name: "lang", Value: "日本語"},
+		},
+	}
+
+	// Exercise the xxhash.New()/Write-API fallback both HashSorted and
+	// StableHash switch to once the buffer would exceed 1KB.
+	big := make([]labels.Label, 50)
+	for i := range big {
+		big[i] = labels.Label{Name: fmt.Sprintf("label_%02d", i), Value: strings.Repeat("v", 30)}
+	}
+	cases["1KB+ fallback"] = big
+
+	for name, buf := range cases {
+		t.Run(name, func(t *testing.T) {
+			sortLabelSlice(buf)
+			want := labels.StableHash(labels.New(buf...))
+			got := h.HashSorted(buf)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
-	strs := []string{"namespace", "loki",
+	strs := []string{
+		"namespace", "loki",
 		"job", "us-central1/loki",
-		"cluster", "us-central1"}
+		"cluster", "us-central1",
+	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, labels.FromStrings("namespace", "loki"), b.GroupedLabels())
 	b.SetErr("err", nil)
-	assertLabelResult(t, labels.FromStrings("namespace", "loki", logqlmodel.ErrorLabel, "err"), b.GroupedLabels())
+	assertLabelResult(t, labels.FromStrings("namespace", "loki", logqlerr.ErrorLabel, "err"), b.GroupedLabels())
 
 	b.Reset()
 	b.Set(StructuredMetadataLabel, "foo", "bar")
@@ -430,7 +478,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Del("job")
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"cluster", "us-central1",
 		"foo", "bar",
 	)
@@ -439,7 +488,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"job", "us-central1/loki",
 		"cluster", "us-central1",
 	)
@@ -449,7 +499,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"job", "something",
 		"cluster", "us-central1",
 		"foo", "bar",
@@ -474,8 +525,8 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		b.SetErr("JSONParserErr", errors.New("Malformed JSON error"))
 
 		assertLabelResult(t, labels.FromStrings(
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.ErrorDetailsLabel, "Malformed JSON error",
+			logqlerr.ErrorLabel, "JSONParserErr",
+			logqlerr.ErrorDetailsLabel, "Malformed JSON error",
 		), b.GroupedLabels())
 	})
 
@@ -486,50 +537,50 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
-			logqlmodel.ErrorLabel, "JSONParserErr",
+			logqlerr.ErrorLabel, "JSONParserErr",
 		), b.GroupedLabels())
 	})
 
 	t.Run("the builder's details replace a parsed __error_details__", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
-		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
+		b.Set(ParsedLabel, logqlerr.ErrorDetailsLabel, "from the line")
 		b.SetErr("SampleExtractionErr", errors.New("bad number"))
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
-			logqlmodel.ErrorLabel, "SampleExtractionErr",
-			logqlmodel.ErrorDetailsLabel, "bad number",
+			logqlerr.ErrorLabel, "SampleExtractionErr",
+			logqlerr.ErrorDetailsLabel, "bad number",
 		), b.GroupedLabels())
 	})
 
 	t.Run("an error with no details drops a parsed __error_details__", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
-		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
+		b.Set(ParsedLabel, logqlerr.ErrorDetailsLabel, "from the line")
 		b.SetErr("SampleExtractionErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
-			logqlmodel.ErrorLabel, "SampleExtractionErr",
+			logqlerr.ErrorLabel, "SampleExtractionErr",
 		), b.GroupedLabels())
 	})
 
 	t.Run("grouping by __error__ reports the builder's value once", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+		b := NewBaseLabelsBuilderWithGrouping([]string{logqlerr.ErrorLabel}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.SetErr("JSONParserErr", nil)
 
-		assertLabelResult(t, labels.FromStrings(logqlmodel.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
+		assertLabelResult(t, labels.FromStrings(logqlerr.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
 	})
 
 	t.Run("the builder's error replaces a stream label named __error__", func(t *testing.T) {
-		base := labels.FromStrings(logqlmodel.ErrorLabel, "frombase", "pod", "p1")
-		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(base, labels.StableHash(base))
+		base := labels.FromStrings(logqlerr.ErrorLabel, "frombase", "pod", "p1")
+		b := NewBaseLabelsBuilderWithGrouping([]string{logqlerr.ErrorLabel}, nil, false, false).ForLabels(base, labels.StableHash(base))
 		b.Reset()
 		b.SetErr("JSONParserErr", nil)
 
-		assertLabelResult(t, labels.FromStrings(logqlmodel.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
+		assertLabelResult(t, labels.FromStrings(logqlerr.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
 	})
 }
 
@@ -609,17 +660,85 @@ func TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel(t *testing.T) {
 	})
 }
 
+func TestParserFieldCache(t *testing.T) {
+	t.Run("lookup resolves a key once while the cache has room", func(t *testing.T) {
+		cache := parserFieldCache{}
+		calls := 0
+		resolve := func() (string, bool) {
+			calls++
+			return "name", true
+		}
+
+		for range 2 {
+			labelName, extract := cache.lookup([]byte("key"), resolve)
+			require.Equal(t, "name", labelName)
+			require.True(t, extract)
+		}
+		require.Equal(t, 1, calls)
+	})
+
+	t.Run("lookup stores at most MaxParserFieldCacheSize keys and resolves the other keys on every call", func(t *testing.T) {
+		cache := parserFieldCache{}
+		calls := 0
+		resolve := func() (string, bool) {
+			calls++
+			return "name", true
+		}
+		for i := range MaxParserFieldCacheSize {
+			cache.lookup(fmt.Appendf(nil, "key%d", i), resolve)
+		}
+		require.Len(t, cache, MaxParserFieldCacheSize)
+
+		calls = 0
+		cache.lookup([]byte("key0"), resolve)
+		require.Equal(t, 0, calls)
+
+		for range 2 {
+			cache.lookup([]byte("late"), resolve)
+		}
+		require.Equal(t, 2, calls)
+		require.Len(t, cache, MaxParserFieldCacheSize)
+	})
+
+	t.Run("get keeps the first answer when a later call passes other hints", func(t *testing.T) {
+		cache := parserFieldCache{}
+		sanitize := func() (string, bool) { return "other", true }
+		rejecting := NewParserHint(nil, []string{"wanted"}, false, false, "")
+
+		_, extract := cache.get([]byte("other"), rejecting, sanitize)
+		require.False(t, extract)
+
+		_, extract = cache.get([]byte("other"), NoParserHints(), sanitize)
+		require.False(t, extract)
+	})
+
+	t.Run("get extracts a key when the hints require only its name with the duplicate suffix", func(t *testing.T) {
+		cache := parserFieldCache{}
+		hints := NewParserHint(nil, []string{"foo_extracted_extracted"}, false, false, "")
+
+		labelName, extract := cache.get([]byte("foo"), hints, func() (string, bool) { return "foo", true })
+		require.Equal(t, "foo", labelName)
+		require.True(t, extract)
+
+		_, extract = cache.get([]byte("bar"), hints, func() (string, bool) { return "bar", true })
+		require.False(t, extract)
+	})
+}
+
 func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 	t.Helper()
-	require.Equal(t,
+	require.Equal(
+		t,
 		lbs,
 		res.Labels(),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		labels.StableHash(lbs),
 		res.Hash(),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		lbs.String(),
 		res.String(),
 	)
@@ -674,6 +793,24 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
+	}
+}
+
+func BenchmarkLabelsBuilder_LabelsResult_CacheHit(b *testing.B) {
+	for _, n := range []int{1, 4, 16} {
+		b.Run(fmt.Sprintf("parsedLabels=%d", n), func(b *testing.B) {
+			base := labels.FromStrings("app", "bench", "namespace", "loki")
+			builder := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+
+			builder.Reset()
+			for j := 0; j < n; j++ {
+				builder.Set(ParsedLabel, fmt.Sprintf("key_%d", j), "info")
+			}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = builder.LabelsResult()
+			}
+		})
 	}
 }
 

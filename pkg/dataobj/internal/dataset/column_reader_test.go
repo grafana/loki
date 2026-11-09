@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -41,6 +42,54 @@ func Test_columnReader_ReadAll(t *testing.T) {
 	actual, err := readColumn(t, &alloc, cr, 4)
 	require.NoError(t, err)
 	require.Equal(t, columnReaderTestStrings, actual)
+}
+
+func Test_columnReader_ReadEach(t *testing.T) {
+	var alloc memory.Allocator
+
+	col := buildMultiPageColumn(t, columnReaderTestStrings)
+	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
+
+	t.Run("visits one array per page in order and ends with EOF", func(t *testing.T) {
+		tempAlloc := memory.NewAllocator(&alloc)
+		defer tempAlloc.Free()
+
+		var actual [][]string
+		cr := newColumnReader(col)
+		err := cr.ReadEach(t.Context(), tempAlloc, len(columnReaderTestStrings)+5, func(arr columnar.Array) error {
+			actual = append(actual, convertToStrings(t, arr))
+			return nil
+		})
+		require.ErrorIs(t, err, io.EOF)
+
+		var (
+			expected [][]string
+			rest     = columnReaderTestStrings
+		)
+		for _, page := range col.Pages {
+			rows := page.PageDesc().RowCount
+			expected = append(expected, rest[:rows])
+			rest = rest[rows:]
+		}
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("stops at the first error of visit", func(t *testing.T) {
+		tempAlloc := memory.NewAllocator(&alloc)
+		defer tempAlloc.Free()
+
+		var (
+			visits   int
+			errVisit = errors.New("visit failed")
+		)
+		cr := newColumnReader(col)
+		err := cr.ReadEach(t.Context(), tempAlloc, len(columnReaderTestStrings), func(columnar.Array) error {
+			visits++
+			return errVisit
+		})
+		require.ErrorIs(t, err, errVisit)
+		require.Equal(t, 1, visits)
+	})
 }
 
 func Test_columnReader_SeekAcrossPages(t *testing.T) {

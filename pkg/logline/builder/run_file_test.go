@@ -90,6 +90,58 @@ func TestRunFile_ManyRecordsSingleShard(t *testing.T) {
 	require.Equal(t, pairs, readShard(t, path, 0))
 }
 
+func TestRunFile_ChunkBoundariesMultiShard(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		counts    []int32
+		blockSize int
+	}{
+		{
+			name:   "writer_chunks",
+			counts: []int32{runChunkRecords - 1, runChunkRecords, runChunkRecords + 1, 0, 2 * runChunkRecords, 3},
+		},
+		{
+			name:   "reader_refills",
+			counts: []int32{runReadChunkRecords - 1, runReadChunkRecords, runReadChunkRecords + 1, 0, 2 * runReadChunkRecords, 3},
+		},
+		{
+			// s2 blocks need not align with either staging chunks or refills.
+			name:      "small_s2_blocks",
+			counts:    []int32{runChunkRecords + runReadChunkRecords + 1, 0, 3},
+			blockSize: 4 << 10,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var total int
+			for _, c := range tc.counts {
+				total += int(c)
+			}
+			pairs := randomPairs(t, total, false)
+			keys, docs := splitSoA(pairs)
+
+			path := filepath.Join(t.TempDir(), "run_0.frun")
+			var sw *s2.Writer
+			if tc.blockSize != 0 {
+				sw = s2.NewWriter(nil, s2.WriterBlockSize(tc.blockSize))
+			}
+			_, err := writeRun(path, keys, docs, tc.counts, &sw)
+			require.NoError(t, err)
+
+			pos := 0
+			for s, c := range tc.counts {
+				want := pairs[pos : pos+int(c)]
+				got := readShard(t, path, s)
+				if c == 0 {
+					require.Empty(t, got)
+				} else {
+					require.Equal(t, want, got, "shard %d", s)
+				}
+				pos += int(c)
+			}
+		})
+	}
+}
+
 func TestRunFile_BadMagic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bogus.frun")
 	require.NoError(t, os.WriteFile(path, []byte("NOTARUNFILE-----"), 0o644))

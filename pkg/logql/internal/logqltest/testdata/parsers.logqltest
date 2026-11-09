@@ -46,6 +46,19 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 # logfmt() label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+# A filter before the parser sees only the stream labels and the stored metadata.
+eval instant at 60s sum(count_over_time({app="a"} | md="m" | logfmt [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | md="m" | logfmt [1m])) # overlapping
+  {} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | sl="s" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | sm_extracted="m" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | md_extracted="p" | logfmt [1m]))
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | md_extracted="p" [1m]))
+  {} 3
 
 # logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
 clear
@@ -69,6 +82,7 @@ clear
 load
   {app="a", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
   {app="b", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
+  {app="c", k="s"}     "k_extracted=pext"     @ 20s [repeat every 20s for 3] [metadata k="m"]
   {app="noise", k="s"} "k=p"                  @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app=~"a|b"} | logfmt [1m])
@@ -80,6 +94,14 @@ eval range from 40s to 60s step 20s count_over_time({app=~"a|b"} | logfmt [1m]) 
 eval instant at 60s sum by (app, k_extracted) (count_over_time({app=~"a|b"} | logfmt [1m]))
   {app="a", k_extracted="pext"} 3
   {app="b", k_extracted="pext"} 3
+# Metadata `k` clashes with the stream label `k`, so it becomes `k_extracted`. The parsed `k_extracted`
+# then clashes with it and becomes `k_extracted_extracted`.
+eval instant at 60s count_over_time({app="c"} | logfmt [1m])
+  {app="c", k="s", k_extracted="m", k_extracted_extracted="pext"} 3
+eval instant at 60s sum by (k_extracted_extracted) (count_over_time({app="c"} | logfmt [1m]))
+  {k_extracted_extracted="pext"} 3
+eval range from 40s to 60s step 20s sum by (k_extracted_extracted) (count_over_time({app="c"} | logfmt [1m]))   # overlapping
+  {k_extracted_extracted="pext"} 2 3
 
 # logfmt() partially malformed line: the parser keeps the valid pairs and drops the bad one, or
 # fails the whole line under --strict.
@@ -158,8 +180,9 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])  # ov
 # precedence stream > metadata > parsed (the same for every parser).
 clear
 load
-  {app="a", sl="s", sm="s", tri="s"} `{"sl":"p","md":"p","tri":"p"}` @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
-  {app="noise"} `{"x":1}` @ 20s [repeat every 20s for 3]
+  {app="a", sl="s", sm="s", tri="s"} `{"sl":"p","md":"p","tri":"p"}`                             @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="b"}                          `{"a":{"":1},"a_":{"":4},"c":{"d":{"":2}},"x":{"":{"":3}}}` @ 20s [repeat every 20s for 3] [metadata a="m" a_="m" c_d="m" x="m"]
+  {app="noise"}                      `{"x":1}`                                                   @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | json [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
@@ -168,6 +191,16 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])
 # json()'s label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | json sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+# A nested key with an empty last segment puts the suffix in a segment of its own.
+# The clash name then has a doubled underscore: a clash on `a` gives `a__extracted`.
+# A deeper path keeps its other segments (`c_d`). An extra empty segment adds nothing (`x`).
+# A key that ends in an underscore gives three in a row: `a_` becomes `a___extracted`.
+eval instant at 60s count_over_time({app="b"} | json [1m])
+  {app="b", a="m", a__extracted="1", a_="m", a___extracted="4", c_d="m", c_d__extracted="2", x="m", x__extracted="3"} 3
+eval instant at 60s sum by (a__extracted, a___extracted, c_d__extracted, x__extracted) (count_over_time({app="b"} | json [1m]))
+  {a__extracted="1", a___extracted="4", c_d__extracted="2", x__extracted="3"} 3
+eval range from 40s to 60s step 20s sum by (a__extracted, a___extracted, c_d__extracted, x__extracted) (count_over_time({app="b"} | json [1m]))   # overlapping
+  {a__extracted="1", a___extracted="4", c_d__extracted="2", x__extracted="3"} 2 3
 
 # json() malformed line: the query fails, unless a __error__ filter drops the bad line.
 clear
@@ -189,6 +222,14 @@ eval instant at 40s count_over_time({app="a"} | json [20s])
   expect fail msg: JSONParserErr
 eval select from 0 to 60s forward {app="a"} | json | __error__!=""
   {app="a"} `broken` @ 40s [parsed __error__="JSONParserErr" __error_details__="Value looks like object, but can't find closing '}' symbol"]
+# A sum that keeps no label makes the parser skip extraction, so the malformed line at 40s raises no
+# error. A label filter before the parser must not change that.
+eval instant at 60s sum(count_over_time({app="a"} | json [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | app="a" | json [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | app="a" | json [1m])) # overlapping
+  {} 2 3
 
 # json() parsing error, that an __error__ filter, keeps in the result the series with the grouped labels
 # plus the labels that report the error.
@@ -325,10 +366,21 @@ load
 
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<num>\d+)` [1m])
   {app="a", method="stream"} 3
+eval instant at 60s sum(count_over_time({app="a"} | regexp `(?P<num>\d+)` [1m]))
+  {} 3
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])
   {app="a", method="stream", method_extracted="PUT", path="/x"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])  # overlapping
   {app="a", method="stream", method_extracted="PUT", path="/x"} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<num>\d+)` [1m]))
+  {} 3
+eval instant at 60s sum by (path) (count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` [1m]))
+  {path="/x"} 3
+# A label filter after the regexp reads the captured label.
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` | path="/x" [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} | method="stream" | regexp `(?P<method>\w+) (?P<path>\S+)` | path="/nope" [1m]))
+  expect empty
 eval instant at 60s count_over_time({app="a"} | regexp `nocapture` [1m])
   expect fail msg: at least one named capture must be supplied
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<x>.)(?P<x>.)` [1m])

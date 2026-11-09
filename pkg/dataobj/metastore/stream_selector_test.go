@@ -269,25 +269,33 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 			want:  []string{"provider"},
 		},
 		{
-			name:  "reports a stream label named by a regex predicate",
+			name:  "ignores a regex predicate on a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
-			want:  []string{"provider"},
+			want:  nil,
 		},
 		{
-			name:  "reports a stream label named by a not-equal predicate",
+			name:  "ignores a not-equal predicate on a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "provider", "other")},
-			want:  []string{"provider"},
+			want:  nil,
 		},
 		{
-			name: "reports a name once when several predicates share it",
+			name: "ignores several non-equality predicates that share a name",
 			preds: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
 				labels.MustNewMatcher(labels.MatchNotRegexp, "provider", "oth.*"),
 			},
+			want: nil,
+		},
+		{
+			name: "reports only the equality name when a regex predicate names another stream label",
+			preds: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "provider", "idology"),
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "w.*"),
+			},
 			want: []string{"provider"},
 		},
 		{
-			name: "reports a name once when equality and regex predicates share it",
+			name: "ignores a regex predicate that shares a name with an equality predicate",
 			preds: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "provider", "idology"),
 				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
@@ -296,11 +304,11 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 		},
 		{
 			name:  "ignores nil predicates",
-			preds: []*labels.Matcher{nil, labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
+			preds: []*labels.Matcher{nil, labels.MustNewMatcher(labels.MatchEqual, "provider", "idology")},
 			want:  []string{"provider"},
 		},
 		{
-			name:  "reports nothing for a name that is not a stream label",
+			name:  "ignores a regex predicate on a name that is not a stream label",
 			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*")},
 			want:  nil,
 		},
@@ -747,14 +755,9 @@ func buildLabelBloomSection(t testing.TB, labelsIn []labelPosting, bloomsIn []bl
 	for _, lp := range labelsIn {
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
+			StreamID: lp.streamID, UncompressedSize: 0, ShardBucket: lp.shardBucket,
+			Time: postings.At(time.Unix(0, lp.minTs).UTC()).Extend(time.Unix(0, lp.maxTs).UTC()),
 		})
-		if lp.maxTs > lp.minTs {
-			b.ObserveLabelPosting(postings.LabelObservation{
-				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
-			})
-		}
 	}
 	for _, bp := range bloomsIn {
 		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000, 0)
@@ -806,7 +809,7 @@ func buildSplitPostingsSections(t testing.TB, perSection ...[]labelPosting) ([]*
 		for _, lp := range lps {
 			b.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
+				StreamID: lp.streamID, Time: postings.At(time.Unix(0, lp.minTs).UTC()), UncompressedSize: 0, ShardBucket: lp.shardBucket,
 			})
 		}
 		builders = append(builders, b)
@@ -995,7 +998,7 @@ func TestStreamSelector_ShardBucketRange(t *testing.T) {
 
 	for _, test := range matcherSets {
 		t.Run(fmt.Sprintf("%s resolves every matching stream inside every bucket range, and no stream inside it that the unpruned selection lacks", test.name), func(t *testing.T) {
-			everything := postings.ShardBucketRange{From: 0, To: streams.ShardFactor - 1}
+			everything := postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets() - 1}
 			require.NotEmpty(t, expected(test.matchers, everything), "the matchers must select a stream, or the comparison proves nothing")
 
 			unpruned := selected(t, test.matchers, nil)

@@ -68,11 +68,64 @@ func (h IndexFooter) Info() format.HeaderInfo {
 }
 
 type IndexWriteConfig struct {
-	Encoding         format.PostingsEncoding
-	PackingFactor    uint8
-	FastBlockTarget  int
-	DensityThreshold float32       // 0 = disabled; >0 = filter terms exceeding this fraction of a full day's docs
-	DocumentInterval time.Duration // time per document; used with DensityThreshold to compute day-based sentinel cutoff
+	Encoding          format.PostingsEncoding
+	PackingFactor     uint8
+	FastBlockTarget   int
+	DensityThreshold  float32       // 0 = disabled; >0 = filter terms exceeding this fraction of a full day's docs
+	DocumentInterval  time.Duration // time per document; used with DensityThreshold to compute day-based sentinel cutoff
+	DocumentShardBits int           // log2 of stream shards per interval; 0 is one shard
+}
+
+// sentinelCutoff returns the cardinality above which a term is stored as
+// MatchesAll: DensityThreshold of a full day's documents, which is
+// (24h / DocumentInterval) × 2^DocumentShardBits. ok is false when the
+// density filter is disabled.
+func (c IndexWriteConfig) sentinelCutoff() (cutoff uint64, ok bool) {
+	if c.DensityThreshold <= 0 || c.DocumentInterval <= 0 {
+		return 0, false
+	}
+	docsPerDay := uint64(24*time.Hour/c.DocumentInterval) << c.DocumentShardBits
+	return uint64(float32(docsPerDay) * c.DensityThreshold), true
+}
+
+// documentLayout is the document interval and document shard bits a v5
+// footer records in ReservedMid: bytes 0-8 hold the interval in nanoseconds
+// and byte 8 the shard bits. An interval of 0 means none was recorded, and 0
+// shard bits is one shard.
+type documentLayout struct {
+	interval  time.Duration
+	shardBits uint8
+}
+
+func (h IndexFooter) documentLayout() documentLayout {
+	return documentLayout{
+		interval:  time.Duration(binary.LittleEndian.Uint64(h.ReservedMid[0:8])),
+		shardBits: h.ReservedMid[8],
+	}
+}
+
+func (h *IndexFooter) setDocumentLayout(l documentLayout) {
+	binary.LittleEndian.PutUint64(h.ReservedMid[0:8], uint64(l.interval))
+	h.ReservedMid[8] = l.shardBits
+}
+
+// withLayout returns c with the document layout of merge inputs. Merged
+// postings keep the inputs' cells, so a configured interval or shard bits
+// that disagree with them are an error. Inputs that recorded no interval keep
+// c.
+func (c IndexWriteConfig) withLayout(l documentLayout) (IndexWriteConfig, error) {
+	if l.interval == 0 {
+		return c, nil
+	}
+	if c.DocumentInterval != 0 && c.DocumentInterval != l.interval {
+		return c, fmt.Errorf("merge: configured document interval %v differs from the inputs' %v", c.DocumentInterval, l.interval)
+	}
+	if c.DocumentShardBits != 0 && c.DocumentShardBits != int(l.shardBits) {
+		return c, fmt.Errorf("merge: configured document shard bits %d differ from the inputs' %d", c.DocumentShardBits, l.shardBits)
+	}
+	c.DocumentInterval = l.interval
+	c.DocumentShardBits = int(l.shardBits)
+	return c, nil
 }
 
 // NewWriter creates a file-backed streaming writer with the given docs,
@@ -109,6 +162,9 @@ func applyWriterConfig(cfg *format.WriterConfig) IndexWriteConfig {
 	}
 	if cfg.DocumentInterval != 0 {
 		icfg.DocumentInterval = cfg.DocumentInterval
+	}
+	if cfg.DocumentShardBits != 0 {
+		icfg.DocumentShardBits = cfg.DocumentShardBits
 	}
 	return icfg
 }

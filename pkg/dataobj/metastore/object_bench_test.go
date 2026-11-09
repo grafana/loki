@@ -47,11 +47,12 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 	b.Run(bm.name, func(b *testing.B) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
+		indexBucket := NewIndexBucket(bucket)
 
-		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 		require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
-		metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+		metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 
 		// Calculate how many streams per index file
 		streamsPerIndex := len(testStreams) / bm.indexFilesNum
@@ -90,16 +91,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx, err := builder.AppendStream(streams.Stream{
-					ID:               globalStreamID,
-					Labels:           lbls,
-					MinTimestamp:     ts.Entries[0].Timestamp,
-					MaxTimestamp:     ts.Entries[0].Timestamp,
-					UncompressedSize: 0,
-				})
-				require.NoError(b, err)
-
-				observeLabelPostings(builder, "test-path", int64(fileIdx+1), newIdx, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+				observeLabelPostings(builder, "test-path", int64(fileIdx+1), globalStreamID, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 
 				globalStreamID++
 			}
@@ -192,15 +184,6 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
 
-			_, err = builder.AppendStream(streams.Stream{
-				ID:               1,
-				Labels:           lbls,
-				MinTimestamp:     now.Add(-3 * time.Hour),
-				MaxTimestamp:     now.Add(-2 * time.Hour),
-				UncompressedSize: 5,
-			})
-			require.NoError(b, err)
-
 			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-3*time.Hour), 5)
 			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-2*time.Hour), 0)
 			observeBloomPostings(b, builder, "test-path", 0, 1, now.Add(-3*time.Hour), "traceID", "abcd", "1234")
@@ -214,14 +197,15 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 			b.Cleanup(func() { _ = closer.Close() })
 
 			bucket := objstore.NewInMemBucket()
+			indexBucket := NewIndexBucket(bucket)
 
-			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, indexBucket, log.NewNopLogger())
 			require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
 
-			metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+			metastoreTocWriter := NewTableOfContentsWriter(indexBucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 
@@ -253,8 +237,9 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 	}
 }
 
-// BenchmarkSections_ShardBucketRange resolves sections with and without a shard bucket range. Each
-// log object holds two adjacent buckets.
+// BenchmarkSections_ShardBucketRange resolves sections with and without a stream hash range. Each
+// log object holds two adjacent buckets. The index records its layout in a stats section, so a
+// resolution with a range also reads that layout.
 func BenchmarkSections_ShardBucketRange(b *testing.B) {
 	const (
 		objects           = 256
@@ -268,7 +253,7 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 
 	var observations []postings.LabelObservation
 	for object := range objects {
-		firstBucket := uint32(object % (streams.ShardFactor - 1))
+		firstBucket := uint32(object) % (streams.DefaultShardLayout().Buckets() - 1)
 		for section := range sectionsPerObject {
 			for stream := range streamsPerSection {
 				streamLabels := []labels.Label{
@@ -282,14 +267,14 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 						ColumnName:   label.Name,
 						LabelValue:   label.Value,
 						StreamID:     int64(stream + 1),
-						Timestamp:    now,
+						Time:         postings.At(now),
 						ShardBucket:  firstBucket + uint32(stream%2),
 					})
 				}
 			}
 		}
 	}
-	createIndexObjectWithPostings(ctx, b, bucket, observations)
+	createIndexObject(ctx, b, bucket, observations, streams.NewLayout(streams.DefaultShardLayout(), nil))
 	m := newTestObjectMetastore(bucket)
 
 	for _, test := range []struct {
@@ -298,14 +283,14 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 	}{
 		{name: "no range", bucketRange: nil},
 		{name: "a range of one bucket", bucketRange: &postings.ShardBucketRange{From: 5, To: 5}},
-		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/4 - 1}},
+		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/4 - 1}},
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			request := SectionsRequest{
-				Start:            now.Add(-time.Hour),
-				End:              now.Add(time.Hour),
-				Matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
-				ShardBucketRange: test.bucketRange,
+				Start:           now.Add(-time.Hour),
+				End:             now.Add(time.Hour),
+				Matchers:        []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				StreamHashRange: hashRangeOfBuckets(streams.DefaultShardLayout(), test.bucketRange),
 			}
 
 			b.ReportAllocs()

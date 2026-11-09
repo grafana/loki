@@ -1,5 +1,10 @@
 # Changes
 
+## 2.5.0 - 2026-10-11
+
+- Updated `github.com/oschwald/maxminddb-golang/v2` to `v2.8.0`, which
+  includes performance improvements.
+
 ## 2.4.0 - 2026-09-07
 
 - This module now targets Go 1.26+.

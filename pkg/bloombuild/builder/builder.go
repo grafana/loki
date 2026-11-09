@@ -66,7 +66,8 @@ func New(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Builder, error) {
-	utillog.WarnExperimentalUse("Bloom Builder", logger)
+	utillog.WarnExperimentalUse("Bloom Builder", logger) // still increase experimental features counter despite being deprecated
+	level.Warn(logger).Log("msg", "bloom builder is deprecated and will be removed in a future release")
 
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)

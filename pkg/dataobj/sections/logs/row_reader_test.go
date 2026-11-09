@@ -13,7 +13,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func TestRowReader_NoPredicates(t *testing.T) {
@@ -261,7 +264,7 @@ func TestRowReader_SetProjectedColumns(t *testing.T) {
 		require.Equal(t, labels.EmptyLabels(), buf[0].Metadata)
 	})
 
-	t.Run("a column a predicate needs is read even when it is not projected", func(t *testing.T) {
+	t.Run("a column a predicate needs is read and not decoded when it is not projected", func(t *testing.T) {
 		// The projection lists neither the timestamp nor the metadata keys these predicates
 		// filter on, so each must still be evaluated against its own column instead of
 		// collapsing to a constant. The message is projected because the assertions read it.
@@ -309,6 +312,8 @@ func TestRowReader_SetProjectedColumns(t *testing.T) {
 				var lines []string
 				for _, rec := range readAllRecords(t, reader) {
 					lines = append(lines, string(rec.Line))
+					require.True(t, rec.Timestamp.IsZero(), "an unprojected timestamp must not be decoded, got %s", rec.Timestamp)
+					require.Equal(t, labels.EmptyLabels(), rec.Metadata)
 				}
 				require.Equal(t, tc.wantLines, lines)
 			})
@@ -337,9 +342,7 @@ func TestRowReader_SetProjectedColumns(t *testing.T) {
 		}
 	})
 
-	t.Run("a stream match adds the stream ID column back to the projection", func(t *testing.T) {
-		// The projection omits the stream ID, so the match can only filter if the widening
-		// adds that column back. The widened column is decoded into the Record too.
+	t.Run("a stream match filters on the stream ID even when the projection omits it", func(t *testing.T) {
 		reader := NewRowReader(section)
 		require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeMessage}, nil))
 		require.NoError(t, reader.MatchStreams(slices.Values([]int64{2})))
@@ -352,9 +355,35 @@ func TestRowReader_SetProjectedColumns(t *testing.T) {
 		var lines []string
 		for _, rec := range got {
 			lines = append(lines, string(rec.Line))
-			require.Equal(t, int64(2), rec.StreamID, "the widened stream ID column must be decoded")
+			require.Zero(t, rec.StreamID, "the stream ID is read for the match and not decoded")
 		}
 		require.ElementsMatch(t, []string{"line-2", "line-3"}, lines)
+	})
+
+	t.Run("a message predicate filters on the line even when the projection omits it", func(t *testing.T) {
+		keep := func(line []byte) bool { return string(line) != "line-2" }
+
+		for name, batch := range map[string]func(data []byte, offsets []int32, dstIndexes []int32) []int32{
+			"with a batch form":    keepBatchOf(keep),
+			"without a batch form": nil,
+		} {
+			t.Run(name, func(t *testing.T) {
+				reader := NewRowReader(section)
+				require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID}, nil))
+				require.NoError(t, reader.MatchStreams(slices.Values([]int64{1, 2})))
+				require.NoError(t, reader.SetPredicates([]RowPredicate{LogMessageFilterRowPredicate{Keep: keep, KeepBatch: batch}}))
+				require.NoError(t, reader.Open(t.Context()))
+				t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+				got := readAllRecords(t, reader)
+				require.Len(t, got, 2)
+				for _, rec := range got {
+					require.Empty(t, rec.Line)
+				}
+				require.Equal(t, int64(1), got[0].StreamID)
+				require.Equal(t, int64(2), got[1].StreamID)
+			})
+		}
 	})
 
 	t.Run("a projection that selects nothing is rejected", func(t *testing.T) {
@@ -461,11 +490,218 @@ func TestRowReader_SetPredicates(t *testing.T) {
 		}
 	})
 
+	t.Run("a message predicate with a batch form returns the rows of its row form", func(t *testing.T) {
+		var rowCalls, batchCalls int
+		keep := func(line []byte) bool { return string(line) != "line-2" }
+		predicate := LogMessageFilterRowPredicate{
+			Keep: func(line []byte) bool {
+				rowCalls++
+				return keep(line)
+			},
+			KeepBatch: func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
+				batchCalls++
+				return keepBatchOf(keep)(data, offsets, dstIndexes)
+			},
+		}
+
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID, ColumnTypeMessage}, nil))
+		require.NoError(t, reader.MatchStreams(slices.Values([]int64{1, 2})))
+		require.NoError(t, reader.SetPredicates([]RowPredicate{predicate}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		var lines []string
+		for _, rec := range readAllRecords(t, reader) {
+			lines = append(lines, string(rec.Line))
+		}
+		require.Equal(t, []string{"line-1", "line-3"}, lines)
+		require.NotZero(t, batchCalls)
+		require.Zero(t, rowCalls)
+	})
+
+	t.Run("a message predicate listed last runs only on the rows the earlier predicates keep", func(t *testing.T) {
+		var seen []string
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID, ColumnTypeMessage}, []string{"trace_id"}))
+		require.NoError(t, reader.SetPredicates([]RowPredicate{
+			TimeRangeRowPredicate{StartTime: unixSecond(15), EndTime: unixSecond(35), IncludeStart: true},
+			MetadataMatcherRowPredicate{Key: "env", Value: "prod"},
+			LogMessageFilterRowPredicate{Keep: func(line []byte) bool {
+				seen = append(seen, string(line))
+				return true
+			}},
+		}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		records := readAllRecords(t, reader)
+		require.Len(t, records, 1)
+		require.Equal(t, int64(2), records[0].StreamID)
+		require.Equal(t, "line-2", string(records[0].Line))
+		require.Equal(t, "t2", records[0].Metadata.Get("trace_id"))
+		require.Equal(t, []string{"line-2"}, seen)
+	})
+
+	t.Run("a message predicate listed last runs only on the rows of the matched streams", func(t *testing.T) {
+		var seen []string
+		reader := NewRowReader(section)
+		require.NoError(t, reader.MatchStreams(slices.Values([]int64{2})))
+		require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID, ColumnTypeMessage}, nil))
+		require.NoError(t, reader.SetPredicates([]RowPredicate{
+			LogMessageFilterRowPredicate{Keep: func(line []byte) bool {
+				seen = append(seen, string(line))
+				return true
+			}},
+		}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		require.Len(t, readAllRecords(t, reader), 2)
+		require.ElementsMatch(t, []string{"line-2", "line-3"}, seen)
+	})
+
+	t.Run("a message predicate listed first runs on every row, because the reader applies predicates in order", func(t *testing.T) {
+		var seen []string
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID, ColumnTypeMessage}, nil))
+		require.NoError(t, reader.SetPredicates([]RowPredicate{
+			LogMessageFilterRowPredicate{Keep: func(line []byte) bool {
+				seen = append(seen, string(line))
+				return true
+			}},
+			MetadataMatcherRowPredicate{Key: "env", Value: "prod"},
+		}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		require.Len(t, readAllRecords(t, reader), 2)
+		require.ElementsMatch(t, []string{"line-1", "line-2", "line-3"}, seen)
+	})
+
+	t.Run("a message predicate that drops every row ends the read with no record", func(t *testing.T) {
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetPredicates([]RowPredicate{
+			LogMessageFilterRowPredicate{Keep: func([]byte) bool { return false }},
+		}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		require.Empty(t, readAllRecords(t, reader))
+	})
+
+	t.Run("a message predicate sees an empty line and a line that is not UTF-8 byte for byte", func(t *testing.T) {
+		notUTF8 := []byte{0xff, 0xfe, 'a'}
+		lineSection := buildSectionFromRecords(t, SortStreamASC, []Record{
+			{StreamID: 1, Timestamp: unixSecond(10), Line: []byte{}},
+			{StreamID: 1, Timestamp: unixSecond(20), Line: notUTF8},
+			{StreamID: 1, Timestamp: unixSecond(30), Line: []byte("plain")},
+		})
+
+		var seen [][]byte
+		reader := NewRowReader(lineSection)
+		require.NoError(t, reader.SetPredicates([]RowPredicate{
+			LogMessageFilterRowPredicate{Keep: func(line []byte) bool {
+				seen = append(seen, slices.Clone(line))
+				return len(line) == 0 || string(line) == "plain"
+			}},
+		}))
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		var kept []string
+		for _, record := range readAllRecords(t, reader) {
+			kept = append(kept, string(record.Line))
+		}
+		require.ElementsMatch(t, []string{"", "plain"}, kept)
+		require.ElementsMatch(t, [][]byte{{}, notUTF8, []byte("plain")}, seen)
+	})
+
 	t.Run("predicates cannot be changed once reading has started", func(t *testing.T) {
 		reader := NewRowReader(section)
 		require.NoError(t, reader.Open(context.Background()))
 		t.Cleanup(func() { require.NoError(t, reader.Close()) })
 		require.ErrorContains(t, reader.SetPredicates(nil), "cannot change predicate")
+	})
+}
+
+func TestTranslateLogsPredicate(t *testing.T) {
+	t.Run("a message predicate reads a nil message value as an empty line", func(t *testing.T) {
+		section := buildTestProjectionSection(t)
+		dset, err := section.makeDataset()
+		require.NoError(t, err)
+
+		var seen [][]byte
+		predicate := translateLogsPredicate(
+			LogMessageFilterRowPredicate{Keep: func(line []byte) bool {
+				seen = append(seen, line)
+				return len(line) == 0
+			}},
+			dset.Columns(), section.Columns(),
+		)
+
+		funcPredicate, ok := predicate.(dataset.FuncPredicate)
+		require.True(t, ok, "want a function predicate, got %T", predicate)
+		var keep bool
+		require.NotPanics(t, func() { keep = funcPredicate.Keep(funcPredicate.Column, dataset.Value{}) })
+		require.True(t, keep)
+		require.Len(t, seen, 1)
+		require.Empty(t, seen[0])
+	})
+
+	t.Run("a message predicate passes the lines of an array to its batch form", func(t *testing.T) {
+		section := buildTestProjectionSection(t)
+		dset, err := section.makeDataset()
+		require.NoError(t, err)
+
+		predicate := translateLogsPredicate(
+			LogMessageFilterRowPredicate{
+				Keep:      func(line []byte) bool { return len(line) > 0 },
+				KeepBatch: keepBatchOf(func(line []byte) bool { return len(line) > 0 }),
+			},
+			dset.Columns(), section.Columns(),
+		)
+
+		funcPredicate, ok := predicate.(dataset.FuncPredicate)
+		require.True(t, ok, "want a function predicate, got %T", predicate)
+		require.NotNil(t, funcPredicate.KeepBatch)
+
+		values := columnar.NewUTF8([]byte("abcde"), []int32{0, 3, 3, 5}, memory.Bitmap{})
+		require.Equal(t, []int32{0, 2}, funcPredicate.KeepBatch(funcPredicate.Column, values, nil))
+	})
+
+	t.Run("a message predicate without a batch form translates to a predicate without one", func(t *testing.T) {
+		section := buildTestProjectionSection(t)
+		dset, err := section.makeDataset()
+		require.NoError(t, err)
+
+		predicate := translateLogsPredicate(
+			LogMessageFilterRowPredicate{Keep: func([]byte) bool { return true }},
+			dset.Columns(), section.Columns(),
+		)
+
+		funcPredicate, ok := predicate.(dataset.FuncPredicate)
+		require.True(t, ok, "want a function predicate, got %T", predicate)
+		require.Nil(t, funcPredicate.KeepBatch)
+	})
+
+	t.Run("a message predicate on a section with no message column reduces against the empty line", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			keep     func(line []byte) bool
+			wantKeep bool
+		}{
+			{"a filter that accepts the empty line keeps every row", func(line []byte) bool { return string(line) != "x" }, true},
+			{"a filter that rejects the empty line drops every row", func(line []byte) bool { return string(line) == "x" }, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				predicate := translateLogsPredicate(LogMessageFilterRowPredicate{Keep: tc.keep}, nil, nil)
+
+				keep, isConst := dataset.IsConstPredicate(predicate)
+				require.True(t, isConst, "want a constant predicate, got %T", predicate)
+				require.Equal(t, tc.wantKeep, keep)
+			})
+		}
 	})
 }
 
@@ -508,54 +744,16 @@ func TestRowReader_Reset(t *testing.T) {
 	})
 }
 
-// unknownRowPredicate is a RowPredicate the reader does not know about, standing in for one
-// added later without teaching projectPredicateColumns about its columns.
-type unknownRowPredicate struct{}
-
-func (unknownRowPredicate) isRowPredicate() {}
-
-func TestProjectPredicateColumns(t *testing.T) {
-	// Distinct leaves on each side, so a branch that is not walked shows up as a missing
-	// column rather than being masked by its sibling.
-	var (
-		timeLeaf     = TimeRangeRowPredicate{}
-		messageLeaf  = LogMessageFilterRowPredicate{Keep: func([]byte) bool { return true }}
-		matcherLeaf  = MetadataMatcherRowPredicate{Key: "matched"}
-		filterLeaf   = MetadataFilterRowPredicate{Key: "filtered", Keep: func(_, _ string) bool { return true }}
-		bothColumns  = map[ColumnType]struct{}{ColumnTypeTimestamp: {}, ColumnTypeMessage: {}}
-		bothMetadata = map[string]struct{}{"matched": {}, "filtered": {}}
-	)
-
-	for _, tc := range []struct {
-		name         string
-		predicate    RowPredicate
-		wantTypes    map[ColumnType]struct{}
-		wantMetadata map[string]struct{}
-	}{
-		{"and walks both branches", AndRowPredicate{Left: timeLeaf, Right: messageLeaf}, bothColumns, map[string]struct{}{}},
-		{"or walks both branches", OrRowPredicate{Left: timeLeaf, Right: messageLeaf}, bothColumns, map[string]struct{}{}},
-		{"not walks its inner predicate", NotRowPredicate{Inner: timeLeaf}, map[ColumnType]struct{}{ColumnTypeTimestamp: {}}, map[string]struct{}{}},
-		{"both metadata predicate kinds name their key", AndRowPredicate{Left: matcherLeaf, Right: filterLeaf}, map[ColumnType]struct{}{}, bothMetadata},
-		{"nesting recurses all the way down", NotRowPredicate{Inner: OrRowPredicate{Left: filterLeaf, Right: AndRowPredicate{Left: timeLeaf, Right: matcherLeaf}}}, map[ColumnType]struct{}{ColumnTypeTimestamp: {}}, bothMetadata},
-		{"a nil branch names nothing", AndRowPredicate{Left: nil, Right: timeLeaf}, map[ColumnType]struct{}{ColumnTypeTimestamp: {}}, map[string]struct{}{}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			types, names := map[ColumnType]struct{}{}, map[string]struct{}{}
-			projectPredicateColumns(tc.predicate, types, names)
-			require.Equal(t, tc.wantTypes, types)
-			require.Equal(t, tc.wantMetadata, names)
-		})
+// keepBatchOf returns a KeepBatch function that applies keep to each line.
+func keepBatchOf(keep func(line []byte) bool) func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
+	return func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
+		for i := range len(offsets) - 1 {
+			if keep(data[offsets[i]:offsets[i+1]]) {
+				dstIndexes = append(dstIndexes, int32(i))
+			}
+		}
+		return dstIndexes
 	}
-
-	t.Run("an unknown predicate panics", func(t *testing.T) {
-		// The contract is that it fails loudly, not that it uses any particular wording.
-		var recovered any
-		require.Panics(t, func() {
-			defer func() { recovered = recover(); panic(recovered) }()
-			projectPredicateColumns(unknownRowPredicate{}, map[ColumnType]struct{}{}, map[string]struct{}{})
-		})
-		require.Contains(t, fmt.Sprint(recovered), "unknownRowPredicate")
-	})
 }
 
 func unixSecond(sec int64) time.Time { return time.Unix(sec, 0).UTC() }

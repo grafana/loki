@@ -1,0 +1,28 @@
+version: "2"
+
+linters:
+  # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - errorlint
+    - intrange
+    - misspell
+    # Same checks as `go fix`: any over interface{}, maps/slices helpers,
+    # range over int, etc.
+    - modernize
+    - nilerr
+    - nolintlint
+    - predeclared
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true

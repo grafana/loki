@@ -232,13 +232,14 @@ func (w *watcher) maybeUpdateRootFile() {
 		logger.Warningf("rootFile (%s) read failed: %v", w.opts.RootFile, err)
 		return
 	}
+	// If the file contents have not changed, skip updating the distributor.
+	if bytes.Equal(w.rootFileContents, rootFileContents) {
+		return
+	}
+
 	trustPool := x509.NewCertPool()
 	if !trustPool.AppendCertsFromPEM(rootFileContents) {
 		logger.Warning("Failed to parse root certificate")
-		return
-	}
-	// If the file contents have not changed, skip updating the distributor.
-	if bytes.Equal(w.rootFileContents, rootFileContents) {
 		return
 	}
 

@@ -67,4 +67,8 @@ type RequestChunkFilterer interface {
 type Filterer interface {
 	ShouldFilter(metric labels.Labels) bool
 	RequiredLabelNames() []string
+
+	// PushableLabelMatchers returns the label matchers that are safe to push down to the storage
+	// layer, because every stream the filter admits matches all of them.
+	PushableLabelMatchers() []*labels.Matcher
 }

@@ -93,12 +93,12 @@ Two paths to eligibility:
 
 | Condition | Rule |
 |-----------|------|
-| Compacted source | Merged index's `CreatedAt` is older than `CompactionGracePeriod` |
-| Active index | `MaxLogTs` is older than `RetentionDuration` |
+| Compacted source | Merged index's `CreatedAt` is before the grace cutoff |
+| Active index | `MaxLogTs` is before the retention cutoff |
 
 Both paths also require `canDelete()` — merged indexes with live sources are never eligible.
 
-`Snapshot.EligibleForDeletion(retentionCutoff, graceCutoff)` implements the logic with caller-provided cutoffs. `Store.EligibleForDeletion(now)` delegates using the store's own config. The scheduler calls the Snapshot method directly with its own retention/grace config.
+`Snapshot.EligibleForDeletion(retentionCutoff, graceCutoff)` implements the logic with caller-provided cutoffs. The store owns no retention settings: the scheduler derives the cutoffs from `logline.retention` and the tenant retention limits. A zero `retentionCutoff` must mean "keep every active index", so callers pass the zero time when retention is disabled.
 
 ## Poll concurrency
 

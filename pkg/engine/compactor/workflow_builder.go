@@ -18,17 +18,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// buildIndexMergePlan returns a single-root physical.Plan holding exactly one
-// IndexMerge node. Each coordinator cycle runs ⌈P/K⌉ such plans
-// concurrently — one per sorted pile of index sections.
+// buildIndexMergePlan returns a single-root physical.Plan with one IndexMerge
+// node for task.
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide on the
-		// scheduler's manifest registry.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
@@ -45,12 +42,12 @@ func buildLogMergePlan(
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.LogMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
 		Runs:           task.Runs,
-		SortSchema:     task.SortSchema,
+		KeyRange:       task.KeyRange,
+		InputBytes:     task.InputBytes,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -71,11 +68,12 @@ func buildIndexFilterPlan(tenant, sourceIndexPath string, objectPaths []string) 
 	return physical.FromGraph(g)
 }
 
-func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
-	node := &physical.SortObject{
-		NodeID:           ulid.Make(),
-		SourceObjectPath: sourceObjectPath,
-		SortSchema:       sortSchema,
+// buildDeletionSweepPlan returns a single-root physical.Plan holding one
+// DeletionSweep node for tenant.
+func buildDeletionSweepPlan(tenant string) *physical.Plan {
+	node := &physical.DeletionSweep{
+		NodeID: ulid.Make(),
+		Tenant: tenant,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // Builder accumulates [Stat] rows and encodes them into a section via a
@@ -22,6 +23,10 @@ type Builder struct {
 	tenant  string
 	encode  SectionEncoder
 
+	// layout is the stream layout of the data objects that the rows describe.
+	// Every section the builder writes records it.
+	layout streams.Layout
+
 	rows          []Stat
 	estimatedSize int
 }
@@ -29,12 +34,20 @@ type Builder struct {
 // NewBuilder creates a new Builder.
 // encode is the [SectionEncoder] to use for encoding rows.
 // metrics may be nil to disable instrumentation.
-func NewBuilder(metrics *Metrics, encode SectionEncoder) *Builder {
+//
+// layout is the stream layout of the data objects that the rows describe.
+// Every section that the builder writes records it, and the rows must use
+// its schema labels as their SortSchema.
+func NewBuilder(metrics *Metrics, encode SectionEncoder, layout streams.Layout) *Builder {
 	return &Builder{
 		metrics: metrics,
 		encode:  encode,
+		layout:  layout,
 	}
 }
+
+// Layout returns the stream layout that the builder records.
+func (b *Builder) Layout() streams.Layout { return b.layout }
 
 // SetTenant sets the tenant for this builder.
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
@@ -126,7 +139,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	var enc columnar.Encoder
 	defer enc.Reset()
 
-	if err := b.encode(b.rows, &enc); err != nil {
+	if err := b.encode(b.rows, b.layout, &enc); err != nil {
 		return 0, fmt.Errorf("encoding stats: %w", err)
 	}
 

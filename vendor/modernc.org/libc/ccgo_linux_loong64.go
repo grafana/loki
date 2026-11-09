@@ -161,6 +161,7 @@ const __ATOMIC_RELEASE = 3
 const __ATOMIC_SEQ_CST = 5
 const __BIGGEST_ALIGNMENT__ = 16
 const __BIG_ENDIAN = 4321
+const __BITINT_MAXWIDTH__ = 65535
 const __BYTE_ORDER = 1234
 const __BYTE_ORDER__ = 1234
 const __CCGO__ = 1
@@ -314,12 +315,12 @@ const __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 = 1
 const __GCC_IEC_559 = 2
 const __GCC_IEC_559_COMPLEX = 2
 const __GNUC_EXECUTION_CHARSET_NAME = "UTF-8"
-const __GNUC_MINOR__ = 3
+const __GNUC_MINOR__ = 2
 const __GNUC_PATCHLEVEL__ = 0
 const __GNUC_STDC_INLINE__ = 1
 const __GNUC_WIDE_EXECUTION_CHARSET_NAME = "UTF-32LE"
-const __GNUC__ = 15
-const __GXX_ABI_VERSION = 1020
+const __GNUC__ = 16
+const __GXX_ABI_VERSION = 1021
 const __HAVE_SPECULATION_SAFE_VALUE = 1
 const __HA_FBIT__ = 7
 const __HA_IBIT__ = 8
@@ -525,7 +526,7 @@ const __UTA_FBIT__ = 64
 const __UTA_IBIT__ = 64
 const __UTQ_FBIT__ = 128
 const __UTQ_IBIT__ = 0
-const __VERSION__ = "15.3.0"
+const __VERSION__ = "16.2.0"
 const __WCHAR_MAX__ = 2147483647
 const __WCHAR_MIN__ = -2147483648
 const __WCHAR_TYPE__ = "int"
@@ -6897,18 +6898,21 @@ type Tstack_t = struct {
 type Tsigaltstack = Tstack_t
 
 type Tmcontext_t = struct {
-	F__pc    uint64
-	F__gregs [32]uint64
-	F__flags uint32
+	F__ccgo_align [0]uint64
+	F__pc         uint64
+	F__gregs      [32]uint64
+	F__flags      uint32
+	F__ccgo_pad4  [4]byte
 }
 
 type Tucontext_t = struct {
-	Fuc_flags    uint64
-	Fuc_link     uintptr
-	Fuc_stack    Tstack_t
-	Fuc_sigmask  Tsigset_t
-	F__uc_pad    int64
-	Fuc_mcontext Tmcontext_t
+	F__ccgo_align [0]uint64
+	Fuc_flags     uint64
+	Fuc_link      uintptr
+	Fuc_stack     Tstack_t
+	Fuc_sigmask   Tsigset_t
+	F__uc_pad     int64
+	Fuc_mcontext  Tmcontext_t
 }
 
 type t__ucontext = Tucontext_t
@@ -29749,9 +29753,11 @@ type Tgreg_t = uint64
 type Tgregset_t = [32]uint64
 
 type Tsigcontext = struct {
-	Fsc_pc    uint64
-	Fsc_regs  [32]uint64
-	Fsc_flags uint32
+	F__ccgo_align [0]uint64
+	Fsc_pc        uint64
+	Fsc_regs      [32]uint64
+	Fsc_flags     uint32
+	F__ccgo_pad4  [4]byte
 }
 
 type Tucontext = Tucontext_t

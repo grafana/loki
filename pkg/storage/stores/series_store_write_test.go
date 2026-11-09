@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -94,7 +94,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 	require.NoError(t, err)
 
 	memchk := chunkenc.NewMemChunk(chunkfmt, compression.GZIP, headfmt, 256*1024, 0)
-	chk := chunk.NewChunk("fake", model.Fingerprint(0), labels.New(labels.Label{Name: "foo", Value: "bar"}), chunkenc.NewFacade(memchk, 0, 0), 100, 400)
+	chk := chunk.NewChunk("fake", model.Fingerprint(0), labels.New(labels.Label{Name: "foo", Value: "bar"}), chunkenc.NewFacade(memchk, 0, 0), 100, 400, 0)
 
 	for name, tc := range map[string]struct {
 		from, through                                                             model.Time
@@ -160,7 +160,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 			idx := &mockIndexWriter{}
 			client := &mockChunksClient{}
 
-			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 0, 0, false)
+			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 0, 0)
 			require.NoError(t, err)
 
 			cw := NewChunkWriter(f, schemaConfig, idx, true)

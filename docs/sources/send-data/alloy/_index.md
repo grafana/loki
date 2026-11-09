@@ -49,6 +49,7 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 | Collector  | [otelcol.receiver.loki](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.loki/) |
 | Transformer| [loki.relabel](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/)            |
 | Transformer| [loki.process](https://grafana.com/docs/alloy/latest/reference/components/loki.process/)            |
+| Transformer| [loki.secretfilter](https://grafana.com/docs/alloy/latest/reference/components/loki.secretfilter/)  |
 | Writer     | [loki.write](https://grafana.com/docs/alloy/latest/reference/components/loki.write/)                |
 | Writer     | [otelcol.exporter.loki](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.loki/) |
 
@@ -56,9 +57,13 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 
 {{< docs/learning-paths title="Send logs to Grafana Cloud using Alloy" url="https://grafana.com/docs/learning-paths/send-logs-alloy-loki/" >}}
 
-## Interactive Tutorials
+## Interactive tutorials
 
 To learn more about how to configure Alloy to send logs to Loki within different scenarios, follow these interactive tutorials:
 
-- [Sending OpenTelemetry logs to Loki using Alloy](examples/alloy-otel-logs/)
-- [Sending logs over Kafka to Loki using Alloy](examples/alloy-kafka-logs/)
+- [Sending OpenTelemetry logs to Loki using Alloy](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/alloy/examples/alloy-otel-logs/)
+- [Sending logs over Kafka to Loki using Alloy](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/alloy/examples/alloy-kafka-logs/)
+
+## Sample Alloy scenarios
+
+The [Alloy scenarios repo](https://github.com/grafana/alloy-scenarios) contains a collection of dozens of working Alloy scenarios. 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -178,7 +179,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
@@ -188,7 +189,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	// All should be label-kind.
 	for _, row := range tbl.rows {
 		require.Equal(t, int64(postings.KindLabel), row["kind.int64"])
-		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
 		require.NotNil(t, row["label_value.utf8"])
 	}
 
@@ -242,7 +243,7 @@ func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 		{StreamID: 2, Timestamp: time.Unix(2, 0).UTC(), Line: []byte("b")}, // svcB, dev
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -301,7 +302,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 		{StreamID: 1, Timestamp: ts3, Line: []byte("mid")},    // svcA, ts=30
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 2 postings: service_name=svcA, env=prod (both from stream 1).
@@ -320,6 +321,98 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
 }
 
+func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
+	ts10 := time.Unix(10, 0).UTC()
+	ts20 := time.Unix(20, 0).UTC()
+	ts30 := time.Unix(30, 0).UTC()
+
+	runTests := []struct {
+		name  string
+		batch []logs.Record
+	}{
+		{
+			name: "reports min and max timestamps when a run is in descending order",
+			batch: []logs.Record{
+				{StreamID: 1, Timestamp: ts30, Line: []byte("a")},
+				{StreamID: 1, Timestamp: ts20, Line: []byte("bb")},
+				{StreamID: 1, Timestamp: ts10, Line: []byte("ccc")},
+			},
+		},
+		{
+			name: "reports min and max timestamps when a run is unordered",
+			batch: []logs.Record{
+				{StreamID: 1, Timestamp: ts20, Line: []byte("a")},
+				{StreamID: 1, Timestamp: ts10, Line: []byte("bb")},
+				{StreamID: 1, Timestamp: ts30, Line: []byte("ccc")},
+			},
+		},
+	}
+	for _, tc := range runTests {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := newTestIndexBuilder(t)
+			calcCtx := makeTestCalcContext(builder)
+			calc := &labelPostingsCalculation{}
+
+			require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
+			require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, tc.batch))
+			require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
+
+			tbl := flushAndReadAllPostingsTable(t, builder)
+			i := findRow(tbl.rows, map[string]any{
+				"column_name.utf8": "service_name",
+				"label_value.utf8": "svcA",
+			})
+			require.NotEqual(t, -1, i)
+			row := tbl.rows[i]
+			require.Equal(t, ts10, row["min_timestamp.timestamp"])
+			require.Equal(t, ts30, row["max_timestamp.timestamp"])
+			require.Equal(t, int64(len("a")+len("bb")+len("ccc")), row["uncompressed_size.int64"])
+		})
+	}
+
+	t.Run("produces the same postings as per-record observation for a random batch", func(t *testing.T) {
+		rnd := rand.New(rand.NewSource(1))
+		var batch []logs.Record
+		for range 200 {
+			streamID := int64(rnd.Intn(4) + 1)
+			for range rnd.Intn(10) + 1 {
+				batch = append(batch, logs.Record{
+					StreamID:  streamID,
+					Timestamp: time.Unix(int64(rnd.Intn(1000)), 0).UTC(),
+					Line:      make([]byte, rnd.Intn(64)),
+				})
+			}
+		}
+
+		perRunBuilder := newTestIndexBuilder(t)
+		perRunCtx := makeTestCalcContext(perRunBuilder)
+		calc := &labelPostingsCalculation{}
+		require.NoError(t, calc.Prepare(context.Background(), perRunCtx, nil, logs.Stats{}))
+		require.NoError(t, calc.ProcessBatch(context.Background(), perRunCtx, batch))
+		require.NoError(t, calc.Flush(context.Background(), perRunCtx, perRunBuilder))
+
+		perRecordBuilder := newTestIndexBuilder(t)
+		perRecordCtx := makeTestCalcContext(perRecordBuilder)
+		for _, record := range batch {
+			perRecordCtx.streamLabels[record.StreamID].Range(func(lbl labels.Label) {
+				perRecordBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath:       perRecordCtx.objectPath,
+					ShardBuckets:     int64(perRecordCtx.shardLayout.Buckets()),
+					SectionIndex:     perRecordCtx.sectionIdx,
+					ColumnName:       lbl.Name,
+					LabelValue:       lbl.Value,
+					StreamID:         record.StreamID,
+					Time:             postings.At(record.Timestamp),
+					UncompressedSize: record.UncompressedSize(),
+					ShardBucket:      perRecordCtx.streamShardBuckets[record.StreamID],
+				})
+			})
+		}
+
+		require.Equal(t, flushAndReadAllPostingsTable(t, perRecordBuilder), flushAndReadAllPostingsTable(t, perRunBuilder))
+	})
+}
+
 func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)
@@ -336,7 +429,7 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 		{StreamID: 4, Timestamp: ts1, Line: []byte("")}, // shard: 15 (dev)
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 5 postings: service_name={svcA, svcB}, env={dev, staging, prod}
@@ -344,7 +437,7 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 
 	// Shard factor should be constant on all rows
 	for _, row := range tbl.rows {
-		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
 	}
 
 	// Check min & max shard buckets are calculated correctly
@@ -402,7 +495,7 @@ func TestLabelPostingsCalculation_SharedLabelAggregation(t *testing.T) {
 		{StreamID: 1, Timestamp: ts1, Line: line1},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -475,7 +568,7 @@ func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 
 	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	// No data → builder is empty, Flush returns ErrBuilderEmpty.
 	_, _, err := builder.Flush()
@@ -497,7 +590,7 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch1))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -576,6 +669,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					sectionIdx:         0,
 					streamLabels:       streamLabels,
 					streamShardBuckets: shardBuckets,
+					shardLayout:        streams.DefaultShardLayout(),
 					builder:            builder,
 				}
 				calc := &labelPostingsCalculation{}
@@ -586,7 +680,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 				if err := calc.ProcessBatch(context.Background(), calcCtx, batch); err != nil {
 					b.Fatal(err)
 				}
-				if err := calc.Flush(context.Background(), calcCtx); err != nil {
+				if err := calc.Flush(context.Background(), calcCtx, builder); err != nil {
 					b.Fatal(err)
 				}
 			}

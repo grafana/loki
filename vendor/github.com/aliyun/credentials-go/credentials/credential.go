@@ -49,6 +49,7 @@ type Config struct {
 	// Used when the type is ram_role_arn or oidc_role_arn
 	OIDCProviderArn       *string `json:"oidc_provider_arn"`
 	OIDCTokenFilePath     *string `json:"oidc_token"`
+	OIDCToken             *string `json:"oidc_token_raw"`
 	RoleArn               *string `json:"role_arn"`
 	RoleSessionName       *string `json:"role_session_name"`
 	RoleSessionExpiration *int    `json:"role_session_expiration"`
@@ -198,6 +199,11 @@ func (s *Config) SetOIDCTokenFilePath(v string) *Config {
 	return s
 }
 
+func (s *Config) SetOIDCToken(v string) *Config {
+	s.OIDCToken = &v
+	return s
+}
+
 func (s *Config) SetOIDCProviderArn(v string) *Config {
 	s.OIDCProviderArn = &v
 	return s
@@ -248,6 +254,7 @@ func NewCredential(config *Config) (credential Credential, err error) {
 	case "oidc_role_arn":
 		provider, err := providers.NewOIDCCredentialsProviderBuilder().
 			WithRoleArn(tea.StringValue(config.RoleArn)).
+			WithOIDCToken(tea.StringValue(config.OIDCToken)).
 			WithOIDCTokenFilePath(tea.StringValue(config.OIDCTokenFilePath)).
 			WithOIDCProviderARN(tea.StringValue(config.OIDCProviderArn)).
 			WithDurationSeconds(tea.IntValue(config.RoleSessionExpiration)).

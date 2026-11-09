@@ -76,6 +76,7 @@ func NewPush(
 	tlsCfg *tls.Config,
 	caFile, certFile, keyFile string,
 	username, password string,
+	bearerTokenFile string,
 	backoffCfg *backoff.Config,
 	logBatchSize int,
 	protocol string,
@@ -83,6 +84,9 @@ func NewPush(
 ) (EntryWriter, error) {
 	if protocol != PushProtocolLoki && protocol != PushProtocolOTLP {
 		return nil, fmt.Errorf("unsupported push protocol %q: expected loki or otlp", protocol)
+	}
+	if username != "" && bearerTokenFile != "" {
+		return nil, fmt.Errorf("at most one of basic authentication and bearer token authentication may be configured")
 	}
 	client, err := config.NewClientFromConfig(cfg, "canary-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -117,6 +121,13 @@ func NewPush(
 		scheme = "https"
 	}
 
+	if bearerTokenFile != "" {
+		client.Transport = config.NewAuthorizationCredentialsRoundTripper(
+			"Bearer",
+			config.NewFileSecret(bearerTokenFile),
+			client.Transport,
+		)
+	}
 	endpoint := pushEndpoint
 	if protocol == PushProtocolOTLP {
 		endpoint = "/otlp/v1/logs"

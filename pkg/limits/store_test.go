@@ -2,11 +2,13 @@ package limits
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -426,6 +428,35 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 		actual = append(actual, stream.hash)
 	}
 	require.ElementsMatch(t, expected, actual)
+}
+
+func TestUsageStore_Collect(t *testing.T) {
+	limits := &mockLimitsWithPolicy{
+		policyLimits: map[string]int{"high-priority": 10},
+	}
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, limits, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	// Two streams without a policy, one of which is outside the active window,
+	// and one stream in a policy with its own stream limit.
+	s.setForTests("tenant", streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()})
+	s.setForTests("tenant", streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-time.Hour).UnixNano()})
+	s.setForTests("tenant", streamUsage{hash: 0x3, lastSeenAt: clock.Now().UnixNano(), policy: "high-priority"})
+
+	require.NoError(t, testutil.CollectAndCompare(s, strings.NewReader(`
+# HELP loki_ingest_limits_active_streams The current number of active streams per tenant and policy.
+# TYPE loki_ingest_limits_active_streams gauge
+loki_ingest_limits_active_streams{policy="",tenant="tenant"} 1
+loki_ingest_limits_active_streams{policy="high-priority",tenant="tenant"} 1
+# HELP loki_ingest_limits_streams The current number of streams per tenant and policy, including streams outside the active window.
+# TYPE loki_ingest_limits_streams gauge
+loki_ingest_limits_streams{policy="",tenant="tenant"} 2
+loki_ingest_limits_streams{policy="high-priority",tenant="tenant"} 1
+`),
+		"loki_ingest_limits_active_streams",
+		"loki_ingest_limits_streams",
+	))
 }
 
 func TestUsageStore_PolicyBasedStreamLimits(t *testing.T) {

@@ -16,17 +16,19 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-	yaml "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -158,18 +160,17 @@ type Limits struct {
 	DataObjMaxBytesPerShard     flagext.ByteSize   `yaml:"dataobj_max_bytes_per_shard" json:"dataobj_max_bytes_per_shard" category:"experimental"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration                   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration           model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	RecentMetadataQuerySplitDuration     model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
-	RecentMetadataQueryWindow            model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
-	InstantMetricQuerySplitDuration      model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
-	EngineResultsCacheTimeBucketInterval model.Duration   `yaml:"engine_results_cache_time_bucket_interval" json:"engine_results_cache_time_bucket_interval"`
-	IngesterQuerySplitDuration           model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback                  model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead                    flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead                  flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled                        bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration       model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	RecentMetadataQuerySplitDuration model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
+	RecentMetadataQueryWindow        model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
+	InstantMetricQuerySplitDuration  model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
+	IngesterQuerySplitDuration       model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback              model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead                flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead              flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled                    bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                  int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                             `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -207,23 +208,23 @@ type Limits struct {
 	IndexGatewayShardSize   int     `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 	IndexGatewayMaxCapacity float64 `yaml:"index_gateway_max_capacity" json:"index_gateway_max_capacity"`
 
-	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
+	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering"`
 
-	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
-	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
-	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
+	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders"`
+	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries"`
+	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout"`
 
-	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled"`
 	DataObjIndexCompactionEnabled  bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
 	DataObjLogCompactionEnabled    bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
-	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
-	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
-	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
-	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
-	BloomPrefetchBlocks            bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks" category:"experimental"`
+	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy"`
+	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by"`
+	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size"`
+	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
+	BloomPrefetchBlocks            bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks"`
 
-	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
-	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
+	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size"`
+	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size"`
 
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -268,13 +269,57 @@ type Limits struct {
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 
-	// Per tenant limits for the v2 execution engine
-
-	DebugEngineTasks   bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
-	DebugEngineStreams bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
-
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
+
+	// DataObjShardFactor is the number of stream shard buckets in new data
+	// objects for the tenant. Zero means the default.
+	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+}
+
+// ShardFactor is the number of shard buckets that data objects divide a
+// tenant's streams into. It must be a power of two up to [MaxShardFactor].
+// Zero means the default, [streams.DefaultShardBuckets].
+type ShardFactor uint32
+
+// MaxShardFactor is the largest [ShardFactor] that [ShardFactor.Validate]
+// accepts.
+const MaxShardFactor = 256
+
+// Layout returns the shard layout for f. Zero gives
+// [streams.DefaultShardLayout]. Layout returns an error if f is not a valid
+// [streams.ShardLayout] bucket count.
+func (f ShardFactor) Layout() (streams.ShardLayout, error) {
+	if f == 0 {
+		return streams.DefaultShardLayout(), nil
+	}
+	return streams.ShardLayoutFromBuckets(uint32(f))
+}
+
+// Validate returns an error if f is not zero or a power of two up to
+// [MaxShardFactor].
+func (f ShardFactor) Validate() error {
+	// Layout accepts every power of two up to 65536, the limit of
+	// [streams.ShardLayout]. Check the maximum first, so that a larger factor
+	// reports MaxShardFactor and not that limit.
+	if f > MaxShardFactor {
+		return fmt.Errorf("shard factor %d is more than the maximum %d", f, MaxShardFactor)
+	}
+	_, err := f.Layout()
+	return err
+}
+
+// String implements flag.Value.
+func (f ShardFactor) String() string { return strconv.FormatUint(uint64(f), 10) }
+
+// Set implements flag.Value.
+func (f *ShardFactor) Set(v string) error {
+	n, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		return fmt.Errorf("parse shard factor %q: %w", v, err)
+	}
+	*f = ShardFactor(n)
+	return nil
 }
 
 type FieldDetectorConfig struct {
@@ -397,7 +442,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"k8s_job_name",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, fmt.Sprintf("Discover the log level of each entry during ingestion and add it to Structured Metadata as %s, unless it is already present. The level is read from the first stream label or Structured Metadata field whose name is in log_level_fields (default: %s). Otherwise it is derived from the OTLP severity number, or from the log line: a JSON or logfmt field named in log_level_fields, then keywords. Recognized values (case insensitive) are normalized to 'trace', 'debug', 'info', 'warn', 'error', 'critical' or 'fatal'.", constants.LevelLabel, strings.Join(DefaultAllowedLevelFields, ", ")))
 	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
 	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
@@ -485,8 +530,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 	_ = l.InstantMetricQuerySplitDuration.Set("1h")
 	f.Var(&l.InstantMetricQuerySplitDuration, "querier.split-instant-metric-queries-by-interval", "Split instant metric queries by a time interval and execute in parallel. The value 0 disables splitting instant metric queries by time. This also determines how cache keys are chosen when instant metric query result caching is enabled.")
-	_ = l.EngineResultsCacheTimeBucketInterval.Set("24h")
-	f.Var(&l.EngineResultsCacheTimeBucketInterval, "querier.engine-results-cache-time-bucket-interval", "Time bucket interval used for cache key generation in the Thor (V2) query engine. Queries starting within the same bucket share the same cache key.")
 
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
@@ -504,34 +547,34 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
 
-	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
+	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Deprecated: Whether to use the bloom gateway component in the read path to filter chunks.")
 
-	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
-	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
+	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Deprecated: Compression algorithm for bloom block pages.")
+	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Deprecated: Prefetch blocks on bloom gateways as soon as they are built.")
 
 	_ = l.BloomMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
 	f.Var(&l.BloomMaxBlockSize, "bloom-build.max-block-size",
 		fmt.Sprintf(
-			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
+			"Deprecated: The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomBuildMaxBlockSize,
 		),
 	)
 
-	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
+	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Deprecated: Whether to create blooms for the tenant.")
 	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
 	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
-	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
-	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Deprecated: Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
-	f.Var(&l.BloomTaskTargetSeriesChunkSize, "bloom-build.split-target-series-chunk-size", fmt.Sprintf("Experimental. Target chunk size in bytes for bloom tasks. Default is %s.", defaultBloomTaskTargetChunkSize))
-	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
-	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
-	f.IntVar(&l.BloomBuildTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
+	f.Var(&l.BloomTaskTargetSeriesChunkSize, "bloom-build.split-target-series-chunk-size", fmt.Sprintf("Deprecated: Target chunk size in bytes for bloom tasks. Default is %s.", defaultBloomTaskTargetChunkSize))
+	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Deprecated: Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
+	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Deprecated: Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
+	f.IntVar(&l.BloomBuildTaskMaxRetries, "bloom-build.task-max-retries", 3, "Deprecated: Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
 
 	_ = l.BloomMaxBloomSize.Set(defaultBloomBuildMaxBloomSize)
 	f.Var(&l.BloomMaxBloomSize, "bloom-build.max-bloom-size",
 		fmt.Sprintf(
-			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
+			"Deprecated: The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
 			defaultBloomBuildMaxBloomSize,
 		),
 	)
@@ -584,10 +627,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
-	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
-	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
-
 	l.SortSchema = DefaultSortSchema
+	l.DataObjShardFactor = streams.DefaultShardBuckets
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -724,13 +766,12 @@ func (l *Limits) Validate() error {
 		return errors.New("querier.dataobj-max-bytes-per-shard must be greater than 0")
 	}
 
-	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
-		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
-			l.EngineResultsCacheTimeBucketInterval)
-	}
-
 	if err := l.SortSchema.Validate(); err != nil {
 		return fmt.Errorf("sort_schema: %w", err)
+	}
+
+	if err := l.DataObjShardFactor.Validate(); err != nil {
+		return fmt.Errorf("dataobj_shard_factor: %w", err)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -943,11 +984,6 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // InstantMetricQuerySplitDuration returns the tenant specific instant metric queries splitby interval applied in the query frontend.
 func (o *Overrides) InstantMetricQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).InstantMetricQuerySplitDuration)
-}
-
-// EngineResultsCacheTimeBucketInterval returns the time bucket interval used for cache key generation in the Thor (V2) query engine.
-func (o *Overrides) EngineResultsCacheTimeBucketInterval(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).EngineResultsCacheTimeBucketInterval)
 }
 
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
@@ -1392,14 +1428,6 @@ func (o *Overrides) StreamFirstExecutionEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).StreamFirstExecutionEnabled
 }
 
-func (o *Overrides) DebugEngineTasks(userID string) bool {
-	return o.getOverridesForUser(userID).DebugEngineTasks
-}
-
-func (o *Overrides) DebugEngineStreams(userID string) bool {
-	return o.getOverridesForUser(userID).DebugEngineStreams
-}
-
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)
@@ -1469,6 +1497,17 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 		return DefaultSortSchema
 	}
 	return s
+}
+
+// DataObjShardLayout returns the shard layout of new data objects for userID.
+func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
+	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
+	if err != nil {
+		// Limits.Validate rejects invalid factors, so only unvalidated limits
+		// reach this branch.
+		return streams.DefaultShardLayout()
+	}
+	return layout
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

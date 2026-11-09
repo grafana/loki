@@ -10,7 +10,15 @@ import (
 
 const (
 	DefaultNgramLength      = 6
-	DefaultDocumentInterval = 100 * time.Millisecond
+	DefaultDocumentInterval = 16 * time.Second
+
+	// DefaultDocumentShardBits is the document_shard_bits flag default:
+	// 2^5 = 32 document shards per interval.
+	DefaultDocumentShardBits = 5
+	// MaxDocumentShardBits caps document_shard_bits at 128 document shards.
+	// Each extra bit doubles a day's documents and halves the builder's
+	// fixed-epoch docID window.
+	MaxDocumentShardBits = 7
 
 	// DefaultDensityThreshold is the v3 format default: n-grams present in
 	// more than 20% of a full day's documents are stored as match-all.
@@ -28,6 +36,12 @@ type IndexConfig struct {
 	NgramLength int    `yaml:"ngram_length"`
 	// DocumentInterval is the time range one document covers.
 	DocumentInterval time.Duration `yaml:"document_interval"`
+	// DocumentShardBits is the number of high stream-fingerprint bits that
+	// select a document shard: each document interval is split into
+	// 2^DocumentShardBits shards, and one document covers one interval of the
+	// streams in one shard. Only v5 uses it; Validate sets it to 0 for v3 and
+	// v4.
+	DocumentShardBits int `yaml:"document_shard_bits"`
 	// DensityThreshold is the fraction of a full day's documents above which
 	// an n-gram is stored as match-all. 0 selects the format default.
 	DensityThreshold float64 `yaml:"density_threshold"`
@@ -42,7 +56,10 @@ func (c *IndexConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&c.NgramLength, prefix+".ngram-length", DefaultNgramLength,
 		"N-gram length used to build and to query the index. It is not recorded in the index, so every component must use the same value.")
 	f.DurationVar(&c.DocumentInterval, prefix+".document-interval", DefaultDocumentInterval,
-		"Time range each document covers, for example 100ms or 1s.")
+		"Time range each document covers, for example 1s or 16s.")
+	f.IntVar(&c.DocumentShardBits, prefix+".document-shard-bits", DefaultDocumentShardBits,
+		fmt.Sprintf("Number of high stream-fingerprint bits that select a document shard (index version v5 only). Each document interval is split into 2^bits shards, and a document covers one interval of the streams in one shard. "+
+			"From 0 to %d; 0 disables document sharding. v3 and v4 ignore it.", MaxDocumentShardBits))
 	f.Float64Var(&c.DensityThreshold, prefix+".density-threshold", 0,
 		"Store n-grams covering more than this fraction of a full day's documents as match-all. 0 uses the format default (v3: 0.20).")
 	f.IntVar(&c.ShardCount, prefix+".shard-count", 0,
@@ -76,6 +93,9 @@ func (c *IndexConfig) Validate() error {
 	if err := ValidateVersion(c.Version); err != nil {
 		return fmt.Errorf("invalid index version: %w", err)
 	}
+	if err := c.validateDocumentShardBits(); err != nil {
+		return err
+	}
 	if c.ShardCount < 0 {
 		return fmt.Errorf("shard_count must be >= 0, got %d", c.ShardCount)
 	}
@@ -86,6 +106,17 @@ func (c *IndexConfig) Validate() error {
 		if _, err := shard.New(c.ShardAlgorithm); err != nil {
 			return fmt.Errorf("invalid shard config: %w", err)
 		}
+	}
+	return nil
+}
+
+func (c *IndexConfig) validateDocumentShardBits() error {
+	if !VersionHasDocumentShards(c.Version) {
+		c.DocumentShardBits = 0
+		return nil
+	}
+	if c.DocumentShardBits < 0 || c.DocumentShardBits > MaxDocumentShardBits {
+		return fmt.Errorf("document_shard_bits must be from 0 to %d, got %d", MaxDocumentShardBits, c.DocumentShardBits)
 	}
 	return nil
 }

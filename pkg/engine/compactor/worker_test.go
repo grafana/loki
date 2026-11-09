@@ -37,9 +37,7 @@ func TestWorker_BootShutdown(t *testing.T) {
 		Bucket:       objstore.NewInMemBucket(),
 		ScratchStore: scratch.NewMemory(),
 		Logger:       log.NewNopLogger(),
-		// Metastore left nil: no tasks arrive (no scheduler), so the
-		// metastore is never dereferenced.
-		Registerer: prometheus.NewRegistry(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, w)
@@ -95,9 +93,9 @@ func TestNewWorker_RequiresSchedulerLookupAddress(t *testing.T) {
 }
 
 // TestNewWorker_RequiresAdvertiseAddr pins the worker-side precondition
-// that AdvertiseAddr must be non-empty. The compaction worker has no
-// LocalScheduler, and engine.NewWorker rejects both-nil with a generic
-// error; we want the operator-facing error to name the actual field.
+// that AdvertiseAddr must be non-empty. engine.NewWorker rejects a nil
+// address with a generic error; we want the operator-facing error to name
+// the actual field.
 func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = ""
@@ -115,8 +113,8 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 
 // TestNewWorker_RequiresEndpoint pins the worker-side precondition that
 // Endpoint must be non-empty. Empty Endpoint would otherwise silently
-// fall through to engine.NewWorker's default ("/api/v2/frame") which
-// collides with the query-engine worker's path.
+// fall through to engine.NewWorker's default ("/api/v2/frame"), a path the
+// compaction scheduler does not serve.
 func TestNewWorker_RequiresEndpoint(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.Endpoint = ""

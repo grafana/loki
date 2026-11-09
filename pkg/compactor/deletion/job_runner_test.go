@@ -83,7 +83,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 	}
 
 	require.NoError(t, chunkEnc.Close())
-	c := storage_chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
+	c := storage_chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through, 0)
 	require.NoError(t, c.Encode())
 	return c
 }
@@ -137,6 +137,26 @@ func TestJobRunner_Run(t *testing.T) {
 				{
 					RequestID: "test-request-2",
 					Query:     lblFoo.String() + ` |= "test"`,
+					StartTime: yesterdaysTableInterval.Start.Add(-7 * time.Hour),
+					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
+				},
+			},
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
+						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
+						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
+						Fingerprint: labels.StableHash(lblFoo),
+					},
+				},
+			},
+		},
+		{
+			name: "delete request with a line filter that keeps every line deleting some data",
+			deleteRequests: []deletionproto.DeleteRequest{
+				{
+					RequestID: "test-request-9",
+					Query:     lblFoo.String() + ` |~ ".*"`,
 					StartTime: yesterdaysTableInterval.Start.Add(-7 * time.Hour),
 					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
 				},

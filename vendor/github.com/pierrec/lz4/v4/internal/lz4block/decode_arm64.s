@@ -1,5 +1,4 @@
-// +build gc
-// +build !noasm
+//go:build gc && !noasm
 
 // This implementation assumes that strict alignment checking is turned off.
 // The Go compiler makes the same assumption.
