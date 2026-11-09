@@ -89,7 +89,7 @@ To avoid longer downtime while restarting the instances with a new cluster label
       cluster_label_verification_disabled: false
     ```
 
-If you accept a short interruption, you can set the label and restart all instances at the same time.
+If you accept a short downtime, you can set the label and restart all instances at the same time.
 
 ## Stage 2: Deploying the monolithic component
 
