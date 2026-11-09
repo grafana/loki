@@ -54,7 +54,9 @@ import (
 // LoglineIndexHeader enables logline index narrowing for a query.
 // Accepted values:
 //   - "dry_run" — opt in to logline dry-run verification
-//   - "live" — override dry-run config and perform live query acceleration
+//   - "live" — override dry-run config and perform live query acceleration.
+//     This value also skips the min-query-bytes size gate. Live mode from
+//     the tenant limit or the logline.query settings does not.
 //   - "off" — force-disable logline handling for this request
 const LoglineIndexHeader = "X-Logline-Index"
 
@@ -64,7 +66,8 @@ type LoglineIndexHeaderValue string
 const (
 	// LoglineIndexDryRun enables dry-run verification for a single request.
 	LoglineIndexDryRun LoglineIndexHeaderValue = "dry_run"
-	// LoglineIndexLive enables live query acceleration for a single request.
+	// LoglineIndexLive enables live query acceleration for a single request
+	// and skips the min-query-bytes size gate.
 	LoglineIndexLive LoglineIndexHeaderValue = "live"
 	// LoglineIndexOff force-disables logline handling for a single request,
 	// overriding all other config and tenant settings.
@@ -997,7 +1000,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		recentOnly = dryRunScoresNoStep(cutoff, firstWindowEnd)
 	}
 	queryBytes := uint64(0)
-	if minQueryBytes > 0 && !recentOnly {
+	// The live header is an explicit per-request opt-in. It skips the size
+	// gate so correctness tests can look up hints for small queries. Live
+	// mode from the tenant limit or the logline.query settings still applies it.
+	if minQueryBytes > 0 && !recentOnly && LoglineIndexHeaderValue(header) != LoglineIndexLive {
 		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
 		if err != nil {
 			level.Warn(logger).Log(

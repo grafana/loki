@@ -24,8 +24,42 @@ func (m *NumberDataPoint) GetValue() any {
 	return nil
 }
 
+func (m *NumberDataPoint) deleteValue() {
+	if m == nil {
+		return
+	}
+	switch ov := m.Value.(type) {
+	case *NumberDataPoint_AsDouble:
+		deleteNumberDataPoint_AsDouble(ov)
+	case *NumberDataPoint_AsInt:
+		deleteNumberDataPoint_AsInt(ov)
+	}
+	m.Value = nil
+}
+
+var (
+	protoPoolNumberDataPoint_AsDouble = sync.Pool{
+		New: func() any {
+			return &NumberDataPoint_AsDouble{}
+		},
+	}
+)
+
 type NumberDataPoint_AsDouble struct {
 	AsDouble float64
+}
+
+func NewNumberDataPoint_AsDouble() *NumberDataPoint_AsDouble {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &NumberDataPoint_AsDouble{}
+	}
+	return protoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
+}
+
+func deleteNumberDataPoint_AsDouble(v *NumberDataPoint_AsDouble) {
+	// Called only when pool is enabled
+	v.AsDouble = float64(0)
+	protoPoolNumberDataPoint_AsDouble.Put(v)
 }
 
 func (m *NumberDataPoint) GetAsDouble() float64 {
@@ -35,8 +69,43 @@ func (m *NumberDataPoint) GetAsDouble() float64 {
 	return float64(0)
 }
 
+func (m *NumberDataPoint) SetAsDouble(val float64) {
+	if m.Value != nil {
+		// Reuse message if possible, otherwise delete and create a new one.
+		if v, ok := m.GetValue().(*NumberDataPoint_AsDouble); ok {
+			v.AsDouble = val
+			return
+		}
+		m.deleteValue()
+	}
+	v := NewNumberDataPoint_AsDouble()
+	v.AsDouble = val
+	m.Value = v
+}
+
+var (
+	protoPoolNumberDataPoint_AsInt = sync.Pool{
+		New: func() any {
+			return &NumberDataPoint_AsInt{}
+		},
+	}
+)
+
 type NumberDataPoint_AsInt struct {
 	AsInt int64
+}
+
+func NewNumberDataPoint_AsInt() *NumberDataPoint_AsInt {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &NumberDataPoint_AsInt{}
+	}
+	return protoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
+}
+
+func deleteNumberDataPoint_AsInt(v *NumberDataPoint_AsInt) {
+	// Called only when pool is enabled
+	v.AsInt = int64(0)
+	protoPoolNumberDataPoint_AsInt.Put(v)
 }
 
 func (m *NumberDataPoint) GetAsInt() int64 {
@@ -44,6 +113,20 @@ func (m *NumberDataPoint) GetAsInt() int64 {
 		return v.AsInt
 	}
 	return int64(0)
+}
+
+func (m *NumberDataPoint) SetAsInt(val int64) {
+	if m.Value != nil {
+		// Reuse message if possible, otherwise delete and create a new one.
+		if v, ok := m.GetValue().(*NumberDataPoint_AsInt); ok {
+			v.AsInt = val
+			return
+		}
+		m.deleteValue()
+	}
+	v := NewNumberDataPoint_AsInt()
+	v.AsInt = val
+	m.Value = v
 }
 
 // NumberDataPoint is a single data point in a timeseries that describes the time-varying value of a number metric.
@@ -60,18 +143,6 @@ var (
 	protoPoolNumberDataPoint = sync.Pool{
 		New: func() any {
 			return &NumberDataPoint{}
-		},
-	}
-
-	ProtoPoolNumberDataPoint_AsDouble = sync.Pool{
-		New: func() any {
-			return &NumberDataPoint_AsDouble{}
-		},
-	}
-
-	ProtoPoolNumberDataPoint_AsInt = sync.Pool{
-		New: func() any {
-			return &NumberDataPoint_AsInt{}
 		},
 	}
 )
@@ -96,18 +167,7 @@ func DeleteNumberDataPoint(orig *NumberDataPoint, nullable bool) {
 		DeleteKeyValue(&orig.Attributes[i], false)
 	}
 
-	switch ov := orig.Value.(type) {
-	case *NumberDataPoint_AsDouble:
-		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov.AsDouble = float64(0)
-			ProtoPoolNumberDataPoint_AsDouble.Put(ov)
-		}
-	case *NumberDataPoint_AsInt:
-		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov.AsInt = int64(0)
-			ProtoPoolNumberDataPoint_AsInt.Put(ov)
-		}
-	}
+	orig.deleteValue()
 	for i := range orig.Exemplars {
 		DeleteExemplar(&orig.Exemplars[i], false)
 	}
@@ -137,22 +197,12 @@ func CopyNumberDataPoint(dest, src *NumberDataPoint) *NumberDataPoint {
 	dest.TimeUnixNano = src.TimeUnixNano
 	switch t := src.Value.(type) {
 	case *NumberDataPoint_AsDouble:
-		var ov *NumberDataPoint_AsDouble
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &NumberDataPoint_AsDouble{}
-		} else {
-			ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
-		}
+		ov := NewNumberDataPoint_AsDouble()
 		ov.AsDouble = t.AsDouble
 		dest.Value = ov
 
 	case *NumberDataPoint_AsInt:
-		var ov *NumberDataPoint_AsInt
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &NumberDataPoint_AsInt{}
-		} else {
-			ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
-		}
+		ov := NewNumberDataPoint_AsInt()
 		ov.AsInt = t.AsInt
 		dest.Value = ov
 
@@ -281,23 +331,13 @@ func (orig *NumberDataPoint) UnmarshalJSON(iter *json.Iterator) {
 
 		case "asDouble", "as_double":
 			{
-				var ov *NumberDataPoint_AsDouble
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &NumberDataPoint_AsDouble{}
-				} else {
-					ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
-				}
+				ov := NewNumberDataPoint_AsDouble()
 				ov.AsDouble = iter.ReadFloat64()
 				orig.Value = ov
 			}
 		case "asInt", "as_int":
 			{
-				var ov *NumberDataPoint_AsInt
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &NumberDataPoint_AsInt{}
-				} else {
-					ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
-				}
+				ov := NewNumberDataPoint_AsInt()
 				ov.AsInt = iter.ReadInt64()
 				orig.Value = ov
 			}
@@ -467,12 +507,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-			var ov *NumberDataPoint_AsDouble
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &NumberDataPoint_AsDouble{}
-			} else {
-				ov = ProtoPoolNumberDataPoint_AsDouble.Get().(*NumberDataPoint_AsDouble)
-			}
+			ov := NewNumberDataPoint_AsDouble()
 			ov.AsDouble = math.Float64frombits(num)
 			orig.Value = ov
 
@@ -485,12 +520,7 @@ func (orig *NumberDataPoint) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-			var ov *NumberDataPoint_AsInt
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &NumberDataPoint_AsInt{}
-			} else {
-				ov = ProtoPoolNumberDataPoint_AsInt.Get().(*NumberDataPoint_AsInt)
-			}
+			ov := NewNumberDataPoint_AsInt()
 			ov.AsInt = int64(num)
 			orig.Value = ov
 
