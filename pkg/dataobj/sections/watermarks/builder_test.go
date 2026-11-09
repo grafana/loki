@@ -33,7 +33,7 @@ func buildOtherSectionObject(t *testing.T) *dataobj.Object {
 
 	pb := indexpointers.NewBuilder(nil, 1024, 0)
 	pb.SetTenant(tenantID)
-	pb.Append("path", time.Unix(1, 0), time.Unix(2, 0))
+	pb.Append(indexpointers.IndexPointer{Path: "path", StartTs: time.Unix(1, 0), EndTs: time.Unix(2, 0)})
 
 	ob := dataobj.NewBuilder(nil)
 	require.NoError(t, ob.Append(pb))

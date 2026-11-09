@@ -27,6 +27,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
@@ -148,6 +150,29 @@ func TestWriteEntry(t *testing.T) {
 
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, bucket, tocPath))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
+	})
+
+	t.Run("keeps the run ID, posting keys and shard layout of every entry when it adds an entry", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
+
+		keys, err := postings.NewKeyRange(
+			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
+			postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"},
+		)
+		require.NoError(t, err)
+		layout := streams.MustShardLayoutFromBuckets(16)
+		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, PostingKeys: &keys, ShardLayout: &layout}
+		uploadToCPointers(t, bucket, tocPath, "tenant-a", existing)
+
+		writer := newTableOfContentsWriter(t, bucket)
+		added := TableOfContentsEntry{Path: "indexes/b", StartTime: unixTime(20), EndTime: unixTime(30)}
+		require.NoError(t, writer.WriteEntry(t.Context(), "tenant-a", added))
+
+		require.ElementsMatch(t, []indexpointers.IndexPointer{
+			existing,
+			{Path: added.Path, StartTs: added.StartTime.UTC(), EndTs: added.EndTime.UTC()},
+		}, readToCPointers(t, bucket, tocPath))
 	})
 
 	t.Run("skips the entry when its path is the last of more than one read batch of pointers", func(t *testing.T) {
@@ -1204,6 +1229,24 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	require.NoError(t, reader.Close())
 }
 
+// uploadToCPointers writes a ToC to path that holds one section of tenant with
+// the given pointers.
+func uploadToCPointers(t *testing.T, bucket objstore.Bucket, path, tenant string, pointers ...indexpointers.IndexPointer) {
+	t.Helper()
+	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err)
+	for _, pointer := range pointers {
+		require.NoError(t, b.AppendIndexPointer(pointer))
+	}
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(t.Context(), path, reader))
+	require.NoError(t, reader.Close())
+}
+
 // filterRows returns the rows of the given tenants.
 func filterRows(rows []tocRow, tenants ...string) []tocRow {
 	keep := make(map[string]struct{}, len(tenants))
@@ -1217,6 +1260,23 @@ func filterRows(rows []tocRow, tenants ...string) []tocRow {
 		}
 	}
 	return out
+}
+
+// readToCPointers returns every index pointer of the ToC at path, with UTC
+// timestamps.
+func readToCPointers(t *testing.T, bucket objstore.Bucket, path string) []indexpointers.IndexPointer {
+	t.Helper()
+	raw := readRawToC(t.Context(), t, bucket, path)
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	require.NoError(t, err)
+
+	var got []indexpointers.IndexPointer
+	require.NoError(t, forEachTocPointer(t.Context(), obj, func(p indexpointers.IndexPointer) error {
+		p.StartTs, p.EndTs = p.StartTs.UTC(), p.EndTs.UTC()
+		got = append(got, p)
+		return nil
+	}))
+	return got
 }
 
 func TestForEachTocPointer(t *testing.T) {

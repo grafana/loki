@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // IndexPointer is a pointer to an index object. It is used to lookup the index object
@@ -24,7 +26,28 @@ type IndexPointer struct {
 	Path    string
 	StartTs time.Time
 	EndTs   time.Time
+
+	// RunID is the run that holds the index object.
+	RunID RunID
+
+	// PostingKeys bounds the posting keys of the index object. Nil means the
+	// bounds are unknown, so the index object can hold any posting key.
+	PostingKeys *postings.KeyRange
+
+	// ShardLayout is the shard layout of the tenant in the index object. It
+	// must equal the layout that indexobj.TenantShardLayout reads from the
+	// object, because readers trust it. Nil means the layout is unknown, so a
+	// reader must read it from the index object.
+	ShardLayout *streams.ShardLayout
 }
+
+// RunID identifies a run: the index objects of one ToC that form one logical
+// index. A RunID is unique within one ToC only, so two ToCs can use the same
+// RunID for different runs.
+//
+// The zero RunID means no run, so the index object is a run of its own. Valid
+// run IDs are positive.
+type RunID int64
 
 // TenantIndexPointer is meant to collectively hold IndexPointer with the ID of the tenant it belongs to.
 type TenantIndexPointer struct {
@@ -39,6 +62,10 @@ type Builder struct {
 	tenant       string
 
 	indexPointers []*IndexPointer
+
+	// postingKeyBytes is the total length of the strings in the posting keys
+	// of indexPointers. It keeps EstimatedSize constant time.
+	postingKeyBytes int
 }
 
 func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
@@ -62,13 +89,15 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new index pointer to the builder.
-func (b *Builder) Append(path string, startTs time.Time, endTs time.Time) {
-	p := &IndexPointer{
-		Path:    path,
-		StartTs: startTs.UTC(),
-		EndTs:   endTs.UTC(),
+func (b *Builder) Append(pointer IndexPointer) {
+	pointer.StartTs = pointer.StartTs.UTC()
+	pointer.EndTs = pointer.EndTs.UTC()
+	b.indexPointers = append(b.indexPointers, &pointer)
+
+	if keys := pointer.PostingKeys; keys != nil {
+		b.postingKeyBytes += len(keys.Min().ColumnName) + len(keys.Min().LabelValue)
+		b.postingKeyBytes += len(keys.Max().ColumnName) + len(keys.Max().LabelValue)
 	}
-	b.indexPointers = append(b.indexPointers, p)
 }
 
 // EstimatedSize returns the estimated size of the Pointers section in bytes.
@@ -81,7 +110,8 @@ func (b *Builder) EstimatedSize() int {
 	//
 	// 1. Assume an average path length of 50 bytes with 3x compression ratio.
 	// 2. Assume a timestamp delta of 1 hour (3600 seconds).
-	// 3. Account for column metadata overhead.
+	// 3. Count the posting keys by the length of their strings.
+	// 4. Account for column metadata overhead.
 
 	if len(b.indexPointers) == 0 {
 		return 0
@@ -91,7 +121,10 @@ func (b *Builder) EstimatedSize() int {
 		avgPathLength        = 85                                    // Average path length in bytes (based on real data)
 		pathCompressionRatio = 3                                     // ZSTD compression ratio
 		timestampDeltaSize   = streamio.VarintSize(int64(time.Hour)) // 1 hour delta
+		runIDSize            = 1                                     // Delta of a mostly constant value
+		shardBucketsSize     = 1                                     // Delta of a mostly constant value
 		metadataOverhead     = 100                                   // Estimated metadata overhead per column
+		columnCount          = 7
 	)
 
 	var sizeEstimate int
@@ -99,17 +132,12 @@ func (b *Builder) EstimatedSize() int {
 	// Path column (byte arrays with ZSTD compression)
 	sizeEstimate += (len(b.indexPointers) * avgPathLength) / pathCompressionRatio
 
-	// Start timestamp column (int64 with delta encoding)
-	sizeEstimate += len(b.indexPointers) * timestampDeltaSize
+	// Start and end timestamp columns (int64 with delta encoding)
+	sizeEstimate += 2 * len(b.indexPointers) * timestampDeltaSize
 
-	// End timestamp column (int64 with delta encoding)
-	sizeEstimate += len(b.indexPointers) * timestampDeltaSize
-
-	// File size and uncompressed logs size columns (int64)
-	sizeEstimate += 2 * len(b.indexPointers) * 8
-
-	// Column metadata overhead (5 columns)
-	sizeEstimate += 5 * metadataOverhead
+	sizeEstimate += b.postingKeyBytes
+	sizeEstimate += len(b.indexPointers) * (runIDSize + shardBucketsSize)
+	sizeEstimate += columnCount * metadataOverhead
 
 	return sizeEstimate
 }
@@ -147,6 +175,7 @@ func (b *Builder) sortIndexPointers() {
 // Reset resets all state, allowing IndexPointers to be reused.
 func (b *Builder) Reset() {
 	b.indexPointers = sliceclear.Clear(b.indexPointers)
+	b.postingKeyBytes = 0
 
 	b.metrics.minTimestamp.Set(0)
 	b.metrics.maxTimestamp.Set(0)
@@ -204,10 +233,44 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		return fmt.Errorf("creating max timestamp column: %w", err)
 	}
 
+	runIDBuilder, err := b.newColumnBuilder(ColumnTypeRunID, datasetmd_v2.PHYSICAL_TYPE_INT64, datasetmd_v2.ENCODING_TYPE_DELTA, datasetmd_v2.COMPRESSION_TYPE_NONE)
+	if err != nil {
+		return err
+	}
+	minPostingKeyBuilder, err := b.newColumnBuilder(ColumnTypeMinPostingKey, datasetmd_v2.PHYSICAL_TYPE_BINARY, datasetmd_v2.ENCODING_TYPE_PLAIN, datasetmd_v2.COMPRESSION_TYPE_ZSTD)
+	if err != nil {
+		return err
+	}
+	maxPostingKeyBuilder, err := b.newColumnBuilder(ColumnTypeMaxPostingKey, datasetmd_v2.PHYSICAL_TYPE_BINARY, datasetmd_v2.ENCODING_TYPE_PLAIN, datasetmd_v2.COMPRESSION_TYPE_ZSTD)
+	if err != nil {
+		return err
+	}
+	shardBucketsBuilder, err := b.newColumnBuilder(ColumnTypeShardBuckets, datasetmd_v2.PHYSICAL_TYPE_INT64, datasetmd_v2.ENCODING_TYPE_DELTA, datasetmd_v2.COMPRESSION_TYPE_NONE)
+	if err != nil {
+		return err
+	}
+
 	for i, pointer := range b.indexPointers {
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(pointer.StartTs.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(pointer.EndTs.UnixNano()))
+
+		// A missing optional value stays null. Backfill below fills the nulls
+		// after the last value.
+		if pointer.RunID != 0 {
+			_ = runIDBuilder.Append(i, dataset.Int64Value(int64(pointer.RunID)))
+		}
+		if keys := pointer.PostingKeys; keys != nil {
+			minEncoded, maxEncoded := keys.Encode()
+			_ = minPostingKeyBuilder.Append(i, dataset.BinaryValue(minEncoded))
+			_ = maxPostingKeyBuilder.Append(i, dataset.BinaryValue(maxEncoded))
+		}
+		if layout := pointer.ShardLayout; layout != nil {
+			_ = shardBucketsBuilder.Append(i, dataset.Int64Value(int64(layout.Buckets())))
+		}
+	}
+	for _, builder := range []*dataset.ColumnBuilder{runIDBuilder, minPostingKeyBuilder, maxPostingKeyBuilder, shardBucketsBuilder} {
+		builder.Backfill(len(b.indexPointers))
 	}
 
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
@@ -218,6 +281,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		errs = append(errs, encodeColumn(enc, ColumnTypePath, pathBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRunID, runIDBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMinPostingKey, minPostingKeyBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMaxPostingKey, maxPostingKeyBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
@@ -225,6 +292,25 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	}
 
 	return nil
+}
+
+// newColumnBuilder returns a builder for a column of columnType that stores no
+// range statistics.
+func (b *Builder) newColumnBuilder(columnType ColumnType, physical datasetmd_v2.PhysicalType, encoding datasetmd_v2.EncodingType, compression datasetmd_v2.CompressionType) (*dataset.ColumnBuilder, error) {
+	builder, err := dataset.NewColumnBuilder(columnType.String(), dataset.BuilderOptions{
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: physical,
+			Logical:  columnType.String(),
+		},
+		Encoding:    encoding,
+		Compression: compression,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating %s column: %w", columnType, err)
+	}
+	return builder, nil
 }
 
 func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {

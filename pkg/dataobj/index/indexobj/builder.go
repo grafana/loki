@@ -224,7 +224,7 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
 
 	indexPointersBuilder := b.getIndexPointersBuilder()
-	indexPointersBuilder.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
+	indexPointersBuilder.Append(pointer)
 	b.state = builderStateDirty
 
 	if indexPointersBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
