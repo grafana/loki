@@ -101,7 +101,7 @@ local weeklyImageJobs = {
       skipArm=false,
       skipValidation=false,
       // versioningStrategy='default', // the argument releaseAs overrides the strategy
-      releaseAs='4.0.0-rc.3',  // release candidate versions need to be bumped manually
+      releaseAs='4.0.0-rc.4',  // release candidate versions need to be bumped manually
       goVersion=goVersion,
     ) + {
       name: 'Prepare Major Release PR',
