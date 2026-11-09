@@ -2,9 +2,7 @@
 
 **YAML for Go, with the control your application needs.**
 
-> **Release Status:** v4.0.0 *is not released yet.*
-> It is intended to be released in October 2026.
-> This README describes the v4 API and tools being prepared for that release.
+**v4.0.0 is the stable release.**
 
 Read YAML into Go values, work with nodes and comments, and write YAML with
 explicit control over formatting and behavior.
@@ -26,7 +24,7 @@ New features and routine bug fixes are developed in v4.
 |---|---|---|
 | [v2](https://github.com/yaml/go-yaml/tree/v2) | `go.yaml.in/yaml/v2` | Stable, frozen API; security fixes only |
 | [v3](https://github.com/yaml/go-yaml/tree/v3) | `go.yaml.in/yaml/v3` | Stable, frozen API; security fixes only |
-| [v4](https://github.com/yaml/go-yaml/tree/main) | `go.yaml.in/yaml/v4` | Active development |
+| [v4](https://github.com/yaml/go-yaml/tree/main) | `go.yaml.in/yaml/v4` | Stable; active development |
 
 **v4 is designed to be highly compatible with v3.**
 The classic `Unmarshal`, `Marshal`, `NewDecoder`, and `NewEncoder` entry points
@@ -143,8 +141,10 @@ The CLI also supports:
 - **Configuration:** `-C options.yaml` loads a reusable options file.
   Command-line `-o` settings override its individual non-plugin options.
 - **Plugins:** `--plugin` selects implementations linked into the executable.
-  Build optional implementations with `make cli PLUGIN=...`, or use
-  `make cli CONFIG=options.yaml` to embed a configuration and its plugins.
+  Build the optional reference parser with `make cli PLUGIN=...`.
+  Use `PLUGIN-PACKAGE=package@version` to link other released implementations,
+  or `make cli CONFIG=options.yaml` to embed configuration.
+  See [plugin builds](cmd/go-yaml/README.md#plugin-builds) for complete commands.
 - **Layout:** `-l` selects block layout for stage representations.
 - **Classic APIs:** `--unmarshal`, `--decode`, `--marshal`, and `--encode`
   help compare classic library paths with the default Load/Dump pipeline.
@@ -208,12 +208,13 @@ See the [options guide](docs/options.md) for the full reference and presets.
 Use the supplied implementations or implement the public interfaces in your
 own Go package.
 
-These are the current plugin APIs, with many more to come:
+These are the current plugin APIs:
 
 | Plugin API | Purpose | Supplied implementations |
 |---|---|---|
 | `loader-limits` | Control nesting and alias limits | Core loader-limits plugin |
 | `alias-data` | Control anchor sources and scope | Core alias-data plugin |
+| `merge-key` | Control YAML merge keys and mapping conflicts | Core merge-key plugin |
 | `error-format` | Choose how structured errors are presented | Core v3 and v4 formatters |
 | `yaml-parser` | Replace the parser behind the node pipeline | Built-in Go parser; optional reference parser module |
 | `tab-indent` | Enable and configure tab-indented input | Core opt-in tab-indent plugin |
@@ -232,8 +233,8 @@ err := yaml.Load(input, &config,
 )
 ```
 
-The core module includes the built-in parser, loader limits, error formatters,
-and tab-indentation support.
+The core module includes the built-in parser, loader limits, merge-key and
+alias-data policies, error formatters, and tab-indentation support.
 JSON-comments and reference-parser implementations are separate modules, so
 applications acquire those dependencies only when they choose them.
 
@@ -258,12 +259,14 @@ configuration, dependencies, and limitations of each processing path.
 
 ## Compatibility
 
-When migrating from [go-yaml](https://github.com/go-yaml/yaml/) ensure that
-YAML module imports are updated in all dependent projects transitively, because
-unmarshaler interface types `gopkg.in/yaml.v{version}.Unmarshaler` and
-`go.yaml.in/yaml/v{version}.Unmarshaler` are different types and thus are
-incompatible. Custom unmarshalers would not be called if executed with the
-parser from the different library.
+Custom `UnmarshalYAML(*yaml.Node) error` hooks depend on the exact package
+that defines `Node`.
+Update those hooks and their imports when moving from v3 to v4.
+V4 reports a migration error for recognized v3 node hooks; the legacy
+`UnmarshalYAML(func(any) error) error` callback remains supported across
+versions.
+See the [migration guide](docs/v3-to-v4-migration.md#custom-unmarshalers-across-versions)
+for details.
 
 The library supports most of YAML 1.2 and retains selected YAML 1.1 behavior
 for compatibility, including legacy octal notation and `yes`/`no` booleans
