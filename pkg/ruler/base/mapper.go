@@ -12,7 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // mapper is designed to enusre the provided rule sets are identical

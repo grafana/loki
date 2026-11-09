@@ -8,7 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )

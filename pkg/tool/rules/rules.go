@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	log "github.com/sirupsen/logrus"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	logql "github.com/grafana/loki/v3/pkg/logql/syntax"
 

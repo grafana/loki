@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )

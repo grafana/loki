@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore/providers/s3"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 
 	aws "github.com/grafana/loki/v3/pkg/storage/common/aws"
 )
