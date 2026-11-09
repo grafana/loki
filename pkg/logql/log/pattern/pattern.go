@@ -76,8 +76,7 @@ func (m *Matcher) Matches(in []byte) [][]byte {
 	captures := m.captures[:0]
 	expr := m.e
 	if ls, ok := expr[0].(literals); ok {
-		i := bytes.Index(in, ls)
-		if i != 0 {
+		if !bytes.HasPrefix(in, ls) {
 			return nil
 		}
 		in = in[len(ls):]
@@ -121,27 +120,31 @@ func (m *Matcher) Names() []string {
 	return m.names
 }
 
+// Test reports whether in matches the pattern.
 func (m *Matcher) Test(in []byte) bool {
 	if len(in) == 0 || len(m.e) == 0 {
 		// An empty line can only match an empty pattern.
 		return len(in) == 0 && len(m.e) == 0
 	}
-	var off int
-	for i := 0; i < len(m.e); i++ {
-		lit, ok := m.e[i].(literals)
-		if !ok {
-			continue
-		}
-		j := bytes.Index(in[off:], lit)
-		if j == -1 {
+	expr := m.e
+	if lit, ok := expr[0].(literals); ok {
+		i := bytes.Index(in, lit)
+		if i == -1 {
 			return false
 		}
-		if i != 0 && j == 0 {
-			// This means we either have repetitive literals, or an empty
-			// capture. Either way, the line does not match the pattern.
+		in = in[i+len(lit):]
+		expr = expr[1:]
+	}
+	// Consecutive captures are invalid, so the remaining nodes form
+	// capture/literal pairs with an optional final capture.
+	for len(expr) >= 2 {
+		lit := expr[1].(literals)
+		i := bytes.Index(in, lit)
+		if i <= 0 {
 			return false
 		}
-		off += j + len(lit)
+		in = in[i+len(lit):]
+		expr = expr[2:]
 	}
 	// If we end up on a literal, we only consider the test successful if
 	// the remaining input is empty. Otherwise, if we end up on a capture,
@@ -152,7 +155,5 @@ func (m *Matcher) Test(in []byte) bool {
 	//
 	// Empty captures are not allowed as well: " bar " does not match
 	// "<_> bar <_>", but matches "<_>bar<_>".
-	_, reqRem := m.e[len(m.e)-1].(capture)
-	hasRem := off != len(in)
-	return reqRem == hasRem
+	return (len(expr) != 0) == (len(in) != 0)
 }
