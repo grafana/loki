@@ -13,12 +13,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+// selectorKey is the string a hint cache entry is keyed on: the cache
+// selector of the query, as ProvideHints uses it.
+func selectorKey(expr syntax.Expr) string {
+	return cacheSelector(expr).String()
+}
+
 // These tests specify the hint cache key: the log selector (stream matchers
 // plus pipeline) of the query, so a metric query shares entries with the log
 // query it wraps. Range, offset, grouping, unwrap and outer aggregations are
 // not part of the key.
 
-func TestCacheKeyExpr(t *testing.T) {
+func TestCacheSelectorKey(t *testing.T) {
 	tests := []struct {
 		name  string
 		query string
@@ -91,28 +97,28 @@ func TestCacheKeyExpr(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, cacheKeyExpr(mustParseExpr(t, tc.query)))
+			require.Equal(t, tc.want, selectorKey(mustParseExpr(t, tc.query)))
 		})
 	}
 }
 
 // A log query and every supported metric wrapper of it share one key.
-func TestCacheKeyExpr_MetricSharesKeyWithLogQuery(t *testing.T) {
-	logKey := cacheKeyExpr(mustParseExpr(t, `{app="api"} |= "timeout" | json`))
+func TestCacheSelectorKey_MetricSharesKeyWithLogQuery(t *testing.T) {
+	logKey := selectorKey(mustParseExpr(t, `{app="api"} |= "timeout" | json`))
 
 	for _, q := range []string{
 		`count_over_time({app="api"} |= "timeout" | json [5m])`,
 		`rate({app="api"} |= "timeout" | json [1m] offset 1h)`,
 		`sum by (pod) (bytes_rate({app="api"} |= "timeout" | json [10m]))`,
-		`max(sum_over_time({app="api"} |= "timeout" | json | unwrap latency [5m]) by (pod))`,
+		`max by (pod) (sum_over_time({app="api"} |= "timeout" | json | unwrap latency [5m]))`,
 	} {
-		require.Equal(t, logKey, cacheKeyExpr(mustParseExpr(t, q)), q)
+		require.Equal(t, logKey, selectorKey(mustParseExpr(t, q)), q)
 	}
 }
 
 // Anything that can change which needles the delegate looks up must change the
 // key, or a cache entry would be served to a query it was not computed for.
-func TestCacheKeyExpr_DifferentSelectorsDoNotShareKey(t *testing.T) {
+func TestCacheSelectorKey_DifferentSelectorsDoNotShareKey(t *testing.T) {
 	base := `{app="api"} |= "timeout"`
 	others := []string{
 		`{app="web"} |= "timeout"`,
@@ -124,10 +130,10 @@ func TestCacheKeyExpr_DifferentSelectorsDoNotShareKey(t *testing.T) {
 		`{app="api"} |= "timeout" | line_format "{{.msg}}"`,
 	}
 
-	baseKey := cacheKeyExpr(mustParseExpr(t, base))
+	baseKey := selectorKey(mustParseExpr(t, base))
 	seen := map[string]string{base: baseKey}
 	for _, q := range others {
-		key := cacheKeyExpr(mustParseExpr(t, q))
+		key := selectorKey(mustParseExpr(t, q))
 		require.NotEqual(t, baseKey, key, q)
 		for prevQuery, prevKey := range seen {
 			require.NotEqual(t, prevKey, key, "%q collides with %q", q, prevQuery)

@@ -19,7 +19,7 @@ import (
 
 const (
 	hintCacheKeyPrefix  = "logline:"
-	hintCacheGeneration = 1
+	hintCacheGeneration = 2
 	hintCacheDayLayout  = "2006-01-02"
 )
 
@@ -217,6 +217,9 @@ func (p *CachingHintProvider) ProvideHints(
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
 	}
 
+	// Key and look up on the log selector, so a metric query and the log query
+	// it wraps share entries.
+	expr = cacheSelector(expr)
 	queryString := expr.String()
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
@@ -391,13 +394,22 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
-// cacheKeyExpr returns the expression string a hint cache entry is keyed on.
+// cacheSelector returns the expression a hint cache entry is computed from and
+// keyed on: the log selector (stream matchers and pipeline) of the query.
 //
-// TODO: key on the log selector (stream matchers and pipeline) so a metric
-// query shares entries with the log query it wraps. Stub: today it is the
-// whole expression, and hint_cache_key_test.go specifies the target.
-func cacheKeyExpr(expr syntax.Expr) string {
-	return expr.String()
+// A log query is its own selector. A supported metric query yields the log
+// selector inside its range aggregation, so it shares entries with the log
+// query it wraps. Range, offset, grouping, unwrap and outer aggregations are
+// not part of the selector. A shape with no single selector, such as a binary
+// operation, is its own selector, so it never collides with another key.
+//
+// The delegate must be asked about this expression, not the original one, so
+// that a cached value is a function of its key.
+func cacheSelector(expr syntax.Expr) syntax.Expr {
+	if selector, ok := metricLogSelector(expr); ok && selector != nil {
+		return selector
+	}
+	return expr
 }
 
 func buildHintCacheLogicalKey(tenant, query, minDate, day string) string {
