@@ -34,8 +34,8 @@ func (b *keyRewriteBucket) Attributes(ctx context.Context, name string) (objstor
 	return b.Bucket.Attributes(ctx, b.rewriteKey(name))
 }
 
-func (b *keyRewriteBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.Bucket.Upload(ctx, b.rewriteKey(name), r)
+func (b *keyRewriteBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
+	return b.Bucket.Upload(ctx, b.rewriteKey(name), r, opts...)
 }
 
 func (b *keyRewriteBucket) Delete(ctx context.Context, name string) error {

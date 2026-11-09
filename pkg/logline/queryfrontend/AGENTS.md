@@ -54,7 +54,9 @@ the querier rejects it.
   store, hint provider, optional cache, and compose the middleware stack.
 - **Per-tenant settings are limits.** The mode and the minimum query bytes are
   `limits_config` fields (`logline_query_mode`, `logline_query_min_query_bytes_for_index`),
-  so a tenant overrides them in the runtime config like any other limit.
+  so a tenant overrides them in the runtime config like any other limit. A request
+  with `X-Logline-Index: live` skips that byte threshold. Dry-run, and live mode from
+  the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
@@ -77,6 +79,12 @@ live query skipped this way records `recent_data_only`, not `query_too_small` or
 `size_estimate_failed`. Dry-run also skips the lookup and the call when the first step's
 window ends after the cutoff, even if its lookback reaches past it: every later window
 ends after the cutoff too, so the report would score no step.
+
+`X-Logline-Index: live` skips the index-stats call that checks the byte threshold, so
+the lookup runs even when that call would fail. Dry-run, and live mode from the tenant
+limit or the `logline.query` settings, still make the call. A live-header query that
+only reads the ingester window still skips the lookup and records `recent_data_only`,
+because the check that starts the lookup doesn't depend on the byte threshold.
 
 ### Pass-through intervals don't wait for the lookup
 
@@ -122,7 +130,7 @@ running, so sub-requests that reach the filter in a later wave wait up to
 The hint wait is the wall time during which at least one sub-request was held at the
 filter for the lookup. It is the latency Logline adds by holding sub-requests, which
 isn't all of the latency Logline adds: it leaves out the index-stats call that checks
-the byte threshold. The filter runs
+the byte threshold. `X-Logline-Index: live` does not make that call. The filter runs
 once per split and shard sub-request, and those wait in parallel and in waves, so
 `waitTracker` records the union of their wait intervals rather than the sum.
 
@@ -167,10 +175,13 @@ why it didn't:
 1. The three early skips in the prefetch handler record `unsupported_query`,
    `size_estimate_failed` and `query_too_small`, in live mode only. A query that
    reads only the ingester window skips the size estimate, so it never records the
-   last two. Metric queries that `SupportedMetricQuery` rejects, and `absent_over_time`
-   queries, return before these skips. They get no `Logline` stats, so outcome counts
-   leave them out. `absent_over_time` stays unhinted because a skipped sub-request returns
-   an empty matrix or vector, which drops the 1 that an empty window returns.
+   last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
+   the tenant limit or the `logline.query` settings records `size_estimate_failed`
+   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects, and
+   `absent_over_time` queries, return before these skips. They get no `Logline` stats,
+   so outcome counts leave them out. `absent_over_time` stays unhinted because a skipped
+   sub-request returns an empty matrix or vector, which drops the 1 that an empty window
+   returns.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a
