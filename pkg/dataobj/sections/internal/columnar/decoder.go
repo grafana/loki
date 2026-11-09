@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -90,9 +89,7 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 			})
 		}
 
-		reader := metadataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
-		if err != nil {
+		if err := dec.sr.MetadataRanges(ctx, ranges); err != nil {
 			return err
 		}
 
@@ -109,22 +106,6 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 
 		return nil
 	})
-}
-
-type metadataRangeReader struct {
-	Inner dataobj.SectionReader
-}
-
-var _ rangeio.Reader = (*metadataRangeReader)(nil)
-
-func (rr metadataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.MetadataRange(ctx, r.Offset, r.Len())
-	if err != nil {
-		return 0, err
-	}
-	defer rc.Close()
-
-	return io.ReadFull(rc, r.Data)
 }
 
 // ReadPages reads the provided set of pages, iterating over their data matching
@@ -146,9 +127,7 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 			})
 		}
 
-		reader := dataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
-		if err != nil {
+		if err := dec.sr.DataRanges(ctx, ranges); err != nil {
 			return err
 		}
 
@@ -160,20 +139,4 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 
 		return nil
 	})
-}
-
-type dataRangeReader struct {
-	Inner dataobj.SectionReader
-}
-
-var _ rangeio.Reader = (*dataRangeReader)(nil)
-
-func (rr dataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.DataRange(ctx, r.Offset, r.Len())
-	if err != nil {
-		return 0, err
-	}
-	defer rc.Close()
-
-	return io.ReadFull(rc, r.Data)
 }

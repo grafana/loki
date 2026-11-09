@@ -33,10 +33,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/bucketcache"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
@@ -557,7 +559,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// data-object store.
 	var dataObjStore querier.Store
 	if t.dataObjMetastore != nil {
-		var storeOpts []querier.DataObjStoreOption
+		// The bucket of the querier records its own requests.
+		storeOpts := []querier.DataObjStoreOption{querier.WithDataObjInstrumentedBucket()}
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
@@ -891,13 +894,17 @@ func (t *Loki) initDataObjMetastore() (services.Service, error) {
 		return nil, nil
 	}
 
-	bucket, err := t.getDataObjBucket("dataobj-querier")
+	objectStore, err := t.getDataObjBucket("dataobj-querier")
 	if err != nil {
 		return nil, err
 	}
 
-	// The bucket caches wrap the bucket once, for the data objects and the metastore. The object store metrics and traces
-	// sit below them, so they count the requests that reach object storage.
+	// The instrumented bucket counts the requests that reach object storage. The coalescing bucket merges the ranges
+	// of a multi-range read, and the bucket caches sit above it, so they see the exact ranges. The object store metrics
+	// and traces sit below all of them.
+	bucket := multirange.NewCoalescingBucket(dataobj.NewInstrumentedBucket(objectStore), prometheus.DefaultRegisterer)
+
+	// The bucket caches wrap the bucket once, for the data objects and the metastore.
 	if t.dataObjLogsBucketCache != nil || t.dataObjIndexBucketCache != nil {
 		bucketID := bucketcache.BucketID(bucket.Name(), t.Cfg.DataObj.StorageBucketPrefix)
 		bucket, err = bucketcache.New(bucket, t.dataObjLogsBucketCache, t.dataObjIndexBucketCache, bucketID, prometheus.DefaultRegisterer)
@@ -907,7 +914,7 @@ func (t *Loki) initDataObjMetastore() (services.Service, error) {
 	}
 
 	// A nil cache must not reach WithIndexMetadataCache: it takes an interface, so it would hold a typed nil pointer.
-	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache)}
+	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache), metastore.WithInstrumentedBucket()}
 	if t.dataObjIndexCache != nil {
 		metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(t.dataObjIndexCache))
 	}

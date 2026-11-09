@@ -37,6 +37,31 @@ func NewInstrumentedBucketReader(bucket objstore.BucketReader) objstore.BucketRe
 	return &instrumentedBucketReader{BucketReader: bucket}
 }
 
+// NewInstrumentedBucket returns bucket wrapped to record its object-store requests like
+// [NewInstrumentedBucketReader] does. Wrap the bucket that talks to object storage, and pass
+// [WithInstrumentedBucket] to the readers above it, so each request counts once.
+func NewInstrumentedBucket(bucket objstore.Bucket) objstore.Bucket {
+	return &instrumentedBucket{Bucket: bucket, reader: &instrumentedBucketReader{BucketReader: bucket}}
+}
+
+type instrumentedBucket struct {
+	objstore.Bucket
+
+	reader *instrumentedBucketReader
+}
+
+func (b *instrumentedBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	return b.reader.Attributes(ctx, name)
+}
+
+func (b *instrumentedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	return b.reader.Get(ctx, name)
+}
+
+func (b *instrumentedBucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+	return b.reader.GetRange(ctx, name, offset, length)
+}
+
 type instrumentedBucketReader struct {
 	objstore.BucketReader
 }

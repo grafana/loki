@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 // prefetchedRangeReader wraps a rangeReader with a prefetched byte window.
@@ -97,6 +99,46 @@ func (rr *prefetchedRangeReader) ReadRange(ctx context.Context, offset int64, le
 		reader:  io.MultiReader(readers...),
 		closers: closers,
 	}, nil
+}
+
+// ReadRanges copies the bytes that the prefetched window holds, and reads the rest of the ranges from the inner
+// reader in one call.
+func (rr *prefetchedRangeReader) ReadRanges(ctx context.Context, ranges []rangeio.Range) error {
+	var (
+		prefetchedStart = rr.prefetchOffset
+		prefetchedEnd   = rr.prefetchOffset + int64(len(rr.prefetched))
+		rest            []rangeio.Range
+	)
+
+	for _, r := range ranges {
+		if len(r.Data) == 0 {
+			continue
+		}
+
+		start, end := r.Offset, r.Offset+r.Len()
+		if end < start {
+			return fmt.Errorf("read range overflows int64: offset=%d length=%d", r.Offset, r.Len())
+		}
+
+		intersectStart, intersectEnd := max(start, prefetchedStart), min(end, prefetchedEnd)
+		if intersectStart >= intersectEnd {
+			rest = append(rest, r)
+			continue
+		}
+
+		copy(r.Data[intersectStart-start:], rr.prefetched[intersectStart-prefetchedStart:intersectEnd-prefetchedStart])
+		if start < intersectStart {
+			rest = append(rest, rangeio.Range{Data: r.Data[:intersectStart-start], Offset: start})
+		}
+		if intersectEnd < end {
+			rest = append(rest, rangeio.Range{Data: r.Data[intersectEnd-start:], Offset: intersectEnd})
+		}
+	}
+
+	if len(rest) == 0 {
+		return nil
+	}
+	return rr.inner.ReadRanges(ctx, rest)
 }
 
 type multiReadCloser struct {

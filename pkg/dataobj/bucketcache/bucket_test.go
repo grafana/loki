@@ -15,20 +15,22 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 func TestBucket_GetRange(t *testing.T) {
-	t.Run("reads a cold range with one request", func(t *testing.T) {
+	t.Run("reads a cold range with one call to the bucket", func(t *testing.T) {
 		f := newFixture(t, 9<<20, DefaultSubrangeSize)
 
 		got := f.read(t, "objects/a", 100_001, 8<<20)
 
 		require.Equal(t, f.content[100_001:100_001+8<<20], got)
-		require.Len(t, f.inner.spans(), 1, "the caller already split the range for parallel reads")
+		require.Equal(t, int64(1), f.inner.multiCalls.Load())
 	})
 
-	t.Run("reads each run of missing subranges with its own request", func(t *testing.T) {
+	t.Run("passes only the missing subranges to the bucket", func(t *testing.T) {
 		f := newFixture(t, 10_500, 1000)
 		f.read(t, "objects/a", 2000, 1000)
 		f.inner.reset()
@@ -36,21 +38,8 @@ func TestBucket_GetRange(t *testing.T) {
 		got := f.read(t, "objects/a", 0, 5000)
 
 		require.Equal(t, f.content[:5000], got)
-		require.ElementsMatch(t, []span{{offset: 0, length: 2000}, {offset: 3000, length: 2000}}, f.inner.spans())
-		require.Zero(t, testutil.ToFloat64(f.bucket.metrics.overreadBytes))
-	})
-
-	t.Run("merges the closest runs when the missing subranges need more requests than the limit", func(t *testing.T) {
-		f := newFixture(t, 10_500, 1000, func(cfg *Config) { cfg.MaxGetRangeSubrequests = 2 })
-		f.read(t, "objects/a", 1000, 1000)
-		f.read(t, "objects/a", 3000, 3000)
-		f.inner.reset()
-
-		got := f.read(t, "objects/a", 0, 7000)
-
-		require.Equal(t, f.content[:7000], got)
-		require.ElementsMatch(t, []span{{offset: 0, length: 3000}, {offset: 6000, length: 1000}}, f.inner.spans())
-		require.Equal(t, 1000.0, testutil.ToFloat64(f.bucket.metrics.overreadBytes), "the merged request reads the cached subrange between its parts again")
+		require.ElementsMatch(t, []span{{offset: 0, length: 1000}, {offset: 1000, length: 1000}, {offset: 3000, length: 1000}, {offset: 4000, length: 1000}}, f.inner.spans())
+		require.Equal(t, int64(1), f.inner.multiCalls.Load())
 	})
 
 	t.Run("returns the bytes up to the end of the object for a range that ends past it", func(t *testing.T) {
@@ -134,9 +123,9 @@ func TestBucket_GetRange(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(f.bucket.metrics.errors.WithLabelValues(operationStore)))
 	})
 
-	t.Run("fails with an unexpected EOF, not an EOF, when the bucket returns fewer bytes than requested", func(t *testing.T) {
+	t.Run("fails with an unexpected EOF, not an EOF, when the bucket returns an EOF", func(t *testing.T) {
 		f := newFixture(t, 10_500, 1000)
-		f.inner.truncate.Store(1000)
+		f.inner.eof.Store(true)
 
 		_, err := f.bucket.GetRange(t.Context(), "objects/a", 0, 2000)
 
@@ -225,61 +214,69 @@ func TestBucket_Attributes(t *testing.T) {
 	})
 }
 
-func TestPlanSubrangeRuns(t *testing.T) {
-	tests := []struct {
-		name    string
-		data    [][]byte
-		maxRuns int
-		want    []subrangeRun
-	}{
-		{
-			name:    "returns no run when the cache holds every subrange",
-			data:    subrangeData(4),
-			maxRuns: 3,
-		},
-		{
-			name:    "puts adjacent missing subranges in one run",
-			data:    subrangeData(6, 1, 2, 3),
-			maxRuns: 3,
-			want:    []subrangeRun{{first: 1, last: 3}},
-		},
-		{
-			name:    "keeps the runs apart when they fit the limit",
-			data:    subrangeData(6, 0, 2, 5),
-			maxRuns: 3,
-			want:    []subrangeRun{{first: 0, last: 0}, {first: 2, last: 2}, {first: 5, last: 5}},
-		},
-		{
-			name:    "keeps the runs apart when the limit is 0",
-			data:    subrangeData(6, 0, 2, 5),
-			maxRuns: 0,
-			want:    []subrangeRun{{first: 0, last: 0}, {first: 2, last: 2}, {first: 5, last: 5}},
-		},
-		{
-			name:    "merges the runs with the fewest cached subranges between them first",
-			data:    subrangeData(10, 0, 2, 7),
-			maxRuns: 2,
-			want:    []subrangeRun{{first: 0, last: 2}, {first: 7, last: 7}},
-		},
-		{
-			name:    "stops merging as soon as the limit holds",
-			data:    subrangeData(10, 0, 2, 5, 9),
-			maxRuns: 2,
-			want:    []subrangeRun{{first: 0, last: 5}, {first: 9, last: 9}},
-		},
-		{
-			name:    "widens the gap until one run remains",
-			data:    subrangeData(10, 0, 2, 5, 9),
-			maxRuns: 1,
-			want:    []subrangeRun{{first: 0, last: 9}},
-		},
-	}
+func TestBucket_MultiGetRange(t *testing.T) {
+	t.Run("reads and stores only the subranges that the ranges need", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, planSubrangeRuns(tc.data, tc.maxRuns))
-		})
-	}
+		got := f.multiRead(t, "objects/a", span{offset: 1500, length: 1000}, span{offset: 8200, length: 100})
+
+		require.Equal(t, [][]byte{f.content[1500:2500], f.content[8200:8300]}, got)
+		require.ElementsMatch(t, []span{{offset: 1000, length: 1000}, {offset: 2000, length: 1000}, {offset: 8000, length: 1000}}, f.inner.spans())
+		require.Equal(t, int64(1), f.inner.multiCalls.Load())
+		require.Len(t, f.subranges.GetKeys(), 3)
+	})
+
+	t.Run("looks up a subrange that two ranges share once", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
+
+		got := f.multiRead(t, "objects/a", span{offset: 1100, length: 100}, span{offset: 1500, length: 100})
+
+		require.Equal(t, [][]byte{f.content[1100:1200], f.content[1500:1600]}, got)
+		require.Equal(t, 1, f.subranges.KeysRequested())
+		require.Equal(t, []span{{offset: 1000, length: 1000}}, f.inner.spans())
+	})
+
+	t.Run("serves cached ranges without a call to the bucket", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
+		f.multiRead(t, "objects/a", span{offset: 1500, length: 1000}, span{offset: 8200, length: 100})
+		f.inner.reset()
+
+		got := f.multiRead(t, "objects/a", span{offset: 8200, length: 100}, span{offset: 1500, length: 1000})
+
+		require.Equal(t, [][]byte{f.content[8200:8300], f.content[1500:2500]}, got)
+		require.Empty(t, f.inner.spans())
+		require.Zero(t, f.inner.multiCalls.Load())
+	})
+
+	t.Run("passes a call with a negative offset to the bucket without caching it", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
+
+		_, err := f.tryMultiRead(t, "objects/a", span{offset: 1500, length: 100}, span{offset: -1, length: 10})
+
+		require.Error(t, err)
+		require.Equal(t, int64(1), f.inner.multiCalls.Load())
+		require.Empty(t, f.subranges.GetKeys())
+	})
+
+	t.Run("reads nothing for a call with only empty ranges", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
+
+		got := f.multiRead(t, "objects/a", span{offset: 1500, length: 0})
+
+		require.Equal(t, [][]byte{{}}, got)
+		require.Zero(t, f.inner.attributes.Load())
+		require.Zero(t, f.inner.multiCalls.Load())
+	})
+
+	t.Run("passes a call with a range past the end of the object to the bucket without caching it", func(t *testing.T) {
+		f := newFixture(t, 10_500, 1000)
+
+		_, err := f.tryMultiRead(t, "objects/a", span{offset: 1500, length: 100}, span{offset: 10_400, length: 200})
+
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		require.Equal(t, []span{{offset: 1500, length: 100}, {offset: 10_400, length: 200}}, f.inner.spans())
+		require.Empty(t, f.subranges.GetKeys())
+	})
 }
 
 type fixture struct {
@@ -291,7 +288,7 @@ type fixture struct {
 	content           []byte
 }
 
-func newFixture(t *testing.T, size, subrangeSize int, options ...func(*Config)) *fixture {
+func newFixture(t *testing.T, size, subrangeSize int) *fixture {
 	t.Helper()
 
 	content := make([]byte, size)
@@ -305,10 +302,7 @@ func newFixture(t *testing.T, size, subrangeSize int, options ...func(*Config)) 
 	subranges := cache.NewMockCache()
 	attributesBackend := cache.NewMockCache()
 	attributes := metadatacache.NewCache(attributesBackend, 0, metadatacache.KindObjectAttributes, metadatacache.NewMetrics(prometheus.NewRegistry()), nil)
-	cfg := Config{SubrangeSize: subrangeSize, AttributesInMemoryMaxItems: 100, MaxGetRangeSubrequests: DefaultMaxGetRangeSubrequests}
-	for _, option := range options {
-		option(&cfg)
-	}
+	cfg := Config{SubrangeSize: subrangeSize, AttributesInMemoryMaxItems: 100}
 	bucket, err := newCachedBucket(inner, &Backend{Config: cfg, Subranges: subranges, Attributes: attributes}, kindLogs, "test", prometheus.NewRegistry())
 	require.NoError(t, err)
 
@@ -338,15 +332,41 @@ func (f *fixture) read(t *testing.T, name string, offset, length int64) []byte {
 	return got
 }
 
+// multiRead fills one range for each span with MultiGetRange, and returns the bytes of each range.
+func (f *fixture) multiRead(t *testing.T, name string, spans ...span) [][]byte {
+	t.Helper()
+
+	got, err := f.tryMultiRead(t, name, spans...)
+	require.NoError(t, err)
+	return got
+}
+
+func (f *fixture) tryMultiRead(t *testing.T, name string, spans ...span) ([][]byte, error) {
+	t.Helper()
+
+	ranges := make([]rangeio.Range, len(spans))
+	for i, s := range spans {
+		ranges[i] = rangeio.Range{Data: make([]byte, s.length), Offset: s.offset}
+	}
+	err := f.bucket.MultiGetRange(t.Context(), name, ranges)
+
+	got := make([][]byte, len(ranges))
+	for i, r := range ranges {
+		got[i] = r.Data
+	}
+	return got, err
+}
+
 type span struct{ offset, length int64 }
 
-// recordingBucket records the GetRange calls that reach the bucket, and counts the Attributes calls.
+// recordingBucket records the ranges that reach the bucket, and counts the MultiGetRange and Attributes calls.
 type recordingBucket struct {
 	objstore.Bucket
 
 	attributes atomic.Int64
+	multiCalls atomic.Int64
 	failReads  atomic.Bool
-	truncate   atomic.Int64 // Bytes that GetRange cuts from the end of each body.
+	eof        atomic.Bool // MultiGetRange returns io.EOF.
 
 	attributesErr error // Set it before the first call.
 
@@ -358,17 +378,28 @@ func (b *recordingBucket) GetRange(ctx context.Context, name string, offset, len
 	b.mtx.Lock()
 	b.calls = append(b.calls, span{offset: offset, length: length})
 	b.mtx.Unlock()
+	return b.Bucket.GetRange(ctx, name, offset, length)
+}
+
+func (b *recordingBucket) MultiGetRange(ctx context.Context, name string, ranges []rangeio.Range) error {
+	b.multiCalls.Add(1)
+	b.mtx.Lock()
+	for _, r := range ranges {
+		b.calls = append(b.calls, span{offset: r.Offset, length: r.Len()})
+	}
+	b.mtx.Unlock()
+
 	if b.failReads.Load() {
-		return nil, errors.New("read failed")
+		return errors.New("read failed")
+	} else if b.eof.Load() {
+		return io.EOF
 	}
-	rc, err := b.Bucket.GetRange(ctx, name, offset, length)
-	if cut := b.truncate.Load(); err == nil && cut > 0 {
-		return struct {
-			io.Reader
-			io.Closer
-		}{io.LimitReader(rc, max(length-cut, 0)), rc}, nil
+	for _, r := range ranges {
+		if r.Offset < 0 {
+			return errors.New("negative offset")
+		}
 	}
-	return rc, err
+	return multirange.Read(ctx, b.Bucket, name, ranges)
 }
 
 func (b *recordingBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
@@ -389,6 +420,7 @@ func (b *recordingBucket) reset() {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 	b.calls = nil
+	b.multiCalls.Store(0)
 }
 
 // allocatingCache copies the values that it returns into memory from the allocator option, as
@@ -416,16 +448,4 @@ func (c *allocatingCache) Fetch(ctx context.Context, keys []string, opts ...cach
 		c.allocations.Add(1)
 	}
 	return found, bufs, missing, err
-}
-
-// subrangeData returns the cached data of n subranges. The subranges in missing have no data.
-func subrangeData(n int, missing ...int) [][]byte {
-	data := make([][]byte, n)
-	for i := range data {
-		data[i] = []byte{}
-	}
-	for _, i := range missing {
-		data[i] = nil
-	}
-	return data
 }

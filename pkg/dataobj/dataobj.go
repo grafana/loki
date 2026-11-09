@@ -125,6 +125,14 @@ type OpenOption func(*openOptions)
 type openOptions struct {
 	metadataCache MetadataCache
 	logger        log.Logger
+	instrumented  bool
+}
+
+// WithInstrumentedBucket tells [FromBucket] that the bucket records its own object-store requests, for
+// example a bucket from [NewInstrumentedBucket]. FromBucket then does not wrap it in an instrumented
+// reader, so each request counts once. The wrapper would also hide the multi-range reads of the bucket.
+func WithInstrumentedBucket() OpenOption {
+	return func(o *openOptions) { o.instrumented = true }
 }
 
 // WithMetadataCache serves the object's metadata region through the cache instead of reading it from
@@ -165,7 +173,8 @@ func WithLogger(logger log.Logger) OpenOption {
 //
 // Every object-store request the Object makes records its statistics in the
 // [xcap.Region] of the context passed to the call that makes it. See
-// [NewInstrumentedBucketReader].
+// [NewInstrumentedBucketReader]. A bucket that records its own requests needs
+// [WithInstrumentedBucket].
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64, opts ...OpenOption) (*Object, error) {
 	var o openOptions
 	for _, opt := range opts {
@@ -175,7 +184,10 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 		o.logger = log.NewNopLogger()
 	}
 
-	rr := &bucketRangeReader{bucket: NewInstrumentedBucketReader(bucket), path: path}
+	if !o.instrumented {
+		bucket = NewInstrumentedBucketReader(bucket)
+	}
+	rr := &bucketRangeReader{bucket: bucket, path: path}
 
 	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path, logger: o.logger}
 	obj := &Object{rr: rr, dec: dec}

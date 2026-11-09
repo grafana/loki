@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 func Test_prefetchedRangeReader_ReadRange(t *testing.T) {
@@ -61,6 +63,48 @@ func Test_prefetchedRangeReader_ReadRange(t *testing.T) {
 
 			got := readAllAndClose(t, rc)
 			require.Equal(t, tc.wantString, string(got))
+		})
+	}
+}
+
+func Test_prefetchedRangeReader_ReadRanges(t *testing.T) {
+	const (
+		backendSource    = "0123456789abcdefghijklmnopqrstuvwxyz"
+		prefetchedSource = "UVWXYZ"
+		prefetchOffset   = int64(10)
+	)
+
+	tests := []struct {
+		name   string
+		ranges []rangeio.Range
+		want   []string
+	}{
+		{
+			name:   "a range inside the prefetched window reads only prefetched bytes",
+			ranges: []rangeio.Range{{Offset: 11, Data: make([]byte, 3)}},
+			want:   []string{"VWX"},
+		},
+		{
+			name:   "a range that spans the window reads the bytes at both ends from the backend",
+			ranges: []rangeio.Range{{Offset: 8, Data: make([]byte, 10)}},
+			want:   []string{"89UVWXYZgh"},
+		},
+		{
+			name:   "several ranges are served together, each from the right source",
+			ranges: []rangeio.Range{{Offset: 0, Data: make([]byte, 2)}, {Offset: 12, Data: make([]byte, 2)}, {Offset: 20, Data: make([]byte, 3)}},
+			want:   []string{"01", "WX", "klm"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchOffset, []byte(prefetchedSource))
+
+			require.NoError(t, rr.ReadRanges(t.Context(), tc.ranges))
+
+			for i, r := range tc.ranges {
+				require.Equal(t, tc.want[i], string(r.Data))
+			}
 		})
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"io"
 	"iter"
 	"strconv"
+
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 // A Sections is a slice of [Section].
@@ -100,6 +102,19 @@ type SectionReader interface {
 	// beyond the readable metadata region. The returned reader is only valid as long
 	// as the provided ctx is not canceled.
 	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+
+	// DataRanges fills each range with bytes of the data region of a section.
+	// Each range offset is relative to the start of the region.
+	//
+	// DataRanges reads all ranges in one call, so the implementation can serve
+	// them together. It returns an error if a read fails or if a range goes
+	// beyond the readable data region. A short read returns
+	// [io.ErrUnexpectedEOF], never [io.EOF].
+	DataRanges(ctx context.Context, ranges []rangeio.Range) error
+
+	// MetadataRanges fills each range with bytes of the metadata region of a
+	// section, like DataRanges does for the data region.
+	MetadataRanges(ctx context.Context, ranges []rangeio.Range) error
 
 	// DataSize returns the total size of the data region of a section. DataSize
 	// returns 0 for sections with no data region.

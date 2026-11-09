@@ -1160,13 +1160,6 @@ dataobj:
     # CLI flag: -dataobj.logs-bucket-cache.attributes-in-memory-max-items
     [attributes_in_memory_max_items: <int> | default = 50000]
 
-    # Maximum number of requests that one read sends to object storage to fetch
-    # the blocks that the cache does not hold. When the missing blocks need more
-    # requests, the cache merges them and reads the cached blocks between them
-    # again. 0 means no limit.
-    # CLI flag: -dataobj.logs-bucket-cache.max-get-range-subrequests
-    [max_get_range_subrequests: <int> | default = 3]
-
   # Caches the byte ranges that the querier reads from index objects, in aligned
   # blocks. The cache is enabled when a backend is configured.
   index_bucket_cache:
@@ -1185,13 +1178,6 @@ dataobj:
     # misses goes to the cache backend. 0 disables the in-memory cache.
     # CLI flag: -dataobj.index-bucket-cache.attributes-in-memory-max-items
     [attributes_in_memory_max_items: <int> | default = 50000]
-
-    # Maximum number of requests that one read sends to object storage to fetch
-    # the blocks that the cache does not hold. When the missing blocks need more
-    # requests, the cache merges them and reads the cached blocks between them
-    # again. 0 means no limit.
-    # CLI flag: -dataobj.index-bucket-cache.max-get-range-subrequests
-    [max_get_range_subrequests: <int> | default = 3]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker

@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var (
@@ -81,8 +82,22 @@ func TestRouter(t *testing.T) {
 		require.Equal(t, int64(1), f.inner.attributes.Load())
 	})
 
+	t.Run("reads the ranges of each kind of object through its own cache, and passes the table of contents to the bucket", func(t *testing.T) {
+		f := newRouterFixture(t, true, true)
+
+		for _, name := range []string{logsObject, indexObject, tocObject} {
+			ranges := []rangeio.Range{{Data: make([]byte, 100), Offset: 1500}}
+			require.NoError(t, f.router.MultiGetRange(t.Context(), name, ranges))
+			require.Equal(t, f.content[1500:1600], ranges[0].Data)
+		}
+
+		require.Len(t, f.logs.subranges.GetKeys(), 1)
+		require.Len(t, f.index.subranges.GetKeys(), 1)
+		require.Equal(t, []span{{offset: 1000, length: 1000}, {offset: 1000, length: 1000}, {offset: 1500, length: 100}}, f.inner.spans())
+	})
+
 	t.Run("returns an error when it has no backend", func(t *testing.T) {
-		_, err := New(objstore.NewInMemBucket(), nil, nil, "test", prometheus.NewRegistry())
+		_, err := New(&recordingBucket{Bucket: objstore.NewInMemBucket()}, nil, nil, "test", prometheus.NewRegistry())
 
 		require.EqualError(t, err, "the bucket cache needs a backend for log objects or index objects")
 	})
@@ -90,7 +105,7 @@ func TestRouter(t *testing.T) {
 	t.Run("returns an error when a backend has no attributes cache", func(t *testing.T) {
 		backend := &Backend{Config: Config{SubrangeSize: 1000}, Subranges: cache.NewMockCache()}
 
-		_, err := New(objstore.NewInMemBucket(), backend, nil, "test", prometheus.NewRegistry())
+		_, err := New(&recordingBucket{Bucket: objstore.NewInMemBucket()}, backend, nil, "test", prometheus.NewRegistry())
 
 		require.EqualError(t, err, "creating the cache of log objects: the bucket cache needs a bucket, a subrange cache and an attributes cache")
 	})

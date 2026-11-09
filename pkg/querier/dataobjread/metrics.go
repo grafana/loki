@@ -64,15 +64,15 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}),
 		fetchedCompressedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_fetched_compressed_bytes_total",
-			Help: "Compressed bytes that data-object queries read through the bucket (optionally via cache), by read-path component. Includes the table of contents, the head prefetch of each object, section metadata and page reads.",
+			Help: "Compressed bytes that data-object queries read from object storage, by read-path component. Includes the table of contents, the head prefetch of each object, section metadata and page reads, and the gaps between the ranges that the querier merges into one request. A read that the bucket cache serves counts nothing.",
 		}, []string{"component"}),
 		objectStoreRequests: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_object_store_requests_total",
-			Help: "Requests that data-object queries issue through the bucket (optionally via cache), by read-path component and operation (attributes, get, get_range). Counts every request when it is issued, whatever its outcome.",
+			Help: "Requests that data-object queries send to object storage, by read-path component and operation (attributes, get, get_range). A read that the bucket cache serves sends none. Counts every request when it is issued, whatever its outcome.",
 		}, []string{"component", "operation"}),
 		objectStoreRequestsFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_object_store_requests_failed_total",
-			Help: "Requests that data-object queries issue through the bucket (optionally via cache) and that failed, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
+			Help: "Requests that data-object queries send to object storage and that failed, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
 		}, []string{"component", "operation"}),
 	}
 

@@ -20,7 +20,6 @@ const (
 type metrics struct {
 	requestedBytes     prometheus.Counter
 	fetchedBytes       *prometheus.CounterVec
-	overreadBytes      prometheus.Counter
 	requestedSubranges prometheus.Counter
 	hitSubranges       prometheus.Counter
 	corruptedEntries   prometheus.Counter
@@ -37,10 +36,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name: "loki_dataobj_bucket_cache_fetched_bytes_total",
 			Help: "Bytes of aligned blocks that the cache fetched for reads of cached objects, by origin: the cache, or object storage (and then stored in the cache).",
 		}, []string{"origin"}),
-		overreadBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_bucket_cache_overread_bytes_total",
-			Help: "Bytes read from object storage that no missing block needed: cached blocks that a merged read of the missing blocks read again.",
-		}),
 		requestedSubranges: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_bucket_cache_requested_subranges_total",
 			Help: "Aligned blocks that reads of cached objects asked the cache for.",

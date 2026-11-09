@@ -17,7 +17,7 @@ object name: one for log objects, and one for index objects.
 
 ```
 logs reader / streams reader / metastore
-                |      per-query data object statistics count here
+                |
                 v
               router
          |             |
@@ -25,6 +25,12 @@ logs reader / streams reader / metastore
     logs cache     index cache  <--->  cache backends (blocks, object attributes)
          |             |      only the misses go down
          v             v
+         coalescing bucket       merges the missing ranges
+                |
+                v
+        instrumented bucket      per-query data object statistics count here
+                |
+                v
    object store metrics and tracing
                 |
                 v
@@ -34,6 +40,10 @@ logs reader / streams reader / metastore
 Each cache splits the reads it gets into fixed-size, aligned blocks. The code, the flags, and the
 metrics call them subranges. It serves the blocks that its backend holds and reads the others from
 object storage. It then stores the new blocks.
+
+The readers ask for all the pages of a batch in one call, a multi-range read. The cache sees the exact
+ranges that the query needs. The coalescing bucket below it merges the missing ranges before they go
+to object storage.
 
 ## What the cache holds
 
@@ -46,23 +56,28 @@ the prefix of the object name. Log objects live under `objects/`, and index obje
 `index/v0/indexes/`. The router must send only objects that never change, because the cache keys carry
 no object version. It sends every other name, the ToC included, to the object store.
 
-The cache serves reads of a byte range and requests for the attributes of an object. Every other call
-goes straight to the object store. A read that the cache cannot split also goes straight through. This
-includes a read of the whole object from an offset to its end.
+The cache serves reads of a byte range, multi-range reads, and requests for the attributes of an
+object. Every other call goes straight to the object store. A read that the cache cannot split also
+goes straight through. This includes a read of the whole object from an offset to its end.
 
 ## How a read works
 
 1. The router checks the object name and picks the logs cache or the index cache. A name that no cache
    serves goes straight to the object store. So does a name of a kind that has no cache.
-2. The cache finds the size of the object. It needs the size to align blocks and to cut a range that
-   ends past the end of the object. A range that starts at or past the end goes to the object store,
-   so it fails as it does without the cache.
-3. The cache lists the blocks that cover the range and asks the backend for all of them in one call.
-   A memcached backend splits the call into batches of its configured batch size.
+2. The cache finds the size of the object. It needs the size to align blocks. A read of one range that
+   ends past the end of the object is cut at the end. A read of one range that starts at or past the
+   end goes to the object store, so it fails as it does without the cache. A multi-range read goes
+   whole to the object store when any of its ranges ends past the end of the object, because the
+   cache cannot cut a buffer of fixed length.
+3. The cache lists the blocks that cover the ranges and asks the backend for all of them in one call.
+   A block that two ranges share counts once. A memcached backend splits the call into batches of its
+   configured batch size.
 4. A block counts as a hit only if it has the length and the full key that the cache expects. The cache
    treats every other block as a miss.
-5. The cache reads the missing blocks from object storage and stores them in the backend.
-6. The cache returns a reader over the blocks, trimmed to the requested range.
+5. The cache reads the missing blocks from the bucket below with one multi-range call, and stores them
+   in the backend.
+6. A multi-range read copies the bytes into the buffers of the caller. A read of one range returns a
+   reader over the blocks, trimmed to the requested range.
 
 A read in which every block hits sends no request to object storage.
 
@@ -94,22 +109,26 @@ Each value therefore starts with its full key, built from the full object name. 
 the key that it expects, and treats a mismatch as a miss. The same applies to the cached attributes of an
 object. The cost is one copy of the full key, about 150 bytes, in each block of 16,000 bytes (default size).
 
-### Misses use a bounded number of requests
+### The cache sees exact ranges, and the coalescing bucket merges the misses
 
-The readers above the cache already merge their ranges, cap the size of each request, and read in
-parallel. The cache therefore does not split the range of a read. It reads only the blocks that it does
-not hold.
+A reader needs many pages of one object, and the pages of one batch are not next to each other. If the
+readers merged the pages into big ranges before the cache, the ranges would include the gaps between
+the pages. The cache would fetch and store the bytes of the gaps, which no query asked for, and every
+warm query would read them back from the cache backend.
 
-Blocks that are next to each other share one request. A read with scattered misses could need many
-requests, so the cache limits them, as Mimir does. The default limit is three requests for the missing
-blocks of one read. When the misses need more, the cache merges the runs in rounds, first the runs that
-at most one cached block separates, then two, four, and so on, until the limit holds. The cache sends
-the requests in parallel. Each request streams its blocks straight into their buffers, so the cache
-holds no second copy of the data.
+The readers therefore ask for the pages with one multi-range read: one object name and many ranges.
+The cache looks up the blocks of all the ranges in one call, and passes the missing blocks to the bucket
+below, as ranges, in one call.
 
-A merged request reads the cached blocks between its parts again and discards them. The cache counts
-these bytes as overread. The limit trades overread bytes for requests, and the overread metric shows
-whether the trade pays off. A limit of 0 turns the limit off.
+The coalescing bucket below the cache merges the missing ranges that are close, splits the ranges that
+are big, and reads them in parallel. It takes the sizes from the `rangeio` config in the context of the
+request. A merged read can include a gap. The bucket reads the gap and
+discards it, and the cache never stores it. A counter shows these bytes as overread, next to a counter of the bytes that the callers needed.
+
+The cache does not bound the requests of a read. The coalescing bucket does. A read of one range, such
+as the read of a footer, takes the same path: its misses go down in one multi-range call. A bucket that
+is not the bucket of the querier has no multi-range read, and its readers merge the ranges with
+`GetRange`.
 
 ### Object attributes come from the metadata cache
 
@@ -141,8 +160,7 @@ change the layout of a value later.
 Log reads move most of the bytes that a querier reads from object storage, but queries reuse index
 objects much more. With one backend, a burst of log blocks evicts index blocks. The logs cache and the
 index cache therefore have their own backends and their own settings: the block size, the size of the
-in-memory table of attributes, and the limit on requests. Either cache can be on while the other is
-off.
+in-memory table of attributes. Either cache can be on while the other is off.
 
 The two caches isolate eviction only when their backends are separate servers. Memcached evicts the least
 recently used item inside a size class, and both kinds store blocks of about the same size. Two caches
@@ -152,8 +170,9 @@ sharing a server is safe.
 ### Memory for hits
 
 A hit has to copy bytes from the cache client into a buffer. The cache takes these buffers from a pool
-of large slabs, and returns them when the caller closes the reader. This avoids one allocation for each
-block and lowers the work of the garbage collector.
+of large slabs. A multi-range read returns them when it has copied the hits into the buffers of the
+caller. A read of one range returns them when the caller closes the reader. This avoids one allocation
+for each block and lowers the work of the garbage collector.
 
 The pool serves only the hits. The cache backend can keep a buffer after a store call returns, so the
 blocks that it stores use ordinary memory. A tiered cache copies hits from its lower tier into its upper
@@ -169,26 +188,34 @@ The cache must not fail a query, and must not return wrong data:
   ignores the cancellation of the query, because other queries can use the blocks.
 - A failure to read the attributes of an object fails the read. The read would fail without the cache
   for the same reason.
-- A short read never ends with a plain end-of-file. The column readers take that signal as the end
-  of the column and return fewer rows without an error. The cache returns an "unexpected end" error
-  instead.
+- A short read of the missing blocks never ends with a plain end-of-file. The column readers take that
+  signal as the end of the column and return fewer rows without an error. The cache returns an
+  "unexpected end" error instead. A multi-range read that goes beyond the end of the object goes to
+  the bucket, and its error can wrap an end-of-file. The section reader turns that error into an
+  "unexpected end" error too.
 
-### Metrics and query statistics sit at different layers
+### Requests are counted below the cache
 
-The metrics and traces of the object store client sit below the cache. They show the requests that
-really reach object storage. The per-query data object statistics sit above the cache and count what
-the readers asked for, including the hits.
+The instrumented bucket sits below the coalescing bucket. It counts each request that reaches object
+storage and the bytes of its body. The per-query data object statistics and the metric
+`loki_querier_dataobj_object_store_requests_total` come from it. The metrics and traces of the object
+store client sit directly below it and see the same requests.
 
-With the cache on, the downloaded-bytes statistic of a query is therefore not the traffic of object
-storage. For that traffic, use the object store metrics.
+A hit sends no request, so it counts nothing in these statistics. A merged read counts once, with the
+bytes of its gaps. The readers above the cache do not record requests when the bucket records its own.
+Every other caller of the readers keeps the instrumented reader, because it reads a bucket that
+records nothing.
 
 The cache has its own metrics, with the prefix `loki_dataobj_bucket_cache_`:
 
 - the bytes that readers requested, and the bytes fetched from the cache and from the bucket;
-- the overread bytes;
 - the number of blocks that reads asked for, and the number that hit;
 - the corrupted blocks that the cache rejected;
 - the errors of lookups and stores.
+
+The coalescing bucket has two metrics. `loki_dataobj_coalescing_bucket_needed_bytes_total` counts the bytes
+in the ranges that callers asked it to read. `loki_dataobj_coalescing_bucket_overread_bytes_total` counts
+the bytes that it read from object storage and no range needed. The bucket reads the sum of the two.
 
 ## Relation to the metadata cache
 

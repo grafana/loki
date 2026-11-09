@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -42,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -158,42 +160,57 @@ func TestDataObjStore_SelectSamples_WithBucketCache(t *testing.T) {
 	randomStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 4000, 300)}
 	const query = `sum by (app) (count_over_time({env="prod"} |= "zz" [1m]))`
 
-	newCachedStore := func(t *testing.T) (store *testDataObjStore, counter *getRangeCounter, logsBlocks, indexBlocks cache.MockCache) {
+	newCachedStore := func(t *testing.T) (store *testDataObjStore, counter *getRangeCounter, reg *prometheus.Registry, logsBlocks, indexBlocks cache.MockCache, spy *multiCallSpy) {
 		counter = &getRangeCounter{}
+		spy = &multiCallSpy{}
+		reg = prometheus.NewRegistry()
 		logsBlocks, indexBlocks = cache.NewMockCache(), cache.NewMockCache()
 		newBackend := func(blocks cache.Cache) *bucketcache.Backend {
 			attributes := metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindObjectAttributes, metadatacache.NewMetrics(prometheus.NewRegistry()), nil)
 			return &bucketcache.Backend{Config: bucketcache.Config{SubrangeSize: bucketcache.DefaultSubrangeSize}, Subranges: blocks, Attributes: attributes}
 		}
-		store = newTestDataObjStore(t, []logproto.Stream{randomStream}, withBucketWrapper(func(bucket objstore.Bucket) objstore.Bucket {
+		store = newTestDataObjStore(t, []logproto.Stream{randomStream}, withRegisterer(reg), withBucketWrapper(func(bucket objstore.Bucket) objstore.Bucket {
 			counter.Bucket = bucket
-			cached, err := bucketcache.New(counter, newBackend(logsBlocks), newBackend(indexBlocks), "test", prometheus.NewRegistry())
+			below := multirange.NewCoalescingBucket(dataobj.NewInstrumentedBucket(counter), prometheus.NewRegistry())
+			cached, err := bucketcache.New(below, newBackend(logsBlocks), newBackend(indexBlocks), "test", prometheus.NewRegistry())
 			require.NoError(t, err)
-			return cached
+			spy.Bucket = cached
+			return spy
 		}))
-		return store, counter, logsBlocks, indexBlocks
+		return store, counter, reg, logsBlocks, indexBlocks, spy
 	}
 
 	t.Run("a second query reads no object ranges from the bucket and returns the same samples", func(t *testing.T) {
-		store, counter, _, _ := newCachedStore(t)
+		store, counter, reg, _, _, _ := newCachedStore(t)
 
 		fromBucket := store.selectSamples(testCtx(t), query, at(0), at(10))
 		afterFirst := counter.calls.Load()
+		requestsAfterFirst := getRangeRequests(t, reg)
 		fromCache := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, fromBucket)
 		require.NotZero(t, afterFirst, "the first query reads the objects from the bucket")
 		require.Equal(t, afterFirst, counter.calls.Load())
 		require.Equal(t, fromBucket, fromCache)
+		require.Equal(t, float64(afterFirst), requestsAfterFirst, "the request metric counts each range that reaches the bucket once")
+		require.Equal(t, requestsAfterFirst, getRangeRequests(t, reg), "a cached query sends no request")
 	})
 
 	t.Run("a query stores the blocks of log objects and of index objects in separate caches", func(t *testing.T) {
-		store, _, logsBlocks, indexBlocks := newCachedStore(t)
+		store, _, _, logsBlocks, indexBlocks, _ := newCachedStore(t)
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, logsBlocks.GetKeys())
 		require.NotEmpty(t, indexBlocks.GetKeys())
+	})
+
+	t.Run("the readers ask the cache for the pages of a log object in one multi-range read", func(t *testing.T) {
+		store, _, _, _, _, spy := newCachedStore(t)
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.Greater(t, spy.mostRanges(), 1)
 	})
 }
 
@@ -1082,6 +1099,7 @@ func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 }
 
 // withBucketWrapper gives the store and its metastore a bucket that wraps the one that holds the objects.
+// The wrapper records its own object-store requests, so the store and the metastore do not record them.
 func withBucketWrapper(wrap func(objstore.Bucket) objstore.Bucket) testStoreOption {
 	return func(o *testStoreOptions) { o.wrapBucket = wrap }
 }
@@ -1131,7 +1149,8 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	objectMetastore := builder.Metastore()
 	if options.wrapBucket != nil {
 		bucket = options.wrapBucket(bucket)
-		objectMetastore = metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(), nil)
+		objectMetastore = metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(), nil, metastore.WithInstrumentedBucket())
+		storeOpts = append(storeOpts, WithDataObjInstrumentedBucket())
 	}
 	chunkStore := &chunkStoreSpy{}
 	store, err := NewDataObjStore(chunkStore, bucket, objectMetastore, options.registerer, storeOpts...)
@@ -1464,6 +1483,50 @@ func (o *shardLayoutOverrides) SortSchemaLabels(string) []string { return nil }
 
 func (o *shardLayoutOverrides) DataObjShardLayout(string) dataobjstreams.ShardLayout {
 	return o.layout
+}
+
+// multiCallSpy records the most ranges that one MultiGetRange call carried.
+type multiCallSpy struct {
+	multirange.Bucket
+
+	mtx       sync.Mutex
+	maxRanges int
+}
+
+func (s *multiCallSpy) MultiGetRange(ctx context.Context, name string, ranges []rangeio.Range) error {
+	s.mtx.Lock()
+	s.maxRanges = max(s.maxRanges, len(ranges))
+	s.mtx.Unlock()
+	return s.Bucket.MultiGetRange(ctx, name, ranges)
+}
+
+func (s *multiCallSpy) mostRanges() int {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.maxRanges
+}
+
+// getRangeRequests returns the get_range requests that the store counted, for every component.
+func getRangeRequests(t *testing.T, reg *prometheus.Registry) float64 {
+	t.Helper()
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+
+	var total float64
+	for _, family := range families {
+		if family.GetName() != "loki_querier_dataobj_object_store_requests_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "operation" && label.GetValue() == "get_range" {
+					total += metric.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return total
 }
 
 // getRangeCounter counts the GetRange calls that reach the bucket.

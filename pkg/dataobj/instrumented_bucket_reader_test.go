@@ -460,6 +460,31 @@ func TestFromBucket_RequestStatistics(t *testing.T) {
 		}, requestStats(capture))
 	})
 
+	t.Run("it records each request once, for a bucket that records its own requests", func(t *testing.T) {
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+		ctx, _ = xcap.StartRegion(ctx, instrumentedTestRegion)
+		bucket := newBucket(t)
+		instrumented := dataobj.NewInstrumentedBucket(bucket)
+
+		obj, err := dataobj.FromBucket(ctx, instrumented, "obj", 0, dataobj.WithInstrumentedBucket())
+		require.NoError(t, err)
+		for _, sec := range obj.Sections() {
+			readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+		}
+		_, err = instrumented.Attributes(ctx, "obj")
+		require.NoError(t, err)
+		readAll(t, func() (io.ReadCloser, error) { return instrumented.Get(ctx, "obj") })
+
+		require.Positive(t, bucket.attributes.Load())
+		require.Positive(t, bucket.gets.Load())
+		require.Positive(t, bucket.getRanges.Load())
+		require.Equal(t, map[string]int64{
+			"attributes": bucket.attributes.Load(),
+			"get":        bucket.gets.Load(),
+			"get_range":  bucket.getRanges.Load(),
+		}, requestStats(capture))
+	})
+
 	t.Run("it records the bytes the bucket delivered", func(t *testing.T) {
 		ctx, capture := xcap.NewCapture(t.Context(), nil)
 		ctx, _ = xcap.StartRegion(ctx, instrumentedTestRegion)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -16,11 +17,11 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/pool"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 const (
@@ -51,28 +52,27 @@ type AttributesCache interface {
 	GetOrLoad(ctx context.Context, key string, accept func([]byte) bool, load func(context.Context) ([]byte, error)) ([]byte, error)
 }
 
-// cachedBucket serves GetRange and Attributes from the cache. It passes every other call
-// to the bucket it wraps.
+// cachedBucket serves GetRange, MultiGetRange and Attributes from the cache. It passes every other
+// call to the bucket it wraps.
 //
 // A cache key holds a hash of the object name. Every cached value therefore starts with its full
 // key, the key built from the full name. A read rejects a value with another full key, so two names
 // that share a hash never serve each other's data.
 type cachedBucket struct {
-	objstore.Bucket
+	multirange.Bucket
 
 	bucketID        string
 	subrangesCache  cache.Cache
 	attributesCache AttributesCache
 	attributesLRU   *lru.Cache[string, objstore.ObjectAttributes]
 	subrangeSize    int64
-	maxSubrequests  int
 	slabs           *sync.Pool
 	metrics         *metrics
 }
 
 // newCachedBucket returns a cachedBucket that caches the reads of one kind of object in backend. bucketID
 // scopes the keys to one bucket. The cachedBucket does not stop the caches.
-func newCachedBucket(bucket objstore.Bucket, backend *Backend, kind, bucketID string, reg prometheus.Registerer) (*cachedBucket, error) {
+func newCachedBucket(bucket multirange.Bucket, backend *Backend, kind, bucketID string, reg prometheus.Registerer) (*cachedBucket, error) {
 	if bucket == nil || backend == nil || backend.Subranges == nil || backend.Attributes == nil {
 		return nil, errors.New("the bucket cache needs a bucket, a subrange cache and an attributes cache")
 	}
@@ -87,7 +87,6 @@ func newCachedBucket(bucket objstore.Bucket, backend *Backend, kind, bucketID st
 		subrangesCache:  backend.Subranges,
 		attributesCache: backend.Attributes,
 		subrangeSize:    int64(cfg.SubrangeSize),
-		maxSubrequests:  cfg.MaxGetRangeSubrequests,
 		slabs:           &sync.Pool{},
 		metrics:         newMetrics(prometheus.WrapRegistererWith(prometheus.Labels{"kind": kind}, reg)),
 	}
@@ -201,18 +200,14 @@ func (b *cachedBucket) fetchSubrangesFromCache(ctx context.Context, slabs *pool.
 }
 
 // fetchMissingSubrangesFromBucket reads the missing subranges from the bucket into data, and stores them in the cache.
+// It reads them with one call, so the bucket can merge the ones that are close.
 func (b *cachedBucket) fetchMissingSubrangesFromBucket(ctx context.Context, name string, keys []string, subranges []subrange, data [][]byte) error {
-	runs := planSubrangeRuns(data, b.maxSubrequests)
-	if len(runs) == 0 {
-		return nil
-	}
-
 	var (
-		fills         = make([][]byte, len(data)) // The buffer that each missing subrange is read into.
-		storeKeys     []string
-		storeBufs     [][]byte
-		missedBytes   int64
-		overreadBytes atomic.Int64
+		missing     []rangeio.Range // The buffer that each missing subrange is read into.
+		missingIdx  []int
+		storeKeys   []string
+		storeBufs   [][]byte
+		missedBytes int64
 	)
 
 	for i := range data {
@@ -226,32 +221,25 @@ func (b *cachedBucket) fetchMissingSubrangesFromBucket(ctx context.Context, name
 		fullKey := b.subrangeKey(name, subranges[i])
 		value := make([]byte, len(fullKey)+int(subranges[i].len()))
 		copy(value, fullKey)
-		fills[i] = value[len(fullKey):]
+		missing = append(missing, rangeio.Range{Data: value[len(fullKey):], Offset: subranges[i].start})
+		missingIdx = append(missingIdx, i)
 		storeKeys = append(storeKeys, keys[i])
 		storeBufs = append(storeBufs, value)
 		missedBytes += subranges[i].len()
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
-	for _, run := range runs {
-		g.Go(func() error {
-			skipped, err := b.readSubrangeRun(gctx, name, subranges, fills, run)
-			overreadBytes.Add(skipped)
-			return err
-		})
+	if len(missing) == 0 {
+		return nil
 	}
-	if err := g.Wait(); err != nil {
+	if err := b.Bucket.MultiGetRange(ctx, name, missing); err != nil {
 		return asUnexpectedEOF(err, fmt.Sprintf("reading subranges of %q", name))
 	}
 
-	for i, fill := range fills {
-		if fill != nil {
-			data[i] = fill
-		}
+	for j, i := range missingIdx {
+		data[i] = missing[j].Data
 	}
 
 	b.metrics.fetchedBytes.WithLabelValues(originBucket).Add(float64(missedBytes))
-	b.metrics.overreadBytes.Add(float64(overreadBytes.Load()))
 
 	// Cache the subranges fetched from the bucket.
 	if err := b.subrangesCache.Store(context.WithoutCancel(ctx), storeKeys, storeBufs); err != nil {
@@ -261,38 +249,71 @@ func (b *cachedBucket) fetchMissingSubrangesFromBucket(ctx context.Context, name
 	return nil
 }
 
-// readSubrangeRun reads the subranges of a run with one request. It reads each subrange that has a fill buffer
-// into it, and skips the others, which the cache already holds. It returns the number of bytes it skipped.
-func (b *cachedBucket) readSubrangeRun(ctx context.Context, name string, subranges []subrange, fills [][]byte, run subrangeRun) (int64, error) {
-	var (
-		offset = subranges[run.first].start
-		length = subranges[run.last].end - offset
-	)
-
-	rc, err := b.Bucket.GetRange(ctx, name, offset, length)
-	if err != nil {
-		return 0, err
+// MultiGetRange fills the ranges from the cache and the bucket. It looks up every block that the ranges need in one
+// call, and reads the missing blocks from the bucket in one call. A block that two ranges share is looked up once.
+func (b *cachedBucket) MultiGetRange(ctx context.Context, name string, ranges []rangeio.Range) error {
+	var requested int64
+	for _, r := range ranges {
+		requested += r.Len()
 	}
-	defer rc.Close()
+	if requested == 0 {
+		return nil
+	}
 
-	var skipped int64
-	for i := run.first; i <= run.last; i++ {
-		if fills[i] != nil {
-			if _, err := io.ReadFull(rc, fills[i]); err != nil {
-				return skipped, err
-			}
+	attrs, err := b.objectAttributes(ctx, name)
+	if err != nil {
+		return asUnexpectedEOF(err, fmt.Sprintf("reading attributes of %q", name))
+	}
+
+	size := attrs.Size
+	for _, r := range ranges {
+		if r.Offset < 0 || r.Offset+r.Len() > size {
+			// The bucket answers, so a read past the end fails as it does without the cache.
+			return b.Bucket.MultiGetRange(ctx, name, ranges)
+		}
+	}
+	b.metrics.requestedBytes.Add(float64(requested))
+
+	// The blocks that the ranges need, in order, each once.
+	var blocks []int64
+	for _, r := range ranges {
+		if len(r.Data) == 0 {
 			continue
 		}
-
-		// Discard this subrange because it was already fetched from the cache.
-		n, err := io.CopyN(io.Discard, rc, subranges[i].len())
-		skipped += n
-		if err != nil {
-			return skipped, err
+		for block := r.Offset / b.subrangeSize; block*b.subrangeSize < r.Offset+r.Len(); block++ {
+			blocks = append(blocks, block)
 		}
 	}
+	slices.Sort(blocks)
+	blocks = slices.Compact(blocks)
 
-	return skipped, nil
+	var (
+		subranges  = make([]subrange, len(blocks))
+		keys       = make([]string, len(blocks))
+		hashedName = hashName(name)
+	)
+	for i, block := range blocks {
+		start := block * b.subrangeSize
+		subranges[i] = subrange{start: start, end: min(start+b.subrangeSize, size)}
+		keys[i] = b.subrangeKey(hashedName, subranges[i])
+	}
+
+	slabs := pool.NewSlabPool(b.slabs, slabSubranges*(int(b.subrangeSize)+fullKeyBudget+valueOverhead))
+	defer slabs.Release()
+
+	data := b.fetchSubrangesFromCache(ctx, slabs, name, keys, subranges)
+	if err := b.fetchMissingSubrangesFromBucket(ctx, name, keys, subranges, data); err != nil {
+		return err
+	}
+
+	for _, r := range ranges {
+		end := r.Offset + r.Len()
+		for pos := r.Offset; pos < end; {
+			i, _ := slices.BinarySearch(blocks, pos/b.subrangeSize)
+			pos += int64(copy(r.Data[pos-r.Offset:], data[i][pos-subranges[i].start:]))
+		}
+	}
+	return nil
 }
 
 // Attributes returns the attributes of an object from the cache. The modification time keeps
@@ -386,41 +407,6 @@ func asUnexpectedEOF(err error, action string) error {
 		return err
 	}
 	return fmt.Errorf("%s: %w (cause: %v)", action, io.ErrUnexpectedEOF, err)
-}
-
-// subrangeRun is the span of subranges first to last, both included, that one request reads.
-type subrangeRun struct{ first, last int }
-
-// planSubrangeRuns returns the runs that read the missing subranges, which are the nil entries of data. Adjacent
-// missing subranges share a run. When there are more than maxRuns runs, planSubrangeRuns merges the runs that
-// the fewest cached subranges separate, until maxRuns or fewer remain. A merged run reads the cached
-// subranges between its parts again. A maxRuns of 0 sets no limit.
-func planSubrangeRuns(data [][]byte, maxRuns int) []subrangeRun {
-	var runs []subrangeRun
-	for i := range data {
-		if data[i] != nil {
-			continue
-		}
-		if n := len(runs); n > 0 && runs[n-1].last == i-1 {
-			runs[n-1].last = i
-		} else {
-			runs = append(runs, subrangeRun{first: i, last: i})
-		}
-	}
-
-	for gap := 1; maxRuns > 0 && len(runs) > maxRuns; gap *= 2 {
-		merged := runs[:1]
-		for _, r := range runs[1:] {
-			last := &merged[len(merged)-1]
-			if r.first-last.last-1 <= gap {
-				last.last = r.last
-			} else {
-				merged = append(merged, r)
-			}
-		}
-		runs = merged
-	}
-	return runs
 }
 
 // subrange is the byte range [start, end) of an object.

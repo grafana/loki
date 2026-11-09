@@ -11,7 +11,9 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 // Values of the kind label of the metrics.
@@ -27,13 +29,13 @@ type Backend struct {
 	Attributes AttributesCache
 }
 
-// Router serves GetRange and Attributes from the cache of the kind of the object. It passes every
-// other call, and every object that no cache serves, to the bucket it wraps.
+// Router serves GetRange, MultiGetRange and Attributes from the cache of the kind of the object. It
+// passes every other call, and every object that no cache serves, to the bucket it wraps.
 //
 // Each kind has its own cache. When the two backends are separate servers, a high eviction rate in
 // one kind does not evict the other.
 type Router struct {
-	objstore.Bucket
+	multirange.Bucket
 
 	logs  *cachedBucket
 	index *cachedBucket
@@ -42,7 +44,7 @@ type Router struct {
 // New returns a Router that caches the reads of log objects in logs, and of index objects in index. A
 // nil Backend leaves its kind uncached. bucketID scopes the keys to one bucket. The Router does not stop
 // the caches.
-func New(bucket objstore.Bucket, logs, index *Backend, bucketID string, reg prometheus.Registerer) (*Router, error) {
+func New(bucket multirange.Bucket, logs, index *Backend, bucketID string, reg prometheus.Registerer) (*Router, error) {
 	if bucket == nil {
 		return nil, errors.New("the bucket cache needs a bucket")
 	}
@@ -70,6 +72,13 @@ func (r *Router) GetRange(ctx context.Context, name string, offset, length int64
 		return c.GetRange(ctx, name, offset, length)
 	}
 	return r.Bucket.GetRange(ctx, name, offset, length)
+}
+
+func (r *Router) MultiGetRange(ctx context.Context, name string, ranges []rangeio.Range) error {
+	if c := r.cacheOf(name); c != nil {
+		return c.MultiGetRange(ctx, name, ranges)
+	}
+	return r.Bucket.MultiGetRange(ctx, name, ranges)
 }
 
 func (r *Router) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {

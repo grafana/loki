@@ -25,14 +25,15 @@ var (
 	StatDatasetPagesPruned = xcap.NewStatisticInt64("dataobj.dataset.pages.pruned", xcap.AggregationTypeSum)
 
 	// StatObjectBytesFetched is the total number of bytes a task fetched through
-	// the bucket. Every request made through a reader from
-	// [NewInstrumentedBucketReader] counts: metadata reads, page reads and
-	// ad-hoc reads.
+	// the bucket. Every request made through a bucket from
+	// [NewInstrumentedBucket], or a reader from [NewInstrumentedBucketReader],
+	// counts: metadata reads, page reads and ad-hoc reads.
 	//
 	// A body records its bytes when the caller closes it. Bytes served from the
-	// metadata prefetch buffer are not counted again. The bucket cache serves some
-	// of these bytes, so only the metrics of the bucket client, which sit below the
-	// cache, count what reached object storage.
+	// metadata prefetch buffer are not counted again. The querier puts the
+	// instrumented bucket under the bucket cache. The statistic therefore counts
+	// only the bytes that reach object storage. It includes the gaps between the
+	// ranges that the coalescing bucket merged. A cache hit counts nothing.
 	StatObjectBytesFetched = xcap.NewStatisticInt64("dataobj.object.bytes.fetched", xcap.AggregationTypeSum)
 
 	// StatObjectsOpened* count the objects that [FromBucket] opened. The compaction state of the key
@@ -43,12 +44,13 @@ var (
 	StatObjectsOpenedCompacted   = xcap.NewStatisticInt64("dataobj.objects.opened.compacted", xcap.AggregationTypeSum)
 	StatObjectsOpenedUncompacted = xcap.NewStatisticInt64("dataobj.objects.opened.uncompacted", xcap.AggregationTypeSum)
 
-	// StatObjectRequests* count every request a task issued through a reader
-	// from [NewInstrumentedBucketReader], successful or not.
+	// StatObjectRequests* count every request a task issued through a bucket
+	// from [NewInstrumentedBucket], or a reader from
+	// [NewInstrumentedBucketReader], successful or not.
 	//
 	// Reads served from memory, such as the prefetch buffer, issue no request and
-	// are not counted. A read that the bucket cache serves counts, like a read of
-	// object storage.
+	// are not counted. The querier puts the instrumented bucket under the bucket
+	// cache, so a read that the cache serves issues no request and is not counted.
 	StatObjectRequestsAttributes = xcap.NewStatisticInt64("dataobj.object.requests.attributes", xcap.AggregationTypeSum)
 	StatObjectRequestsGet        = xcap.NewStatisticInt64("dataobj.object.requests.get", xcap.AggregationTypeSum)
 	StatObjectRequestsGetRange   = xcap.NewStatisticInt64("dataobj.object.requests.get_range", xcap.AggregationTypeSum)
