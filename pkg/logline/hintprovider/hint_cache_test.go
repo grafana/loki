@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -118,17 +117,19 @@ type stubHintProvider struct {
 	minDate time.Time
 
 	calls int
+	exprs []string // expressions the delegate was asked about, in call order
 }
 
 func (s *stubHintProvider) ProvideHints(
 	_ context.Context,
 	_ string,
-	_ syntax.Expr,
+	expr syntax.Expr,
 	_,
 	_ model.Time,
 ) (*Hints, *QueryStats, error) {
 	s.mu.Lock()
 	s.calls++
+	s.exprs = append(s.exprs, expr.String())
 	hints := cloneHints(s.hints)
 	stats := s.stats
 	err := s.err
@@ -145,6 +146,12 @@ func (s *stubHintProvider) Calls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.calls
+}
+
+func (s *stubHintProvider) Exprs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.exprs...)
 }
 
 func (s *stubHintProvider) MinDate() time.Time {
@@ -457,7 +464,7 @@ func TestBuildHintCacheLogicalKey_HashRoundTrip(t *testing.T) {
 	day := "2026-03-10"
 	logical := buildHintCacheLogicalKey(tenant, query, minDate, day)
 
-	require.Equal(t, fmt.Sprintf("logline:%d:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", hintCacheGeneration), logical)
+	require.Equal(t, "logline:2:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", logical)
 	require.Equal(t, cache.HashKey(logical), buildDayWindows(tenant, query,
 		minDate,
 		time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC),
@@ -484,7 +491,10 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	}
 	provider := NewCachingHintProvider(delegate, backend, reg)
 
-	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	// Half the workers ask for the log query and half for a metric query that
+	// wraps it. They share one lookup because both key on the log selector.
+	logExpr := mustParseExpr(t, `{job="api"} |= "error"`)
+	metricExpr := mustParseExpr(t, `count_over_time({job="api"} |= "error" [5m])`)
 	tenant := "tenant-a"
 	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
 	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
@@ -492,7 +502,11 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	const workers = 8
 	var wg sync.WaitGroup
 	errCh := make(chan error, workers)
-	for range workers {
+	for i := range workers {
+		expr := logExpr
+		if i%2 == 1 {
+			expr = metricExpr
+		}
 		wg.Go(func() {
 			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
 			errCh <- err
