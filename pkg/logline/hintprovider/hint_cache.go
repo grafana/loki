@@ -394,17 +394,13 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
-// cacheKeyExpr returns the expression a hint cache entry is computed from and
-// keyed on: the log selector (stream matchers and pipeline) of the query.
+// cacheKeyExpr returns the expression a hint cache entry is keyed on and
+// computed from: the log selector (matchers plus pipeline) of the query.
 //
-// A log query is its own selector. A supported metric query yields the log
-// selector inside its range aggregation, so it shares entries with the log
-// query it wraps. Range, offset, grouping, unwrap and outer aggregations are
-// not part of the selector. A shape with no single selector, such as a binary
-// operation, is its own selector, so it never collides with another key.
-//
-// The delegate must be asked about this expression, not the original one, so
-// that a cached value is a function of its key.
+// A supported metric query yields the selector inside its range aggregation,
+// so it shares entries with the log query it wraps. Any other shape, including
+// a binary operation, is its own selector. The delegate must be asked about
+// this expression, not the original, so a cached value depends only on its key.
 func cacheKeyExpr(expr syntax.Expr) syntax.Expr {
 	if selector, ok := metricLogSelector(expr); ok && selector != nil {
 		return selector

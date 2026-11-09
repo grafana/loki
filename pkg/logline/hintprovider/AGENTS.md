@@ -47,21 +47,18 @@ Query-shape support and hint lookup for logline index lookups.
 6. **Hint cache keys are day-aligned**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
    - Logical format: `logline:2:<tenant>:<log-selector>:<min-date>:<YYYY-MM-DD>`.
-   - `<log-selector>` is `cacheKeyExpr(expr).String()`: the log selector (stream
-     matchers plus pipeline) of the query. A log query is its own selector. A
-     supported metric query yields the selector inside its range aggregation, so
-     it shares entries with the log query it wraps. Range, offset, grouping,
-     `unwrap` and outer aggregations are not part of the key. A shape with no
-     single selector (a binary operation) is keyed on its whole expression.
-   - Anything that changes which needles `SupportedQuery` looks up (a matcher,
-     a line or label filter, a parser, `line_format`) changes the key, so two
-     queries share an entry only when they have the same selector.
+   - `<log-selector>` is `cacheKeyExpr(expr).String()`: the stream matchers plus
+     pipeline. A metric query keys on the selector inside its range
+     aggregation, so it shares entries with the log query it wraps. Range,
+     offset, grouping, `unwrap` and outer aggregations are not part of the key.
+     A shape with no single selector (a binary operation) keys on the whole
+     expression.
    - Bump `hintCacheGeneration` when the key format or the meaning of a cached
      value changes.
-   - On cache miss, the delegate is asked about the selector, never the metric
+   - On a miss the delegate is asked about the selector, never the metric
      wrapper, so a cached value is a function of its key. Each missed day calls
-     the delegate with that full day window (`[day_start, day_end)`), so which
-     query filled an entry does not affect what another query reads from it.
+     the delegate with the full day window (`[day_start, day_end)`), so it does
+     not matter which query filled an entry.
    - Responses are post-filtered back to the caller's `[from, through]` overlap window so API behavior stays window-scoped while cache payloads stay day-complete.
 7. **Cache API keys must be hashed**
    - Always call `cache.HashKey(logicalKey)` before `Fetch`/`Store`.
