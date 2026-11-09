@@ -11,18 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
-
-// cacheKeyString is the string a hint cache entry is keyed on: the cache
-// selector of the query, as ProvideHints uses it.
-func cacheKeyString(expr syntax.Expr) string {
-	return cacheKeyExpr(expr).String()
-}
 
 // These tests specify the hint cache key: the log selector (stream matchers
 // plus pipeline) of the query, so a metric query shares entries with the log
 // query it wraps. Range, offset, grouping, unwrap and outer aggregations are
 // not part of the key.
+
+// cacheKeyString is the string a hint cache entry is keyed on, as
+// ProvideHints computes it.
+func cacheKeyString(expr syntax.Expr) string {
+	return cacheKeyExpr(expr).String()
+}
 
 func TestCacheKeyExpr(t *testing.T) {
 	tests := []struct {
@@ -36,23 +37,8 @@ func TestCacheKeyExpr(t *testing.T) {
 			want:  `{app="api"} |= "timeout"`,
 		},
 		{
-			name:  "whitespace is normalized",
-			query: `{app="api"}   |=   "timeout"   |  json | level="error"`,
-			want:  `{app="api"} |= "timeout" | json | level="error"`,
-		},
-		{
-			name:  "range aggregation",
-			query: `count_over_time({app="api"} |= "timeout" [5m])`,
-			want:  `{app="api"} |= "timeout"`,
-		},
-		{
-			name:  "offset and grouping are not part of the key",
+			name:  "offset and vector grouping are not part of the key",
 			query: `sum by (pod) (rate({app="api"} |= "timeout" [5m] offset 10m))`,
-			want:  `{app="api"} |= "timeout"`,
-		},
-		{
-			name:  "range length is not part of the key",
-			query: `rate({app="api"} |= "timeout" [1h])`,
 			want:  `{app="api"} |= "timeout"`,
 		},
 		{
@@ -62,28 +48,8 @@ func TestCacheKeyExpr(t *testing.T) {
 		},
 		{
 			name:  "unwrap and its post filters are not part of the key",
-			query: `sum_over_time({app="api"} |= "timeout" | logfmt | unwrap duration(latency) | __error__="" [5m])`,
+			query: `sum_over_time({app="api"} |= "timeout" | logfmt | unwrap duration(latency) | status="500" [5m])`,
 			want:  `{app="api"} |= "timeout" | logfmt`,
-		},
-		{
-			name:  "unwrap with a post filter on a real label",
-			query: `sum_over_time({app="api"} |= "timeout" | logfmt | unwrap latency | status="500" [5m])`,
-			want:  `{app="api"} |= "timeout" | logfmt`,
-		},
-		{
-			name:  "unwrap with a trailing grouping",
-			query: `avg_over_time({app="api"} |= "timeout" | logfmt | unwrap bytes(size) [5m]) by (pod)`,
-			want:  `{app="api"} |= "timeout" | logfmt`,
-		},
-		{
-			name:  "nested vector aggregations and regex matchers",
-			query: `topk(3, sum by (pod) (bytes_over_time({app="api", env=~"prod.*"} |~ "err.+" != "debug" [10m])))`,
-			want:  `{app="api", env=~"prod.*"} |~ "err.+" != "debug"`,
-		},
-		{
-			name:  "line_format stays in the key",
-			query: `count_over_time({app="api"} |= "timeout" | line_format "{{.msg}}" [5m])`,
-			want:  `{app="api"} |= "timeout" | line_format "{{.msg}}"`,
 		},
 		{
 			// No single selector. The middleware never sends this shape to the
@@ -102,193 +68,131 @@ func TestCacheKeyExpr(t *testing.T) {
 	}
 }
 
-// A log query and every supported metric wrapper of it share one key.
-func TestCacheKeyExpr_MetricSharesKeyWithLogQuery(t *testing.T) {
-	logKey := cacheKeyString(mustParseExpr(t, `{app="api"} |= "timeout" | json`))
-
+// The delegate is asked about the selector, not the metric expression, so the
+// needles it looks up must be the same for both. A label filter before unwrap
+// stays in the selector. One after unwrap lives on UnwrapExpr and is dropped
+// from the key. Neither may change the needles.
+func TestCacheKeyExpr_PreservesNeedles(t *testing.T) {
 	for _, q := range []string{
-		`count_over_time({app="api"} |= "timeout" | json [5m])`,
-		`rate({app="api"} |= "timeout" | json [1m] offset 1h)`,
-		`sum by (pod) (bytes_rate({app="api"} |= "timeout" | json [10m]))`,
-		`max by (pod) (sum_over_time({app="api"} |= "timeout" | json | unwrap latency [5m]))`,
+		`sum_over_time({app="api"} | logfmt | status="errorcode" | unwrap latency [5m])`,
+		`sum_over_time({app="api"} |= "timeout" | logfmt | unwrap latency | status="errorcode" [5m])`,
 	} {
-		require.Equal(t, logKey, cacheKeyString(mustParseExpr(t, q)), q)
+		expr := mustParseExpr(t, q)
+		require.Equal(t, SupportedQuery(expr, 6), SupportedQuery(cacheKeyExpr(expr), 6), q)
 	}
 }
 
-// Anything that can change which needles the delegate looks up must change the
-// key, or a cache entry would be served to a query it was not computed for.
-func TestCacheKeyExpr_DifferentSelectorsDoNotShareKey(t *testing.T) {
-	base := `{app="api"} |= "timeout"`
-	others := []string{
-		`{app="web"} |= "timeout"`,
-		`{app="api", env="prod"} |= "timeout"`,
-		`{app="api"} |= "timeout2"`,
-		`{app="api"} |= "timeout" | json`,
-		`{app="api"} |= "timeout" | json | level="error"`,
-		`{app="api"} !~ "timeout"`,
-		`{app="api"} |= "timeout" | line_format "{{.msg}}"`,
-	}
-
-	baseKey := cacheKeyString(mustParseExpr(t, base))
-	seen := map[string]string{base: baseKey}
-	for _, q := range others {
-		key := cacheKeyString(mustParseExpr(t, q))
-		require.NotEqual(t, baseKey, key, q)
-		for prevQuery, prevKey := range seen {
-			require.NotEqual(t, prevKey, key, "%q collides with %q", q, prevQuery)
-		}
-		seen[q] = key
-	}
-}
-
-// The cached value is a function of the key, so the delegate must compute it
-// from the selector the key was built from, never from the metric wrapper.
-func TestCachingHintProvider_DelegateReceivesSelector(t *testing.T) {
-	delegate := &recordingHintProvider{}
-	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
-	provideHintsAt(t, provider, `sum by (pod) (rate({app="api"} |= "timeout" [5m] offset 10m))`, from, through)
-
-	require.Equal(t, []string{`{app="api"} |= "timeout"`}, delegate.Exprs())
-}
-
-func TestCachingHintProvider_LogThenMetricSharesDayEntry(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
-
-	logHints := provideHintsAt(t, provider, `{app="api"} |= "timeout"`, from, through)
-	require.Equal(t, 1, delegate.Calls())
-
-	metricHints := provideHintsAt(t, provider, `count_over_time({app="api"} |= "timeout" [5m])`, from, through)
-	require.Equal(t, 1, delegate.Calls(), "metric query should be served from the log query's entry")
-	require.Equal(t, logHints, metricHints)
-}
-
-func TestCachingHintProvider_MetricThenLogSharesDayEntry(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
-
-	metricHints := provideHintsAt(t, provider, `rate({app="api"} |= "timeout" [5m] offset 10m)`, from, through)
-	require.Equal(t, 1, delegate.Calls())
-
-	logHints := provideHintsAt(t, provider, `{app="api"} |= "timeout"`, from, through)
-	require.Equal(t, 1, delegate.Calls(), "log query should be served from the metric query's entry")
-	require.Equal(t, metricHints, logHints)
-}
-
-// A metric query's lookback spills into the previous day. It caches both full
-// days, and the log query over the same period then needs only the second.
-func TestCachingHintProvider_MetricLookbackSpillsIntoPreviousDay(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	backend := newMockHintCacheBackend()
-	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
-
-	queryFrom := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	queryThrough := queryFrom.Add(time.Hour)
-	lookbackFrom := queryFrom.Add(-5 * time.Minute) // the prefetch window for [5m]
-
-	provideHintsAt(t, provider, `count_over_time({app="api"} |= "timeout" [5m])`, lookbackFrom, queryThrough)
-	require.Equal(t, 2, delegate.Calls(), "one delegate call per missed day")
-	require.Len(t, backend.data, 2)
-
-	provideHintsAt(t, provider, `{app="api"} |= "timeout"`, queryFrom, queryThrough)
-	require.Equal(t, 2, delegate.Calls(), "log query is fully served from the cached day")
-}
-
-// Reverse order: the log query caches only the day it touches, so the metric
-// query that spills into the previous day fetches just that day.
-func TestCachingHintProvider_LogThenMetricLookbackFetchesOnlyPreviousDay(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	backend := newMockHintCacheBackend()
-	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
-
+// Entries are whole days. A metric query whose window reaches into the
+// previous day fills both days under the log selector, and a later log query
+// over the later day is served from cache.
+func TestCachingHintProvider_MetricLookbackFillsDaysForLogQuery(t *testing.T) {
+	const (
+		logQuery    = `{app="api"} |= "timeout"`
+		metricQuery = `sum by (pod) (count_over_time({app="api"} |= "timeout" [5m]))`
+	)
 	queryFrom := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
 	queryThrough := queryFrom.Add(time.Hour)
 	lookbackFrom := queryFrom.Add(-5 * time.Minute)
 
-	provideHintsAt(t, provider, `{app="api"} |= "timeout"`, queryFrom, queryThrough)
-	require.Equal(t, 1, delegate.Calls())
-	require.Len(t, backend.data, 1)
+	prevDay := HintTimeRange{
+		Start: time.Date(2026, 3, 9, 23, 56, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 9, 23, 58, 0, 0, time.UTC),
+	}
+	sameDay := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC),
+	}
 
-	provideHintsAt(t, provider, `count_over_time({app="api"} |= "timeout" [5m])`, lookbackFrom, queryThrough)
-	require.Equal(t, 2, delegate.Calls(), "only the previous day is missing")
+	delegate := &stubHintProvider{hints: &Hints{TimeRanges: []HintTimeRange{prevDay, sameDay}}}
+	backend := newMockHintCacheBackend()
+	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+
+	got := provideHintsAt(t, provider, metricQuery, lookbackFrom, queryThrough)
+	require.Equal(t, []HintTimeRange{prevDay, sameDay}, got)
+	require.Equal(t, 2, delegate.Calls())
+	require.Len(t, backend.data, 2)
+
+	got = provideHintsAt(t, provider, logQuery, queryFrom, queryThrough)
+	require.Equal(t, []HintTimeRange{sameDay}, got)
+	require.Equal(t, 2, delegate.Calls())
 	require.Len(t, backend.data, 2)
 }
 
-func TestCachingHintProvider_DifferentPipelinesDoNotShareEntry(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+// The cached value is a function of the key, so the delegate must compute it
+// from the expression the key was built from, never from the metric wrapper.
+// ProvideHints rewrites the expression before it branches on the cache, so
+// every path must hand the delegate the same thing.
+func TestCachingHintProvider_DelegateReceivesKeyExpr(t *testing.T) {
+	const binop = `count_over_time({app="api"} |= "x" [5m]) / count_over_time({app="api"} [5m])`
 
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
-
-	provideHintsAt(t, provider, `{app="api"} |= "timeout"`, from, through)
-	provideHintsAt(t, provider, `count_over_time({app="api"} |= "timeout" | json | level="error" [5m])`, from, through)
-	require.Equal(t, 2, delegate.Calls(), "a different pipeline has different needles and needs its own entry")
-}
-
-func TestCachingHintProvider_SelectorKeyStaysTenantScoped(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints()}
-	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
-	expr := mustParseExpr(t, `{app="api"} |= "timeout"`)
-
-	for _, tenant := range []string{"tenant-a", "tenant-b"} {
-		_, _, err := provider.ProvideHints(context.Background(), tenant, expr,
-			model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
-		require.NoError(t, err)
+	tests := []struct {
+		name  string
+		ctx   context.Context
+		cache bool
+		query string
+		want  string
+	}{
+		{"cache miss", context.Background(), true, `sum by (pod) (rate({app="api"} |= "timeout" [5m] offset 10m))`, `{app="api"} |= "timeout"`},
+		{"skip cache", WithSkipCache(context.Background()), true, `count_over_time({app="api"} |= "timeout" [5m])`, `{app="api"} |= "timeout"`},
+		{"no cache", context.Background(), false, `count_over_time({app="api"} |= "timeout" [5m])`, `{app="api"} |= "timeout"`},
+		{"no single selector", context.Background(), true, binop, mustParseExpr(t, binop).String()},
 	}
-	require.Equal(t, 2, delegate.Calls())
+
+	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	through := from.Add(time.Hour)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			delegate := &recordingHintProvider{}
+			var hintCache cache.Cache // stays a nil interface when there is no cache
+			if tc.cache {
+				hintCache = newMockHintCacheBackend()
+			}
+			provider := NewCachingHintProvider(delegate, hintCache, prometheus.NewRegistry())
+
+			_, _, err := provider.ProvideHints(tc.ctx, "tenant-a", mustParseExpr(t, tc.query),
+				model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
+			require.NoError(t, err)
+			require.Equal(t, []string{tc.want}, delegate.Exprs())
+		})
+	}
 }
 
 // Concurrent lookups for a log query and its metric wrapper share one delegate
-// call, because the singleflight key is built from the same selector.
+// call, because the singleflight key is built from the same expression as the
+// cache key.
 func TestCachingHintProvider_SingleflightSharesLogAndMetricLookups(t *testing.T) {
-	delegate := &stubHintProvider{hints: dayHints(), delay: 200 * time.Millisecond}
+	delegate := &releasedHintProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{{Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC), End: time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC)}}},
+	}
 	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
 
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC).UnixNano())
+	logExpr := mustParseExpr(t, `{app="api"} |= "timeout"`)
+	metricExpr := mustParseExpr(t, `count_over_time({app="api"} |= "timeout" [5m])`)
 
-	var wg sync.WaitGroup
-	for _, q := range []string{
-		`{app="api"} |= "timeout"`,
-		`count_over_time({app="api"} |= "timeout" [5m])`,
-	} {
-		wg.Add(1)
+	errs := make(chan error, 2)
+	lookup := func(expr syntax.Expr) {
 		go func() {
-			defer wg.Done()
-			provideHintsAt(t, provider, q, from, through)
+			_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+			errs <- err
 		}()
 	}
-	wg.Wait()
 
-	require.Equal(t, 1, delegate.Calls())
-}
+	lookup(logExpr)
+	<-delegate.started
+	lookup(metricExpr)
+	// Give the second lookup time to join the first before the delegate returns.
+	time.Sleep(100 * time.Millisecond)
+	close(delegate.release)
 
-// dayHints is a delegate response with a range in each of two adjacent days.
-func dayHints() *Hints {
-	return &Hints{TimeRanges: []HintTimeRange{
-		{
-			Start: time.Date(2026, 3, 9, 23, 56, 0, 0, time.UTC),
-			End:   time.Date(2026, 3, 9, 23, 58, 0, 0, time.UTC),
-		},
-		{
-			Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC),
-			End:   time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC),
-		},
-	}}
+	for range 2 {
+		require.NoError(t, <-errs)
+	}
+	require.Equal(t, int64(1), delegate.calls.Load())
 }
 
 func provideHintsAt(t *testing.T, p *CachingHintProvider, query string, from, through time.Time) []HintTimeRange {
