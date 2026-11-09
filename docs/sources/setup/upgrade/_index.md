@@ -78,6 +78,60 @@ An `ip()` label filter used to keep every log line that already carried an `__er
 
 ### Loki 4.0.0
 
+#### Breaking change: Removal of deprecated storage backends
+
+We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
+- Google BigTable (for chunks and indexes)
+- Apache Cassandra (for chunks and indexes)
+- Amazon DynamoDB (for indexes)
+- gRPC Store (for chunks and indexes)
+- BoltDB (for indexes)
+
+Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
+
+Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more information about how to evolve your schema.
+
+If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
+
+With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can safely remove it completely.
+
+#### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
+
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
+
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
+
+#### Breaking change: Removal of various deprecated configuration options
+
+- The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
+  - `limits_config.ruler_remote_write_url`
+  - `limits_config.ruler_remote_write_timeout`
+  - `limits_config.ruler_remote_write_headers`
+  - `limits_config.ruler_remote_write_relabel_configs`
+  - `limits_config.ruler_remote_write_queue_capacity`
+  - `limits_config.ruler_remote_write_queue_min_shards`
+  - `limits_config.ruler_remote_write_queue_max_shards`
+  - `limits_config.ruler_remote_write_queue_max_samples_per_send`
+  - `limits_config.ruler_remote_write_queue_batch_send_deadline`
+  - `limits_config.ruler_remote_write_queue_min_backoff`
+  - `limits_config.ruler_remote_write_queue_max_backoff`
+  - `limits_config.ruler_remote_write_queue_retry_on_ratelimit`
+  - `limits_config.ruler_remote_write_sigv4_config`
+- The single remote-write `client` setting (`ruler.remote_write.client` in the yaml file) has been removed in favor of the `clients` map (`ruler.remote_write.clients`), which allows configuring one or more remote-write clients keyed by an id. When upgrading, move your existing `client` configuration under `clients` with a chosen key.
+- The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
+- The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
+- The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
+- The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
+- The setting `-store.cache-lookups-older-than` (`chunk_store_config.cache_lookups_older_than` in the yaml file) has been removed as it was only used to cache index entries for legacy storage backends that have been removed as well.
+- The setting `-store.disable-broad-index-queries` (`storage_config.disable_broad_index_queries` in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The `chunks` block (`chunks:` under a `schema_config` `period_config` in the yaml file) has been removed as it only configured chunk tables for legacy storage backends that have been removed as well. TSDB stores chunks directly in object storage. Remove the `chunks` block from every `period_config`.
+- The `tags` setting (`tags:` under the `index` block of a `schema_config` `period_config` in the yaml file) has been removed as it only applied to managed tables of legacy storage backends that have been removed as well. Remove the `tags` setting from every `period_config`.
+
+Use the `deprecated-config-checker` tool to validate your `config.yaml`.
+
 #### Breaking change: Limit allowed S3 storage classes
 
 Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
@@ -124,14 +178,6 @@ The default value of `storage_config.use_thanos_objstore` changed from `false` t
 
 Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
 
-#### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
-
-Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
-
-For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
-
-A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
-
 #### Breaking change: Ruler always wipes its remote-write WAL on startup
 
 The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
@@ -140,35 +186,6 @@ As a result, the following have been removed:
 
 - The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
 - The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
-
-#### Breaking change: Removal of various deprecated configuration options
-
-- The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
-  - `limits_config.ruler_remote_write_url`
-  - `limits_config.ruler_remote_write_timeout`
-  - `limits_config.ruler_remote_write_headers`
-  - `limits_config.ruler_remote_write_relabel_configs`
-  - `limits_config.ruler_remote_write_queue_capacity`
-  - `limits_config.ruler_remote_write_queue_min_shards`
-  - `limits_config.ruler_remote_write_queue_max_shards`
-  - `limits_config.ruler_remote_write_queue_max_samples_per_send`
-  - `limits_config.ruler_remote_write_queue_batch_send_deadline`
-  - `limits_config.ruler_remote_write_queue_min_backoff`
-  - `limits_config.ruler_remote_write_queue_max_backoff`
-  - `limits_config.ruler_remote_write_queue_retry_on_ratelimit`
-  - `limits_config.ruler_remote_write_sigv4_config`
-- The single remote-write `client` setting (`ruler.remote_write.client` in the yaml file) has been removed in favor of the `clients` map (`ruler.remote_write.clients`), which allows configuring one or more remote-write clients keyed by an id. When upgrading, move your existing `client` configuration under `clients` with a chosen key.
-- The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
-- The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
-- The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
-- The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
-- The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
-- The setting `-store.cache-lookups-older-than` (`chunk_store_config.cache_lookups_older_than` in the yaml file) has been removed as it was only used to cache index entries for legacy storage backends that have been removed as well.
-- The setting `-store.disable-broad-index-queries` (`storage_config.disable_broad_index_queries` in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
-- The `chunks` block (`chunks:` under a `schema_config` `period_config` in the yaml file) has been removed as it only configured chunk tables for legacy storage backends that have been removed as well. TSDB stores chunks directly in object storage. Remove the `chunks` block from every `period_config`.
-- The `tags` setting (`tags:` under the `index` block of a `schema_config` `period_config` in the yaml file) has been removed as it only applied to managed tables of legacy storage backends that have been removed as well. Remove the `tags` setting from every `period_config`.
-
-Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
 #### Breaking change: Configure deletes on compactor
 
@@ -191,23 +208,6 @@ With the removal of deprecated storage backends, the Loki jsonnet library is als
 - `$._config.using_tsdb_shipper` - any usages defaulted to `true`
 
 This change may update both command line arguments and the Loki config. If you've been using or overriding one of the three aforementioned configuration options, please remove them and replace them with the new defaults.
-
-#### Breaking change: Removal of deprecated storage backends
-
-We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
-- Google BigTable (for chunks and indexes)
-- Apache Cassandra (for chunks and indexes)
-- Amazon DynamoDB (for indexes)
-- gRPC Store (for chunks and indexes)
-- BoltDB (for indexes)
-
-Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
-
-Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more information about how to evolve your schema.
-
-If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
-
-With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can safely remove it completely.
 
 #### Bloom filters are deprecated
 
@@ -265,19 +265,6 @@ A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 
 
 The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
 
-#### TSDB schema v14
-
-Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
-same chunk format as v13 and changes only the TSDB index format, which adds a
-per-chunk ingestion timestamp used by ingestion-time retention features.
-
-v13 remains the recommended schema. To opt in to v14, add a new `period_config`
-with a future `from` date and `schema: v14`; existing v13 periods are unaffected.
-
-Before configuring any v14 period, upgrade all components to a version that can
-read the v14 index format. Rolling back after v14 data has been written requires
-stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
-
 #### TSDB head WAL chunk records use a new binary format
 
 The ingester writes chunk records to the TSDB head write-ahead log (WAL) in a new format that stores each chunk's ingestion timestamp to support [TSDB schema v14](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#tsdb-schema-v14).
@@ -293,6 +280,20 @@ To roll back after the new format was written, remove the WAL data before you st
 Deleting the WAL discards index entries for chunks flushed since the ingester last built an index from its head, which can cover up to one index period.
 Those chunks stay in object storage but no index references them, so their logs are not queryable.
 Index entries from the other replicas still cover the same log data, unless you delete the WAL on every replica.
+
+#### TSDB schema v14
+
+Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
+same chunk format as v13 and changes only the TSDB index format, which adds a
+per-chunk ingestion timestamp used by ingestion-time retention features.
+
+**v13 remains the recommended schema.** To opt in to v14, add a new `period_config`
+with a future `from` date and `schema: v14`; existing v13 periods are unaffected.
+It is not advised to update to v14, unless you explicitly know what you are doing.
+
+Before configuring any v14 period, upgrade all components to a version that can
+read the v14 index format. Rolling back after v14 data has been written requires
+stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
 #### Distributor Max Receive Limits for uncompressed bytes
 
