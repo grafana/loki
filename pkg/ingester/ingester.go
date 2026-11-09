@@ -359,6 +359,9 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 			return nil, fmt.Errorf("creating WAL folder at %q: %w", path, err)
 		}
+
+		// Must run before newWAL, which creates a segment and hides a stale checkpoint.
+		warnOnStaleCheckpoint(cfg.WAL.Dir, logger)
 	}
 
 	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))

@@ -33,6 +33,55 @@ func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
+// errStaleCheckpoint describes a WAL directory whose latest checkpoint doesn't line up with
+// its segments.
+//
+// Writing checkpoint N first creates segment N+1 and only then truncates segments below N+1,
+// so a healthy directory always satisfies firstSegment <= N+1 <= lastSegment. Anything else
+// (no segments at all, the checkpoint above or far below the segments) means segment files
+// were removed or restored without the checkpoint, e.g. a non-recursive `rm <wal.dir>/*`,
+// which skips directories. Replaying such a checkpoint flushes stale data, and startup
+// cleanup then deletes the older good checkpoint in favour of it.
+var errStaleCheckpoint = errors.New("stale WAL checkpoint")
+
+// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint
+// in dir isn't contiguous with the WAL segments. It never modifies dir.
+//
+// It must run before the WAL is opened: opening it creates a new segment (0 on an empty
+// directory), which hides the evidence, and every restart would narrow the gap by one.
+func checkStaleCheckpoint(dir string) error {
+	_, checkpointIdx, err := lastCheckpoint(dir)
+	if err != nil {
+		return fmt.Errorf("finding latest checkpoint: %w", err)
+	}
+	if checkpointIdx < 0 {
+		return nil
+	}
+	first, last, err := wlog.Segments(dir)
+	if err != nil {
+		return fmt.Errorf("listing WAL segments: %w", err)
+	}
+	if first < 0 {
+		return fmt.Errorf("%w: checkpoint %d exists but there are no WAL segments in %s", errStaleCheckpoint, checkpointIdx, dir)
+	}
+	if next := checkpointIdx + 1; next < first || next > last {
+		return fmt.Errorf("%w: checkpoint %d is not contiguous with WAL segments %d-%d in %s, expected segment %d to exist", errStaleCheckpoint, checkpointIdx, first, last, dir, next)
+	}
+	return nil
+}
+
+// warnOnStaleCheckpoint logs, and otherwise ignores, anything checkStaleCheckpoint finds.
+func warnOnStaleCheckpoint(dir string, logger log.Logger) {
+	err := checkStaleCheckpoint(dir)
+	if err == nil {
+		return
+	}
+	level.Error(logger).Log(
+		"msg", "WAL checkpoint doesn't match the WAL segments, it may be stale and replaying it can flush old data; segment files were probably deleted while the checkpoint was kept",
+		"err", err,
+	)
+}
+
 func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
 	// Proactively clean up stale checkpoints at startup before recovery
 	cleanupCheckpointsAtStartup(dir, logger)
