@@ -53,7 +53,7 @@ type queryFrontendExecutionStack struct {
 	engineOpts           logql.EngineOpts
 	newQuerier           newScriptQuerierFunc
 	handler              http.Handler
-	newHandler           func(*loglinestore.Store) (http.Handler, error)
+	handlerForStore      func(*loglinestore.Store) (http.Handler, error)
 
 	// dataObjQueryStart is the time from which the tenant reads stream-first queries from data objects.
 	// Both the query-frontend and the querier use it. It is zero when the stack reads no data
@@ -220,8 +220,10 @@ func newQueryFrontendStack(t *testing.T, stackName string, o stackOptions, limit
 	if stopper != nil {
 		shutdown = append(shutdown, stopper.Stop)
 	}
-	// Rebind the Logline catalog after load/clear without restarting the transport services.
-	s.newHandler = func(indexStore *loglinestore.Store) (http.Handler, error) {
+	// Logline hint planning runs in the frontend, so a new store also requires a new frontend
+	// handler. Index lookups moved to queriers in https://github.com/grafana/loki-private/issues/2818,
+	// but planning still uses the frontend's catalog. Reuse the existing transport services.
+	s.handlerForStore = func(indexStore *loglinestore.Store) (http.Handler, error) {
 		middleware := tripperware
 		if o.loglineEnabled {
 			cfg := loglinefrontend.Config{Enabled: true, NgramLength: logline.DefaultNgramLength}
@@ -269,7 +271,7 @@ func (s *queryFrontendExecutionStack) setStores(stores *scriptStores) {
 		provider, err = hintprovider.NewLoglineHintProvider(stores.logline, logline.DefaultNgramLength, 0, nil, log.NewNopLogger(), nil)
 		require.NoError(s.t, err)
 	}
-	handler, err := s.newHandler(stores.logline)
+	handler, err := s.handlerForStore(stores.logline)
 	require.NoError(s.t, err)
 
 	s.querierMu.Lock()
