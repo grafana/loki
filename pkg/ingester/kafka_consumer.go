@@ -249,7 +249,7 @@ func groupByStream(records []partition.Record) []streamGroup {
 // its record, so a retryable error stalls the partition until it clears. Only ingester-wide
 // conditions (shutdown, WAL disk throttling) belong here, never one tied to a stream or tenant.
 func canRetry(err error) bool {
-	return errors.Is(err, ErrReadOnly)
+	return errors.Is(err, ErrReadOnly) || errors.Is(err, ErrDiskThrottled)
 }
 
 func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {

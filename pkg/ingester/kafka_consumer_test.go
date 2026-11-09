@@ -393,6 +393,8 @@ func TestCanRetry(t *testing.T) {
 	}{
 		{name: "read only", err: ErrReadOnly, want: true},
 		{name: "wrapped read only", err: fmt.Errorf("push: %w", ErrReadOnly), want: true},
+		{name: "disk throttled", err: ErrDiskThrottled, want: true},
+		{name: "wrapped disk throttled", err: fmt.Errorf("push: %w", ErrDiskThrottled), want: true},
 		{name: "other error", err: errors.New("push failed"), want: false},
 		{name: "per tenant limit", err: httpgrpc.Errorf(http.StatusTooManyRequests, "rate limit exceeded"), want: false},
 		{name: "nil", want: false},
