@@ -216,7 +216,8 @@ const (
 // NewBuilder also returns an error if overrides is nil, so a caller cannot forget to set it. Use
 // [NoTenantOverrides] to give every tenant the default layout.
 //
-// NewBuilder passes opts to the [dataobj.Builder] that writes the objects.
+// NewBuilder passes opts to the underlying [dataobj.Builder], after its own
+// options.
 func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides, opts ...dataobj.BuilderOption) (*Builder, error) {
 	if overrides == nil {
 		return nil, errNilOverrides

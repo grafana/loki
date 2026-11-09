@@ -187,9 +187,9 @@ type TaskSpec struct {
 	// across the sections of runs, from the index stats. It is 0 if the size is
 	// unknown.
 	InputBytes int64 `protobuf:"varint,5,opt,name=input_bytes,json=inputBytes,proto3" json:"input_bytes"`
-	// output_level is the size level of the run that the merge writes. Tasks
-	// split from one merge share the output level of that merge. Only log merge
-	// tasks of the size-leveled strategy set it. Index tasks leave it at 0.
+	// output_level is the size level of the merged run, which can be above the
+	// level of the inputs. Tasks split from one merge share it. Index tasks leave
+	// it at 0.
 	OutputLevel uint32 `protobuf:"varint,6,opt,name=output_level,json=outputLevel,proto3" json:"output_level"`
 }
 

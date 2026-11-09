@@ -367,8 +367,7 @@ type LogMerge struct {
 	// across the sections of runs, from the index stats. It is 0 if the size is
 	// unknown, and then the merge does not check the size of what it reads.
 	InputBytes int64 `protobuf:"varint,6,opt,name=input_bytes,json=inputBytes,proto3" json:"input_bytes,omitempty"`
-	// output_level is the size level that the merge writes into the file
-	// metadata of each output object.
+	// The merge records output_level as the size level of each output object.
 	OutputLevel uint32 `protobuf:"varint,7,opt,name=output_level,json=outputLevel,proto3" json:"output_level,omitempty"`
 }
 

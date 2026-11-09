@@ -34,9 +34,8 @@ type Metadata struct {
 	// A list of types used by sections. The zero index is reserved for an
 	// invalid type.
 	Types []*SectionType `protobuf:"bytes,3,rep,name=types,proto3" json:"types,omitempty"`
-	// compaction describes how the compactor placed this data object. Only the
-	// compactor sets it, and only on log objects. It is absent on all other
-	// objects, such as index objects.
+	// Absent on objects that the compactor did not place, such as index
+	// objects.
 	Compaction *CompactionInfo `protobuf:"bytes,5,opt,name=compaction,proto3" json:"compaction,omitempty"`
 }
 
@@ -100,10 +99,9 @@ func (m *Metadata) GetCompaction() *CompactionInfo {
 	return nil
 }
 
-// CompactionInfo describes how the compactor placed a data object. Each
-// compaction strategy has its own message field. A reader treats an object as
-// placed by a strategy only if the field of that strategy is present, so
-// strategies added later do not read as an existing strategy.
+// Each compaction strategy has its own message field. Readers check for the
+// field of a strategy, so an object of a later strategy never reads as an
+// existing one.
 type CompactionInfo struct {
 	SizeLeveled *SizeLeveledCompaction `protobuf:"bytes,1,opt,name=size_leveled,json=sizeLeveled,proto3" json:"size_leveled,omitempty"`
 }
@@ -147,13 +145,9 @@ func (m *CompactionInfo) GetSizeLeveled() *SizeLeveledCompaction {
 	return nil
 }
 
-// SizeLeveledCompaction describes an object that the size-leveled compaction
-// strategy placed.
 type SizeLeveledCompaction struct {
-	// level is the size level of the run that holds this object. The planner
-	// computed it when it planned the merge. The size level depends on the base
-	// and ratio of the strategy at that time, so a later planner can compute a
-	// different size level for the same run.
+	// The planner computes level from the base and ratio of the strategy at plan
+	// time. A later planner can compute a different level for the same run.
 	Level uint32 `protobuf:"varint,1,opt,name=level,proto3" json:"level,omitempty"`
 }
 

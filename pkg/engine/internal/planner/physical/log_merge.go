@@ -33,8 +33,7 @@ type LogMerge struct {
 	// check.
 	InputBytes int64
 
-	// OutputLevel is the size level that the merge writes into the file
-	// metadata of each output object.
+	// The merge records OutputLevel as the size level of each output object.
 	OutputLevel uint32
 }
 

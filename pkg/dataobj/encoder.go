@@ -31,9 +31,6 @@ type encoder struct {
 	// object, in this order. Types match by [SectionType.Equals].
 	prioritySections []SectionType
 
-	// sizeLeveled is the info that [encoder.metadata] writes into the file
-	// metadata of every object. If sizeLeveled is nil, the encoder writes no
-	// compaction info.
 	sizeLeveled *SizeLeveledCompaction
 
 	typesReady       bool
@@ -317,8 +314,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 }
 
 // Reset resets the Encoder to a fresh state, removing any sections it still
-// holds from the scratch store. Reset keeps the compaction info, so the next
-// object gets the same info.
+// holds from the scratch store. Reset keeps the size-leveled compaction info.
 func (enc *encoder) Reset() {
 	for _, section := range enc.sections {
 		// A failed removal is not actionable: the handle is unreachable either

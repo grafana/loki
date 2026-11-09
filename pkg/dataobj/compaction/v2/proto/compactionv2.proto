@@ -60,9 +60,9 @@ message TaskSpec {
   // unknown.
   int64 input_bytes = 5 [(gogoproto.jsontag) = "input_bytes"];
 
-  // output_level is the size level of the run that the merge writes. Tasks
-  // split from one merge share the output level of that merge. Only log merge
-  // tasks of the size-leveled strategy set it. Index tasks leave it at 0.
+  // output_level is the size level of the merged run, which can be above the
+  // level of the inputs. Tasks split from one merge share it. Index tasks leave
+  // it at 0.
   uint32 output_level = 6 [(gogoproto.jsontag) = "output_level"];
 }
 

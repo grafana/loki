@@ -119,9 +119,8 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 // them without rewriting their data. Every run lands in exactly one merge
 // task or in unmerged.
 //
-// Plan sets the output level of each task to the size level of the summed size
-// of its k input runs. This size level is at least the level of the input runs
-// and can be higher.
+// The output level of a task is the size level of the summed size of its
+// input runs, so it can be above the level of the inputs.
 func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
 	for _, level := range s.groupByLevels(runs) {
 		full := len(level) - len(level)%s.k

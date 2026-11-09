@@ -62,18 +62,16 @@ func WithPrioritySections(types ...SectionType) BuilderOption {
 	}
 }
 
-// SizeLeveledCompaction describes a data object that the size-leveled
-// compaction strategy placed.
+// SizeLeveledCompaction records where the size-leveled compaction strategy
+// placed an object.
 type SizeLeveledCompaction struct {
-	// Level is the size level of the run that holds the object. The planner
-	// computed it when it planned the merge. The size level depends on the base
-	// and ratio of the strategy at that time, so a later planner can compute a
-	// different size level for the same run.
+	// The planner computes Level from the base and ratio of the strategy at
+	// plan time. A later planner can compute a different level for the same run.
 	Level uint32
 }
 
 // WithSizeLeveledCompaction writes c into the file metadata of every object
-// that the builder flushes. The info stays in effect after [Builder.Reset].
+// that the builder flushes, also after [Builder.Reset].
 func WithSizeLeveledCompaction(c SizeLeveledCompaction) BuilderOption {
 	return func(cfg *builderConfig) { cfg.sizeLeveled = &c }
 }

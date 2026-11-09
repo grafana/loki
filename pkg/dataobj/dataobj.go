@@ -274,12 +274,9 @@ func (o *Object) Tenant() (string, error) {
 	return tenants[0], nil
 }
 
-// SizeLeveledCompaction returns the size-leveled compaction info in the file
-// metadata of the object. The bool is false if the size-leveled strategy did
-// not place the object.
-//
-// Index objects, log objects from an older compactor, and objects that another
-// compaction strategy placed have no size-leveled compaction info.
+// SizeLeveledCompaction returns where the size-leveled compaction strategy
+// placed the object. The bool is false for index objects, log objects from an
+// older compactor, and objects that another strategy placed.
 func (o *Object) SizeLeveledCompaction() (SizeLeveledCompaction, bool) {
 	sizeLeveled := o.metadata.GetCompaction().GetSizeLeveled()
 	if sizeLeveled == nil {
