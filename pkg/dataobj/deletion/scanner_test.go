@@ -36,7 +36,7 @@ func TestNewFileListScanner(t *testing.T) {
 	}
 
 	t.Run("returns an error when the bucket does not report modification times", func(t *testing.T) {
-		_, err := NewFileListScanner(objstore.NewInMemBucket(), "index/v0", 2, log.NewNopLogger())
+		_, err := NewFileListScanner(noUpdatedAtBucket{fileBucket: newFileBucket(t)}, "index/v0", 2, log.NewNopLogger())
 		require.ErrorContains(t, err, "modification times")
 	})
 }
@@ -338,8 +338,7 @@ func newTestFileListScanner(t *testing.T, bucket objstore.BucketReader, indexPre
 }
 
 // fileBucket is a filesystem bucket whose objects have a modification time
-// that the test chooses. The in-memory bucket does not report modification
-// times.
+// that the test chooses.
 type fileBucket struct {
 	*filesystem.Bucket
 	root string
@@ -484,7 +483,18 @@ func (b *listFailsDuringOpenBucket) IterWithAttributes(ctx context.Context, dir 
 	}, options...)
 }
 
-// noModTimeBucket reports no modification time for the object name.
+// noUpdatedAtBucket does not support the UpdatedAt iter option, like the Swift
+// and OSS buckets.
+type noUpdatedAtBucket struct {
+	fileBucket
+}
+
+func (noUpdatedAtBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive}
+}
+
+// noModTimeBucket supports the UpdatedAt iter option, but reports no
+// modification time for the object name.
 type noModTimeBucket struct {
 	fileBucket
 	name string
