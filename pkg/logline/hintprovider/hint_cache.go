@@ -391,6 +391,15 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
+// cacheKeyExpr returns the expression string a hint cache entry is keyed on.
+//
+// TODO: key on the log selector (stream matchers and pipeline) so a metric
+// query shares entries with the log query it wraps. Stub: today it is the
+// whole expression, and hint_cache_key_test.go specifies the target.
+func cacheKeyExpr(expr syntax.Expr) string {
+	return expr.String()
+}
+
 func buildHintCacheLogicalKey(tenant, query, minDate, day string) string {
 	return fmt.Sprintf("%s%d:%s:%s:%s:%s", hintCacheKeyPrefix, hintCacheGeneration, tenant, query, minDate, day)
 }
