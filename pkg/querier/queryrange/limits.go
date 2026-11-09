@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	querystats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -338,7 +340,10 @@ func newSplitQuerySizeLimiterMiddleware(
 //   - {job="bar"}
 //
 // When the limiter has a splitter, the bytes of r include the data that the splits of r
-// read again.
+// read again. The bytes of the query limits context include them too: the limiter splits
+// the context range with the same splitter and the step of r, because the client sends
+// the same step for all parts of the context. Overlaps at the boundaries of the client's
+// own parts are not counted.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs []string, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -347,13 +352,20 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs
 	fullCtxBytes := uint64(0)
 	if queryLimitCtx != nil && queryLimitCtx.Expr != "" && !queryLimitCtx.From.IsZero() && !queryLimitCtx.To.IsZero() {
 		var err error
-		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To, nil)
+		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To, func() []queryrangebase.Request {
+			if ctxReq := contextRequest(r, queryLimitCtx); ctxReq != nil {
+				return q.split(tenantIDs, ctxReq)
+			}
+			return nil
+		})
 		if err != nil {
 			return 0, nil
 		}
 	}
 
-	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), q.split(tenantIDs, r))
+	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), func() []queryrangebase.Request {
+		return q.split(tenantIDs, r)
+	})
 	if err != nil {
 		return 0, nil
 	}
@@ -383,9 +395,36 @@ func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) [
 	return splits
 }
 
-// getBytesForQueryAndRange estimates the bytes that query reads in [from, to]. When splits
-// is not empty, the estimate is the bytes that the splits read together.
-func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time, splits []queryrangebase.Request) (uint64, error) {
+// contextRequest returns a request for the range of the query limits context c, with the
+// step of r. It returns nil when r is not a *LokiRequest or the query of c does not parse.
+func contextRequest(r queryrangebase.Request, c *querylimits.Context) *LokiRequest {
+	lokiReq, ok := r.(*LokiRequest)
+	if !ok {
+		return nil
+	}
+	expr, err := syntax.ParseExpr(c.Expr)
+	if err != nil {
+		return nil
+	}
+	return &LokiRequest{
+		Query:     c.Expr,
+		StartTs:   c.From,
+		EndTs:     c.To,
+		Step:      lokiReq.Step,
+		Direction: lokiReq.Direction,
+		Path:      lokiReq.Path,
+		Plan:      &plan.QueryPlan{AST: expr},
+	}
+}
+
+// getBytesForQueryAndRange estimates the bytes that query reads in [from, to].
+//
+// split returns the splits of the query, or nil when the query is not split. When the
+// splits overlap, the estimate is the bytes that they read together.
+// getBytesForQueryAndRange calls split only after the index stats lookup succeeds, and
+// only when a matcher group has a range vector interval. So a range that fails the max
+// query length check is never split.
+func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time, split func() []queryrangebase.Request) (uint64, error) {
 	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return 0, err
@@ -411,6 +450,11 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 	)
 	if err != nil {
 		return 0, err
+	}
+
+	var splits []queryrangebase.Request
+	if split != nil && slices.ContainsFunc(matcherGroups, func(grp syntax.MatcherRange) bool { return grp.Interval > 0 }) {
+		splits = split()
 	}
 
 	combinedStats := stats.MergeStats(matcherStats...)

@@ -880,14 +880,17 @@ func Test_MaxQuerySize(t *testing.T) {
 		return uint64(through.Sub(from) * bytesPerHour / time.Hour)
 	}
 
-	// splitQuery is a 1h metric range query with a 14s step that the size limiter checks
-	// before the split middleware splits it. The split interval is 30m.
+	// splitQuery is a metric range query with a 14s step that the size limiter checks
+	// before the split middleware splits it. It is 1h long unless length is set. The split
+	// interval is 30m.
 	type splitQuery struct {
 		query         string
 		start         time.Time
+		length        time.Duration
 		limit         int
 		iqo           util.IngesterQueryOptions
 		ingesterSplit time.Duration
+		limitsContext *querylimits.Context
 	}
 
 	// runSplitQuery runs q through the size limiter and the split middleware. It returns the
@@ -930,11 +933,19 @@ func Test_MaxQuerySize(t *testing.T) {
 			SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, splitter, nilMetrics),
 		).Wrap(splitHandler)
 
+		length := q.length
+		if length == 0 {
+			length = time.Hour
+		}
+
 		ctx := user.InjectOrgID(context.Background(), "foo")
+		if q.limitsContext != nil {
+			ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, *q.limitsContext)
+		}
 		_, err := handler.Do(ctx, &LokiRequest{
 			Query:     q.query,
 			StartTs:   q.start,
-			EndTs:     q.start.Add(time.Hour),
+			EndTs:     q.start.Add(length),
 			Step:      (14 * time.Second).Milliseconds(),
 			Direction: logproto.BACKWARD,
 			Path:      "/query_range",
@@ -987,6 +998,57 @@ func Test_MaxQuerySize(t *testing.T) {
 			ingesterSplit: 15 * time.Minute,
 		})
 		require.Greater(t, bytesRead, uint64(4*bytesPerHour))
+	})
+
+	t.Run("checks the query limits context with the data that its splits read again", func(t *testing.T) {
+		const query = `sum by (env) (count_over_time({dataset="production"} |= "needle" [6h]))`
+		day := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+		piece := splitQuery{
+			query:  query,
+			start:  day,
+			length: 24 * time.Hour,
+			limitsContext: &querylimits.Context{
+				Expr: query,
+				From: day,
+				To:   day.Add(48 * time.Hour),
+			},
+		}
+
+		piece.limit = 70 * bytesPerHour
+		_, err := runSplitQuery(piece)
+		require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
+
+		piece.limit = 110 * bytesPerHour
+		_, err = runSplitQuery(piece)
+		require.NoError(t, err)
+	})
+
+	t.Run("does not split a query limits context whose index stats lookup fails", func(t *testing.T) {
+		const query = `sum(count_over_time({app="foo"} |= "needle" [5m]))`
+		limits := fakeLimits{maxQueryBytesRead: 1000, maxQueryLength: time.Hour}
+		_, statsResult := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+		statsHandler := NewLimitsMiddleware(limits).Wrap(statsResult)
+		splitter := countingSplitter{calls: atomic.NewInt32(0)}
+		_, promHandler := promqlResult(matrix)
+
+		handler := newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler).Wrap(promHandler)
+
+		ctx := querylimits.InjectQueryLimitsContextIntoContext(user.InjectOrgID(context.Background(), "foo"), querylimits.Context{
+			Expr: query,
+			From: testTime.Add(-25 * 365 * 24 * time.Hour),
+			To:   testTime,
+		})
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			StartTs:   testTime.Add(-30 * time.Minute),
+			EndTs:     testTime,
+			Step:      (time.Minute).Milliseconds(),
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.NoError(t, err)
+		require.Zero(t, splitter.calls.Load())
 	})
 }
 
@@ -1330,4 +1392,14 @@ func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
+}
+
+// countingSplitter counts its calls and never splits.
+type countingSplitter struct {
+	calls *atomic.Int32
+}
+
+func (s countingSplitter) split(time.Time, []string, queryrangebase.Request) ([]queryrangebase.Request, bool) {
+	s.calls.Inc()
+	return nil, false
 }
