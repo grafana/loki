@@ -38,6 +38,7 @@ type HTTPConfig struct {
 	Transport http.RoundTripper `yaml:"-"`
 
 	TLSConfig          TLSConfig `yaml:"tls_config"`
+	ForceAttemptHTTP2  bool      `yaml:"force_attempt_http2"`
 	DisableCompression bool      `yaml:"disable_compression"`
 }
 
@@ -82,6 +83,7 @@ func DefaultTransport(config HTTPConfig) (*http.Transport, error) {
 		// content-encoding set to `gzip`.
 		//
 		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:   tlsConfig,
+		ForceAttemptHTTP2: config.ForceAttemptHTTP2,
 	}, nil
 }

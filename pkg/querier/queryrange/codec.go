@@ -891,6 +891,13 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		if len(request.Shards) > 0 {
 			params["shards"] = request.Shards
 		}
+		if len(request.HintRanges) > 0 {
+			hintRanges, err := marshalHintTimeRanges(request.HintRanges)
+			if err != nil {
+				return nil, err
+			}
+			params["hintRanges"] = []string{string(hintRanges)}
+		}
 		if request.DataObjOptions.GetEligible() {
 			params[dataObjEligibleParam] = []string{"true"}
 		}
@@ -1890,8 +1897,8 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 				Query:   r.GetQuery(),
 				Limit:   uint32(r.GetLimit()),
 				Step:    r.GetStep(),
-				StartTs: time.UnixMilli(r.GetStart().UnixNano()),
-				EndTs:   time.UnixMilli(r.GetEnd().UnixNano()),
+				StartTs: r.GetStart(),
+				EndTs:   r.GetEnd(),
 			},
 		}, nil
 	case *LokiInstantRequest:
@@ -2023,7 +2030,7 @@ func (p paramsInstantWrapper) Shards() []string {
 }
 
 func (p paramsInstantWrapper) GetHintRanges() []logproto.HintTimeRange {
-	return nil
+	return p.HintRanges
 }
 
 func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
@@ -2468,6 +2475,11 @@ func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 		return nil, err
 	}
 
+	hintRanges, err := parseHintTimeRanges(r)
+	if err != nil {
+		return nil, err
+	}
+
 	return &LokiInstantRequest{
 		Query:          req.Query,
 		Limit:          req.Limit,
@@ -2476,6 +2488,7 @@ func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 		Path:           r.URL.Path,
 		Shards:         req.Shards,
 		StoreChunks:    storeChunks,
+		HintRanges:     hintRanges,
 		DataObjOptions: parseDataObjOptions(r),
 		Plan: &plan.QueryPlan{
 			AST: parsed,

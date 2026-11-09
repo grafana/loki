@@ -37,6 +37,23 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Limit allowed S3 storage classes
+
+Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+If you have been using such classes, you must switch to a supported class before upgrading.
+
+`REDUCED_REDUNDANCY` is only intended for use with MinIO.
+
+### Ingester WAL entries records have a new version
+
+Ingesters now write WAL entries records as `WALRecordEntriesV4`, which adds the timestamp of the
+Kafka record the entries were ingested from. Older versions can't read this record version.
+If you roll an ingester back, it can't replay the WAL records written since the upgrade. It logs
+`Recovered from WAL segments with errors`, increments
+`loki_ingester_wal_corruptions_total{type="segment"}`, and starts without them, so entries that
+were not flushed yet are lost. To avoid that, shut the ingester down with a flush before rolling
+back, for example with `/ingester/shutdown?flush=true`.
+
 ### Statistics in detected-field query responses
 
 The `/loki/api/v1/detected_fields` and `/loki/api/v1/detected_field/{name}/values` JSON

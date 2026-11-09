@@ -55,8 +55,6 @@ func (r *Registry) Register(registration Registration) error {
 		registration.Factory == nil {
 		return errors.New("yaml: plugin registration requires an API, name, and factory")
 	}
-	registration.API = CanonicalAPI(registration.API)
-	registration.Name = CanonicalName(registration.API, registration.Name)
 	if registration.Version != "" {
 		version, ok := normalizeVersion(registration.Version)
 		if !ok {
@@ -96,7 +94,6 @@ func (r *Registry) CreateShortForm(api, value string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("yaml: plugin %q: %w", api, err)
 	}
-	api = CanonicalAPI(api)
 	name := cfg["name"].(string)
 	r.RLock()
 	_, registered := r.registrations[api][name]
@@ -113,7 +110,6 @@ func (r *Registry) CreateShortForm(api, value string) (any, error) {
 
 // Create resolves and constructs a configured implementation.
 func (r *Registry) Create(api string, cfg map[string]any) (any, error) {
-	api = CanonicalAPI(api)
 	r.RLock()
 	name := r.defaults[api]
 	r.RUnlock()
@@ -124,7 +120,6 @@ func (r *Registry) Create(api string, cfg map[string]any) (any, error) {
 			return nil, fmt.Errorf(
 				"yaml: plugin %q name must be a non-empty string", api)
 		}
-		name = CanonicalName(api, name)
 	}
 	if name == "" {
 		return nil, fmt.Errorf(
