@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -619,7 +620,7 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, func(_ *deleteRequest) bool {
+			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, model.Interval{Start: 0, End: math.MaxInt64}, func(_ *deleteRequest) bool {
 				return false
 			})
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)

@@ -23,6 +23,11 @@ func ExtractIntervalFromTableName(tableName string) model.Interval {
 		Start: 0,
 		End:   model.Now(),
 	}
+	// The table number is the trailing %05d of the name. Anything shorter cannot
+	// carry one, and slicing it out would panic; keep the unbounded interval.
+	if len(tableName) < 5 {
+		return interval
+	}
 	tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
 	if err != nil {
 		return interval
