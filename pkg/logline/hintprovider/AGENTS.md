@@ -102,8 +102,10 @@ Query-shape support and hint lookup for logline index lookups.
       to their bucket's range through `logline.DocumentLayout`. Cells of one
       bucket in different document shards give one range; the shard is not
       used yet.
-    - `checkDocumentLayout` requires the footer's day to be the meta's date,
-      and the interval and shard bits to match `meta.json` when the meta
-      carries them (metas rebuilt from the wire carry only the date). A
+    - `checkLayoutDay` requires the footer's day to be the meta's date. A
       mismatch fails the lookup, so the query runs without hints instead of
       getting ranges on the wrong day.
+    - The interval and shard bits are not compared with `meta.json`. Metas
+      reach the provider through `logproto.IndexMeta`, which carries only the
+      date (inside the index ID), and ranges take both values from the footer.
+      The v5 merge guard is where `meta.json` must agree with the footer.

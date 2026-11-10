@@ -311,7 +311,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 			}
 			layout, hasLayout := logline.DocumentLayout(indexReader)
 			if hasLayout {
-				if err := checkDocumentLayout(meta, layout); err != nil {
+				if err := checkLayoutDay(meta, layout); err != nil {
 					_ = indexReader.Close()
 					return fmt.Errorf("index %s: %w", meta.ID(), err)
 				}
@@ -405,21 +405,13 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 	return ranges
 }
 
-// checkDocumentLayout cross-checks a v5 footer's layout against meta.json: the
-// day must be the index's date, and the interval and shard bits must match
-// when meta records them. Metas rebuilt from the wire carry only the date.
-func checkDocumentLayout(meta store.Meta, layout format.DocumentLayout) error {
+// checkLayoutDay requires a v5 footer's day to be the index's meta.json date.
+// Only the day can be checked: metas reach the provider through
+// logproto.IndexMeta, which keeps the date in the index ID but carries no
+// document interval or shard bits. Ranges take both from the footer.
+func checkLayoutDay(meta store.Meta, layout format.DocumentLayout) error {
 	if got := layout.DayStart.UTC().Format(time.DateOnly); got != meta.Date {
 		return fmt.Errorf("footer day %s differs from meta date %s", got, meta.Date)
-	}
-	if meta.DocumentInterval == 0 {
-		return nil
-	}
-	if layout.Interval != meta.DocumentInterval {
-		return fmt.Errorf("footer document interval %v differs from meta document_interval %v", layout.Interval, meta.DocumentInterval)
-	}
-	if int(layout.ShardBits) != meta.DocumentShardBits {
-		return fmt.Errorf("footer document shard bits %d differ from meta document_shard_bits %d", layout.ShardBits, meta.DocumentShardBits)
 	}
 	return nil
 }

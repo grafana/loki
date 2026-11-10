@@ -152,7 +152,7 @@ func TestRangesForCells(t *testing.T) {
 	require.Contains(t, ranges[2].Source, "doc=172799,")
 }
 
-func TestCheckDocumentLayout(t *testing.T) {
+func TestCheckLayoutDay(t *testing.T) {
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
 	layout := format.DocumentLayout{Interval: v5TestInterval, ShardBits: v5TestShardBits, DayStart: day}
 
@@ -161,14 +161,11 @@ func TestCheckDocumentLayout(t *testing.T) {
 		meta store.Meta
 		want string
 	}{
-		{name: "matching meta", meta: store.Meta{Date: "2026-02-26", DocumentInterval: v5TestInterval, DocumentShardBits: v5TestShardBits}},
-		{name: "wire meta without a layout", meta: store.Meta{Date: "2026-02-26"}},
-		{name: "different date", meta: store.Meta{Date: "2026-02-25"}, want: "footer day 2026-02-26 differs from meta date 2026-02-25"},
-		{name: "different interval", meta: store.Meta{Date: "2026-02-26", DocumentInterval: 8 * time.Second, DocumentShardBits: v5TestShardBits}, want: "footer document interval 16s differs"},
-		{name: "different shard bits", meta: store.Meta{Date: "2026-02-26", DocumentInterval: v5TestInterval, DocumentShardBits: 4}, want: "footer document shard bits 5 differ"},
+		{name: "same date", meta: fromProtoIndexMeta(toProtoIndexMeta(store.Meta{Date: "2026-02-26", StorageID: "aaaaaaaaaaaaaaaa"}))},
+		{name: "different date", meta: fromProtoIndexMeta(toProtoIndexMeta(store.Meta{Date: "2026-02-25", StorageID: "aaaaaaaaaaaaaaaa"})), want: "footer day 2026-02-26 differs from meta date 2026-02-25"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkDocumentLayout(tt.meta, layout)
+			err := checkLayoutDay(tt.meta, layout)
 			if tt.want == "" {
 				require.NoError(t, err)
 				return
