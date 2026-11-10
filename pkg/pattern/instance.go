@@ -111,7 +111,7 @@ func newInstance(
 
 // Push pushes the log entries in the given PushRequest to the appropriate streams.
 // It returns an error if any error occurs during the push operation.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time.Time) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
@@ -126,7 +126,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries, time.Now())
+		i.Observe(ctx, reqStream.Labels, reqStream.Entries, now)
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
