@@ -223,6 +223,10 @@ func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 	tm.syncManager.Wait()
+	// Wait for a query readiness run started from outside the loop, such as the
+	// index gateway's preload, which the cancel above ends.
+	tm.queryReadinessMtx.Lock()
+	defer tm.queryReadinessMtx.Unlock()
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
@@ -353,10 +357,19 @@ func (tm *tableManager) cleanupCache() error {
 	return nil
 }
 
-// EnsureQueryReadiness implements TableManager.
+// EnsureQueryReadiness implements TableManager. Stop cancels it and waits for
+// it to return, and it does nothing once the table manager is stopped, so it
+// never downloads into closed tables.
 func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(tm.ctx, cancel)()
+
 	tm.queryReadinessMtx.Lock()
 	defer tm.queryReadinessMtx.Unlock()
+	if err := tm.ctx.Err(); err != nil {
+		return err
+	}
 	return tm.ensureQueryReadiness(ctx)
 }
 

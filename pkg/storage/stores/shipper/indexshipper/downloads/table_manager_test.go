@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -589,4 +590,59 @@ func TestTableManager_SkipInitialQueryReadiness(t *testing.T) {
 			require.Equal(t, wantCalls+1, client.listTablesCalls)
 		})
 	}
+}
+
+// blockingIndexStorageClient blocks ListTables until its context is done.
+type blockingIndexStorageClient struct {
+	mockIndexStorageClient
+	listTablesCalls atomic.Int32
+	listing         chan struct{}
+}
+
+func (m *blockingIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	if m.listTablesCalls.Add(1) == 1 {
+		close(m.listing)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestTableManager_StopEndsQueryReadiness(t *testing.T) {
+	tableRange := config.TableRange{Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{}}
+	client := &blockingIndexStorageClient{listing: make(chan struct{})}
+	cfg := Config{
+		CacheDir:                  t.TempDir(),
+		SyncInterval:              time.Hour,
+		CacheTTL:                  time.Hour,
+		DownloadTimeout:           time.Minute,
+		Limits:                    &mockLimits{queryReadyIndexNumDaysDefault: 2},
+		SkipInitialQueryReadiness: true,
+	}
+	tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+		return openMockIndexFile(t, s), nil
+	}, client, nil, tableRange, nil, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// A run with a context that is never cancelled, as the preload's would be
+	// if the process stopped while it was still loading.
+	readinessErr := make(chan error, 1)
+	go func() { readinessErr <- tm.EnsureQueryReadiness(context.Background()) }()
+	<-client.listing
+
+	stopped := make(chan struct{})
+	go func() {
+		tm.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stop did not end the running query readiness")
+	}
+	require.ErrorIs(t, <-readinessErr, context.Canceled)
+
+	// Once stopped, query readiness does nothing.
+	require.ErrorIs(t, tm.EnsureQueryReadiness(context.Background()), context.Canceled)
+	require.Equal(t, int32(1), client.listTablesCalls.Load())
 }
