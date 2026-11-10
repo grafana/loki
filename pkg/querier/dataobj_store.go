@@ -46,6 +46,13 @@ func WithDataObjRangeConfig(cfg rangeio.Config) DataObjStoreOption {
 	return func(s *DataObjStore) { s.rangeConfig = cfg }
 }
 
+// WithDataObjInstrumentedBucket tells the store that its bucket records its own object-store requests, for
+// example a bucket from [dataobj.NewInstrumentedBucket]. The store then does not wrap the bucket in an
+// instrumented reader, so each request counts once.
+func WithDataObjInstrumentedBucket() DataObjStoreOption {
+	return func(s *DataObjStore) { s.bucketInstrumented = true }
+}
+
 // WithDataObjMaxConcurrency sets how many logs sections a query scans at once. A value below one
 // becomes one.
 func WithDataObjMaxConcurrency(n int) DataObjStoreOption {
@@ -76,6 +83,9 @@ type DataObjStore struct {
 	maxConcurrency int
 	rangeConfig    rangeio.Config
 	metadataCache  dataobj.MetadataCache
+
+	// bucketInstrumented is true when the bucket records its own requests.
+	bucketInstrumented bool
 }
 
 // NewDataObjStore returns a [Store] that serves stream-first metric queries from the data objects
@@ -197,7 +207,11 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
-	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, s.metadataCache)
+	var openOpts []dataobj.OpenOption
+	if s.bucketInstrumented {
+		openOpts = append(openOpts, dataobj.WithInstrumentedBucket())
+	}
+	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, s.metadataCache, openOpts...)
 	tasks := dataobjread.NewPlanner(s.metastore, objects, filterer).Plan(ctx, query)
 
 	// The dataset layer records its statistics into the region the context carries, and nothing

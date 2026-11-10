@@ -46,7 +46,7 @@ func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byt
 	return nil
 }
 
-func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (c *postingsTestCache) Fetch(_ context.Context, keys []string, _ ...cache.Option) ([]string, [][]byte, []string, error) {
 	c.fetches++
 	if c.fetchErr != nil {
 		return nil, nil, nil, c.fetchErr

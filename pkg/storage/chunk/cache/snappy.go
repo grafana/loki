@@ -32,8 +32,8 @@ func (s *snappyCache) Store(ctx context.Context, keys []string, bufs [][]byte) e
 	return s.next.Store(ctx, keys, cs)
 }
 
-func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	found, bufs, missing, err := s.next.Fetch(ctx, keys)
+func (s *snappyCache) Fetch(ctx context.Context, keys []string, opts ...Option) ([]string, [][]byte, []string, error) {
+	found, bufs, missing, err := s.next.Fetch(ctx, keys, opts...)
 	ds := make([][]byte, 0, len(bufs))
 	for _, buf := range bufs {
 		d, err := snappy.Decode(nil, buf)

@@ -33,9 +33,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketcache"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
@@ -556,7 +559,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// data-object store.
 	var dataObjStore querier.Store
 	if t.dataObjMetastore != nil {
-		var storeOpts []querier.DataObjStoreOption
+		// The bucket of the querier records its own requests.
+		storeOpts := []querier.DataObjStoreOption{querier.WithDataObjInstrumentedBucket()}
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
@@ -811,30 +815,74 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the caches of the data objects: the metadata caches, which share one backend, and the bucket
+// caches of the log objects and the index objects, which have one backend each. It returns no service when data objects
+// are disabled or no cache is configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
-	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+	cfg := t.Cfg.DataObj
+	metadataCacheEnabled := cache.IsCacheConfigured(cfg.MetadataCache)
+	logsBucketCacheEnabled := cache.IsCacheConfigured(cfg.LogsBucketCache.Config)
+	indexBucketCacheEnabled := cache.IsCacheConfigured(cfg.IndexBucketCache.Config)
+	if !cfg.Enabled || (!metadataCacheEnabled && !logsBucketCacheEnabled && !indexBucketCacheEnabled) {
 		return nil, nil
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")
+	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
 
-	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+	// A bucket cache keeps the object attributes in the metadata backend, or in its own backend without one.
+	var bucketMetadataBackend cache.Cache
+	if metadataCacheEnabled {
+		backend, maxItemBytes, err := metadatacache.NewBackend(cfg.MetadataCache, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+		}
+
+		t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+		t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+		t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+		bucketMetadataBackend = backend
 	}
 
-	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+	newBucketCacheBackend := func(cfg bucketcache.Config) (*bucketcache.Backend, error) {
+		if !cache.IsCacheConfigured(cfg.Config) {
+			return nil, nil
+		}
 
-	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
+		subranges, err := cache.New(cfg.Config, prometheus.DefaultRegisterer, logger, stats.DataObjBucketCache, constants.Loki)
+		if err != nil {
+			return nil, err
+		}
+		subranges = cache.StopOnce(subranges)
+
+		attributesBackend := bucketMetadataBackend
+		if attributesBackend == nil {
+			attributesBackend = subranges
+		}
+		attributes := metadatacache.NewCache(attributesBackend, 0, metadatacache.KindObjectAttributes, cacheMetrics, logger)
+		return &bucketcache.Backend{Config: cfg, Subranges: subranges, Attributes: attributes}, nil
+	}
+
+	var err error
+	if t.dataObjLogsBucketCache, err = newBucketCacheBackend(cfg.LogsBucketCache); err != nil {
+		return nil, fmt.Errorf("creating data object logs bucket cache: %w", err)
+	}
+	if t.dataObjIndexBucketCache, err = newBucketCacheBackend(cfg.IndexBucketCache); err != nil {
+		return nil, fmt.Errorf("creating data object index bucket cache: %w", err)
+	}
+
+	// The modules that use the caches depend on this one, so they stop before it. Every backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
-		t.dataObjIndexCache.Stop()
-		t.dataObjTOCCache.Stop()
+		if metadataCacheEnabled {
+			t.dataObjLogsCache.Stop()
+			t.dataObjIndexCache.Stop()
+			t.dataObjTOCCache.Stop()
+		}
+		for _, backend := range []*bucketcache.Backend{t.dataObjLogsBucketCache, t.dataObjIndexBucketCache} {
+			if backend != nil {
+				backend.Subranges.Stop()
+			}
+		}
 		return nil
 	}), nil
 }
@@ -846,13 +894,27 @@ func (t *Loki) initDataObjMetastore() (services.Service, error) {
 		return nil, nil
 	}
 
-	bucket, err := t.getDataObjBucket("dataobj-querier")
+	objectStore, err := t.getDataObjBucket("dataobj-querier")
 	if err != nil {
 		return nil, err
 	}
 
+	// The instrumented bucket counts the requests that reach object storage. The coalescing bucket merges the ranges
+	// of a multi-range read, and the bucket caches sit above it, so they see the exact ranges. The object store metrics
+	// and traces sit below all of them.
+	bucket := multirange.NewCoalescingBucket(dataobj.NewInstrumentedBucket(objectStore), prometheus.DefaultRegisterer)
+
+	// The bucket caches wrap the bucket once, for the data objects and the metastore.
+	if t.dataObjLogsBucketCache != nil || t.dataObjIndexBucketCache != nil {
+		bucketID := bucketcache.BucketID(bucket.Name(), t.Cfg.DataObj.StorageBucketPrefix)
+		bucket, err = bucketcache.New(bucket, t.dataObjLogsBucketCache, t.dataObjIndexBucketCache, bucketID, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, fmt.Errorf("creating data object bucket cache: %w", err)
+		}
+	}
+
 	// A nil cache must not reach WithIndexMetadataCache: it takes an interface, so it would hold a typed nil pointer.
-	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache)}
+	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache), metastore.WithInstrumentedBucket()}
 	if t.dataObjIndexCache != nil {
 		metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(t.dataObjIndexCache))
 	}

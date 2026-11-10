@@ -41,6 +41,9 @@ type OpenObjects struct {
 	// shared across queries, and nil when caching is off.
 	metadataCache dataobj.MetadataCache
 
+	// openOptions are passed to every [dataobj.FromBucket] call.
+	openOptions []dataobj.OpenOption
+
 	mu     sync.Mutex
 	byPath map[string]*openObject
 
@@ -48,12 +51,13 @@ type OpenObjects struct {
 	opening singleflight.Group
 }
 
-func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, metadataCache dataobj.MetadataCache) *OpenObjects {
+func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, metadataCache dataobj.MetadataCache, openOptions ...dataobj.OpenOption) *OpenObjects {
 	return &OpenObjects{
 		bucket:        bucket,
 		tenant:        tenant,
 		prefetchBytes: prefetchBytes,
 		metadataCache: metadataCache,
+		openOptions:   openOptions,
 		byPath:        map[string]*openObject{},
 	}
 }
@@ -97,7 +101,7 @@ func (o *OpenObjects) open(ctx context.Context, path string) (*openObject, error
 
 	// Open outside the lock so concurrent opens of different objects do not serialize on the
 	// object-storage read.
-	opened, err := dataobj.FromBucket(ctx, o.bucket, path, o.prefetchBytes, dataobj.WithMetadataCache(o.metadataCache))
+	opened, err := dataobj.FromBucket(ctx, o.bucket, path, o.prefetchBytes, append([]dataobj.OpenOption{dataobj.WithMetadataCache(o.metadataCache)}, o.openOptions...)...)
 	if err != nil {
 		return nil, fmt.Errorf("opening data object %q: %w", path, err)
 	}

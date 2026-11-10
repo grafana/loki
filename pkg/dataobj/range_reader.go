@@ -7,6 +7,9 @@ import (
 	"math"
 
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 // rangeReader is an interface that can read a range of bytes from an object.
@@ -21,6 +24,10 @@ type rangeReader interface {
 	// ReadRange returns a reader over a range of bytes. Callers may create
 	// multiple concurrent instances of ReadRange.
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
+
+	// ReadRanges fills each range with the bytes at its offset in the object.
+	// It reads all ranges in one call, so a reader can coalesce them.
+	ReadRanges(ctx context.Context, ranges []rangeio.Range) error
 }
 
 // bucketRangeReader reads an object from a bucket. It records no statistics.
@@ -44,6 +51,10 @@ func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
 
 func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
 	return rr.bucket.GetRange(ctx, rr.path, offset, length)
+}
+
+func (rr *bucketRangeReader) ReadRanges(ctx context.Context, ranges []rangeio.Range) error {
+	return multirange.Read(ctx, rr.bucket, rr.path, ranges)
 }
 
 type readerAtRangeReader struct {
@@ -72,6 +83,23 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
 	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, offset, length)}, nil
+}
+
+func (rr *readerAtRangeReader) ReadRanges(ctx context.Context, ranges []rangeio.Range) error {
+	return rangeio.ReadRanges(ctx, rangeReaderAdapter{rr}, ranges)
+}
+
+// rangeReaderAdapter reads one range through the ReadRange method of a rangeReader.
+type rangeReaderAdapter struct{ rr rangeReader }
+
+func (a rangeReaderAdapter) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
+	rc, err := a.rr.ReadRange(ctx, r.Offset, r.Len())
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+
+	return io.ReadFull(rc, r.Data)
 }
 
 // nopCloserWithObjectSize reads a section of an object and reports the size

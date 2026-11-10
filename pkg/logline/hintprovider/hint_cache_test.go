@@ -55,7 +55,7 @@ func (m *mockHintCacheBackend) Store(_ context.Context, keys []string, bufs [][]
 	return nil
 }
 
-func (m *mockHintCacheBackend) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (m *mockHintCacheBackend) Fetch(_ context.Context, keys []string, _ ...cache.Option) ([]string, [][]byte, []string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

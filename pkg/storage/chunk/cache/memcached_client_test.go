@@ -11,6 +11,9 @@ import (
 type mockMemcache struct {
 	sync.RWMutex
 	contents map[string][]byte
+
+	// allocator is the allocator that the last GetMulti call received.
+	allocator memcache.Allocator
 }
 
 func newMockMemcache() *mockMemcache {
@@ -19,7 +22,16 @@ func newMockMemcache() *mockMemcache {
 	}
 }
 
-func (m *mockMemcache) GetMulti(_ context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+func (m *mockMemcache) GetMulti(_ context.Context, keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error) {
+	var options memcache.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	m.Lock()
+	m.allocator = options.Alloc
+	m.Unlock()
+
 	m.RLock()
 	defer m.RUnlock()
 	result := map[string]*memcache.Item{}

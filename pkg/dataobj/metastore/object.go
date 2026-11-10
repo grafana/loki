@@ -28,6 +28,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/multirange"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -79,6 +80,13 @@ func WithTOCResolverCache(cache *metadatacache.Cache) ObjectMetastoreOption {
 	return func(m *ObjectMetastore) { m.tocCache = cache }
 }
 
+// WithInstrumentedBucket tells the metastore that its bucket records its own object-store requests, for example a
+// bucket from [dataobj.NewInstrumentedBucket]. The metastore then does not wrap the bucket in an instrumented reader,
+// so each request counts once.
+func WithInstrumentedBucket() ObjectMetastoreOption {
+	return func(m *ObjectMetastore) { m.bucketInstrumented = true }
+}
+
 // ObjectMetastore is a metastore that stores data objects in object storage.
 //
 // It is also a service that refreshes the ToCs it keeps in memory. Run it when the ToC resolver is enabled in the
@@ -90,6 +98,9 @@ type ObjectMetastore struct {
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
+
+	// bucketInstrumented is true when the bucket records its own requests, so the metastore does not wrap it.
+	bucketInstrumented bool
 
 	// tocResolver serves every ToC the metastore reads. It is never nil.
 	tocResolver *TOCResolver
@@ -313,13 +324,16 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, reg pr
 	}
 
 	store := &ObjectMetastore{
-		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
+		bucket:      NewIndexBucket(b),
 		parallelism: 64,
 		logger:      logger,
 		metrics:     NewObjectMetastoreMetrics(reg),
 	}
 	for _, opt := range opts {
 		opt(store)
+	}
+	if !store.bucketInstrumented {
+		store.bucket = dataobj.NewInstrumentedBucketReader(store.bucket)
 	}
 
 	// The resolver reads the bucket of the metastore. Its cache keys carry the same index storage prefix.
@@ -704,7 +718,11 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
+	openOpts := []dataobj.OpenOption{dataobj.WithMetadataCache(m.indexMetadataCache)}
+	if m.bucketInstrumented {
+		openOpts = append(openOpts, dataobj.WithInstrumentedBucket())
+	}
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, openOpts...)
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
@@ -838,11 +856,11 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 // tables of contents.
 const IndexStoragePrefix = "index/v0"
 
-// NewIndexBucket returns b scoped to [IndexStoragePrefix].
+// NewIndexBucket returns b scoped to [IndexStoragePrefix]. When b is a [multirange.Bucket], so is the result.
 //
 // Use it to write or read index objects and tables of contents without a
 // metastore. [NewObjectMetastore] adds the prefix itself, so pass it the
 // unwrapped bucket.
 func NewIndexBucket(b objstore.Bucket) objstore.Bucket {
-	return objstore.NewPrefixedBucket(b, IndexStoragePrefix)
+	return multirange.NewPrefixedBucket(b, IndexStoragePrefix)
 }
