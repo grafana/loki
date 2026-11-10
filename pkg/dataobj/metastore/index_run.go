@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 
@@ -11,35 +10,36 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
-// logicalIndex is the index objects that a query reads as one index: the index
-// objects of one run, or one index object of no run.
+// indexRun is the index objects of one run, which a query reads as one index.
+// An index object of no run is a run of its own.
 //
 // A run splits the postings of one logs section across its index objects. A
 // stream matches only if each matcher matches one of its labels, and the labels
 // can sit in different index objects. So a query must read all index objects of
 // a run with one stream selector.
-type logicalIndex struct {
+type indexRun struct {
 	// entries is never empty. Its entries share TableOfContentsPath and
 	// RunID.
 	entries []IndexEntry
 }
 
-// logicalIndexes groups entries into logical indexes. Each entry of no run is a
-// logical index of its own. Entries of one run form one logical index. The
-// result is in the order of the first path of each logical index.
-func logicalIndexes(entries []IndexEntry) []logicalIndex {
+// indexRuns groups entries into index runs. Each entry of no run is a run of
+// its own. The runs and their entries keep the order of entries. The order
+// does not matter to a query, because the stream selector unions the postings
+// of every index object of a run.
+func indexRuns(entries []IndexEntry) []indexRun {
 	type runKey struct {
 		tocPath string
 		runID   indexpointers.RunID
 	}
 
 	var (
-		out  []logicalIndex
+		out  []indexRun
 		runs = make(map[runKey]int)
 	)
 	for _, entry := range entries {
 		if entry.RunID == 0 {
-			out = append(out, logicalIndex{entries: []IndexEntry{entry}})
+			out = append(out, indexRun{entries: []IndexEntry{entry}})
 			continue
 		}
 		key := runKey{tocPath: entry.TableOfContentsPath, runID: entry.RunID}
@@ -48,26 +48,21 @@ func logicalIndexes(entries []IndexEntry) []logicalIndex {
 			continue
 		}
 		runs[key] = len(out)
-		out = append(out, logicalIndex{entries: []IndexEntry{entry}})
+		out = append(out, indexRun{entries: []IndexEntry{entry}})
 	}
-
-	for _, li := range out {
-		slices.SortFunc(li.entries, func(a, b IndexEntry) int { return cmp.Compare(a.Path, b.Path) })
-	}
-	slices.SortFunc(out, func(a, b logicalIndex) int { return cmp.Compare(a.entries[0].Path, b.entries[0].Path) })
 	return out
 }
 
-// String describes li for logs.
-func (li logicalIndex) String() string {
-	first := li.entries[0]
+// String describes r for logs.
+func (r indexRun) String() string {
+	first := r.entries[0]
 	if first.RunID == 0 {
 		return first.Path
 	}
-	return fmt.Sprintf("run %d of %s (%d index objects)", first.RunID, first.TableOfContentsPath, len(li.entries))
+	return fmt.Sprintf("run %d of %s (%d index objects)", first.RunID, first.TableOfContentsPath, len(r.entries))
 }
 
-// withPostingsFor returns li with only the index objects that can hold a
+// withPostingsFor returns r with only the index objects that can hold a
 // posting that matchers and predicates read. ok is false if no index object
 // can.
 //
@@ -82,7 +77,7 @@ func (li logicalIndex) String() string {
 //
 // An index object with unknown posting key bounds can hold any posting, so it
 // stays.
-func (li logicalIndex) withPostingsFor(matchers, predicates []*labels.Matcher) (_ logicalIndex, ok bool) {
+func (r indexRun) withPostingsFor(matchers, predicates []*labels.Matcher) (_ indexRun, ok bool) {
 	type column struct {
 		kind postings.PostingKind
 		name string
@@ -99,16 +94,16 @@ func (li logicalIndex) withPostingsFor(matchers, predicates []*labels.Matcher) (
 		)
 	}
 
-	kept := make([]IndexEntry, 0, len(li.entries))
-	for _, entry := range li.entries {
+	kept := make([]IndexEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
 		if slices.ContainsFunc(columns, func(c column) bool { return entry.PostingKeys.OverlapsColumn(c.kind, c.name) }) {
 			kept = append(kept, entry)
 		}
 	}
 	if len(kept) == 0 {
-		return logicalIndex{}, false
+		return indexRun{}, false
 	}
-	return logicalIndex{entries: kept}, true
+	return indexRun{entries: kept}, true
 }
 
 // equalityPredicates returns the equality predicates of predicates, the only

@@ -109,7 +109,7 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 		}),
 		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_read_rows_per_object",
-			Help:                            "Number of index rows read while resolving a single logical index: one index object, or the index objects of one run",
+			Help:                            "Number of index rows read while resolving a single index run. An index object of no run is a run of its own",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -117,7 +117,7 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 		}),
 		resolvedSectionsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_per_object",
-			Help:                            "Number of sections resolved from a single logical index: one index object, or the index objects of one run",
+			Help:                            "Number of sections resolved from a single index run. An index object of no run is a run of its own",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,

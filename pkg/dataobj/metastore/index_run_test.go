@@ -22,12 +22,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestLogicalIndexes(t *testing.T) {
+func TestIndexRuns(t *testing.T) {
 	const (
 		tocA = "tocs/a/tenant/toc.toc"
 		tocB = "tocs/b/tenant/toc.toc"
 	)
-	paths := func(indexes []logicalIndex) [][]string {
+	paths := func(indexes []indexRun) [][]string {
 		var out [][]string
 		for _, index := range indexes {
 			var group []string
@@ -39,26 +39,26 @@ func TestLogicalIndexes(t *testing.T) {
 		return out
 	}
 
-	t.Run("makes each entry of no run a logical index of its own", func(t *testing.T) {
-		got := logicalIndexes([]IndexEntry{
+	t.Run("makes each entry of no run a run of its own", func(t *testing.T) {
+		got := indexRuns([]IndexEntry{
 			{Path: "b", TableOfContentsPath: tocA},
 			{Path: "a", TableOfContentsPath: tocA},
 		})
-		require.Equal(t, [][]string{{"a"}, {"b"}}, paths(got))
+		require.Equal(t, [][]string{{"b"}, {"a"}}, paths(got))
 	})
 
-	t.Run("groups the entries of one run into one logical index in path order", func(t *testing.T) {
-		got := logicalIndexes([]IndexEntry{
+	t.Run("groups the entries of one run into one index run in the order of the entries", func(t *testing.T) {
+		got := indexRuns([]IndexEntry{
 			{Path: "run-1/b", TableOfContentsPath: tocA, RunID: 1},
 			{Path: "single", TableOfContentsPath: tocA},
 			{Path: "run-1/a", TableOfContentsPath: tocA, RunID: 1},
 			{Path: "run-2/a", TableOfContentsPath: tocA, RunID: 2},
 		})
-		require.Equal(t, [][]string{{"run-1/a", "run-1/b"}, {"run-2/a"}, {"single"}}, paths(got))
+		require.Equal(t, [][]string{{"run-1/b", "run-1/a"}, {"single"}, {"run-2/a"}}, paths(got))
 	})
 
 	t.Run("keeps runs of different ToCs apart when they share a run ID", func(t *testing.T) {
-		got := logicalIndexes([]IndexEntry{
+		got := indexRuns([]IndexEntry{
 			{Path: "a-run", TableOfContentsPath: tocA, RunID: 1},
 			{Path: "b-run", TableOfContentsPath: tocB, RunID: 1},
 		})
@@ -66,7 +66,7 @@ func TestLogicalIndexes(t *testing.T) {
 	})
 }
 
-func TestLogicalIndex_WithPostingsFor(t *testing.T) {
+func TestIndexRun_WithPostingsFor(t *testing.T) {
 	keyRange := func(t *testing.T, minKey, maxKey postings.Key) postings.KeyRange {
 		t.Helper()
 		r, err := postings.NewKeyRange(minKey, maxKey)
@@ -78,7 +78,7 @@ func TestLogicalIndex_WithPostingsFor(t *testing.T) {
 	}
 	bloom := func(name string) postings.Key { return postings.Key{Kind: postings.KindBloom, ColumnName: name} }
 
-	index := logicalIndex{entries: []IndexEntry{
+	index := indexRun{entries: []IndexEntry{
 		{Path: "blooms", PostingKeys: keyRange(t, bloom("trace_id"), bloom("trace_id"))},
 		{Path: "app", PostingKeys: keyRange(t, label("app", "api"), label("app", "web"))},
 		{Path: "env", PostingKeys: keyRange(t, label("env", "dev"), label("env", "prod"))},
@@ -129,7 +129,7 @@ func TestLogicalIndex_WithPostingsFor(t *testing.T) {
 	})
 
 	t.Run("keeps an index object with unknown posting key bounds", func(t *testing.T) {
-		unknown := logicalIndex{entries: []IndexEntry{{Path: "legacy"}}}
+		unknown := indexRun{entries: []IndexEntry{{Path: "legacy"}}}
 		kept, ok := unknown.withPostingsFor([]*labels.Matcher{matcher(labels.MatchEqual, "namespace", "x")}, nil)
 		require.True(t, ok)
 		require.Equal(t, unknown, kept)

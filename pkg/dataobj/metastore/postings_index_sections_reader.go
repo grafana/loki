@@ -89,7 +89,7 @@ type resolvedRow struct {
 	ambiguousNames []string
 }
 
-// indexObject is one index object of a logical index, with the shard layout
+// indexObject is one index object of an index run, with the shard layout
 // that its ToC entry records.
 type indexObject struct {
 	obj *dataobj.Object
@@ -104,7 +104,7 @@ type indexObject struct {
 var errRunShardLayouts = errors.New("index objects of one run record different shard layouts")
 
 // postingsIndexSectionsReader resolves matching streams from the postings
-// sections of the index objects of one logical index via one streamSelector,
+// sections of the index objects of one index run via one streamSelector,
 // expands each result's stream-ID bitmap into one resolvedRow per stream, and
 // serializes those rows in batchSize chunks. Section lifetime is bound to the
 // underlying *dataobj.Object values, so the reader does not close sections

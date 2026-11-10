@@ -1837,7 +1837,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 			{ObjectPath: "object-b", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: indexPath}}})
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Len(t, sections, 2)
@@ -1853,7 +1853,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "bar", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: indexPath}}})
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Empty(t, sections)
@@ -1861,7 +1861,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 	})
 
 	t.Run("returns an error that names the index object when the index object does not exist", func(t *testing.T) {
-		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: "missing-index-object"}}})
+		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: "missing-index-object"}}})
 
 		require.ErrorContains(t, err, "missing-index-object")
 		require.Empty(t, sections)

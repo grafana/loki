@@ -237,12 +237,12 @@ func (d *DataobjSectionDescriptor) sameStreamAndStatistics(other *DataobjSection
 		(d.Size == 0 || other.Size == 0 || d.Size == other.Size)
 }
 
-// DataobjSectionDescriptorWithIndex is a section descriptor with the logical index that listed
+// DataobjSectionDescriptorWithIndex is a section descriptor with the index run that listed
 // it.
 type DataobjSectionDescriptorWithIndex struct {
 	*DataobjSectionDescriptor
 
-	// Index describes the logical index that listed the section, for logs.
+	// Index describes the index run that listed the section, for logs.
 	Index string
 }
 
@@ -508,13 +508,13 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// Read each logical index with one reader, and only its index objects that can hold a posting
+	// Read each index run with one reader, and only its index objects that can hold a posting
 	// that the request reads.
 	var (
-		toRead  []logicalIndex
+		toRead  []indexRun
 		skipped int
 	)
-	for _, index := range logicalIndexes(indexes.Indexes) {
+	for _, index := range indexRuns(indexes.Indexes) {
 		kept, ok := index.withPostingsFor(req.Matchers, req.Predicates)
 		skipped += len(index.entries) - len(kept.entries)
 		if ok {
@@ -530,7 +530,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// batch carries the deduplicated sections of one logical index, or the error that ends the
+	// batch carries the deduplicated sections of one index run, or the error that ends the
 	// resolution. A batch without an error holds at least one section.
 	type batch struct {
 		sections DataobjSectionDescriptors
@@ -542,7 +542,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	// The resolution runs in the background and never waits for the caller. So its duration excludes
 	// the time the caller spends on the batches.
 	//
-	// The channel holds one batch for each logical index, so no send waits for the caller. The
+	// The channel holds one batch for each index run, so no send waits for the caller. The
 	// batches stay in memory until the caller receives them. The channel closes after the resolution
 	// ends.
 	readCtx, cancelReads := context.WithCancel(ctx)
@@ -696,9 +696,9 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	}
 }
 
-// readIndexSections reads the sections that one logical index lists. It returns them with the
+// readIndexSections reads the sections that one index run lists. It returns them with the
 // number of rows the index reader resolved, before deduplication.
-func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, index logicalIndex) ([]DataobjSectionDescriptorWithIndex, int, error) {
+func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, index indexRun) ([]DataobjSectionDescriptorWithIndex, int, error) {
 	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 		Indexes:         index.entries,
 		SectionsRequest: req,
