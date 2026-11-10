@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,7 +90,12 @@ func testIndexKeys() []indexKey {
 // ownersOf returns the sorted owner addresses of every key.
 func ownersOf(t *testing.T, r ring.ReadRing, keys []indexKey, op ring.Operation) map[indexKey][]string {
 	t.Helper()
-	o := NewIndexOwnership(r)
+	return ownersOfWithRF(t, r, ReplicationFactor, keys, op)
+}
+
+func ownersOfWithRF(t *testing.T, r ring.ReadRing, rf int, keys []indexKey, op ring.Operation) map[indexKey][]string {
+	t.Helper()
+	o := NewIndexOwnership(r, rf)
 	out := make(map[indexKey][]string, len(keys))
 	for _, k := range keys {
 		rs, err := o.Owners(k.tenant, k.table, op)
@@ -126,6 +132,15 @@ func TestIndexOwnership_Spread(t *testing.T) {
 	for _, inst := range instances {
 		got := float64(perInstance[inst.id])
 		require.InDelta(t, expected, got, 0.3*expected, "instance %s", inst.id)
+	}
+}
+
+func TestIndexOwnership_ReplicationFactor(t *testing.T) {
+	r := newTestRing(t, newTestInstances(0, 6))
+	keys := testIndexKeys()
+
+	for k, addrs := range ownersOfWithRF(t, r, ReplicationFactor+2, keys, IndexOwnersRead) {
+		require.Len(t, addrs, ReplicationFactor+2, "key %v", k)
 	}
 }
 
@@ -217,7 +232,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	const table = "index_19510"
 	count := map[string]int{}
 	for _, inst := range instances {
-		got, err := NewIndexOwnershipFilter(r, inst.id).FilterTenants(table, tenants)
+		got, err := NewIndexOwnershipFilter(r, ReplicationFactor, inst.id).FilterTenants(table, tenants)
 		require.NoError(t, err)
 		for _, tenant := range got {
 			require.Contains(t, owners[indexKey{tenant: tenant, table: table}], inst.id)
@@ -230,7 +245,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	}
 
 	t.Run("instance not in the ring", func(t *testing.T) {
-		_, err := NewIndexOwnershipFilter(r, "index-gateway-99").FilterTenants(table, tenants)
+		_, err := NewIndexOwnershipFilter(r, ReplicationFactor, "index-gateway-99").FilterTenants(table, tenants)
 		require.ErrorIs(t, err, errGatewayUnhealthy)
 	})
 }
@@ -246,54 +261,109 @@ func TestNewOwnedIndexPreload(t *testing.T) {
 	})
 
 	t.Run("preload succeeds", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		called := false
 		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
 			called = true
 			return nil
-		}), log.NewNopLogger())
+		}), log.NewNopLogger(), reg)
 		require.NoError(t, fn(context.Background()))
 		require.True(t, called)
+		require.Equal(t, map[string]uint64{"preload/success": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("preload timeout becomes ACTIVE anyway", func(t *testing.T) {
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: 50 * time.Millisecond}, nil, blockUntilDone, log.NewNopLogger())
+		reg := prometheus.NewRegistry()
+		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: 50 * time.Millisecond}, nil, blockUntilDone, log.NewNopLogger(), reg)
 		require.NoError(t, fn(context.Background()))
+		require.Equal(t, map[string]uint64{"preload/timeout": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("preload error fails", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
 			return errors.New("download failed")
-		}), log.NewNopLogger())
+		}), log.NewNopLogger(), reg)
 		require.ErrorContains(t, fn(context.Background()), "download failed")
+		require.Equal(t, map[string]uint64{"preload/error": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("cancelled start fails", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, blockUntilDone, log.NewNopLogger())
+		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, blockUntilDone, log.NewNopLogger(), reg)
 		require.ErrorIs(t, fn(ctx), context.DeadlineExceeded)
+		require.Equal(t, map[string]uint64{"preload/canceled": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("waits for a stable ring first", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		r := newTestRing(t, newTestInstances(0, 3))
 		start := time.Now()
 		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{
 			WaitStabilityMinDuration: time.Second,
 			WaitStabilityMaxDuration: 10 * time.Second,
-		}, r, queryReadinessFunc(func(context.Context) error { return nil }), log.NewNopLogger())
+		}, r, queryReadinessFunc(func(context.Context) error { return nil }), log.NewNopLogger(), reg)
 		require.NoError(t, fn(context.Background()))
 		require.GreaterOrEqual(t, time.Since(start), time.Second)
+		require.Equal(t, map[string]uint64{"wait_stability/success": 1, "preload/success": 1}, preloadObservations(t, reg))
 	})
 }
 
+// preloadObservations returns the number of preload duration observations by
+// "phase/status".
+func preloadObservations(t *testing.T, reg *prometheus.Registry) map[string]uint64 {
+	t.Helper()
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	out := map[string]uint64{}
+	for _, mf := range families {
+		if mf.GetName() != "loki_index_gateway_owned_index_preload_duration_seconds" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			out[labels["phase"]+"/"+labels["status"]] = m.GetHistogram().GetSampleCount()
+		}
+	}
+	return out
+}
+
 func TestPerIndexOwnershipConfig_Validate(t *testing.T) {
-	cfg := PerIndexOwnershipConfig{Enabled: true, WaitStabilityMinDuration: time.Minute, WaitStabilityMaxDuration: 5 * time.Minute}
-	require.NoError(t, cfg.Validate(RingMode))
-	require.Error(t, cfg.Validate(SimpleMode))
+	cfg := PerIndexOwnershipConfig{Enabled: true, ReplicationFactor: 3, WaitStabilityMinDuration: time.Minute, WaitStabilityMaxDuration: 5 * time.Minute}
+	require.NoError(t, cfg.Validate(RingMode, 3, false))
+	require.Error(t, cfg.Validate(SimpleMode, 3, false))
 
 	bad := cfg
 	bad.WaitStabilityMaxDuration = time.Second
-	require.Error(t, bad.Validate(RingMode))
+	require.Error(t, bad.Validate(RingMode, 3, false))
 
-	require.NoError(t, (&PerIndexOwnershipConfig{}).Validate(SimpleMode))
+	t.Run("replication factor", func(t *testing.T) {
+		for _, tc := range []struct {
+			rf, ringRF int
+			zoneAware  bool
+			wantErr    bool
+		}{
+			{rf: 3, ringRF: 3},
+			{rf: 4, ringRF: 3},
+			{rf: 2, ringRF: 3, wantErr: true},
+			{rf: 6, ringRF: 3, zoneAware: true},
+			{rf: 4, ringRF: 3, zoneAware: true, wantErr: true},
+		} {
+			c := cfg
+			c.ReplicationFactor = tc.rf
+			err := c.Validate(RingMode, tc.ringRF, tc.zoneAware)
+			if tc.wantErr {
+				require.Error(t, err, "%+v", tc)
+			} else {
+				require.NoError(t, err, "%+v", tc)
+			}
+		}
+	})
+
+	require.NoError(t, (&PerIndexOwnershipConfig{}).Validate(SimpleMode, 3, false))
 }

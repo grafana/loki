@@ -109,7 +109,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxConcurrentQueueTimeout < 0 {
 		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
 	}
-	if err := cfg.PerIndexOwnership.Validate(cfg.Mode); err != nil {
+	if err := cfg.PerIndexOwnership.Validate(cfg.Mode, cfg.Ring.ReplicationFactor, cfg.Ring.ZoneAwarenessEnabled); err != nil {
 		return err
 	}
 	return nil

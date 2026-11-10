@@ -1006,7 +1006,7 @@ func (t *Loki) initStore() (services.Service, error) {
 		// Read the sharded index copy of the schema periods that have one, and
 		// preload only the indexes this gateway owns, after it has joined the
 		// ring and can tell which those are.
-		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.Cfg.IndexGateway.PerIndexOwnership.ReplicationFactor, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
 		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
 		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
@@ -1021,7 +1021,7 @@ func (t *Loki) initStore() (services.Service, error) {
 
 	if perIndexOwnership {
 		logger := log.With(util_log.Logger, "component", "index-gateway")
-		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger))
+		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer))
 	}
 
 	return services.NewIdleService(nil, func(_ error) error {
