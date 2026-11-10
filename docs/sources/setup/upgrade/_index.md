@@ -74,6 +74,16 @@ The following changes affect rolling back to Loki 3.x:
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
 
+### Kafka client upgraded to franz-go 1.22
+
+Loki now uses franz-go v1.22.2. Where franz-go 1.22 changes a default, Loki keeps the previous behavior:
+
+- ApiVersions requests are capped at v4 (`-kafka.api-versions-max-version`, default `4`). franz-go 1.22 sends v5 first, and some Kafka-compatible backends, such as WarpStream, close the connection instead of falling back. Set it to `0` to use the franz-go default.
+- A new option, `-kafka.max-decompress-batch-bytes` (default `2147483647`), sets the largest size a fetched batch may decompress to. franz-go 1.22 lowers its own default to 1 GiB and stops consuming a partition when a batch is bigger. Set it to `0` to use the franz-go default.
+- After data loss while consuming, for example when records are deleted by retention before they are read, the ingesters, the data object builder, and the logline builder resume right after the lost records, as before. The franz-go 1.22 default would re-read about a minute of records.
+
+franz-go 1.22 also uses the reset offset after data loss while consuming, where older versions ignored it. Ingest limits resume at the first record from one active window before the pod started, which can re-read records. The pattern ingester resumes at the end of the topic, which skips records.
+
 ### `ip()` label filters no longer keep lines with an `__error__` label
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.

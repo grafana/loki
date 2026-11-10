@@ -115,3 +115,52 @@ func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
 
 	setDefaultNumberOfPartitionsForAutocreatedTopics(cfg, client, log.NewNopLogger())
 }
+
+// TestReaderClientMaxDecompressBatchBytes checks that the reader client gets
+// the decompress limit, and that 0 keeps the franz-go default.
+func TestReaderClientMaxDecompressBatchBytes(t *testing.T) {
+	_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "test")
+
+	tests := []struct {
+		name  string
+		value int
+		want  int
+	}{
+		{name: "default", value: kafka.DefaultMaxDecompressBatchBytes, want: kafka.DefaultMaxDecompressBatchBytes},
+		{name: "custom", value: 1 << 20, want: 1 << 20},
+		{name: "zero uses the franz-go default", value: 0, want: 1 << 30},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := kafka.Config{
+				Topic:                   "test",
+				ReaderConfig:            kafka.ClientConfig{Address: addr},
+				MaxDecompressBatchBytes: tt.value,
+			}
+			client, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
+
+			require.Equal(t, tt.want, client.OptValue(kgo.MaxDecompressBatchBytes))
+		})
+	}
+}
+
+// TestReaderClientResetOffset checks that the reader client doesn't rewind
+// after data loss by default, and that callers can replace the reset offset.
+func TestReaderClientResetOffset(t *testing.T) {
+	_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "test")
+	cfg := kafka.Config{Topic: "test", ReaderConfig: kafka.ClientConfig{Address: addr}}
+
+	client, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	t.Cleanup(client.Close)
+	require.Equal(t, kgo.RewindOffset(0), client.OptValue(kgo.ConsumeResetOffset))
+	require.Equal(t, kgo.NewOffset().AtStart(), client.OptValue(kgo.ConsumeStartOffset))
+
+	custom, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry(),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()))
+	require.NoError(t, err)
+	t.Cleanup(custom.Close)
+	require.Equal(t, kgo.NewOffset().AtEnd(), custom.OptValue(kgo.ConsumeResetOffset))
+}

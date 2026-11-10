@@ -979,6 +979,12 @@ kafka_config:
   # CLI flag: -kafka.api-versions-max-version
   [api_versions_max_version: <int> | default = 4]
 
+  # The largest size a fetched Kafka batch may decompress to. A bigger batch
+  # stops consuming the partition. The default keeps the limit franz-go had
+  # before 1.22. 0 to use the franz-go default.
+  # CLI flag: -kafka.max-decompress-batch-bytes
+  [max_decompress_batch_bytes: <int> | default = 2147483647]
+
 dataobj:
   builder:
     logsobj_builder:

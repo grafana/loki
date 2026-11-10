@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // TestKafkaClientCapsAPIVersions checks that the logline builder's Kafka client sends
@@ -52,9 +54,9 @@ func TestKafkaClientCapsAPIVersions(t *testing.T) {
 	}
 }
 
-// TestKafkaClientStartsAtEarliestOffset checks that a new consumer group
-// starts at the earliest record.
-func TestKafkaClientStartsAtEarliestOffset(t *testing.T) {
+// TestKafkaClientOffsets checks that a new consumer group starts at the
+// earliest record, and that a data-loss reset doesn't rewind.
+func TestKafkaClientOffsets(t *testing.T) {
 	_, cfg := setupKafkaTest(t)
 
 	_, indexStore := newTestStore(t)
@@ -66,4 +68,35 @@ func TestKafkaClientStartsAtEarliestOffset(t *testing.T) {
 	t.Cleanup(client.Close)
 
 	require.Equal(t, kgo.NewOffset().AtStart(), client.OptValue(kgo.ConsumeStartOffset))
+	require.Equal(t, kgo.RewindOffset(0), client.OptValue(kgo.ConsumeResetOffset))
+}
+
+// TestKafkaClientMaxDecompressBatchBytes checks that the decompress limit is
+// passed to the client, and that 0 keeps the franz-go default.
+func TestKafkaClientMaxDecompressBatchBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+		want  int
+	}{
+		{name: "default", value: kafka.DefaultMaxDecompressBatchBytes, want: kafka.DefaultMaxDecompressBatchBytes},
+		{name: "custom", value: 1 << 20, want: 1 << 20},
+		{name: "zero uses the franz-go default", value: 0, want: 1 << 30},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, cfg := setupKafkaTest(t)
+			cfg.Kafka.MaxDecompressBatchBytes = tt.value
+
+			_, indexStore := newTestStore(t)
+			svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			client, err := svc.createKafkaClient()
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
+
+			require.Equal(t, tt.want, client.OptValue(kgo.MaxDecompressBatchBytes))
+		})
+	}
 }
