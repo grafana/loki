@@ -340,7 +340,8 @@ func (i *instance) flushPatterns() {
 const noPartition int32 = 0
 
 // Observe adds the entries to the aggregated metrics of the sample period that
-// contains now.
+// contains now. If now is in a newer sample period than the open bucket, the
+// open bucket is written first.
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry, now time.Time) {
 	i.aggMetricsMtx.Lock()
 	defer i.aggMetricsMtx.Unlock()
@@ -353,9 +354,16 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 		attribute.Int("entries", len(entries)),
 	))
 
+	start := now.Truncate(i.samplePeriod)
 	b, ok := i.aggMetrics[noPartition]
+	if ok && start.After(b.start) {
+		// The entries are in a newer window. Records only move forward in time,
+		// so nothing more will arrive for the open bucket and it can be written.
+		// Entries in an older window are added to the open bucket.
+		i.flushBucket(b)
+		ok = false
+	}
 	if !ok {
-		start := now.Truncate(i.samplePeriod)
 		b = metricsBucket{
 			start:   start,
 			end:     start.Add(i.samplePeriod),
@@ -395,20 +403,28 @@ func (i *instance) Downsample(now time.Time) {
 		if b.end.After(now) {
 			continue
 		}
-		for stream, metricsByLevel := range b.metrics {
-			lbls, err := syntax.ParseLabels(stream)
-			if err != nil {
-				continue
-			}
+		i.flushBucket(b)
+		delete(i.aggMetrics, partition)
+	}
+}
 
-			for level, metrics := range metricsByLevel {
-				// we start with an empty bucket for each level, so only write if we have metrics
-				if metrics.count > 0 {
-					i.writeAggregatedMetrics(model.TimeFromUnixNano(b.start.UnixNano()), lbls, level, metrics.bytes, metrics.count)
-				}
+// flushBucket writes the aggregated metrics of the bucket, with the start of the
+// bucket as their timestamp. The caller must hold aggMetricsMtx and is
+// responsible for removing the bucket.
+func (i *instance) flushBucket(b metricsBucket) {
+	ts := model.TimeFromUnixNano(b.start.UnixNano())
+	for stream, metricsByLevel := range b.metrics {
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
+		}
+
+		for level, metrics := range metricsByLevel {
+			// we start with an empty bucket for each level, so only write if we have metrics
+			if metrics.count > 0 {
+				i.writeAggregatedMetrics(ts, lbls, level, metrics.bytes, metrics.count)
 			}
 		}
-		delete(i.aggMetrics, partition)
 	}
 }
 

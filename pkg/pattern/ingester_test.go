@@ -1103,3 +1103,80 @@ func TestInstancePushOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestInstanceObserveWindows(t *testing.T) {
+	const period = 10 * time.Second
+	var (
+		window0 = time.Unix(1_700_000_000, 0).Truncate(period)
+		window1 = window0.Add(period)
+		lbs     = labels.New(labels.Label{Name: "service_name", Value: "svc"})
+	)
+	lines := func(n int) []logproto.Entry {
+		entries := make([]logproto.Entry, n)
+		for i := range entries {
+			entries[i] = logproto.Entry{Timestamp: window0, Line: "0123456789"}
+		}
+		return entries
+	}
+	setup := func(t *testing.T) (*instance, *mockEntryWriter) {
+		w := &mockEntryWriter{}
+		w.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		inst, err := newInstance(
+			"foo",
+			log.NewNopLogger(),
+			newIngesterMetrics(nil, "test"),
+			drain.DefaultConfig(),
+			&fakeLimits{},
+			allStreamsOwner{},
+			w,
+			w,
+			aggregation.NewMetrics(nil),
+			period,
+			0.99,
+		)
+		require.NoError(t, err)
+		return inst, w
+	}
+	ctx := context.Background()
+
+	t.Run("same window is added to the open bucket", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second))
+		inst.Observe(ctx, lbs.String(), lines(3), window0.Add(9*time.Second))
+
+		w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		require.Equal(t, uint64(5), inst.aggMetrics[noPartition].metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+
+	t.Run("newer window writes the open bucket first", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second))
+		inst.Observe(ctx, lbs.String(), lines(3), window1.Add(time.Second))
+
+		// The first window is written with its own start as the timestamp.
+		w.AssertNumberOfCalls(t, "WriteEntry", 1)
+		w.AssertCalled(t, "WriteEntry",
+			window0,
+			aggregation.AggregatedMetricEntry(model.TimeFromUnixNano(window0.UnixNano()), 20, 2, lbs),
+			labels.New(labels.Label{Name: constants.AggregatedMetricLabel, Value: "svc"}),
+			[]logproto.LabelAdapter{{Name: constants.LevelLabel, Value: constants.LogLevelUnknown}},
+		)
+
+		// The open bucket holds only the entries of the newer window.
+		b := inst.aggMetrics[noPartition]
+		require.Equal(t, window1, b.start)
+		require.Equal(t, window1.Add(period), b.end)
+		require.Equal(t, uint64(3), b.metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+
+	t.Run("older window is added to the open bucket", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window1.Add(time.Second))
+		inst.Observe(ctx, lbs.String(), lines(3), window0.Add(time.Second))
+
+		w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		b := inst.aggMetrics[noPartition]
+		require.Equal(t, window1, b.start)
+		require.Equal(t, uint64(5), b.metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+}
