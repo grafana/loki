@@ -177,7 +177,7 @@ The following settings of a typical SSD configuration need to change.
 | `common.compactor_address` | `common.compactor_grpc_address` | Worker instances fail to start without `compactor_grpc_address` |
 | `table_manager` | Remove the block | Loki 4.0 fails to start with `field table_manager not found` |
 | `ruler.storage` | `ruler_storage` | The ruler doesn't start and logs `Ruler storage is not configured; ruler will not be started` |
-| `storage_config.aws` and the other legacy storage blocks | `storage_config.object_store` | Loki fails to start, unless `use_thanos_objstore` is `false` |
+| `storage_config.aws` and the other legacy storage blocks | `storage_config.object_store` | Loki fails to start. If `use_thanos_objstore` is `false`, Loki will use `storage_config.aws` to initialize the legacy client. |
 
 ### Configure the ruler
 
