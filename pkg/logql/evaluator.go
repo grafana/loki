@@ -276,12 +276,15 @@ type EvaluatorFactory interface {
 }
 
 // NodeContext describes characteristics of an expression.
-// `preserving` describes whether an expression is known to preserve its series output. It is worked
-// out from the parent down while evaluators are built. The zero value is the conservative one:
-// an expression that is not known to preserve the output.
+// - `preserving` describes whether an expression is known to preserve its series output
+// - `reads` is what the parent of the expression reads from its output.
+// These are worked out from the root down through the tree while evaluators are built.
+// The zero value is the conservative one: an expression that is not
+// known to preserve the output, whose parent reads everything from it.
 type NodeContext struct {
 	preserving bool
 	maxSeries  int
+	reads      ParentReads
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -324,13 +327,18 @@ func (c NodeContext) OutputPreserving() bool {
 	return c.preserving
 }
 
-// child returns the NodeContext of an operand of an operator that keeps every series it receives
-// when opPreserves is true.
-func (c NodeContext) child(opPreserves bool) NodeContext {
+// ParentReads returns what the parent of the expression reads from its output.
+func (c NodeContext) ParentReads() ParentReads {
+	return c.reads
+}
+
+// child returns the NodeContext of an operand. The operand keeps the preserving flag and maxSeries
+// of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
+func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{}
+		return NodeContext{reads: reads}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -480,7 +488,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.LabelReplaceExpr:
-		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
+		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.VectorExpr:
 		val, err := e.Value()
 		if err != nil {
@@ -610,7 +618,7 @@ func newVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(vectorAggPreservesSeries(expr.Operation)))
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(vectorAggPreservesSeries(expr.Operation), vectorAggReads(expr)))
 	if err != nil {
 		return nil, err
 	}
@@ -1073,7 +1081,28 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 // rangeAggIteratorLimits returns the limits of the range iterator of expr, an expression whose
 // NodeContext is nc.
 func rangeAggIteratorLimits(nc NodeContext, expr *syntax.RangeAggregationExpr) iteratorLimits {
-	return nc.child(rangeAggPreservesSeries(expr.Operation)).iteratorLimits(expr)
+	return rangeAggIteratorContext(nc, expr).iteratorLimits(expr)
+}
+
+// rangeAggIteratorContext returns the NodeContext of the range iterator of expr, an expression whose
+// NodeContext is nc.
+func rangeAggIteratorContext(nc NodeContext, expr *syntax.RangeAggregationExpr) NodeContext {
+	return nc.child(rangeAggPreservesSeries(expr.Operation), rangeAggIteratorReads(expr))
+}
+
+// rangeAggIteratorReads returns what the range aggregation expr reads from its range iterator.
+// absent_over_time reads only whether the range has any sample. A grouping merges the series that
+// share its labels, so it reads only those labels and does not keep the series apart. Without a
+// grouping, every series of the range is one series of the output.
+func rangeAggIteratorReads(expr *syntax.RangeAggregationExpr) ParentReads {
+	switch {
+	case expr.Operation == syntax.OpRangeTypeAbsent:
+		return newParentReads(noLabels(), false, false)
+	case expr.Grouping != nil:
+		return newParentReads(groupingLabels(expr.Grouping), false, true)
+	default:
+		return readsEverything()
+	}
 }
 
 // rangeAggPreservesSeries reports whether the range aggregation op returns one series for each
@@ -1086,6 +1115,75 @@ func rangeAggPreservesSeries(op string) bool {
 // series of its input.
 func vectorAggPreservesSeries(op string) bool {
 	return op == syntax.OpTypeSort || op == syntax.OpTypeSortDesc
+}
+
+// vectorAggReads returns what the vector aggregation expr reads from its operand.
+//
+// sum, min, max, avg, stddev and stdvar read the grouping labels and the values. count reads the
+// grouping labels and only whether each series is present. All of them need distinct series kept
+// apart, since merging two series changes the answer, except where the operand is a range
+// aggregation that merges the same way (see vectorAggMergesRangeAgg). topk, bottomk, sort and
+// sort_desc return the series they read, so they read everything.
+func vectorAggReads(expr *syntax.VectorAggregationExpr) ParentReads {
+	labels := groupingLabels(expr.Grouping)
+	switch expr.Operation {
+	case syntax.OpTypeSum, syntax.OpTypeMin, syntax.OpTypeMax:
+		return newParentReads(labels, !vectorAggMergesRangeAgg(expr.Operation, expr.Left), true)
+	case syntax.OpTypeAvg, syntax.OpTypeStddev, syntax.OpTypeStdvar:
+		return newParentReads(labels, true, true)
+	case syntax.OpTypeCount:
+		return newParentReads(labels, true, false)
+	default:
+		return readsEverything()
+	}
+}
+
+// vectorAggMergesRangeAgg reports whether the vector aggregation op over left, a range aggregation,
+// returns the same answer when left merges series before it aggregates them. sum is additive over
+// the range aggregations that count or add, and max and min over themselves. Every other pair
+// depends on the series being kept apart, such as sum over max_over_time, or max over rate.
+func vectorAggMergesRangeAgg(op string, left syntax.SampleExpr) bool {
+	rangeExpr, ok := left.(*syntax.RangeAggregationExpr)
+	if !ok {
+		return false
+	}
+	switch op {
+	case syntax.OpTypeSum:
+		switch rangeExpr.Operation {
+		case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytes, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeSum:
+			return true
+		}
+	case syntax.OpTypeMax:
+		return rangeExpr.Operation == syntax.OpRangeTypeMax
+	case syntax.OpTypeMin:
+		return rangeExpr.Operation == syntax.OpRangeTypeMin
+	}
+	return false
+}
+
+// binOpReads returns what expr reads from its left and right legs.
+//
+// and and unless read the right leg only for whether a series with the same matching labels is
+// present, so merging right series that share them changes nothing. Every other binary operation
+// reads everything from both legs: arithmetic and comparisons fail on duplicate matches, and or
+// returns the series of both legs.
+func binOpReads(expr *syntax.BinOpExpr) (lhs, rhs ParentReads) {
+	if expr.Op == syntax.OpTypeAnd || expr.Op == syntax.OpTypeUnless {
+		return readsEverything(), newParentReads(binOpMatchingLabels(expr.Opts), false, false)
+	}
+	return readsEverything(), readsEverything()
+}
+
+// binOpMatchingLabels returns the labels a binary operation with opts matches its legs on: the
+// on() labels, every label but the ignoring() labels, or every label without a modifier.
+func binOpMatchingLabels(opts *syntax.BinOpOptions) LabelReads {
+	if opts == nil || opts.VectorMatching == nil {
+		return allLabels()
+	}
+	if opts.VectorMatching.On {
+		return onlyLabels(opts.VectorMatching.MatchingLabels...)
+	}
+	return labelsWithout(opts.VectorMatching.MatchingLabels...)
 }
 
 // binOpPreservesSeries reports whether expr returns at least as many series as each of its
@@ -1123,7 +1221,9 @@ func newBinOpStepEvaluator(
 	q Params,
 	nc NodeContext,
 ) (StepEvaluator, error) {
-	legNC := nc.child(binOpPreservesSeries(expr))
+	preserves := binOpPreservesSeries(expr)
+	lhsReads, rhsReads := binOpReads(expr)
+	lhsNC, rhsNC := nc.child(preserves, lhsReads), nc.child(preserves, rhsReads)
 
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
@@ -1131,7 +1231,7 @@ func newBinOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, rhsNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1144,7 +1244,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, lhsNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1166,7 +1266,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, lhsNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -1174,7 +1274,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, rhsNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1598,8 +1698,9 @@ func newLabelReplaceEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.LabelReplaceExpr,
 	q Params,
+	nc NodeContext,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, NodeContext{})
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(false, labelReplaceReads(expr, nc.ParentReads())))
 	if err != nil {
 		return nil, err
 	}
@@ -1609,6 +1710,12 @@ func newLabelReplaceEvaluator(
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
 	}, nil
+}
+
+// labelReplaceReads returns what the label_replace expr reads from its operand, given what its own
+// parent reads from it: the src label, plus whatever its parent reads.
+func labelReplaceReads(expr *syntax.LabelReplaceExpr, reads ParentReads) ParentReads {
+	return reads.withLabels(reads.Labels().union(onlyLabels(expr.Src)))
 }
 
 type LabelReplaceEvaluator struct {
