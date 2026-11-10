@@ -48,7 +48,7 @@ type stream struct {
 	tenant  string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks   []chunkDesc
+	chunks   []*chunkDesc
 	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	chunkMtx sync.RWMutex
 
@@ -255,7 +255,7 @@ func (s *stream) PushWalReplay(
 func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, recordTime time.Time) (int, []logproto.Entry, []entryWithError) {
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
-		s.chunks = append(s.chunks, chunkDesc{
+		s.chunks = append(s.chunks, &chunkDesc{
 			chunk: s.NewChunk(),
 		})
 		s.metrics.chunksCreatedTotal.Inc()
@@ -364,7 +364,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
-		chunk := &s.chunks[len(s.chunks)-1]
+		chunk := s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
 		}
@@ -530,7 +530,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	defer sp.AddEvent("stream finished to cut chunk")
 
 	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
-	chunk := &s.chunks[len(s.chunks)-1]
+	chunk := s.chunks[len(s.chunks)-1]
 	err := chunk.chunk.Close()
 	if err != nil {
 		// This should be an unlikely situation, returning an error up the stack doesn't help much here
@@ -544,10 +544,10 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	s.metrics.chunksCreatedTotal.Inc()
 	s.metrics.chunkCreatedStats.Inc(1)
 
-	s.chunks = append(s.chunks, chunkDesc{
+	s.chunks = append(s.chunks, &chunkDesc{
 		chunk: s.NewChunk(),
 	})
-	return &s.chunks[len(s.chunks)-1]
+	return s.chunks[len(s.chunks)-1]
 }
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters

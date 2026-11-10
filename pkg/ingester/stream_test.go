@@ -293,7 +293,7 @@ func TestStreamIterator(t *testing.T) {
 					require.False(t, dup)
 					require.NoError(t, err)
 				}
-				s.chunks = append(s.chunks, chunkDesc{chunk: chunk})
+				s.chunks = append(s.chunks, &chunkDesc{chunk: chunk})
 			}
 
 			for i := 0; i < 100; i++ {

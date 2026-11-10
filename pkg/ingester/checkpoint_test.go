@@ -234,7 +234,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 }
 
 func TestUnflushedChunks(t *testing.T) {
-	chks := []chunkDesc{
+	chks := []*chunkDesc{
 		{
 			flushed: time.Now(),
 		},
@@ -577,14 +577,14 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 }
 
 func buildChunks(t testing.TB, size int) []Chunk {
-	descs := make([]chunkDesc, 0, size)
+	descs := make([]*chunkDesc, 0, size)
 	chks := make([]Chunk, size)
 
 	for i := 0; i < size; i++ {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
 		c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV3, compression.GZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)
-		descs = append(descs, chunkDesc{
+		descs = append(descs, &chunkDesc{
 			chunk: c,
 		})
 	}

@@ -65,7 +65,7 @@ func Test_EncodingChunks(t *testing.T) {
 					require.Nil(t, c.Close())
 				}
 
-				from := []chunkDesc{
+				from := []*chunkDesc{
 					{
 						chunk: c,
 					},

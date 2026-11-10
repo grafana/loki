@@ -356,7 +356,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 			require.False(t, dup)
 			require.NoError(t, err)
 		}
-		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})
+		stream.chunks = append(stream.chunks, &chunkDesc{chunk: chunk})
 	}
 
 	return instance, currentTime, indexShards

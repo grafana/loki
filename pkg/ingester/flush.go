@@ -345,7 +345,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	// Streams with more than one chunk, or swept for an immediate flush, are
 	// always enqueued, so only resolve the chunk idle period when it matters.
 	if len(stream.chunks) == 1 && !immediate {
-		shouldFlush, _ := i.shouldFlushChunk(&stream.chunks[0], i.chunkIdlePeriod(instance.instanceID, stream))
+		shouldFlush, _ := i.shouldFlushChunk(stream.chunks[0], i.chunkIdlePeriod(instance.instanceID, stream))
 		if !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
 			return
 		}
@@ -501,7 +501,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 
 	var result []*chunkDesc
 	for j := range stream.chunks {
-		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j], maxIdle)
+		shouldFlush, reason := i.shouldFlushChunk(stream.chunks[j], maxIdle)
 		if !shouldFlush && notOwnedStream {
 			shouldFlush, reason = true, flushReasonNotOwned
 		}
@@ -517,7 +517,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 				}
 				stream.chunks[j].reason = reason
 
-				result = append(result, &stream.chunks[j])
+				result = append(result, stream.chunks[j])
 			}
 		}
 	}
