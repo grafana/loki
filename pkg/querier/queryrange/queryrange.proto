@@ -9,7 +9,7 @@ import "pkg/logproto/indexgateway.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logproto/pattern.proto";
 import "pkg/logproto/sketch.proto";
-import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/logql/model/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
@@ -64,6 +64,10 @@ message LokiInstantRequest {
   logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
   resultscache.CachingOptions cachingOptions = 9 [(gogoproto.nullable) = false];
   logproto.DataObjOptions dataObjOptions = 10;
+  repeated logproto.HintTimeRange hintRanges = 11 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "hintRanges,omitempty"
+  ];
 }
 
 message Plan {

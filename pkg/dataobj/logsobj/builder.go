@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -36,6 +35,9 @@ import (
 // no buffered data to flush.
 var (
 	ErrBuilderEmpty = errors.New("builder empty")
+
+	// ErrFlushDropDuplicates is returned by [Builder.Flush] when DropDuplicates is set.
+	ErrFlushDropDuplicates = errors.New("flush does not support DropDuplicates, use FlushAndSort")
 )
 
 // BuilderBaseConfig configures a data object builder.
@@ -82,8 +84,9 @@ type BuilderBaseConfig struct {
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
-	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during Flush.
+	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	// Flush returns an error if DropDuplicates is set.
 	DropDuplicates bool `yaml:"-"`
 }
 
@@ -130,7 +133,24 @@ func (cfg *BuilderBaseConfig) Validate() error {
 // TenantOverrides provides per-tenant configuration for the Builder.
 type TenantOverrides interface {
 	SortSchemaLabels(tenant string) []string
+
+	// DataObjShardLayout returns the shard layout for the streams of the tenant in a new object.
+	DataObjShardLayout(tenant string) streams.ShardLayout
 }
+
+// NoTenantOverrides is a [TenantOverrides] that overrides nothing. Every tenant has no sort schema
+// labels and the default shard layout.
+type NoTenantOverrides struct{}
+
+// SortSchemaLabels returns no schema labels.
+func (NoTenantOverrides) SortSchemaLabels(string) []string { return nil }
+
+// DataObjShardLayout returns the default shard layout.
+func (NoTenantOverrides) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
+
+var errNilOverrides = errors.New("tenant overrides must not be nil")
 
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. [Builder.Append] and [Builder.AppendRecord] add log data.
@@ -151,6 +171,14 @@ type Builder struct {
 	// layouts holds the layout of each tenant in the current object. Reset
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]streams.Layout
+
+	// lastTarget is the target of the last appended stream, or nil. Callers
+	// append many records of one stream in a row, so the builder resolves a
+	// target once per run of a stream, not once per record.
+	//
+	// Reset sets it to nil, because it holds values from the layout of the
+	// current object and pointers to its streams and logs builders.
+	lastTarget *streamTarget
 
 	// sortLogsMetrics and sortStreamsMetrics are never registered. They absorb
 	// the section metrics of the sort in FlushAndSort, which would otherwise
@@ -184,7 +212,14 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
+//
+// NewBuilder also returns an error if overrides is nil, so a caller cannot forget to set it. Use
+// [NoTenantOverrides] to give every tenant the default layout.
 func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
+	if overrides == nil {
+		return nil, errNilOverrides
+	}
+
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
@@ -197,7 +232,7 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
-		builder:    dataobj.NewBuilder(scratchStore),
+		builder:    dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(streams.SectionType())),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]streams.Layout),
@@ -212,17 +247,13 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 // layoutFor reads the overrides only once per tenant per object. Every
 // section and stream of an object must use the same layout, and the
 // overrides can change while the object is open.
-//
-// If overrides is nil, the layout has no schema labels.
 func (b *Builder) layoutFor(tenant string) streams.Layout {
 	if layout, ok := b.layouts[tenant]; ok {
 		return layout
 	}
-	var schemaLabels []string
-	if b.overrides != nil {
-		schemaLabels = b.overrides.SortSchemaLabels(tenant)
-	}
-	layout := streams.NewLayout(streams.DefaultShardLayout(), schemaLabels)
+	schemaLabels := b.overrides.SortSchemaLabels(tenant)
+	shardLayout := b.overrides.DataObjShardLayout(tenant)
+	layout := streams.NewLayout(shardLayout, schemaLabels)
 	b.layouts[tenant] = layout
 	return layout
 }
@@ -281,78 +312,118 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		return err
 	}
 
-	recordIter := func(yield func(logs.Record, int64) bool) {
-		for _, entry := range stream.Entries {
-			rec := logs.Record{
-				Timestamp: entry.Timestamp,
-				Metadata:  convertMetadata(entry.StructuredMetadata),
-				Line:      []byte(entry.Line),
-			}
-			if !yield(rec, rec.UncompressedSize()) {
-				return
-			}
+	t, err := b.targetFor(tenant, ls)
+	if err != nil {
+		return err
+	}
+	for _, entry := range stream.Entries {
+		rec := logs.Record{
+			Timestamp: entry.Timestamp,
+			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Line:      []byte(entry.Line),
+		}
+		if err := b.appendTo(t, rec); err != nil {
+			return err
 		}
 	}
-
-	return b.appendAll(tenant, ls, recTime, recordIter)
+	b.markAppended(recTime)
+	return nil
 }
 
 // AppendRecord buffers a pre-existing log record to be written to a data object.
 // Callers are expected to poll [Builder.IsFull] before appending and
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
-// The SortKey, ShardBucket, StreamHash, and StreamID fields of the given
+// The SchemaKey, ShardBucket, StreamHash, and StreamID fields of the given
 // record are ignored and re-calculated.
 func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sz := record.UncompressedSize()
-
-	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
-		_ = yield(record, sz)
+	t, err := b.targetFor(tenant, ls)
+	if err != nil {
+		return err
 	}
-
-	return b.appendAll(tenant, ls, ingestionTime, singleRecordIter)
+	if err := b.appendTo(t, record); err != nil {
+		return err
+	}
+	b.markAppended(ingestionTime)
+	return nil
 }
 
-func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
-	layout := b.layoutFor(tenant)
-	streamSortKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
-	if err != nil {
-		return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
-	}
-	streamHash := labels.StableHash(ls)
-	streamShard := layout.ShardLayout().BucketFromHash(streamHash)
+// streamTarget is where the records of one stream go in the current object.
+type streamTarget struct {
+	tenant string
+	labels labels.Labels
 
+	// schemaKey, hash and shard are the same for every record of the stream.
+	schemaKey string
+	hash      uint64
+	shard     uint32
+
+	streams *streams.Builder
+	logs    *logs.Builder
+}
+
+// targetFor returns the target of the stream with labels ls of tenant. It
+// returns the last target again when tenant and ls match it.
+func (b *Builder) targetFor(tenant string, ls labels.Labels) (*streamTarget, error) {
+	if t := b.lastTarget; t != nil && t.tenant == tenant && labels.Equal(t.labels, ls) {
+		return t, nil
+	}
+
+	layout := b.layoutFor(tenant)
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		return nil, fmt.Errorf("compute schema key for tenant %s: %w", tenant, err)
+	}
+	hash := labels.StableHash(ls)
 	sb, lb := b.buildersFor(tenant, layout)
 
-	for entry, size := range entriesIter {
-		entry.SchemaKey = streamSortKey
-		entry.ShardBucket = streamShard
-		entry.StreamHash = streamHash
-		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
-
-		lb.Append(entry)
-
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return err
-			}
-			// We need to set the tenant again after flushing because the builder is reset.
-			lb.SetTenant(tenant)
-		}
+	b.lastTarget = &streamTarget{
+		tenant:    tenant,
+		labels:    ls,
+		schemaKey: schemaKey,
+		hash:      hash,
+		shard:     layout.ShardLayout().BucketFromHash(hash),
+		streams:   sb,
+		logs:      lb,
 	}
+	return b.lastTarget, nil
+}
 
+// appendTo appends rec to the logs builder of t and records its stream. It
+// replaces the stream fields of rec with the values of t.
+//
+// appendTo flushes the logs builder of t as a section when it exceeds
+// TargetSectionSize.
+func (b *Builder) appendTo(t *streamTarget, rec logs.Record) error {
+	rec.SchemaKey = t.schemaKey
+	rec.ShardBucket = t.shard
+	rec.StreamHash = t.hash
+	rec.StreamID = t.streams.Record(t.labels, rec.Timestamp, rec.UncompressedSize())
+
+	t.logs.Append(rec)
+
+	if t.logs.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(t.logs); err != nil {
+			return err
+		}
+		// We need to set the tenant again after flushing because the builder is reset.
+		t.logs.SetTenant(t.tenant)
+	}
+	return nil
+}
+
+// markAppended updates the earliest record time, the size estimate and the
+// state after an append of records received at recordTime.
+func (b *Builder) markAppended(recordTime time.Time) {
 	if b.earliestRecordTime.IsZero() || recordTime.Before(b.earliestRecordTime) {
 		b.earliestRecordTime = recordTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
-	return nil
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
@@ -418,8 +489,18 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 // release the object's backing scratch storage; reads of the object fail once
 // it is closed. If an error is returned the closer is always nil.
 //
+// Flush returns [ErrFlushDropDuplicates] if DropDuplicates is set and the
+// builder is not empty. The logs sections drop duplicates after the streams
+// section counted them, so the stream stats would be wrong. Use
+// [Builder.FlushAndSort] instead.
+//
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
+	if b.cfg.DropDuplicates && b.state != builderStateEmpty {
+		b.Reset()
+		b.metrics.flushFailures.Inc()
+		return nil, nil, ErrFlushDropDuplicates
+	}
 	return b.flush(true)
 }
 
@@ -486,9 +567,10 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // object-wide. Calling FlushAndSort on an empty builder returns
 // [ErrBuilderEmpty].
 //
-// For each tenant, the object holds the streams section first, then the logs
-// sections. Tenants are in natural order. Stream IDs follow stream key order.
-// Logs rows are ordered by stream ID, then by timestamp descending.
+// The object holds the streams section of each tenant first, then the logs
+// sections of each tenant. Both groups are in natural tenant order. Stream
+// IDs follow stream key order. Logs rows are ordered by stream ID, then by
+// timestamp descending.
 //
 // The sort uses the layout that the builder used for each tenant, so it never
 // reads the overrides. Every section already follows that layout, so the sort
@@ -578,15 +660,10 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 		}
 
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), streamsSection.NumRows())
+		numStreams := streamsSection.NumRows()
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
-		}
-
-		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
-		sb.SetLayout(layout)
-		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
-			return nil, nil, err
 		}
 
 		logsIter, err := mergeAndRemapLogsIter(ctx, sections, remappedStreams)
@@ -594,6 +671,8 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
 		}
 
+		// drainLogsIter drops duplicates itself, so lb must not drop any.
+		// Otherwise the stream totals would count records that lb drops.
 		lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
 			PageSizeHint:     int(b.cfg.TargetPageSize),
 			PageMaxRowCount:  b.cfg.MaxPageRows,
@@ -601,11 +680,18 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
-			DropDuplicates:   b.cfg.DropDuplicates,
+			DropDuplicates:   false,
 		})
 		lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+		totals, err := b.drainLogsIter(ctx, logsIter, lb, tenant, numStreams)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
+		sb.SetLayout(layout)
+		if err := b.buildStreamSection(ctx, tenant, streamIter, totals, sb); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -658,6 +744,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 	clear(b.layouts)
+	b.lastTarget = nil
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
@@ -667,32 +754,50 @@ func (b *Builder) Reset() {
 // drainLogsIter consumes iter, appending each record to lb and flushing
 // completed sections to b.builder whenever the section size target is exceeded.
 // It appends the final (possibly partial) section after the iterator is exhausted.
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string) error {
+//
+// If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
+// yield the records of each stream and timestamp together, as
+// [logs.DuplicateTracker] requires.
+//
+// drainLogsIter returns the totals of the appended records. The stream IDs of
+// the records must be in [1, numStreams].
+func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, numStreams int) (streamTotals, error) {
+	var (
+		totals     = newStreamTotals(numStreams)
+		duplicates logs.DuplicateTracker
+	)
 	for rec := range iter {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 		val, err := rec.Value()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if b.cfg.DropDuplicates && duplicates.IsDuplicate(val) {
+			continue
+		}
+		totals.add(val)
 		lb.Append(val)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := b.builder.Append(lb); err != nil {
-				return err
+				return nil, err
 			}
 			lb.Reset()
 			lb.SetTenant(tenant)
 		}
 	}
-	return b.builder.Append(lb)
+	return totals, b.builder.Append(lb)
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
 // streams.Builder, and adds it to the sections accumulator. sb must be empty.
-func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) error {
+//
+// The rows and uncompressed size of each stream come from totals, not from
+// iter, because the sort can drop duplicates that iter still counts.
+func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], totals streamTotals, sb *streams.Builder) error {
 	sb.SetTenant(tenant)
 
 	for res := range iter {
@@ -705,9 +810,34 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 		if err != nil {
 			return err
 		}
+		totals.apply(&stream)
 		sb.AppendValue(stream)
 	}
 	return b.builder.Append(sb)
+}
+
+// streamTotals holds the rows and uncompressed size of the records of each
+// stream. The stream ID is the index, so index 0 is unused.
+type streamTotals []streamTotal
+
+type streamTotal struct {
+	rows int
+	size int64
+}
+
+func newStreamTotals(numStreams int) streamTotals {
+	return make(streamTotals, numStreams+1)
+}
+
+func (t streamTotals) add(rec logs.Record) {
+	t[rec.StreamID].rows++
+	t[rec.StreamID].size += rec.UncompressedSize()
+}
+
+// apply sets the rows and uncompressed size of s to the totals of its stream.
+func (t streamTotals) apply(s *streams.Stream) {
+	s.Rows = t[s.ID].rows
+	s.UncompressedSize = t[s.ID].size
 }
 
 type mappedStream struct {
@@ -819,4 +949,19 @@ func ComputeSchemaKey(ls labels.Labels, schemaLabels []string) (string, error) {
 		values[i] = s
 	}
 	return streams.EncodeSchemaKey(values), nil
+}
+
+// StreamSortPrefix returns the sort prefix of the stream with labels ls in
+// objects of layout.
+//
+// It must return the prefix that the index calculator records for the stream
+// in its stats rows. The compaction planner cuts tasks by the recorded
+// prefixes, and workers filter streams by this one. If they differ, a task can
+// miss the records of a stream.
+func StreamSortPrefix(ls labels.Labels, layout streams.Layout) (streams.SortPrefix, error) {
+	schemaKey, err := ComputeSchemaKey(ls, layout.SchemaLabels())
+	if err != nil {
+		return streams.SortPrefix{}, err
+	}
+	return layout.ShardLayout().NewSortKey(ls, schemaKey).Prefix(), nil
 }

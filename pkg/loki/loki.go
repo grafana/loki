@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
@@ -141,6 +143,10 @@ type Config struct {
 	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
+	// ExposedFields specifies which /config fields /loki/api/v1/exposed-config returns, addressed
+	// by dot-separated path. Empty means nothing is exposed, since /config can hold sensitive data.
+	ExposedFields []string `yaml:"exposed_fields"`
+
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
@@ -206,6 +212,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
 		"limits.tenant-limits-allow-publish",
 		"List of limit fields to publish from the tenant limits endpoint. If empty, all fields are returned. Use YAML field names (e.g., 'retention_period', 'max_query_series').",
+	)
+
+	f.Var(
+		(*flagext.StringSlice)(&c.ExposedFields),
+		"config.exposed-fields",
+		"List of /config fields to expose via /loki/api/v1/exposed-config, addressed by dot-separated path (e.g. 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty by default, meaning nothing is exposed.",
 	)
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
@@ -365,6 +377,11 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
+	if c.DataObj.Enabled {
+		if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj metastore config"))
+		}
+	}
 	// Only validated for the selected target. The builder's config has required
 	// fields with no sensible defaults, so validating it unconditionally would
 	// break every deployment that does not run logline.
@@ -486,6 +503,15 @@ type Loki struct {
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
 
+	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache is
+	// configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
+	// disabled.
+	dataObjLogsCache  *metadatacache.Cache
+	dataObjIndexCache *metadatacache.Cache
+	dataObjTOCCache   *metadatacache.Cache
+	dataObjBucket     objstore.Bucket
+	dataObjMetastore  *metastore.ObjectMetastore
+
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
@@ -496,8 +522,6 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
-
-	metastoreMetrics *metastore.ObjectMetastoreMetrics
 
 	// lbacChunkFilterer is nil when label access is disabled.
 	lbacChunkFilterer chunk.RequestChunkFilterer
@@ -510,7 +534,6 @@ func New(cfg Config) (*Loki, error) {
 		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
-		metastoreMetrics:    metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -575,6 +598,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(false))
 	t.Server.HTTP.Path("/loki/api/v1/drilldown-limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(true))
+	t.Server.HTTP.Path("/loki/api/v1/exposed-config").Methods("GET").HandlerFunc(exposedConfigHandler(t.Cfg, t.Cfg.ExposedFields))
 }
 
 // ListTargets prints a list of available user visible targets and their
@@ -805,6 +829,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IngestLimits, t.initIngestLimits)
 	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjCache, t.initDataObjCache, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjMetastore, t.initDataObjMetastore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier, modules.UserInvisibleModule)
@@ -863,7 +889,9 @@ func (t *Loki) setupModuleManager() error {
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		DataObjCache:             {},
+		DataObjMetastore:         {DataObjCache},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, DataObjCache, DataObjMetastore},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},

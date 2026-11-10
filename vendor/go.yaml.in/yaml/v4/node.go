@@ -55,7 +55,7 @@ type (
 	IsZeroer = libyaml.IsZeroer
 )
 
-// Kind constants define the different types of YAML nodes.
+// [Kind] constants define the different types of YAML [Node].
 const (
 	// DocumentNode represents the root of a YAML document.
 	DocumentNode = libyaml.DocumentNode
@@ -76,7 +76,7 @@ const (
 	StreamNode = libyaml.StreamNode
 )
 
-// Style constants define different formatting styles for YAML nodes.
+// [Style] constants define different formatting styles for YAML nodes.
 const (
 	// TaggedStyle explicitly shows the tag on the node.
 	TaggedStyle = libyaml.TaggedStyle

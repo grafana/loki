@@ -1,4 +1,4 @@
-FROM ruby:4.0.9@sha256:127b7bfab0d522244d37e5e62694fc2358928818e4d0953a67e03ab756fbf443 AS build
+FROM ruby:4.0.9@sha256:07042b74555ff2eef7365abd72d39cba6e499ab63e2d2942fd34d4778338495b AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -9,7 +9,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make BUILD_IN_CONTAINER=false fluentd-plugin
 
-FROM fluent/fluentd:v1.19-debian-1
+FROM fluent/fluentd:v1.20-debian-1@sha256:b3712e2ad2530f61dfe770390ac3f046df761641dc0b380f14de3c588796527f
 ENV LOKI_URL="https://logs-prod-us-central1.grafana.net"
 
 COPY --from=build /src/loki/clients/cmd/fluentd/lib/fluent/plugin/out_loki.rb /fluentd/plugins/out_loki.rb

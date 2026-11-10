@@ -14,7 +14,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 const (
@@ -209,12 +209,17 @@ type LineFormatter struct {
 	currentLine []byte
 	currentTs   int64
 	simpleKey   string
+
+	// mayReadLine is true when the template text names __line__, the only way a template reads
+	// the line. It checks the text, so it is also true for a name inside a string.
+	mayReadLine bool
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
 func NewFormatter(tmpl string) (*LineFormatter, error) {
 	lf := &LineFormatter{
-		buf: bytes.NewBuffer(make([]byte, 4096)),
+		buf:         bytes.NewBuffer(make([]byte, 4096)),
+		mayReadLine: strings.Contains(tmpl, functionLineName),
 	}
 
 	functions := AddLineAndTimestampFunctions(func() string {
@@ -277,6 +282,12 @@ func (lf *LineFormatter) Hints() StageHints {
 		CanModifyLabels: true,
 		// It replaces the line with the formatted template.
 		CanModifyLine: true,
+		// It reads the line only through __line__.
+		ReadsLine: lf.mayReadLine,
+		// RequiredLabelNames lists only the labels that a template reads as .name. Other forms,
+		// such as {{ index . "k" }} or {{ range . }}, read labels that it does not list. The
+		// stage does not check the forms, so this is always true.
+		ReadsArbitraryLabels: true,
 	}
 }
 
@@ -300,6 +311,11 @@ func listNodeFields(nodes []parse.Node) []string {
 			res = append(res, listNodeFieldsFromBranch(node)...)
 		case parse.NodeField:
 			res = append(res, node.(*parse.FieldNode).Ident...)
+		case parse.NodeVariable:
+			// $ is the root of the template data, so $.foo reads the label foo like .foo does.
+			if v := node.(*parse.VariableNode); len(v.Ident) > 1 && v.Ident[0] == "$" {
+				res = append(res, v.Ident[1:]...)
+			}
 		}
 	}
 	return res
@@ -375,6 +391,9 @@ type LabelsFormatter struct {
 
 	currentLine []byte
 	currentTs   int64
+
+	// mayReadLine is true when the text of a template names __line__, even inside a string.
+	mayReadLine bool
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -404,6 +423,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
 			toAdd.tmpl = t
+			lf.mayReadLine = lf.mayReadLine || strings.Contains(fm.Value, functionLineName)
 		}
 		formats = append(formats, toAdd)
 	}
@@ -416,7 +436,7 @@ func validate(fmts []LabelFmt) error {
 	// To avoid confusion we allow to have a label name only once per stage.
 	uniqueLabelName := map[string]struct{}{}
 	for _, f := range fmts {
-		if f.Name == logqlmodel.ErrorLabel {
+		if f.Name == logqlerr.ErrorLabel {
 			return fmt.Errorf("%s cannot be formatted", f.Name)
 		}
 		if _, ok := uniqueLabelName[f.Name]; ok {
@@ -461,6 +481,12 @@ func (lf *LabelsFormatter) Hints() StageHints {
 		// It renames or sets labels.
 		CanModifyLabels: true,
 		CanModifyLine:   false,
+		// It reads the line only through __line__.
+		ReadsLine: lf.mayReadLine,
+		// RequiredLabelNames lists only the labels that a template reads as .name. Other forms,
+		// such as {{ index . "k" }} or {{ range . }}, read labels that it does not list. The
+		// stage does not check the forms, so this is always true, even for a rename.
+		ReadsArbitraryLabels: true,
 	}
 }
 
@@ -535,7 +561,9 @@ func (Decolorizer) Hints() StageHints {
 		// It never touches labels.
 		CanModifyLabels: false,
 		// It strips ANSI colors from the line.
-		CanModifyLine: true,
+		CanModifyLine:        true,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
 	}
 }
 

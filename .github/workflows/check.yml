@@ -1,18 +1,18 @@
+"concurrency":
+  "cancel-in-progress": true
+  "group": "check-pr-${{ github.event.pull_request.number }}"
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@31474d7518151f5a5fe74450c3349c5220e040fd"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@84115a2e9d807167f054d106c81f5e9f3230387e"
     "with":
       "build_image": "golang:1.27.3"
       "golang_ci_lint_version": "v2.14.0"
-      "release_lib_ref": "31474d7518151f5a5fe74450c3349c5220e040fd"
+      "release_lib_ref": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "skip_validation": false
       "use_github_app_token": true
 "name": "check"
 "on":
   "pull_request": {}
-  "push":
-    "branches":
-    - "main"
 "permissions":
   "contents": "read"
   "pull-requests": "read"

@@ -42,7 +42,9 @@ type RangeVectorIterator interface {
 func newTimestampFirstRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
+) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -69,6 +71,7 @@ func newTimestampFirstRangeVectorIterator(
 			r:        expr,
 			current:  start - step, // first loop iteration will set it to start
 			offset:   offset,
+			limits:   limits,
 		}, nil
 	}
 	vectorAggregator, err := aggregator(expr)
@@ -85,6 +88,7 @@ func newTimestampFirstRangeVectorIterator(
 		agg:      vectorAggregator,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		limits:   limits,
 	}, nil
 }
 
@@ -97,6 +101,7 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+	limits                               iteratorLimits
 	err                                  error
 }
 
@@ -172,6 +177,9 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		if !ok {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
+				if r.err = r.limits.validateMaxSeries(len(r.metrics) + 1); r.err != nil {
+					return
+				}
 				var err error
 				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
@@ -199,7 +207,7 @@ func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for _, series := range r.window {
 		r.at = append(r.at, promql.Sample{
 			F:      r.agg(series.Floats, r.current),
@@ -401,28 +409,18 @@ func minOverTime(samples []promql.FPoint, _ int64) float64 {
 	return minVal
 }
 
-// stdvarOverTime calculates the variance using Welford's online algorithm.
-// See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+// stdvarOverTime computes the population variance of the samples with kahanVariance.
 func stdvarOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return aux / count
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return variance.result()
 }
 
+// stddevOverTime computes the population standard deviation of the samples with kahanVariance.
 func stddevOverTime(samples []promql.FPoint, _ int64) float64 {
-	var aux, count, mean float64
-	for _, v := range samples {
-		count++
-		delta := v.F - mean
-		mean += delta / count
-		aux += delta * (v.F - mean)
-	}
-	return math.Sqrt(aux / count)
+	var variance kahanVariance
+	variance.addPoints(samples)
+	return math.Sqrt(variance.result())
 }
 
 func quantileOverTime(q float64) BatchRangeVectorAggregator {
@@ -491,6 +489,7 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	limits                               iteratorLimits
 	err                                  error
 }
 
@@ -541,6 +540,9 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 		var ok bool
 		rangeAgg, ok = r.windowRangeAgg[lbs]
 		if !ok {
+			if r.err = r.limits.validateMaxSeries(len(r.windowRangeAgg) + 1); r.err != nil {
+				return
+			}
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
@@ -571,7 +573,7 @@ func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for lbs, rangeAgg := range r.windowRangeAgg {
 		r.at = append(r.at, promql.Sample{
 			F:      rangeAgg.at(),
@@ -745,34 +747,30 @@ func (a *MinOverTime) at() float64 {
 	return a.min
 }
 
+// StdvarOverTime is the streaming counterpart of stdvarOverTime.
 type StdvarOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StdvarOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StdvarOverTime) at() float64 {
-	return a.aux / a.count
+	return a.variance.result()
 }
 
+// StddevOverTime is the streaming counterpart of stddevOverTime.
 type StddevOverTime struct {
-	aux, count, mean float64
+	variance kahanVariance
 }
 
 func (a *StddevOverTime) agg(sample promql.FPoint) {
-	a.count++
-	delta := sample.F - a.mean
-	a.mean += delta / a.count
-	a.aux += delta * (sample.F - a.mean)
+	a.variance.addValue(sample.F)
 }
 
 func (a *StddevOverTime) at() float64 {
-	return math.Sqrt(a.aux / a.count)
+	return math.Sqrt(a.variance.result())
 }
 
 type QuantileOverTime struct {

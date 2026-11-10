@@ -1,6 +1,7 @@
 # doc-example:skip-validation=true
 # This partial configuration uses Azure for chunk storage and a service principal for authentication
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   azure:
     use_service_principal: true
     # Azure tenant ID used to authenticate through Azure OAuth

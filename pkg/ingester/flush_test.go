@@ -67,9 +67,120 @@ func TestChunkFlushingIdle(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
-	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	// wait until all idle chunks are flushed
+	require.Eventually(t, func() bool {
+		for userID, streams := range testData {
+			if len(store.getChunksForUser(userID)) < len(streams) {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
 	store.checkData(t, testData)
+}
+
+func TestChunkFlushingPolicyIdle(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+
+	const policyIdle = 100 * time.Millisecond
+	limitsCfg := defaultLimitsTestConfig()
+	limitsCfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"backfill": {{Selector: `{__backfill__="true"}`, Priority: 1}},
+	}
+	require.NoError(t, limitsCfg.PolicyStreamMapping.Validate())
+	limitsCfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"backfill": {ChunkIdlePeriod: ptr(model.Duration(policyIdle))},
+	}
+
+	store, ing := newTestStoreWithLimits(t, cfg, limitsCfg, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	const userID = "1"
+	backfillLabels := `{__backfill__="true", job="testjob"}`
+	liveLabels := `{job="testjob"}`
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err := ing.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: backfillLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "backfill"}}},
+		{Labels: liveLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "live"}}},
+	}})
+	require.NoError(t, err)
+
+	instance, ok := ing.getInstanceByID(userID)
+	require.True(t, ok)
+
+	// The backfill stream is flushed and removed once idle for its policy's
+	// period. The live stream uses the global period, which tests set to
+	// many hours.
+	require.Eventually(t, func() bool {
+		return instance.streams.Len() == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The live stream must remain in memory.
+	var remaining []string
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		remaining = append(remaining, s.labels.String())
+		return true, nil
+	})
+	require.Equal(t, []string{liveLabels}, remaining)
+
+	chunks := store.getChunksForUser(userID)
+	require.Len(t, chunks, 1)
+	require.Equal(t, "true", chunks[0].Metric.Get("__backfill__"))
+}
+
+func TestShouldFlushChunk(t *testing.T) {
+	ing := &Ingester{cfg: Config{MaxChunkAge: time.Hour}}
+	newChunk := func(t *testing.T, lastUpdated time.Time, entries ...time.Time) *chunkDesc {
+		c := &chunkDesc{chunk: chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024), lastUpdated: lastUpdated}
+		for _, ts := range entries {
+			_, err := c.chunk.Append(&logproto.Entry{Timestamp: ts, Line: "line"})
+			require.NoError(t, err)
+		}
+		return c
+	}
+
+	now := time.Now()
+	for _, tc := range []struct {
+		name           string
+		chunk          *chunkDesc
+		maxIdle        time.Duration
+		expectedFlush  bool
+		expectedReason string
+	}{
+		{
+			name:    "not idle",
+			chunk:   newChunk(t, now.Add(-time.Minute), now),
+			maxIdle: 5 * time.Minute,
+		},
+		{
+			name:           "idle",
+			chunk:          newChunk(t, now.Add(-10*time.Minute), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonIdle,
+		},
+		{
+			name:           "max age",
+			chunk:          newChunk(t, now, now.Add(-2*time.Hour), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonMaxAge,
+		},
+		{
+			name:           "closed",
+			chunk:          &chunkDesc{closed: true, lastUpdated: now},
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonFull,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shouldFlush, reason := ing.shouldFlushChunk(tc.chunk, tc.maxIdle)
+			require.Equal(t, tc.expectedFlush, shouldFlush)
+			require.Equal(t, tc.expectedReason, reason)
+		})
+	}
 }
 
 func TestChunkFlushingShutdown(t *testing.T) {
@@ -139,6 +250,7 @@ func Benchmark_EncodeChunk(b *testing.B) {
 			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			0,
 		)
 		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
 	}
@@ -208,6 +320,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
+				0,
 			)
 
 			if lockDuringEncode {
@@ -236,7 +349,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		_, err := lockThenPush(pushCtx, s, e, rec, false, nil, "loki", time.Time{})
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)
@@ -353,53 +466,35 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-func TestMaybeSetIngestedAt(t *testing.T) {
+func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
+	// Only schema v14 persists IngestedAt in the index.
 	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
 	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
 
 	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
-	live := labels.FromStrings("app", "foo")
+	nonBackfill := labels.FromStrings("app", "foo")
+
+	recordTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	for _, tc := range []struct {
-		name    string
-		periods []config.PeriodConfig
-		metric  labels.Labels
-		wantSet bool
+		name       string
+		periods    []config.PeriodConfig
+		labels     labels.Labels
+		recordTime time.Time
+		want       model.Time
 	}{
-		{"backfill stream under v14 records ingestion time", v14, backfill, true},
-		{"live stream under v14 stays zero", v14, live, false},
-		{"backfill stream under v13 stays zero", v13, backfill, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			i := &Ingester{periodicConfigs: tc.periods}
-			ch := chunk.Chunk{Metric: tc.metric}
-
-			before := model.Now()
-			i.maybeSetIngestedAt(&ch, model.Now())
-
-			if tc.wantSet {
-				require.NotEqual(t, model.Time(0), ch.IngestedAt)
-				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
-			} else {
-				require.Equal(t, model.Time(0), ch.IngestedAt)
-			}
-		})
-	}
-}
-
-func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		labels  labels.Labels
-		wantSet bool
-	}{
-		{"backfill stream", labels.FromStrings("app", "foo", constants.BackfillLabel, "true"), true},
-		{"live stream", labels.FromStrings("app", "foo"), false},
+		{"backfill stream on v14 without a record timestamp stays unset", v14, backfill, time.Time{}, 0},
+		{"non-backfill stream on v14 stays unset", v14, nonBackfill, time.Time{}, 0},
+		{"backfill stream on v13 stays unset", v13, backfill, time.Time{}, 0},
+		{"non-backfill stream with a record timestamp stays unset", v14, nonBackfill, recordTime, 0},
+		{"backfill stream on v13 with a record timestamp stays unset", v13, backfill, recordTime, 0},
+		{"backfill stream on v14 uses the record timestamp", v14, backfill, recordTime, model.Time(recordTime.UnixMilli())},
+		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), 0},
+		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
-			// Use a v14 period so the chunk's index would persist IngestedAt.
-			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+			ing.periodicConfigs = tc.periods
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			var captured []chunk.Chunk
@@ -408,17 +503,16 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 				return nil
 			}
 
-			before := model.Now()
-			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, buildChunkDecs(t), &sync.RWMutex{}))
+			descs := buildChunkDecs(t)
+			for _, d := range descs {
+				d.ingestedAt = tc.recordTime
+			}
+
+			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, descs, &sync.RWMutex{}))
 
 			require.NotEmpty(t, captured)
 			for _, c := range captured {
-				if tc.wantSet {
-					require.NotEqual(t, model.Time(0), c.IngestedAt)
-					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
-				} else {
-					require.Equal(t, model.Time(0), c.IngestedAt)
-				}
+				require.Equal(t, tc.want, c.IngestedAt)
 			}
 		})
 	}
@@ -1114,13 +1208,17 @@ func (s *testStore) FlushIndexes(_ context.Context) error {
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(
 func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
+	return newTestStoreWithLimits(t, cfg, defaultLimitsTestConfig(), walOverride)
+}
+
+func newTestStoreWithLimits(t require.TestingT, cfg Config, limitsCfg validation.Limits, walOverride WAL) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := validation.NewOverrides(limitsCfg, nil)
 	require.NoError(t, err)
 
 	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock, nil)

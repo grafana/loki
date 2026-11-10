@@ -8,12 +8,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 type Metastore interface {
 	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end].
-	// A request with a ShardBucketRange can leave out the streams outside that range.
+	// A request with a StreamHashRange can leave out the streams outside that range.
 	Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error)
 
 	// SectionsStream yields the sections that Sections returns, in batches. It yields the sections
@@ -49,21 +49,24 @@ type SectionsRequest struct {
 	End   time.Time
 
 	// Matchers select the streams. A request needs at least one, or the resolution fails.
-	Matchers   []*labels.Matcher
+	Matchers []*labels.Matcher
+
+	// Predicates are matchers on a stream label name or a structured metadata key. The metastore
+	// may prune a section that holds no row with the value of an equality predicate. A predicate
+	// of any other type prunes no section.
 	Predicates []*labels.Matcher
 
-	// ShardBucketRange, when set, asks the metastore to leave the streams outside the range out
-	// of the section descriptors it returns.
+	// StreamHashRange, when set, asks the metastore to omit streams whose hash lies outside the
+	// range. From must not exceed To.
 	//
-	// The index stores one bucket range for each label name and value in a section, not for
-	// each stream. The metastore skips a label name and value only when its whole bucket range
-	// lies outside the range. A kept one can still list streams outside the range, so the
-	// caller must drop them.
+	// The range is on stream hashes, not shard buckets, so it applies to data objects of any shard
+	// layout.
 	//
-	// A resolution can fail when From exceeds To, or when an index object lacks the bucket
-	// information to prune by. It can also fail when two index objects list different streams
-	// for one section.
-	ShardBucketRange *postings.ShardBucketRange
+	// The metastore can still list streams outside the range. The caller must drop them.
+	//
+	// If the metastore cannot apply the range to an index object, the resolution returns an error.
+	// It does not fall back to the unpruned streams of that object.
+	StreamHashRange *streams.HashRange
 }
 
 type SectionsResponse struct {
@@ -99,6 +102,7 @@ type IndexSectionsReaderResponse struct {
 }
 
 type CollectSectionsRequest struct {
+	// Reader must emit the batches of IndexSectionsReader.
 	Reader ArrowRecordBatchReader
 }
 

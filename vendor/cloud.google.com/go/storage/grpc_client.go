@@ -40,6 +40,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -167,6 +168,18 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (client *g
 	config := newStorageConfig(s.clientOption...)
 	if config.readAPIWasSet {
 		return nil, errors.New("storage: GRPC is incompatible with any option that specifies an API for reads")
+	}
+
+	if config.grpcKeepalive != nil {
+		// Pings are only sent while at least one RPC is in flight
+		// (PermitWithoutStream is intentionally left false): idle connections
+		// have no work to protect and pinging them would only consume the
+		// server's ping budget.
+		s.clientOption = append(s.clientOption,
+			option.WithGRPCDialOption(grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Time:    config.grpcKeepalive.Time,
+				Timeout: config.grpcKeepalive.Timeout,
+			})))
 	}
 
 	if !config.disableClientMetrics {
@@ -1483,15 +1496,7 @@ func (c *grpcStorageClient) NewRangeReader(ctx context.Context, params *newRange
 		wantCRC = checksums.GetCrc32C()
 	}
 
-	// The remaining bytes are the lesser of the requested range and all bytes
-	// after params.offset.
-	length := params.length
-	if params.length > size || params.length < 0 {
-		// if params.length < 0 (or larger than object size),
-		// all remaining bytes were requested.
-		length = size
-	}
-	remain := length - startOffset
+	remain := rangeReaderRemain(size, startOffset, params.length)
 
 	var chunkCRC uint32
 	var chunkCRCPresent bool
@@ -1549,6 +1554,22 @@ func (c *grpcStorageClient) NewRangeReader(ctx context.Context, params *newRange
 	}
 
 	return r, nil
+}
+
+// rangeReaderRemain returns the number of bytes a range read is expected to
+// return: the lesser of the requested length and the bytes available in an
+// object of the given size after startOffset. A negative length means the
+// rest of the object was requested. startOffset must already be resolved to a
+// non-negative absolute offset.
+func rangeReaderRemain(size, startOffset, length int64) int64 {
+	remain := size - startOffset
+	if remain < 0 {
+		return 0
+	}
+	if length >= 0 && length < remain {
+		return length
+	}
+	return remain
 }
 
 // IAM methods.

@@ -57,6 +57,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
+	defer builder.Reset()
 
 	// Merge postings sections
 	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
@@ -122,8 +123,8 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 
 // classifyRuns opens each unique source object once and groups its mergable
 // sections by type (postings, stats), preserving section order within each
-// object. Non-mergable section types (streams, pointers, indexPointers) are
-// silently ignored.
+// object. Non-mergable section types (streams, indexPointers) are silently
+// ignored.
 //
 // classifyRuns also returns the stream layout of the source indexes, and an
 // error if they do not share one, because the output records one layout.
@@ -154,8 +155,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	sort.Strings(paths)
 
 	// For each unique source object, scan its sections and classify by type,
-	// preserving section order. Unknown section types (streams, pointers,
-	// indexPointers) are skipped silently.
+	// preserving section order. Other section types (streams, indexPointers)
+	// are skipped silently. doIndexFilter also skips streams sections, but it
+	// rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
 	var (
 		layout       streams.Layout
@@ -175,7 +177,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
-				// default: skip silently (streams/pointers/indexPointers etc.)
+				// default: skip silently (streams/indexPointers etc.)
 			}
 		}
 		// Only stats sections record a layout, so an object without them does
@@ -212,19 +214,7 @@ type objectSections struct {
 // mergePostingsIntoBuilder merges the postings sections of all source objects
 // with a K-way loser-tree merge and feeds the result into the builder.
 func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
-	readers := make([]sequence[postings.Row], 0, len(objects))
-	for _, obj := range objects {
-		if len(obj.postings) == 0 {
-			continue
-		}
-		readers = append(readers, &sectionConcatSeq[postings.Row]{
-			ctx:        ctx,
-			objectPath: obj.path,
-			sections:   obj.postings,
-			seqIdx:     len(readers),
-			open:       openPostingsReader,
-		})
-	}
+	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -277,6 +267,25 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 	}
 
 	return nil
+}
+
+// postingsSequences returns one sequence over the postings rows of each object
+// that has postings sections, for the K-way merge.
+func postingsSequences(ctx context.Context, objects []objectSections) []sequence[postings.Row] {
+	readers := make([]sequence[postings.Row], 0, len(objects))
+	for _, obj := range objects {
+		if len(obj.postings) == 0 {
+			continue
+		}
+		readers = append(readers, &sectionConcatSeq[postings.Row]{
+			ctx:        ctx,
+			objectPath: obj.path,
+			sections:   obj.postings,
+			seqIdx:     len(readers),
+			open:       openPostingsReader,
+		})
+	}
+	return readers
 }
 
 func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {

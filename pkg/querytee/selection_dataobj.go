@@ -14,14 +14,15 @@ const (
 	selectionStrategyDataObj = "dataobj"
 
 	// Values of the decision label that the dataobj strategy sets itself. reasonUnsupportedQuery
-	// has the value of the frontend outcome for a query that is not a stream-first sum. The
-	// strategy also uses it for a query that does not parse. reasonUnsupportedRequest has no
-	// frontend equivalent.
+	// has the value of the frontend outcome for a metric query shape that data objects do not
+	// support. The strategy also uses it for a query that does not parse. reasonUnsupportedRequest
+	// has no frontend equivalent. The strategy sets it for a request that is not a range or instant
+	// metric query, such as a log query or a labels request.
 	reasonUnsupportedQuery   = string(queryrange.DataObjOutcomeUnsupportedQuery)
 	reasonUnsupportedRequest = "unsupported_request"
 )
 
-var errUnsupportedRequest = errors.New("the request is not a range or instant query")
+var errUnsupportedRequest = errors.New("the request is not a range or instant metric query")
 
 // dataObjStrategy selects a range or instant query when the query-frontend of the secondary backend
 // would read it from data objects. It runs the frontend eligibility check with the limits of the
@@ -59,9 +60,10 @@ func (s *dataObjStrategy) Select(tenants []string, req queryrangebase.Request) S
 	return Selection{Selected: true}
 }
 
-// requestExpr returns the parsed query of a range or instant request. It returns
-// errUnsupportedRequest for any other request. The codec sets the plan of every range and instant
-// query it decodes. The parse is a fallback for a request built without a plan.
+// requestExpr returns the parsed query of a range or instant metric request. It returns
+// errUnsupportedRequest for any other request, a log query included. The codec sets the plan of
+// every range and instant query it decodes. The parse is a fallback for a request built without a
+// plan.
 func requestExpr(req queryrangebase.Request) (syntax.Expr, error) {
 	var queryPlan *plan.QueryPlan
 	switch r := req.(type) {
@@ -72,8 +74,21 @@ func requestExpr(req queryrangebase.Request) (syntax.Expr, error) {
 	default:
 		return nil, errUnsupportedRequest
 	}
+
+	var expr syntax.Expr
 	if queryPlan != nil && queryPlan.AST != nil {
-		return queryPlan.AST, nil
+		expr = queryPlan.AST
+	} else {
+		var err error
+		if expr, err = syntax.ParseExpr(req.GetQuery()); err != nil {
+			return nil, err
+		}
 	}
-	return syntax.ParseExpr(req.GetQuery())
+
+	// Test for SampleExpr, not for a missing LogSelectorExpr. A literal and a vector expression
+	// implement both interfaces. They are metric queries, as the query-frontend routes them.
+	if _, ok := expr.(syntax.SampleExpr); !ok {
+		return nil, errUnsupportedRequest
+	}
+	return expr, nil
 }

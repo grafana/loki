@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // nestedTimeShard holds entries in [start, end) and their expanded size for rate sharding.
@@ -130,7 +131,7 @@ func timeShardNested(stream logproto.InternalStreamAdapter, lbls labels.Labels, 
 		at := time.Unix(0, start).UTC()
 		end := at.Add(shardLen)
 
-		shardLbls := labelBuilder.Set(timeShardLabel, fmt.Sprintf("%d_%d", at.Unix(), end.Unix())).Labels()
+		shardLbls := labelBuilder.Set(constants.TimeShardLabel, fmt.Sprintf("%d_%d", at.Unix(), end.Unix())).Labels()
 		shard := buckets[start].stream
 		shard.Labels = shardLbls.String()
 		shard.Hash = labels.StableHash(shardLbls)

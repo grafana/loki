@@ -13,7 +13,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
@@ -29,9 +30,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -183,6 +184,8 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -192,9 +195,27 @@ func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
+}
+
+// queryOpts is the subset of EngineOpts that a query reads at execution time. The remaining
+// EngineOpts fields only matter when an engine or its evaluator is constructed.
+type queryOpts struct {
+	// logExecutingQuery controls if the query is logged when Exec is called.
+	logExecutingQuery bool
+	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
+	maxQuerySeriesCutoff bool
+}
+
+// newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
+func newQueryOpts(opts EngineOpts) queryOpts {
+	return queryOpts{
+		logExecutingQuery:    opts.LogExecutingQuery,
+		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
+	}
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -228,12 +249,12 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (qe *QueryEngine) Query(params Params) Query {
 	return &query{
-		logger:       qe.logger,
-		params:       params,
-		evaluator:    qe.evaluatorFactory,
-		record:       true,
-		logExecQuery: qe.opts.LogExecutingQuery,
-		limits:       qe.limits,
+		logger:    qe.logger,
+		params:    params,
+		evaluator: qe.evaluatorFactory,
+		record:    true,
+		opts:      newQueryOpts(qe.opts),
+		limits:    qe.limits,
 	}
 }
 
@@ -244,12 +265,12 @@ type Query interface {
 }
 
 type query struct {
-	logger       log.Logger
-	params       Params
-	limits       Limits
-	evaluator    EvaluatorFactory
-	record       bool
-	logExecQuery bool
+	logger    log.Logger
+	params    Params
+	limits    Limits
+	evaluator EvaluatorFactory
+	record    bool
+	opts      queryOpts
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -282,7 +303,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
-	if q.logExecQuery {
+	if q.opts.logExecutingQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
 
 		logValues := []interface{}{
@@ -341,7 +362,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	defer cancel()
 
 	if q.checkBlocked(ctx, tenants) {
-		return nil, logqlmodel.ErrBlocked
+		return nil, logqlerr.ErrBlocked
 	}
 
 	switch e := q.params.GetExpression().(type) {
@@ -412,20 +433,18 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
 	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
 	//
-	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
-	// true, matching the NewStepEvaluator call below.
+	// A query counts as stream-first when any part of it runs in stream-first order.
 	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
-		switch sampleOrderFor(ctx, expr, q.limits, true) {
-		case logproto.SAMPLE_ORDER_BY_STREAM:
+		if sampleOrderForQuery(ctx, expr, q.limits) == logproto.SAMPLE_ORDER_BY_STREAM {
 			stats.FromContext(ctx).AddStreamFirstQueries(1)
-		default:
+		} else {
 			stats.FromContext(ctx).AddTimestampFirstQueries(1)
 		}
 	}
 
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err
 	}
@@ -497,6 +516,22 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	return limitExceeded
 }
 
+// maxQuerySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
+// query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
+// exempt, so they still get partial results and a warning from JoinSampleVector.
+func (q *query) maxQuerySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
+	if !q.opts.maxQuerySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+		return 0
+	}
+	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a
+	// millisecond a range leg of a binary operation can run steps past the end of a vector() leg.
+	// The binary operation discards those steps, so they are not a lower bound on the output.
+	if step := q.params.Step(); step > 0 && step < time.Millisecond {
+		return 0
+	}
+	return maxSeries
+}
+
 func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
@@ -514,7 +549,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 			next = false
 			vectorsToSeries(vec, seriesIndex)
 		} else {
-			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			return nil, logqlerr.NewSeriesLimitError(maxSeries)
 		}
 	}
 
@@ -549,7 +584,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		// maxSeries regardless of request type.
 		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
 			if !httpreq.IsLogsDrilldownRequest(ctx) {
-				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
 			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
@@ -578,7 +613,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 		switch e := e.(type) {
 		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
-				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlerr.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
 		}
 		return true

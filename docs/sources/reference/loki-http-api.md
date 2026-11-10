@@ -71,6 +71,7 @@ These HTTP endpoints are exposed by all components and return the status of the 
 - [`GET /log_level`](#change-log-level)
 - [`GET /metrics`](#prometheus-metrics)
 - [`GET /config`](#show-current-configuration)
+- [`GET /loki/api/v1/exposed-config`](#show-exposed-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#show-build-information)
 
@@ -228,6 +229,17 @@ The example below show all possible statistics returned with their respective de
 }
 ```
 
+### Processed-byte response header
+
+Successful `/loki/api/v1/query`, `/loki/api/v1/query_range`, `/loki/api/v1/detected_fields`,
+and `/loki/api/v1/detected_field/<name>/values` responses include
+`X-Loki-Query-Bytes-Processed`: a non-negative decimal integer matching the final response's
+`totalBytesProcessed` statistic, regardless of encoding or compression.
+
+The total includes available statistics; missing contributions count as zero. A value of `0`
+can mean no bytes were processed or no statistics were available. Failed queries and older
+servers may omit the header; an absent header does not mean zero usage.
+
 ## Ingest logs
 
 ```bash
@@ -238,7 +250,7 @@ POST /loki/api/v1/push
 behavior is for the POST body to be a [Snappy](https://github.com/google/snappy)-compressed [Protocol Buffer](https://github.com/protocolbuffers/protobuf) message:
 
 - [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/push/push.proto)
-- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
+- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/util/client.go)
 
 These POST requests require the `Content-Type` HTTP header to be `application/x-protobuf`.
 
@@ -1272,7 +1284,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki](../../operations/meta-monitoring/)
+[Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/)
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -1288,6 +1300,18 @@ modify the output. If it has the value `diff` only the differences between the d
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
+
+## Show exposed configuration
+
+```bash
+GET /loki/api/v1/exposed-config
+```
+
+`/loki/api/v1/exposed-config` returns a fixed, user-configured subset of `/config`, set with
+`-config.exposed-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
+such as through a datasource proxy. Empty by default, meaning the endpoint returns `{}`.
+
+In microservices mode, the `/loki/api/v1/exposed-config` endpoint is exposed by all components.
 
 ## List running services
 
@@ -1480,7 +1504,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 - `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 - `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false`.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.tokens-file-path` is specified. Defaults to `false`.
 - `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 

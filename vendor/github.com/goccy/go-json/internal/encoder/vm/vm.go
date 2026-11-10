@@ -2,24 +2,21 @@
 package vm
 
 import (
+	"reflect"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/encoder"
+	"github.com/goccy/go-json/internal/jsonstring"
 )
 
 func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]byte, error) {
 	ctxptr := ctx.Ptr()
-	var code *encoder.Opcode
-	if (ctx.Option.Flag & encoder.HTMLEscapeOption) != 0 {
-		code = codeSet.EscapeKeyCode
-	} else {
-		code = codeSet.NoescapeKeyCode
-	}
+	code := codeSet.KeyCodes[ctx.Option.Flag&encoder.KeyEscapeOptions]
 
 	for {
 		switch code.Op {
 		default:
-			return nil, errUnimplementedOp(code.Op)
+			return b, errUnimplementedOp(code.Op)
 		// The opcodes of a value of interface{} and of a map are first: the position of a case in the switch
 		// changes the layout of the code of the VM, and these were the ones to suffer from it.
 		case encoder.OpInterfacePtr:
@@ -36,14 +33,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			// An interface value which holds nothing is null: its first word, the type or the itab, is nil.
 			// It is decided here, as a call costs more than the check: the fields of interface{} of a struct
 			// are nil in many a value.
-			if p == nil || *(*unsafe.Pointer)(p) == nil {
+			if p == nil || (*(*unsafe.Pointer)(p) == nil && code.Flags&encoder.StaticTypeFlags == 0) {
 				b = appendNullComma(ctx, b)
 				code = code.Next
 				break
 			}
 			first, base, scalar, err := ctx.EnterInterface(code, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			if first == nil {
 				b = appendNullComma(ctx, b)
@@ -53,7 +50,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if scalar {
 				bb, err := appendScalar(ctx, b, first, base)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				code = code.Next
@@ -69,14 +66,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			// the ones of a value of interface{}, not with the other fields: there they cost the small structs 3%.
 			p := unsafe.Add(load(ctxptr, code.Idx), code.Offset)
 			b = appendStructKey(ctx, code, b)
-			if *(*unsafe.Pointer)(p) == nil {
+			if *(*unsafe.Pointer)(p) == nil && code.Flags&encoder.StaticTypeFlags == 0 {
 				b = appendNullComma(ctx, b)
 				code = code.Next
 				break
 			}
 			first, base, scalar, err := ctx.EnterInterface(code, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			if first == nil {
 				b = appendNullComma(ctx, b)
@@ -86,7 +83,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if scalar {
 				bb, err := appendScalar(ctx, b, first, base)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				code = code.Next
@@ -103,7 +100,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			b = appendStructKey(ctx, code, b)
 			first, base, scalar, err := ctx.EnterInterface(code, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			if first == nil {
 				b = appendNullComma(ctx, b)
@@ -113,7 +110,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if scalar {
 				bb, err := appendScalar(ctx, b, first, base)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				code = code.Next
@@ -124,7 +121,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpMapPtr:
 			p := ptrToNPtr(load(ctxptr, code.Idx), code.PtrNum)
 			if p == nil {
-				b = appendNullComma(ctx, b)
+				if encoder.NilMapIsEmpty(ctx) {
+					b = appendEmptyObject(ctx, b)
+				} else {
+					b = appendNullComma(ctx, b)
+				}
 				code = code.End.Next
 				break
 			}
@@ -133,15 +134,23 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpMap:
 			p := load(ctxptr, code.Idx)
 			if p == nil {
-				b = appendNullComma(ctx, b)
+				if encoder.NilMapIsEmpty(ctx) {
+					b = appendEmptyObject(ctx, b)
+				} else {
+					b = appendNullComma(ctx, b)
+				}
 				code = code.End.Next
 				break
 			}
 			// The entries are read from the map into the context first ( encoder.MapLayout ), and encoded from
-			// there: in the order of the map, or sorted by their keys when they are strings. A sorted map whose
-			// keys are not strings is encoded as it comes and its entries are put in the order of their encoded
-			// keys at OpMapEnd.
+			// there: in the order of the map, or sorted by their keys when they are strings. The keys of a sorted
+			// map which are not strings are encoded first, and the entries are written in the order of their names.
 			mapCtx := encoder.NewMapContext(ctx)
+			if ctx.RecursiveLevel > encoder.StartDetectingMapCyclesAfter && code.Map.Cyclic {
+				if err := ctx.RecordMap(code, p, mapCtx); err != nil {
+					return b, err
+				}
+			}
 			if code.Flags&encoder.MapStringKeyFlags != 0 && (code.Map.ScalarValue || code.Map.InterfaceValue) && ctx.Option.Flag&encoder.UnorderedMapOption != 0 {
 				// the entries are written as the map is read: all of them when the values are scalars, and the
 				// ones which hold a scalar when the values are of interface{}, and the context gets the others.
@@ -153,7 +162,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				}
 				bb, err := appendMapAsRead(ctx, code, appendStructHead(ctx, b), p, mapCtx)
 				if err != nil {
-					return nil, err
+					// the entries written before the error, which tell where it is.
+					return bb, err
 				}
 				b = bb
 			} else if code.Map.Collect(p, mapCtx) == 0 {
@@ -184,37 +194,57 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			// A key of a string is written here, and the value of the entry is given to the opcode of the
 			// value: that saves the opcodes of the key and of the value for every entry. The key of another
 			// kind is given to its opcode, which OpMapValue follows.
+			//
+			// The keys of a sorted map which are not strings are encoded first, each by its opcodes and
+			// OpMapValue, which keeps it, and sorted by their names: the entries are written in that order then,
+			// by the opcodes of the values. So the values are encoded in the order of the output, as
+			// encoding/json encodes them, which a method of a value sees ( its place in the output ), and which
+			// tells the value whose error is reported.
 			mapCtx := (*encoder.MapContext)(load(ctxptr, code.Idx))
 			byEncodedKeys := mapCtx.Slice.Items != nil
-			idx := mapCtx.Idx
-			if byEncodedKeys && idx >= 0 {
-				mapCtx.Slice.Items[idx].Value = b[mapCtx.Start:]
+			idx := mapCtx.Idx + 1
+			if byEncodedKeys && !mapCtx.Sorted {
+				if idx < mapCtx.Len {
+					mapCtx.Idx = idx
+					store(ctxptr, code.Next.Idx, mapCtx.KeyAt(idx))
+					code = code.Next
+					break
+				}
+				b = mapCtx.SortEncodedKeys(ctx, b, mapKeyFooterLen(ctx, code.Next))
+				idx = 0
 			}
-			idx++
 			if mapCtx.DirectEntries && idx < mapCtx.Len {
 				// the entries from here are written by one call, up to one whose value is left to its opcodes.
 				bb, next, err := appendSortedMapEntries(ctx, code, b, mapCtx, idx)
 				if err != nil {
-					return nil, err
+					// the entries written before the error, which tell where it is.
+					return bb, err
 				}
 				b, idx = bb, next
 			}
 			if idx == mapCtx.Len {
-				if byEncodedKeys {
-					code = code.End
-				} else {
-					b = appendObjectEnd(ctx, code, b)
-					encoder.ReleaseMapContext(ctx, mapCtx)
-					code = code.End.Next
-				}
+				b = appendObjectEnd(ctx, code, b)
+				encoder.ReleaseMapContext(ctx, mapCtx)
+				code = code.End.Next
 				break
 			}
 			mapCtx.Idx = idx
 			if byEncodedKeys {
-				mapCtx.Start = len(b)
-			} else {
-				b = appendMapKeyIndent(ctx, code, b)
+				// the entry of the key at idx in the order of the names, whose value is given to the opcodes of
+				// the value, which OpMapValue ( NextField ) is followed by.
+				item := &mapCtx.Slice.Items[idx]
+				if idx > 0 && code.End.Op == encoder.OpMapEndMayRepeatNames && encoder.SameMapName(ctx, item.Key, mapCtx.Slice.Items[idx-1].Key) {
+					// the output before the name, which tells where it is.
+					err := encoder.DuplicateMapNameError(item.Key, b)
+					encoder.ReleaseMapContext(ctx, mapCtx)
+					return b, err
+				}
+				b = appendSortedMapKey(ctx, code, b, item.Key)
+				code = code.NextField.Next
+				store(ctxptr, code.Idx, mapCtx.ValueAt(item.Entry))
+				break
 			}
+			b = appendMapKeyIndent(ctx, code, b)
 			if code.Flags&encoder.MapStringKeyFlags == 0 {
 				store(ctxptr, code.Next.Idx, mapCtx.KeyAt(idx))
 				code = code.Next
@@ -223,7 +253,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if mapCtx.Sorted {
 				idx = int(mapCtx.Order[idx])
 			}
-			b = encoder.AppendString(ctx, b, mapCtx.Keys[idx])
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, mapCtx.Keys[idx])
 			b = appendComma(ctx, b)
 			b = appendColon(ctx, b)
 			store(ctxptr, code.Next.Idx, mapCtx.ValueAt(idx))
@@ -231,31 +261,22 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpMapValue:
 			mapCtx := (*encoder.MapContext)(load(ctxptr, code.Idx))
 			if mapCtx.Slice.Items != nil {
-				mapCtx.Slice.Items[mapCtx.Idx].Key = b[mapCtx.Start:]
-				mapCtx.Start = len(b)
-			} else {
-				b = appendColon(ctx, b)
+				// a key of a sorted map, which follows the keys before it from First, to be written with its entry
+				// when every key is encoded ( see encoder.MapContext.SortEncodedKeys ): the item has the keys up to
+				// the end of this one, which tells where it ends. The next key is given to its opcodes, which follow
+				// the key opcode ( NextField ), and the key opcode sorts the keys after the last one.
+				mapCtx.Slice.Items[mapCtx.Idx] = encoder.MapItem{Key: b[mapCtx.First:], Entry: mapCtx.Idx}
+				code = code.NextField
+				if idx := mapCtx.Idx + 1; idx < mapCtx.Len {
+					mapCtx.Idx = idx
+					code = code.Next
+					store(ctxptr, code.Idx, mapCtx.KeyAt(idx))
+				}
+				break
 			}
+			b = appendColon(ctx, b)
 			store(ctxptr, code.Next.Idx, mapCtx.ValueAt(mapCtx.Idx))
 			code = code.Next
-		case encoder.OpMapEnd:
-			// the entries of a sorted map whose keys are not strings, in the order of their encoded keys.
-			mapCtx := (*encoder.MapContext)(load(ctxptr, code.Idx))
-			mapCtx.Slice.Sort()
-			buf := mapCtx.Buf
-			for _, item := range mapCtx.Slice.Items {
-				buf = appendMapKeyValue(ctx, code, buf, item.Key, item.Value)
-			}
-			buf = appendMapEnd(ctx, code, buf)
-			b = b[:mapCtx.First]
-			b = append(b, buf...)
-			mapCtx.Buf = buf
-			encoder.ReleaseMapContext(ctx, mapCtx)
-			code = code.Next
-		case encoder.OpPtr:
-			p := load(ctxptr, code.Idx)
-			code = code.Next
-			store(ctxptr, code.Idx, ptrToPtr(p))
 		case encoder.OpIntPtr:
 			p := ptrToNPtr(load(ctxptr, code.Idx), code.PtrNum)
 			if p == nil {
@@ -287,6 +308,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpIntPtrString:
 			p := ptrToNPtr(load(ctxptr, code.Idx), code.PtrNum)
 			if p == nil {
+				if code.Flags&encoder.MapKeyFlags != 0 {
+					return b, encoder.ErrNilMapKey(code)
+				}
 				b = appendNullComma(ctx, b)
 				code = code.Next
 				break
@@ -302,6 +326,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpUintPtrString:
 			p := ptrToNPtr(load(ctxptr, code.Idx), code.PtrNum)
 			if p == nil {
+				if code.Flags&encoder.MapKeyFlags != 0 {
+					return b, encoder.ErrNilMapKey(code)
+				}
 				b = appendNullComma(ctx, b)
 				code = code.Next
 				break
@@ -325,9 +352,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			fallthrough
 		case encoder.OpFloat32String:
 			b = append(b, '"')
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(load(ctxptr, code.Idx)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(load(ctxptr, code.Idx)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = append(b, '"')
@@ -345,7 +372,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpFloat64String:
 			v := ptrToFloat64(load(ctxptr, code.Idx))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = append(b, '"')
 			b = encoder.AppendFloat64(ctx, b, v)
@@ -377,7 +404,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			store(ctxptr, code.Idx, p)
 			fallthrough
 		case encoder.OpStringString:
-			b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, ptrToString(load(ctxptr, code.Idx)))))
+			quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, ptrToString(load(ctxptr, code.Idx)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 			b = appendComma(ctx, b)
 			code = code.Next
 		case encoder.OpNumberPtrString:
@@ -391,9 +419,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			fallthrough
 		case encoder.OpNumberString:
 			b = append(b, '"')
-			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(load(ctxptr, code.Idx)))
+			bb, err := appendNumberString(ctx, b, ptrToNumber(load(ctxptr, code.Idx)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = append(bb, '"')
 			b = appendComma(ctx, b)
@@ -409,9 +437,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			store(ctxptr, code.Idx, p)
 			fallthrough
 		case encoder.OpFloat32:
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(load(ctxptr, code.Idx)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(load(ctxptr, code.Idx)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = appendComma(ctx, b)
@@ -428,7 +456,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpFloat64:
 			v := ptrToFloat64(load(ctxptr, code.Idx))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendComma(ctx, b)
@@ -436,6 +464,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpStringPtr:
 			p := ptrToNPtr(load(ctxptr, code.Idx), code.PtrNum)
 			if p == nil {
+				if code.Flags&encoder.MapKeyFlags != 0 {
+					return b, encoder.ErrNilMapKey(code)
+				}
 				b = appendNullComma(ctx, b)
 				code = code.Next
 				break
@@ -443,7 +474,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			store(ctxptr, code.Idx, p)
 			fallthrough
 		case encoder.OpString:
-			b = encoder.AppendString(ctx, b, ptrToString(load(ctxptr, code.Idx)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(load(ctxptr, code.Idx)))
 			b = appendComma(ctx, b)
 			code = code.Next
 		case encoder.OpBoolPtr:
@@ -484,7 +515,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpNumber:
 			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(load(ctxptr, code.Idx)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -509,7 +540,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			bb, err := appendMarshalJSON(ctx, code, b, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -525,6 +556,10 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpMarshalText:
 			p := load(ctxptr, code.Idx)
 			if p == nil {
+				if (code.Flags & encoder.InterfaceMapKeyFlags) != 0 {
+					// a key whose pointers end at nil has no name, as encoding/json of Go 1.27 names it
+					return b, encoder.NilMapKeyError(code)
+				}
 				if (code.Flags & encoder.MapKeyFlags) != 0 {
 					// the name of a key which is a nil pointer is "", as encoding/json names it
 					b = appendComma(ctx, append(b, `""`...))
@@ -540,7 +575,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			bb, err := appendMarshalText(ctx, code, b, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -557,7 +592,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			slice := ptrToSlice(p)
 			if p == nil || slice.Data == nil {
-				b = appendNullComma(ctx, b)
+				if p != nil && encoder.NilSliceIsEmpty(ctx) {
+					b = appendEmptyArray(ctx, b)
+				} else {
+					b = appendNullComma(ctx, b)
+				}
 				code = code.End.Next
 				break
 			}
@@ -641,13 +680,16 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				p := load(ctxptr, code.Idx)
 				if ctx.RecursiveLevel > encoder.StartDetectingCyclesAfter {
 					if err := ctx.RecordSeen(code, p); err != nil {
-						return nil, err
+						return b, err
 					}
 				}
 				first := code.Jmp.Code
 				store(ctxptr, first.Idx, p)
 				// the end of the struct is next, then OpRecursiveEnd, which has what the indent is deeper by.
 				ctx.BaseIndent += code.Next.Next.Indent
+				if ctx.BaseIndent+code.Jmp.Levels > encoder.MaxDepth && p != nil {
+					return b, encoder.ErrMaxDepth(ctx)
+				}
 				ctx.TailLevels++
 				ctx.RecursiveLevel++
 				code = first
@@ -655,10 +697,24 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			first, base, err := ctx.EnterRecursive(code, load(ctxptr, code.Idx))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			code = first
 			ctxptr = base
+		case encoder.OpStructFieldOmitEmptyStringPtrOrEmpty:
+			p := load(ctxptr, code.Idx)
+			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
+			if p != nil {
+				if s := ptrToString(p); s != "" {
+					b = appendStructKey(ctx, code, b)
+					b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, s)
+					b = appendComma(ctx, b)
+				}
+			}
+			code = code.Next
+		case encoder.OpUnwriteEmpty:
+			b = encoder.UnwriteEmptyMember(ctx, b, len(code.Key))
+			code = code.Next
 		case encoder.OpRecursiveEnd:
 			// the braces of the values of a list this value was the last field of, from the innermost.
 			for ; ctx.TailLevels > 0; ctx.TailLevels-- {
@@ -790,8 +846,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				b = encoder.AppendInt(ctx, b, p, code)
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldIntPtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -814,8 +873,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = encoder.AppendInt(ctx, b, p, code)
 				b = append(b, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldUint3:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
@@ -884,8 +946,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				b = encoder.AppendUint(ctx, b, p, code)
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldUintPtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -908,14 +973,17 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = encoder.AppendUint(ctx, b, p, code)
 				b = append(b, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldFloat32:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = appendComma(ctx, b)
@@ -925,9 +993,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat32(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				b = appendStructKey(ctx, code, b)
-				bb, err := appendFloat32(ctx, b, v)
+				bb, err := appendFloat32(ctx, code, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = appendComma(ctx, b)
@@ -937,9 +1005,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = append(b, '"')
@@ -951,9 +1019,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if v != 0 {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, v)
+				bb, err := appendFloat32(ctx, code, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
@@ -967,9 +1035,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -980,14 +1048,17 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldFloat32PtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -996,9 +1067,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendNull(ctx, b)
 			} else {
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
@@ -1011,21 +1082,24 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldFloat643:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendComma(ctx, b)
@@ -1036,7 +1110,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			b = appendStructKey(ctx, code, b)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendComma(ctx, b)
@@ -1047,7 +1121,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			b = appendStructKey(ctx, code, b)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendComma(ctx, b)
@@ -1057,7 +1131,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = appendStructKey(ctx, code, b)
 				b = encoder.AppendFloat64(ctx, b, v)
@@ -1068,7 +1142,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
@@ -1081,7 +1155,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
@@ -1101,7 +1175,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			v := ptrToFloat64(p)
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendComma(ctx, b)
@@ -1113,12 +1187,15 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = encoder.AppendFloat64(ctx, b, v)
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldFloat64PtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -1128,7 +1205,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = append(b, '"')
 				b = encoder.AppendFloat64(ctx, b, v)
@@ -1144,31 +1221,34 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = append(b, '"')
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = encoder.AppendFloat64(ctx, b, v)
 				b = append(b, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldString3:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			b = encoder.AppendString(ctx, b, ptrToString(unsafe.Add(p, code.Offset)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(unsafe.Add(p, code.Offset)))
 			b = appendComma(ctx, b)
 			code = code.Next
 			fallthrough
 		case encoder.OpStructFieldString2:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			b = encoder.AppendString(ctx, b, ptrToString(unsafe.Add(p, code.Offset)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(unsafe.Add(p, code.Offset)))
 			b = appendComma(ctx, b)
 			code = code.Next
 			fallthrough
 		case encoder.OpStructFieldString:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			b = encoder.AppendString(ctx, b, ptrToString(unsafe.Add(p, code.Offset)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(unsafe.Add(p, code.Offset)))
 			b = appendComma(ctx, b)
 			code = code.Next
 		case encoder.OpStructFieldOmitEmptyString:
@@ -1176,7 +1256,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToString(unsafe.Add(p, code.Offset))
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, v)
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, v)
 				b = appendComma(ctx, b)
 			}
 			code = code.Next
@@ -1184,7 +1264,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			s := ptrToString(unsafe.Add(p, code.Offset))
 			b = appendStructKey(ctx, code, b)
-			b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, s)))
+			quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, s)
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 			b = appendComma(ctx, b)
 			code = code.Next
 		case encoder.OpStructFieldOmitEmptyStringString:
@@ -1192,7 +1273,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToString(unsafe.Add(p, code.Offset))
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, v)))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, v)
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 				b = appendComma(ctx, b)
 			}
 			code = code.Next
@@ -1203,7 +1285,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				b = encoder.AppendString(ctx, b, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(p))
 			}
 			b = appendComma(ctx, b)
 			code = code.Next
@@ -1212,10 +1294,13 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(p))
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldStringPtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -1223,7 +1308,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, ptrToString(p))))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 			}
 			b = appendComma(ctx, b)
 			code = code.Next
@@ -1232,10 +1318,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, ptrToString(p))))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldBool3:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
@@ -1302,8 +1392,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				b = appendBool(ctx, b, ptrToBool(p))
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldBoolPtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -1326,8 +1419,11 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendBool(ctx, b, ptrToBool(p))
 				b = append(b, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldBytes:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
@@ -1361,14 +1457,17 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				b = encoder.AppendByteSlice(ctx, b, ptrToBytes(p))
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldNumber:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -1379,7 +1478,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := encoder.AppendNumber(ctx, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendComma(ctx, bb)
 			}
@@ -1388,9 +1487,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
-			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
+			bb, err := appendNumberString(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = append(bb, '"')
 			b = appendComma(ctx, b)
@@ -1401,9 +1500,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, v)
+				bb, err := appendNumberString(ctx, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 				b = appendComma(ctx, b)
@@ -1418,7 +1517,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1431,11 +1530,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendComma(ctx, bb)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldNumberPtrString:
 			p := load(ctxptr, code.Idx)
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
@@ -1444,9 +1546,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendNull(ctx, b)
 			} else {
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
+				bb, err := appendNumberString(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 			}
@@ -1458,14 +1560,17 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
+				bb, err := appendNumberString(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 				b = appendComma(ctx, b)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldMarshalJSON:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
@@ -1478,7 +1583,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := appendMarshalJSON(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1487,22 +1592,18 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpStructFieldOmitEmptyMarshalJSON:
 			p := load(ctxptr, code.Idx)
 			p = unsafe.Add(p, code.Offset)
+			// empty by the kind of the field, as encoding/json decides it: a nil func or chan is not.
+			if encoder.IsEmptyField(code.EmptyKind, code.NumBitSize, p) {
+				code = code.NextField
+				break
+			}
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				p = ptrToPtr(p)
-			}
-			if p == nil && (code.Flags&encoder.NilCheckFlags) != 0 {
-				code = code.NextField
-				break
-			}
-			iface := ptrToInterface(code, p)
-			if (code.Flags&encoder.NilCheckFlags) != 0 && encoder.IsNilForMarshaler(iface) {
-				code = code.NextField
-				break
 			}
 			b = appendStructKey(ctx, code, b)
 			bb, err := appendMarshalJSON(ctx, code, b, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -1515,7 +1616,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := appendMarshalJSON(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1528,11 +1629,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := appendMarshalJSON(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendComma(ctx, bb)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldMarshalText:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
@@ -1545,7 +1649,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := appendMarshalText(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1554,22 +1658,18 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpStructFieldOmitEmptyMarshalText:
 			p := load(ctxptr, code.Idx)
 			p = unsafe.Add(p, code.Offset)
+			// empty by the kind of the field, as encoding/json decides it: a nil func or chan is not.
+			if encoder.IsEmptyField(code.EmptyKind, code.NumBitSize, p) {
+				code = code.NextField
+				break
+			}
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				p = ptrToPtr(p)
-			}
-			if p == nil && (code.Flags&encoder.NilCheckFlags) != 0 {
-				code = code.NextField
-				break
-			}
-			iface := ptrToInterface(code, p)
-			if (code.Flags&encoder.NilCheckFlags) != 0 && encoder.IsNilForMarshaler(iface) {
-				code = code.NextField
-				break
 			}
 			b = appendStructKey(ctx, code, b)
 			bb, err := appendMarshalText(ctx, code, b, p)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendComma(ctx, bb)
 			code = code.Next
@@ -1582,7 +1682,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := appendMarshalText(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1595,11 +1695,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := appendMarshalText(ctx, code, b, p)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendComma(ctx, bb)
+				code = code.Next
+			} else {
+				// omitted: the opcodes after the value of the field, if any, are skipped as well.
+				code = code.NextField
 			}
-			code = code.Next
 		case encoder.OpStructFieldArray:
 			b = appendStructKey(ctx, code, b)
 			p := load(ctxptr, code.Idx)
@@ -1686,35 +1789,6 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			code = code.Next
 			store(ctxptr, code.Idx, p)
-		case encoder.OpStructFieldOmitEmptyMapPtr:
-			p := load(ctxptr, code.Idx)
-			p = ptrToPtr(unsafe.Add(p, code.Offset))
-			if p != nil {
-				p = ptrToNPtr(p, code.PtrNum)
-			}
-			if p != nil {
-				b = appendStructKey(ctx, code, b)
-				code = code.Next
-				store(ctxptr, code.Idx, p)
-			} else {
-				code = code.NextField
-			}
-		case encoder.OpStructFieldStruct:
-			b = appendStructKey(ctx, code, b)
-			p := load(ctxptr, code.Idx)
-			p = unsafe.Add(p, code.Offset)
-			code = code.Next
-			store(ctxptr, code.Idx, p)
-		case encoder.OpStructFieldOmitEmptyStruct:
-			p := load(ctxptr, code.Idx)
-			p = unsafe.Add(p, code.Offset)
-			if ptrToPtr(p) == nil && (code.Flags&encoder.IsNextOpPtrTypeFlags) != 0 {
-				code = code.NextField
-			} else {
-				b = appendStructKey(ctx, code, b)
-				code = code.Next
-				store(ctxptr, code.Idx, p)
-			}
 		case encoder.OpStructEnd:
 			b = appendStructEndSkipLast(ctx, code, b)
 			code = code.Next
@@ -1897,9 +1971,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpStructEndFloat32:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = appendStructEnd(ctx, code, b)
@@ -1909,9 +1983,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat32(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				b = appendStructKey(ctx, code, b)
-				bb, err := appendFloat32(ctx, b, v)
+				bb, err := appendFloat32(ctx, code, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = appendStructEnd(ctx, code, b)
@@ -1923,9 +1997,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
-			bb, err := appendFloat32(ctx, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
+			bb, err := appendFloat32(ctx, code, b, ptrToFloat32(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = bb
 			b = append(b, '"')
@@ -1937,9 +2011,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if v != 0 {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, v)
+				bb, err := appendFloat32(ctx, code, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
@@ -1955,9 +2029,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -1968,9 +2042,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = appendStructEnd(ctx, code, b)
@@ -1986,9 +2060,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendNull(ctx, b)
 			} else {
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
@@ -2001,9 +2075,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+				bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 				b = append(b, '"')
@@ -2016,7 +2090,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = appendStructKey(ctx, code, b)
 			b = encoder.AppendFloat64(ctx, b, v)
@@ -2027,7 +2101,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = appendStructKey(ctx, code, b)
 				b = encoder.AppendFloat64(ctx, b, v)
@@ -2040,7 +2114,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
@@ -2053,7 +2127,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToFloat64(unsafe.Add(p, code.Offset))
 			if v != 0 {
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
@@ -2076,7 +2150,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			}
 			v := ptrToFloat64(p)
 			if isInfOrNaN(v) {
-				return nil, errUnsupportedFloat(v)
+				return b, errUnsupportedFloat(ctx, code, v)
 			}
 			b = encoder.AppendFloat64(ctx, b, v)
 			b = appendStructEnd(ctx, code, b)
@@ -2088,7 +2162,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = encoder.AppendFloat64(ctx, b, v)
 				b = appendStructEnd(ctx, code, b)
@@ -2106,7 +2180,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = append(b, '"')
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = encoder.AppendFloat64(ctx, b, v)
 				b = append(b, '"')
@@ -2120,7 +2194,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				v := ptrToFloat64(p)
 				if isInfOrNaN(v) {
-					return nil, errUnsupportedFloat(v)
+					return b, errUnsupportedFloat(ctx, code, v)
 				}
 				b = append(b, '"')
 				b = encoder.AppendFloat64(ctx, b, v)
@@ -2133,7 +2207,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 		case encoder.OpStructEndString:
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
-			b = encoder.AppendString(ctx, b, ptrToString(unsafe.Add(p, code.Offset)))
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(unsafe.Add(p, code.Offset)))
 			b = appendStructEnd(ctx, code, b)
 			code = code.Next
 		case encoder.OpStructEndOmitEmptyString:
@@ -2141,7 +2215,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToString(unsafe.Add(p, code.Offset))
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, v)
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, v)
 				b = appendStructEnd(ctx, code, b)
 			} else {
 				b = appendStructEndSkipLast(ctx, code, b)
@@ -2151,7 +2225,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			s := ptrToString(unsafe.Add(p, code.Offset))
-			b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, s)))
+			quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, s)
+			b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 			b = appendStructEnd(ctx, code, b)
 			code = code.Next
 		case encoder.OpStructEndOmitEmptyStringString:
@@ -2159,7 +2234,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			v := ptrToString(unsafe.Add(p, code.Offset))
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, v)))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, v)
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 				b = appendStructEnd(ctx, code, b)
 			} else {
 				b = appendStructEndSkipLast(ctx, code, b)
@@ -2172,7 +2248,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				b = encoder.AppendString(ctx, b, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(p))
 			}
 			b = appendStructEnd(ctx, code, b)
 			code = code.Next
@@ -2181,7 +2257,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(p))
 				b = appendStructEnd(ctx, code, b)
 			} else {
 				b = appendStructEndSkipLast(ctx, code, b)
@@ -2194,7 +2270,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p == nil {
 				b = appendNull(ctx, b)
 			} else {
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, ptrToString(p))))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 			}
 			b = appendStructEnd(ctx, code, b)
 			code = code.Next
@@ -2203,7 +2280,8 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p = ptrToNPtr(unsafe.Add(p, code.Offset), code.PtrNum)
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
-				b = encoder.AppendString(ctx, b, string(encoder.AppendString(ctx, []byte{}, ptrToString(p))))
+				quoted, _ := jsonstring.AppendQuoted(encoder.StringEscaper(ctx), []byte{}, ptrToString(p))
+				b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, string(quoted))
 				b = appendStructEnd(ctx, code, b)
 			} else {
 				b = appendStructEndSkipLast(ctx, code, b)
@@ -2339,7 +2417,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			b = appendStructKey(ctx, code, b)
 			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = appendStructEnd(ctx, code, bb)
 			code = code.Next
@@ -2350,7 +2428,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := encoder.AppendNumber(ctx, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendStructEnd(ctx, code, bb)
 			} else {
@@ -2361,9 +2439,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			p := load(ctxptr, code.Idx)
 			b = appendStructKey(ctx, code, b)
 			b = append(b, '"')
-			bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
+			bb, err := appendNumberString(ctx, b, ptrToNumber(unsafe.Add(p, code.Offset)))
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 			b = append(bb, '"')
 			b = appendStructEnd(ctx, code, b)
@@ -2374,9 +2452,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if v != "" {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, v)
+				bb, err := appendNumberString(ctx, b, v)
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 				b = appendStructEnd(ctx, code, b)
@@ -2393,7 +2471,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			} else {
 				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = bb
 			}
@@ -2406,7 +2484,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructKey(ctx, code, b)
 				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = appendStructEnd(ctx, code, bb)
 			} else {
@@ -2421,9 +2499,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendNull(ctx, b)
 			} else {
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
+				bb, err := appendNumberString(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 			}
@@ -2435,9 +2513,9 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if p != nil {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				bb, err := encoder.AppendNumber(ctx, b, ptrToNumber(p))
+				bb, err := appendNumberString(ctx, b, ptrToNumber(p))
 				if err != nil {
-					return nil, err
+					return b, err
 				}
 				b = append(bb, '"')
 				b = appendStructEnd(ctx, code, b)
@@ -2466,7 +2544,7 @@ func appendMapAsRead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte
 	code.Map.Reset(mapCtx)
 	if code.Map.ScalarValue {
 		mapCtx.Len = 0
-		return mapScalarValueWriters[code.Map.ValueWords](ctx, code, b, p)
+		return mapScalarValueWriters[code.Map.ValueKind](ctx, code, b, p)
 	}
 	for k, v := range *(*map[string]any)(unsafe.Pointer(&p)) {
 		iface := (*emptyInterface)(unsafe.Pointer(&v))
@@ -2476,10 +2554,17 @@ func appendMapAsRead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte
 		if iface.typ != nil && iface.ptr != nil {
 			codeSet := ctx.RecentCodeSet(uintptr(iface.typ))
 			if codeSet == nil {
-				var err error
-				codeSet, err = encoder.CompileToGetCodeSet(ctx, uintptr(iface.typ))
-				if err != nil {
-					return nil, err
+				if ctx.Option.Flag&encoder.UncachedOption == 0 {
+					codeSet = ctx.SharedCodeSets().LoadFirst(uintptr(iface.typ))
+				}
+				if codeSet != nil {
+					ctx.RememberCodeSet(uintptr(iface.typ), codeSet)
+				} else {
+					var err error
+					codeSet, err = encoder.CompileToGetCodeSet(ctx, uintptr(iface.typ))
+					if err != nil {
+						return b, err
+					}
 				}
 			}
 			scalar = codeSet.Scalar
@@ -2497,7 +2582,7 @@ func appendMapAsRead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte
 		// the data word of the interface value is the address of the scalar, or the pointer to it.
 		bb, err := appendScalar(ctx, b, scalar, iface.ptr)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		b = bb
 	}
@@ -2532,10 +2617,17 @@ func appendSortedMapEntries(ctx *encoder.RuntimeContext, code *encoder.Opcode, b
 			}
 			codeSet := ctx.RecentCodeSet(uintptr(iface.typ))
 			if codeSet == nil {
-				var err error
-				codeSet, err = encoder.CompileToGetCodeSet(ctx, uintptr(iface.typ))
-				if err != nil {
-					return nil, 0, err
+				if ctx.Option.Flag&encoder.UncachedOption == 0 {
+					codeSet = ctx.SharedCodeSets().LoadFirst(uintptr(iface.typ))
+				}
+				if codeSet != nil {
+					ctx.RememberCodeSet(uintptr(iface.typ), codeSet)
+				} else {
+					var err error
+					codeSet, err = encoder.CompileToGetCodeSet(ctx, uintptr(iface.typ))
+					if err != nil {
+						return b, 0, err
+					}
 				}
 			}
 			if codeSet.Scalar == nil {
@@ -2547,7 +2639,7 @@ func appendSortedMapEntries(ctx *encoder.RuntimeContext, code *encoder.Opcode, b
 		b = appendMapKey(ctx, code, b, mapCtx.Keys[i])
 		bb, err := appendScalar(ctx, b, scalar, p)
 		if err != nil {
-			return nil, 0, err
+			return b, 0, err
 		}
 		b = bb
 	}
@@ -2557,14 +2649,15 @@ func appendSortedMapEntries(ctx *encoder.RuntimeContext, code *encoder.Opcode, b
 // appendMapKey writes the key of an entry of a map, as OpMapKey does.
 func appendMapKey(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, k string) []byte {
 	b = appendMapKeyIndent(ctx, code, b)
-	b = encoder.AppendString(ctx, b, k)
+	b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, k)
 	b = appendComma(ctx, b)
 	return appendColon(ctx, b)
 }
 
 // appendMapScalarValues writes the entries of the map at p, whose values are written by the opcode of a
-// scalar which follows the header, as the map is ranged over as a map of values of V: the layout of a map
-// depends only on the sizes of the key and of the value ( encoder.MapLayout ).
+// scalar which follows the header, as the map is ranged over as a map of values of V, the basic type of the
+// kind of the values: the layout of a map depends only on the sizes of the key and of the value
+// ( encoder.MapLayout ).
 func appendMapScalarValues[V any](ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, p unsafe.Pointer) ([]byte, error) {
 	value := code.Next
 	// v is declared out of the loop: its address is given to appendScalar, so it lives on the heap, and a
@@ -2577,17 +2670,31 @@ func appendMapScalarValues[V any](ctx *encoder.RuntimeContext, code *encoder.Opc
 		b = appendMapKey(ctx, code, b, k)
 		bb, err := appendScalar(ctx, b, value, unsafe.Pointer(&v))
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		b = bb
 	}
 	return b, nil
 }
 
-// mapScalarValueWriters are appendMapScalarValues by the words of a value.
-var mapScalarValueWriters = [encoder.MapScalarValueWords + 1]func(*encoder.RuntimeContext, *encoder.Opcode, []byte, unsafe.Pointer) ([]byte, error){
-	appendMapScalarValues[[0]uint64],
-	appendMapScalarValues[[1]uint64],
-	appendMapScalarValues[[2]uint64],
-	appendMapScalarValues[[3]uint64],
+// mapScalarValueWriters are appendMapScalarValues by the kind of the values written by one opcode of a scalar
+// ( encoder.MapLayout.ValueKind ): a slice is a slice of bytes. A string and a slice are ranged over as their
+// words, which hold no pointer: the copy is not a pointer which the GC follows, and the map keeps the values.
+var mapScalarValueWriters = [...]func(*encoder.RuntimeContext, *encoder.Opcode, []byte, unsafe.Pointer) ([]byte, error){
+	reflect.Bool:    appendMapScalarValues[bool],
+	reflect.Int:     appendMapScalarValues[int],
+	reflect.Int8:    appendMapScalarValues[int8],
+	reflect.Int16:   appendMapScalarValues[int16],
+	reflect.Int32:   appendMapScalarValues[int32],
+	reflect.Int64:   appendMapScalarValues[int64],
+	reflect.Uint:    appendMapScalarValues[uint],
+	reflect.Uint8:   appendMapScalarValues[uint8],
+	reflect.Uint16:  appendMapScalarValues[uint16],
+	reflect.Uint32:  appendMapScalarValues[uint32],
+	reflect.Uint64:  appendMapScalarValues[uint64],
+	reflect.Uintptr: appendMapScalarValues[uintptr],
+	reflect.Float32: appendMapScalarValues[float32],
+	reflect.Float64: appendMapScalarValues[float64],
+	reflect.String:  appendMapScalarValues[[2]uintptr],
+	reflect.Slice:   appendMapScalarValues[[3]uintptr],
 }

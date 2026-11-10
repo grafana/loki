@@ -32,11 +32,21 @@ Rate limits protect Loki from being overwhelmed by excessive log volume. When ra
 
 **Error message:**
 
-`ingestion rate limit exceeded for user <tenant> (limit: <limit> bytes/sec) while attempting to ingest <lines> lines totaling <bytes> bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased`
+`ingestion rate limit exceeded for user <tenant> (limit: <limit> bytes/sec) while attempting to ingest '<lines>' lines totaling '<bytes>' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased`
+
+If a per-policy ingestion rate override applies to the stream (configured with `ingestion_rate_mb`/`ingestion_burst_size_mb` under a policy in `policy_stream_mapping`), the message instead identifies the policy:
+
+`ingestion rate limit exceeded for user <tenant>, policy <policy> (limit: <limit> bytes/sec) while attempting to ingest '<lines>' lines totaling '<bytes>' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased`
+
+If a single request exceeds more than one rate-limit bucket at once (for example the tenant default and a specific policy), Loki returns a single combined error instead, enumerating each exceeded bucket:
+
+`ingestion rate limit exceeded for user <tenant> across multiple buckets: the tenant default (limit: <limit> bytes/sec) ingesting <lines> lines totaling <bytes> bytes; policy "<policy>" (limit: <limit> bytes/sec) ingesting <lines> lines totaling <bytes> bytes; reduce log volume or contact your Loki administrator to see if the limits can be increased`
+
+In all three variants, the `reason` label reported in `loki_discarded_samples_total`/`loki_discarded_bytes_total` is still `rate_limited`; there's no separate reason for the policy-scoped or multi-bucket cases.
 
 **Cause:**
 
-The tenant has exceeded their configured ingestion rate limit. This is a global per-tenant limit enforced by the distributor.
+The tenant has exceeded their configured ingestion rate limit. This is a global per-tenant limit enforced by the distributor. If `ingestion_rate_mb` or `ingestion_burst_size_mb` is overridden for a specific ingestion policy, that policy's limit is checked separately from the tenant default, which is why the error message can reference a policy or multiple buckets.
 
 **Default configuration:**
 
@@ -76,6 +86,7 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 
 - Enforced by: Distributor
 - Retryable: Yes
+- Sample discarded: No (the request is rejected before Loki accepts any of its samples, though `loki_discarded_samples_total` and `loki_discarded_bytes_total` are still incremented)
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
@@ -112,6 +123,7 @@ A single stream has exceeded its own rate limit. Each stream has a rate limit ap
 
 - Enforced by: Ingester
 - Retryable: Yes
+- Sample discarded: No
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
@@ -119,7 +131,7 @@ A single stream has exceeded its own rate limit. Each stream has a rate limit ap
 
 **Error message:**
 
-`maximum active stream limit exceeded when trying to create stream <stream_labels>, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: <tenant>`
+`maximum active stream limit exceeded when trying to create stream <stream_labels>, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '<tenant>'`
 
 **Cause:**
 
@@ -168,6 +180,7 @@ Do not increase stream limits to accommodate high cardinality labels, this can r
 
 - Enforced by: Ingester
 - Retryable: Yes
+- Sample discarded: No
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
@@ -175,11 +188,38 @@ Do not increase stream limits to accommodate high cardinality labels, this can r
 
 Validation errors occur when log data doesn't meet Loki's requirements. These return HTTP status code `400 Bad Request` and are **not retryable**.
 
+### Error: Missing streams
+
+**Error message:**
+
+`error at least one valid stream is required for ingestion`
+
+**Cause:**
+
+The push request did not contain any valid streams at all (an empty `streams` list). This is checked before any per-stream validation runs, so it is distinct from `missing_labels`, which applies when a stream is present but has no labels.
+
+**Default configuration:**
+
+This validation is always enabled and cannot be disabled.
+
+**Resolution:**
+
+* **Check your log shipping client configuration** to make sure push requests always include at least one stream.
+* **Check for empty batches** if your pipeline batches log lines before sending; an empty batch should not trigger a push request.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- Sample discarded: No (the whole request is rejected before any streams can be counted; this reason is not tracked in `loki_discarded_samples_total` or `loki_discarded_bytes_total`)
+- HTTP status: 422 Unprocessable Entity
+- Configurable per tenant: No
+
 ### Error: `line_too_long`
 
 **Error message:**
 
-`max entry size <max_size> bytes exceeded for stream <stream_labels> while adding an entry with length <entry_size> bytes`
+`max entry size '<max_size>' bytes exceeded for stream '<stream_labels>' while adding an entry with length '<entry_size>' bytes`
 
 **Cause:**
 
@@ -189,6 +229,7 @@ A log line exceeds the maximum allowed size.
 
 - `max_line_size`: 256 KB
 - `max_line_size_truncate`: false
+- `max_line_size_truncate_identifier`: "" (no marker appended)
 
 **Resolution:**
 
@@ -199,6 +240,10 @@ A log line exceeds the maximum allowed size.
      max_line_size: 256KB
      max_line_size_truncate: true
    ```
+
+  {{< admonition type="note" >}}
+  When `max_line_size_truncate` is enabled, truncated lines are still ingested, so they are counted in `loki_mutated_samples_total` and `loki_mutated_bytes_total` instead of `loki_discarded_samples_total`. Set `max_line_size_truncate_identifier` to append a marker string (for example `"[truncated]"`) to the end of each truncated line, so truncated lines are easy to identify later when you're querying.
+  {{< /admonition >}}
 
 * **Increase the line size limit** (not recommended above 256KB):
 
@@ -224,6 +269,7 @@ A log line exceeds the maximum allowed size.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes, unless `max_line_size_truncate` is enabled, in which case the entry is truncated and ingested
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -231,14 +277,14 @@ A log line exceeds the maximum allowed size.
 
 **Error message:**
 
-`error parsing labels <labels> with error: <parse_error>`
+`error parsing labels '<labels>' with error: <parse_error>`
 
 **Cause:**
 
 Label names or values contain invalid characters or don't follow Prometheus naming conventions:
 
 - Label names must match regex: `[a-zA-Z_][a-zA-Z0-9_]*`
-- Label names cannot start with `__` (reserved for Grafana internal use)
+- Label names cannot start with `__` (reserved for internal use)
 - Labels must be valid UTF-8
 - Properly escape special characters in label values
 - Ensure label syntax follows PromQL format: `{key="value"}`
@@ -283,6 +329,7 @@ This validation is always enabled and cannot be disabled.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
 
@@ -327,6 +374,7 @@ loki.source.file "logs" {
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
 
@@ -346,7 +394,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Default configuration:**
 
-- `unordered_writes`: true (since Loki 2.4). This flag, and `-ingester.unordered-writes`, are deprecated and will be removed in a future major release, after which out-of-order writes will be accepted unconditionally.
+- Loki always accepts out-of-order writes; the per-tenant `unordered_writes` setting and the `-ingester.unordered-writes` flag that used to control this have been removed.
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
@@ -370,14 +418,15 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 - Enforced by: Ingester
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
-- Configurable per tenant: Yes, for `unordered_writes`. No, for `max_chunk_age` (global only).
+- Configurable per tenant: No, `max_chunk_age` is global only.
 
 ### Error: `greater_than_max_sample_age`
 
 **Error message:**
 
-`entry for stream <stream_labels> has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>`
+`entry for stream '<stream_labels>' has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>`
 
 **Cause:**
 
@@ -414,6 +463,7 @@ The log entry's timestamp is older than the configured maximum sample age. This 
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -421,7 +471,7 @@ The log entry's timestamp is older than the configured maximum sample age. This 
 
 **Error message:**
 
-`entry for stream <stream_labels> has timestamp too new: <timestamp>`
+`entry for stream '<stream_labels>' has timestamp too new: <timestamp>`
 
 **Cause:**
 
@@ -435,7 +485,7 @@ The log entry's timestamp is further in the future than the configured grace per
 
 * **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
 
-* **Verify application timestamps** Validate timestamp generation in your applications.
+* **Verify application timestamps.** Validate timestamp generation in your applications.
 
 * **Verify timestamp parsing** in your log shipping configuration.
 
@@ -443,6 +493,7 @@ The log entry's timestamp is further in the future than the configured grace per
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -450,7 +501,7 @@ The log entry's timestamp is further in the future than the configured grace per
 
 **Error message:**
 
-`entry for stream <stream_labels> has <count> label names; limit <limit>`
+`entry for stream '<stream_labels>' has <count> label names; limit <limit>`
 
 **Cause:**
 
@@ -471,10 +522,15 @@ The stream has more labels than allowed.
 We strongly recommend against increasing `max_label_names_per_series`, doing so creates a larger index which hurts query performance as well as opens the door for cardinality explosions. You should be able to categorize your logs with 15 labels or typically much less. In all our years of running Loki, out of thousands of requests to increase this value, the number of valid exceptions we have seen can be counted on one hand.
 {{< /admonition >}}
 
+{{< admonition type="note" >}}
+The automatically added `service_name` label is excluded from this count, so a stream can have one more label than `max_label_names_per_series` if one of its labels is `service_name`. The label count reported in the error message already has `service_name` subtracted, so it may be one less than the number of labels you actually sent.
+{{< /admonition >}}
+
 **Properties:**
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -482,7 +538,7 @@ We strongly recommend against increasing `max_label_names_per_series`, doing so 
 
 **Error message:**
 
-`stream <stream_labels> has label name too long: <label_name>`
+`stream '<stream_labels>' has label name too long: '<label_name>'`
 
 **Cause:**
 
@@ -500,6 +556,7 @@ A label name exceeds the maximum allowed length.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -507,7 +564,7 @@ A label name exceeds the maximum allowed length.
 
 **Error message:**
 
-`stream <stream_labels> has label value too long: <label_value>`
+`stream '<stream_labels>' has label value too long: '<label_value>'`
 
 **Cause:**
 
@@ -527,6 +584,7 @@ A label value exceeds the maximum allowed length.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -534,7 +592,7 @@ A label value exceeds the maximum allowed length.
 
 **Error message:**
 
-`stream <stream_labels> has duplicate label name: <label_name>`
+`stream '<stream_labels>' has duplicate label name: '<label_name>'`
 
 **Cause:**
 
@@ -546,16 +604,17 @@ This validation is always enabled and cannot be disabled. Duplicate label names 
 
 **Resolution:**
 
-* **Remove duplicates** Remove duplicate label definitions in your log shipping configuration to ensure unique label names per stream.
+* **Remove duplicates.** Remove duplicate label definitions in your log shipping configuration to ensure unique label names per stream.
 
-* **Check clients** Check your ingestion pipeline for label conflicts.
+* **Check clients.** Check your ingestion pipeline for label conflicts.
 
-* **Verify processing** Verify your label processing and transformation rules.
+* **Verify processing.** Verify your label processing and transformation rules.
 
 **Properties:**
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
 
@@ -563,15 +622,20 @@ This validation is always enabled and cannot be disabled. Duplicate label names 
 
 **Error message:**
 
-`Request body too large: <size> bytes, limit: <limit> bytes`
+`request body too large: <size> bytes, limit: <limit> bytes`
 
 **Cause:**
 
-The HTTP compressed push request body exceeds the configured limit in your gateway/reverse proxy or service that fronts Loki after decompression.
+This error message can come from three different places:
+
+- A gateway/reverse proxy in front of Loki enforcing its own body-size limit.
+- Loki's distributor rejecting a push request that exceeds its own configured limit (`limits_config.max_push_size`) before it can parse the streams out of the body.
+- A single stream's label string exceeding 16MB. This limit is hardcoded and cannot be changed through any configuration option; it exists because the underlying label parser cannot handle labels above this size.
 
 **Default configuration:**
 
-- Loki server max request body size: Configured at the HTTP server level
+- Loki distributor push size: `limits_config.max_push_size` (CLI flag `-distributor.max-push-size`), default 2 GB. Applies to both the compressed and decompressed size of the request, and is configurable per tenant.
+- Per-stream label string size: 16 MB (hardcoded, not configurable)
 - Nginx gateway (Helm): `gateway.nginxConfig.clientMaxBodySize` (default: 4 MB)
 - Alloy default batch size: 1 MB
 
@@ -579,14 +643,23 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 
 * **Split large batches** into smaller, more frequent requests.
 
-* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy.  For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+* **Increase the gateway/reverse proxy limit**. For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+
+* **Increase `limits_config.max_push_size`** if the error is coming from Loki's distributor rather than a gateway, and your cluster has the resources to handle larger requests.
+
+* **Reduce the number or size of labels on a stream** if the error is caused by a single stream's label string exceeding the hardcoded 16MB limit; this limit cannot be increased.
+
+{{< admonition type="note" >}}
+This reason only appears in the `loki_discarded_bytes_total` metric, not in `loki_discarded_samples_total`. Loki rejects the request before it can parse the body, so it cannot count how many log lines the request contained.
+{{< /admonition >}}
 
 **Properties:**
 
-- Enforced by: Distributor
+- Enforced by: Gateway/reverse proxy, or the distributor via `max_push_size`
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 413 Request Entity Too Large
-- Configurable per tenant: No
+- Configurable per tenant: Yes, for `max_push_size`. No, for gateway/reverse proxy limits or the hardcoded 16MB label-size limit.
 
 ## Storage errors
 
@@ -623,9 +696,9 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 ### Error: Chunk write failure
 
-**Error message:**
+**Error logged:**
 
-`failed to store chunks: storage unavailable`
+`failed flushing streams` (or `failed flushing tenant streams` when flushing a single tenant via the debug API)
 
 **Common causes and errors:**
 
@@ -655,7 +728,7 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 * **Review storage metrics**:
   - `loki_ingester_chunks_flushed_total`
-  - `loki_ingester_chunks_flush_errors_total`
+  - `loki_ingester_chunks_flush_failures_total`
 
 * **Increase retries and timeouts**:
 
@@ -730,9 +803,10 @@ This section describes the disk becoming completely full. In normal operation, t
 
 ### Error: WAL corruption
 
-**Error message:**
+**Error logged (at startup, during WAL replay):**
 
-`encountered WAL read error, attempting repair`
+- `Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`
+- `Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`
 
 **Metric:** `loki_ingester_wal_corruptions_total`
 
@@ -824,7 +898,7 @@ Requests are timing out due to slow response times or network issues.
 **Default configuration:**
 
 - Alloy default timeout: 10 seconds
-- Loki server timeout: `-server.http-server-write-timeout` (default: 30s)
+- Loki server timeout: `-server.http-write-timeout` (default: 30s)
 
 **Resolution:**
 
@@ -862,7 +936,7 @@ Common triggers include:
 **Default configuration:**
 
 - Per-tenant query timeout: `query_timeout` in `limits_config` / `-querier.query-timeout` (default: 1m)
-- Loki server HTTP write timeout: `-server.http-server-write-timeout` (default: 30s)
+- Loki server HTTP write timeout: `-server.http-write-timeout` (default: 30s)
 - Load balancer / reverse proxy timeout: depends on your infrastructure
 
 **Resolution:**
@@ -939,18 +1013,20 @@ is trying to produce records, for example during a broker rollout, a partition r
 
 ### Error: Service unavailable
 
-**Error message:**
+**Error messages:**
 
-`service unavailable (503)`
+- `circuit breaker open, request denied` — the distributor's push circuit breaker has tripped because the distributor is overloaded.
+- `the server cannot accept more requests at this time` — the distributor has rejected the request because it is at its configured maximum load.
+- Loki can also return `503` when ingesters are unhealthy or the ring is not ready (for example during a rollout or scale-up), without a single fixed error string.
 
 **Cause:**
 
-Loki is temporarily unable to handle requests due to high load or maintenance. This can occur when ingesters are unhealthy or the ring is not ready.
+Loki is temporarily unable to handle requests due to high load, an open circuit breaker, or maintenance. This can occur when ingesters are unhealthy, the ring is not ready, or the distributor's push circuit breaker has tripped to protect itself and downstream ingesters from being overwhelmed.
 
 **Default configuration:**
 
 - Ingester ring readiness: Requires minimum healthy ingesters based on replication factor
-- Distributor: Returns 503 when no healthy ingesters available
+- Distributor: Returns 503 when no healthy ingesters are available, when its push circuit breaker is open, or when it is at its configured maximum load
 
 **Resolution:**
 
@@ -958,6 +1034,12 @@ Loki is temporarily unable to handle requests due to high load or maintenance. T
 * **Scale Loki ingester instances** to handle load.
 * **Check for resource constraints** (CPU, memory, storage).
 * **Review ingestion patterns** for sudden spikes.
+* **Check circuit breaker metrics** on the distributor to confirm whether the circuit breaker, rather than ring health, is the cause:
+
+   ```promql
+   loki_distributor_circuit_breaker_state
+   increase(loki_distributor_circuit_breaker_open_total[5m])
+   ```
 
 **Properties:**
 
@@ -974,7 +1056,9 @@ These errors occur when using structured metadata incorrectly.
 
 **Error message:**
 
-`stream <stream_labels> includes structured metadata, but this feature is disallowed. Please see limits_config.allow_structured_metadata or contact your Loki administrator to enable it`
+`stream '<stream_labels>' includes structured metadata, but this feature is disallowed. Please see limits_config.allow_structured_metadata or contact your Loki administrator to enable it`
+
+**Reason label:** `disallowed_structured_metadata`
 
 **Cause:**
 
@@ -982,7 +1066,7 @@ These errors occur when using structured metadata incorrectly.
 
 **Default configuration:**
 
-- `allow_structured_metadata`: true (enabled by default in recent versions)
+- `allow_structured_metadata`: true (enabled by default)
 
 **Resolution:**
 
@@ -1000,6 +1084,7 @@ These errors occur when using structured metadata incorrectly.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -1008,6 +1093,8 @@ These errors occur when using structured metadata incorrectly.
 **Error message:**
 
 `stream '{job="app"}' has structured metadata too large: '70000' bytes, limit: '65536' bytes. Please see limits_config.max_structured_metadata_size or contact your Loki administrator to increase it`
+
+**Reason label:** `structured_metadata_too_large`
 
 **Cause:**
 
@@ -1034,6 +1121,7 @@ The structured metadata size exceeds the configured limit.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -1042,6 +1130,8 @@ The structured metadata size exceeds the configured limit.
 **Error message:**
 
 `stream '{job="app"}' has too many structured metadata labels: '150', limit: '128'. Please see limits_config.max_structured_metadata_entries_count or contact your Loki administrator to increase it`
+
+**Reason label:** `structured_metadata_too_many`
 
 **Cause:**
 
@@ -1068,6 +1158,7 @@ The number of structured metadata entries exceeds the limit.
 
 - Enforced by: Distributor
 - Retryable: No
+- Sample discarded: Yes
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
@@ -1075,15 +1166,21 @@ The number of structured metadata entries exceeds the limit.
 
 These errors occur when ingestion is administratively blocked.
 
+{{< admonition type="note" >}}
+Blocking ingestion for a tenant or policy is an experimental feature.
+{{< /admonition >}}
+
 ### Ingestion blocked
 
 **Error message:**
 
-`ingestion blocked for user <tenant> until <time> with status code 260`
+`ingestion blocked for user '<tenant>' until '<time>' with status code '260'`
 
-Or for policy-specific blocks:
+Or for policy-specific blocks (reason label `blocked_ingestion_policy`):
 
-`ingestion blocked for user <tenant> (policy: <policy>) until <time> with status code 260`
+`ingestion blocked for user '<tenant>' (policy: '<policy>') until '<time>' with status code '260'`
+
+**Reason label:** `blocked_ingestion` (or `blocked_ingestion_policy` for policy-specific blocks)
 
 **Cause:**
 
@@ -1091,8 +1188,9 @@ Ingestion has been administratively blocked for the tenant, typically due to pol
 
 **Default configuration:**
 
-- `blocked_ingestion_status_code`: 260 (custom status code)
-- Blocks are configured per tenant or per policy in runtime overrides
+- `block_ingestion_status_code`: 260 (custom status code). If set to `200`, Loki silently drops the blocked data without returning an error to the client, although the data is still counted in `loki_discarded_samples_total` and `loki_discarded_bytes_total`.
+- `block_ingestion_until`: unset by default. Takes an RFC3339 date; blocks the whole tenant until that date. Normally set per tenant in runtime overrides, since a global value blocks ingestion for every tenant.
+- `block_ingestion_policy_until`: unset by default. A map of policy name to an RFC3339 date, used with `policy_stream_mapping` to block only streams matching a specific policy.
 
 **Resolution:**
 
@@ -1105,7 +1203,40 @@ Ingestion has been administratively blocked for the tenant, typically due to pol
 
 - Enforced by: Distributor
 - Retryable: No (until block is lifted)
+- Sample discarded: Yes, unless `block_ingestion_status_code` is `200`, in which case data is silently dropped
 - HTTP status: 260 (custom) or configured status code
+- Configurable per tenant: Yes
+
+### Error: `missing_enforced_labels`
+
+{{< admonition type="note" >}}
+Requiring enforced labels is an experimental feature.
+{{< /admonition >}}
+
+**Error message:**
+
+`missing required labels '<labels>' for user '<tenant>' for stream '<stream_labels>' (policy: '<policy>')`
+
+**Cause:**
+
+The tenant (or a specific ingestion policy) has been configured to require certain labels on every stream, and the submitted stream is missing one or more of them.
+
+**Default configuration:**
+
+- `enforced_labels`: empty list by default (no labels required). Set with `validation.enforced-labels` to require the same labels on every stream for a tenant.
+- `policy_enforced_labels`: empty map by default. Requires labels only on streams matching a specific policy defined in `policy_stream_mapping`. The policy `*` is the global policy, applied to all streams and extended by other policies.
+
+**Resolution:**
+
+* **Add the missing labels** to the stream in your log shipping configuration.
+* **Review `enforced_labels`/`policy_enforced_labels`** with your Loki administrator if the requirement seems incorrect for your use case.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- Sample discarded: Yes
+- HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
 ## Troubleshooting workflow
@@ -1122,13 +1253,18 @@ Follow this workflow when investigating ingestion issues:
    sum by (tenant, reason) (rate(loki_discarded_bytes_total[5m]))
    ```
 
-* **Review logs** from distributors and ingesters:
+* **Review logs** from distributors and ingesters. Push errors are logged by default with a rate-limited logger (so they don't flood your logs). This is controlled per tenant, not in `limits_config`, but in the `configs` section of the runtime overrides file:
 
-   ```bash
-   # Enable write failure logging per tenant
-   limits_config:
-     limited_log_push_errors: true
+   ```yaml
+   # runtime overrides file
+   configs:
+     "<tenant>":
+       limited_log_push_errors: true # default: true
    ```
+
+   {{< admonition type="note" >}}
+   `limited_log_push_errors` defaults to `true`, so push errors are already logged in most setups. Set it to `false` only if you need to see every individual push error without rate limiting (this can be very verbose).
+   {{< /admonition >}}
 
 * **Test push endpoint**:
 
@@ -1138,11 +1274,16 @@ Follow this workflow when investigating ingestion issues:
         --data-raw '{"streams":[{"stream":{"job":"test"},"values":[["'"$(date +%s)000000000"'","test log line"]]}]}'
    ```
 
-* **Check tenant limits**:
+* **Check tenant limits** using the `overrides-exporter` target, which exposes per-tenant limit overrides as Prometheus metrics:
 
    ```bash
-   curl http://loki:3100/loki/api/v1/user_stats
+   loki -target=overrides-exporter -runtime-config.file=runtime.yaml -config.file=config.yaml -server.http-listen-port=8080
+   curl http://localhost:8080/metrics | grep loki_overrides
    ```
+
+   For details, refer to [Overrides exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/overrides-exporter/).
+
+  Alternatively, you can check tenant limits using the `/config/tenant/v1/limits` API. This endpoint requires the `tenant_limits_allow_publish` setting to be enabled explicitly.
 
 * **Review configuration** for affected tenant or global limits.
 
@@ -1157,7 +1298,8 @@ Follow this workflow when investigating ingestion issues:
 - [Loki Configuration Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/)
 - [Request Validation and Rate Limits](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/request-validation-rate-limits/)
 - [Write-Ahead Log Documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/)
-- [Alloy Configuration](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki/)
-- [Alloy loki.source.file](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki.source.file/)
-- [Alloy loki.write](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki.write/)
+- [Overrides exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/overrides-exporter/)
+- [Alloy Configuration](https://grafana.com/docs/alloy/latest/reference/components/loki/)
+- [Alloy loki.source.file](https://grafana.com/docs/alloy/latest/reference/components/loki.source.file/)
+- [Alloy loki.write](https://grafana.com/docs/alloy/latest/reference/components/loki.write/)
 - [Multi-tenancy and Limits](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/)

@@ -21,9 +21,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -412,19 +412,38 @@ func TestParamsToLokiRequestPreservesHintRanges(t *testing.T) {
 		Start: start.Add(5 * time.Minute),
 		End:   start.Add(10 * time.Minute),
 	}}
-	req := &LokiRequest{
-		Query:      `{foo="bar"} |= "error"`,
-		StartTs:    start,
-		EndTs:      start.Add(time.Hour),
-		Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
-		HintRanges: hintRanges,
-	}
 
-	params, err := ParamsFromRequest(req)
-	require.NoError(t, err)
+	t.Run("range", func(t *testing.T) {
+		req := &LokiRequest{
+			Query:      `{foo="bar"} |= "error"`,
+			StartTs:    start,
+			EndTs:      start.Add(time.Hour),
+			Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
+			HintRanges: hintRanges,
+		}
 
-	got := ParamsToLokiRequest(params).(*LokiRequest)
-	require.Equal(t, hintRanges, got.HintRanges)
+		params, err := ParamsFromRequest(req)
+		require.NoError(t, err)
+
+		got := ParamsToLokiRequest(params).(*LokiRequest)
+		require.Equal(t, hintRanges, got.HintRanges)
+	})
+
+	t.Run("instant", func(t *testing.T) {
+		query := `sum(count_over_time({foo="bar"} |= "error" [1h]))`
+		req := &LokiInstantRequest{
+			Query:      query,
+			TimeTs:     start.Add(time.Hour),
+			Plan:       testutil.MustPlan(query),
+			HintRanges: hintRanges,
+		}
+
+		params, err := ParamsFromRequest(req)
+		require.NoError(t, err)
+
+		got := ParamsToLokiRequest(params).(*LokiInstantRequest)
+		require.Equal(t, hintRanges, got.HintRanges)
+	})
 }
 
 func TestInstanceDownstream(t *testing.T) {

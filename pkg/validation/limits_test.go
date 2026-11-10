@@ -832,6 +832,25 @@ policy_override_limits:
 	require.Equal(t, float64(2*bytesInMB), rateBytes)
 }
 
+func TestLimits_PolicyChunkIdlePeriodYAML(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	setDefaultLimitsForYAML(t, defaults)
+
+	var l Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`
+policy_override_limits:
+  backfill:
+    chunk_idle_period: 5m
+`), &l))
+	require.NoError(t, l.Validate())
+
+	overrides := &Overrides{defaultLimits: &l}
+	idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, idle)
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)
@@ -1496,16 +1515,22 @@ func TestShardFactor_Validate(t *testing.T) {
 		require.NoError(t, ShardFactor(0).Validate())
 	})
 
+	t.Run("accepts every power of two up to the maximum", func(t *testing.T) {
+		for f := ShardFactor(1); f <= MaxShardFactor; f *= 2 {
+			require.NoError(t, f.Validate(), "factor %d", f)
+		}
+	})
+
 	t.Run("rejects a factor that is not a power of two", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(24).Validate(), "not a power of two")
+		require.EqualError(t, ShardFactor(24).Validate(), "shard bucket count 24 is not a power of two")
 	})
 
-	t.Run("rejects a power of two that is not the default", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(64).Validate(), "shard factor 64 is not supported, only 32 is")
+	t.Run("rejects the first power of two above the maximum", func(t *testing.T) {
+		require.EqualError(t, ShardFactor(2*MaxShardFactor).Validate(), "shard factor 512 is more than the maximum 256")
 	})
 
-	t.Run("rejects a factor above the maximum", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(1<<20).Validate(), "more than the maximum")
+	t.Run("reports the maximum of the limit for a factor above the maximum of the shard layout", func(t *testing.T) {
+		require.EqualError(t, ShardFactor(1<<20).Validate(), "shard factor 1048576 is more than the maximum 256")
 	})
 }
 
@@ -1542,12 +1567,21 @@ func TestLimits_DataObjShardFactor(t *testing.T) {
 		require.NoError(t, l.Validate())
 	})
 
-	t.Run("validation rejects an unsupported factor from the flag", func(t *testing.T) {
+	t.Run("validation accepts a factor that is a power of two from the flag", func(t *testing.T) {
 		var l Limits
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)
 		l.RegisterFlags(fs)
 		require.NoError(t, fs.Parse([]string{"-limits.dataobj-shard-factor=16"}))
-		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor: shard factor 16 is not supported")
+		require.NoError(t, l.Validate())
+		require.Equal(t, ShardFactor(16), l.DataObjShardFactor)
+	})
+
+	t.Run("validation rejects a factor that is not a power of two from the flag", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.dataobj-shard-factor=24"}))
+		require.EqualError(t, l.Validate(), "dataobj_shard_factor: shard bucket count 24 is not a power of two")
 	})
 
 	t.Run("yaml without the field keeps the default factor", func(t *testing.T) {
@@ -1560,14 +1594,25 @@ func TestLimits_DataObjShardFactor(t *testing.T) {
 		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.DataObjShardFactor)
 	})
 
-	t.Run("validation rejects an unsupported factor from yaml", func(t *testing.T) {
+	t.Run("validation accepts a factor that is a power of two from yaml", func(t *testing.T) {
 		var defaults Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 		setDefaultLimitsForYAML(t, defaults)
 
 		var l Limits
-		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 8`), &l))
-		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor")
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 128`), &l))
+		require.NoError(t, l.Validate())
+		require.Equal(t, ShardFactor(128), l.DataObjShardFactor)
+	})
+
+	t.Run("validation rejects a factor above the maximum from yaml", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		setDefaultLimitsForYAML(t, defaults)
+
+		var l Limits
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 512`), &l))
+		require.EqualError(t, l.Validate(), "dataobj_shard_factor: shard factor 512 is more than the maximum 256")
 	})
 }
 

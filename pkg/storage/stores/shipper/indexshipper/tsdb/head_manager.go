@@ -847,8 +847,13 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if !ok {
 		return
 	}
+	idx = NewTSDBIndex(tenant.Index())
+	// tenantHeads.Bounds() spans every tenant, so MultiIndex cannot tell that
+	// this tenant's head misses the query window.
+	if !Overlap(idx, newBounds(from, through)) {
+		return nil, false
+	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
 	if f := t.getChunkFilter(); f != nil {
 		idx.SetChunkFilterer(f)
 	}

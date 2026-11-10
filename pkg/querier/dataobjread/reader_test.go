@@ -4,17 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 
 	"github.com/grafana/loki/pkg/push"
@@ -322,48 +327,41 @@ func TestLogReader(t *testing.T) {
 }
 
 // TestLogReader_ConcurrentObjectOpens drives the open-object registry the way the planner
-// and the scans do: several goroutines asking for one path at once. Only one opened object may
-// win, because the sections it holds are opened lazily behind its own lock.
+// and the scans do: two goroutines asking for one path at once. They must share one open, so both
+// callers get the same opened object and the path counts as one opened object.
 func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 	fixture := newObjectsFixture(t, logproto.Stream{
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})
-	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
-	t.Cleanup(objects.release)
-
 	path := fixture.descriptors[0].ObjectPath
-	const goroutines = 32
 
-	results := make(chan *openObject, goroutines)
-	errs := make(chan error, goroutines)
-	start := make(chan struct{})
-	for range goroutines {
-		go func() {
-			<-start
-			object, err := objects.get(t.Context(), path)
-			if err != nil {
-				errs <- err
-				return
-			}
-			results <- object
-		}()
-	}
-	close(start)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		objects := NewOpenObjects(&holdBucket{Bucket: fixture.bucket, release: release}, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+		ctx, _ = xcap.StartRegion(ctx, regionStreamsReader)
 
-	var first *openObject
-	for range goroutines {
-		select {
-		case err := <-errs:
-			require.NoError(t, err)
-		case object := <-results:
-			if first == nil {
-				first = object
-				continue
-			}
-			require.Same(t, first, object, "every caller must share one opened object")
+		const callers = 2
+		opened := make([]*openObject, callers)
+		errs := make([]error, callers)
+		var wg sync.WaitGroup
+		for i := range callers {
+			wg.Go(func() { opened[i], errs[i] = objects.get(ctx, path) })
 		}
-	}
+
+		// Both callers are blocked now. One waits on the bucket, and the other waits on its open, unless
+		// the registry lets each caller open the object itself.
+		synctest.Wait()
+		close(release)
+		wg.Wait()
+
+		for i := range callers {
+			require.NoError(t, errs[i])
+			require.Same(t, opened[0], opened[i], "every caller must share one opened object")
+		}
+		require.Equal(t, int64(1), xcap.Value[int64](capture, dataobj.StatObjectsOpenedUncompacted), "the callers must share one open")
+	})
 }
 
 // readerFixture is an open-object registry together with the real tasks a plan produced over it,
@@ -406,4 +404,27 @@ func drainReader(r *LogReader) []string {
 		lines = append(lines, string(r.At().line))
 	}
 	return lines
+}
+
+// holdBucket holds each Attributes, Get and GetRange call until release closes, then passes the
+// call through.
+type holdBucket struct {
+	objstore.Bucket
+
+	release chan struct{}
+}
+
+func (b *holdBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	<-b.release
+	return b.Bucket.Attributes(ctx, name)
+}
+
+func (b *holdBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	<-b.release
+	return b.Bucket.Get(ctx, name)
+}
+
+func (b *holdBucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+	<-b.release
+	return b.Bucket.GetRange(ctx, name, offset, length)
 }

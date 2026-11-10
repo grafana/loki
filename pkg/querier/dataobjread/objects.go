@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -29,19 +30,22 @@ const streamLabelsDecodeBatchSize = 1024
 // OpenObjects holds one opened copy of each data object and its opened sections.
 //
 // The same object is read first for its stream labels and then for its log rows, so keeping it
-// open avoids re-reading the object header and section metadata. Two callers can open a new
-// object at the same time. The registry keeps the first copy. Lifetime is one query.
+// open avoids re-reading the object header and section metadata. Callers that ask for the same
+// new object at the same time share one open. Lifetime is one query.
 type OpenObjects struct {
 	bucket        objstore.BucketReader
 	tenant        string
 	prefetchBytes int64
 
-	// metadataCache holds each object's metadata region. It is shared across queries, and nil
-	// when caching is off.
+	// metadataCache holds each object's metadata region, or the entire object if it is tiny. It is
+	// shared across queries, and nil when caching is off.
 	metadataCache dataobj.MetadataCache
 
 	mu     sync.Mutex
 	byPath map[string]*openObject
+
+	// opening shares one open between the callers that ask for the same new path.
+	opening singleflight.Group
 }
 
 func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, metadataCache dataobj.MetadataCache) *OpenObjects {
@@ -54,10 +58,36 @@ func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes i
 	}
 }
 
-// get returns the opened object at path, opening it when no caller has yet.
+// get returns the opened object at path, opening it when no caller has yet. Callers that ask for the
+// same new path at the same time share one open.
+//
+// The open runs with the context of the first caller. When that context ends, the open fails for
+// every caller that waits on it.
 //
 // Safe for concurrent use.
 func (o *OpenObjects) get(ctx context.Context, path string) (*openObject, error) {
+	o.mu.Lock()
+	obj, ok := o.byPath[path]
+	o.mu.Unlock()
+	if ok {
+		return obj, nil
+	}
+
+	// A caller that shares an open here is a planner goroutine, and all of them share one context. So
+	// they lose the open together, and no waiting caller needs its own retry. A scan only asks for an
+	// object that the planner already opened.
+	opened, err, _ := o.opening.Do(path, func() (any, error) {
+		return o.open(ctx, path)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return opened.(*openObject), nil
+}
+
+// open opens the object at path and stores it. It starts by looking the object up again, because
+// another shared open can have stored it after the caller looked.
+func (o *OpenObjects) open(ctx context.Context, path string) (*openObject, error) {
 	o.mu.Lock()
 	obj, ok := o.byPath[path]
 	o.mu.Unlock()
@@ -76,15 +106,10 @@ func (o *OpenObjects) get(ctx context.Context, path string) (*openObject, error)
 		return nil, fmt.Errorf("resolving sections of data object %q: %w", path, err)
 	}
 
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if existing, ok := o.byPath[path]; ok {
-		// Another goroutine opened the same object while this one did. Keep the first, so every
-		// caller shares one set of opened sections.
-		return existing, nil
-	}
 	obj = &openObject{path: path, tenant: tenantSections, logsSections: map[int]*logs.Section{}}
+	o.mu.Lock()
 	o.byPath[path] = obj
+	o.mu.Unlock()
 	return obj, nil
 }
 
@@ -109,6 +134,48 @@ type openObject struct {
 	mu             sync.Mutex
 	streamsSection *streams.Section
 	logsSections   map[int]*logs.Section
+}
+
+// shardBucketRange returns the bucket range that shard can hold in this object. The range depends
+// on the shard layout of the object.
+//
+// It returns nil without reading the layout if the shard has no hash range to push down. It also
+// returns nil if the range covers every bucket of the layout.
+func (o *openObject) shardBucketRange(ctx context.Context, shard *QueryShard) (*shardBucketRange, error) {
+	if shard.hashRange() == nil {
+		return nil, nil
+	}
+	layout, err := o.shardLayout(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return shard.bucketRange(layout), nil
+}
+
+// shardLayout returns the shard layout that the streams section of the tenant records.
+//
+// An object that records none was written before the streams section recorded its layout. Writers
+// had no other shard layout then, so shardLayout returns the default shard layout.
+//
+// shardLayout returns an error if the object has no streams section for the tenant, if the
+// section does not open, or if it records a layout that cannot be read.
+func (o *openObject) shardLayout(ctx context.Context) (streams.ShardLayout, error) {
+	if o.tenant.Streams == nil {
+		return streams.ShardLayout{}, fmt.Errorf("data object %q holds no streams section for the tenant", o.path)
+	}
+	section, err := o.openStreamsSection(ctx)
+	if err != nil {
+		return streams.ShardLayout{}, err
+	}
+
+	layout, ok, err := section.Layout()
+	if err != nil {
+		return streams.ShardLayout{}, fmt.Errorf("reading the layout of data object %q: %w", o.path, err)
+	}
+	if !ok {
+		return streams.DefaultShardLayout(), nil
+	}
+	return layout.ShardLayout(), nil
 }
 
 // streamLabels decodes the labels of the wanted stream IDs, reading only those streams.

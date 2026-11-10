@@ -16,16 +16,37 @@ or attach hint ranges for time intervals that the logline index proves contain n
    Parses the query, kicks off an async logline index lookup, and stores the result
    (hint time ranges + ingester cutoff) in context. Opt-in via `X-Logline-Index` header.
 
-2. **Filter middleware** (`loglineFilterHandler`): Sits *below* `SplitByInterval` and
-   below the results cache. For each interval sub-request, it consults the prefetched
+2. **Filter middleware** (`loglineFilterHandler`): Sits *below* the split middleware
+   (`SplitByInterval`, or split-by-range for an instant metric query), the results cache,
+   and sharding. For each split and shard sub-request, it consults the prefetched
    hints to either:
-   - **Skip** the interval entirely (return empty response) if no hint ranges overlap
+   - **Skip** the interval entirely (return empty response) if no hint ranges overlap.
+     Quantile sketch shards (sharded `quantile_over_time`) and count-min shards
+     (`approx_topk`) are the exception: each merge accepts only its sketch, so a
+     miss passes the shard through instead of returning an empty matrix or vector.
    - **Forward** one request with the clipped raw hint ranges attached. Request bounds
-     stay the split interval. Queriers use the ranges to skip storage work.
+     stay the sub-request's own (`TimeTs` for an instant request). Queriers use the ranges
+     to skip storage work.
    - **Pass through** if the interval is in the ingester window, is covered only by a
      pre-min-date sentinel, or on error/timeout. Ingester-window and pre-min-date
      intervals pass through before waiting for the lookup, so a limited query can
      return from them while the lookup is still running.
+
+The filter reads the request's expression from `Plan.AST`, falling back to parsing
+`Query`, because shard requests carry an internal operation in `Query` that is not LogQL.
+A request it cannot read passes through. A metric split reads before its start, so
+overlap and clipping use the window widened by the range interval and offset, with an
+exclusive end of end minus offset plus 1ns (the querier's read window). Log splits use no
+widening and no extra nanosecond.
+
+An instant metric request uses its evaluation time as both start and end, so its window
+is that time widened the same way. The filter keeps `TimeTs` and attaches the hint ranges
+in the lookback. Split-by-range gives each instant sub-request its own offset or
+evaluation time, so each gets its own window. A skipped instant request returns an empty
+vector. A skipped `first_over_time` or `last_over_time` shard returns an empty matrix
+instead: the querier returns a matrix for one, and its merge accepts only a matrix. The
+prefetch middleware skips the lookup for a log selector on the instant endpoint, because
+the querier rejects it.
 
 ## Key integration points
 
@@ -33,7 +54,9 @@ or attach hint ranges for time intervals that the logline index proves contain n
   store, hint provider, optional cache, and compose the middleware stack.
 - **Per-tenant settings are limits.** The mode and the minimum query bytes are
   `limits_config` fields (`logline_query_mode`, `logline_query_min_query_bytes_for_index`),
-  so a tenant overrides them in the runtime config like any other limit.
+  so a tenant overrides them in the runtime config like any other limit. A request
+  with `X-Logline-Index: live` skips that byte threshold. Dry-run, and live mode from
+  the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
@@ -48,6 +71,20 @@ or attach hint ranges for time intervals that the logline index proves contain n
 The logline index only covers data in object storage. Recent data still in ingesters
 is always passed through. The `ingesterCutoff` is computed from
 `QueryIngestersWithin` (from Loki's querier config).
+
+The prefetch middleware reads the clock once per query, before the byte threshold, and
+the dry-run and live paths use that cutoff. When the lookup would only read the ingester
+window, the lookup never starts, so the middleware skips the index-stats call too. A
+live query skipped this way records `recent_data_only`, not `query_too_small` or
+`size_estimate_failed`. Dry-run also skips the lookup and the call when the first step's
+window ends after the cutoff, even if its lookback reaches past it: every later window
+ends after the cutoff too, so the report would score no step.
+
+`X-Logline-Index: live` skips the index-stats call that checks the byte threshold, so
+the lookup runs even when that call would fail. Dry-run, and live mode from the tenant
+limit or the `logline.query` settings, still make the call. A live-header query that
+only reads the ingester window still skips the lookup and records `recent_data_only`,
+because the check that starts the lookup doesn't depend on the byte threshold.
 
 ### Pass-through intervals don't wait for the lookup
 
@@ -76,7 +113,8 @@ that request like any log query.
 Detected fields only look up hints in live mode. Dry-run verifies hints against the log
 lines or samples in the response, and a detected fields response has neither. Detected
 fields only accept a log query and get the same hints that query gets, so dry-run on log
-queries covers their correctness.
+queries covers their correctness. The detected fields handler rejects a metric query, so
+the prefetch middleware skips the lookup for one. No sub-request could use the hints.
 
 ### Hint timeout
 
@@ -92,7 +130,7 @@ running, so sub-requests that reach the filter in a later wave wait up to
 The hint wait is the wall time during which at least one sub-request was held at the
 filter for the lookup. It is the latency Logline adds by holding sub-requests, which
 isn't all of the latency Logline adds: it leaves out the index-stats call that checks
-the byte threshold. The filter runs
+the byte threshold. `X-Logline-Index: live` does not make that call. The filter runs
 once per split and shard sub-request, and those wait in parallel and in waves, so
 `waitTracker` records the union of their wait intervals rather than the sum.
 
@@ -135,7 +173,15 @@ both per split, so splits that bypass shard planning count toward neither.
 why it didn't:
 
 1. The three early skips in the prefetch handler record `unsupported_query`,
-   `size_estimate_failed` and `query_too_small`, in live mode only.
+   `size_estimate_failed` and `query_too_small`, in live mode only. A query that
+   reads only the ingester window skips the size estimate, so it never records the
+   last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
+   the tenant limit or the `logline.query` settings records `size_estimate_failed`
+   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects, and
+   `absent_over_time` queries, return before these skips. They get no `Logline` stats,
+   so outcome counts leave them out. `absent_over_time` stays unhinted because a skipped
+   sub-request returns an empty matrix or vector, which drops the 1 that an empty window
+   returns.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a

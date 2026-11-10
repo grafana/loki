@@ -19,9 +19,10 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -139,14 +140,14 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		},
 		{
 			name:         "adds the syntax category when the query does not parse",
-			err:          logqlmodel.ErrParse,
+			err:          logqlerr.ErrParse,
 			wantErr:      "err=",
 			wantCategory: server.FailureSyntax,
 			wantReason:   "parse",
 		},
 		{
 			name:         "adds the limit category when the query hits a limit",
-			err:          logqlmodel.ErrLimit,
+			err:          logqlerr.ErrLimit,
 			wantErr:      "err=",
 			wantCategory: server.FailureLimit,
 			wantReason:   "series_limit",
@@ -167,7 +168,7 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		},
 		{
 			name:         "adds the blocked category when a policy blocks the query",
-			err:          logqlmodel.ErrBlocked,
+			err:          logqlerr.ErrBlocked,
 			wantErr:      "err=",
 			wantCategory: server.FailureBlocked,
 			wantReason:   "blocked_by_policy",
@@ -226,25 +227,58 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 	t.Run("adds a zero section resolution time when the query read no data object", func(t *testing.T) {
 		require.Contains(t, record(t, nil), "dataobj_sections_resolution_max_time=0s")
 	})
+
+	t.Run("adds the data-object counts and downloaded bytes of the query as raw integers", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(t.Context(), "foo")
+		result := stats.Result{Querier: stats.Querier{Store: stats.Store{
+			Dataobj: stats.Dataobj{
+				LogsCompactedObjectsCount: 7, LogsUncompactedObjectsCount: 4, IndexCompactedObjectsCount: 3, IndexUncompactedObjectsCount: 9,
+				LogsDownloadedBytes: 123456789, IndexDownloadedBytes: 2048,
+			},
+		}}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		out := buf.String()
+		require.Contains(t, out, " dataobj_logs_compacted_objects_count=7 ")
+		require.Contains(t, out, " dataobj_logs_uncompacted_objects_count=4 ")
+		require.Contains(t, out, " dataobj_index_compacted_objects_count=3 ")
+		require.Contains(t, out, " dataobj_index_uncompacted_objects_count=9 ")
+		require.Contains(t, out, " dataobj_logs_downloaded_bytes=123456789 ")
+		require.Contains(t, out, " dataobj_index_downloaded_bytes=2048 ")
+	})
+
+	t.Run("adds zero counts and bytes when the query read no data object", func(t *testing.T) {
+		out := record(t, nil)
+
+		require.Contains(t, out, "dataobj_logs_compacted_objects_count=0")
+		require.Contains(t, out, "dataobj_logs_uncompacted_objects_count=0")
+		require.Contains(t, out, "dataobj_index_compacted_objects_count=0")
+		require.Contains(t, out, "dataobj_index_uncompacted_objects_count=0")
+		require.Contains(t, out, "dataobj_logs_downloaded_bytes=0")
+		require.Contains(t, out, "dataobj_index_downloaded_bytes=0")
+	})
 }
 
 func TestAppendLoglineStats(t *testing.T) {
 	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
 		return stats.Result{Logline: &stats.Logline{
-			Outcome:            outcome,
-			HintStatus:         "ok",
-			HintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
-			HintWaitTime:       (120 * time.Millisecond).Nanoseconds(),
-			HintRanges:         3,
-			HintRangesDuration: (90 * time.Minute).Nanoseconds(),
-			SkippedRequests:    6,
-			NarrowedRequests:   2,
-			PlannedChunks:      planned,
-			ScannedChunks:      scanned,
-			ChunkFilterRatio:   ratio,
-			ObjectRequests:     12,
-			IOBytes:            2048,
-			IOWait:             (40 * time.Millisecond).Nanoseconds(),
+			Outcome:             outcome,
+			HintStatus:          "ok",
+			HintLookupTime:      (150 * time.Millisecond).Nanoseconds(),
+			HintWaitTime:        (120 * time.Millisecond).Nanoseconds(),
+			HintRanges:          3,
+			HintRangesDuration:  (90 * time.Minute).Nanoseconds(),
+			SkippedRequests:     6,
+			NarrowedRequests:    2,
+			PassthroughRequests: 1,
+			PlannedChunks:       planned,
+			ScannedChunks:       scanned,
+			ChunkFilterRatio:    ratio,
+			ObjectRequests:      12,
+			IOBytes:             2048,
+			IOWait:              (40 * time.Millisecond).Nanoseconds(),
 		}}
 	}
 	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
@@ -257,6 +291,7 @@ func TestAppendLoglineStats(t *testing.T) {
 			"logline_hint_ranges_duration", 90 * time.Minute,
 			"logline_skipped_requests", int64(6),
 			"logline_narrowed_requests", int64(2),
+			"logline_passthrough_requests", int64(1),
 			"logline_object_requests", int64(12),
 			"logline_io_bytes", "2.0kB",
 			"logline_io_wait", 40 * time.Millisecond,

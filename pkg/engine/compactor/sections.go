@@ -384,6 +384,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		reader stats.Reader
 
 		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
+		interned  = make(map[string]string)
 	)
 	defer reader.Close()
 
@@ -420,22 +421,27 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				return nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
+			// The decoded strings point into the buffers of the record batch.
+			// The plans keep the label values and object paths for the whole
+			// LogMerge phase. Without a copy, they keep every batch in memory.
+			// Interning copies each distinct value once.
 			for _, stat := range rows[:n] {
 				var labels []string
 				if len(labelNames) > 0 {
 					labels = make([]string, len(labelNames))
 					for i, name := range labelNames {
-						labels[i] = stat.Labels[name]
+						labels[i] = intern(interned, stat.Labels[name])
 					}
 				}
 				key := newLogSortPrefix(stat.ShardBucket, labels)
+				keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
 					bySection[id] = &v2.Section[logSortPrefix]{
 						Ref: &compactionv2pb.SectionRef{
-							ObjectPath:       stat.ObjectPath,
+							ObjectPath:       intern(interned, stat.ObjectPath),
 							SectionIndex:     stat.SectionIndex,
 							MinKey:           key.labels,
 							MaxKey:           key.labels,
@@ -443,11 +449,13 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
-						Min: key,
-						Max: key,
+						Min:  key,
+						Max:  key,
+						Keys: []v2.KeySize[logSortPrefix]{keySize},
 					}
 					continue
 				}
+				bounded.Keys = append(bounded.Keys, keySize)
 
 				if compareLogSortPrefix(key, bounded.Min) < 0 {
 					bounded.Min = key
@@ -479,6 +487,17 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
 	return refs, nil
+}
+
+// intern returns the copy of s in interned. It adds a copy of s on the
+// first call for each distinct value.
+func intern(interned map[string]string, s string) string {
+	if v, ok := interned[s]; ok {
+		return v
+	}
+	v := strings.Clone(s)
+	interned[v] = v
+	return v
 }
 
 // schemaLabelNames returns the label names of the fully-qualified schema

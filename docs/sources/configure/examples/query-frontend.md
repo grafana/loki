@@ -1,6 +1,6 @@
 ---
 title: Query frontend example
-menuTitle:
+menuTitle: Query frontend
 description: Kubernetes query frontend example.
 weight: 200
 aliases:
@@ -10,23 +10,23 @@ aliases:
 
 # Query frontend example
 
-## Disclaimer
+## Before you begin
 
-This aims to be a general purpose example; there are a number of substitutions to make for it to work correctly. These variables take the form of <variable_name>. You should override them with specifics to your environment.
+This is a general-purpose example. It contains placeholder variables in the format `<variable_name>`. Replace them with values for your environment.
 
 ## Use case
 
-It's a common occurrence to start running Grafana Loki as a single binary while trying it out in order to simplify deployments and defer learning the (initially unnecessary) nitty gritty details. As we become more comfortable with its paradigms and begin migrating towards a more production ready deployment there are a number of things to be aware of. A common bottleneck is on the read path: queries that executed effortlessly on small data sets may churn to a halt on larger ones. Sometimes we can solve this with more queriers. However, that doesn't help when our queries are too large for a single querier to execute. Then we need the query frontend.
+Many users start by running Grafana Loki as a single binary to simplify deployment. As usage grows and the deployment becomes more production-ready, performance bottlenecks can appear on the read path. Queries that ran quickly on small data sets may slow down or fail on larger ones. Adding more queriers can help in some cases. However, when a single query is too large for one querier to handle, you need the query frontend.
 
 ### Parallelization
 
-One of the most important functions of the query frontend is the ability to split larger queries into smaller ones, execute them in parallel, and stitch the results back together. How often it splits them is determined by the `querier.split-queries-by-interval` flag or the yaml config `limits_config.split_queries_by_interval`. With this set to `1h`, the frontend will dissect a day long query into 24 one hour queries, distribute them to the queriers, and collect the results. This is immensely helpful in production environments as it not only allows us to perform larger queries via aggregation, but also evens the work distribution across queriers so that one or two are not stuck with impossibly large queries while others are left idle.
+One of the most important functions of the query frontend is the ability to split larger queries into smaller ones, execute them in parallel, and combine the results. The `querier.split-queries-by-interval` flag (or the YAML config `limits_config.split_queries_by_interval`) controls how the frontend splits queries. For example, with this value set to `1h`, the frontend splits a 24-hour query into 24 one-hour queries, distributes them to the queriers, and collects the results. This approach has two benefits in production environments: it lets you run larger queries through aggregation, and it distributes work evenly across queriers.
 
 ## Kubernetes Deployment
 
 ### ConfigMap
 
-Use this ConfigMap to get the benefits of query parallelisation and caching with the query-frontend component.
+Use this ConfigMap to enable query parallelization and caching with the query-frontend component.
 
 ```yaml
 apiVersion: v1
@@ -40,9 +40,6 @@ data:
     # X-Scope-OrgID header. `fake` will be substituted in instead.
     auth_enabled: false
 
-    # We don't want the usual /api/prom prefix.
-    http_prefix:
-
     server:
       http_listen_port: 3100
 
@@ -54,7 +51,7 @@ data:
 
       results_cache:
         cache:
-          # We're going to use the embedded cache
+          # Use the embedded cache
           embedded_cache:
             enabled: true
             max_size_mb: 100
@@ -77,7 +74,6 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  annotations:
   labels:
     name: query-frontend
   name: query-frontend
@@ -91,15 +87,14 @@ spec:
   selector:
     name: query-frontend
   sessionAffinity: None
-  type: ClusterIP
-  ClusterIP: None
+  clusterIP: None
   publishNotReadyAddresses: true
 ```
 
 ### Frontend Deployment
 
 ```yaml
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
@@ -122,7 +117,7 @@ spec:
             - -config.file=/etc/loki/config.yaml
             - -log.level=debug
             - -target=query-frontend
-          image: grafana/loki:latest
+          image: grafana/loki:<VERSION>
           imagePullPolicy: Always
           name: query-frontend
           ports:
@@ -149,20 +144,17 @@ spec:
 
 ### Grafana
 
-Once you've deployed these, point your Grafana data source to the new frontend service. The service is available within the cluster at `http://query-frontend.<namespace>.svc.cluster.local:3100`.
+After you deploy these resources, point your Grafana data source to the new frontend service. The service is available within the cluster at `http://query-frontend.<namespace>.svc.cluster.local:3100`.
 
-### GRPC Mode (Pull model)
+### gRPC mode (pull model)
 
-The query frontend operates in one of two ways:
+The query frontend operates in one of two modes:
 
-- Specify `--frontend.downstream-url` or its YAML equivalent, `frontend.downstream_url`. This proxies requests over HTTP to the specified URL.
-- Without `--frontend.downstream-url` or its yaml equivalent `frontend.downstream_url`, the query frontend defaults to a pull service. As a pull service, the frontend instantiates per-tenant queues that downstream queriers pull queries from via GRPC. To act as a pull service, queriers need to specify `-querier.frontend-address` or its YAML equivalent `frontend_worker.frontend_address`.
+- **Push mode:** Specify `--frontend.downstream-url` or its YAML equivalent `frontend.downstream_url`. The frontend proxies requests over HTTP to the specified URL.
+- **Pull mode:** If you do not set `--frontend.downstream-url` or its YAML equivalent `frontend.downstream_url`, the query frontend operates as a pull service. The frontend creates per-tenant queues. Downstream queriers pull queries from these queues using gRPC. To use pull mode, configure queriers with `-querier.frontend-address` or its YAML equivalent `frontend_worker.frontend_address`.
 
-  Set `ClusterIP=None` for the query frontend pull service.
-  This causes DNS resolution of each query frontend pod IP address.
-  It avoids wrongly resolving to the service IP.
+  Set `clusterIP: None` on the query frontend pull service.
+  This setting causes DNS to resolve to individual query frontend pod IP addresses instead of the service IP.
 
-  Enable `publishNotReadyAddresses=true` on the query frontend pull service.
-  Doing so eliminates a race condition in which the query frontend address
-  is needed before the query frontend becomes ready
-  when at least one querier connects.
+  Set `publishNotReadyAddresses: true` on the query frontend pull service.
+  This setting prevents a race condition where a querier needs the query frontend address before the frontend is ready.

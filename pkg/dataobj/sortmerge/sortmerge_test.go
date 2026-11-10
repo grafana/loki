@@ -34,6 +34,10 @@ type schemaOverrides []string
 
 func (s schemaOverrides) SortSchemaLabels(_ string) []string { return s }
 
+func (s schemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
+
 // buildSchemaObject builds a sorted in-memory object for the given per-label
 // entries. Each object assigns its own stream IDs, so merging several objects
 // exercises stream-ID remapping.

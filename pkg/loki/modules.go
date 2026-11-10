@@ -65,7 +65,7 @@ import (
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -149,6 +149,8 @@ const (
 	CacheGenerationLoader           = "cache-generation-loader"
 	PartitionRing                   = "partition-ring"
 	DataObjExplorer                 = "dataobj-explorer"
+	DataObjCache                    = "dataobj-cache"
+	DataObjMetastore                = "dataobj-metastore"
 	DataObjBuilder                  = "dataobj-builder"
 	DataObjCompactionPlanner        = "dataobj-compaction-planner"
 	DataObjCompactionWorker         = "dataobj-compaction-worker"
@@ -517,7 +519,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	return ingestLimitsFrontend, nil
 }
 
-func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
+func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
@@ -552,40 +554,19 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
-	var (
-		dataObjStore         querier.Store
-		dataObjMetadataCache *metadatacache.Cache
-	)
-
-	// A failed init returns no service, so nothing else stops the cache.
-	defer func() {
-		if returnErr != nil && dataObjMetadataCache != nil {
-			dataObjMetadataCache.Stop()
-		}
-	}()
-
-	if t.Cfg.DataObj.Enabled {
-		dataObjBucket, err := t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		dataObjMetastore := metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-
+	var dataObjStore querier.Store
+	if t.dataObjMetastore != nil {
 		var storeOpts []querier.DataObjStoreOption
 
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
-		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
-			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
-			if err != nil {
-				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
-			}
-			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(dataObjMetadataCache))
+		if t.dataObjLogsCache != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
-		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
+		dataObjStore, err = querier.NewDataObjStore(t.Store, t.dataObjBucket, t.dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -781,9 +762,6 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 
 	if svc != nil {
 		svc.AddListener(newStopListener(deleteStore.Stop))
-		if dataObjMetadataCache != nil {
-			svc.AddListener(newStopListener(dataObjMetadataCache.Stop))
-		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
 }
@@ -831,6 +809,57 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 			return err
 		},
 	), nil
+}
+
+// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
+// data objects are disabled or no cache is configured.
+func (t *Loki) initDataObjCache() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "querier")
+
+	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+	}
+
+	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+
+	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
+	return services.NewIdleService(nil, func(error) error {
+		t.dataObjLogsCache.Stop()
+		t.dataObjIndexCache.Stop()
+		t.dataObjTOCCache.Stop()
+		return nil
+	}), nil
+}
+
+// initDataObjMetastore builds the metastore of the data objects. The metastore is also a service, which refreshes its
+// ToCs. It returns no service when data objects are disabled.
+func (t *Loki) initDataObjMetastore() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled {
+		return nil, nil
+	}
+
+	bucket, err := t.getDataObjBucket("dataobj-querier")
+	if err != nil {
+		return nil, err
+	}
+
+	// A nil cache must not reach WithIndexMetadataCache: it takes an interface, so it would hold a typed nil pointer.
+	metastoreOpts := []metastore.ObjectMetastoreOption{metastore.WithTOCResolverCache(t.dataObjTOCCache)}
+	if t.dataObjIndexCache != nil {
+		metastoreOpts = append(metastoreOpts, metastore.WithIndexMetadataCache(t.dataObjIndexCache))
+	}
+
+	t.dataObjBucket = bucket
+	t.dataObjMetastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, log.With(util_log.Logger, "component", "querier"), prometheus.DefaultRegisterer, metastoreOpts...)
+	return t.dataObjMetastore, nil
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
@@ -1236,8 +1265,9 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 // compactorAddress returns the configured address of the compactor.
 // It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
 func (t *Loki) compactorAddress() (string, bool, error) {
-	if t.Cfg.isTarget(All) {
-		// In single binary or read modes, this module depends on Server
+	// With -target=all the compactor runs in this process and serves the delete requests API on the local gRPC server.
+	// A compactor worker does not hold the delete requests store, so it has to ask the main compactor.
+	if t.Cfg.isTarget(All) && t.Cfg.CompactorConfig.HorizontalScalingMode != compactor.HorizontalScalingModeWorker {
 		return net.JoinHostPort(t.Cfg.Server.GRPCListenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
 	}
 
@@ -2065,7 +2095,6 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Builder,
 		t.Cfg.DataObj.Uploader,
-		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
 		prometheus.DefaultRegisterer,
@@ -2096,13 +2125,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-builder uses so
-	// compactor outputs and ToC reads land alongside the existing multi-tenant
-	// indexes namespace.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The compactor outputs and the ToC reads use the same index prefix as the
+	// dataobj-builder.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	reg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": componentName},
@@ -2168,14 +2193,10 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
-	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
-	// IndexMerge executor writes merged-index objects to the same namespace
-	// the ToC pointers (written by the planner via its prefixed indexBucket)
-	// resolve to.
-	indexBucket := store
-	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
-		indexBucket = objstore.NewPrefixedBucket(store, prefix)
-	}
+	// The IndexMerge executor writes merged-index objects under the index
+	// prefix. The ToC pointers that the planner writes resolve under the same
+	// prefix.
+	indexBucket := metastore.NewIndexBucket(store)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config: t.Cfg.DataObj.Compaction.Worker,
@@ -2446,6 +2467,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	// One n-gram length for the whole index, owned by logline.index. The index
 	// does not record it, so a reader must use the value the builder did.
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
 		cfg,
@@ -2513,9 +2535,11 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	// the index does not record it, so a reader must use the value the builder
 	// did. The store's ingester window comes from loglineStoreConfig, so
 	// IndexesForRange and IndexesExcludedByIngesterWindow match production
-	// narrowing.
+	// narrowing. AlignQueriesWithStep comes from query_range, so a metric
+	// cycle uses the same step alignment as the query frontend.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	indexStore, err := loglinestore.New(
 		context.Background(),

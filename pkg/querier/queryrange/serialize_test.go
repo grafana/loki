@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,8 +15,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestResponseFormat(t *testing.T) {
@@ -168,6 +171,22 @@ func requestWithHintRanges() *LokiRequest {
 	}
 }
 
+// instantRequestWithHintRanges returns an instant request that carries hint ranges, as a client could send it.
+func instantRequestWithHintRanges() *LokiInstantRequest {
+	ts := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	return &LokiInstantRequest{
+		Query:     `sum(count_over_time({foo="bar"}[5m]))`,
+		Limit:     100,
+		Path:      "/loki/api/v1/query",
+		TimeTs:    ts,
+		Direction: logproto.BACKWARD,
+		HintRanges: []logproto.HintTimeRange{{
+			Start: ts.Add(-4 * time.Minute),
+			End:   ts.Add(-time.Minute),
+		}},
+	}
+}
+
 // successResponseFor returns a successful response of the type that the codec expects for the request.
 func successResponseFor(req queryrangebase.Request) queryrangebase.Response {
 	if _, ok := req.(*LokiInstantRequest); ok {
@@ -207,6 +226,12 @@ func TestSerializeRoundTripperStripsClientHints(t *testing.T) {
 		got := roundTrip(t, requestWithHintRanges())
 
 		require.Empty(t, got.(*LokiRequest).HintRanges)
+	})
+
+	t.Run("clears the hint ranges a client sends with an instant request", func(t *testing.T) {
+		got := roundTrip(t, instantRequestWithHintRanges())
+
+		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
 	})
 
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
@@ -249,6 +274,12 @@ func TestSerializeHTTPHandlerStripsClientHints(t *testing.T) {
 		require.Empty(t, got.(*LokiRequest).HintRanges)
 	})
 
+	t.Run("clears the hint ranges a client sends with an instant request", func(t *testing.T) {
+		got := serve(t, instantRequestWithHintRanges())
+
+		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
+	})
+
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
 		got := serve(t, dataObjRangeRequest(true))
 
@@ -260,4 +291,33 @@ func TestSerializeHTTPHandlerStripsClientHints(t *testing.T) {
 
 		require.Nil(t, got.(*LokiInstantRequest).DataObjOptions)
 	})
+}
+
+func TestQueryUsageHeaderHTTP(t *testing.T) {
+	for _, tc := range []struct{ name, path, query, kind string }{
+		{"range logs", "/loki/api/v1/query_range", `{app="test"}`, "logs"},
+		{"instant metrics", "/loki/api/v1/query", "vector(1)", "vector"},
+		{"range metrics", "/loki/api/v1/query_range", "vector(1)", "matrix"},
+		{"fields", "/loki/api/v1/detected_fields", `{app="test"}`, "fields"},
+		{"field values", "/loki/api/v1/detected_field/foo/values", `{app="test"}`, "fields"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const n int64 = 123456789
+			response := usageHeaderResponse(tc.kind, n)
+			next := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				return response, nil
+			})
+			handler := NewSerializeHTTPHandler(next, DefaultCodec)
+
+			req := httptest.NewRequest(http.MethodGet, tc.path+"?query="+url.QueryEscape(tc.query)+"&start=1&end=2&time=2&step=1", nil)
+			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			actual := recorder.Result()
+			defer actual.Body.Close()
+			require.Equal(t, http.StatusOK, actual.StatusCode, recorder.Body.String())
+			require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(httpreq.LokiQueryBytesProcessedHeader), "must be present before headers are committed")
+		})
+	}
 }

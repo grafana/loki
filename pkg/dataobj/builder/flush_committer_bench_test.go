@@ -142,7 +142,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		idxBucket    = objstore.NewPrefixedBucket(bucket, "index/")
 		offsets      = &mockCommitter{}
 	)
-	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, nil)
+	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -274,7 +274,7 @@ type benchBucket struct {
 	latency benchBucketLatency
 }
 
-func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader) error {
+func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader, _ ...objstore.ObjectUploadOption) error {
 	n, err := io.Copy(io.Discard, r)
 	if err != nil {
 		return err

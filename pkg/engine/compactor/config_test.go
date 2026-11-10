@@ -28,6 +28,8 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
 		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
 		{"window lookback below one", func(c *Config) { c.WindowLookback = 0 }, errInvalidWindowLookback},
+		{"task retry min backoff zero", func(c *Config) { c.TaskRetryMinBackoff = 0 }, errInvalidTaskRetryMinBackoff},
+		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,5 +93,47 @@ func TestConfig_LogMaxRunsPerTaskValidation(t *testing.T) {
 	t.Run("accepts two", func(t *testing.T) {
 		cfg := base(2)
 		require.NoError(t, cfg.Validate())
+	})
+}
+
+func TestConfig_LogMaxKeySize(t *testing.T) {
+	parse := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		return cfg
+	}
+
+	t.Run("defaults to 100GiB", func(t *testing.T) {
+		require.Equal(t, flagext.Bytes(100<<30), parse(t).LogMaxKeySize)
+	})
+
+	t.Run("parses zero to disable the check", func(t *testing.T) {
+		require.Zero(t, parse(t, "--dataobj.compaction.logs.max-key-size=0").LogMaxKeySize)
+	})
+}
+
+func TestConfig_TaskMaxRetriesValidation(t *testing.T) {
+	base := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		cfg.Enabled = true
+		return cfg
+	}
+
+	t.Run("accepts zero", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.task-max-retries=0")
+		require.Equal(t, 0, cfg.TaskMaxRetries)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("rejects a negative value", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.task-max-retries=-1")
+		require.ErrorIs(t, cfg.Validate(), errInvalidTaskMaxRetries)
 	})
 }

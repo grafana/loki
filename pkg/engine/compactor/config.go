@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -34,6 +35,21 @@ type Config struct {
 	// runs concurrently per tenant. Zero means unlimited. Negative values are
 	// rejected at config validation.
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
+
+	// TaskMaxRetries is how many times the coordinator runs a failed
+	// compaction task again. The coordinator does not retry after shutdown
+	// begins or the tenant stops. Zero disables retries. Validate rejects
+	// negative values.
+	TaskMaxRetries int `yaml:"task_max_retries"`
+
+	// TaskRetryMinBackoff is the shortest wait before the first retry of a
+	// compaction task. The wait grows exponentially with each retry, with
+	// jitter, up to TaskRetryMaxBackoff.
+	TaskRetryMinBackoff time.Duration `yaml:"task_retry_min_backoff"`
+
+	// TaskRetryMaxBackoff is the longest wait before a retry of a compaction
+	// task.
+	TaskRetryMaxBackoff time.Duration `yaml:"task_retry_max_backoff"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and plans compaction per tenant.
@@ -60,15 +76,29 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
-	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
-	// single LogMerge task may consume. A size level must also hold K runs
-	// before log compaction starts. Kept separate from index max runs.
+	// LogMaxRunsPerTask (K for log compaction) is the number of runs in each
+	// planned log merge. Log compaction merges only groups of K runs from one
+	// size level, and keeps the other runs unmerged.
+	//
+	// LogMaxTaskSize can split a planned merge into tasks by key range. A
+	// split task holds only the runs with data in its range, so it can hold
+	// fewer than K runs. Kept separate from index max runs.
 	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
 
 	// LogMinCompactionSize is the minimum total compactable data (sum of all
 	// runs' uncompressed size) that justifies log compaction. Windows below
 	// this floor are skipped.
 	LogMinCompactionSize flagext.Bytes `yaml:"logs_min_compaction_size"`
+
+	// LogMaxTaskSize is the maximum uncompressed input size of one LogMerge
+	// task. The planner splits a larger merge into tasks by stream sort
+	// prefix. 0 disables the split.
+	LogMaxTaskSize flagext.Bytes `yaml:"logs_max_task_size"`
+
+	// LogMaxKeySize is the maximum uncompressed input of one stream sort
+	// prefix in a planned log merge. The planner skips a merge with a larger
+	// sort prefix and keeps its runs unmerged. 0 disables the check.
+	LogMaxKeySize flagext.Bytes `yaml:"logs_max_key_size"`
 
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
@@ -158,11 +188,19 @@ type WorkerConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// taskRetryBackoff returns the backoff before each retry of a compaction task.
+func (cfg *Config) taskRetryBackoff() backoff.Config {
+	return backoff.Config{MinBackoff: cfg.TaskRetryMinBackoff, MaxBackoff: cfg.TaskRetryMaxBackoff}
+}
+
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
 	defaultMaxRunningCompactionTasks    = 16
 	defaultLogMaxRunningCompactionTasks = 16
+	defaultTaskMaxRetries               = 3
+	defaultTaskRetryMinBackoff          = 10 * time.Second
+	defaultTaskRetryMaxBackoff          = time.Minute
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
@@ -192,6 +230,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
 		defaultLogMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
+	f.IntVar(&cfg.TaskMaxRetries, prefix+"task-max-retries", defaultTaskMaxRetries,
+		"Experimental: Number of times the coordinator runs a failed compaction task again. 0 disables retries.")
+	f.DurationVar(&cfg.TaskRetryMinBackoff, prefix+"task-retry-min-backoff", defaultTaskRetryMinBackoff,
+		"Experimental: Shortest wait before the first retry of a failed compaction task. The wait grows exponentially with each retry, with jitter, up to task-retry-max-backoff.")
+	f.DurationVar(&cfg.TaskRetryMaxBackoff, prefix+"task-retry-max-backoff", defaultTaskRetryMaxBackoff,
+		"Experimental: Longest wait before a retry of a failed compaction task.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.DurationVar(&cfg.MinBackoff, prefix+"min-backoff", defaultMinBackoff,
@@ -203,10 +247,15 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
-		"Experimental: Maximum runs per LogMerge task (K for log compaction). Log compaction starts only when a size level holds K runs, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
+		"Experimental: Runs per planned log merge (K for log compaction), before logs.max-task-size splits it into tasks. Log compaction merges only groups of K runs from one size level, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Windows below this floor are skipped.")
+	f.Var(&cfg.LogMaxTaskSize, prefix+"logs.max-task-size",
+		"Experimental: Maximum uncompressed input size of one LogMerge task. The planner splits a larger merge into tasks by stream sort prefix and never splits one sort prefix. A task exceeds the maximum in two cases: a sort prefix above it gets a task of its own, and the last task of a merge can take in a leftover of up to 10% of it. 0 disables the split.")
+	_ = cfg.LogMaxKeySize.Set("100GB")
+	f.Var(&cfg.LogMaxKeySize, prefix+"logs.max-key-size",
+		"Experimental: Maximum uncompressed input of one stream sort prefix in a planned log merge. A merge writes all records of one sort prefix into one object, so this limits the size of the objects and the memory of a task. The planner skips a merge with a larger sort prefix and keeps its runs unmerged. 0 disables the check.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
@@ -264,6 +313,9 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMaxRunningCompactionTasks < 0 {
 		return errInvalidLogMaxRunningCompactionTasks
 	}
+	if cfg.TaskMaxRetries < 0 {
+		return errInvalidTaskMaxRetries
+	}
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
 	}
@@ -291,6 +343,12 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMinCompactionSize == 0 {
 		return errInvalidLogMinCompactionSize
 	}
+	if cfg.TaskRetryMinBackoff <= 0 {
+		return errInvalidTaskRetryMinBackoff
+	}
+	if cfg.TaskRetryMaxBackoff < cfg.TaskRetryMinBackoff {
+		return errInvalidTaskRetryMaxBackoff
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -306,6 +364,9 @@ func (cfg *Config) Validate() error {
 var (
 	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
+	errInvalidTaskMaxRetries               = errors.New("dataobj.compaction.task_max_retries must be >= 0")
+	errInvalidTaskRetryMinBackoff          = errors.New("dataobj.compaction.task_retry_min_backoff must be > 0 when compaction is enabled")
+	errInvalidTaskRetryMaxBackoff          = errors.New("dataobj.compaction.task_retry_max_backoff must be >= dataobj.compaction.task_retry_min_backoff when compaction is enabled")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")

@@ -27,6 +27,7 @@
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
+    'release-4.0.0', // in-flight release
     'release-3.7.x', // Update when a new release is out, 2 minors, 1 major.
     'release-3.6.x', // Also ensure to update the 'packageRules' section to match
   ],
@@ -99,8 +100,6 @@
         'gomod',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
@@ -125,8 +124,6 @@
         'github.com/aws/aws-sdk-go-v2/**',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: 'aws-sdk-go-v2',
@@ -167,13 +164,9 @@
     },
     {
       // Track prometheus via pseudo-versions only (closest to main); do not switch to a tagged release and stick to that major.
-      // Scoped to main branch only and excludes operator files to avoid overriding their disabled update rules.
+      // Scoped to main branch only.
       matchPackageNames: ['github.com/prometheus/prometheus'],
       matchBaseBranches: ['main'],
-      matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
-      ],
       allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
       enabled: true,
       digest: {
@@ -186,10 +179,6 @@
       // prevents Renovate from bumping its pseudo-version pin.
       matchPackageNames: ['github.com/grafana/dskit'],
       matchBaseBranches: ['main'],
-      matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
-      ],
       allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
       enabled: true,
       digest: {
@@ -222,13 +211,6 @@
       enabled: false,
     },
     {
-      // Disable updates driven by Kustomize, used by the operator
-      matchManagers: [
-        'kustomize',
-      ],
-      enabled: false,
-    },
-    {
       // Disable certain npm updates for compatibility reasons
       matchManagers: [
         'npm',
@@ -253,14 +235,6 @@
       enabled: false,
     },
     {
-      // Disable operator updates
-      matchFileNames: [
-        'operator/go.mod',
-        'operator/api/loki/go.mod',
-      ],
-      enabled: false,
-    },
-    {
       // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
       enabled: false,
@@ -269,22 +243,9 @@
       // Release branches take security updates only. 'vulnerabilityAlerts' is merged after
       // packageRules, so disabling everything here still lets security PRs through.
       matchBaseBranches: [
+        'release-4.0.0',
         'release-3.7.x',
         'release-3.6.x',
-      ],
-      enabled: false,
-    },
-    {
-      // Final config for the operator on release branches, which ships from its own
-      // release train. Note this cannot suppress operator security PRs the way it once
-      // claimed to: 'vulnerabilityAlerts' is merged after packageRules, so no rule here
-      // can hold back a security update.
-      matchBaseBranches: [
-        'release-3.7.x',
-        'release-3.6.x',
-      ],
-      matchFileNames: [
-        'operator/**',
       ],
       enabled: false,
     },

@@ -39,9 +39,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -52,13 +52,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
-	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
-	// Possible values are only increasing integers starting from 0.
-	ShardLbName        = "__stream_shard__"
+	// ShardLbPlaceholder stands in for the value of constants.StreamShardLabel in a label set template. The
+	// distributor replaces it with the real shard number.
 	ShardLbPlaceholder = "__placeholder__"
 
 	queryBatchSize       = 128
@@ -223,14 +223,20 @@ func newInstance(
 	return i, err
 }
 
-// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+// Push pushes a request without a record timestamp, see PushWithTimestamp.
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp will iterate over the given streams present in the PushRequest and attempt to store them.
 //
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
+	record.IngestedAt = req.IngestedAt
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
@@ -257,7 +263,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, req.IngestedAt)
 		s.chunkMtx.Unlock()
 	}
 
@@ -385,7 +391,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 
 func (i *instance) onStreamCreated(s *stream) {
 	i.memoryStreams.Inc()
-	if s.labels.Has(ShardLbName) {
+	if s.labels.Has(constants.StreamShardLabel) {
 		i.memoryStreamShards.Inc()
 	}
 	i.metrics.instance.memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
@@ -460,7 +466,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		i.memoryStreams.Dec()
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			i.memoryStreamShards.Dec()
 		}
 		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
@@ -1063,7 +1069,7 @@ func (i *instance) forMatchingStreams(
 	shard *logql.Shard,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	filters, matchers := syntaxutil.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(ts, matchers, shard)
 	if err != nil {
 		return err
