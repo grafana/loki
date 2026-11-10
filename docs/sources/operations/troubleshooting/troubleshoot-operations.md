@@ -3329,6 +3329,12 @@ You may also see the generic log message `rule evaluation failed: <details>` wra
 
 These errors occur when Loki is configured to use Kafka for ingestion.
 
+{{< admonition type="note" >}}
+Most of the configuration errors below (missing address/topic, SASL mismatch, invalid producer settings, "no write path enabled", the data object builder's "topic is required", and the ingest-limits settings) are caught by Loki's configuration validation and logged at startup with a `CONFIG ERROR: invalid <section> config: ` prefix, for example `CONFIG ERROR: invalid kafka_config config: the Kafka address has not been configured`. When searching logs, match on the bare message shown in each section rather than the full line, since the section name in the prefix varies by which config block failed.
+
+A few other errors in this section ("kafka enabled in distributor but not in ingester", "partition ring is required for kafka writes") are raised during component initialization rather than config validation and do not carry the `CONFIG ERROR:` prefix.
+{{< /admonition >}}
+
 ### Error: Missing Kafka address
 
 **Error message:**
@@ -3451,6 +3457,46 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 
 **Properties:**
 
+- Enforced by: Distributor initialization
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: No write path enabled
+
+**Error message:**
+
+```text
+at least one of kafka and ingestor writes must be enabled
+```
+
+{{< admonition type="note" >}}
+The message says "ingestor", not "ingester" — that's a typo in Loki's own error text, not in this documentation. Quote it exactly as shown if you're searching logs for it.
+{{< /admonition >}}
+
+**Cause:**
+
+Both `distributor.kafka_writes_enabled` and `distributor.ingester_writes_enabled` are set to `false`, leaving the distributor with no write path at all.
+
+**Default configuration:**
+
+- `distributor.kafka_writes_enabled`: false
+- `distributor.ingester_writes_enabled`: true
+
+**Resolution:**
+
+- **Enable at least one write path**:
+
+  ```yaml
+  distributor:
+    kafka_writes_enabled: false
+    ingester_writes_enabled: true
+  ```
+
+- If you're migrating to Kafka-based ingestion and intentionally disabling gRPC writes, make sure `kafka_writes_enabled` is `true` before setting `ingester_writes_enabled` to `false`. Refer to [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/) for the full, safely ordered sequence.
+
+**Properties:**
+
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
@@ -3552,11 +3598,19 @@ partition ring is required for kafka writes
 
 **Cause:**
 
-`distributor.kafka_writes_enabled` is `true`, but the distributor wasn't started with a partition ring. This usually means the partition ring key-value store isn't configured consistently across distributors and ingesters.
+`distributor.kafka_writes_enabled` is `true`, but the partition ring was never initialized on this process. Loki only starts the partition ring for a process when `ingester.kafka_ingestion.enabled` or `querier.query_partition_ingesters` is `true` on that same process; a distributor that only has `kafka_writes_enabled` set, with neither of those two settings also set, never gets a partition ring to hand to the distributor's Kafka writer.
 
 **Resolution:**
 
-- **Configure the partition ring key-value store on both distributors and ingesters**:
+- **Set `ingester.kafka_ingestion.enabled: true` on every process that runs the distributor**, even in single-binary or modular deployments where the distributor and ingester are the same process group:
+
+  ```yaml
+  ingester:
+    kafka_ingestion:
+      enabled: true
+  ```
+
+- **Ensure the partition ring key-value store is configured consistently** across every component that participates in Kafka-based ingestion (distributors, ingesters, queriers, and rulers):
 
   ```yaml
   ingester:
@@ -3567,7 +3621,7 @@ partition ring is required for kafka writes
           store: memberlist
   ```
 
-- Ensure every component that participates in Kafka-based ingestion (distributors, ingesters, queriers, and rulers) uses the same key-value store configuration.
+  `memberlist` is already the default store for the partition ring, so this step alone will not fix the error if the ring was never started; it only matters once the ring is started and multiple components need to agree on where to find it.
 
 **Properties:**
 
@@ -3584,9 +3638,15 @@ partition ring is required for kafka writes
 single entry size (%d) exceeds maximum allowed size (%d)
 ```
 
+Or, for OTLP-encoded streams:
+
+```text
+record for stream <stream_labels> holding a single entry exceeds maximum allowed size <size> > <max_size>
+```
+
 **Cause:**
 
-A single log line is larger than the configured `kafka_config.producer_max_record_size_bytes`. Loki splits large write requests into multiple Kafka records, but it can't split a single log line across records.
+A single log line is larger than the configured `kafka_config.producer_max_record_size_bytes`. Loki splits large write requests into multiple Kafka records, but it can't split a single log line across records. Both messages have the same cause; which one you see depends on whether the push request used the regular or the OTLP encoding path.
 
 **Resolution:**
 
@@ -3610,7 +3670,7 @@ A single log line is larger than the configured `kafka_config.producer_max_recor
 
 - Enforced by: Kafka record encoding
 - Retryable: No
-- HTTP status: 400 (Bad Request)
+- HTTP status: 500 (Internal Server Error). This error isn't attached to an HTTP status code when it's raised, so the distributor's push handler falls back to its generic 500 response rather than a 400.
 - Configurable per tenant: No (`limits_config.max_line_size` and `limits_config.max_line_size_truncate` are configurable per tenant)
 
 ### Error: Dataobj builder topic required
@@ -3678,7 +3738,7 @@ The optional ingest-limits service is enabled (`ingest_limits.enabled: true`), b
 {{< admonition type="note" >}}
 The ingest-limits service has additional rate-tracking configuration validation errors in the same family: `active window must be greater than 0`, `rate window must be greater than 0`, `bucket size must be greater than 0`, `rate window must be a multiple of bucket-size`, and `eviction interval must be greater than 0`. Fix these the same way: correct the corresponding duration or size setting under `ingest_limits` to a valid positive value.
 
-The ingest-limits *frontend* (a separate component from the ingest-limits service) has its own cache-related validation error, `assigned partitions cache TTL must be a positive number`, and similar checks for its other cache TTL settings.
+The ingest-limits *frontend* (a separate component from the ingest-limits service) has its own cache-related validation error, `assigned partitions cache TTL must be a positive number, or the cache must be disabled`, and similar checks for its other cache TTL settings.
 {{< /admonition >}}
 
 ### Error: Ingest-limits readiness errors
@@ -4045,9 +4105,12 @@ The ingester could not start its Kafka partition reader. This occurs when Kafka 
 - **Review Kafka configuration**:
 
   ```yaml
-  kafka:
-    address: kafka:9092
+  kafka_config:
     topic: loki-logs
+    reader_config:
+      address: kafka:9092
+    writer_config:
+      address: kafka:9092
   ```
 
 - **Check Kafka broker health**.
