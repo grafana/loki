@@ -193,7 +193,7 @@ func TestReadWatermarks(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, rows, 2)
 		require.Less(t, bucket.bytes.Load(), attrs.Size/10)
-		require.LessOrEqual(t, bucket.gets.Load(), int64(3))
+		require.Equal(t, int64(1), bucket.gets.Load())
 	})
 }
 
