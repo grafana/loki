@@ -133,6 +133,20 @@ eval range from 60s to 120s step 30s first_over_time({app="a"} | logfmt | unwrap
   {app="a"} 20 _ 40
 eval range from 60s to 120s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 30s)
   {app="a"} 30 _ 40
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 10      # [10s,30s)={10,20}
+eval instant at 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 20
+eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 10 _ _  # [70s,90s) excludes the sample at 90s
+eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns)
+  {app="a"} 20 _ _
+# Grouped queries are sharded and merged, which also has to keep the sample on the lower bound.
+eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns) by (app)
+  {app="a"} 10 _ _
+eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s] offset 1ns) by (app)
+  {app="a"} 20 _ _
 # Output gaps.
 eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s])
   {app="a"} 20 _ 40
@@ -253,6 +267,11 @@ eval instant at 50s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] 
   {app="a"} 2.5
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 20s)
   {app="a"} 2.5 5 _
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 50s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 1ns)
+  {app="a"} 4       # [35s,50s)={4}
+eval range from 20s to 50s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s] offset 1ns)
+  {app="a"} 1 4     # [5s,20s)={1}, [35s,50s)={4}
 # Output gap.
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
   {app="a"} 4.5 _ 6
@@ -295,33 +314,57 @@ load
 
 # by()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7
 # without()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3 3
   {pod="2"} 15 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7 7
 eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 2
   {pod="2"} 10
 eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 4
   {pod="2"} 20
 eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
@@ -337,7 +380,10 @@ load
   {app="a", pod="2"} "v=NaN" @ 30s
 
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} NaN
 
@@ -353,6 +399,64 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2
 eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2 2
+
+# quantile_over_time() over a malformed line: quantile computed from structured metadata.
+clear
+load
+  {app="a", pod="p1"}     `{` @ 20s [metadata v="7"] # malformed
+  {app="a", pod="p1"}     `{` @ 30s [metadata v="9"] # malformed
+  {app="noise", pod="p2"} `{` @ 20s [metadata v="1"]
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 8
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod) # non-overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 7 8
+# Dropping the errored lines leaves no sample to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect empty
+
+# quantile_over_time() over a malformed line: quantile computed from line field.
+clear
+load
+  {app="a", pod="p1"}     `{"v":4}` @ 10s
+  {app="a", pod="p1"}     `{"v":6}` @ 20s
+  {app="a", pod="p1"}     `{"v":8}` @ 30s
+  {app="a", pod="p1"}     `{`       @ 40s # malformed
+  {app="noise", pod="p2"} `{"v":1}` @ 20s
+
+# The malformed line carries no `v` to unwrap, so it becomes no sample and never reaches the query,
+# reason why the query doesn't fail.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 6
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod) # overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 5 6   # (-40s,20s]={4,6}, (0s,60s]={4,6,8}
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 6
+# Keeping the malformed line adds no sample either, so no group is left to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect empty
 
 # approx_count_distinct()
 #
@@ -379,6 +483,11 @@ eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20
   {app="a"} 2
 eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s] offset 20s)
   {app="a"} 2 1 _
+# A sub-millisecond offset excludes the sample on the upper bound and keeps the step time.
+eval instant at 50s approx_count_distinct(id, {app="a"} | logfmt [25s] offset 1ns)
+  {app="a"} 2       # [25s,50s)={3,4}
+eval range from 20s to 50s step 30s approx_count_distinct(id, {app="a"} | logfmt [25s] offset 1ns)
+  {app="a"} 1 2     # [−5s,20s)={1,1}, [25s,50s)={3,4}
 # Output gap.
 eval range from 50s to 110s step 30s approx_count_distinct(id, {app="a"} | logfmt [15s])
   {app="a"} 2 _ 1
@@ -484,6 +593,8 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
   expect fail msg: LogfmtParserErr
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
   {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__!="" [1m])
+  {__error__="LogfmtParserErr", __error_details__="logfmt syntax error at pos 23 : unterminated quoted value", app="a"} 1
 
 # approx_count_distinct() with a large set.
 #
@@ -690,6 +801,36 @@ eval instant at 60s count_over_time({app="a"} | logfmt | unwrap v [1m])
 eval instant at 60s count_over_time({app="a"} |= "keep" [1m]) by (app)
   expect fail msg: grouping not allowed for count_over_time aggregation
 
+# count_over_time() with a sub-millisecond offset. The Grafana logs volume histogram sends
+# `offset 1ns` to turn the (T−R, T] window into [T−R, T). The sample keeps the step time T.
+clear
+load
+  {app="volume", level="info"}  "keep"  @ 59.999999999s
+  {app="volume", level="info"}  "keep"  @ 60s
+  {app="volume", level="info"}  "keep"  @ 60.000000001s
+  {app="volume", level="warn"}  "keep"  @ 60s
+  {app="volume", level="error"} "keep"  @ 120s
+  {app="volume", level="info"}  "keep"  @ 120.000000001s
+  {app="volume", level="warn"}  "keep"  @ 179.999999999s
+  {app="volume", level="error"} "keep"  @ 180s
+  {app="volume", level="info"}  "noise" @ 90s
+
+# A line on a bucket boundary belongs to the bucket that starts there.
+eval instant at 240s sum by (level) (count_over_time({app="volume"} |= "keep" [1m] offset 1ns))
+  {level="error"} 1
+eval range from 60s to 240s step 60s sum by (level) (count_over_time({app="volume"} |= "keep" [1m] offset 1ns))
+  {level="info"}  1 2 1 _   # [0,60s)={59.999999999}, [60s,120s)={60, 60.000000001}, [120s,180s)={120.000000001}
+  {level="warn"}  _ 1 1 _
+  {level="error"} _ _ 1 1
+eval instant at 120s count_over_time({app="volume"} |= "keep" [1m] offset 1ns)
+  {app="volume", level="info"} 2
+  {app="volume", level="warn"} 1
+# Without the offset, the same line belongs to the bucket that ends there.
+eval range from 60s to 240s step 60s sum by (level) (count_over_time({app="volume"} |= "keep" [1m]))
+  {level="info"}  2 1 1 _   # (0,60s]={59.999999999, 60}, (60s,120s]={60.000000001}, (120s,180s]={120.000000001}
+  {level="warn"}  1 _ 1 _
+  {level="error"} _ 1 1 _
+
 # count_over_time() over log streams with structured metadata.
 #
 # - Metadata merges into the result label set.
@@ -723,6 +864,31 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])   #
 eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt [1m]) # non-overlapping
   {app="a", env="prod", env_extracted="staging", detected_level="info", lvl="", code="200"} 2 _
   {app="a", env="prod", env_extracted="staging", detected_level="error", lvl="", code="200"} 1 _
+
+# sum() of count_over_time() over a long time span:
+# - The samples span 10s to 180s, so a stack that splits its sources by time reads both sides.
+# - p3 starts at 100s, so the early steps have no p3 series.
+clear
+load
+  {app="a", pod="p1"} "x" @ 10s  [repeat every 10s for 18]
+  {app="a", pod="p2"} "x" @ 15s  [repeat every 15s for 12]
+  {app="a", pod="p3"} "x" @ 100s [repeat every 20s for 5]
+  {app="noise"}       "x" @ 10s  [repeat every 10s for 18]
+
+eval instant at 180s sum(count_over_time({app="a"}[1m]))
+  {} 13
+eval range from 60s to 180s step 30s sum(count_over_time({app="a"}[1m]))                # overlapping
+  {} 10 10 12 13 13
+eval instant at 180s sum by (pod) (count_over_time({app="a"}[1m]))
+  {pod="p1"} 6
+  {pod="p2"} 4
+  {pod="p3"} 3
+eval range from 60s to 180s step 30s sum by (pod) (count_over_time({app="a"}[1m]))      # overlapping
+  {pod="p1"} 6 6 6 6 6
+  {pod="p2"} 4 4 4 4 4
+  {pod="p3"} _ _ 2 3 3
+eval range from 60s to 180s step 120s sum without (pod) (count_over_time({app="a"}[1m])) # non-overlapping
+  {app="a"} 10 13
 
 # bytes_over_time()
 clear
@@ -758,9 +924,9 @@ load
 
 eval instant at 60s rate({app="a"} |= "keep" [1m])
   {app="a"} 0.1
-eval range from 60s to 120s step 30s rate({app="a"} |= "keep" [1m]) # overlapping
+eval range from 60s to 120s step 30s rate({app="a"} |= "keep" [1m])        # overlapping
   {app="a"} 0.1 0.1 0.1
-eval range from 60s to 180s step 90s rate({app="a"} |= "keep" [1m]) # non-overlapping
+eval range from 60s to 180s step 90s rate({app="a"} |= "keep" [1m])        # non-overlapping
   {app="a"} 0.1 0.1
 # The offset shifts the window back.
 eval instant at 90s rate({app="a"} |= "keep" [20s] offset 90s)
@@ -770,6 +936,21 @@ eval range from 60s to 150s step 30s rate({app="a"} |= "keep" [20s] offset 90s)
 # rate() doesn't allow grouping.
 eval instant at 60s rate({app="a"} |= "keep" [1m]) by (app)
   expect fail msg: grouping not allowed for rate aggregation
+# sum(rate()).
+eval instant at 60s sum(rate({app="a"} |= "keep" [1m]))
+  {} 0.1
+eval range from 60s to 120s step 30s sum(rate({app="a"} |= "keep" [1m]))   # overlapping
+  {} 0.1 0.1 0.1
+eval range from 60s to 240s step 90s sum(rate({app="a"} |= "keep" [1m]))   # non-overlapping
+  {} 0.1 0.1 _   # (180s,240s] has no sample
+eval instant at 60s sum(rate({app="a"} |= "keep" [45s]))
+  {} 0.1111111111111111   # (15s,60s] holds 5 samples, 5 / 45
+eval range from 30s to 60s step 15s sum(rate({app="a"} |= "keep" [45s]))   # overlapping
+  {} 0.08888888888888889 0.08888888888888889 0.1111111111111111   # 4 / 45, 4 / 45, 5 / 45
+eval instant at 90s sum(rate({app="a"} |= "keep" [20s] offset 90s))
+  {} 0.05
+eval range from 60s to 150s step 30s sum(rate({app="a"} |= "keep" [20s] offset 90s))
+  {} _ 0.05 0.1 0.1
 
 # rate() over a sub-second [500ms] range divides the matching-line count by 0.5s.
 clear
@@ -779,15 +960,26 @@ load
 
 eval instant at 500ms rate({app="b"} |= "keep" [500ms])
   {app="b"} 6
-eval range from 500ms to 900ms step 400ms rate({app="b"} |= "keep" [500ms])  # overlapping
+eval range from 500ms to 900ms step 400ms rate({app="b"} |= "keep" [500ms])         # overlapping
   {app="b"} 6 6
-eval range from 500ms to 1100ms step 600ms rate({app="b"} |= "keep" [500ms]) # non-overlapping
+eval range from 500ms to 1100ms step 600ms rate({app="b"} |= "keep" [500ms])        # non-overlapping
   {app="b"} 6 6
 # The offset shifts the window back.
 eval instant at 1300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 4
 eval range from 1000ms to 1600ms step 300ms rate({app="b"} |= "keep" [500ms] offset 500ms)
   {app="b"} 6 4 6
+# sum(rate()).
+eval instant at 500ms sum(rate({app="b"} |= "keep" [500ms]))
+  {} 6
+eval range from 500ms to 900ms step 400ms sum(rate({app="b"} |= "keep" [500ms]))    # overlapping
+  {} 6 6
+eval range from 500ms to 1100ms step 600ms sum(rate({app="b"} |= "keep" [500ms]))   # non-overlapping
+  {} 6 6
+eval instant at 1300ms sum(rate({app="b"} |= "keep" [500ms] offset 500ms))
+  {} 4
+eval range from 1000ms to 1600ms step 300ms sum(rate({app="b"} |= "keep" [500ms] offset 500ms))
+  {} 6 4 6
 
 # rate() with unwrap, from a stream label, structured metadata, or a parsed field.
 clear
@@ -798,6 +990,9 @@ load
   {app="noise"}    "noise" @ 0s  [repeat every 10s for 13]
   {app="err"}      "msg"   @ 20s [metadata v="oops"]
   {app="err"}      "msg"   @ 40s [metadata v="6"]
+  {app="k", c="ten"} "v=10000000000000000"  @ 5s
+  {app="k", c="ten"} "v=1"                  @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"} "v=-10000000000000000" @ 16s
 
 # parsed field
 eval instant at 60s rate({app="p"} | logfmt | unwrap v [30s])
@@ -824,6 +1019,25 @@ eval instant at 60s rate({app="err"} | unwrap v [1m])
   expect fail
 eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
+eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="err"} 0
+eval instant at 60s sum(rate({app="err"} | unwrap v [1m]))
+  expect fail msg: SampleExtractionErr
+eval instant at 60s sum(rate({app="err"} | unwrap v | __error__="" [1m]))
+  {} 0.1
+# A large value that a later negative value cancels does not drop the small values between them.
+eval instant at 60s rate({app="k"} | logfmt | unwrap v [1m])
+  {app="k", c="ten"} 0.16666666666666666
+eval range from 20s to 60s step 20s rate({app="k"} | logfmt | unwrap v [1m])         # overlapping
+  {app="k", c="ten"} 0.16666666666666666 0.16666666666666666 0.16666666666666666
+eval range from 20s to 60s step 40s rate({app="k"} | logfmt | unwrap v [20s])        # non-overlapping
+  {app="k", c="ten"} 0.5 _
+eval instant at 60s sum(rate({app="k"} | logfmt | unwrap v [1m]))
+  {} 0.16666666666666666
+eval range from 20s to 60s step 20s sum(rate({app="k"} | logfmt | unwrap v [1m]))    # overlapping
+  {} 0.16666666666666666 0.16666666666666666 0.16666666666666666
+eval range from 20s to 60s step 40s sum(rate({app="k"} | logfmt | unwrap v [20s]))   # non-overlapping
+  {} 0.5 _
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -855,10 +1069,44 @@ eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) by (app
 eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m]) without (app)
   expect fail msg: grouping not allowed for rate aggregation
 
+# sum() of rate() with unwrap edge cases:
+# - A window that sums to zero or to a negative value is a value, not an empty window.
+# - A huge value in one window does not change the rate of a later window.
+# - A NaN or an Inf stays in its own window.
+clear
+load
+  {app="z", c="zero"}  "v=5"                  @ 20s
+  {app="z", c="zero"}  "v=-5"                 @ 40s
+  {app="z", c="neg"}   "v=-3"                 @ 20s
+  {app="z", c="pos"}   "v=1"                  @ 20s
+  {app="h", c="big"}   "v=10000000000000000"  @ 20s
+  {app="h", c="big"}   "v=1.5"                @ 40s
+  {app="h", c="small"} "v=123456789.123"      @ 20s
+  {app="h", c="small"} "v=0.1"                @ 40s
+  {app="n", c="nan"}   "v=7"                  @ 20s
+  {app="n", c="nan"}   "v=NaN"                @ 40s
+  {app="n", c="nan"}   "v=3"                  @ 60s
+  {app="n", c="inf"}   "v=+Inf"               @ 20s
+  {app="n", c="inf"}   "v=-Inf"               @ 40s
+  {app="n", c="inf"}   "v=5"                  @ 60s
+  {app="noise"}        "v=1"                  @ 30s
+
+eval instant at 60s sum by (c) (rate({app="z"} | logfmt | unwrap v [1m]))
+  {c="zero"} 0                      # (5 - 5) / 60
+  {c="neg"} -0.05                   # -3 / 60
+  {c="pos"} 0.016666666666666666    # 1 / 60
+eval range from 20s to 40s step 20s sum by (c) (rate({app="h"} | logfmt | unwrap v [20s])) # overlapping
+  {c="big"}   500000000000000 0.075   # 1e16 / 20, 1.5 / 20
+  {c="small"} 6172839.45615 0.005     # 123456789.123 / 20, 0.1 / 20
+eval range from 20s to 80s step 20s sum by (c) (rate({app="n"} | logfmt | unwrap v [20s])) # overlapping
+  {c="nan"} 0.35 NaN 0.15 _
+  {c="inf"} +Inf -Inf 0.25 _
+
 # avg_over_time() edge cases:
 # - any NaN -> NaN
 # - +Inf absorbs a finite value
 # - +Inf with -Inf -> NaN
+# - A large value that a later negative value cancels does not drop the small values between them.
 clear
 load
   {app="a", c="multi"}  "v=7"    @ 20s
@@ -870,6 +1118,9 @@ load
   {app="a", c="posinf"} "v=5"    @ 40s
   {app="a", c="mixinf"} "v=+Inf" @ 20s
   {app="a", c="mixinf"} "v=-Inf" @ 40s
+  {app="k", c="ten"}    "v=10000000000000000"  @ 5s
+  {app="k", c="ten"}    "v=1"                  @ 6s [repeat every 1s for 10]
+  {app="k", c="ten"}    "v=-10000000000000000" @ 16s
   {app="noise"} "noise" @ 20s [repeat every 10s for 3]
 
 eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m])
@@ -903,6 +1154,12 @@ eval range from 40s to 100s step 20s avg_over_time({app="a"} | logfmt | unwrap v
   {app="a", c="nan"}    _ 7 NaN _
   {app="a", c="posinf"} _ +Inf 5 _
   {app="a", c="mixinf"} _ +Inf -Inf _
+eval instant at 60s avg_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k", c="ten"} 0.8333333333333334
+eval range from 20s to 60s step 20s avg_over_time({app="k"} | logfmt | unwrap v [1m])   # overlapping
+  {app="k", c="ten"} 0.8333333333333334 0.8333333333333334 0.8333333333333334
+eval range from 20s to 60s step 40s avg_over_time({app="k"} | logfmt | unwrap v [20s])  # non-overlapping
+  {app="k", c="ten"} 0.8333333333333334 _
 # avg_over_time() requires unwrap.
 eval instant at 60s avg_over_time({app="a"}[1m])
   expect fail msg: invalid aggregation avg_over_time without unwrap
@@ -1129,6 +1386,28 @@ eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | v > 3 
   {pod="1"} 4 4 _
   {pod="2"} 9 9 _
 
+# avg_over_time() with an __error__ post filter on the unwrap: avg_over_time() decomposes into a
+# sum and a count when sharded, and the count leg cannot reproduce the post filter, so the shard
+# mapper leaves the query alone. Every spelling of the filter has to reach that guard, or the
+# sharded stack reports a different label set.
+clear
+load
+  {app="a", pod="p1"}     `{"ok":1}` @ 20s [metadata v="5"]
+  {app="a", pod="p2"}     `{`        @ 40s [metadata v="7"] # malformed
+  {app="a", pod="p2"}     `{`        @ 50s [metadata v="9"] # malformed
+  {app="noise", pod="p3"} `{`        @ 40s [metadata v="1"]
+
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__=~".*" [1m]) by (pod)
+  {pod="p1"} 5
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__="" [1m]) by (pod)
+  {pod="p1"} 5
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__!="" [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
+# A post-unwrap filter on __error_details__ doesn't keep errors.
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error_details__="" [1m]) by (pod)
+  expect fail msg: JSONParserErr
+
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
 # - all NaN -> NaN
@@ -1273,6 +1552,25 @@ eval range from 60s to 70s step 10s max_over_time({app="a"} | unwrap v [1m]) by 
   {pod="1"} 4 4
   {pod="2"} 20 20
 
+# max_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)
+  {app="m"} 7
+eval range from 20s to 60s step 20s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)            # overlapping
+  {app="m"} 5 7 7
+eval instant at 60s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)
+  {app="p"} 6
+eval range from 20s to 60s step 20s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)   # overlapping
+  {app="p"} 4 6 6
+
 # sum_over_time()
 #
 # - any NaN -> NaN
@@ -1327,6 +1625,25 @@ eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12
 eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12 12
+
+# sum_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s sum_over_time({app="m"} | unwrap n_extracted [1m])
+  {app="m", n="s"} 12
+eval range from 20s to 60s step 20s sum_over_time({app="m"} | unwrap n_extracted [1m])            # overlapping
+  {app="m", n="s"} 5 12 12
+eval instant at 60s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])
+  {app="p", v="s"} 10
+eval range from 20s to 60s step 20s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])   # overlapping
+  {app="p", v="s"} 4 10 10
 
 # sum_over_time() keeps every label except the unwrapped one.
 #
@@ -1460,21 +1777,39 @@ eval range from 60s to 70s step 10s stddev_over_time({app="a"} | logfmt | unwrap
 eval range from 60s to 70s step 10s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
   {app="a"} 49 49
 
-# stdvar_over_time() / stddev_over_time() with repeated non-exact floats stay exactly 0.
-#
-# Welford's algorithm can accumulate floating-point rounding error on repeated non-integer
-# values; a regression here would surface as a tiny negative variance turning into NaN through
-# stddev_over_time()'s sqrt.
+# stdvar_over_time() / stddev_over_time() precision:
+# - Repeated non-exact floats give exactly 0. A rounding error in Welford's algorithm would give a
+#   tiny negative variance, which becomes NaN in the square root of stddev_over_time().
+# - Values around 1e16 give the exact variance. Welford's algorithm without compensation gives
+#   25.77777777777778 for this window.
 clear
 load
   {app="a"} "v=1.5990505637277868" @ 20s
   {app="a"} "v=1.5990505637277868" @ 30s
   {app="a"} "v=1.5990505637277868" @ 40s
+  {app="k"} "v=10000000000000000" @ 20s
+  {app="k"} "v=10000000000000002" @ 21s
+  {app="k"} "v=10000000000000004" @ 22s
+  {app="k"} "v=10000000000000006" @ 23s
+  {app="k"} "v=10000000000000008" @ 24s
+  {app="k"} "v=10000000000000010" @ 25s
+  {app="k"} "v=10000000000000012" @ 26s
+  {app="k"} "v=10000000000000014" @ 27s
+  {app="k"} "v=10000000000000016" @ 28s
+  {app="noise"} "v=1" @ 20s
 
 eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
   {app="a"} 0
 eval instant at 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
   {app="a"} 0
+eval instant at 60s stdvar_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k"} 26.666666666666668   # 4 x (9^2 - 1) / 12
+eval instant at 60s stddev_over_time({app="k"} | logfmt | unwrap v [1m])
+  {app="k"} 5.163977794943222    # sqrt(26.666666666666668)
+eval range from 40s to 60s step 20s stdvar_over_time({app="k"} | logfmt | unwrap v [1m])  # overlapping
+  {app="k"} 26.666666666666668 26.666666666666668
+eval range from 40s to 60s step 20s stddev_over_time({app="k"} | logfmt | unwrap v [1m])  # overlapping
+  {app="k"} 5.163977794943222 5.163977794943222
 
 # stddev_over_time() / stdvar_over_time() over a structured metadata field.
 clear
@@ -1529,3 +1864,51 @@ eval range from 60s to 120s step 60s absent_over_time({app="a"} | logfmt | unwra
   {app="a"} 1 1
 eval range from 60s to 180s step 120s absent_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
   {app="a"} 1 1
+
+# absent_over_time() over a malformed line.
+clear
+load
+  {app="a"}     `{`        @ 40s # malformed
+  {app="noise"} `{"ok":1}` @ 40s
+
+# Without an __error__ filter the query does not fail, although the malformed line reaches it.
+# absent_over_time() groups to no labels, so the parser hints name no label to extract. json() then
+# skips the line, so it never parses it and never fails. The line still counts as present.
+eval instant at 60s absent_over_time({app="a"} | json [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | json | __error__!="" [1m])
+  expect empty
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__!="" [1m]) # overlapping
+  {app="a"} _ 1
+eval instant at 60s absent_over_time({app="a"} | json | __error__="" [1m])
+  {app="a"} 1
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__="" [1m]) # overlapping
+  {app="a"} 1 1
+
+# absent_over_time() over a failed unwrap conversion.
+clear
+load
+  {app="a"}     "v=oops" @ 40s # `v` is present but not a number
+  {app="a"}     "v=5"    @ 50s # the same field converts on this line
+  {app="noise"} "v=1"    @ 40s
+
+# The __error__ filter keeps the errored sample, whose default value is 0, so it's a present.
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])
+  expect fail msg: SampleExtractionErr
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__!="" [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m])
+  expect empty
+# A query that reads both lines reports the failed conversion as a 0.
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m])
+  {app="a"} 5
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="a"} 0
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 0
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 5
+# Dropping the errored line leaves the conversion that worked.
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5

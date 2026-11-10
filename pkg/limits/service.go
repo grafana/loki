@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -35,6 +36,15 @@ const (
 	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
+// Reasons for the stream eviction metrics.
+const (
+	// evictionReasonExpired is for streams not seen within the active window.
+	evictionReasonExpired = "expired"
+	// evictionReasonPerPolicyExpired is for streams evicted by a policy
+	// override for a shorter expiry.
+	evictionReasonPerPolicyExpired = "per-policy-expired"
+)
+
 type metrics struct {
 	streamEvictionsTotal            *prometheus.CounterVec
 	streamShardEvictionsTotal       *prometheus.CounterVec
@@ -46,13 +56,13 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_evictions_total",
-			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams evicted due to age per tenant and reason. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant", "reason"}),
 		streamShardEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_shard_evictions_total",
-			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant and reason. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant", "reason"}),
 		streamShardStreamsNotOwnedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_shard_streams_not_owned_total",
@@ -109,7 +119,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
-	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
+	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, cfg.LifecyclerConfig.Zone, cfg.StreamShardingDurabilityEnabled, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
 	}
@@ -168,10 +178,15 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
+	var streamShardsConsumer *streamShardStore
+	if cfg.StreamShardingDurabilityEnabled {
+		streamShardsConsumer = s.streamShards
+	}
 	s.consumer = newConsumer(
 		s.kafkaReader,
 		s.partitionManager,
 		s.usage,
+		streamShardsConsumer,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
@@ -222,10 +237,11 @@ func (s *Service) CheckLimitsAndShard(
 	req *proto.CheckLimitsAndShardRequest,
 ) (*proto.CheckLimitsAndShardResponse, error) {
 	// A stream whose partition this instance does not consume is answered with
-	// an explicit ReasonNotOwned result. The frontend treats that the same as
-	// a missing result, one shard, but reporting it tells the two apart: a
-	// stream that reached the wrong instance looks identical to an unreachable
-	// instance otherwise.
+	// an explicit ReasonNotOwned result. The frontend's ring client does not
+	// count that as an answer and retries the stream against the next zone.
+	// Answering explicitly, rather than leaving the stream out of the response,
+	// keeps the two cases apart: a stream that reached an instance that does
+	// not own its partition, and an instance that could not be reached at all.
 	owned := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
 	for _, stream := range req.Streams {
@@ -241,8 +257,51 @@ func (s *Service) CheckLimitsAndShard(
 		}
 		owned = append(owned, stream)
 	}
-	results = append(results, s.streamShards.checkAndShard(ctx, req.Tenant, owned, s.clock.Now())...)
+	now := s.clock.Now()
+	shardResults, toProduce := s.streamShards.checkAndShard(ctx, req.Tenant, owned, now)
+	results = append(results, shardResults...)
+	for _, rec := range toProduce {
+		// The record carries the stream's metadata, so it also serves the
+		// usage store and there is no need for it to produce its own.
+		//
+		// In live mode checkAndShard has already decided this stream is
+		// accepted (a rejected stream never reaches toProduce), so there is
+		// nothing left for the usage store to confirm: live mode skips
+		// ExceedsLimits entirely (see the distributor), so the usage store
+		// never gets an entry for these streams and the check below would
+		// always fail, silently dropping every durability record.
+		//
+		// In shadow mode (and plain streams, which never reach here) the
+		// separate ExceedsLimits call is still the one deciding acceptance, so
+		// the usage store stays the source of truth: a stream it does not
+		// track was either rejected by ExceedsLimits or has not been checked
+		// by it yet, so it is not written, and a record for it would make the
+		// consumers in the other zones count a stream that does not exist. The
+		// bucket is dropped rather than retried later, which only costs the
+		// rate history of a stream that is not being ingested.
+		//
+		// A failed produce leaves the stream marked, so its metadata is absent
+		// from the topic until the produce interval has elapsed.
+		if !s.isLiveMode(req.Tenant, rec.Metadata.IngestionPolicy) && !s.usage.markProduced(req.Tenant, rec.Metadata, now) {
+			continue
+		}
+		if err := s.producer.ProduceRecord(context.WithoutCancel(ctx), rec); err != nil {
+			level.Error(s.logger).Log("msg", "failed to produce stream sharding record", "err", err.Error())
+		}
+	}
 	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
+}
+
+// isLiveMode reports whether the tenant/policy's shard-streams config
+// currently has the limits-service-stream-sharding-mode set to "live". It
+// mirrors the mode check the distributor makes when building candidates for
+// CheckLimitsAndShard (see maybeShardByRate), so it tells apart the one mode
+// where this service's own shard-count decision is also the acceptance
+// decision, with no corresponding ExceedsLimits call to track the stream in
+// the usage store.
+func (s *Service) isLiveMode(tenant, policy string) bool {
+	cfg, _ := s.limits.PolicyShardStreams(tenant, policy)
+	return cfg.LimitsServiceStreamShardingMode == shardstreams.LimitsServiceStreamShardingModeLive
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
@@ -342,23 +401,34 @@ func (s *Service) running(ctx context.Context) error {
 }
 
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
-// It runs two evictions per window size.
+// It runs two evictions per window size. It also evicts the idle streams of
+// policies with a custom idle expiry, more often, as these expiries are
+// shorter than the active window.
 func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.EvictionInterval)
 	defer ticker.Stop()
+	idleTicker := time.NewTicker(s.cfg.PoliciesCustomEvictionInterval)
+	defer idleTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			evicted := s.usage.Evict()
-			for tenant, numEvicted := range evicted {
-				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
-			}
-			for tenant, numEvicted := range s.streamShards.Evict() {
-				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
-			}
+			s.recordEvictions(evictionReasonExpired, s.usage.Evict(), s.streamShards.Evict())
+		case <-idleTicker.C:
+			s.recordEvictions(evictionReasonPerPolicyExpired, s.usage.EvictIdle(), s.streamShards.EvictIdle())
 		}
+	}
+}
+
+// recordEvictions adds the per-tenant numbers of streams evicted from the
+// usage and stream shard stores to the eviction metrics.
+func (s *Service) recordEvictions(reason string, usage, streamShards map[string]int) {
+	for tenant, numEvicted := range usage {
+		s.metrics.streamEvictionsTotal.WithLabelValues(tenant, reason).Add(float64(numEvicted))
+	}
+	for tenant, numEvicted := range streamShards {
+		s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant, reason).Add(float64(numEvicted))
 	}
 }
 

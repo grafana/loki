@@ -72,19 +72,24 @@ func New(params PlannerParams) (*Planner, error) {
 		return nil, fmt.Errorf("dataobj compaction planner: construct scheduler: %w", err)
 	}
 
+	coord, err := newCoordinator(
+		params.Config,
+		log.With(logger, "component", "dataobj-compaction-coordinator"),
+		params.Bucket,
+		sched.inner,
+		params.MetastoreWriter,
+		params.Registerer,
+		params.Limits,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dataobj compaction planner: construct coordinator: %w", err)
+	}
+
 	p := &Planner{
-		cfg:       params.Config,
-		logger:    logger,
-		scheduler: sched,
-		coordinator: newCoordinator(
-			params.Config,
-			log.With(logger, "component", "dataobj-compaction-coordinator"),
-			params.Bucket,
-			sched.inner,
-			params.MetastoreWriter,
-			params.Registerer,
-			params.Limits,
-		),
+		cfg:         params.Config,
+		logger:      logger,
+		scheduler:   sched,
+		coordinator: coord,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p, nil
@@ -113,7 +118,8 @@ func (c *Planner) starting(ctx context.Context) error {
 }
 
 // running is the BasicService running callback. It drives the stateless
-// coordinator polling loop until the context is cancelled.
+// coordinator polling loop until the context is cancelled. After a cancel it
+// blocks until dispatched compaction work reaches its ToC swap.
 func (c *Planner) running(ctx context.Context) error {
 	level.Info(c.logger).Log("msg", "dataobj compaction planner running")
 	err := c.coordinator.Run(ctx)
@@ -130,11 +136,9 @@ func (c *Planner) stopping(runErr error) error {
 	if runErr != nil {
 		level.Warn(c.logger).Log("msg", "dataobj compaction planner stopping after run error", "err", runErr)
 	}
-	// TODO: the dskit stopping() callback signature doesn't accept a
-	// context, so we use Background(). Once the coordinator polling loop
-	// is doing real work, revisit adding an upper bound (e.g., a derived
-	// context with a configurable shutdown deadline) so a stuck scheduler
-	// can't wedge Loki shutdown indefinitely.
+	// The dskit stopping callback has no context, so this stop has no
+	// deadline. It runs after running returns, so the scheduler stays up
+	// while dispatched compaction work drains.
 	if err := services.StopAndAwaitTerminated(context.Background(), c.scheduler.Service()); err != nil {
 		level.Warn(c.logger).Log("msg", "stop dataobj compaction scheduler", "err", err)
 		return fmt.Errorf("dataobj compaction planner: stop scheduler: %w", err)

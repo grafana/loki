@@ -96,7 +96,15 @@ type KafkaConfig struct {
 	// same identity instead of triggering a rebalance. Defaults to
 	// os.Hostname() when empty.
 	InstanceID string `yaml:"instance_id"`
+
+	// APIVersionsMaxVersion is apiVersionsMaxVersionUnset until ApplyDefaultsFrom
+	// fills it, so unset can be told apart from 0, which uses the franz-go default.
+	APIVersionsMaxVersion int `yaml:"api_versions_max_version"`
 }
+
+// apiVersionsMaxVersionUnset marks KafkaConfig.APIVersionsMaxVersion as not set,
+// so ApplyDefaultsFrom takes the root value.
+const apiVersionsMaxVersionUnset = -1
 
 func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// The cluster-level flags default to empty so ApplyDefaultsFrom can tell
@@ -124,6 +132,8 @@ func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.InstanceID, prefix+".instance-id", "",
 		"Kafka static-membership ID (defaults to os.Hostname() if empty). "+
 			"Pod restarts within session-timeout rejoin without rebalance.")
+	f.IntVar(&c.APIVersionsMaxVersion, prefix+".api-versions-max-version", apiVersionsMaxVersionUnset,
+		"Kafka ApiVersions max version. Defaults to the root kafka_config value. See -kafka.api-versions-max-version.")
 }
 
 // ApplyDefaultsFrom fills every unset field from Loki's root kafka_config.
@@ -150,6 +160,9 @@ func (c *KafkaConfig) ApplyDefaultsFrom(root kafka.Config) {
 	}
 	if c.DialTimeout == 0 {
 		c.DialTimeout = root.DialTimeout
+	}
+	if c.APIVersionsMaxVersion == apiVersionsMaxVersionUnset {
+		c.APIVersionsMaxVersion = root.APIVersionsMaxVersion
 	}
 	// SASL is a pair. Taking the username from one source and the password
 	// from another would produce a credential that was never configured
@@ -184,6 +197,9 @@ func (c *KafkaConfig) Validate() error {
 	}
 	if c.SessionTimeout < 0 {
 		return fmt.Errorf("session_timeout must be non-negative, got %v", c.SessionTimeout)
+	}
+	if c.APIVersionsMaxVersion < 0 || c.APIVersionsMaxVersion > kafka.DefaultAPIVersionsMaxVersion {
+		return kafka.ErrInvalidAPIVersionsMaxVersion
 	}
 
 	// InstanceID defaults to os.Hostname() so each pod gets a stable static-
@@ -421,19 +437,19 @@ func validateIndexSettings(settings logline.IndexConfig) error {
 	if (24*time.Hour)%settings.DocumentInterval != 0 {
 		return fmt.Errorf("document_interval must evenly divide 24h, got %s", settings.DocumentInterval)
 	}
-	// The docID is an epoch tick: a uint32 count of document buckets from the
-	// FIXED docIDEpoch (2026-01-01), so the interval fixes the END of the
-	// representable window: epoch + 2^32 ticks. Timestamps outside the window
-	// PANIC at ingest, so the window end must stay comfortably ahead of the
-	// present: require epoch + 2^32 × interval ≥ now + minDocIDFutureRunway
-	// (1 year). This rule is deliberately time-DEPENDENT — with a fixed epoch
-	// the window consumes its headroom as calendar time passes, and the config
-	// must be rejected at startup well before live traffic starts panicking.
-	// At the default 100ms interval the window ends 2039-08-12, so the rule
-	// holds until ~2038-08.
-	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
-		return fmt.Errorf("document_interval %v yields a docID window ending %s (fixed epoch %s + 2^32 ticks), less than the required %v from now; use a larger interval",
-			settings.DocumentInterval, windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
+	// The docID is an epoch cell: a uint32 count of document cells from the
+	// FIXED docIDEpoch (2026-01-01), so the interval and document shard bits
+	// fix the END of the representable window: epoch + 2^(32 - shard bits) ×
+	// interval. Timestamps outside the window PANIC at ingest, so the window
+	// end must stay comfortably ahead of the present: require it to be ≥ now +
+	// minDocIDFutureRunway (1 year). This rule is deliberately time-DEPENDENT —
+	// with a fixed epoch the window consumes its headroom as calendar time
+	// passes, and the config must be rejected at startup well before live
+	// traffic starts panicking. At 100ms time-only the window ends 2039-08-12;
+	// at the v5 default of 16s × 5 shard bits it ends about 2094.
+	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval, uint(settings.DocumentShardBits)), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
+		return fmt.Errorf("document_interval %v with document_shard_bits %d yields a docID window ending %s (fixed epoch %s + 2^32 cells), less than the required %v from now; use a larger interval or fewer document shard bits",
+			settings.DocumentInterval, settings.DocumentShardBits, windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
 	}
 	// Shard values are carried as uint8 through the spill reorder
 	// (postingsBuffer.shardScratch), so 256 shards is a hard ceiling.

@@ -132,6 +132,7 @@ func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, err
 	if err != nil {
 		return "", nil, fmt.Errorf("%w, '%v'", errInvalidHeaderEscape, err)
 	}
+	//nolint:forbidigo // parses a matcher selector with regexes, not a plain label set
 	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(selectorString)
 	if err != nil {
 		return "", nil, fmt.Errorf("%w '%s', error: '%v'", errInvalidSelector, selectorString, err)
@@ -211,7 +212,6 @@ func ExtractLabelMatchersContext(ctx context.Context) (LabelPolicySet, error) {
 }
 
 // InjectLabelMatchersContext injects label matchers into the context using httpreq.InjectHeader.
-// This ensures the headers are propagated through the V2 engine's scheduler/worker mechanism.
 func InjectLabelMatchersContext(ctx context.Context, matchers LabelPolicySet) context.Context {
 	// Collect all encoded policies first, then join with comma.
 	// httpreq.InjectHeader uses Set() which replaces, so we must inject all values at once.

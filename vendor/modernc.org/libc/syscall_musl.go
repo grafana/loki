@@ -109,6 +109,18 @@ func X__syscall1(tls *TLS, n, a1 long) long {
 }
 
 func X__syscall2(tls *TLS, n, a1, a2 long) long {
+	switch n {
+	case SYS_tkill:
+		// raise() and pthread_kill(pthread_self()): the tid is the emulated
+		// one, which the kernel would resolve to an unrelated thread.
+		if int32(a1) == tls.tid() {
+			return tls.raiseSignal(int32(a2))
+		}
+
+		if t := tlsByTid(int32(a1)); t != nil {
+			return t.killSignal(int32(a2))
+		}
+	}
 	r1, _, err := unix.Syscall(uintptr(n), uintptr(a1), uintptr(a2), 0)
 	if err != 0 {
 		return long(-err)
@@ -118,6 +130,16 @@ func X__syscall2(tls *TLS, n, a1, a2 long) long {
 }
 
 func X__syscall3(tls *TLS, n, a1, a2, a3 long) long {
+	switch n {
+	case SYS_tgkill:
+		if int32(a2) == tls.tid() {
+			return tls.raiseSignal(int32(a3))
+		}
+
+		if t := tlsByTid(int32(a2)); t != nil {
+			return t.killSignal(int32(a3))
+		}
+	}
 	r1, _, err := unix.Syscall(uintptr(n), uintptr(a1), uintptr(a2), uintptr(a3))
 	if err != 0 {
 		return long(-err)

@@ -73,13 +73,23 @@ func (d *Decoder) Cursor() Cursor {
 	return Cursor{decoder: d.cursorDecoder, offset: d.offset}
 }
 
+// CursorAt returns an immutable cursor at offset in the decoder's input buffer.
+// It does not change the decoder's position. Cursor operations validate the
+// offset and encoded value when used. The cursor shares the decoder's cache.
+// Independent cursors can be read concurrently while the input remains valid
+// and unchanged.
+func (d *Decoder) CursorAt(offset uint) Cursor {
+	return Cursor{decoder: d.cursorDecoder, offset: offset}
+}
+
 // Advance moves the decoder to a successor cursor returned by a Cursor read.
-// It rejects cursors from another decoder or from an unrelated value.
+// It checks decoder identity and recorded origin. A successor from MapReader.End
+// relies on the caller having completed that reader's counted traversal.
 func (d *Decoder) Advance(next Cursor) error {
 	if next.decoder != d.cursorDecoder {
 		return errors.New("cannot advance with a cursor from another decoder")
 	}
-	if next.originToken != d.offset+1 {
+	if !next.hasOrigin(d.offset) {
 		return errors.New("cursor is not the successor of the current value")
 	}
 	d.reset(next.offset)
@@ -349,6 +359,8 @@ func (c Cursor) ReadFloat() (float64, Cursor, error) {
 				}
 				return value, c.successor(end), nil
 			case KindExtended:
+				// The uint8 addition can wrap, but only type byte 8 gives
+				// KindFloat32. Compare only against kinds 8 through 15 here.
 				if c.offset+1 < uint(len(buffer)) && Kind(buffer[c.offset+1]+7) == KindFloat32 {
 					value, end, err := c.decoder.decodeFloat32(size, c.offset+2)
 					if err != nil {
@@ -533,12 +545,13 @@ func (c Cursor) Map() (MapCursor, error) {
 		size := uint(ctrlByte & 0x1f)
 		if Kind(ctrlByte>>5) == KindMap && size < 29 {
 			dataOffset := c.offset + 1
-			if err := validateCursorContainerSize(
+			err := validateCursorContainerSize(
 				c.decoder,
 				KindMap,
 				size,
 				dataOffset,
-			); err != nil {
+			)
+			if err != nil {
 				return MapCursor{}, c.wrapError(err)
 			}
 			return MapCursor{
@@ -627,12 +640,13 @@ func (m MapReader) Size() (uint, error) {
 	if m.decoder == nil {
 		return 0, errInvalidZeroMapReader
 	}
-	if err := validateCursorContainerSize(
+	err := validateCursorContainerSize(
 		m.decoder,
 		KindMap,
 		m.size,
 		m.dataOffset,
-	); err != nil {
+	)
+	if err != nil {
 		return 0, wrapErrorAtOffset(err, m.valueOrigin)
 	}
 	return m.size, nil
@@ -692,6 +706,8 @@ func (c Cursor) Slice() (SliceCursor, error) {
 	if c.offset < bufferLen && c.offset+1 < bufferLen {
 		ctrlByte := buffer[c.offset]
 		size := uint(ctrlByte & 0x1f)
+		// Only type byte 4 gives KindSlice. Use extendedKind for any other
+		// comparison.
 		if Kind(ctrlByte>>5) == KindExtended &&
 			Kind(buffer[c.offset+1])+7 == KindSlice && size < 29 {
 			dataOffset := c.offset + 2
@@ -806,9 +822,10 @@ func (c Cursor) Unmarshal(value Unmarshaler) (Cursor, error) {
 	return c.successor(next), nil
 }
 
-// UnmarshalCursor invokes an existing cursor unmarshaler and validates that it
-// returned the proven successor of this cursor. A nil interface or an interface
-// containing a typed nil is rejected.
+// UnmarshalCursor invokes an existing cursor unmarshaler and checks the returned
+// cursor's decoder identity and recorded origin. A successor from MapReader.End
+// relies on the caller having completed that reader's counted traversal. A nil
+// interface or an interface containing a typed nil is rejected.
 func (c Cursor) UnmarshalCursor(value CursorUnmarshaler) (Cursor, error) {
 	if err := c.validate(); err != nil {
 		return Cursor{}, err
@@ -827,7 +844,7 @@ func (c Cursor) UnmarshalCursor(value CursorUnmarshaler) (Cursor, error) {
 	if next.decoder != c.decoder {
 		return Cursor{}, errors.New("cursor unmarshaler returned a cursor from another decoder")
 	}
-	if next.originToken != c.offset+1 {
+	if !next.hasOrigin(c.offset) {
 		return Cursor{}, errors.New("cursor unmarshaler did not return the successor of its input")
 	}
 	return next, nil
@@ -847,16 +864,17 @@ func isNilableDynamicKind(kind reflect.Kind) bool {
 // returns zero for an uninitialized cursor, whose Err method reports an error.
 func (m *MapCursor) Size() uint { return m.size }
 
-// Next consumes the proven successor of the previous map value and returns the
-// next key and value cursor. Pass a zero Cursor on the first call. The returned
-// key aliases the decoder input and must not be modified. Copy it before
-// retaining it.
+// Next checks the previous value successor's decoder identity and recorded
+// origin, then returns the next key and value cursor. Pass a zero Cursor on the
+// first call. Nested MapReader traversal remains the caller's responsibility.
+// The returned key aliases the decoder input and must not be modified. Copy it
+// before retaining it.
 func (m *MapCursor) Next(successor Cursor) ([]byte, Cursor, bool) {
 	if m.err != nil {
 		return nil, Cursor{}, false
 	}
 	if m.pending {
-		if successor.decoder != m.decoder || successor.originToken != m.offset+1 {
+		if successor.decoder != m.decoder || !successor.hasOrigin(m.offset) {
 			m.err = errors.New("cursor is not the successor of the current map value")
 			return nil, Cursor{}, false
 		}
@@ -891,7 +909,9 @@ func (m *MapCursor) Err() error {
 	return nil
 }
 
-// End returns the proven successor of the complete map.
+// End returns the map successor after Next has consumed the declared entries.
+// Its position relies on the value successors supplied to Next, including any
+// successors derived from caller-counted MapReader traversal.
 func (m *MapCursor) End() (Cursor, error) {
 	if err := m.Err(); err != nil {
 		return Cursor{}, err
@@ -940,12 +960,13 @@ func (s *SliceCursor) Size() (uint, error) {
 	if err := s.Err(); err != nil {
 		return 0, err
 	}
-	if err := validateCursorContainerSize(
+	err := validateCursorContainerSize(
 		s.decoder,
 		KindSlice,
 		s.size,
 		s.dataOffset,
-	); err != nil {
+	)
+	if err != nil {
 		s.err = wrapErrorAtOffset(err, s.valueOrigin)
 		return 0, s.err
 	}
@@ -966,14 +987,15 @@ func (s *SliceCursor) SizeForCapacity(capacity int) (size uint, ok bool) {
 	return 0, false
 }
 
-// Next consumes the proven successor of the previous slice value and returns
-// the next index and value cursor. Pass a zero Cursor on the first call.
+// Next checks the previous value successor's decoder identity and recorded
+// origin, then returns the next index and value cursor. Pass a zero Cursor on
+// the first call. Nested MapReader traversal remains the caller's responsibility.
 func (s *SliceCursor) Next(successor Cursor) (uint, Cursor, bool) {
 	if s.err != nil {
 		return 0, Cursor{}, false
 	}
 	if s.pending {
-		if successor.decoder != s.decoder || successor.originToken != s.valueOffset+1 {
+		if successor.decoder != s.decoder || !successor.hasOrigin(s.valueOffset) {
 			s.err = errors.New("cursor is not the successor of the current slice value")
 			return 0, Cursor{}, false
 		}
@@ -1004,7 +1026,9 @@ func (s *SliceCursor) Err() error {
 	return nil
 }
 
-// End returns the proven successor of the complete slice.
+// End returns the slice successor after Next has consumed the declared elements.
+// Its position relies on the value successors supplied to Next, including any
+// successors derived from caller-counted MapReader traversal.
 func (s *SliceCursor) End() (Cursor, error) {
 	if err := s.Err(); err != nil {
 		return Cursor{}, err
@@ -1036,7 +1060,7 @@ func (c Cursor) scalar(expected Kind) (uint, uint, uint, error) {
 			kind := Kind(ctrlByte >> 5)
 			dataOffset := c.offset + 1
 			if kind == KindExtended && dataOffset < uint(len(buffer)) {
-				kind = Kind(buffer[dataOffset] + 7)
+				kind = extendedKind(buffer[dataOffset])
 				dataOffset++
 			}
 			if kind == expected {
@@ -1073,6 +1097,10 @@ func (c Cursor) successor(offset uint) Cursor {
 	}
 }
 
+func (c Cursor) hasOrigin(offset uint) bool {
+	return c.originToken != 0 && c.originToken == offset+1
+}
+
 func (c Cursor) validate() error {
 	if c.decoder == nil {
 		return errors.New("invalid zero cursor")
@@ -1094,11 +1122,12 @@ func (c Cursor) unexpectedKinds(expected KindSet, actual Kind) error {
 	// bounds-checked before their destination type is rejected.
 	if !actual.IsContainer() {
 		validator := newStructuralValidator(c.decoder)
-		if _, err := validator.validateValue(
+		_, err := validator.validateValue(
 			c.offset,
 			0,
 			false,
-		); err != nil {
+		)
+		if err != nil {
 			return c.wrapError(err)
 		}
 	}

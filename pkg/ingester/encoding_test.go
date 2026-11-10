@@ -74,15 +74,22 @@ func Test_EncodingChunks(t *testing.T) {
 						chunk:       c,
 						closed:      true,
 						synced:      true,
-						flushed:     time.Unix(1, 0),
-						lastUpdated: time.Unix(0, 1),
+						flushed:     time.Unix(1, 0).UTC(),
+						lastUpdated: time.Unix(0, 1).UTC(),
+						ingestedAt:  time.Unix(2, 0).UTC(),
 					},
 				}
 				there, err := toWireChunks(from, nil)
 				require.Nil(t, err)
 				chunks := make([]Chunk, 0, len(there))
 				for _, c := range there {
-					chunks = append(chunks, c.Chunk)
+					// Go through the wire format, like the checkpointer does, so the generated code of
+					// every field is covered and not only the in-memory conversion.
+					b, err := c.Chunk.Marshal()
+					require.NoError(t, err)
+					var wire Chunk
+					require.NoError(t, wire.Unmarshal(b))
+					chunks = append(chunks, wire)
 
 					// Ensure closed head chunks only contain the head metadata but no entries
 					if close {

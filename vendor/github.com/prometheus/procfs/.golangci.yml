@@ -6,6 +6,8 @@ linters:
     - gocritic
     - godot
     - misspell
+    - modernize
+    - perfsprint
     - revive
     - testifylint
   settings:
@@ -43,9 +45,18 @@ linters:
     warn-unused: true
 formatters:
   enable:
-    - gofmt
+    - gci
+    - gofumpt
     - goimports
   settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/prometheus/procfs)
+    gofumpt:
+      extra:
+        group-params: true
     goimports:
       local-prefixes:
         - github.com/prometheus/procfs

@@ -83,6 +83,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // An Object is a representation of a data object.
@@ -95,8 +96,9 @@ type Object struct {
 	tenants  []string
 }
 
-// MetadataCache caches the metadata region of data objects, keyed by an opaque key. Data objects are
-// immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
+// MetadataCache caches the metadata region of data objects, or the entire object if it is tiny, keyed
+// by an opaque key. A key must name an object that never changes, so a cached entry never goes stale:
+// do not cache a ToC. Implementations must be safe for concurrent use.
 type MetadataCache interface {
 	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
 	// result, and returns it; concurrent calls for the same key share a single load. A load error is
@@ -126,11 +128,11 @@ type openOptions struct {
 }
 
 // WithMetadataCache serves the object's metadata region through the cache instead of reading it from
-// object storage on every open.
+// object storage on every open. A tiny object is cached whole.
 //
-// On the cached path, the prefetched window becomes exactly the cached metadata region, not
-// prefetchBytes. A caller that also relies on prefetchBytes to warm overlapping section reads should
-// account for that before enabling the cache.
+// On the cached path, the prefetched window becomes exactly the cached region, not prefetchBytes. A
+// caller that also relies on prefetchBytes to warm overlapping section reads should account for that
+// before enabling the cache.
 func WithMetadataCache(cache MetadataCache) OpenOption {
 	// normalizeNilCache collapses a typed-nil MetadataCache to a true nil interface value.
 	normalizeNilCache := func(cache MetadataCache) MetadataCache {
@@ -160,6 +162,10 @@ func WithLogger(logger log.Logger) OpenOption {
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
+//
+// Every object-store request the Object makes records its statistics in the
+// [xcap.Region] of the context passed to the call that makes it. See
+// [NewInstrumentedBucketReader].
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64, opts ...OpenOption) (*Object, error) {
 	var o openOptions
 	for _, opt := range opts {
@@ -169,13 +175,20 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 		o.logger = log.NewNopLogger()
 	}
 
-	rr := &bucketRangeReader{bucket: bucket, path: path}
+	rr := &bucketRangeReader{bucket: NewInstrumentedBucketReader(bucket), path: path}
 
 	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path, logger: o.logger}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
+
+	opened := StatObjectsOpenedUncompacted
+	if IsCompactedObjectPath(path) {
+		opened = StatObjectsOpenedCompacted
+	}
+	xcap.RegionFromContext(ctx).Record(opened.Observe(1))
+
 	return obj, nil
 }
 
@@ -243,9 +256,23 @@ func (o *Object) Size() int64 {
 // returned sections must not be mutated.
 func (o *Object) Sections() Sections { return o.sections }
 
-// Tenant returns the list of tenant that have sections in the Object. The slice of
+// Tenants returns the list of tenant that have sections in the Object. The slice of
 // returned tenants must not be mutated.
+//
+// Data objects are expected to hold a single tenant. Prefer [Object.Tenant],
+// which returns an error otherwise.
 func (o *Object) Tenants() []string { return o.tenants }
+
+var ErrNotSingleTenant = fmt.Errorf("data object must hold exactly one tenant")
+
+// Tenant returns the tenant of the object.
+func (o *Object) Tenant() (string, error) {
+	tenants := o.tenants
+	if len(tenants) != 1 || tenants[0] == "" {
+		return "", fmt.Errorf("%w: tenants %q", ErrNotSingleTenant, tenants)
+	}
+	return tenants[0], nil
+}
 
 // Reader returns a reader for the entire raw data object.
 func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {

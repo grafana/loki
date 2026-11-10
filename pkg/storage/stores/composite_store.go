@@ -254,7 +254,7 @@ func (c CompositeStore) GetShards(
 
 	switch len(responses) {
 	case 0:
-		return nil, nil
+		return &logproto.ShardsResponse{}, nil
 	case 1:
 		return responses[0], nil
 	}

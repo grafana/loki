@@ -3152,9 +3152,38 @@ func parseFTHybrid(data []interface{}, withCursor bool) (FTHybridResult, *FTHybr
 }
 
 func (cmd *FTHybridCmd) readReply(rd *proto.Reader) (err error) {
-	data, err := rd.ReadSlice()
+	readType, err := rd.PeekReplyType()
 	if err != nil {
 		return err
+	}
+
+	// RESP3 returns a map, RESP2 returns an array. ReadSlice reads a map
+	// header's declared length as an element count, so it consumes only half
+	// the key/value frames and leaves the rest on the connection; ReadReply
+	// consumes the whole map. Flatten it into the key/value list parseFTHybrid
+	// expects, matching AggregateCmd/FTSearchCmd/FTSpellCheckCmd/FTSynDumpCmd.
+	var data []interface{}
+	if readType == proto.RespMap {
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+		rawMap, ok := cmd.rawVal.(map[interface{}]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+		data = make([]interface{}, 0, len(rawMap)*2)
+		for k, v := range rawMap {
+			data = append(data, k, v)
+		}
+	} else {
+		data, err = rd.ReadSlice()
+		if err != nil {
+			return err
+		}
+		// Populate rawVal on the RESP2 path too, so RawVal()/RawResult() behave
+		// the same regardless of protocol (the RESP3 branch sets it above).
+		cmd.rawVal = data
 	}
 
 	result, cursorResult, err := parseFTHybrid(data, cmd.withCursor)

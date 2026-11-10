@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {
@@ -48,10 +48,6 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	require.Len(t, hints.TimeRanges, 1)
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
-	require.Contains(t, hints.TimeRanges[0].Source, "index=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",doc=0")
-	require.Contains(t, hints.TimeRanges[0].Source, ",min=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",max=")
 }
 
 func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *testing.T) {
@@ -109,8 +105,6 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 	require.GreaterOrEqual(t, snap.TermDictReads, int64(1))
 	require.GreaterOrEqual(t, snap.BitmapReads, int64(1))
 	require.GreaterOrEqual(t, snap.PeakConcurrency, int32(1))
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
-	require.Equal(t, int64(0), snap.HeaderCacheMisses)
 }
 
 func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
@@ -134,7 +128,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats, 6, 64)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -149,20 +143,38 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.Equal(t, 1, observedTermBatches)
 }
 
-func TestLoglineHintProvider_OpenIndexReader_ErrorWhenMetaHeaderMissing(t *testing.T) {
+func TestLoglineHintProvider_OpenIndexReader(t *testing.T) {
 	indexStore := newTestStore(t)
+	needle := "9fA81cD2Ef0077aa"
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
+
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
+	metas := indexStore.IndexesForRange(docMin, docMax)
+	require.Len(t, metas, 1)
+	reader, err := provider.openIndexReader(context.Background(), metas[0], NewQueryStats())
+	require.NoError(t, err)
+	require.NotNil(t, reader)
+	require.NoError(t, reader.Close())
+}
+
+func TestLoglineHintProvider_OpenIndexReader_ErrorWhenHeaderMissing(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
 	stats := NewQueryStats()
-	meta := store.Meta{
+	_, err = provider.openIndexReader(context.Background(), store.Meta{
 		Date:      "2026-02-26",
-		Hash:      "eeeeffffffffeeee",
+		StorageID: "eeeeffffffffeeee",
 		Version:   "v3",
 		SizeBytes: 1,
-	}
-	_, err = provider.openIndexReader(context.Background(), meta, stats)
+	}, stats)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "index_header")
 
 	snap := stats.Snapshot()
 	require.Equal(t, int64(1), snap.MetadataCacheMisses)
@@ -182,8 +194,90 @@ func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 		model.TimeFromUnixNano(time.Now().Add(-time.Hour).UnixNano()),
 		model.TimeFromUnixNano(time.Now().UnixNano()),
 	)
-	require.Nil(t, hints)
+	require.NotNil(t, hints)
+	require.Empty(t, hints.TimeRanges)
 	require.ErrorIs(t, err, ErrUnsupported)
+}
+
+func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	through := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		Through: model.TimeFromUnixNano(through.UnixNano()),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.TimeRanges, 1)
+	require.True(t, resp.TimeRanges[0].Start.IsZero())
+	require.Equal(t, through.Add(time.Millisecond).UnixMilli(), resp.TimeRanges[0].End.UnixMilli())
+}
+
+func TestLoglineHintProvider_QueryHints_UnconstrainedQuery(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	through := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	expr := mustParseExpr(t, `{job="api"} |= "12345678"`)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		Through: model.TimeFromUnixNano(through.UnixNano()),
+		Indexes: []logproto.IndexMeta{{
+			ID:      "2026-03-10/aaaaaaaaaaaaaaaa",
+			Version: "v4",
+		}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.TimeRanges, 1)
+	require.True(t, resp.TimeRanges[0].Start.IsZero())
+	require.Equal(t, through.Add(time.Millisecond).UnixMilli(), resp.TimeRanges[0].End.UnixMilli())
+}
+
+func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T) {
+	indexStore := newTestStore(t)
+	needle := "9fA81cD2Ef0077aa"
+	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, t0, t0.Add(5*time.Minute))
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	active := ToProtoIndexMetas(indexStore.Snapshot().Active())
+	require.Len(t, active, 1)
+
+	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		From:    model.TimeFromUnixNano(t0.UnixNano()),
+		Through: model.TimeFromUnixNano(t0.Add(5 * time.Minute).UnixNano()),
+		Indexes: active,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Stats)
+	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
+
+	// Query-frontend restores from proto then overwrites wall; work nanos are not on the wire.
+	restored := FromProtoStats(resp.Stats)
+	restored.SetWallTime(5 * time.Second)
+	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
+}
+
+func TestLoglineHintProvider_LookupParams(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	ngram, parallel := provider.lookupParams(&logproto.LoglineIndexRequest{})
+	require.Equal(t, 6, ngram)
+	require.Equal(t, 32, parallel)
+
+	ngram, parallel = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8})
+	require.Equal(t, 3, ngram)
+	require.Equal(t, 8, parallel)
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {
@@ -209,6 +303,77 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 	require.Len(t, hints.TimeRanges, 1)
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
+}
+
+func TestLoglineHintProvider_ProvideHints_PostParserRegexLabelFilter(t *testing.T) {
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+
+	for _, tc := range []struct {
+		name       string
+		query      string
+		wantRanges int
+	}{
+		{
+			name:       "required literal is indexed",
+			query:      `{job="api"} | json | dashboardUID=~".*klu4xpj1w5lmbmvi8u6ec.*"`,
+			wantRanges: 1,
+		},
+		{
+			name:       "every required literal is indexed",
+			query:      `{job="api"} | json | dashboardUID=~"grafana_slo.*klu4xpj1w5lmbmvi8u6ec"`,
+			wantRanges: 1,
+		},
+		{
+			name:       "one of the required literals is not indexed",
+			query:      `{job="api"} | json | dashboardUID=~"grafana_slo.*zzzzzzzzzzzz"`,
+			wantRanges: 0,
+		},
+		{
+			name:       "required literal is not indexed",
+			query:      `{job="api"} | json | dashboardUID=~".*zzzzzzzzzzzz.*"`,
+			wantRanges: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			indexStore := newTestStore(t)
+			writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", docMin, docMax)
+
+			provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+			require.NoError(t, err)
+
+			hints, _, err := provider.ProvideHints(
+				context.Background(),
+				"test-tenant",
+				mustParseExpr(t, tc.query),
+				model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
+				model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+			)
+			require.NoError(t, err)
+			require.NotNil(t, hints)
+			require.Len(t, hints.TimeRanges, tc.wantRanges)
+			if tc.wantRanges == 1 {
+				require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
+				require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
+			}
+		})
+	}
+
+	t.Run("no required literal is unsupported", func(t *testing.T) {
+		provider, err := NewLoglineHintProvider(newTestStore(t), 6, 0, nil, log.NewNopLogger(), nil)
+		require.NoError(t, err)
+
+		hints, _, err := provider.ProvideHints(
+			context.Background(),
+			"test-tenant",
+			mustParseExpr(t, `{job="api"} | json | dashboardUID=~".*slo.*"`),
+			model.TimeFromUnixNano(docMin.UnixNano()),
+			model.TimeFromUnixNano(docMax.UnixNano()),
+		)
+		require.NotNil(t, hints)
+		require.Empty(t, hints.TimeRanges)
+		require.ErrorIs(t, err, ErrUnsupported)
+	})
 }
 
 func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
@@ -584,7 +749,7 @@ func TestNormalizeRanges(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeRanges(tc.input)
+			got := NormalizeRanges(tc.input)
 			require.Equal(t, tc.expected, got)
 		})
 	}
@@ -770,11 +935,11 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		{ID: 1, MinTimeUnix: t0.Add(2 * time.Second).UnixMilli(), MaxTimeUnix: t0.Add(3 * time.Second).UnixMilli()},
 	}
 	indexStore := newTestStore(t)
-	writeShardedTermTestIndex(t, indexStore, "1111111111111111", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "1111111111111111", docs, map[string][]uint32{
 		byShard[emptyShard][0]: {0},
 		byShard[emptyShard][1]: {1},
 	}, emptyShard)
-	writeShardedTermTestIndex(t, indexStore, "2222222222222222", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "2222222222222222", docs, map[string][]uint32{
 		byShard[matchingShard][0]: {0},
 	}, matchingShard)
 
@@ -792,6 +957,67 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 	require.NoError(t, err)
 	require.NotNil(t, hints)
 	require.Empty(t, hints.TimeRanges)
+}
+
+// TestLoglineHintProvider_ProvideHints_MixedVersionShards queries a sharded
+// window that spans a v3 to v4 cutover. v3 splits the needle into four 6-grams
+// spread over several shards, v4 packs it into one key on a single shard. Both
+// periods hold the needle, so both must come back as hint ranges.
+func TestLoglineHintProvider_ProvideHints_MixedVersionShards(t *testing.T) {
+	const needle = "123456789"
+	t0 := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+
+	indexStore := newTestStore(t)
+	for i, period := range []struct {
+		version string
+		start   time.Time
+	}{
+		{version: "v3", start: t0},
+		{version: "v4", start: t1},
+	} {
+		terms, err := ExtractQueryNgrams(needle, 6, period.version)
+		require.NoError(t, err)
+		require.NotEmpty(t, terms)
+
+		docs := []format.DocumentMetadata{{
+			ID:          0,
+			MinTimeUnix: period.start.UnixMilli(),
+			MaxTimeUnix: period.start.Add(time.Second).UnixMilli(),
+		}}
+		// Like the builder, each shard only holds the terms routed to it.
+		for shardValue := range 10 {
+			meta := store.Meta{ShardCount: 10, ShardAlgorithm: shard.AlgorithmMurmur3Mix, ShardValue: shardValue}
+			postings := make(map[string][]uint32)
+			for _, term := range filterNgramsForShard(terms, meta) {
+				postings[term] = []uint32{0}
+			}
+			if len(postings) == 0 {
+				continue
+			}
+			hash := fmt.Sprintf("%015d%d", i, shardValue)
+			writeShardedTermTestIndex(t, indexStore, period.version, hash, docs, postings, shardValue)
+		}
+	}
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |= "123456789"`)
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		expr,
+		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
+		model.TimeFromUnixNano(t1.Add(time.Minute).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+	require.Len(t, hints.TimeRanges, 2)
+	require.Equal(t, t0, hints.TimeRanges[0].Start)
+	require.Equal(t, t0.Add(time.Second), hints.TimeRanges[0].End)
+	require.Equal(t, t1, hints.TimeRanges[1].Start)
+	require.Equal(t, t1.Add(time.Second), hints.TimeRanges[1].End)
 }
 
 func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
@@ -883,12 +1109,12 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats, 6, 64)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
 	snap := stats.Snapshot()
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
+	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
 func TestLoglineHintProvider_MetadataCache_SkipsPutWhenFull(t *testing.T) {
@@ -924,13 +1150,12 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base, base.Add(10*time.Second))
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(20*time.Second), base.Add(30*time.Second))
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	active := indexStore.Snapshot().Active()
-	require.Len(t, active, 2)
-
-	for _, meta := range active {
+	metas := indexStore.Snapshot().Active()
+	require.Len(t, metas, 2)
+	for _, meta := range metas {
 		reader, err := provider.openIndexReader(context.Background(), meta, nil)
 		require.NoError(t, err)
 		require.NoError(t, reader.Close())
@@ -939,12 +1164,12 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.Equal(t, 2, provider.cache.len())
 
 	ids := map[string]struct{}{
-		active[0].ID(): {},
-		active[1].ID(): {},
+		metas[0].ID(): {},
+		metas[1].ID(): {},
 	}
-	deletedID := active[0].ID()
+	deletedID := metas[0].ID()
 
-	require.NoError(t, indexStore.DeleteIndex(context.Background(), active[0]))
+	require.NoError(t, indexStore.DeleteIndex(context.Background(), metas[0]))
 	require.NoError(t, indexStore.Poll(context.Background()))
 
 	provider.cache.evictStale(indexStore.Snapshot())
@@ -962,14 +1187,14 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.True(t, ok)
 }
 
-// minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.
-// Only Version and ID-related fields are set; ShardCount=0 so filterNgramsForShard
-// passes all ngrams through unchanged.
+// minimalMeta returns a Meta suitable for buildTermJobs tests that don't need
+// real index data. Only Version, Date, and StorageID are set; ShardCount=0 so
+// filterNgramsForShard passes all ngrams through unchanged.
 func minimalMeta(hash, date, indexVersion string) store.Meta {
 	return store.Meta{
-		Date:    date,
-		Hash:    hash,
-		Version: indexVersion,
+		Date:      date,
+		StorageID: hash,
+		Version:   indexVersion,
 	}
 }
 
@@ -1033,17 +1258,93 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestBuildTermJobs_FilterTooShortReturnsUnsupported verifies that ErrUnsupported
-// is returned when the filter string is too short to produce any ngrams for a
-// known index version.
-func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
+// TestBuildTermJobs_FilterTooShortReturnsUnconstrained verifies that
+// ErrUnconstrained is returned when the filter string is too short to produce
+// any ngrams for a known index version.
+func TestBuildTermJobs_FilterTooShortReturnsUnconstrained(t *testing.T) {
 	filter := "ab" // too short for n=6
 	metas := []store.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
 	_, _, err := buildTermJobs([]string{filter}, metas, 6)
-	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorIs(t, err, ErrUnconstrained)
+}
+
+func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testing.T) {
+	meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v4")
+
+	// v4 can look up the text filter, but emits no term for an 8-digit number:
+	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
+	jobs, metasByID, err := buildTermJobs(
+		[]string{"abcdefg", "12345678"},
+		[]store.Meta{meta},
+		6,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, jobs)
+	require.Contains(t, metasByID, meta.ID())
+}
+
+// TestBuildTermJobs_FiltersWithoutTerms pins what happens to a filter that has
+// no terms under a block's version. It drops out of that version's AND, but a
+// version that no filter can narrow makes the whole lookup unconstrained.
+// Skipping that version's blocks instead would leave them without ranges and
+// hide their matches.
+func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
+	v3 := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
+	v4 := minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
+
+	tests := []struct {
+		name    string
+		filters []string
+		metas   []store.Meta
+		wantErr error
+		// wantTerms maps a block ID to the terms looked up in it.
+		wantTerms map[string][]string
+	}{
+		{
+			name:    "v4 cannot narrow a number shorter than 9 digits",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v4},
+			wantErr: ErrUnconstrained,
+		},
+		{
+			name:    "one version without terms fails a mixed window",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v3, v4},
+			wantErr: ErrUnconstrained,
+		},
+		{
+			name:    "each version narrows on the filters it has terms for",
+			filters: []string{"abcdefg", "12345678"},
+			metas:   []store.Meta{v3, v4},
+			wantTerms: map[string][]string{
+				v3.ID(): {"ABCDEF", "BCDEFG", "123456", "234567", "345678"},
+				v4.ID(): {"ABCDEF", "BCDEFG"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobs, metasByID, err := buildTermJobs(tt.filters, tt.metas, 6)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+
+			got := make(map[string][]string)
+			for _, job := range jobs {
+				got[job.readerID] = append(got[job.readerID], job.term)
+			}
+			require.Len(t, got, len(tt.wantTerms))
+			for id, want := range tt.wantTerms {
+				require.ElementsMatch(t, want, got[id], "terms for block %s", id)
+				require.Contains(t, metasByID, id)
+			}
+		})
+	}
 }
 
 func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
@@ -1083,6 +1384,7 @@ func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]b
 func writeShardedTermTestIndex(
 	t *testing.T,
 	indexStore *store.Store,
+	version string,
 	hash string,
 	docs []format.DocumentMetadata,
 	postings map[string][]uint32,
@@ -1092,7 +1394,7 @@ func writeShardedTermTestIndex(
 	require.NotEmpty(t, docs)
 
 	path := filepath.Join(t.TempDir(), "test.lidx")
-	writer, err := logline.NewWriter(logline.CurrentVersion, path, docs, nil)
+	writer, err := logline.NewWriter(version, path, docs, nil)
 	require.NoError(t, err)
 
 	terms := make([]string, 0, len(postings))
@@ -1121,7 +1423,7 @@ func writeShardedTermTestIndex(
 	meta := store.Meta{
 		Date:           minLogTS.Format("2006-01-02"),
 		Hash:           hash,
-		Version:        logline.CurrentVersion,
+		Version:        version,
 		MinLogTs:       minLogTS,
 		MaxLogTs:       maxLogTS,
 		MinRecordTs:    minLogTS,

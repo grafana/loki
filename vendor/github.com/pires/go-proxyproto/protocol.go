@@ -524,15 +524,31 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 		return 0, err
 	}
 
-	// If the buffer has been drained (or cleared), copy directly from conn.
+	// If the buffer has been cleared, copy directly from conn.
 	if p.bufReader == nil {
 		return io.Copy(w, p.conn)
 	}
 
+	// If the buffer has been drained, copy directly from conn.
+	if p.bufReader.Buffered() == 0 {
+		// Check for pending errors.
+		if _, err := p.bufReader.Read(nil); err != nil {
+			return 0, err
+		}
+
+		// Garbage collect the buffer.
+		p.bufReader = nil
+
+		return io.Copy(w, p.conn)
+	}
+
 	b := make([]byte, p.bufReader.Buffered())
-	if _, err := p.bufReader.Read(b); err != nil {
+	if _, err := io.ReadFull(p.bufReader, b); err != nil {
 		return 0, err // this should never happen as we read buffered data.
 	}
+
+	// Garbage collect the buffer.
+	p.bufReader = nil
 
 	var n int64
 	{

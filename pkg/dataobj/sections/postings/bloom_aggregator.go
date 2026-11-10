@@ -3,6 +3,7 @@ package postings
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
@@ -28,6 +29,26 @@ type bloomPostingEntry struct {
 	MinTimestamp     int64
 	MaxTimestamp     int64
 	UncompressedSize int64
+
+	// added holds values already added to bloomFilter, to skip adding them
+	// again. Adding a value twice does not change the filter. added is nil for
+	// columns with a high estimated cardinality, where values rarely repeat.
+	added map[string]struct{}
+}
+
+// addToFilter adds value to the bloom filter of e, unless e knows that the
+// filter already holds it.
+func (e *bloomPostingEntry) addToFilter(value string) {
+	if e.added != nil {
+		if _, ok := e.added[value]; ok {
+			return
+		}
+		if len(e.added) < maxAddedValues {
+			// Clone value, because it can alias memory that the caller reuses.
+			e.added[strings.Clone(value)] = struct{}{}
+		}
+	}
+	e.bloomFilter.Add([]byte(value))
 }
 
 // BloomFilter returns the bloom filter for this entry.
@@ -54,6 +75,11 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 	}
 	return data[:n]
 }
+
+// maxAddedValues is the largest number of values a bloomPostingEntry keeps
+// to skip repeated filter adds. It bounds the memory of the set when the
+// cardinality estimate is too low.
+const maxAddedValues = 1024
 
 // bloomAggregator aggregates bloom posting observations per metadata column.
 // It is NOT goroutine-safe; callers must synchronize if needed.
@@ -91,10 +117,16 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 		ShardBuckets: shardBuckets,
 		SectionIndex: sectionIndex,
 		ColumnName:   columnName,
-		bloomFilter:  bloom.NewWithEstimates(estimatedCardinality, 1.0/128.0),
+		// A column whose values are all empty has an estimated cardinality of 0. The filter must be
+		// sized for at least one value. For 0 values, bloom.EstimateParameters computes the number
+		// of hash functions as 0/0, and on amd64 the NaN converts to 2^63, so every Add never ends.
+		bloomFilter:  bloom.NewWithEstimates(max(estimatedCardinality, 1), 1.0/128.0),
 		bitmap:       memory.NewBitmap(nil, 0),
 		MinTimestamp: math.MaxInt64,
 		MaxTimestamp: math.MinInt64,
+	}
+	if estimatedCardinality <= maxAddedValues {
+		entry.added = make(map[string]struct{}, estimatedCardinality)
 	}
 	a.entries[key] = entry
 
@@ -116,7 +148,7 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 		return fmt.Errorf("bloom column not prepared: objectPath=%q sectionIndex=%d columnName=%q", obs.ObjectPath, obs.SectionIndex, obs.ColumnName)
 	}
 
-	entry.bloomFilter.Add([]byte(obs.Value))
+	entry.addToFilter(obs.Value)
 	entry.ShardBuckets = obs.ShardBuckets
 
 	// Grow bitmap if needed and set the bit for this stream ID.

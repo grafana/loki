@@ -120,12 +120,15 @@ server:
   http_server_write_timeout: 6m
   log_level: debug
 storage_config:
-  aws:
-    s3: s3://loki:supersecret@minio:9000/loki
-    s3forcepathstyle: true
-    insecure: true
-    endpoint: minio:9000
-    region: minio
+  object_store:
+    s3:
+      endpoint: silo:9000
+      region: silo
+      bucket_name: loki
+      access_key_id: loki
+      secret_access_key: supersecret
+      insecure: true
+      bucket_lookup_type: path
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache

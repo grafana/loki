@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +23,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -76,6 +79,31 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 }
 
 var NilMetrics = newIngesterMetrics(nil, constants.Loki)
+
+// TestGetHashForLabels_MatchesLoglineStreamFingerprint pins the ingester's
+// stream fingerprint to logline.StreamFingerprint. The Logline index builder
+// assigns document shards with StreamFingerprint, and queriers match them
+// against the fingerprints computed here, so the two must stay equal.
+func TestGetHashForLabels_MatchesLoglineStreamFingerprint(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	for _, s := range []string{
+		`{app="api"}`,
+		`{namespace="loki", app="api", cluster="eu-west-1"}`,
+		`{app="` + strings.Repeat("x", 2048) + `"}`,
+	} {
+		ls, err := syntax.ParseLabels(s)
+		require.NoError(t, err)
+		want, _ := logline.StreamFingerprint(ls, nil)
+		require.Equal(t, model.Fingerprint(want), i.getHashForLabels(ls), s)
+	}
+}
 
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
@@ -242,7 +270,7 @@ func TestGetStreamRates(t *testing.T) {
 
 func labelHashNoShard(l labels.Labels) uint64 {
 	buf := make([]byte, 256)
-	hash, _ := l.HashWithoutLabels(buf, ShardLbName)
+	hash, _ := l.HashWithoutLabels(buf, constants.StreamShardLabel)
 	return hash
 }
 
@@ -501,7 +529,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 	return result
 }
 
-var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
+var labelNames = []string{"app", "instance", "namespace", "user", "cluster", constants.StreamShardLabel}
 
 func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(labels.EmptyLabels())
@@ -668,6 +696,11 @@ func (t *testFilter) ShouldFilter(lbs labels.Labels) bool {
 
 func (t *testFilter) RequiredLabelNames() []string {
 	return []string{"log_stream"}
+}
+
+func (t *testFilter) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
 }
 
 func Test_ChunkFilter(t *testing.T) {
@@ -1902,7 +1935,7 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 
 	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			inst.removeStream(s)
 		}
 		return true, nil
@@ -1990,4 +2023,122 @@ func assertStreamFirstOrder(t *testing.T, got []receivedSample) map[uint64]struc
 	}
 
 	return seen
+}
+
+func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
+	for _, useOwnedStreamCount := range []bool{false, true} {
+		t.Run(fmt.Sprintf("use_owned_stream_count=%t", useOwnedStreamCount), func(t *testing.T) {
+			cfg := defaultLimitsTestConfig()
+			cfg.MaxLocalStreamsPerUser = 3
+			cfg.MaxGlobalStreamsPerUser = 0
+			cfg.UseOwnedStreamCount = useOwnedStreamCount
+			cfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+				"finance": {{Selector: `{app="billing"}`, Priority: 1}},
+				"debug":   {{Selector: `{app="debug"}`, Priority: 1}},
+			}
+			require.NoError(t, cfg.PolicyStreamMapping.Validate())
+			// Only "finance" overrides the stream limit, so only it gets its own bucket.
+			cfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+				"finance": {MaxLocalStreamsPerUser: ptr(5)},
+			}
+
+			limits, err := validation.NewOverrides(cfg, nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+			require.NoError(t, err)
+
+			push := func(app string, n int) error {
+				return inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{{
+					Labels:  fmt.Sprintf(`{app=%q, n="%d"}`, app, n),
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "line"}},
+				}}})
+			}
+			const limitErr = "maximum active stream limit exceeded"
+
+			// Streams of a policy with its own bucket don't consume the default budget.
+			for n := range 3 {
+				require.NoError(t, push("billing", n))
+			}
+			for n := range 3 {
+				require.NoError(t, push("default", n))
+			}
+			require.ErrorContains(t, push("default", 3), limitErr)
+
+			// The policy bucket is enforced against its own limit and ignores default streams.
+			for n := 3; n < 5; n++ {
+				require.NoError(t, push("billing", n))
+			}
+			require.ErrorContains(t, push("billing", 5), limitErr)
+
+			// A policy that doesn't override the stream limit shares the default bucket.
+			require.ErrorContains(t, push("debug", 0), limitErr)
+
+			// Removing a default stream frees a slot in the default bucket.
+			s, ok := inst.streams.Load(`{app="default", n="0"}`)
+			require.True(t, ok)
+			inst.removeStream(s)
+			require.NoError(t, push("debug", 0))
+			require.ErrorContains(t, push("default", 0), limitErr)
+
+			require.Equal(t, 5, inst.memoryPolicyStreams.get("finance"))
+			require.Equal(t, 1, inst.memoryPolicyStreams.get("debug"))
+			require.Equal(t, 8, inst.streams.Len())
+			if useOwnedStreamCount {
+				// With owned stream counting, the owned counts are the ones enforcing the limits.
+				require.Equal(t, 5, inst.ownedStreamsSvc.getPolicyStreamCount("finance"))
+				require.Equal(t, 1, inst.ownedStreamsSvc.getPolicyStreamCount("debug"))
+				require.Equal(t, 8, inst.ownedStreamsSvc.getOwnedStreamCount())
+			}
+		})
+	}
+}
+
+// recordingWAL keeps a copy of what is logged to it.
+type recordingWAL struct {
+	noopWAL
+	ingestedAt []time.Time
+}
+
+func (w *recordingWAL) Log(rec *wal.Record) error {
+	w.ingestedAt = append(w.ingestedAt, rec.IngestedAt)
+	return nil
+}
+
+// The timestamp of the record a push comes from is stamped on the chunk and logged to the WAL, so
+// it is restored on replay. A push without one stamps nothing. The Kafka consumer validates the
+// timestamp before passing it, see TestConsumerPassesRecordTimestamp.
+func TestPushRecordTimestamp(t *testing.T) {
+	recordTime := time.UnixMilli(1_700_000_000_000)
+
+	for _, tc := range []struct {
+		name       string
+		recordTime time.Time
+	}{
+		{"record timestamp", recordTime},
+		{"no record timestamp", time.Time{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			tenantsRetention := retention.NewTenantsRetention(limits)
+
+			w := &recordingWAL{}
+			i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), w, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+			require.NoError(t, err)
+
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{{Labels: `{app="a"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))}},
+			}
+			require.NoError(t, i.PushWithTimestamp(context.Background(), TimestampedPush{PushRequest: req, IngestedAt: tc.recordTime}))
+
+			require.Len(t, w.ingestedAt, 1)
+			require.True(t, tc.recordTime.Equal(w.ingestedAt[0]), "WAL: got %s, want %s", w.ingestedAt[0], tc.recordTime)
+			require.NoError(t, i.forAllStreams(context.Background(), func(s *stream) error {
+				require.True(t, tc.recordTime.Equal(s.chunks[0].ingestedAt), "chunk: got %s, want %s", s.chunks[0].ingestedAt, tc.recordTime)
+				return nil
+			}))
+		})
+	}
 }

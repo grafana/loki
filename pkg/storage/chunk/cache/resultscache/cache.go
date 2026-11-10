@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -126,7 +126,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 	sp.SetAttributes(
 		attribute.String("query", r.GetQuery()),
-		attribute.String("step", time.UnixMilli(r.GetStep()).String()),
+		attribute.String("step", (time.Duration(r.GetStep())*time.Millisecond).String()),
 		attribute.String("start", r.GetStart().String()),
 		attribute.String("end", r.GetEnd().String()),
 		attribute.String("key", key),

@@ -20,6 +20,7 @@ type Metrics struct {
 	*LogResultCacheMetrics
 	*QueryMetrics
 	*queryrangebase.ResultsCacheMetrics
+	*DataObjMetrics
 }
 
 type MiddlewareMapperMetrics struct {
@@ -43,6 +44,7 @@ func NewMetrics(registerer prometheus.Registerer, metricsNamespace string) *Metr
 		LogResultCacheMetrics:       NewLogResultCacheMetrics(registerer),
 		QueryMetrics:                NewMiddlewareQueryMetrics(registerer, metricsNamespace),
 		ResultsCacheMetrics:         queryrangebase.NewResultsCacheMetrics(registerer),
+		DataObjMetrics:              NewDataObjMetrics(registerer, metricsNamespace),
 	}
 }
 

@@ -74,8 +74,9 @@ const (
 	appVersion         = "0.1.0"
 	skipCERTValidation = "SKIP_CERT_VALIDATION"
 
-	// TODO: remove when server supports the 2026 checksum types.
-	ignore2026Checksums = true
+	// TODO: remove when server supports the 2026 checksum types on latest release.
+	// Linux is fetched from edge, so supports new types.
+	ignore2026Checksums = runtime.GOOS != "linux"
 )
 
 func ignore2026ChecksumError(cs minio.ChecksumType, err error) bool {
@@ -14218,6 +14219,288 @@ func testListObjects() {
 	testList(c.ListObjects, bucketName, minio.ListObjectsOptions{Recursive: true, UseV1: true})
 	testList(c.ListObjects, bucketName, minio.ListObjectsOptions{Recursive: true})
 	testList(c.ListObjects, bucketName, minio.ListObjectsOptions{Recursive: true, WithMetadata: true})
+	// Servers that do not implement x-amz-optional-object-attributes must
+	// still return a normal listing.
+	testList(c.ListObjects, bucketName, minio.ListObjectsOptions{Recursive: true, WithRestoreStatus: true})
+
+	logSuccess(testName, function, args, startTime)
+}
+
+// Tests that listing reports the checksum an object was stored with in the
+// same ObjectInfo fields on every list API. S3 returns the algorithm and the
+// mode for every object that has a checksum, without a value; AiStor also
+// returns the value when listing with WithMetadata. Servers differ in which
+// list APIs carry the information, so this only requires that whatever comes
+// back is correct and covers the whole listing.
+func testListObjectsChecksums() {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "ListObjects(bucketName, opts)"
+	args := map[string]interface{}{
+		"bucketName": "",
+		"opts":       "minio.ListObjectsOptions{}",
+	}
+
+	if !isFullMode() {
+		logIgnored(testName, function, args, startTime, "Skipping functional tests for short/quick runs")
+		return
+	}
+
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	// Make a new bucket.
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Make bucket failed", err)
+		return
+	}
+
+	defer cleanupVersionedBucket(bucketName, c)
+
+	err = c.EnableVersioning(context.Background(), bucketName)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Enable versioning failed", err)
+		return
+	}
+
+	type expect struct {
+		cs    minio.ChecksumType
+		mode  string
+		value string // empty when the value is unknown to the test
+	}
+	want := map[string]expect{}
+
+	// One single part object per algorithm, all of them full object checksums.
+	b, err := io.ReadAll(getDataReader("datafile-10-kB"))
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Read failed", err)
+		return
+	}
+	for _, cs := range []minio.ChecksumType{
+		minio.ChecksumCRC32, minio.ChecksumCRC32C, minio.ChecksumSHA1, minio.ChecksumSHA256,
+		minio.ChecksumCRC64NVME, minio.ChecksumMD5, minio.ChecksumSHA512,
+		minio.ChecksumXXHash64, minio.ChecksumXXHash3, minio.ChecksumXXHash128,
+	} {
+		if os.Getenv("MINT_NO_FULL_OBJECT") != "" && cs.FullObjectRequested() {
+			continue
+		}
+		objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+		_, err = c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(len(b)),
+			minio.PutObjectOptions{DisableMultipart: true, Checksum: cs})
+		if err != nil {
+			if ignore2026ChecksumError(cs, err) {
+				logIgnored(testName, function, args, startTime, "server does not support "+cs.String())
+				continue
+			}
+			logError(testName, function, args, startTime, "", "PutObject failed", err)
+			return
+		}
+		want[objectName] = expect{
+			cs:    cs,
+			mode:  minio.ChecksumFullObjectMode.String(),
+			value: cs.ChecksumBytes(b).Encoded(),
+		}
+	}
+
+	// A multipart upload with a non-CRC algorithm gets a composite checksum,
+	// the only case where the mode differs from the objects above.
+	mpBuf, err := io.ReadAll(getDataReader("datafile-11-MB"))
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Read failed", err)
+		return
+	}
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+	mpInfo, err := c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(mpBuf), int64(len(mpBuf)),
+		minio.PutObjectOptions{PartSize: 5 * humanize.MiByte, Checksum: minio.ChecksumSHA256})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PutObject failed", err)
+		return
+	}
+	want[objectName] = expect{
+		cs:    minio.ChecksumSHA256,
+		mode:  minio.ChecksumCompositeMode.String(),
+		value: mpInfo.ChecksumSHA256,
+	}
+
+	for _, opts := range []minio.ListObjectsOptions{
+		{Recursive: true},
+		{Recursive: true, UseV1: true},
+		{Recursive: true, WithVersions: true},
+		{Recursive: true, WithMetadata: true},
+	} {
+		args["opts"] = opts
+		var listed, withAlgorithm, withValue int
+		for objInfo := range c.ListObjects(context.Background(), bucketName, opts) {
+			if objInfo.Err != nil {
+				logError(testName, function, args, startTime, "", "ListObjects failed", objInfo.Err)
+				return
+			}
+			exp, ok := want[objInfo.Key]
+			if !ok {
+				logError(testName, function, args, startTime, "", "ListObjects returned an unknown object", fmt.Errorf("key %s", objInfo.Key))
+				return
+			}
+			listed++
+			if objInfo.ChecksumAlgorithm != "" {
+				withAlgorithm++
+				if objInfo.ChecksumAlgorithm != exp.cs.String() {
+					logError(testName, function, args, startTime, "", "ListObjects returned a wrong checksum algorithm",
+						fmt.Errorf("%s: want %s, got %s", objInfo.Key, exp.cs, objInfo.ChecksumAlgorithm))
+					return
+				}
+			}
+			if objInfo.ChecksumMode != "" && objInfo.ChecksumMode != exp.mode {
+				logError(testName, function, args, startTime, "", "ListObjects returned a wrong checksum mode",
+					fmt.Errorf("%s: want %s, got %s", objInfo.Key, exp.mode, objInfo.ChecksumMode))
+				return
+			}
+			if got := objInfo.Checksum(exp.cs); got != "" {
+				withValue++
+				// A value always names its algorithm, the client derives it
+				// when the server does not report one.
+				if objInfo.ChecksumAlgorithm == "" {
+					logError(testName, function, args, startTime, "", "ListObjects returned a checksum value without an algorithm",
+						fmt.Errorf("key %s", objInfo.Key))
+					return
+				}
+				if exp.value != "" && got != exp.value {
+					logError(testName, function, args, startTime, "", "ListObjects returned a wrong checksum value",
+						fmt.Errorf("%s: want %s, got %s", objInfo.Key, exp.value, got))
+					return
+				}
+			}
+		}
+		if listed != len(want) {
+			logError(testName, function, args, startTime, "", "ListObjects returned an unexpected number of objects",
+				fmt.Errorf("want %d, got %d", len(want), listed))
+			return
+		}
+		// Not every server reports checksums on every list API, but whatever
+		// it does report has to cover the whole listing rather than only the
+		// algorithms it happened to support first.
+		if withAlgorithm != 0 && withAlgorithm != listed {
+			logError(testName, function, args, startTime, "", "ListObjects returned checksum algorithms for some objects only",
+				fmt.Errorf("%d of %d objects carried an algorithm", withAlgorithm, listed))
+			return
+		}
+		if withValue != 0 && withValue != listed {
+			logError(testName, function, args, startTime, "", "ListObjects returned checksum values for some objects only",
+				fmt.Errorf("%d of %d objects carried a value", withValue, listed))
+			return
+		}
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
+// Tests unsorted listing of objects.
+func testListUnsorted() {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "ListUnsorted(bucketName, opts)"
+	args := map[string]interface{}{
+		"bucketName":   "",
+		"objectPrefix": "",
+		"recursive":    "true",
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client v4 object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	// Make a new bucket.
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+
+	defer cleanupBucket(bucketName, c)
+
+	expected := make(map[string]struct{})
+	for i := 0; i < 10; i++ {
+		objectName := fmt.Sprintf("unsorted/object-%d", i)
+		bufSize := dataFileMap["datafile-1-b"]
+		reader := getDataReader("datafile-1-b")
+		defer reader.Close()
+		_, err = c.PutObject(context.Background(), bucketName, objectName, reader, int64(bufSize),
+			minio.PutObjectOptions{
+				ContentType:  "binary/octet-stream",
+				UserMetadata: map[string]string{"Marker": "unsorted"},
+			})
+		if err != nil {
+			logError(testName, function, args, startTime, "", fmt.Sprintf("PutObject %d call failed", i+1), err)
+			return
+		}
+		expected[objectName] = struct{}{}
+	}
+
+	testList := func(opts minio.ListObjectsOptions, wantMetadata bool) {
+		found := make(map[string]struct{})
+		for objInfo := range c.ListUnsorted(context.Background(), bucketName, opts) {
+			if objInfo.Err != nil {
+				logError(testName, function, args, startTime, "", "ListUnsorted failed unexpectedly", objInfo.Err)
+				return
+			}
+			if _, ok := expected[objInfo.Key]; !ok {
+				logError(testName, function, args, startTime, "", "ListUnsorted returned an unexpected object "+objInfo.Key, errors.New("unexpected object"))
+				return
+			}
+			if wantMetadata && objInfo.UserMetadataStripped["Marker"] != "unsorted" {
+				logError(testName, function, args, startTime, "", "ListUnsorted did not return the user metadata of "+objInfo.Key, errors.New("missing user metadata"))
+				return
+			}
+			found[objInfo.Key] = struct{}{}
+		}
+		if len(found) != len(expected) {
+			logError(testName, function, args, startTime, "", "ListUnsorted returned unexpected number of items", errors.New("missing objects"))
+			return
+		}
+	}
+
+	testList(minio.ListObjectsOptions{Prefix: "unsorted/", Recursive: true}, false)
+	// MaxKeys smaller than the number of objects exercises the positional
+	// continuation token of an unsorted listing.
+	testList(minio.ListObjectsOptions{Prefix: "unsorted/", Recursive: true, MaxKeys: 3}, false)
+	testList(minio.ListObjectsOptions{Prefix: "unsorted/", Recursive: true, WithMetadata: true}, true)
+
+	// Unsorted listing is only supported on ListObjects V2 and has no key
+	// ordering to start after.
+	rejected := []minio.ListObjectsOptions{
+		{Recursive: true, UseV1: true},
+		{Recursive: true, WithVersions: true},
+		{Recursive: true, StartAfter: "unsorted/object-1"},
+	}
+	for _, opts := range rejected {
+		var gotErr error
+		for objInfo := range c.ListUnsorted(context.Background(), bucketName, opts) {
+			if objInfo.Err == nil {
+				logError(testName, function, args, startTime, "", "ListUnsorted returned an object for an unsupported option", errors.New("expected error"))
+				return
+			}
+			gotErr = objInfo.Err
+		}
+		if minio.ToErrorResponse(gotErr).Code != minio.InvalidArgument {
+			logError(testName, function, args, startTime, "", "ListUnsorted did not reject an unsupported option with InvalidArgument", gotErr)
+			return
+		}
+	}
 
 	logSuccess(testName, function, args, startTime)
 }
@@ -15591,6 +15874,8 @@ func main() {
 		testStorageClassMetadataCopyObject()
 		testPutObjectWithContentLanguage()
 		testListObjects()
+		testListObjectsChecksums()
+		testListUnsorted()
 		testRemoveObjects()
 		testRemoveObjectsIter()
 		testListObjectVersions()

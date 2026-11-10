@@ -39,7 +39,9 @@ groups:
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
             summary: Loki deployment is running more than one compactor.
           expr: |
-            sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
+            # Metric was renamed from loki_boltdb_shipper_compactor_running to loki_tsdb_shipper_compactor_running.
+            # Combine before summing so a compactor running on the old metric and one on the new metric are still counted together.
+            sum(loki_tsdb_shipper_compactor_running or loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
           for: 5m
           labels:
             severity: warning
@@ -52,7 +54,13 @@ groups:
             # The "last successful run" metric is updated even if the compactor owns no tenants,
             # so this alert correctly doesn't fire if compactor has nothing to do.
             min (
-              time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+              time()
+              -
+              (
+                (loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+                or
+                (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+              )
             )
             by (cluster, namespace)
             > 60 * 60 * 3
@@ -68,6 +76,10 @@ groups:
             # The "last successful run" metric is updated even if the compactor owns no tenants,
             # so this alert correctly doesn't fire if compactor has nothing to do.
             max(
+              max_over_time(
+                loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
+              )
+              or
               max_over_time(
                 loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
               )

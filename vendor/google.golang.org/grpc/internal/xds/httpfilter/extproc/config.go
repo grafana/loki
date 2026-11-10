@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc/internal/optional"
+	"google.golang.org/grpc/internal/xds/grpcservice"
 	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/grpc/internal/xds/matcher"
-	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 
 	v3procfilterpb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 )
@@ -38,7 +38,7 @@ type baseConfig struct {
 	// config. If both are set, the override config will be used.
 
 	// server is the configuration for the external processing server.
-	server xdsresource.GRPCServiceConfig
+	server *grpcservice.Config
 	// processingModes specifies the processing mode for each dataplane event.
 	processingModes processingModes
 	// failureModeAllow specifies the behavior when the RPC to the external
@@ -90,7 +90,7 @@ type baseConfig struct {
 // base config.
 type overrideConfig struct {
 	httpfilter.FilterConfig
-	server             optional.Optional[xdsresource.GRPCServiceConfig]
+	server             optional.Optional[*grpcservice.Config]
 	processingModes    optional.Optional[processingModes]
 	failureModeAllow   optional.Optional[bool]
 	requestAttributes  []string

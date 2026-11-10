@@ -14,23 +14,18 @@
 
 package experimental
 
-import (
-	"context"
-)
-
 // BufferPool is not supported at the moment.
 type BufferPool interface {
-	// Get retrieves a single chunk of memory. It returns a slice that is
-	// optimally sized by the pool, guaranteeing that len(buf) <= maxSize.
-	// It blocks until the request is satisfied.
-	// It returns an error if the context is cancelled (e.g., context.Canceled)
-	// or if the underlying allocation encounters a fatal failure.
-	Get(ctx context.Context, maxSize int) ([]byte, error)
+	// Get retrieves a chunk of memory up to maxSize bytes, regardless of any
+	// pool constraints. It is non-blocking and returns an error only if
+	// allocation fails. Callers should use Get for the first buffer of each
+	// upload to guarantee progress.
+	Get(maxSize int) ([]byte, error)
 
-	// TryGet retrieves a chunk of memory up to maxSize bytes.
-	// It is non-blocking and either returns a memory chunk or fails instantly
-	// by throwing an error.
-	TryGet(maxSize int) ([]byte, error)
+	// TryGet retrieves a chunk of memory up to maxSize bytes, subject to the
+	// pool's constraints. It is non-blocking. It returns false if a buffer
+	// cannot be provided at this time, and an error if allocation fails.
+	TryGet(maxSize int) ([]byte, bool, error)
 
 	// Put returns a previously acquired buffer to the pool.
 	// After calling Put, the caller must not retain, read, or write to the buffer.

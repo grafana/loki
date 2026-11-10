@@ -916,10 +916,10 @@ limits_config:
   blocked_queries:
     - pattern: ".*"          # Regex pattern to match
       regex: true
-      types:                 # Query types to block
-        - metric
-        - filter
-      hash: 0               # Or block specific query hash
+      types: metric,filter   # Query types to block (comma-separated)
+      hash: 2943214005       # Or block by query hash instead of pattern
+      query_tags:            # Optionally also require X-Query-Tags to match
+        source: grafana
 ```
 
 **Properties:**
@@ -981,7 +981,7 @@ The query uses a `variants()` expression.
 
 ## Pipeline processing errors
 
-Pipeline errors occur during log line processing but don't cause query failures. Instead, affected log lines are annotated with error labels.
+Pipeline errors occur during log line processing. For log queries, these errors don't cause query failures: affected log lines are annotated with error labels instead. For metric queries, an errored sample fails the query unless a `__error__` label filter in the pipeline says to keep it; see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
 
 ### Understanding pipeline errors
 

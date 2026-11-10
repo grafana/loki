@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -1584,7 +1584,7 @@ func (c *fakeChunk) Blocks(time.Time, time.Time) []chunkenc.Block {
 func newFakeLazyChunk(fp model.Fingerprint, from, through time.Time, it iter.SampleIterator) *LazyChunk {
 	block := &fakeBlock{mint: from.UnixNano(), maxt: through.UnixNano(), it: it}
 	data := chunkenc.NewFacade(&fakeChunk{Chunk: chunkenc.NewDumbChunk(), block: block}, 0, 0)
-	c := chunk.NewChunk("fake", fp, fooLabelsWithName, data, model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
+	c := chunk.NewChunk("fake", fp, fooLabelsWithName, data, model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()), 0)
 	return &LazyChunk{IsValid: true, Chunk: c}
 }
 

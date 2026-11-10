@@ -45,6 +45,7 @@ type Limits interface {
 	BlockIngestionPolicyUntil(userID string, policy string) time.Time
 	EnforcedLabels(userID string) []string
 	PolicyEnforcedLabels(userID string, policy string) []string
+	PolicyRejectPartialWrites(userID string, policy string) bool
 
 	IngestionPartitionsTenantShardSize(userID string) int
 

@@ -11,7 +11,7 @@ Meta monitoring for [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSIO
 
 ## Metrics
 
-Configure Alloy or Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules:
+Configure Alloy or Prometheus to scrape the Loki metrics endpoint, adding the additional labels that are expected by the [mixin](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins) dashboards, alerts, and recording rules. The examples below set `cluster`, `namespace`, `job`, `pod`, and `container` directly on the scrape target; the `instance` label that the mixin also expects is added automatically by Prometheus or Alloy from the scraped target address.
 
 ### Alloy
 
@@ -63,10 +63,10 @@ To generate the [mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations
     cd loki
     ```
 
-1. Check out the tag that matches the version of Loki you are running, so that the dashboards, alerts, and recording rules match the metrics your Loki cluster exposes. For example, if you are running Loki 3.7.6:
+1. Check out the tag that matches the version of Loki you are running, so that the dashboards, alerts, and recording rules match the metrics your Loki cluster exposes. For example, if you are running Loki 3.7.9:
 
     ```bash
-    git checkout v3.7.6
+    git checkout v3.7.9
     ```
 
 1. Create the output directory.
@@ -102,10 +102,6 @@ To generate the [mixins](https://grafana.com/docs/loki/<LOKI_VERSION>/operations
           // Whether or not to include the loki-canary dashboard.
           // Set to false if you don't run loki-canary.
           enabled: true,
-        },
-        promtail+: {
-          // Whether or not to include promtail specific dashboards
-          enabled: false,
         },
         // Tunes histogram recording rules to aggregate over this interval.
         // Set to at least twice the scrape interval; otherwise, recording rules will output no data.

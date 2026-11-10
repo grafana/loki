@@ -13,19 +13,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                showMultiCluster:: true,
 
                                hiddenRows:: [
-                                 'Cassandra',
-                                 'Backend Path',
                                  if !$._config.operational.memcached then 'Memcached',
                                  if !$._config.operational.consul then 'Consul',
                                  if !$._config.operational.gcs then 'GCS',
                                  if !$._config.operational.s3 then 'S3',
                                  if !$._config.operational.azureBlob then 'Azure Blob',
-                                 if !$._config.tsdb then 'TSDB Shipper',
                                ],
 
-                               hiddenPanels:: if $._config.promtail.enabled then [] else [
-                                 'Bad Words',
-                               ],
+                               hiddenPanels:: [],
 
                                jobMatchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],

@@ -522,6 +522,19 @@ func (m *MetadataKey_PathSegment) validate(all bool) error {
 			errors = append(errors, err)
 		}
 
+	case *MetadataKey_PathSegment_Index:
+		if v == nil {
+			err := MetadataKey_PathSegmentValidationError{
+				field:  "Segment",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofSegmentPresent = true
+		// no validation rules for Index
 	default:
 		_ = v // ensures v is used
 	}

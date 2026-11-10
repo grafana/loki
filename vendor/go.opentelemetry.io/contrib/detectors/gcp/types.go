@@ -3,13 +3,13 @@
 
 package gcp
 
-import "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp"
+import "go.opentelemetry.io/contrib/detectors/gcp/internal"
 
 // gcpDetector can detect attributes of GCP environments.
 type gcpDetector interface {
 	ProjectID() (string, error)
-	CloudPlatform() gcp.Platform
-	GKEAvailabilityZoneOrRegion() (string, gcp.LocationType, error)
+	CloudPlatform() internal.Platform
+	GKEAvailabilityZoneOrRegion() (string, internal.LocationType, error)
 	GKEClusterName() (string, error)
 	GKEHostID() (string, error)
 	FaaSName() (string, error)

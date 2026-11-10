@@ -78,9 +78,9 @@ Sometimes also referred to as **distributed** deployment.
 The microservices deployment mode runs components of Loki as distinct processes. The microservices deployment is also referred to as a Distributed deployment. Each process is invoked specifying its `target`.
 For release 3.3 the components are:
 
-- Bloom Builder (experimental)
-- Bloom Gateway (experimental)
-- Bloom Planner (experimental)
+- Bloom Builder (deprecated)
+- Bloom Gateway (deprecated)
+- Bloom Planner (deprecated)
 - Compactor
 - Distributor
 - Index Gateway

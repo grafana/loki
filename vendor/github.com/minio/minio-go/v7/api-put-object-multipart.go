@@ -45,8 +45,8 @@ func (c *Client) putObjectMultipart(ctx context.Context, bucketName, objectName 
 		// Verify if multipart functionality is not available, if not
 		// fall back to single PutObject operation.
 		if errResp.Code == AccessDenied && strings.Contains(errResp.Message, "Access Denied") {
-			// Verify if size of reader is greater than '5GiB'.
-			if size > maxSinglePutObjectSize {
+			// Verify if size of reader is greater than the single PUT limit.
+			if maxSinglePutObjectSize := c.limits.maxSinglePutObjectSize(); size > maxSinglePutObjectSize {
 				return UploadInfo{}, errEntityTooLarge(size, maxSinglePutObjectSize, bucketName, objectName)
 			}
 			// Fall back to uploading as single PutObject operation.
@@ -73,7 +73,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	var complMultipartUpload completeMultipartUpload
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, _, err := OptimalPartInfo(-1, opts.PartSize)
+	totalPartsCount, partSize, _, err := c.optimalPartInfo(-1, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -91,7 +91,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 
 	defer func() {
 		if err != nil {
-			c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+			c.abortFailedUpload(ctx, bucketName, objectName, uploadID)
 		}
 	}()
 
@@ -108,8 +108,10 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	// CRC32C is ~50% faster on AMD64 @ 30GB/s
 	customHeader := make(http.Header)
 	crc := opts.AutoChecksum.Hasher()
+	var lastErr error
 	for partNumber <= totalPartsCount {
 		length, rErr := readFull(reader, buf)
+		lastErr = rErr
 		if rErr == io.EOF && partNumber > 1 {
 			break
 		}
@@ -175,6 +177,14 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 		}
 	}
 
+	// A nil read error on the last allowed part means the reader was never
+	// drained; completing here would store a truncated object.
+	if lastErr == nil {
+		if err = errIfMoreData(reader, totalUploadedSize, int64(totalPartsCount), bucketName, objectName); err != nil {
+			return UploadInfo{}, err
+		}
+	}
+
 	// Loop over total uploaded parts to save them in
 	// Parts array before completing the multipart request.
 	allParts := make([]ObjectPart, 0, len(partsInfo))
@@ -202,10 +212,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
-	opts = PutObjectOptions{
-		ServerSideEncryption: opts.ServerSideEncryption,
-		AutoChecksum:         opts.AutoChecksum,
-	}
+	opts = completeUploadOpts(opts)
 	applyAutoChecksum(&opts, allParts)
 
 	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, opts)
@@ -294,8 +301,8 @@ func (c *Client) uploadPart(ctx context.Context, p uploadPartParams) (ObjectPart
 	if err := s3utils.CheckValidObjectName(p.objectName); err != nil {
 		return ObjectPart{}, err
 	}
-	if p.size > maxPartSize {
-		return ObjectPart{}, errEntityTooLarge(p.size, maxPartSize, p.bucketName, p.objectName)
+	if maxPartSize := c.limits.maxPartSize(); p.size > maxPartSize {
+		return ObjectPart{}, errPartTooLarge(p.size, maxPartSize, p.bucketName, p.objectName)
 	}
 	if p.size <= -1 {
 		return ObjectPart{}, errEntityTooSmall(p.size, p.bucketName, p.objectName)
@@ -369,6 +376,22 @@ func (c *Client) uploadPart(ctx context.Context, p uploadPartParams) (ObjectPart
 	// Trim off the odd double quotes from ETag in the beginning and end.
 	objPart.ETag = trimEtag(h.Get("ETag"))
 	return objPart, nil
+}
+
+// completeUploadOpts returns the options to send on CompleteMultipartUpload.
+// Everything that applies to the upload as a whole was already sent with
+// NewMultipartUpload or with the individual parts, so most of the caller's
+// options are deliberately dropped here. Three things must survive: the SSE-C
+// key, which has to be repeated on every request touching the object, the
+// auto-checksum, which is computed from the completed parts, and opts.Internal,
+// because MinIO reads x-minio-source-mtime and
+// x-minio-source-replication-request from this request and nowhere else.
+func completeUploadOpts(opts PutObjectOptions) PutObjectOptions {
+	return PutObjectOptions{
+		ServerSideEncryption: opts.ServerSideEncryption,
+		AutoChecksum:         opts.AutoChecksum,
+		Internal:             opts.Internal,
+	}
 }
 
 // completeMultipartUpload - Completes a multipart upload by assembling previously uploaded parts.

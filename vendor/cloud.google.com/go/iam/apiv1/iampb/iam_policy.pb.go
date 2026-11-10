@@ -277,21 +277,24 @@ var File_google_iam_v1_iam_policy_proto protoreflect.FileDescriptor
 
 const file_google_iam_v1_iam_policy_proto_rawDesc = "" +
 	"\n" +
-	"\x1egoogle/iam/v1/iam_policy.proto\x12\rgoogle.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/iam/v1/options.proto\x1a\x1agoogle/iam/v1/policy.proto\x1a google/protobuf/field_mask.proto\"\xad\x01\n" +
-	"\x13SetIamPolicyRequest\x12%\n" +
-	"\bresource\x18\x01 \x01(\tB\t\xe0A\x02\xfaA\x03\n" +
-	"\x01*R\bresource\x122\n" +
-	"\x06policy\x18\x02 \x01(\v2\x15.google.iam.v1.PolicyB\x03\xe0A\x02R\x06policy\x12;\n" +
+	"\x1egoogle/iam/v1/iam_policy.proto\x12\rgoogle.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/iam/v1/options.proto\x1a\x1agoogle/iam/v1/policy.proto\x1a google/protobuf/field_mask.proto\"\xaf\x01\n" +
+	"\x13SetIamPolicyRequest\x12&\n" +
+	"\bresource\x18\x01 \x01(\tB\n" +
+	"\xe2A\x01\x02\xfaA\x03\n" +
+	"\x01*R\bresource\x123\n" +
+	"\x06policy\x18\x02 \x01(\v2\x15.google.iam.v1.PolicyB\x04\xe2A\x01\x02R\x06policy\x12;\n" +
 	"\vupdate_mask\x18\x03 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\"w\n" +
-	"\x13GetIamPolicyRequest\x12%\n" +
-	"\bresource\x18\x01 \x01(\tB\t\xe0A\x02\xfaA\x03\n" +
+	"updateMask\"x\n" +
+	"\x13GetIamPolicyRequest\x12&\n" +
+	"\bresource\x18\x01 \x01(\tB\n" +
+	"\xe2A\x01\x02\xfaA\x03\n" +
 	"\x01*R\bresource\x129\n" +
-	"\aoptions\x18\x02 \x01(\v2\x1f.google.iam.v1.GetPolicyOptionsR\aoptions\"i\n" +
-	"\x19TestIamPermissionsRequest\x12%\n" +
-	"\bresource\x18\x01 \x01(\tB\t\xe0A\x02\xfaA\x03\n" +
-	"\x01*R\bresource\x12%\n" +
-	"\vpermissions\x18\x02 \x03(\tB\x03\xe0A\x02R\vpermissions\">\n" +
+	"\aoptions\x18\x02 \x01(\v2\x1f.google.iam.v1.GetPolicyOptionsR\aoptions\"k\n" +
+	"\x19TestIamPermissionsRequest\x12&\n" +
+	"\bresource\x18\x01 \x01(\tB\n" +
+	"\xe2A\x01\x02\xfaA\x03\n" +
+	"\x01*R\bresource\x12&\n" +
+	"\vpermissions\x18\x02 \x03(\tB\x04\xe2A\x01\x02R\vpermissions\">\n" +
 	"\x1aTestIamPermissionsResponse\x12 \n" +
 	"\vpermissions\x18\x01 \x03(\tR\vpermissions2\xb4\x03\n" +
 	"\tIAMPolicy\x12t\n" +

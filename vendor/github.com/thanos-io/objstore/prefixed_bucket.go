@@ -69,6 +69,10 @@ func (p *PrefixedBucket) SupportedIterOptions() []IterOptionType {
 	return p.bkt.SupportedIterOptions()
 }
 
+func (p *PrefixedBucket) SupportedObjectUploadOptions() []ObjectUploadOptionType {
+	return p.bkt.SupportedObjectUploadOptions()
+}
+
 // Get returns a reader for the given object name.
 func (p *PrefixedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	return p.bkt.Get(ctx, conditionalPrefix(p.prefix, name))
@@ -98,6 +102,9 @@ func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
 	return p.bkt.IsAccessDeniedErr(err)
 }
 
+// IsConditionNotMetErr returns true if err meets is a condition not met error in the underlying provider.
+func (p *PrefixedBucket) IsConditionNotMetErr(err error) bool { return p.bkt.IsConditionNotMetErr(err) }
+
 // Attributes returns information about the specified object.
 func (p *PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))
@@ -105,8 +112,8 @@ func (p *PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAtt
 
 // Upload the contents of the reader as an object into the bucket.
 // Upload should be idempotent.
-func (p *PrefixedBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return p.bkt.Upload(ctx, conditionalPrefix(p.prefix, name), r)
+func (p *PrefixedBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...ObjectUploadOption) error {
+	return p.bkt.Upload(ctx, conditionalPrefix(p.prefix, name), r, opts...)
 }
 
 // Delete removes the object with the given name.

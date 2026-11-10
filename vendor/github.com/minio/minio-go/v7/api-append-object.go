@@ -88,7 +88,7 @@ func (opts *AppendObjectOptions) setChecksumParams(info ObjectInfo) {
 }
 
 func (opts AppendObjectOptions) validate(c *Client) (err error) {
-	if opts.ChunkSize > maxPartSize {
+	if opts.ChunkSize > uint64(c.limits.maxPartSize()) {
 		return errInvalidArgument("Append chunkSize cannot be larger than max part size allowed")
 	}
 	switch {
@@ -212,7 +212,7 @@ func (c *Client) AppendObject(ctx context.Context, bucketName, objectName string
 		if objectSize > 0 {
 			finalObjSize = info.Size + objectSize
 		}
-		totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(finalObjSize, opts.ChunkSize)
+		totalPartsCount, partSize, lastPartSize, err := c.optimalPartInfo(finalObjSize, opts.ChunkSize)
 		if err != nil {
 			return UploadInfo{}, err
 		}

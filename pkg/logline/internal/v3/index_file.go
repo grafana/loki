@@ -124,7 +124,7 @@ func DefaultFastIndexWriteConfig() IndexWriteConfig {
 
 func buildPostingsEncoder(cfg IndexWriteConfig) (StreamingPostingsEncoder, error) {
 	switch cfg.Encoding {
-	case format.PostingsEncodingFastDeltaVarIntBlocked:
+	case format.PostingsEncodingFastDeltaVarIntBlocked, format.PostingsEncodingFastEliasFanoBlocked:
 		return NewFastPostingsEncoder(cfg.Encoding, cfg.FastBlockTarget)
 	default:
 		return nil, fmt.Errorf("unsupported index encoding: %d", cfg.Encoding)

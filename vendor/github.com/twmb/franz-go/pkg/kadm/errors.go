@@ -74,6 +74,7 @@ func shardErrEachBroker(req kmsg.Request, shards []kgo.ResponseShard, fn func(Br
 	se := ShardErrors{
 		Name: kmsg.NameForKey(req.Key()),
 	}
+	var ae *AuthError
 	for _, shard := range shards {
 		if shard.Err != nil {
 			se.Errs = append(se.Errs, ShardError{
@@ -83,27 +84,8 @@ func shardErrEachBroker(req kmsg.Request, shards []kgo.ResponseShard, fn func(Br
 			})
 			continue
 		}
-		if err := fn(shard.Meta, shard.Resp); err != nil {
-			if ae, ok := errors.AsType[*AuthError](err); ok {
-				return ae
-			}
-			// A response-level error is a failed shard too. kgo
-			// deliberately strips retry-exhausted response errors
-			// from shard.Err so callers can parse the ErrorCode
-			// themselves; the fn callbacks do exactly that and
-			// return what they find. Dropping the error here made
-			// broadcast list APIs (ListGroups, ListTransactions,
-			// DescribeAllLogDirs) return silently SHORT results
-			// with a nil error whenever one broker answered with,
-			// e.g., COORDINATOR_LOAD_IN_PROGRESS past kgo's retry
-			// budget -- and everything built on those lists
-			// (no-arg Describes, Lag) under-reported with no
-			// signal.
-			se.Errs = append(se.Errs, ShardError{
-				Req:    shard.Req,
-				Err:    err,
-				Broker: shard.Meta,
-			})
+		if err := fn(shard.Meta, shard.Resp); errors.As(err, &ae) {
+			return ae
 		}
 	}
 	se.AllFailed = len(shards) == len(se.Errs)
@@ -119,23 +101,12 @@ func (se *ShardErrors) into() error {
 
 // Merges two shard errors; the input errors should come from the same request.
 func mergeShardErrs(e1, e2 error) error {
-	if e1 == nil {
+	var se1, se2 *ShardErrors
+	if !errors.As(e1, &se1) {
 		return e2
 	}
-	if e2 == nil {
+	if !errors.As(e2, &se2) {
 		return e1
-	}
-	// A non-ShardErrors error (e.g. *AuthError from a first round) must
-	// win, not vanish: returning e2 here previously dropped a round-one
-	// auth error whenever a rerequest round followed with no error of
-	// its own, reporting partial results as clean.
-	se1, ok := errors.AsType[*ShardErrors](e1)
-	if !ok {
-		return e1
-	}
-	se2, ok := errors.AsType[*ShardErrors](e2)
-	if !ok {
-		return e2
 	}
 	se1.Errs = append(se1.Errs, se2.Errs...)
 	se1.AllFailed = se1.AllFailed && se2.AllFailed

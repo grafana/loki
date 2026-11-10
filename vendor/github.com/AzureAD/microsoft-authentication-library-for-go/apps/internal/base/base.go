@@ -328,6 +328,30 @@ func (b Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, s
 	return baseURL.String(), nil
 }
 
+func (b Client) proactiveRefresh(ctx context.Context, silent AcquireTokenSilentParameters, authParams authority.AuthParams, refreshToken accesstokens.RefreshToken) (accesstokens.TokenResponse, bool, error) {
+	if silent.IsAppCache {
+		token, err := b.Token.Credential(ctx, authParams, silent.Credential)
+		return token, err == nil, nil
+	}
+	if silent.AuthorizationType == authority.ATOnBehalfOf {
+		token, err := b.Token.OnBehalfOf(ctx, authParams, silent.Credential)
+		return token, err == nil, nil
+	}
+
+	switch silent.RequestType {
+	case accesstokens.ATConfidential:
+		token, err := b.Token.Refresh(ctx, silent.RequestType, authParams, silent.Credential, refreshToken)
+		return token, err == nil, nil
+	case accesstokens.ATPublic:
+		token, err := b.Token.Refresh(ctx, silent.RequestType, authParams, silent.Credential, refreshToken)
+		return token, err == nil, err
+	case accesstokens.ATUnknown:
+		return accesstokens.TokenResponse{}, false, errors.New("silent request type cannot be ATUnknown")
+	default:
+		return accesstokens.TokenResponse{}, false, fmt.Errorf("unsupported silent request type %s", silent.RequestType)
+	}
+}
+
 func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilentParameters) (AuthResult, error) {
 	ar := AuthResult{}
 	// when tenant == "", the caller didn't specify a tenant and WithTenant will choose the client's configured tenant
@@ -391,19 +415,12 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 					// If the token is not same, we don't need to refresh it.
 					// Which means it refreshed.
 					if str, err := m.Read(ctx, authParams); err == nil && str.AccessToken.Secret == ar.AccessToken {
-						switch silent.RequestType {
-						case accesstokens.ATConfidential:
-							if tr, er := b.Token.Credential(ctx, authParams, silent.Credential); er == nil {
-								return b.AuthResultFromToken(ctx, authParams, tr)
-							}
-						case accesstokens.ATPublic:
-							token, err := b.Token.Refresh(ctx, silent.RequestType, authParams, silent.Credential, storageTokenResponse.RefreshToken)
-							if err != nil {
-								return ar, err
-							}
+						token, refreshed, err := b.proactiveRefresh(ctx, silent, authParams, storageTokenResponse.RefreshToken)
+						if err != nil {
+							return ar, err
+						}
+						if refreshed {
 							return b.AuthResultFromToken(ctx, authParams, token)
-						case accesstokens.ATUnknown:
-							return ar, errors.New("silent request type cannot be ATUnknown")
 						}
 					}
 				}

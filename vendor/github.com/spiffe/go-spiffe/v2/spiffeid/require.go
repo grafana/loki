@@ -16,7 +16,7 @@ func RequireFromPath(td TrustDomain, path string) ID {
 // RequireFromPathf is similar to FromPathf except that instead of returning an
 // error on malformed input, it panics. It should only be used when the input
 // is statically verifiable.
-func RequireFromPathf(td TrustDomain, format string, args ...interface{}) ID {
+func RequireFromPathf(td TrustDomain, format string, args ...any) ID {
 	id, err := FromPathf(td, format, args...)
 	panicOnErr(err)
 	return id
@@ -43,7 +43,7 @@ func RequireFromString(s string) ID {
 // RequireFromStringf is similar to FromStringf except that instead of
 // returning an error on malformed input, it panics. It should only be used
 // when the input is statically verifiable.
-func RequireFromStringf(format string, args ...interface{}) ID {
+func RequireFromStringf(format string, args ...any) ID {
 	id, err := FromStringf(format, args...)
 	panicOnErr(err)
 	return id
@@ -80,7 +80,7 @@ func RequireTrustDomainFromURI(uri *url.URL) TrustDomain {
 // with the given args (i.e. fmt.Sprintf). The resulting path must be valid or
 // the function panics. It should only be used when the input is statically
 // verifiable.
-func RequireFormatPath(format string, args ...interface{}) string {
+func RequireFormatPath(format string, args ...any) string {
 	path, err := FormatPath(format, args...)
 	panicOnErr(err)
 	return path

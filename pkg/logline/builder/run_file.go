@@ -40,6 +40,12 @@ const (
 	runHeaderSize   = 8 // magic(4) + version(1) + reserved(1) + shardCount(2)
 	runDirEntrySize = 16
 	runBufferSize   = 1 << 20
+	// runChunkRecords is how many records writeRun stages before each s2
+	// write. 4096 records is 48 KiB.
+	runChunkRecords = 4096
+	// runReadChunkRecords is how many records runReader decodes per refill.
+	// This is independent of the writer's staging size and the run file format.
+	runReadChunkRecords = 4096
 )
 
 // writeRun writes shard-contiguous keys/docs (counts[s] records for shard s,
@@ -81,7 +87,7 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 		*swp = s2.NewWriter(bw)
 	}
 	pos := 0
-	var rec [runRecordSize]byte
+	chunk := make([]byte, 0, runChunkRecords*runRecordSize)
 	for s := range shardCount {
 		c := int(counts[s])
 		if c == 0 {
@@ -101,10 +107,23 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 
 		(*swp).Reset(bw)
 		sw := *swp
+		// Records are staged into a chunk and handed to s2 in large writes.
+		// Every s2.Writer.Write takes the writer's error mutex, so writing one
+		// 12-byte record per call costs more than encoding it once a run is
+		// dominated by unique pairs.
+		chunk = chunk[:0]
 		for i := pos; i < pos+c; i++ {
-			copy(rec[:8], keys[i][:])
-			binary.LittleEndian.PutUint32(rec[8:], docs[i])
-			if _, err := sw.Write(rec[:]); err != nil {
+			chunk = append(chunk, keys[i][:]...)
+			chunk = binary.LittleEndian.AppendUint32(chunk, docs[i])
+			if len(chunk) == cap(chunk) {
+				if _, err := sw.Write(chunk); err != nil {
+					return 0, err
+				}
+				chunk = chunk[:0]
+			}
+		}
+		if len(chunk) > 0 {
+			if _, err := sw.Write(chunk); err != nil {
 				return 0, err
 			}
 		}
@@ -135,9 +154,12 @@ func writeRun(path string, keys [][8]byte, docs []uint32, counts []int32, swp **
 
 // runReader streams (ngram, docID) records for a single shard from a run file.
 type runReader struct {
-	f    *os.File
-	sr   *s2.Reader
+	f  *os.File
+	sr *s2.Reader
+	// left counts records not yet loaded into buf.
 	left uint64
+	buf  []byte
+	pos  int
 }
 
 // openRunShardReader opens the run at path positioned to read exactly the given
@@ -193,17 +215,35 @@ func openRunShardReader(path string, shard int) (*runReader, error) {
 }
 
 func (rr *runReader) next() (key [8]byte, doc uint32, ok bool, err error) {
-	if rr.left == 0 {
-		return key, 0, false, nil
+	if rr.pos == len(rr.buf) {
+		if rr.left == 0 {
+			return key, 0, false, nil
+		}
+		if err = rr.refill(); err != nil {
+			return key, 0, false, err
+		}
 	}
-	var rec [runRecordSize]byte
-	if _, err = io.ReadFull(rr.sr, rec[:]); err != nil {
-		return key, 0, false, err
-	}
+	rec := rr.buf[rr.pos : rr.pos+runRecordSize]
 	copy(key[:], rec[:8])
 	doc = binary.LittleEndian.Uint32(rec[8:])
-	rr.left--
+	rr.pos += runRecordSize
 	return key, doc, true, nil
+}
+
+// refill decodes the next chunk of records into buf. It never reads past the
+// shard's record count, so the s2 stream of the following shard is untouched.
+func (rr *runReader) refill() error {
+	n := min(rr.left, runReadChunkRecords)
+	if rr.buf == nil {
+		rr.buf = make([]byte, 0, runReadChunkRecords*runRecordSize)
+	}
+	rr.buf = rr.buf[:n*runRecordSize]
+	if _, err := io.ReadFull(rr.sr, rr.buf); err != nil {
+		return err
+	}
+	rr.left -= n
+	rr.pos = 0
+	return nil
 }
 
 func (rr *runReader) close() error {

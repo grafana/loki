@@ -154,6 +154,7 @@ func (c cmdable) Migrate(ctx context.Context, host, port, key string, db int, ti
 		db,
 		formatMs(ctx, timeout),
 	)
+	cmd.SetFirstKeyPos(3) // the key is not args[1]: route by it
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd
@@ -167,24 +168,28 @@ func (c cmdable) Move(ctx context.Context, key string, db int) *BoolCmd {
 
 func (c cmdable) ObjectFreq(ctx context.Context, key string) *IntCmd {
 	cmd := NewIntCmd(ctx, "object", "freq", key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) ObjectRefCount(ctx context.Context, key string) *IntCmd {
 	cmd := NewIntCmd(ctx, "object", "refcount", key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) ObjectEncoding(ctx context.Context, key string) *StringCmd {
 	cmd := NewStringCmd(ctx, "object", "encoding", key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) ObjectIdleTime(ctx context.Context, key string) *DurationCmd {
 	cmd := NewDurationCmd(ctx, time.Second, "object", "idletime", key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -206,7 +211,7 @@ func (c cmdable) PExpireAt(ctx context.Context, key string, tm time.Time) *BoolC
 		ctx,
 		"pexpireat",
 		key,
-		tm.UnixNano()/int64(time.Millisecond),
+		tm.UnixMilli(),
 	)
 	_ = c(ctx, cmd)
 	return cmd
