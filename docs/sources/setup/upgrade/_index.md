@@ -122,7 +122,7 @@ An `ip()` label filter used to keep every log line that already carried an `__er
 
 ### Experimental per-index gateway ownership
 
-Set `index_gateway.per_index_ownership.enabled: true` to have index gateways read the sharded index copy of the schema periods with a `sharded_path_prefix`, and preload those indexes according to tenant/table ownership. Tables of other periods are read from `path_prefix` and loaded as without per-index ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. A preload timeout allows activation with remaining work handled by periodic readiness; other preload errors fail startup. Leave ownership disabled to preserve existing behavior.
+Set `index_gateway.per_index_ownership.enabled: true` to have index gateways read the sharded index copy of the schema periods with a `sharded_path_prefix`, and preload those indexes according to tenant/table ownership. Tables of other periods are read from `path_prefix` and loaded as without per-index ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. After a preload timeout, an index gateway becomes ACTIVE whether or not it's successfully preloaded all the indexes it's meant to, with remaining work handled by periodic tasks. Any preload errors excluding timeout fail startup. Leave this feature disabled to preserve existing behavior.
 
 ## 4.0.0
 
