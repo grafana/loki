@@ -88,6 +88,10 @@ func forEachIndexPointer(
 				break
 			}
 
+			// A null shard_buckets value leaves its field unset, so clear the
+			// rows of the previous batch first.
+			clear(buf[:numRows])
+
 			for colIdx := range int(rec.NumCols()) {
 				col := rec.Column(colIdx)
 				pointerCol := sec.Columns()[colIdx]
@@ -116,6 +120,18 @@ func forEachIndexPointer(
 							continue
 						}
 						buf[rIdx].EndTs = time.Unix(0, int64(values.Value(rIdx)))
+					}
+				case indexpointers.ColumnTypeShardBuckets:
+					values := col.(*array.Int64)
+					for rIdx := range numRows {
+						if col.IsNull(rIdx) {
+							continue
+						}
+						buckets, err := indexpointers.ShardBucketsFromCount(values.Value(rIdx))
+						if err != nil {
+							return fmt.Errorf("decoding index pointer %d: %w", rIdx, err)
+						}
+						buf[rIdx].ShardBuckets = buckets
 					}
 				default:
 					continue

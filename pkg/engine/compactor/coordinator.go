@@ -16,6 +16,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -264,22 +265,23 @@ func (c *coordinator) planLogCompaction(
 	window time.Time,
 	sourceIndex indexEntry,
 ) (logCompactionPlan, error) {
-	sections, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
+	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 	if len(sections) == 0 {
 		return logCompactionPlan{}, nil
 	}
-	return c.planLogMerge(tenant, window, sourceIndex, sections)
+	return c.planLogMerge(tenant, window, sourceIndex, shardBuckets, sections)
 }
 
 // planLogMerge plans the k-way merge of sections, which must share a sort
-// schema.
+// schema. shardBuckets is the shard layout of the source index.
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
 	sourceIndex indexEntry,
+	shardBuckets indexpointers.ShardBuckets,
 	sections []v2.Section[logSortPrefix],
 ) (logCompactionPlan, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndex.Path)
@@ -321,6 +323,7 @@ func (c *coordinator) planLogMerge(
 	plan := logCompactionPlan{
 		window:           window,
 		sourceIndex:      sourceIndex,
+		shardBuckets:     shardBuckets,
 		tasks:            make([]logCompactionTask, 0, len(specs)+1),
 		singleObjectRuns: singleRuns,
 	}
@@ -499,7 +502,7 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 // When ctx is done, no new group starts. The error is the shutdown error only
 // if no group failed, so a shutdown does not hide a real failure.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
-	groups := make(map[layoutKey][]indexEntry)
+	groups := make(map[layoutKey]*layoutGroup)
 	for _, entry := range entries {
 		layout, ok, err := indexLayoutAt(ctx, c.bucket, tenant, entry.Path)
 		if errors.Is(err, errCorruptIndex) {
@@ -511,11 +514,20 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		}
 		// An index without stats sections for tenant has no layout. Such
 		// indexes share the zero key, so they merge only with each other.
-		var key layoutKey
+		var (
+			key          layoutKey
+			shardBuckets indexpointers.ShardBuckets
+		)
 		if ok {
 			key = newLayoutKey(layout)
+			shardBuckets = indexpointers.NewShardBuckets(layout.ShardLayout())
 		}
-		groups[key] = append(groups[key], entry)
+		group, found := groups[key]
+		if !found {
+			group = &layoutGroup{shardBuckets: shardBuckets}
+			groups[key] = group
+		}
+		group.entries = append(group.entries, entry)
 	}
 
 	// A failed group does not stop the other groups, because groups never
@@ -528,11 +540,11 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		}
 		return total, shutdownErr
 	}
-	for key, groupIndexEntries := range groups {
+	for key, group := range groups {
 		if err := ctx.Err(); err != nil {
 			return stop(err)
 		}
-		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, groupIndexEntries)
+		stats, err := c.compactTenantIndexesGroup(ctx, tenant, window, group)
 		if err != nil {
 			// A Canceled error is an interruption only when ctx is done. While
 			// ctx is live, a Canceled error comes from somewhere else, for
@@ -544,7 +556,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 			err = fmt.Errorf("layout group %s: %w", key, err)
 			errs = append(errs, err)
 			level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
-				"tenant", tenant, "window", window, "indexes", len(groupIndexEntries), "err", err)
+				"tenant", tenant, "window", window, "indexes", len(group.entries), "err", err)
 			c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
 			continue
 		}
@@ -560,7 +572,18 @@ func (c *coordinator) skipCorruptIndex(tenant string, window time.Time, path, ph
 	c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
 }
 
-func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+// layoutGroup holds the indexes of one tenant and window that share a stream
+// layout, so they can merge with each other.
+type layoutGroup struct {
+	// shardBuckets is the shard layout of the indexes. It is the zero
+	// ShardBuckets if the indexes have no stats sections, so they have no
+	// layout.
+	shardBuckets indexpointers.ShardBuckets
+	entries      []indexEntry
+}
+
+func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant string, window time.Time, group *layoutGroup) (compactionStats, error) {
+	entries := group.entries
 	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
@@ -597,9 +620,12 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
 		}
 		plans[i] = buildIndexMergePlan(tenant, window, task)
+		// A merge keeps the layout of its inputs, so the output has the
+		// layout of the group.
 		newEntries[i] = metastore.TableOfContentsEntry{
-			StartTime: start.UTC(),
-			EndTime:   end.UTC(),
+			StartTime:    start.UTC(),
+			EndTime:      end.UTC(),
+			ShardBuckets: group.shardBuckets,
 		}
 	}
 

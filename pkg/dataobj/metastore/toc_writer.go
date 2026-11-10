@@ -80,6 +80,11 @@ type TableOfContentsEntry struct {
 	// bounds are inclusive. StartTime must be after the Unix epoch.
 	StartTime time.Time
 	EndTime   time.Time
+
+	// ShardBuckets is the shard layout of the tenant in the index object. It
+	// must equal [indexobj.TenantShardBuckets] of the object, because readers
+	// trust it.
+	ShardBuckets indexpointers.ShardBuckets
 }
 
 // WatermarkUpdate raises the watermark of a Kafka topic and partition in a
@@ -536,9 +541,10 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 		kept[entry.Path] = struct{}{}
 		if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
-			Path:    entry.Path,
-			StartTs: entry.StartTime,
-			EndTs:   entry.EndTime,
+			Path:         entry.Path,
+			StartTs:      entry.StartTime,
+			EndTs:        entry.EndTime,
+			ShardBuckets: entry.ShardBuckets,
 		}); err != nil {
 			return nil, fmt.Errorf("appending index pointer: %w", err)
 		}

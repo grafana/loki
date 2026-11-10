@@ -117,6 +117,38 @@ func TestTenantShardLayout(t *testing.T) {
 	})
 }
 
+func TestTenantShardBuckets(t *testing.T) {
+	appLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})
+	wideLayout := streams.NewLayout(streams.MustShardLayoutFromBuckets(64), []string{"label:app"})
+
+	t.Run("returns the shard layout that every stats section records", func(t *testing.T) {
+		got, err := TenantShardBuckets(t.Context(), buildStats(t, "acme", wideLayout, wideLayout), "acme")
+		require.NoError(t, err)
+		layout, ok := got.Layout()
+		require.True(t, ok)
+		require.Equal(t, wideLayout.ShardLayout(), layout)
+	})
+
+	t.Run("returns the default shard layout for a legacy index that records no layout", func(t *testing.T) {
+		got, err := TenantShardBuckets(t.Context(), openLegacyIndex(t), "acme")
+		require.NoError(t, err)
+		layout, ok := got.Layout()
+		require.True(t, ok)
+		require.Equal(t, streams.DefaultShardLayout(), layout)
+	})
+
+	t.Run("returns the zero ShardBuckets when the index has no stats section for the tenant", func(t *testing.T) {
+		got, err := TenantShardBuckets(t.Context(), buildStats(t, "other", wideLayout), "acme")
+		require.NoError(t, err)
+		require.Zero(t, got)
+	})
+
+	t.Run("returns a mixed layouts error when stats sections record different shard layouts", func(t *testing.T) {
+		_, err := TenantShardBuckets(t.Context(), buildStats(t, "acme", appLayout, wideLayout), "acme")
+		require.ErrorIs(t, err, ErrMixedLayouts)
+	})
+}
+
 func TestBuilder_SetLayout(t *testing.T) {
 	appLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})
 	ts := time.Unix(10, 0).UTC()
