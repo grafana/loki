@@ -1257,8 +1257,10 @@ dataobj:
 
     deletion_sweep:
       # Experimental: Sweep each tenant once an hour and record its objects in
-      # its deletion file list. Only tenants with the per-tenant deletion sweep
-      # limit enabled are swept.
+      # its deletion file list. Only tenants with the
+      # dataobj_deletion_sweep_enabled limit
+      # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
+      # Requires dataobj compaction to be enabled.
       # CLI flag: -dataobj.compaction.deletion-sweep.enabled
       [enabled: <boolean> | default = false]
 

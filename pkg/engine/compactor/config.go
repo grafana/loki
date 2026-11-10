@@ -160,8 +160,8 @@ type SchedulerConfig struct {
 //
 // When enabled, the planner sweeps each tenant once an hour, at a minute
 // that it derives from the tenant ID. A sweep records the objects of the
-// tenant in its file list. Only tenants with the per-tenant deletion sweep
-// limit enabled are swept.
+// tenant in its file list. Only tenants with the dataobj_deletion_sweep_enabled
+// limit are swept.
 type DeletionSweepConfig struct {
 	// Enabled starts the deletion sweep in the planner.
 	Enabled bool `yaml:"enabled"`
@@ -290,7 +290,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 	f.BoolVar(&cfg.DeletionSweep.Enabled, prefix+"deletion-sweep.enabled", false,
-		"Experimental: Sweep each tenant once an hour and record its objects in its deletion file list. Only tenants with the per-tenant deletion sweep limit enabled are swept.")
+		"Experimental: Sweep each tenant once an hour and record its objects in its deletion file list. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
 		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep scans the uncompacted objects of the whole bucket.")
 
