@@ -44,7 +44,7 @@ func ReadWatermarks(ctx context.Context, bucket objstore.BucketReader, tenant st
 	}
 
 	if err := checkTenant(tocObject, tenant); err != nil {
-		return nil, fmt.Errorf("ToC %s: %w", tocPath, err)
+		return nil, fmt.Errorf("checking tenant of ToC %s: %w", tocPath, err)
 	}
 
 	var rows []watermarks.Watermark

@@ -70,7 +70,7 @@ func wm(partition int32, value int64) watermarks.Watermark {
 	return watermarks.Watermark{Topic: wmTopic, Partition: partition, Watermark: value}
 }
 
-func testWriteEntryWithWatermark(t *testing.T) {
+func TestWriteEntryWithWatermark(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("writes the pointer and the first watermark when the caller and the ToC have no value", func(t *testing.T) {
