@@ -243,10 +243,11 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 	var appendErr error
 	for _, reqStream := range req.Streams {
 
-		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+		key, parsed := i.streamKey(reqStream.Labels)
+		s, _, err := i.streams.LoadOrStoreNew(key,
 			func() (*stream, error) {
 				// need format in push request.
-				s, err := i.createStream(ctx, reqStream, record, req.Format)
+				s, err := i.createStream(ctx, reqStream, parsed, record, req.Format)
 				// Lock before adding to maps
 				if err == nil {
 					s.chunkMtx.Lock()
@@ -286,12 +287,17 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 	return appendErr
 }
 
-func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
+// createStream creates a stream for pushReqStream. parsed holds its labels if
+// the caller has already parsed them; when it is empty they are parsed here.
+func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, parsed labels.Labels, record *wal.Record, format string) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	labels := parsed
+	if labels.IsEmpty() {
+		labels, err = syntax.ParseLabels(pushReqStream.Labels)
+	}
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
@@ -453,11 +459,34 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
 func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
-	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		return i.createStream(ctx, pushReqStream, record, format)
+	key, parsed := i.streamKey(pushReqStream.Labels)
+	s, _, err := i.streams.LoadOrStoreNew(key, func() (*stream, error) {
+		return i.createStream(ctx, pushReqStream, parsed, record, format)
 	}, nil)
 
 	return s, err
+}
+
+// streamKey returns the key a stream with the given labels is stored under in
+// i.streams. It must match stream.labelsString, which removeStream deletes by.
+// The distributor already sends labels in that canonical form, but clients
+// pushing to the ingester directly (e.g. over gRPC in single binary mode) can
+// send any spelling of the same labels. Storing such a stream under the raw
+// string would leave it in memory forever after its chunks are flushed.
+//
+// When lbs has to be parsed, the parsed labels are returned as well, so that
+// createStream does not parse them again. Otherwise they are empty.
+func (i *instance) streamKey(lbs string) (string, labels.Labels) {
+	// Only canonical keys are stored, so a hit means lbs is already canonical.
+	if _, ok := i.streams.Load(lbs); ok {
+		return lbs, labels.EmptyLabels()
+	}
+	ls, err := syntax.ParseLabels(lbs)
+	if err != nil {
+		// createStream parses the labels again and rejects the stream.
+		return lbs, labels.EmptyLabels()
+	}
+	return ls.String(), ls
 }
 
 // removeStream removes a stream from the instance.

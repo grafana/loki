@@ -3,9 +3,11 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -576,6 +578,55 @@ func Benchmark_PushInstance(b *testing.B) {
 					},
 				},
 			},
+		})
+	}
+}
+
+// Benchmark_PushInstanceStreamKey covers pushes to existing and to new streams,
+// with labels in the canonical form the distributor sends and in another spelling.
+func Benchmark_PushInstanceStreamKey(b *testing.B) {
+	canonical := func(n int) string {
+		return `{cpu="` + strconv.Itoa(n) + `", job="node-exporter", namespace="observability", pod="node-exporter-l454v"}`
+	}
+	nonCanonical := func(n int) string {
+		return `{pod="node-exporter-l454v",namespace="observability",job="node-exporter",cpu="` + strconv.Itoa(n) + `"}`
+	}
+
+	for _, bc := range []struct {
+		name      string
+		labels    func(int) string
+		newStream bool
+	}{
+		{name: "existing stream/canonical", labels: canonical},
+		{name: "existing stream/non-canonical", labels: nonCanonical},
+		{name: "new stream/canonical", labels: canonical, newStream: true},
+		{name: "new stream/non-canonical", labels: nonCanonical, newStream: true},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			l := defaultLimitsTestConfig()
+			l.MaxLocalStreamsPerUser = math.MaxInt32
+			l.MaxGlobalStreamsPerUser = 0
+			limits, err := validation.NewOverrides(l, nil)
+			require.NoError(b, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			inst, err := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+			require.NoError(b, err)
+			ctx := context.Background()
+
+			b.ReportAllocs()
+			n := 0
+			for b.Loop() {
+				if bc.newStream {
+					n++
+				}
+				err := inst.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{{
+					Labels:  bc.labels(n),
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "1"}},
+				}}})
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
 		})
 	}
 }
@@ -1946,6 +1997,69 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 
 	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams))
 	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards))
+}
+
+// Clients that push directly to the ingester (e.g. over gRPC to a single binary)
+// skip the distributor, which normally rewrites stream labels to their canonical
+// form. A stream must still be removable once its chunks are flushed.
+func TestRemoveStreamPushedWithNonCanonicalLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		labels string
+	}{
+		{name: "canonical", labels: `{app="y", job="x"}`},
+		{name: "no space after comma", labels: `{app="y",job="x"}`},
+		{name: "not sorted", labels: `{job="x", app="y"}`},
+		{name: "empty label value", labels: `{app="y", empty="", job="x"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := newEmptyInstance(t)
+			// NilMetrics is shared by the whole package, so compare against the starting value.
+			memoryStreams := promtestutil.ToFloat64(inst.memoryStreams)
+			now := time.Now().Add(-time.Minute)
+
+			require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+				{Labels: tc.labels, Entries: entries(1, now)},
+			}}))
+			require.Equal(t, 1, inst.streams.Len())
+
+			var pushed *stream
+			require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+				pushed = s
+				return false, nil
+			}))
+			require.Equal(t, `{app="y", job="x"}`, pushed.labelsString)
+
+			inst.streams.WithLock(func() {
+				inst.removeStream(pushed)
+			})
+
+			require.Equal(t, 0, inst.streams.Len())
+			_, ok := inst.streams.LoadByFP(pushed.fp)
+			require.False(t, ok)
+			_, ok = inst.streams.Load(pushed.labelsString)
+			require.False(t, ok)
+			_, ok = inst.streams.Load(tc.labels)
+			require.False(t, ok)
+			require.Equal(t, memoryStreams, promtestutil.ToFloat64(inst.memoryStreams))
+		})
+	}
+}
+
+func TestPushSameStreamWithDifferentLabelSpellings(t *testing.T) {
+	inst := newEmptyInstance(t)
+	// NilMetrics is shared by the whole package, so compare against the starting value.
+	memoryStreams := promtestutil.ToFloat64(inst.memoryStreams)
+	now := time.Now().Add(-time.Minute)
+
+	for i, lbs := range []string{`{app="y", job="x"}`, `{app="y",job="x"}`, `{job="x", app="y"}`} {
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+			{Labels: lbs, Entries: entries(1, now.Add(time.Duration(i)*time.Second))},
+		}}))
+	}
+
+	require.Equal(t, 1, inst.streams.Len())
+	require.Equal(t, memoryStreams+1, promtestutil.ToFloat64(inst.memoryStreams))
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error
