@@ -91,7 +91,7 @@ func TestBuilder_SizeLeveledCompaction(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("object reports size level 0 when the builder sets size level 0", func(t *testing.T) {
+	t.Run("object reports the size-leveled compaction when its level is the zero value", func(t *testing.T) {
 		obj := flush(t, dataobj.NewBuilder(nil, dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: 0})))
 
 		info, ok := obj.SizeLeveledCompaction()

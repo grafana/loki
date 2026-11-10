@@ -37,6 +37,9 @@ message CompactionInfo {
 }
 
 message SizeLeveledCompaction {
+  // Level 1 holds compacted runs below the base of the strategy. Level 0 means
+  // uncompacted, so the compactor never writes it.
+  //
   // The planner computes level from the base and ratio of the strategy at plan
   // time. A later planner can compute a different level for the same run.
   uint32 level = 1;

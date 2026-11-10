@@ -65,6 +65,9 @@ func WithPrioritySections(types ...SectionType) BuilderOption {
 // SizeLeveledCompaction records where the size-leveled compaction strategy
 // placed an object.
 type SizeLeveledCompaction struct {
+	// Level 1 holds compacted runs below the base of the strategy. Level 0
+	// means uncompacted, so the compactor never writes it.
+	//
 	// The planner computes Level from the base and ratio of the strategy at
 	// plan time. A later planner can compute a different level for the same run.
 	Level uint32
