@@ -52,6 +52,7 @@ import (
 	"github.com/grafana/loki/v4/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v4/pkg/util/log"
 	server_util "github.com/grafana/loki/v4/pkg/util/server"
+	syntaxutil "github.com/grafana/loki/v4/pkg/util/syntax"
 	"github.com/grafana/loki/v4/pkg/validation"
 )
 
@@ -1063,7 +1064,7 @@ func (i *instance) forMatchingStreams(
 	shard *logql.Shard,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	filters, matchers := syntaxutil.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(ts, matchers, shard)
 	if err != nil {
 		return err

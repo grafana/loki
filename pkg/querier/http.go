@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v4/pkg/loghttp"
 	"github.com/grafana/loki/v4/pkg/logproto"
 	"github.com/grafana/loki/v4/pkg/logql"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 	"github.com/grafana/loki/v4/pkg/logql/syntax"
 	"github.com/grafana/loki/v4/pkg/logqlmodel"
 	"github.com/grafana/loki/v4/pkg/logqlmodel/stats"
@@ -89,7 +90,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
 	// do not allow log selector expression (aka log query) as instant query
 	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
-		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+		return logqlmodel.Result{}, logqlerr.ErrUnsupportedSyntaxForInstantQuery
 	}
 
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v4/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 )
 
 const MaxInternedStrings = 1024
@@ -441,12 +441,12 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 			}
 		}
 
-		if name == logqlmodel.ErrorLabel {
+		if name == logqlerr.ErrorLabel {
 			b.err = l.Value
 			return
 		}
 
-		if name == logqlmodel.ErrorDetailsLabel {
+		if name == logqlerr.ErrorDetailsLabel {
 			b.errDetails = l.Value
 			return
 		}
@@ -475,13 +475,13 @@ func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
 func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	if b.err != "" {
 		buf = append(buf, labels.Label{
-			Name:  logqlmodel.ErrorLabel,
+			Name:  logqlerr.ErrorLabel,
 			Value: b.err,
 		})
 	}
 	if b.errDetails != "" {
 		buf = append(buf, labels.Label{
-			Name:  logqlmodel.ErrorDetailsLabel,
+			Name:  logqlerr.ErrorDetailsLabel,
 			Value: b.errDetails,
 		})
 	}
@@ -656,7 +656,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 
 	for _, l := range b.buf {
 		// Skip error labels for stream and meta categories
-		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+		if l.Name == logqlerr.ErrorLabel || l.Name == logqlerr.ErrorDetailsLabel {
 			parsed = append(parsed, l)
 			continue
 		}
@@ -878,12 +878,12 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 	// __error_details__: keeping them, instead of the builder's error, would make the two labels
 	// report different errors.
 	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
-		return l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel
+		return l.Name == logqlerr.ErrorLabel || l.Name == logqlerr.ErrorDetailsLabel
 	})
 
-	buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	buf = append(buf, labels.Label{Name: logqlerr.ErrorLabel, Value: b.err})
 	if b.errDetails != "" {
-		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+		buf = append(buf, labels.Label{Name: logqlerr.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
 	return buf

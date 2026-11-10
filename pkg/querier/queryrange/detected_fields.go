@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v4/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v4/pkg/logql/errors"
 	logql_log "github.com/grafana/loki/v4/pkg/logql/log"
 	"github.com/grafana/loki/v4/pkg/logql/syntax"
 	"github.com/grafana/loki/v4/pkg/logqlmodel"
@@ -397,7 +398,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	parsed := make(map[string][]string, len(origParsed))
 	for lbl, values := range origParsed {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 
@@ -444,7 +445,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
-		if logqlmodel.IsPipelineErrorLabel(lbl) {
+		if logqlerr.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 		vals := make([]string, 0, len(values))
