@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
@@ -52,6 +54,10 @@ var (
 	errChangeSuperseded = errors.New("ToC is missing paths to remove")
 )
 
+// ErrWatermarkMismatch means the watermark in a ToC differs from the one the
+// caller expected.
+var ErrWatermarkMismatch = errors.New("ToC watermark differs from the expected value")
+
 // checkTenant returns an error that wraps errUnrecoverable unless tenant is
 // the only tenant of tocObject.
 func checkTenant(tocObject *dataobj.Object, tenant string) error {
@@ -74,6 +80,36 @@ type TableOfContentsEntry struct {
 	// bounds are inclusive. StartTime must be after the Unix epoch.
 	StartTime time.Time
 	EndTime   time.Time
+}
+
+// WatermarkUpdate raises the watermark of a Kafka topic and partition in a
+// ToC, if the ToC holds the watermark the caller expects.
+type WatermarkUpdate struct {
+	Topic     string
+	Partition int32
+	// EndOffset is the highest offset of the entry's records, not the next
+	// offset to read. It must not be lower than Expected.
+	EndOffset int64
+	// Expected is the watermark the caller expects the ToC to hold. Nil means
+	// the caller expects the ToC to hold no watermark for the topic and
+	// partition.
+	Expected *int64
+}
+
+func (u WatermarkUpdate) validate() error {
+	switch {
+	case u.Topic == "":
+		return errors.New("watermark update has no topic")
+	case u.Partition < 0:
+		return fmt.Errorf("watermark update has negative partition %d", u.Partition)
+	case u.EndOffset < 0:
+		return fmt.Errorf("watermark update has negative end offset %d", u.EndOffset)
+	case u.Expected != nil && *u.Expected < 0:
+		return fmt.Errorf("watermark update has negative expected value %d", *u.Expected)
+	case u.Expected != nil && *u.Expected > u.EndOffset:
+		return fmt.Errorf("watermark update has end offset %d below expected value %d", u.EndOffset, *u.Expected)
+	}
+	return nil
 }
 
 // TimeWindow returns the time of the time window this entry belongs to.
@@ -136,18 +172,46 @@ func NewTableOfContentsWriter(
 // entry.Path. It compares the path only: the path of an index object is a
 // hash of its content, so the same path means the same pointer.
 //
+// WriteEntry keeps the watermarks of the ToC.
+//
 // WriteEntry retries a failed write with the backoff config of the writer, and
 // returns an error after the last attempt or once ctx is done. It returns an
 // error without retrying if entry fails validation, entry spans more than one
 // window, or the ToC holds a section of another tenant.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
+	return m.writeEntry(ctx, tenant, entry, nil)
+}
+
+// WriteEntryWithWatermark does what [TableOfContentsWriter.WriteEntry] does,
+// and in the same conditional write raises a watermark of the ToC.
+//
+// The write applies only if the watermark of the ToC equals update.Expected.
+// Otherwise it writes nothing and returns [ErrWatermarkMismatch], without
+// retrying. A watermark belongs to one ToC, so update.Expected must come from
+// the ToC of this tenant and window.
+//
+// If the ToC already holds the entry and a watermark at or above
+// update.EndOffset, the call writes nothing and returns nil. A nil return does
+// not show that this call wrote the watermark.
+//
+// A mismatch can follow a lost response. If an earlier attempt wrote the entry
+// and a replace removed its pointer, the ToC holds update.EndOffset.
+func (m *TableOfContentsWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry TableOfContentsEntry, update WatermarkUpdate) error {
+	if err := update.validate(); err != nil {
+		return fmt.Errorf("ToC entry %s: %w", entry.Path, err)
+	}
+	return m.writeEntry(ctx, tenant, entry, &update)
+}
+
+func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, entry TableOfContentsEntry, watermark *WatermarkUpdate) error {
 	window, err := entry.TimeWindow()
 	if err != nil {
 		return err
 	}
 
 	err = m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
-		add: []TableOfContentsEntry{entry},
+		add:       []TableOfContentsEntry{entry},
+		watermark: watermark,
 	})
 	if errors.Is(err, errChangeAlreadyApplied) {
 		return nil
@@ -238,9 +302,13 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 // If remove is not empty, the change applies only if the ToC holds every path
 // in remove. Otherwise it writes nothing. If a ToC doesn't exist yet and
 // remove is not empty, the change does not create it.
+//
+// If watermark is set, the change also raises a watermark. It applies only if
+// the ToC holds the expected watermark.
 type tocChange struct {
-	remove map[string]struct{}
-	add    []TableOfContentsEntry
+	remove    map[string]struct{}
+	add       []TableOfContentsEntry
+	watermark *WatermarkUpdate
 }
 
 // changeResult is the result of one attempt of applyChange, and of the whole
@@ -260,6 +328,10 @@ const (
 	// changeSuperseded means another writer removed a path to remove first,
 	// so the attempt wrote nothing.
 	changeSuperseded changeResult = "superseded"
+	// changeWatermarkMismatch means the watermark in the ToC differs from the
+	// one the caller expected, so the attempt wrote nothing and the call does
+	// not retry.
+	changeWatermarkMismatch changeResult = "watermark_mismatch"
 	// changeConflict means the attempt lost its conditional write to another
 	// writer and wrote nothing. Only an attempt has this result.
 	changeConflict changeResult = "conflict"
@@ -320,6 +392,12 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 			m.reportAttempt(op, result, attemptStart)
 			return err
 
+		case errors.Is(err, ErrWatermarkMismatch):
+			result = changeWatermarkMismatch
+			level.Warn(m.logger).Log("msg", "toc update skipped: toc watermark differs from the expected value", "op", op, "tocPath", tocPath, "err", err)
+			m.reportAttempt(op, result, attemptStart)
+			return err
+
 		case errors.Is(err, errUnrecoverable):
 			result = changeFailed
 			level.Error(m.logger).Log("msg", "toc update attempt failed unrecoverably", "op", op, "tocPath", tocPath, "attempt", attempts, "err", err)
@@ -361,6 +439,9 @@ func (m *TableOfContentsWriter) reportAttempt(op tocOp, result changeResult, sin
 // rebuildToc returns the ToC that results from applying change to existing,
 // which is nil or empty if the ToC does not exist yet. The caller owns the
 // returned reader and must close it.
+//
+// rebuildToc keeps the watermarks of existing, except the one that change
+// raises.
 func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
 
@@ -374,6 +455,8 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	var (
 		kept    = make(map[string]struct{})
 		removed = make(map[string]struct{}, len(change.remove))
+		// current is the watermark in existing that change.watermark raises.
+		current *int64
 	)
 	if buf.Len() > 0 {
 		tocObject, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -403,32 +486,55 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		if err != nil {
 			return nil, err
 		}
+
+		for res := range watermarks.Iter(ctx, tocObject) {
+			wm, err := res.Value()
+			if err != nil {
+				return nil, fmt.Errorf("reading watermarks: %w", err)
+			}
+			if err := builder.AppendWatermark(wm.Topic, wm.Partition, wm.Watermark); err != nil {
+				return nil, fmt.Errorf("%w: appending existing watermark of topic %q partition %d: %w", errUnrecoverable, wm.Topic, wm.Partition, err)
+			}
+			if u := change.watermark; u != nil && wm.Topic == u.Topic && wm.Partition == u.Partition {
+				value := wm.Watermark
+				current = &value
+			}
+		}
+	}
+
+	holdsEveryEntry := true
+	for _, entry := range change.add {
+		if _, ok := kept[entry.Path]; !ok {
+			holdsEveryEntry = false
+			break
+		}
 	}
 
 	if len(removed) < len(change.remove) {
 		// Write nothing. An earlier attempt may have written the change and
 		// lost the response.
-		alreadyApplied := len(removed) == 0
-		for _, entry := range change.add {
-			if _, ok := kept[entry.Path]; !ok {
-				alreadyApplied = false
-				break
-			}
-		}
-		if alreadyApplied {
+		if len(removed) == 0 && holdsEveryEntry {
 			return nil, errChangeAlreadyApplied
 		}
 
 		return nil, fmt.Errorf("%w: %d of %d", errChangeSuperseded, len(change.remove)-len(removed), len(change.remove))
 	}
 
-	var added int
+	if len(removed) == 0 && holdsEveryEntry && change.watermark == nil {
+		return nil, errChangeAlreadyApplied
+	}
+
+	if change.watermark != nil {
+		if err := checkWatermarkUpdateAllowed(*change.watermark, current, holdsEveryEntry); err != nil {
+			return nil, err
+		}
+	}
+
 	for _, entry := range change.add {
 		if _, ok := kept[entry.Path]; ok {
 			continue
 		}
 		kept[entry.Path] = struct{}{}
-		added++
 		if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
 			Path:    entry.Path,
 			StartTs: entry.StartTime,
@@ -438,12 +544,38 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	// The change has no paths to remove, and the ToC already holds every
-	// entry to add.
-	if len(removed) == 0 && added == 0 {
-		return nil, errChangeAlreadyApplied
+	if u := change.watermark; u != nil {
+		if err := builder.AppendWatermark(u.Topic, u.Partition, u.EndOffset); err != nil {
+			return nil, fmt.Errorf("%w: appending watermark: %w", errUnrecoverable, err)
+		}
 	}
 	return flushToc(ctx, builder)
+}
+
+// checkWatermarkUpdateAllowed returns nil if the change may raise the
+// watermark, given the current watermark in the ToC. It returns
+// errChangeAlreadyApplied if the ToC holds the entry and a watermark at or
+// above update.EndOffset, and an error that wraps ErrWatermarkMismatch if the
+// current watermark differs from update.Expected.
+func checkWatermarkUpdateAllowed(update WatermarkUpdate, current *int64, holdsEveryEntry bool) error {
+	if holdsEveryEntry && current != nil && *current >= update.EndOffset {
+		return errChangeAlreadyApplied
+	}
+
+	bothAbsent := current == nil && update.Expected == nil
+	bothEqual := current != nil && update.Expected != nil && *current == *update.Expected
+	if !bothAbsent && !bothEqual {
+		return fmt.Errorf("%w: topic %q partition %d: expected %s, ToC holds %s",
+			ErrWatermarkMismatch, update.Topic, update.Partition, formatWatermark(update.Expected), formatWatermark(current))
+	}
+	return nil
+}
+
+func formatWatermark(w *int64) string {
+	if w == nil {
+		return "none"
+	}
+	return strconv.FormatInt(*w, 10)
 }
 
 // forEachTocPointer calls fn for every pointer of every index pointers

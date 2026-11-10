@@ -57,5 +57,9 @@ func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 		metrics.writeSeconds.WithLabelValues(string(op), string(changeCancelled))
 	}
 
+	// Only the write_entry op raises a watermark, so only it can get a mismatch.
+	metrics.writeAttemptSeconds.WithLabelValues(string(opWriteEntry), string(changeWatermarkMismatch))
+	metrics.writeSeconds.WithLabelValues(string(opWriteEntry), string(changeWatermarkMismatch))
+
 	return metrics
 }
