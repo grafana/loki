@@ -415,9 +415,10 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 
 	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
 		entries = append(entries, IndexEntry{
-			Path:  indexPointer.Path,
-			Start: indexPointer.StartTs,
-			End:   indexPointer.EndTs,
+			Path:         indexPointer.Path,
+			Start:        indexPointer.StartTs,
+			End:          indexPointer.EndTs,
+			ShardBuckets: indexPointer.ShardBuckets,
 		})
 	})
 	if err != nil {
@@ -574,7 +575,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 					}
 				}()
 
-				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry.Path)
+				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry)
 
 				mu.Lock()
 				defer mu.Unlock()
@@ -670,11 +671,13 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 
 // readIndexSections reads the sections that one index object lists. It returns them with the number
 // of rows the index reader resolved, before deduplication.
-func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, indexPath string) ([]DataobjSectionDescriptorWithIndex, int, error) {
+func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, index IndexEntry) ([]DataobjSectionDescriptorWithIndex, int, error) {
+	indexPath := index.Path
 	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 		IndexPath:       indexPath,
 		SectionsRequest: req,
 		PrefetchBytes:   indexPrefetchBytes,
+		ShardBuckets:    index.ShardBuckets,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("get index sections reader: %w", err)
@@ -716,6 +719,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
 		req.SectionsRequest.StreamHashRange,
+		req.ShardBuckets,
 	)
 	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }

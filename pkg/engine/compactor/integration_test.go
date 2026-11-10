@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -141,6 +142,7 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	for _, entry := range postCycle1["acme"] {
 		_, err := bucket.Attributes(ctx, entry.Path)
 		require.NoError(t, err, "phase 1 output %q must exist after the swap", entry.Path)
+		requireToCShardBuckets(ctx, t, bucket, "acme", window, entry.Path)
 	}
 	// Pre-swap source paths must be gone from acme's section.
 	acmePaths := pathsOf(postCycle1["acme"])
@@ -166,6 +168,31 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 		"after multiple cycles, acme tenant must converge to 1 covering index")
 	require.Equal(t, initial["untouched"], final["untouched"],
 		"other tenant's index entries must survive every cycle")
+}
+
+func TestCoordinator_IndexMergeShardBuckets(t *testing.T) {
+	t.Run("records the shard layout of the merged indexes in the ToC when the layout is not the default", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		bucket := objstore.NewInMemBucket()
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+		}})
+		layout := streams.MustShardLayoutFromBuckets(8)
+		seedSourceIndexObjectWithShardLayout(ctx, t, bucket, "indexes/aa/src-0", window.Add(time.Hour), layout, "acme")
+		seedSourceIndexObjectWithShardLayout(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), layout, "acme")
+
+		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+		_, err := c.compactTenantIndexes(ctx, "acme", window, mustLoadTenantIndexes(ctx, t, bucket, window)["acme"])
+		require.NoError(t, err)
+
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		require.Len(t, after, 1)
+		requireToCShardBuckets(ctx, t, bucket, "acme", window, after[0].Path)
+	})
 }
 
 func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
@@ -277,6 +304,7 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, ok, "replacement index %q must record a layout", entry.Path)
 				indexLayouts = append(indexLayouts, indexLayout)
+				requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
 			}
 			require.ElementsMatch(t, test.expectedLayouts, indexLayouts)
 		})
@@ -456,7 +484,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 		}), "index for source %q must be in the ToC", source.Path)
 
 		// Check the file pointed to by this index is the correct shape according to the index
-		refs, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, indexPath)
+		refs, _, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, indexPath)
 		require.NoError(t, err)
 		require.NotEmpty(t, refs)
 		require.Equal(t, source.Path, refs[0].Ref.ObjectPath)
@@ -508,7 +536,7 @@ func requireConvergedLevels(t *testing.T, scenario *compactionScenario, indexes 
 	t.Helper()
 	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
 
-	sections, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	sections, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	require.Len(t, runs, wantRuns)
@@ -563,7 +591,7 @@ func requireSingleSortedRun(t *testing.T, scenario *compactionScenario, indexes 
 	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
 	schema := layout.SchemaLabels()
 
-	sections, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	sections, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
 	indexedLayout, ok, err := indexLayoutAt(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
@@ -774,6 +802,40 @@ func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket,
 	return out
 }
 
+// requireToCShardBuckets asserts that the ToC row of the index at path holds
+// the shard layout that a reader of the index object finds, and that the
+// layout is known.
+func requireToCShardBuckets(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, path string) {
+	t.Helper()
+	r, err := bucket.Get(ctx, metastore.TableOfContentsPath(tenant, window))
+	require.NoError(t, err)
+	raw, err := io.ReadAll(r)
+	require.NoError(t, errors.Join(err, r.Close()))
+	toc, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	require.NoError(t, err)
+
+	var (
+		got   indexpointers.ShardBuckets
+		found bool
+	)
+	for res := range indexpointers.Iter(ctx, toc) {
+		pointer, err := res.Value()
+		require.NoError(t, err)
+		if pointer.Path == path {
+			got, found = pointer.ShardBuckets, true
+		}
+	}
+	require.True(t, found, "ToC must hold %q", path)
+
+	obj, err := dataobj.FromBucket(ctx, bucket, path, prefetchBytes)
+	require.NoError(t, err)
+	want, err := indexobj.TenantShardBuckets(ctx, obj, tenant)
+	require.NoError(t, err)
+	_, known := want.Layout()
+	require.True(t, known, "index %q must record a layout", path)
+	require.Equal(t, want, got, "ToC row of %q", path)
+}
+
 func pathsOf(entries []indexEntry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
@@ -782,8 +844,16 @@ func pathsOf(entries []indexEntry) []string {
 	return out
 }
 
-// seedSourceIndexObject builds and uploads tenant-tagged postings and stats sections.
+// seedSourceIndexObject builds and uploads tenant-tagged postings and stats
+// sections with the default shard layout.
 func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, tenants ...string) {
+	t.Helper()
+	seedSourceIndexObjectWithShardLayout(ctx, t, bucket, path, ts, streams.DefaultShardLayout(), tenants...)
+}
+
+// seedSourceIndexObjectWithShardLayout is seedSourceIndexObject with the
+// given shard layout.
+func seedSourceIndexObjectWithShardLayout(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, shardLayout streams.ShardLayout, tenants ...string) {
 	t.Helper()
 
 	sections := make([]dataobj.SectionBuilder, 0, 2*len(tenants))
@@ -803,7 +873,7 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 		}
 		sections = append(sections, postingsBuilder)
 
-		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}))
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(shardLayout, []string{"label:service"}))
 		statsBuilder.SetTenant(tenant)
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       path,
@@ -946,7 +1016,7 @@ func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
 			source := newScenarioLogSource(t, "objects/source-0", tenant, entries, layout)
 			scenario := compactortest.New(ctx, t, window, []compactortest.Source{source})
 
-			refs, err := logSectionRefsFor(ctx, scenario.Bucket, tenant, compactortest.IndexPath(0))
+			refs, _, err := logSectionRefsFor(ctx, scenario.Bucket, tenant, compactortest.IndexPath(0))
 			require.NoError(t, err)
 
 			obj, err := dataobj.FromBucket(ctx, scenario.Bucket, source.Path, 0)

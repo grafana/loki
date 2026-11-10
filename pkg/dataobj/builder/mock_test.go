@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -166,6 +167,8 @@ type mockIndexer struct {
 	// delay is how long each call sleeps before it indexes. In a synctest
 	// bubble, the sleep advances the fake clock.
 	delay time.Duration
+	// shardBuckets is the shard layout of every successful result.
+	shardBuckets indexpointers.ShardBuckets
 }
 
 func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
@@ -180,18 +183,20 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 		return index.Result{}, err
 	}
 	return index.Result{
-		Path:      "index/" + objPath,
-		TimeRange: dataobj.TimeRange{Tenant: "test"},
+		Path:         "index/" + objPath,
+		TimeRange:    dataobj.TimeRange{Tenant: "test"},
+		ShardBuckets: m.shardBuckets,
 	}, nil
 }
 
 // mockTOCWriter implements the tocWriter interface, recording the entries it
 // was asked to write. It is safe for concurrent use.
 type mockTOCWriter struct {
-	mtx     sync.Mutex
-	paths   []string
-	tenants []string
-	err     error
+	mtx          sync.Mutex
+	paths        []string
+	tenants      []string
+	shardBuckets []indexpointers.ShardBuckets
+	err          error
 	// afterWrite, if set, runs after an entry is recorded, letting tests act
 	// between updating the ToC and committing the offset.
 	afterWrite func()
@@ -208,6 +213,7 @@ func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metas
 	}
 	m.paths = append(m.paths, entry.Path)
 	m.tenants = append(m.tenants, tenant)
+	m.shardBuckets = append(m.shardBuckets, entry.ShardBuckets)
 	return nil
 }
 
