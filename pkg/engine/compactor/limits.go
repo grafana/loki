@@ -8,4 +8,8 @@ type Limits interface {
 	// is true only when log compaction is enabled. The invalid combination
 	// (log without index) is rejected at config validation.
 	CompactionPhases(userID string) (runIndex, runLog bool)
+
+	// DeletionSweepEnabled reports whether the deletion sweep runs for the
+	// tenant.
+	DeletionSweepEnabled(userID string) bool
 }

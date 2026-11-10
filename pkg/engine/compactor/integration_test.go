@@ -26,6 +26,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -695,7 +696,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 	}
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
-	return &coordinator{
+	c := &coordinator{
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
@@ -711,20 +712,23 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
+	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal)
+	return c
 }
 
 func TestDeletionSweepDispatch(t *testing.T) {
-	t.Run("worker runs a dispatched DeletionSweep task and reports not implemented", func(t *testing.T) {
+	t.Run("worker runs a dispatched DeletionSweep task and stores the file list of the tenant", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
-		c := newIntegrationCoordinator(ctx, t, objstore.NewInMemBucket(), time.Now(), nil)
+		bucket := objstore.NewInMemBucket()
+		c := newIntegrationCoordinator(ctx, t, bucket, time.Now(), nil)
 
-		require.Positive(t, c.cfg.TaskMaxRetries)
+		c.sweeps.sweep(ctx, "acme")
 
-		_, err := c.logDispatcher.Run(ctx, "acme", []*physical.Plan{buildDeletionSweepPlan("acme")})
-		require.ErrorContains(t, err, "deletion-sweep job:")
-		require.ErrorContains(t, err, "DeletionSweep: not implemented")
-		require.ErrorContains(t, err, fmt.Sprintf("(attempts: %d)", c.cfg.TaskMaxRetries+1), "every retry must run on the worker")
+		r, err := deletion.OpenFileList(ctx, bucket, "acme")
+		require.NoError(t, err)
+		require.NoError(t, r.Close())
+		require.Equal(t, "acme", r.Tenant())
 	})
 }
 
@@ -781,11 +785,16 @@ func recordLogActors(c *coordinator) func() []string {
 	}
 }
 
-// integrationLimits enables every compaction phase for every tenant.
+// integrationLimits enables every compaction phase and the deletion sweep
+// for every tenant.
 type integrationLimits struct{}
 
 func (integrationLimits) CompactionPhases(string) (bool, bool) {
 	return true, true
+}
+
+func (integrationLimits) DeletionSweepEnabled(string) bool {
+	return true
 }
 
 // mustLoadTenantIndexes loads the ToC of every tenant in the window, keyed by tenant.

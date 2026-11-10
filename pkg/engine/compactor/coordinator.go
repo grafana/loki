@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
@@ -50,14 +51,20 @@ type coordinator struct {
 	// logMergePlanningStrategy decides when a log index needs compaction and
 	// groups its runs into merge tasks by size level.
 	logMergePlanningStrategy *v2.SizeLeveledStrategy
+	// sweeps dispatches the deletion sweeps. It is nil if the deletion sweep
+	// is disabled.
+	sweeps *sweepScheduler
 }
 
 // newCoordinator constructs a coordinator wired to a real
-// *metastore.TableOfContentsWriter and a workflow.Runner.
+// *metastore.TableOfContentsWriter and a workflow.Runner. bucket is the index
+// storage. dataBucket is the root of the data object storage. Only the
+// deletion sweep uses dataBucket, so it may be nil if the sweep is disabled.
 func newCoordinator(
 	cfg Config,
 	logger log.Logger,
 	bucket objstore.Bucket,
+	dataBucket objstore.BucketReader,
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
 	reg prometheus.Registerer,
@@ -71,7 +78,7 @@ func newCoordinator(
 		return runPlan(ctx, logger, runner, opts, plan)
 	}
 	metrics := newCoordinatorMetrics(reg)
-	return &coordinator{
+	c := &coordinator{
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
@@ -87,7 +94,11 @@ func newCoordinator(
 		metrics:                  metrics,
 		limits:                   limits,
 		logMergePlanningStrategy: logMergePlanningStrategy,
-	}, nil
+	}
+	if cfg.DeletionSweep.Enabled {
+		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(logger, "component", "deletion-sweep"), dataBucket, limits, run, metrics.taskAttemptsTotal)
+	}
+	return c, nil
 }
 
 // sleepUntil blocks for d or returns early when ctx is cancelled. A
@@ -108,6 +119,10 @@ func sleepUntil(ctx context.Context, d time.Duration) {
 // window's ToC and is enabled for compaction. It re-checks every
 // PollingInterval until ctx is cancelled, then waits for all workers to exit.
 //
+// If the deletion sweep is enabled, Run also keeps one sweep loop running for
+// each tenant that the sweep scheduler discovers and that has the sweep
+// enabled.
+//
 // Cancelling ctx stops new dispatches and retries. A dispatch in progress
 // runs its tasks to completion, then swaps the ToC if every task succeeded.
 // Run returns after the slowest one finishes. Nothing bounds that wait, so
@@ -118,8 +133,16 @@ func (c *coordinator) Run(ctx context.Context) error {
 		"polling_interval", c.cfg.PollingInterval,
 		"plan_version", c.cfg.PlanVersion,
 	)
-	s := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
-	return s.Run(ctx)
+	compaction := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return compaction.Run(gctx) })
+	g.Go(func() error {
+		if c.sweeps == nil {
+			return nil
+		}
+		return c.sweeps.supervisor(c.cfg.PollingInterval).Run(gctx)
+	})
+	return g.Wait()
 }
 
 // windows returns the metastore-aligned windows the coordinator compacts on
@@ -395,7 +418,7 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
+	artifacts, err := c.logDispatcher.RunToCompletion(ctx, tenant, plan.physicalPlans(tenant))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
@@ -629,7 +652,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		}
 	}
 
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+	artifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
