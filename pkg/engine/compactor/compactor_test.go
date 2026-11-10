@@ -112,6 +112,21 @@ func TestConfig_Validate_DisabledIsNoop(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 }
 
+func TestConfig_Validate_DisabledCompaction(t *testing.T) {
+	t.Run("returns an error when the deletion sweep is enabled while compaction is disabled", func(t *testing.T) {
+		cfg := Config{Enabled: false, DeletionSweep: DeletionSweepConfig{Enabled: true, MaxConcurrentSweeps: 1}}
+		require.ErrorIs(t, cfg.Validate(), errDeletionSweepRequiresCompaction)
+	})
+
+	t.Run("accepts the deletion sweep when compaction is enabled", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		require.NoError(t, cfg.Validate())
+	})
+}
+
 // TestConfig_Validate_EnabledRejectsBadValues captures the validation
 // surface that gets exercised when the operator turns the compaction
 // planner on.

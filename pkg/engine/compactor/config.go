@@ -327,9 +327,14 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
 }
 
-// Validate returns nil while the compaction planner is disabled.
+// Validate checks the config. It checks only the deletion sweep gate while
+// compaction is disabled, because the other settings have no effect then.
 func (cfg *Config) Validate() error {
 	if !cfg.Enabled {
+		// The sweep runs in the compaction planner, so it would never run.
+		if cfg.DeletionSweep.Enabled {
+			return errDeletionSweepRequiresCompaction
+		}
 		return nil
 	}
 
@@ -406,4 +411,5 @@ var (
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 	errInvalidMaxConcurrentSweeps          = errors.New("dataobj.compaction.deletion_sweep.max_concurrent_sweeps must be >= 1 when the deletion sweep is enabled")
+	errDeletionSweepRequiresCompaction     = errors.New("dataobj.compaction.deletion_sweep.enabled requires dataobj.compaction.enabled")
 )
