@@ -308,7 +308,7 @@ loop:
 		}
 
 		if s.State() != services.Running {
-			break // break out of the loop, and send SHUTTING_DOWN message.
+			break loop // send SHUTTING_DOWN and return, which ends the stream.
 		}
 
 		var resp *schedulerpb.SchedulerToFrontend
