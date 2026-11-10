@@ -80,7 +80,8 @@ func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scrat
 		cfg:     cfg,
 		metrics: metrics,
 
-		builder: dataobj.NewBuilder(scratchStore),
+		// The watermarks section comes first so that a reader finds it in its first request.
+		builder: dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(watermarks.SectionType())),
 	}, nil
 }
 

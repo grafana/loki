@@ -933,6 +933,23 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.ElementsMatch(t, []watermarks.Watermark{wm(0, 99), wm(1, 5)}, readWatermarks(ctx, t, bucket, wmTocPath()))
 	})
 
+	t.Run("moves the watermarks section before the index pointers when it rewrites an old-order ToC", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		seedOldOrderToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		require.Equal(t, []string{"indexpointers", "watermarks"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		writer := newTableOfContentsWriter(t, bucket)
+
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, []TableOfContentsEntry{
+			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
+		})
+		require.NoError(t, err)
+		require.True(t, replaced)
+
+		require.Equal(t, []string{"watermarks", "indexpointers"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
 	t.Run("writes nothing when another writer removed an old path and the ToC holds watermarks", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
