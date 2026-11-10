@@ -881,34 +881,40 @@ func Test_MaxQuerySize(t *testing.T) {
 	}
 
 	// splitQuery is a metric range query with a 14s step that the size limiter checks
-	// before the split middleware splits it. It is 1h long unless length is set. The split
-	// interval is 30m.
+	// before the split middleware splits it. It is 1h long unless length is set. The
+	// configured split interval is 30m, and a longer range vector makes the split interval
+	// as long as the range vector.
 	type splitQuery struct {
-		query         string
-		start         time.Time
-		length        time.Duration
-		limit         int
-		iqo           util.IngesterQueryOptions
-		ingesterSplit time.Duration
-		limitsContext *querylimits.Context
+		query            string
+		start            time.Time
+		length           time.Duration
+		limit            int
+		iqo              util.IngesterQueryOptions
+		ingesterSplit    time.Duration
+		limitsContext    *querylimits.Context
+		maxQueryLookback time.Duration
 	}
 
 	// runSplitQuery runs q through the size limiter and the split middleware. It returns the
-	// bytes that the splits read. Each split reads its own time range plus the range vector
-	// interval and offset of each matcher group.
+	// bytes that the splits read. The index stats go through limitsMiddleware, so they do not
+	// cover data before the lookback start. Each split reads its own time range, shifted back
+	// by the offset of each matcher group, plus the range vector interval before it. Like a
+	// querier, a split does not read data before the lookback start.
 	runSplitQuery := func(q splitQuery) (uint64, error) {
 		limits := fakeLimits{
 			maxQueryBytesRead:     q.limit,
 			maxQueryParallelism:   1,
+			maxQueryLength:        30 * 24 * time.Hour,
+			maxQueryLookback:      q.maxQueryLookback,
 			splitDuration:         map[string]time.Duration{"foo": 30 * time.Minute},
 			ingesterSplitDuration: map[string]time.Duration{"foo": q.ingesterSplit},
 		}
 
-		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		statsHandler := NewLimitsMiddleware(limits).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{
 				Bytes: bytesIn(req.GetStart(), req.GetEnd()),
 			}}, nil
-		})
+		}))
 
 		bytesRead := atomic.NewUint64(0)
 		splitHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -917,7 +923,13 @@ func Test_MaxQuerySize(t *testing.T) {
 				return nil, err
 			}
 			for _, grp := range groups {
-				bytesRead.Add(bytesIn(req.GetStart().Add(-grp.Interval-grp.Offset), req.GetEnd().Add(-grp.Offset)))
+				windowStart := req.GetStart().Add(-grp.Interval - grp.Offset)
+				if q.maxQueryLookback > 0 {
+					if lookbackStart := time.Now().Add(-q.maxQueryLookback); windowStart.Before(lookbackStart) {
+						windowStart = lookbackStart
+					}
+				}
+				bytesRead.Add(bytesIn(windowStart, req.GetEnd().Add(-grp.Offset)))
 			}
 
 			params, err := ParamsFromRequest(req)
@@ -998,6 +1010,16 @@ func Test_MaxQuerySize(t *testing.T) {
 			ingesterSplit: 15 * time.Minute,
 		})
 		require.Greater(t, bytesRead, uint64(4*bytesPerHour))
+	})
+
+	t.Run("counts the reads of a split metric query whose range vector reaches before the lookback start", func(t *testing.T) {
+		start := time.Now().UTC().Truncate(6 * time.Hour).Add(-24 * time.Hour)
+		requireLimitAtBytesRead(t, splitQuery{
+			query:            `sum by (env) (count_over_time({dataset="production"} |= "needle" [6h]))`,
+			start:            start,
+			length:           24 * time.Hour,
+			maxQueryLookback: time.Since(start) + 3*time.Hour,
+		})
 	})
 
 	t.Run("checks the query limits context with the data that its splits read again", func(t *testing.T) {
@@ -1302,15 +1324,15 @@ func TestSplitBytesRead(t *testing.T) {
 
 	t.Run("returns the bytes unchanged when the request has one split", func(t *testing.T) {
 		oneSplit := []queryrangebase.Request{&LokiRequest{StartTs: from, EndTs: to}}
-		require.Equal(t, uint64(1000), splitBytesRead(1000, time.Hour, from, to, oneSplit))
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, oneSplit))
 	})
 
 	t.Run("returns the bytes unchanged when the matcher group has no range vector interval", func(t *testing.T) {
-		require.Equal(t, uint64(1000), splitBytesRead(1000, 0, from, to, twoSplits))
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{}, from, to, time.Time{}, twoSplits))
 	})
 
 	t.Run("returns the bytes unchanged when the request is not split", func(t *testing.T) {
-		require.Equal(t, uint64(1000), splitBytesRead(1000, time.Hour, from, to, nil))
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, nil))
 	})
 
 	t.Run("returns the bytes unchanged when the split windows do not overlap", func(t *testing.T) {
@@ -1318,20 +1340,34 @@ func TestSplitBytesRead(t *testing.T) {
 			&LokiRequest{StartTs: from, EndTs: from.Add(time.Minute)},
 			&LokiRequest{StartTs: to.Add(-time.Minute), EndTs: to},
 		}
-		require.Equal(t, uint64(1000), splitBytesRead(1000, time.Minute, from, to, gappedSplits))
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Minute}, from, to, time.Time{}, gappedSplits))
 	})
 
 	t.Run("scales the bytes by the time that the overlapping split windows read", func(t *testing.T) {
-		require.Equal(t, uint64(1500), splitBytesRead(1000, time.Hour, from, to, twoSplits))
+		require.Equal(t, uint64(1500), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, twoSplits))
 	})
 
-	t.Run("scales the bytes by the number of splits when each split is one step of a long range interval", func(t *testing.T) {
+	t.Run("clips the stats and the split windows at the lookback start", func(t *testing.T) {
+		lookbackStart := from.Add(-40 * time.Minute)
+		require.Equal(t, uint64(1600), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, lookbackStart, twoSplits))
+	})
+
+	t.Run("applies the lookback start to the windows that the offset shifts back", func(t *testing.T) {
+		lookbackStart := from.Add(-40 * time.Minute)
+		grp := syntax.MatcherRange{Interval: time.Hour, Offset: 20 * time.Minute}
+		require.Equal(t, uint64(1600), splitBytesRead(1000, grp, from.Add(20*time.Minute), to.Add(20*time.Minute), lookbackStart, []queryrangebase.Request{
+			&LokiRequest{StartTs: from.Add(20 * time.Minute), EndTs: from.Add(40 * time.Minute)},
+			&LokiRequest{StartTs: from.Add(40 * time.Minute), EndTs: to.Add(20 * time.Minute)},
+		}))
+	})
+
+	t.Run("scales the bytes by the read time when 1h splits each read a 24h range interval", func(t *testing.T) {
 		dayTo := from.Add(24 * time.Hour)
 		hourlySplits := make([]queryrangebase.Request, 0, 24)
 		for start := from; start.Before(dayTo); start = start.Add(time.Hour) {
 			hourlySplits = append(hourlySplits, &LokiRequest{StartTs: start, EndTs: start.Add(time.Hour)})
 		}
-		require.Equal(t, uint64(12500), splitBytesRead(1000, 24*time.Hour, from, dayTo, hourlySplits))
+		require.Equal(t, uint64(12500), splitBytesRead(1000, syntax.MatcherRange{Interval: 24 * time.Hour}, from, dayTo, time.Time{}, hourlySplits))
 	})
 }
 
