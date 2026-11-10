@@ -255,6 +255,11 @@ type querySizeLimiter struct {
 	// limiter uses it to count the data that the splits of a range aggregation read again.
 	// It is nil when the limiter does not count re-reads.
 	splitter splitter
+
+	// maxQueryLookback is the max query lookback of a tenant. The limiter applies it to the
+	// query limits context before it splits the context range. It is nil when the limiter has
+	// no splitter.
+	maxQueryLookback func(context.Context, string) time.Duration
 }
 
 func newQuerySizeLimiter(
@@ -323,6 +328,7 @@ func newSplitQuerySizeLimiterMiddleware(
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		q := newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler)
 		q.splitter = splitter
+		q.maxQueryLookback = limits.MaxQueryLookback
 		return q
 	})
 }
@@ -344,6 +350,11 @@ func newSplitQuerySizeLimiterMiddleware(
 // the context range with the same splitter and the step of r, because the client sends
 // the same step for all parts of the context. Overlaps at the boundaries of the client's
 // own parts are not counted.
+//
+// The limiter starts the context range at the max query lookback, as the limits middleware
+// does for the request. So the index stats and the splits cover the same range, and a
+// context range that starts long ago is not split. A context range that ends before the
+// max query lookback is not counted.
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs []string, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
@@ -351,15 +362,17 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs
 	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
 	fullCtxBytes := uint64(0)
 	if queryLimitCtx != nil && queryLimitCtx.Expr != "" && !queryLimitCtx.From.IsZero() && !queryLimitCtx.To.IsZero() {
-		var err error
-		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To, func() []queryrangebase.Request {
-			if ctxReq := contextRequest(r, queryLimitCtx); ctxReq != nil {
-				return q.split(tenantIDs, ctxReq)
+		if limitsCtx, ok := q.withinMaxQueryLookback(ctx, tenantIDs, *queryLimitCtx); ok {
+			var err error
+			fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, limitsCtx.Expr, limitsCtx.From, limitsCtx.To, func() []queryrangebase.Request {
+				if ctxReq := contextRequest(r, &limitsCtx); ctxReq != nil {
+					return q.split(tenantIDs, ctxReq)
+				}
+				return nil
+			})
+			if err != nil {
+				return 0, nil
 			}
-			return nil
-		})
-		if err != nil {
-			return 0, nil
 		}
 	}
 
@@ -393,6 +406,28 @@ func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) [
 		return nil
 	}
 	return splits
+}
+
+// withinMaxQueryLookback returns c with its start moved to the max query lookback, if c
+// starts before it. It returns false when c ends before the max query lookback.
+func (q *querySizeLimiter) withinMaxQueryLookback(ctx context.Context, tenantIDs []string, c querylimits.Context) (querylimits.Context, bool) {
+	if q.maxQueryLookback == nil {
+		return c, true
+	}
+	lookbackCapture := func(id string) time.Duration { return q.maxQueryLookback(ctx, id) }
+	maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture)
+	if maxQueryLookback <= 0 {
+		return c, true
+	}
+
+	minStart := time.Now().Add(-maxQueryLookback)
+	if c.To.Before(minStart) {
+		return c, false
+	}
+	if c.From.Before(minStart) {
+		c.From = minStart
+	}
+	return c, true
 }
 
 // contextRequest returns a request for the range of the query limits context c, with the

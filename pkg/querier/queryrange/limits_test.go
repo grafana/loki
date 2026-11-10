@@ -1028,7 +1028,7 @@ func Test_MaxQuerySize(t *testing.T) {
 		limits := fakeLimits{maxQueryBytesRead: 1000, maxQueryLength: time.Hour}
 		_, statsResult := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 		statsHandler := NewLimitsMiddleware(limits).Wrap(statsResult)
-		splitter := countingSplitter{calls: atomic.NewInt32(0)}
+		splitter := newRecordingSplitter()
 		_, promHandler := promqlResult(matrix)
 
 		handler := newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler).Wrap(promHandler)
@@ -1048,7 +1048,61 @@ func Test_MaxQuerySize(t *testing.T) {
 			Plan:      testutil.MustPlan(query),
 		})
 		require.NoError(t, err)
-		require.Zero(t, splitter.calls.Load())
+		require.Empty(t, *splitter.requests)
+	})
+
+	// runWithLimitsContext runs a 30m metric query that ends now through the split size
+	// limiter, with a query limits context. The index stats go through limitsMiddleware, so
+	// they apply max_query_lookback and max_query_length. It returns the requests that the
+	// splitter got.
+	runWithLimitsContext := func(t *testing.T, limits fakeLimits, limitsCtx querylimits.Context) []queryrangebase.Request {
+		const query = `sum(count_over_time({app="foo"} |= "needle" [5m]))`
+		_, statsResult := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+		statsHandler := NewLimitsMiddleware(limits).Wrap(statsResult)
+		splitter := newRecordingSplitter()
+		_, promHandler := promqlResult(matrix)
+
+		handler := newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler).Wrap(promHandler)
+
+		limitsCtx.Expr = query
+		now := time.Now().UTC()
+		ctx := querylimits.InjectQueryLimitsContextIntoContext(user.InjectOrgID(context.Background(), "foo"), limitsCtx)
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			StartTs:   now.Add(-30 * time.Minute),
+			EndTs:     now,
+			Step:      (time.Minute).Milliseconds(),
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.NoError(t, err)
+		return *splitter.requests
+	}
+
+	t.Run("splits the query limits context only inside the max query lookback", func(t *testing.T) {
+		limits := fakeLimits{maxQueryBytesRead: 1 << 30, maxQueryLookback: 24 * time.Hour, maxQueryLength: 48 * time.Hour}
+		now := time.Now().UTC()
+
+		requests := runWithLimitsContext(t, limits, querylimits.Context{
+			From: now.Add(-25 * 365 * 24 * time.Hour),
+			To:   now,
+		})
+		require.Len(t, requests, 2)
+		require.False(t, requests[0].GetStart().Before(now.Add(-24*time.Hour)))
+	})
+
+	t.Run("does not count a query limits context that ends before the max query lookback", func(t *testing.T) {
+		limits := fakeLimits{maxQueryBytesRead: 1 << 30, maxQueryLookback: 24 * time.Hour, maxQueryLength: 48 * time.Hour}
+		now := time.Now().UTC()
+
+		requests := runWithLimitsContext(t, limits, querylimits.Context{
+			From: now.Add(-72 * time.Hour),
+			To:   now.Add(-48 * time.Hour),
+		})
+		require.Len(t, requests, 1)
+		require.Equal(t, `sum(count_over_time({app="foo"} |= "needle" [5m]))`, requests[0].GetQuery())
+		require.False(t, requests[0].GetStart().Before(now.Add(-time.Hour)))
 	})
 }
 
@@ -1394,12 +1448,17 @@ func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
 	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 }
 
-// countingSplitter counts its calls and never splits.
-type countingSplitter struct {
-	calls *atomic.Int32
+// recordingSplitter records the requests it gets and never splits. It is not safe for
+// concurrent use.
+type recordingSplitter struct {
+	requests *[]queryrangebase.Request
 }
 
-func (s countingSplitter) split(time.Time, []string, queryrangebase.Request) ([]queryrangebase.Request, bool) {
-	s.calls.Inc()
+func newRecordingSplitter() recordingSplitter {
+	return recordingSplitter{requests: &[]queryrangebase.Request{}}
+}
+
+func (s recordingSplitter) split(_ time.Time, _ []string, r queryrangebase.Request) ([]queryrangebase.Request, bool) {
+	*s.requests = append(*s.requests, r)
 	return nil, false
 }
