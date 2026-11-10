@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -389,6 +392,30 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 		})
 	}
 	return days
+}
+
+// needleKey identifies what a lookup does for expr: the needles SupportedQuery
+// extracts and the n-gram length. Queries with the same needles get the same key
+// whatever else is in them, including the stream matchers, which the lookup does
+// not use. ok is false when expr has no single log selector or no needles, and
+// the caller should key on the expression instead.
+func needleKey(expr syntax.Expr, ngramLength int) (key string, ok bool) {
+	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
+		expr = inner
+	}
+	selector, isLog := expr.(syntax.LogSelectorExpr)
+	if !isLog {
+		return "", false
+	}
+	needles := SupportedQuery(selector, ngramLength)
+	if len(needles) == 0 {
+		return "", false
+	}
+	sort.Strings(needles)
+	for i, n := range needles {
+		needles[i] = strconv.Quote(n) // needles are arbitrary bytes
+	}
+	return fmt.Sprintf("n=%d f=%s", ngramLength, strings.Join(needles, ",")), true
 }
 
 func buildHintCacheLogicalKey(tenant, query, minDate, day string) string {
