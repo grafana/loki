@@ -78,15 +78,17 @@ type Store interface {
 
 // syncerFlusher is the union of the index store's optional on-demand
 // capabilities: flushing the in-memory head to object storage (write side, used
-// by the ingester) and refreshing the object-listing cache + downloading newly
-// shipped indexes (read side, used by the index-gateway). The TSDB store -- the
-// only store implementing either -- implements both, so LokiStore collects them
-// through this single interface (see storeForPeriod). The public index.Flusher
-// and index.Syncer stay separate so write-only and read-only consumers each
-// depend only on the capability they use.
+// by the ingester), and refreshing the object-listing cache + downloading newly
+// shipped indexes or the indexes it should be query ready for (read side, used
+// by the index-gateway). The TSDB store -- the only store implementing any of
+// them -- implements all of them, so LokiStore collects them through this
+// single interface (see storeForPeriod). The public index.Flusher, index.Syncer
+// and index.QueryReadinessEnsurer stay separate so each consumer depends only
+// on the capability it uses.
 type syncerFlusher interface {
 	index.Flusher
 	index.Syncer
+	index.QueryReadinessEnsurer
 }
 
 // namedSyncerFlusher pairs a collected per-period store with its store name, so
@@ -123,13 +125,10 @@ type LokiStore struct {
 
 	// syncerFlushers are the per-period TSDB index stores collected at
 	// construction, used to force the in-memory head to object storage
-	// (FlushIndexes) and to refresh the object-listing cache + download newly
-	// shipped indexes on demand (TriggerSync/SyncStatuses).
+	// (FlushIndexes), to refresh the object-listing cache + download newly
+	// shipped indexes on demand (TriggerSync/SyncStatuses), and to download the
+	// indexes they should be query ready for (EnsureQueryReadiness).
 	syncerFlushers []namedSyncerFlusher
-
-	// queryReadinessEnsurers are the per-period index stores that can download
-	// their query ready indexes on demand (EnsureQueryReadiness).
-	queryReadinessEnsurers []index.QueryReadinessEnsurer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -221,11 +220,11 @@ func (s *LokiStore) TriggerSync() bool {
 	return started
 }
 
-// EnsureQueryReadiness downloads the missing indexes of every per-period index
-// store that supports it.
+// EnsureQueryReadiness downloads the missing indexes of every readable index
+// store.
 func (s *LokiStore) EnsureQueryReadiness(ctx context.Context) error {
-	for _, e := range s.queryReadinessEnsurers {
-		if err := e.EnsureQueryReadiness(ctx); err != nil {
+	for _, sf := range s.syncerFlushers {
+		if err := sf.EnsureQueryReadiness(ctx); err != nil {
 			return err
 		}
 	}
@@ -344,9 +343,9 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 
 	// Collect the TSDB index store's on-demand capabilities -- flushing the
 	// in-memory head to object storage (used by the ingester) and refreshing the
-	// listing + downloading newly shipped indexes (used by the index-gateway) --
-	// captured here before the monitored-reader-writer wrap, which implements
-	// neither.
+	// listing + downloading newly shipped or query ready indexes (used by the
+	// index-gateway) -- captured here before the monitored-reader-writer wrap,
+	// which implements none of them.
 	//
 	// We deliberately keep these off the index.Reader/Writer/ReaderWriter
 	// interfaces: those are also implemented by stores with nothing to flush or
@@ -354,13 +353,10 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	// IndexChunk) and the monitored wrapper -- so putting them there would force
 	// meaningless no-ops onto every store. Instead we treat them as optional
 	// capabilities and collect only the stores that implement them. The TSDB store
-	// (today the only such store) implements both, so a single syncerFlusher
-	// assertion collects it for both uses.
+	// (today the only such store) implements all of them, so a single
+	// syncerFlusher assertion collects it for every use.
 	if sf, ok := indexReaderWriter.(syncerFlusher); ok {
 		s.syncerFlushers = append(s.syncerFlushers, namedSyncerFlusher{name: name, syncerFlusher: sf})
-	}
-	if e, ok := indexReaderWriter.(index.QueryReadinessEnsurer); ok {
-		s.queryReadinessEnsurers = append(s.queryReadinessEnsurers, e)
 	}
 
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
