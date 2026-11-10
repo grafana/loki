@@ -1,5 +1,40 @@
 # Changes
 
+## [0.24.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.24.1...auth/v0.24.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* Adds additional validation for REST RPC requests ([#20753](https://github.com/googleapis/google-cloud-go/issues/20753)) ([7827181](https://github.com/googleapis/google-cloud-go/commit/7827181e7cb653fb69645c538b162b2c7490b0bb))
+* **auth/grpctransport:** Use storage-direct authority for Interconnect ([#20738](https://github.com/googleapis/google-cloud-go/issues/20738)) ([232cbe4](https://github.com/googleapis/google-cloud-go/commit/232cbe4bf444d2b697c456012cc703bff81006a3))
+
+## [0.24.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.24.0...auth/v0.24.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **auth:** Return empty tls.Certificate on secureconnect helper failure ([#20632](https://github.com/googleapis/google-cloud-go/issues/20632)) ([1cdb61a](https://github.com/googleapis/google-cloud-go/commit/1cdb61a25ffb7ac5d0c859191d485621c4f7aed7)), refs [#20593](https://github.com/googleapis/google-cloud-go/issues/20593)
+
+## [0.24.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.3...auth/v0.24.0) (2026-09-23)
+
+
+### Features
+
+* **all:** Update supported go versions ([#20520](https://github.com/googleapis/google-cloud-go/issues/20520)) ([90413d3](https://github.com/googleapis/google-cloud-go/commit/90413d3e9d381ef4b92e3c496d98b023c5b2d8cc))
+
+
+### Bug Fixes
+
+* **auth:** Honor DisableAsyncRefresh and EarlyTokenRefresh consistently ([#20564](https://github.com/googleapis/google-cloud-go/issues/20564)) ([39f0ea5](https://github.com/googleapis/google-cloud-go/commit/39f0ea51dcbcae2bef1e8c900bdf2e675a19199c)), refs [#20563](https://github.com/googleapis/google-cloud-go/issues/20563)
+
+## [0.23.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.2...auth/v0.23.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* Handle secureconnect helper failures gracefully ([c2794c6](https://github.com/googleapis/google-cloud-go/commit/c2794c6bdf267278489af42591f3c3549ae8fcba))
+* Handle secureconnect helper failures gracefully ([#20443](https://github.com/googleapis/google-cloud-go/issues/20443)) ([c2794c6](https://github.com/googleapis/google-cloud-go/commit/c2794c6bdf267278489af42591f3c3549ae8fcba))
+
 ## [0.23.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.1...auth/v0.23.2) (2026-08-20)
 
 

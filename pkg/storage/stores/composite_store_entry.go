@@ -27,7 +27,6 @@ import (
 )
 
 type StoreLimits interface {
-	MaxChunksPerQueryFromStore(string) int
 	MaxQueryLength(context.Context, string) time.Duration
 }
 

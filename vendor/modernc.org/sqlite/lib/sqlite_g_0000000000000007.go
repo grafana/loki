@@ -4,6 +4,10 @@
 
 package sqlite3
 
+const TIOCMGDTRWAIT = 1074033754
+
+const TIOCMSDTRWAIT = 2147775579
+
 type Trune_t = int32
 
 type rune_t = Trune_t

@@ -16,6 +16,7 @@ var encodingNames = map[string]format.PostingsEncoding{
 	"uint32":      format.PostingsEncodingFastUint32Blocked,
 	"roaring":     format.PostingsEncodingFastRoaringBlocked,
 	"deltavarint": format.PostingsEncodingFastDeltaVarIntBlocked,
+	"eliasfano":   format.PostingsEncodingFastEliasFanoBlocked,
 }
 
 func validEncodings() string {

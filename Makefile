@@ -22,7 +22,7 @@ TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
 
 # Ensure you run `make update-go-version` after changing this
-GO_VERSION         := 1.26.6
+GO_VERSION         := 1.27.3
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -52,6 +52,8 @@ else
   GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 endif
 DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
+# -race cannot be combined with -s/-w or -extldflags -static.
+GO_TEST_FLAGS      := -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
@@ -67,7 +69,6 @@ CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
-OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 MAKEFILE_IMAGE         := $(IMAGE_PREFIX)/loki-makefile:latest
 
 # OCI (Docker) setup
@@ -139,7 +140,7 @@ help: ## Display this help
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
 .PHONY: loki-image build-image build-image-push
-.PHONY: benchmark-store check-mod
+.PHONY: benchmark-store check-mod check-local-replaces
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
@@ -156,7 +157,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -365,10 +366,8 @@ include crosscompile.mk
 ########
 ifeq ($(UNAME_S),Linux)
 LINT_FLAGS=--timeout=15m --build-tags=linux
-GOFLAGS=-tags=linux
 else
 LINT_FLAGS=--timeout=15m
-GOFLAGS=""
 endif
 lint: INSTALL_WORKFLOW_DEPS_ARGS := lint loki-release
 lint: ## run linters
@@ -378,19 +377,6 @@ else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
-	GOFLAGS=$(GOFLAGS) faillint -paths \
-		"sync/atomic=go.uber.org/atomic" \
-		./...
-
-	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
-	faillint -paths \
-		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
-		./...
-
-	# We don't use opentracing anymore.
-	faillint -paths \
-		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
-		./...
 endif
 
 ########
@@ -398,11 +384,11 @@ endif
 ########
 
 test: all ## run the unit tests
-	go test $(GO_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	go test -race $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
 
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
+	$(GOTEST) -race -count=1 -v -tags=integration -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -640,10 +626,6 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 endif
 	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
 
-# Loki Operator
-loki-operator-image: ## build the operator docker image
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile ./operator
-
 #################
 # Documentation #
 #################
@@ -661,11 +643,22 @@ benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
+# A local replace hides the required version from Loki's own builds, but modules
+# that import Loki ignore our replaces and must resolve that version themselves.
+check-local-replaces:
+	@set -e; for mod in $$(sed -nE 's#^(replace)?[[:space:]]*([^[:space:]]+)( [^[:space:]]+)? => \.\.?/.*#\2#p' go.mod); do \
+		version=$$(go list -m -f '{{.Version}}' $$mod); \
+		echo "checking $$mod@$$version resolves without the local replace"; \
+		(cd $$(mktemp -d) && GOFLAGS= GOPROXY=https://proxy.golang.org go mod download $$mod@$$version) || \
+			(echo "$$mod@$$version does not resolve for modules that import Loki. Require a pseudo-version of a commit on main instead."; exit 1); \
+	done
+
 # support go modules
 check-mod:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
+	@$(MAKE) check-local-replaces
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
@@ -785,7 +778,7 @@ validate-dev-cluster-config: loki
 generate-example-config-doc:
 	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
+	echo -e "---\ntitle: Legacy configuration examples\nmenuTitle: Legacy examples\ndescription: Loki configuration examples and snippets using the legacy (pre-Thanos, non-default) storage clients.\nweight:  100\n---\n# Legacy configuration examples\n\nThese examples configure Loki's legacy, non-default storage clients. Since Loki 4.0, Loki uses the Thanos-based storage clients by default (the \`use_thanos_objstore\` setting defaults to \`true\`). For the current default storage client configuration, refer to [Configuration examples for using Thanos-based storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/)." > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
 	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
 		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \

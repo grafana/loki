@@ -134,19 +134,29 @@ type Writer struct {
 	// The default value is 32s. Users may want to pick a longer deadline if they
 	// expect to have a slow or unreliable internet connection.
 	//
+	// When the deadline is reached, the returned error wraps the error from the
+	// last failed attempt, so errors.Is, errors.As and status.Code can be used
+	// to inspect the underlying cause.
+	//
 	// To set a deadline on the entire upload, use context timeout or
 	// cancellation.
 	ChunkRetryDeadline time.Duration
 
 	// ChunkTransferTimeout sets a per-chunk request timeout for resumable uploads.
 	//
-	// For resumable uploads, the Writer will terminate the request and attempt
-	// a retry if the request to upload a particular chunk stalls for longer than
-	// this duration. Retries may continue until the ChunkRetryDeadline is reached.
+	// For resumable uploads, if the transfer of a single chunk stalls for longer
+	// than this duration without server acknowledgement, the Writer terminates
+	// the in-flight attempt and retries if the retry policy permits. Retries may
+	// continue until the ChunkRetryDeadline is reached.
 	//
-	// ChunkTransferTimeout is not applicable to uploads made using a gRPC client.
+	// For gRPC clients, ChunkTransferTimeout applies to resumable and appendable
+	// uploads. For gRPC resumable uploads, a non-zero value also enables adaptive
+	// BidiWriteObject stream rotation between flushed chunks when chunk latency
+	// degrades. It is not supported for one-shot uploads, which send the whole
+	// object in a single request. A non-appendable upload is one-shot when
+	// ChunkSize is 0 or the object's total size is at most ChunkSize.
 	//
-	// The default value is no timeout.
+	// The default value is no timeout (0).
 	ChunkTransferTimeout time.Duration
 
 	// ForceEmptyContentType is an optional parameter that is used to disable
@@ -184,7 +194,7 @@ type Writer struct {
 	//
 	// For parallel uploads, progress is reported when each part is successfully uploaded.
 	// Therefore, the progress may be delayed relative to the standard upload,
-	// and jump in increments of PartSize (e.g. 16MiB).
+	// and jump in increments of the part size used (e.g. 16MiB).
 	//
 	// ProgressFunc should return quickly without blocking.
 	ProgressFunc func(int64)
@@ -270,7 +280,11 @@ func (w *Writer) wrapWriteError(n int, err error) (int, error) {
 }
 
 func (w *Writer) isGRPCClient() bool {
-	_, ok := w.o.c.tc.(*grpcStorageClient)
+	tc := w.o.c.tc
+	if mc, ok := tc.(*metricsStorageClient); ok {
+		tc = mc.storageClient
+	}
+	_, ok := tc.(*grpcStorageClient)
 	return ok
 }
 
@@ -432,6 +446,13 @@ func (w *Writer) Close() error {
 	return w.markClosed(nil)
 }
 
+// Abort is unimplemented and always returns an error.
+//
+// This is experimental and its signature can change in the future.
+func (w *Writer) Abort() error {
+	return errMethodNotSupported
+}
+
 // markClosed marks the Writer as closed, records any closing error on Writer.err,
 // and records request body size metrics and trace span completion.
 func (w *Writer) markClosed(err error) error {
@@ -446,7 +467,7 @@ func (w *Writer) markClosed(err error) error {
 
 	if state := metricsStateFromContext(w.ctx); state != nil {
 		if state.metrics != nil && total > 0 {
-			state.metrics.requestBodySize.Record(w.ctx, total, metric.WithAttributes(attribute.String("rpc.method", "WriteObject")))
+			state.metrics.requestBodySize.Record(w.ctx, total, metric.WithAttributes(attribute.String("rpc.system.name", state.getSystemName()), attribute.String("rpc.method", "WriteObject"), attribute.String("server.address", stripPort(state.getTarget()))))
 		}
 		if state.record != nil {
 			state.record(closingErr)

@@ -6,7 +6,7 @@ import (
 
 // Config holds the configuration for label-based access control.
 type Config struct {
-	Enabled bool `yaml:"enabled" category:"experimental"`
+	Enabled bool `yaml:"enabled"`
 }
 
 // RegisterFlags adds the flags for LBAC to the given FlagSet.

@@ -26,7 +26,7 @@ func Xsqlite3_open16(tls *libc.TLS, zFilename uintptr, ppDb uintptr) (r int32) {
 		return rc
 	}
 	if zFilename == uintptr(0) {
-		zFilename = __ccgo_ts + 26292
+		zFilename = __ccgo_ts + 26434
 	}
 	pVal = _sqlite3ValueNew(tls, uintptr(0))
 	_sqlite3ValueSetStr(tls, pVal, -int32(1), zFilename, uint8(SQLITE_UTF16LE), libc.UintptrFromInt32(0))
@@ -77,14 +77,14 @@ func _parseDateOrTime(tls *libc.TLS, context uintptr, zDate uintptr, p uintptr) 
 		if _parseHhMmSs(tls, zDate, p) == 0 {
 			return 0
 		} else {
-			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1228) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
+			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1248) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
 				return _setDateTimeToCurrent(tls, context, p)
 			} else {
 				if _sqlite3AtoF(tls, zDate, bp) > 0 {
 					_setRawDateNumber(tls, p, **(**float64)(__ccgo_up(bp)))
 					return 0
 				} else {
-					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1232) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1239) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
+					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1252) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1259) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
 						libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 2, 0x4)
 						return _setDateTimeToCurrent(tls, context, p)
 					}

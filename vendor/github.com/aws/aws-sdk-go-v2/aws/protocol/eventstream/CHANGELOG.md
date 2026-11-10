@@ -1,3 +1,35 @@
+# v1.7.26 (2026-11-04)
+
+* **Dependency Update**: Update to smithy-go v1.28.8.
+
+# v1.7.25 (2026-10-27)
+
+* **Dependency Update**: Update to smithy-go v1.28.7.
+
+# v1.7.24 (2026-10-22)
+
+* **Bug Fix**: Update smithy-go to v1.28.6
+
+# v1.7.23 (2026-10-21)
+
+* **Bug Fix**: Enforce event stream header key value length limit instead of truncating
+
+# v1.7.22 (2026-10-09.2)
+
+* **Dependency Update**: Update to smithy-go v1.28.5.
+
+# v1.7.21 (2026-10-08)
+
+* **Dependency Update**: Update to smithy-go v1.28.4.
+
+# v1.7.20 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+
+# v1.7.19 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+
 # v1.7.18 (2026-08-14)
 
 * **Dependency Update**: Update to smithy-go v1.27.8.

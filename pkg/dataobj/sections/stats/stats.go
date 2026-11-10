@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // sectionType identifies stats sections in a data object (unexported, matching existing convention).
@@ -90,6 +91,7 @@ func CheckSection(section *dataobj.Section) bool {
 }
 
 // Stat represents a single row in the stats section.
+// A row contains information about a single sortable bucket: (Shard, Tenant Sort Schema)
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
@@ -102,8 +104,9 @@ type Stat struct {
 	UncompressedSize int64
 }
 
-// SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
-type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
+// SectionEncoder encodes a batch of sorted Stat rows of layout into a columnar
+// encoder, and records layout in the section metadata.
+type SectionEncoder func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error
 
 // schemaLabelNames parses a comma-separated fully-qualified sort schema
 // ("label:svc,label:cluster") into its bare label names ("svc", "cluster").

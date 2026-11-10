@@ -1377,10 +1377,10 @@ func (m *Reader) ReadMapStrIntf(mp map[string]any) (err error) {
 		err = ErrLimitExceeded
 		return
 	}
+	var key []byte
 	for i := uint32(0); i < sz; i++ {
-		var key string
 		var val any
-		key, err = m.ReadString()
+		key, err = m.ReadMapKey(key[:0])
 		if err != nil {
 			return
 		}
@@ -1388,7 +1388,7 @@ func (m *Reader) ReadMapStrIntf(mp map[string]any) (err error) {
 		if err != nil {
 			return
 		}
-		mp[key] = val
+		mp[string(key)] = val
 	}
 	return
 }

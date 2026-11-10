@@ -2,6 +2,7 @@ package dataobj
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"slices"
@@ -26,6 +27,10 @@ type encoder struct {
 	store    scratch.Store
 	sections []sectionInfo // Sections buffered in store.
 
+	// prioritySections lists the section types that come first in the
+	// object, in this order. Types match by [SectionType.Equals].
+	prioritySections []SectionType
+
 	typesReady       bool
 	dictionary       []string
 	dictionaryLookup map[string]uint32
@@ -46,11 +51,12 @@ type sectionInfo struct {
 	ExtensionData []byte
 }
 
-// newEncoder creates a new Encoder which writes a data object to the provided
-// writer.
-func newEncoder(store scratch.Store) *encoder {
+// newEncoder returns an encoder that buffers sections in store and puts
+// sections with a type in prioritySections first.
+func newEncoder(store scratch.Store, prioritySections []SectionType) *encoder {
 	return &encoder{
-		store: store,
+		store:            store,
+		prioritySections: slices.Clone(prioritySections),
 	}
 }
 
@@ -140,7 +146,31 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 	return key
 }
 
-func (enc *encoder) Metadata() (*filemd.Metadata, error) {
+// sortSections orders enc.sections for writing. The section table, the
+// metadata regions, and the data regions all use this order.
+//
+// Sections with a type in enc.prioritySections come first, grouped in the
+// order of enc.prioritySections. All other sections follow.
+//
+// The sort is stable, so sections of one type keep their append order.
+// Readers refer to a section by its index among sections of its type, such as
+// the index of a logs section.
+func (enc *encoder) sortSections() {
+	rank := func(typ SectionType) int {
+		if i := slices.IndexFunc(enc.prioritySections, typ.Equals); i >= 0 {
+			return i
+		}
+		return len(enc.prioritySections)
+	}
+
+	slices.SortStableFunc(enc.sections, func(a, b sectionInfo) int {
+		return cmp.Compare(rank(a.Type), rank(b.Type))
+	})
+}
+
+// metadata returns the file metadata for the buffered sections, in the order
+// of enc.sections. Call sortSections first.
+func (enc *encoder) metadata() (*filemd.Metadata, error) {
 	enc.initDictionary()
 
 	// relativeOffset is the offset where regions are written relative to the
@@ -150,9 +180,9 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 	// absolute offset.
 	relativeOffset := 0
 
-	// The metadata regions and data regions of all sections are encoded
-	// contiguously. To represent this in the SectionInfo headers, we update
-	// them in two passes, once for the data and once for the metadata.
+	// The metadata regions of all sections come first and are contiguous. The
+	// data regions follow and are also contiguous. The first loop places the
+	// metadata regions, and the second loop places the data regions.
 	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
 	// Determine metadata region location.
@@ -200,6 +230,10 @@ func (enc *encoder) Bytes() int { return enc.totalBytes }
 // encoded bytes. [snapshot.Close] should be called when the snapshot is no
 // longer needed to release sections.
 //
+// The returned snapshot takes over the buffered sections: from that point on
+// closing the snapshot, and not resetting the encoder, is what releases them
+// from the scratch store.
+//
 // Callers must manually call [encoder.Reset] after calling Flush to prepare for
 // the next encoding session. This is done to allow callers to ensure that the
 // returned snapshot is complete before the encoder is reset.
@@ -223,7 +257,8 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	var headerBuffer bytes.Buffer
 
-	metadata, err := enc.Metadata()
+	enc.sortSections()
+	metadata, err := enc.metadata()
 	if err != nil {
 		return nil, fmt.Errorf("building metadata: %w", err)
 	} else if _, err := headerBuffer.Write(magic); err != nil {
@@ -242,7 +277,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	// Convert our sections into regions for the snapshot to use. The order of
 	// regions *must* match the order of offset+length written in
-	// [encoder.Metadata]: all the metadata regions, followed by all the data
+	// [encoder.metadata]: all the metadata regions, followed by all the data
 	// regions.
 	//
 	// We encode metadata regions first to allow a single prefetch of the start
@@ -264,11 +299,21 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}
+
+	enc.sections = nil
 	return snapshot, nil
 }
 
-// Reset resets the Encoder to a fresh state.
+// Reset resets the Encoder to a fresh state, removing any sections it still
+// holds from the scratch store.
 func (enc *encoder) Reset() {
+	for _, section := range enc.sections {
+		// A failed removal is not actionable: the handle is unreachable either
+		// way, and [scratch.Store] implementations report their own failures.
+		_ = enc.store.Remove(section.Data.Handle)
+		_ = enc.store.Remove(section.Metadata.Handle)
+	}
+
 	enc.totalBytes = 0
 
 	enc.sections = nil

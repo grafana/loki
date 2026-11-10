@@ -458,6 +458,7 @@ type TIntegrityCk = struct {
 	FnErr    int32
 	Frc      int32
 	FnStep   Tu32
+	FnAbove  Tu8
 	FzPfx    uintptr
 	Fv0      TPgno
 	Fv1      TPgno
@@ -1186,6 +1187,11 @@ type TWal = struct {
 	FiReCksum            Tu32
 	FzWalName            uintptr
 	FnCkpt               Tu32
+	FlockMask            Tu32
+	FpFree               uintptr
+	FpWiValue            uintptr
+	FiWiPg               int32
+	FiSysErrno           int32
 	FpSnapshot           uintptr
 	FbGetSnapshot        int32
 }
@@ -1421,7 +1427,7 @@ type Tsqlite3 = struct {
 	FnextPagesize           int32
 	FnChange                Ti64
 	FnTotalChange           Ti64
-	FaLimit                 [13]int32
+	FaLimit                 [15]int32
 	FnMaxSorterMmap         int32
 	Finit1                  Tsqlite3InitInfo
 	FnVdbeActive            int32

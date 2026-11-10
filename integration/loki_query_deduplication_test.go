@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -29,7 +31,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	kafkaAddr := kafkaCluster.ListenAddrs()[0]
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())

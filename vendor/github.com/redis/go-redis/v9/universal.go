@@ -70,8 +70,26 @@ type UniversalOptions struct {
 	// default: 100 milliseconds
 	DialerRetryTimeout time.Duration
 
-	ReadTimeout           time.Duration
-	WriteTimeout          time.Duration
+	// ReadTimeout for socket reads. If reached, commands will fail
+	// with a timeout instead of blocking. Supported values:
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetReadDeadline calls completely.
+	//
+	// default: 5 seconds
+	ReadTimeout time.Duration
+
+	// WriteTimeout for socket writes. If reached, commands will fail
+	// with a timeout instead of blocking. Supported values:
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetWriteDeadline calls completely.
+	//
+	// default: 5 seconds (same as ReadTimeout, which it follows when unset)
+	WriteTimeout time.Duration
+
+	// ContextTimeoutEnabled controls whether the client respects context timeouts and deadlines.
+	// See https://redis.io/docs/latest/develop/clients/go/produsage/#timeouts
 	ContextTimeoutEnabled bool
 
 	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
@@ -87,6 +105,14 @@ type UniversalOptions struct {
 	//
 	// default: 32KiB (32768 bytes)
 	WriteBufferSize int
+
+	// PipelineReadBufferSize / PipelineWriteBufferSize size the dedicated pipeline
+	// pool's per-connection buffers. PipelinePoolSize sizes that pool; a negative
+	// value opts out of the dedicated pipeline pool. See the same fields on
+	// Options for details.
+	PipelineReadBufferSize  int
+	PipelineWriteBufferSize int
+	PipelinePoolSize        int
 
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
@@ -112,7 +138,10 @@ type UniversalOptions struct {
 	MaxRedirects   int
 	ReadOnly       bool
 	RouteByLatency bool
-	RouteRandomly  bool
+	// RouteByLatencyTolerance is passed through to ClusterOptions and FailoverOptions;
+	// see ClusterOptions.RouteByLatencyTolerance.
+	RouteByLatencyTolerance time.Duration
+	RouteRandomly           bool
 
 	// MasterName is the sentinel master name.
 	// Only for failover clients.
@@ -174,6 +203,25 @@ type UniversalOptions struct {
 	//
 	// Experimental: this API may change in a minor release.
 	ClientSideCacheStrategy CSCStrategy
+
+	// ClientSideCacheRefreshOnInvalidate re-fetches every cached entry of an
+	// invalidated key as soon as its invalidation arrives, whether or not it was
+	// read recently. See Options.ClientSideCacheRefreshOnInvalidate.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheRefreshOnInvalidate bool
+
+	// ClientSideCacheCoalesceMisses coalesces concurrent cache misses onto a held
+	// full-duplex connection. See Options.ClientSideCacheCoalesceMisses.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheCoalesceMisses bool
+
+	// ClientSideCacheInvalidationBatchWindow batches invalidation-driven deletes.
+	// See Options.ClientSideCacheInvalidationBatchWindow.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheInvalidationBatchWindow time.Duration
 }
 
 // Cluster returns cluster options created from the universal options.
@@ -195,10 +243,11 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		CredentialsProviderContext:   o.CredentialsProviderContext,
 		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
 
-		MaxRedirects:   o.MaxRedirects,
-		ReadOnly:       o.ReadOnly,
-		RouteByLatency: o.RouteByLatency,
-		RouteRandomly:  o.RouteRandomly,
+		MaxRedirects:            o.MaxRedirects,
+		ReadOnly:                o.ReadOnly,
+		RouteByLatency:          o.RouteByLatency,
+		RouteByLatencyTolerance: o.RouteByLatencyTolerance,
+		RouteRandomly:           o.RouteRandomly,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
@@ -214,6 +263,10 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
+
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
 
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
@@ -264,8 +317,9 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		SentinelUsername: o.SentinelUsername,
 		SentinelPassword: o.SentinelPassword,
 
-		RouteByLatency: o.RouteByLatency,
-		RouteRandomly:  o.RouteRandomly,
+		RouteByLatency:          o.RouteByLatency,
+		RouteByLatencyTolerance: o.RouteByLatencyTolerance,
+		RouteRandomly:           o.RouteRandomly,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
@@ -281,6 +335,10 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
+
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
 
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
@@ -343,6 +401,10 @@ func (o *UniversalOptions) Simple() *Options {
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
 
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
+
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
 		MaxConcurrentDials:    o.MaxConcurrentDials,
@@ -366,6 +428,10 @@ func (o *UniversalOptions) Simple() *Options {
 		ClientSideCacheConfig:     o.ClientSideCacheConfig,
 		ClientSideCache:           o.ClientSideCache,
 		ClientSideCacheStrategy:   o.ClientSideCacheStrategy,
+
+		ClientSideCacheRefreshOnInvalidate:     o.ClientSideCacheRefreshOnInvalidate,
+		ClientSideCacheCoalesceMisses:          o.ClientSideCacheCoalesceMisses,
+		ClientSideCacheInvalidationBatchWindow: o.ClientSideCacheInvalidationBatchWindow,
 	}
 }
 

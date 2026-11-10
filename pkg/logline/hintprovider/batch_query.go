@@ -111,8 +111,9 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []store.Meta,
 	stats *QueryStats,
+	ngramLength, maxParallel int,
 ) (map[shardKey][]HintTimeRange, error) {
-	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
+	jobs, metasByID, err := buildTermJobs(filters, overlapping, ngramLength)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,7 @@ func (p *LoglineHintProvider) executeQuery(
 		return byShard, nil
 	}
 
-	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats)
+	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats, maxParallel)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func (p *LoglineHintProvider) executeQuery(
 
 	state := newQueryExecutionState(readersByID)
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 
 	for _, job := range jobs {
 		if !state.shouldEnqueue(job.readerID) {
@@ -222,6 +223,12 @@ func buildTermJobs(
 	jobs := make([]termJob, 0, len(filters)*len(overlapping))
 	metasByID := make(map[string]store.Meta, len(overlapping))
 
+	// Filters are ANDed, so a filter that yields no terms under a version
+	// constrains nothing there and drops out. For example, v4 emits no term for
+	// a number shorter than 9 digits. hasTerms records, per index version,
+	// whether any filter is left to narrow it.
+	hasTerms := make(map[string]bool)
+
 	for _, filter := range filters {
 		// Per-version cache: each unique index version is extracted at most once
 		// per filter. The common case (all blocks share the current index version)
@@ -236,9 +243,7 @@ func buildTermJobs(
 				if err != nil {
 					return nil, nil, fmt.Errorf("block %s: %w", meta.ID(), err)
 				}
-				if len(ngrams) == 0 {
-					return nil, nil, ErrUnsupported
-				}
+				hasTerms[meta.Version] = hasTerms[meta.Version] || len(ngrams) > 0
 				orderedNgrams = orderUncorrelated(ngrams)
 				ngramsByVersion[meta.Version] = orderedNgrams
 			}
@@ -257,6 +262,14 @@ func buildTermJobs(
 			}
 		}
 	}
+
+	// A version that no filter can narrow leaves its blocks unconstrained, so
+	// the whole query passes through to a full Loki scan.
+	for _, ok := range hasTerms {
+		if !ok {
+			return nil, nil, ErrUnconstrained
+		}
+	}
 	return jobs, metasByID, nil
 }
 
@@ -264,6 +277,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 	ctx context.Context,
 	metasByID map[string]store.Meta,
 	stats *QueryStats,
+	maxParallel int,
 ) (map[string]*readerResult, error) {
 	readersByID := make(map[string]*readerResult, len(metasByID))
 	if len(metasByID) == 0 {
@@ -272,7 +286,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 	for readerID, meta := range metasByID {
 		g.Go(func() error {
 			if gCtx.Err() != nil {

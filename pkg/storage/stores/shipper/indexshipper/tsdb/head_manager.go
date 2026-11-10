@@ -101,6 +101,9 @@ type HeadManager struct {
 	// Locked before rotating heads/wal
 	mtx sync.RWMutex
 
+	// Locked to synchronize appending to active tenantHeads and logging to active headWAL
+	appendMtx sync.Mutex
+
 	// how often WALs should be rotated and TSDBs cut
 	period period
 
@@ -249,13 +252,27 @@ var errHeadManagerStopped = errors.New("head manager is stopping")
 // The freshly built TSDBs are handed to the index shipper but are not yet
 // uploaded to object storage; callers wanting them durable in object storage
 // must also force an upload (see (*store).FlushIndexes).
-func (m *HeadManager) Flush() error {
-	resp := make(chan error, 1)
+//
+// If ctx is done before the loop picks up the request, nothing is flushed. If it
+// is done while the flush is running, Flush returns ctx.Err() but the flush still
+// completes on the loop goroutine.
+func (m *HeadManager) Flush(ctx context.Context) error {
+	resp := make(chan error, 1) // buffered so the loop never blocks on an abandoned request
+	// initiate the flush
 	select {
 	case m.flush <- resp:
-		return <-resp
 	case <-m.cancel:
 		return errHeadManagerStopped
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// wait for completion
+	select {
+	case err := <-resp:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -306,6 +323,14 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
+
+	// Hold appendMtx across both the in-memory decision and the WAL write so
+	// concurrent Appends to the same series can't have their WAL records land
+	// out of order. The mtx.RLock alone isn't desired, since m.mtx.Lock() would
+	// lock against all other in-flight operations gated with m.mtx and cause a
+	// performance regression.
+	m.appendMtx.Lock()
+	defer m.appendMtx.Unlock()
 
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
@@ -421,6 +446,15 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
+	// A head's WAL dir and its TSDB's name are both its start at one-second
+	// resolution. Forced rotations (/flush/tenant) can land in the same second as
+	// the previous rotation, which would reuse both. This simple check
+	// prevents that by bumping the new head's start to one second after the previous
+	// head's start if they would otherwise collide.
+	if m.activeHeads != nil && t.Unix() <= m.activeHeads.start.Unix() {
+		t = time.Unix(m.activeHeads.start.Unix()+1, 0)
+	}
+
 	// create new wal
 	nextWALPath := walPath(m.name, m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -454,16 +488,24 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 }
 
 func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
-	period := m.period.PeriodFor(head.start)
 	if err := m.tsdbManager.BuildFromHead(head); err != nil {
 		return errors.Wrap(err, "building tsdb from head")
 	}
 
-	// Now that a TSDB has been created from this group, it's safe to remove them
-	if err := m.truncateWALForPeriod(period); err != nil {
+	// Now that a TSDB has been created from this head, it's safe to remove
+	// its WAL. We remove only the exact WAL this head was rotated out of
+	// (identified by its own rotation timestamp), rather than every WAL
+	// directory that happens to fall in the same rotation-period bucket:
+	// a forced flush (e.g. via the /flush/tenant endpoint) can rotate more
+	// than once within a single period, and a bucket-based sweep would
+	// delete the newly-active WAL out from under the ingester before
+	// anything is ever written to it, breaking every tenant sharing that
+	// WAL until the next rotation (which can immediately repeat the race).
+	if err := m.truncateWAL(head.start); err != nil {
 		level.Error(m.log).Log(
-			"msg", "failed truncating wal files",
-			"period", period,
+			"msg", "failed truncating wal file",
+			"head_start", head.start,
+			"period", m.period.PeriodFor(head.start),
 			"err", err,
 		)
 	}
@@ -471,7 +513,7 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 	return nil
 }
 
-func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
+func (m *HeadManager) truncateWAL(ts time.Time) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -481,16 +523,11 @@ func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
-	grp, _, err := walsForPeriod(managerWalDir(m.name, m.dir), m.period, period)
-	if err != nil {
-		return errors.Wrap(err, "listing wals")
+	path := walPath(m.name, m.dir, ts)
+	if err := os.RemoveAll(path); err != nil {
+		return errors.Wrapf(err, "removing tsdb wal: %s", path)
 	}
-	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
-
-	if err := m.removeWALGroup(grp); err != nil {
-		return errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period)
-	}
-	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
+	level.Debug(m.log).Log("msg", "removed wal", "ts", ts, "path", path)
 
 	return nil
 }
@@ -559,15 +596,6 @@ func walsForPeriod(dir string, period period, offset int) (WalGroup, bool, error
 	}
 
 	return *grp, true, nil
-}
-
-func (m *HeadManager) removeWALGroup(grp WalGroup) error {
-	for _, wal := range grp.wals {
-		if err := os.RemoveAll(walPath(m.name, m.dir, wal.ts)); err != nil {
-			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.name, m.dir, wal.ts))
-		}
-	}
-	return nil
 }
 
 func (m *HeadManager) removeLegacyWALGroup(grp WalGroup) error {
@@ -819,8 +847,13 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if !ok {
 		return
 	}
+	idx = NewTSDBIndex(tenant.Index())
+	// tenantHeads.Bounds() spans every tenant, so MultiIndex cannot tell that
+	// this tenant's head misses the query window.
+	if !Overlap(idx, newBounds(from, through)) {
+		return nil, false
+	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
 	if f := t.getChunkFilter(); f != nil {
 		idx.SetChunkFilterer(f)
 	}

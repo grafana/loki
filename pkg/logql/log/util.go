@@ -19,7 +19,7 @@ func uniqueString(s []string) []string {
 	return us
 }
 
-func sanitizeLabelKey(key string, isPrefix bool) string {
+func sanitizeLabelKey(key string) string {
 	if len(key) == 0 {
 		return key
 	}
@@ -27,7 +27,7 @@ func sanitizeLabelKey(key string, isPrefix bool) string {
 	if len(key) == 0 {
 		return key
 	}
-	if isPrefix && key[0] >= '0' && key[0] <= '9' {
+	if key[0] >= '0' && key[0] <= '9' {
 		key = "_" + key
 	}
 	return strings.Map(func(r rune) rune {

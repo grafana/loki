@@ -2,7 +2,7 @@
 Regexp2 is a feature-rich RegExp engine for Go.  It doesn't have constant time guarantees like the built-in `regexp` package, but it allows backtracking and is compatible with Perl5 and .NET.  You'll likely be better off with the RE2 engine from the `regexp` package and should only use this if you need to write very complex patterns or require compatibility with .NET.
 
 ## Basis of the engine
-The engine is ported from the .NET framework's System.Text.RegularExpressions.Regex engine.  That engine was open sourced in 2015 under the MIT license.  There are some fundamental differences between .NET strings and Go strings that required a bit of borrowing from the Go framework regex engine as well.  I cleaned up a couple of the dirtier bits during the port (regexcharclass.cs was terrible), but the parse tree, code emmitted, and therefore patterns matched should be identical.
+The engine is ported from the .NET framework's System.Text.RegularExpressions.Regex engine.  That engine was open sourced in 2015 under the MIT license.  There are some fundamental differences between .NET strings and Go strings that required a bit of borrowing from the Go framework regex engine as well.  The engine retains .NET-style syntax and matching features, with the compatibility priorities described below.
 
 ## New Code Generation
 For extra performance use `regexp2` with [`regexp2cg`](https://github.com/dlclark/regexp2cg). It is a code generation utility for `regexp2` and you can likely improve your regexp runtime performance by 3-10x in hot code paths. As always you should benchmark your specifics to confirm the results. Give it a try!
@@ -58,6 +58,10 @@ Group 0 is embedded in the Match.  Group 0 is an automatically-assigned group th
 
 The __last__ capture is embedded in each group, so `g.String()` will return the same thing as `g.Capture.String()` and  `g.Captures[len(g.Captures)-1].String()`.
 
+In `ECMAScript` mode, duplicate group names are allowed in separate alternatives and keep distinct group numbers. `GroupByName(name)` selects the participating group (or the first if none participated); `GroupNumberFromName(name)` always returns the first declaration's number, which may differ from the selected group.
+
+In `ECMAScript` mode, captures inside a quantified group are cleared before each repetition. Only the final successful repetition's captures remain; a group that does not participate in that repetition has no captures, and its backreference matches the empty string. Other modes retain capture history across repetitions.
+
 If you want to find multiple matches from a single input string you should use the `FindNextMatch` method.  For example, to implement a function similar to `regexp.FindAllString`:
 
 ```go
@@ -74,13 +78,64 @@ func regexp2FindAllString(re *regexp2.Regexp, s string) []string {
 
 `FindNextMatch` is optmized so that it re-uses the underlying string/rune slice.
 
+For capture positions on rune input, `FindRunesMatches` avoids allocating a full
+`Match` and its text metadata for every result:
+
+```go
+input := []rune("first=one second=two")
+re := regexp2.MustCompile(`(\w+)=(\w+)`)
+err := re.FindRunesMatches(input, -1, func(view regexp2.MatchView) bool {
+	index, length, ok := view.GroupRange(2)
+	if ok {
+		fmt.Println(string(input[index : index+length]))
+	}
+	return true // return false to stop successfully
+})
+if err != nil {
+	// Handle a timeout or backtracking-stack limit error.
+	log.Fatal(err)
+}
+```
+
+`MatchView` exposes only `GroupRange` and `GroupCount`. Group 0 is the whole match;
+other groups report their last remaining capture. A participating empty capture
+has `ok == true` and length 0, while an unmatched or fully balanced group has
+`ok == false`. Ranges use rune indexes in the original input, even with a nonzero
+`startAt`. For explicitly numbered groups, use `re.GetGroupNumbers()` to enumerate
+their possibly sparse numbers. ECMAScript capture clearing and duplicate-name
+group numbering follow the same rules as the full matching API.
+
+The view borrows reusable engine storage and is valid only during its callback.
+Save returned indexes and lengths to keep results; copying the view does not
+extend its lifetime. Do not modify the input during iteration. Initial setup and
+buffer growth may allocate, but range lookup does not. Use the full matching API
+when you need capture histories or independently owned matches.
+
 The internals of `regexp2` always operate on `[]rune` so `RuneIndex` and `RuneLength` data in a `Match` always reference a position in `rune`s rather than `byte`s (even if the input was given as a string). `ByteRange()` provides UTF-8 byte offsets, matching the original string input for string APIs. It's advisable to use the provided `String()` methods when you do not need explicit offsets. `ByteRange()` lazily caches byte offsets on the shared match text, so the first call on captures from the same match is not safe to run concurrently with other `ByteRange()` calls on that match.
+
+## Compatibility and Unicode case folding
+
+`regexp2`'s behavior and compatibility goals are different depending on the mode.
+
+| Mode | Compatibility priority |
+| --- | --- |
+| Default | .NET-style syntax and matching features, with Go's Unicode simple case folding preferred over exact .NET casing behavior. |
+| `RE2` | Go's `regexp` semantics where features overlap, while retaining regexp2 extensions. |
+| `ECMAScript` | The ECMAScript specification, including the distinction between legacy case-insensitive matching (`/i`) and Unicode case-insensitive matching (`/iu`). |
+
+Outside ECMAScript mode, `IgnoreCase` targets the locale-independent simple folding used by Go's `regexp` and [`unicode.SimpleFold`](https://pkg.go.dev/unicode#SimpleFold). For example, `(?i)^[a-z]$` matches the Kelvin sign `K` and long s `ſ`, and `(?i)^Σ$` matches final sigma `ς`. Differences from .NET's culture-sensitive or culture-invariant casing are intentional when they follow Go's simple folding. The engine does not select casing rules from the process locale. Simple folding does not perform Unicode normalization or multi-character expansion: `(?i)^ss$` does not match `ß`. Go's folding tables follow the Unicode version supplied by the consumer's Go toolchain.
+
+Case folding and character-class definitions are separate choices. Default mode retains .NET-style Unicode word classes, so `\w` matches `é`; `RE2` mode uses Go's ASCII word-class definition. Adopting Go's folding rules does not replace all default character classes with Go's definitions.
+
+With `ECMAScript|IgnoreCase`, legacy folding prevents non-ASCII characters from folding into ASCII: `^[a-z]$` matches `K` but not `K` or `ſ`. Adding `Unicode` selects ECMAScript `/iu` behavior, which allows those matches and includes `K` and `ſ` in `\w`. `\W` is the complement of that mode's word class. The `Unicode` option selects ECMAScript Unicode behavior when combined with `ECMAScript`; it is not a switch for enabling Unicode folding in default mode.
+
+Case-insensitive backreferences use the same folding policy: in default mode, both `(?i)^ss$` and `(?i)^(s)\1$` match `sſ`. The flags at the backreference determine whether its comparison ignores case, independently of the flags used to capture the text. These priorities are compatibility targets, not a guarantee of complete conformance; inconsistencies within a mode are bugs under this policy.
 
 ## Unicode character classes
 
 `regexp2` supports Unicode character classes with `\p{...}` and negated classes with `\P{...}`. Outside ECMAScript Unicode mode, it also accepts the RE2/PCRE-style one-letter form, such as `\pL`.
 
-The class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
+Outside `ECMAScript|Unicode` mode, the class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
 
 ```go
 letter := regexp2.MustCompile(`\p{L}+`)
@@ -88,7 +143,7 @@ katakana := regexp2.MustCompile(`\p{Katakana}+`)
 notEmoji := regexp2.MustCompile(`\P{Emoji}+`)
 ```
 
-`regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
+Outside `ECMAScript|Unicode` mode, `regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
 
 Valid property names and aliases come from Unicode 17.0.0 [`PropertyAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyAliases.txt). Valid property values and aliases come from Unicode 17.0.0 [`PropertyValueAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt). The generated tables use Unicode 17.0.0 data from [`DerivedCoreProperties.txt`](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt), [`emoji/emoji-data.txt`](https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt), [`auxiliary/GraphemeBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt), [`auxiliary/WordBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt), and [`auxiliary/SentenceBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/SentenceBreakProperty.txt) for the package-local properties whose data changes more frequently than the Go standard library tables.
 
@@ -177,7 +232,7 @@ The defaults are intentionally bounded:
 | `OptionDebug()` | false | Compile dumps and runner tracing. | Debug output volume only. | Useful for diagnostics, but it can produce noisy output and slower traced matching. |
 | `OptionIsCodeGen()` | false | Compile-time find-optimization analysis for [`regexp2cg`](https://github.com/dlclark/regexp2cg). | Per compiled regexp, during `Compile` or `MustCompile`. | Enables more expensive analysis intended for generated engines. Do not use it for normal interpreter execution; the interpreter defaults intentionally avoid this extra compile-time cost. |
 | `OptionMaxBacktrackingStackSize(n)` | 100,000 | The interpreter's per-match backtracking stack. | Per pooled runner. The initial allocation and subsequent growth are capped at the configured number of integer slots; the runner pool may retain stacks at their high-water size for reuse. | Lowering this bounds backtracking memory more tightly but may reject complex matches sooner with `ErrBacktrackingStackLimit`. Raising it permits deeper backtracking and increases possible memory use. A negative value disables the limit. |
-| `OptionMaxCachedRuneBufferLength(n)` | 256K runes | String APIs that run through pooled runners, such as `MatchString` and replacement-pattern `Replace`, when converting input strings to the engine's internal `[]rune` representation. | Process-wide shared `sync.Pool` retention by size class. This does not grow per compiled regexp or per input string; the practical working set follows recent and concurrent use across all regexps and can be dropped by GC. | Raising this lets calls use larger pooled rune buffers and can reduce allocations for repeated matches against large strings. Lowering it prevents larger buffers from being borrowed or returned, so large inputs allocate directly. |
+| `OptionMaxCachedRuneBufferLength(n)` | 256K runes | String APIs that run through pooled runners, such as `MatchString`, `FindStringMatch`, and replacement-pattern `Replace`, when converting input strings to the engine's internal `[]rune` representation. | Process-wide shared `sync.Pool` retention by size class. This does not grow per compiled regexp or per input string; the practical working set follows recent and concurrent use across all regexps and can be dropped by GC. | Raising this can reduce allocations for repeated searches on large strings, at the cost of retaining larger buffers for reuse. Lowering it reduces retained buffer memory but can increase allocations. Setting it to `0` disables rune buffer caching. |
 | `OptionMaxCachedReplaceBufferLength(n)` | 256 KB | Replacement-pattern `Replace` calls that build output through a shared byte buffer. | Process-wide shared `sync.Pool` retention by size class after replacement-pattern `Replace` runs. It does not grow from evaluator-based `ReplaceFunc` output and is shared across compiled regexps. | Raising this lets larger replacement outputs use pooled buffers and can reduce allocations. Lowering it prevents larger output buffers from being retained, so large replacements allocate directly. |
 | `OptionMaxCachedReplacerDataEntries(n)` | `16` | `Replace` with replacement pattern strings, after the replacement pattern is parsed into reusable replacement data. | Per compiled regexp. The cache grows as distinct cacheable replacement strings are used with `Replace`, up to this entry count. | Raising this helps when a single compiled regexp is used with many recurring replacement patterns. It increases per-regexp cache memory and lock-protected cache bookkeeping. Setting it to `0` disables this cache. |
 | `OptionMaxCachedReplacerDataBytes(n)` | 4 KB | The parsed replacement-pattern cache. Replacement strings longer than this are parsed for the call but not retained. | Per compiled regexp, combined with `OptionMaxCachedReplacerDataEntries`. Only replacement strings whose source text is at or below this size can add parsed data to the cache. | Raising this helps if large replacement patterns are reused. It can retain more memory per cached replacement. Lowering it avoids keeping unusual large replacement patterns around. |
@@ -211,7 +266,7 @@ For pooled buffer cache options, set `n` to `0` to disable pooling, or `-1` to a
 | conditionals `(?(expr)yes\|no)` | no | yes |
 
 ## RE2 compatibility mode
-The default behavior of `regexp2` is to match the .NET regexp engine, however the `RE2` option is provided to change the parsing to increase compatibility with RE2.  Using the `RE2` option when compiling a regexp will not take away any features, but will change the following behaviors:
+The default mode uses .NET-style syntax and matching features subject to the [compatibility and case-folding policy](#compatibility-and-unicode-case-folding). The `RE2` option increases compatibility with Go's RE2-based `regexp` package. Using the `RE2` option when compiling a regexp will not take away any features, but will change the following behaviors:
 * add support for named ascii character classes (e.g. `[[:foo:]]`)
 * add support for python-style capture groups (e.g. `(?P<name>re)`)
 * add support for python-style named backreferences (e.g. `(?P=name)`)
@@ -310,7 +365,22 @@ In this mode the engine attempts to match the [regex engine](https://tc39.es/ecm
 
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
 
-Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
+Without `Unicode`, escapes such as `\a`, `\e`, `\A`, `\G`, `\Z`, and `\z` match their literal letters. A control escape `\c` requires an ASCII letter; inside a character class, digits and `_` are also accepted, with character value modulo 32. Otherwise the backslash is literal and `c` and the following syntax are parsed normally: `\c*` matches a backslash followed by zero or more `c` characters, and `[\c]` matches either a backslash or `c`. With `Unicode`, Annex B is not applied, so `\c` must be followed by an ASCII letter and any other character is a compile error. A decimal escape such as `\1` or `\8` must refer to an existing capture group and cannot appear in a character class, so octal escapes, `\8` or `\9` with fewer groups, and `\0` followed by a digit are also compile errors. `Escape` emits `\x07` for BEL so that its output also preserves that character in ECMAScript mode.
+
+Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided. In that mode, adjacent four-hex high/low surrogate escapes, such as `\uD83D\uDE00`, form one code point in atoms, character classes, and ranges. Braced surrogate escapes and isolated surrogates remain separate.
+
+With `ECMAScript|Unicode`, property escapes use the exact names and aliases allowed by [ECMA-262](https://tc39.es/ecma262/multipage/text-processing.html#sec-runtime-semantics-unicodematchproperty-p):
+
+* General categories: `\p{Letter}`, `\p{Lu}`, `\p{General_Category=Lowercase_Letter}`, or `\p{gc=Ll}`.
+* Scripts: `\p{Script=Greek}` or `\p{sc=Grek}`.
+* Script extensions: `\p{Script_Extensions=Hiragana}` or `\p{scx=Hira}`. These include shared characters such as U+30FC, which has `Script=Common`.
+* Supported binary properties and aliases: for example, `\p{Alphabetic}`, `\p{Alpha}`, `\p{Emoji}`, `\p{ASCII}`, `\p{Any}`, and `\p{Assigned}`.
+
+These forms also work with `\P` and inside character classes. Names are case-sensitive; spaces and hyphens are not ignored. Bare script names, unsupported properties such as `GCB`, and binary properties with explicit values such as `ASCII=Yes` are rejected. Without `Unicode`, ECMAScript property escapes retain identity-escape behavior. The `/v` Unicode sets flag and properties of strings such as `RGI_Emoji` are not supported.
+
+Categories, scripts, and binary properties provided by Go follow the consumer's standard-library `unicode.Version`: Unicode 15.0.0 in Go 1.25–1.26, and Unicode 17.0.0 in Go 1.27. New scripts therefore require a Go toolchain that includes them. `Assigned` and the special script value `Unknown` also follow Go's assignments.
+
+Properties Go doesn't expose use supplemental Unicode 17.0.0 data, reusing this package's existing tables where available. Script extensions combine Go's script tables with explicit Unicode 17.0.0 extension overrides. The package doesn't embed replacements for Go's categories, scripts, or built-in binary properties. Regenerate only the supplemental data and exact alias mappings with `go run ./internal/unicodegen -ucd /path/to/UCD.zip`, using the pinned [Unicode 17.0.0 archive](https://www.unicode.org/Public/17.0.0/ucd/UCD.zip). Consumers don't need to run the generator.
 
 Perl/PCRE extensions `\Q...\E`, `\R`, `\X`, and possessive quantifiers are intentionally not enabled in this mode. The letter escapes retain the engine's existing ECMAScript identity-escape behavior.
 

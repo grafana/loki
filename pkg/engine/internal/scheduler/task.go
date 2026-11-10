@@ -37,10 +37,6 @@ type task struct {
 	//   - Worker-supplied captures are merged into this capture when their
 	//     TaskResultMessages arrive, so workflow consumers see a single
 	//     unified capture per task.
-	//
-	// capture is distinct from wfRegion: wfRegion is used for workflow-level
-	// aggregate counters (e.g., StatPlannedTasks), while capture is the
-	// container for per-task data.
 	capture *xcap.Capture
 
 	// region is the scheduler-owned region within capture. All scheduler-side
@@ -50,7 +46,6 @@ type task struct {
 
 	// Set once by [Scheduler.Start] and read thereafter.
 	metadata        http.Header
-	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
 
 	// Protected by [Scheduler.resourcesMut].
@@ -203,7 +198,7 @@ func (t *task) TryAssign(doAssign func() error) error {
 //   - [schedulerstat.TaskTotalDuration] is always recorded.
 //
 // It also records [schedulerstat.TaskFinishTime], the absolute terminal
-// timestamp, which the workflow uses to approximate the query's critical path.
+// timestamp, which the workflow uses to approximate the critical path.
 //
 // RecordTerminalObservations must only be called once per task and only after
 // the task has produced a terminal result.

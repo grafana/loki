@@ -1,11 +1,18 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func Test_buildURL(t *testing.T) {
@@ -30,6 +37,38 @@ func Test_buildURL(t *testing.T) {
 				t.Errorf("buildURL() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLiveTailQueryConnContextCancellation(t *testing.T) {
+	requestStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	c := &DefaultClient{Address: server.URL}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	errChan := make(chan error, 1)
+	go func() {
+		_, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
+		errChan <- err
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tail connection request did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-errChan:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("tail connection did not return after cancellation")
 	}
 }
 
@@ -99,6 +138,63 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 				ck := http.CanonicalHeaderKey(k)
 				assert.Equal(t, tt.want[k], got[ck])
 			}
+		})
+	}
+}
+
+func TestLiveTailQueryConnContextEstablishedConnection(t *testing.T) {
+	for _, cancelConnection := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cancel=%t", cancelConnection), func(t *testing.T) {
+			leaks := goleak.IgnoreCurrent()
+			t.Cleanup(func() { goleak.VerifyNone(t, leaks) })
+			closed := make(chan struct{})
+			upgrader := websocket.Upgrader{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				if err := conn.WriteMessage(websocket.TextMessage, []byte("connected")); err != nil {
+					return
+				}
+				messageType, message, err := conn.ReadMessage()
+				if err != nil {
+					return
+				}
+				if err := conn.WriteMessage(messageType, message); err != nil {
+					return
+				}
+				_, _, _ = conn.ReadMessage()
+				close(closed)
+			}))
+			t.Cleanup(server.Close)
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			c := &DefaultClient{Address: server.URL}
+			conn, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = conn.Close() })
+			if cancelConnection {
+				cancel()
+			}
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+			_, message, err := conn.ReadMessage()
+			require.NoError(t, err)
+			require.Equal(t, "connected", string(message))
+			require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte("still connected")))
+			_, message, err = conn.ReadMessage()
+			require.NoError(t, err)
+			require.Equal(t, "still connected", string(message))
+			require.NoError(t, conn.Close())
+			select {
+			case <-closed:
+			case <-time.After(5 * time.Second):
+				t.Fatal("established websocket was not closed")
+			}
+			// Connection setup must leave no cancellation watcher behind.
+			server.Close()
+			goleak.VerifyNone(t, leaks)
 		})
 	}
 }

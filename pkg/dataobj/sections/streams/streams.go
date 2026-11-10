@@ -5,6 +5,7 @@ package streams
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -15,6 +16,9 @@ var sectionType = dataobj.SectionType{
 	Kind:      "streams",
 	Version:   columnar.FormatVersion,
 }
+
+// SectionType returns the type of streams sections.
+func SectionType() dataobj.SectionType { return sectionType }
 
 // CheckSection returns true if section is a streams section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
@@ -88,10 +92,37 @@ func (s *Section) NumRows() int {
 	return int(s.columns[0].inner.Metadata().RowsCount)
 }
 
+// Layout returns the layout that the section records. ok is false if the
+// section records no layout.
+//
+// Layout returns an error if the recorded layout is not one that
+// [NewLayout] can produce: the shard count is not a valid shard layout, the
+// stream order is not [StreamOrderStableHashV1], or the section has column
+// sorts.
+func (s *Section) Layout() (layout Layout, ok bool, err error) {
+	si := s.inner.SortInfo()
+	if si == nil {
+		return Layout{}, false, nil
+	}
+	// A streams section writes SortInfo only to record a layout, so any other
+	// SortInfo is invalid.
+	if len(si.ColumnSorts) > 0 {
+		return Layout{}, false, fmt.Errorf("streams section has %d column sorts, want none", len(si.ColumnSorts))
+	}
+	layout, ok, err = LayoutFromSortInfo(si)
+	if err != nil {
+		return Layout{}, false, err
+	}
+	if !ok {
+		return Layout{}, false, fmt.Errorf("unsupported stream order %s", si.StreamOrder)
+	}
+	return layout, true, nil
+}
+
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.
@@ -162,4 +193,9 @@ func (ct ColumnType) String() string {
 		return fmt.Sprintf("ColumnType(%d)", ct)
 	}
 	return text
+}
+
+// HasColumn reports whether the section holds a column of the given type.
+func (s *Section) HasColumn(typ ColumnType) bool {
+	return slices.ContainsFunc(s.columns, func(column *Column) bool { return column.Type == typ })
 }

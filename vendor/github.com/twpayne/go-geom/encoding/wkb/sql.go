@@ -11,7 +11,7 @@ import (
 
 // ErrExpectedByteSlice is returned when a []byte is expected.
 type ErrExpectedByteSlice struct {
-	Value interface{}
+	Value any
 }
 
 func (e ErrExpectedByteSlice) Error() string {
@@ -75,8 +75,12 @@ type GeometryCollection struct {
 	opts []wkbcommon.WKBOption
 }
 
-// Scan scans from a []byte.
-func (g *Geom) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (g *Geom) Scan(src any) error {
+	if src == nil {
+		g.T = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -92,6 +96,9 @@ func (g *Geom) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of g.
 func (g *Geom) Value() (driver.Value, error) {
+	if g.T == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(g.T)
 }
 
@@ -100,8 +107,12 @@ func (g *Geom) Geom() geom.T {
 	return g.T
 }
 
-// Scan scans from a []byte.
-func (p *Point) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (p *Point) Scan(src any) error {
+	if src == nil {
+		p.Point = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -120,11 +131,18 @@ func (p *Point) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of p.
 func (p *Point) Value() (driver.Value, error) {
+	if p.Point == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(p.Point)
 }
 
-// Scan scans from a []byte.
-func (ls *LineString) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (ls *LineString) Scan(src any) error {
+	if src == nil {
+		ls.LineString = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -143,11 +161,18 @@ func (ls *LineString) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of ls.
 func (ls *LineString) Value() (driver.Value, error) {
+	if ls.LineString == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(ls.LineString)
 }
 
-// Scan scans from a []byte.
-func (p *Polygon) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (p *Polygon) Scan(src any) error {
+	if src == nil {
+		p.Polygon = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -166,11 +191,18 @@ func (p *Polygon) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of p.
 func (p *Polygon) Value() (driver.Value, error) {
+	if p.Polygon == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(p.Polygon)
 }
 
-// Scan scans from a []byte.
-func (mp *MultiPoint) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (mp *MultiPoint) Scan(src any) error {
+	if src == nil {
+		mp.MultiPoint = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -189,11 +221,18 @@ func (mp *MultiPoint) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of mp.
 func (mp *MultiPoint) Value() (driver.Value, error) {
+	if mp.MultiPoint == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(mp.MultiPoint)
 }
 
-// Scan scans from a []byte.
-func (mls *MultiLineString) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (mls *MultiLineString) Scan(src any) error {
+	if src == nil {
+		mls.MultiLineString = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -212,11 +251,18 @@ func (mls *MultiLineString) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of mls.
 func (mls *MultiLineString) Value() (driver.Value, error) {
+	if mls.MultiLineString == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(mls.MultiLineString)
 }
 
-// Scan scans from a []byte.
-func (mp *MultiPolygon) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (mp *MultiPolygon) Scan(src any) error {
+	if src == nil {
+		mp.MultiPolygon = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -235,11 +281,18 @@ func (mp *MultiPolygon) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of mp.
 func (mp *MultiPolygon) Value() (driver.Value, error) {
+	if mp.MultiPolygon == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(mp.MultiPolygon)
 }
 
-// Scan scans from a []byte.
-func (gc *GeometryCollection) Scan(src interface{}) error {
+// Scan scans from a []byte or nil.
+func (gc *GeometryCollection) Scan(src any) error {
+	if src == nil {
+		gc.GeometryCollection = nil
+		return nil
+	}
 	b, ok := src.([]byte)
 	if !ok {
 		return ErrExpectedByteSlice{Value: src}
@@ -258,6 +311,9 @@ func (gc *GeometryCollection) Scan(src interface{}) error {
 
 // Value returns the WKB encoding of gc.
 func (gc *GeometryCollection) Value() (driver.Value, error) {
+	if gc.GeometryCollection == nil {
+		return nil, nil //nolint:nilnil
+	}
 	return value(gc.GeometryCollection)
 }
 

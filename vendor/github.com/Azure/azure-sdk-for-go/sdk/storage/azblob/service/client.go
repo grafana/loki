@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/internal/sasurl"
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
@@ -293,14 +294,7 @@ func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.A
 		return "", err
 	}
 
-	endpoint := s.URL()
-	if !strings.HasSuffix(endpoint, "/") {
-		// add a trailing slash to be consistent with the portal
-		endpoint += "/"
-	}
-	endpoint += "?" + qps.Encode()
-
-	return endpoint, nil
+	return sasurl.AppendToAccountURL(s.URL(), qps.Encode()), nil
 }
 
 // FilterBlobs operation finds all blobs in the storage account whose tags match a given search expression.

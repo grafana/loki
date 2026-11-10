@@ -61,10 +61,17 @@ type CompressionOptions struct {
 	// A helper to get a shared Zstd Writer for the given EOptions.
 	// The shared writer can only used for EncodeAll.
 	zstdWriter func() *zstd.Encoder
+
+	// initOnce guards zstdWriter. Builders share one CompressionOptions, so several of them can
+	// call init at the same time.
+	initOnce sync.Once
 }
 
 func (o *CompressionOptions) init() {
-	if o.zstdWriter == nil {
+	o.initOnce.Do(func() {
+		if o.zstdWriter != nil {
+			return
+		}
 		o.zstdWriter = sync.OnceValue(func() *zstd.Encoder {
 			writer, err := zstd.NewWriter(nil, o.Zstd...)
 			if err != nil {
@@ -72,7 +79,7 @@ func (o *CompressionOptions) init() {
 			}
 			return writer
 		})
-	}
+	})
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a

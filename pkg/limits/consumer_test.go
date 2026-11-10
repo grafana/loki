@@ -54,7 +54,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -106,7 +106,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		s.clock = clock
-		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -116,6 +116,53 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 			n++
 		}
 		require.Equal(t, 0, n)
+	})
+
+	t.Run("rate buckets are merged into the stream shard store", func(t *testing.T) {
+		clock := quartz.NewMock(t)
+		otherZoneRecord := proto.StreamMetadataRecord{
+			Zone:     "zone2",
+			Tenant:   "tenant",
+			Metadata: &proto.StreamMetadata{StreamHash: 0x1},
+			ShardRateBucket: &proto.ShardRateBucket{
+				BucketStart: clock.Now().Truncate(DefaultBucketSize).UnixNano(),
+				Size_:       600,
+				Pushes:      3,
+			},
+			ShardCount: 2,
+		}
+		b, err := otherZoneRecord.Marshal()
+		require.NoError(t, err)
+		kafka := mockKafka{
+			fetches: []kgo.Fetches{{{
+				Topics: []kgo.FetchTopic{{
+					Topic: "test",
+					Partitions: []kgo.FetchPartition{{
+						Partition: 1,
+						Records: []*kgo.Record{{
+							Key:       []byte("tenant"),
+							Value:     b,
+							Timestamp: clock.Now(),
+						}},
+					}},
+				}},
+			}}},
+		}
+		reg := prometheus.NewRegistry()
+		m, err := newPartitionManager(reg)
+		require.NoError(t, err)
+		m.Assign([]int32{1})
+		m.SetReady(1)
+		usage, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
+		require.NoError(t, err)
+		usage.clock = clock
+		streamShards, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, "zone1", true, &mockLimits{}, reg)
+		require.NoError(t, err)
+		streamShards.clock = clock
+		c := newConsumer(&kafka, m, usage, streamShards, newOffsetReadinessCheck(m), "zone1",
+			log.NewNopLogger(), prometheus.NewRegistry())
+		require.NoError(t, c.pollFetches(context.Background()))
+		require.Equal(t, 1, countTrackedStreams(streamShards))
 	})
 }
 
@@ -187,7 +234,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
 	s.clock = clock
-	c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
+	c := newConsumer(&kafka, m, s, nil, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	ctx := context.Background()

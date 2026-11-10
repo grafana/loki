@@ -76,14 +76,11 @@ func (d *directConsumer) findNewAssignments() map[string]map[int32]Offset {
 
 		// If the above detected that we want to keep this topic, we
 		// set all partitions as usable.
-		//
-		// For internal partitions, we only allow consuming them if
-		// the topic is explicitly specified.
 		if !useTopic {
 			continue
 		}
 		partitions := topicPartitions.load()
-		if d.cfg.regex && partitions.isInternal || len(partitions.partitions) == 0 {
+		if len(partitions.partitions) == 0 {
 			continue
 		}
 		toUseTopic := make(map[int32]Offset, len(partitions.partitions))

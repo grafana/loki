@@ -268,12 +268,12 @@ func childArrayInfo(enc array.Encoding, parentType types.Type, parentRowCount in
 	case *array.EncodingBinary, *array.EncodingZstd:
 		// Offsets (Int32, N+1 rows) + optional validity.
 		return []types.Type{
-				&types.Int32{Nullable: false},
-				boolType,
-			}, []int{
-				parentRowCount + 1,
-				parentRowCount,
-			}
+			&types.Int32{Nullable: false},
+			boolType,
+		}, []int{
+			parentRowCount + 1,
+			parentRowCount,
+		}
 
 	case *array.EncodingBitpacked:
 		// Widths (Uint32, one per block) + optional validity.
@@ -282,12 +282,12 @@ func childArrayInfo(enc array.Encoding, parentType types.Type, parentRowCount in
 			numBlocks = (parentRowCount + enc.BlockSize - 1) / enc.BlockSize
 		}
 		return []types.Type{
-				&types.Uint32{Nullable: false},
-				boolType,
-			}, []int{
-				numBlocks,
-				parentRowCount,
-			}
+			&types.Uint32{Nullable: false},
+			boolType,
+		}, []int{
+			numBlocks,
+			parentRowCount,
+		}
 
 	case *array.EncodingZigZag:
 		// Data child is the unsigned variant of the parent type.

@@ -171,6 +171,11 @@ type TerminatingGatewayConfigEntry struct {
 	// Services is a list of service names represented by the terminating gateway.
 	Services []LinkedService `json:",omitempty"`
 
+	// CredentialInjection enables non-secret credential injection for linked services.
+	// Credential injection is a Consul Enterprise feature; Consul CE rejects
+	// entries that set it.
+	CredentialInjection *GatewayCredentialInjection `json:",omitempty" alias:"credential_injection"`
+
 	Meta map[string]string `json:",omitempty"`
 
 	// CreateIndex is the Raft index this entry was created at. This is a
@@ -189,6 +194,20 @@ type TerminatingGatewayConfigEntry struct {
 	// Namespace is the namespace the config entry is associated with.
 	// Namespacing is a Consul Enterprise feature.
 	Namespace string `json:",omitempty"`
+}
+
+// GatewayCredentialInjection configures the local credential processor for a
+// terminating gateway. Credential injection is a Consul Enterprise feature.
+type GatewayCredentialInjection struct {
+	UDSPath        string `json:",omitempty" alias:"uds_path"`
+	MessageTimeout string `json:",omitempty" alias:"message_timeout"`
+}
+
+// GatewayServiceCredential configures credential injection for a linked service.
+// Credential injection is a Consul Enterprise feature.
+type GatewayServiceCredential struct {
+	Mode      string `json:",omitempty"`
+	BindingID string `json:",omitempty" alias:"binding_id"`
 }
 
 // A LinkedService is a service represented by a terminating gateway
@@ -218,6 +237,11 @@ type LinkedService struct {
 
 	// SNI is the optional name to specify during the TLS handshake with a linked service.
 	SNI string `json:",omitempty"`
+
+	// Credential configures non-secret credential injection for this service.
+	// Credential injection is a Consul Enterprise feature; Consul CE rejects
+	// entries that set it.
+	Credential *GatewayServiceCredential `json:",omitempty"`
 }
 
 func (g *TerminatingGatewayConfigEntry) GetKind() string            { return g.Kind }
@@ -227,6 +251,24 @@ func (g *TerminatingGatewayConfigEntry) GetNamespace() string       { return g.N
 func (g *TerminatingGatewayConfigEntry) GetMeta() map[string]string { return g.Meta }
 func (g *TerminatingGatewayConfigEntry) GetCreateIndex() uint64     { return g.CreateIndex }
 func (g *TerminatingGatewayConfigEntry) GetModifyIndex() uint64     { return g.ModifyIndex }
+
+// APIGatewayListenerProtocol is the protocol that an APIGateway listener uses.
+type APIGatewayListenerProtocol = string
+
+const (
+	// APIGatewayListenerProtocolHTTP configures an HTTP/1.1 listener.
+	APIGatewayListenerProtocolHTTP APIGatewayListenerProtocol = "http"
+	// APIGatewayListenerProtocolHTTP2 configures an HTTP/2 listener. The
+	// downstream connection manager uses the HTTP/2 codec and advertises h2
+	// via ALPN; the upstream cluster also negotiates HTTP/2 end-to-end.
+	APIGatewayListenerProtocolHTTP2 APIGatewayListenerProtocol = "http2"
+	// APIGatewayListenerProtocolGRPC configures a gRPC listener. It is
+	// identical to http2 at the transport level; Consul routes gRPC traffic
+	// using standard HTTP/2 path-based matching (/package.Service/Method).
+	APIGatewayListenerProtocolGRPC APIGatewayListenerProtocol = "grpc"
+	// APIGatewayListenerProtocolTCP configures a plain TCP listener.
+	APIGatewayListenerProtocolTCP APIGatewayListenerProtocol = "tcp"
+)
 
 // APIGatewayConfigEntry manages the configuration for an API gateway
 // with the given name.
@@ -308,8 +350,10 @@ type APIGatewayListener struct {
 	Hostname string
 	// Port is the port at which this listener should bind.
 	Port int
-	// Protocol is the protocol that a listener should use, it must
-	// either be "http" or "tcp"
+	// Protocol is the protocol that a listener should use. Valid values are
+	// APIGatewayListenerProtocolHTTP ("http"), APIGatewayListenerProtocolHTTP2
+	// ("http2"), APIGatewayListenerProtocolGRPC ("grpc"), and
+	// APIGatewayListenerProtocolTCP ("tcp").
 	Protocol string
 	// TLS is the TLS settings for the listener.
 	TLS APIGatewayTLSConfiguration
@@ -323,7 +367,7 @@ type APIGatewayListener struct {
 	MaxRequestHeadersKB *uint32 `json:",omitempty"`
 }
 
-// APIGatewayTLSConfiguration specifies the configuration of a listener’s
+// APIGatewayTLSConfiguration specifies the configuration of a listener's
 // TLS settings.
 type APIGatewayTLSConfiguration struct {
 	// Certificates is a set of references to certificates

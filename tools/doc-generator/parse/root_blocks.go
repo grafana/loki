@@ -126,12 +126,12 @@ var (
 		{
 			Name:       "bloom_gateway",
 			StructType: []reflect.Type{reflect.TypeFor[bloomgateway.Config]()},
-			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+			Desc:       "Deprecated: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
 		},
 		{
 			Name:       "bloom_build",
 			StructType: []reflect.Type{reflect.TypeFor[bloombuild.Config]()},
-			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
+			Desc:       "Deprecated: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
 		},
 		{
 			Name:       "limits_config",

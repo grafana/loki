@@ -241,11 +241,11 @@ func BenchmarkDecode(b *testing.B) {
 
 		// The shape the new encoding takes for traffic that arrived over the native push API:
 		// nested, but with nothing lifted out of the entries.
-		nested := logproto.FromStream(stream)
+		nested := *logproto.FromStream(stream)
 
 		// The shape it takes for OTLP traffic, where lifting the attributes out is the point.
 		// Expanding them back is the work the new encoding adds to a decode.
-		shared := logproto.FromStream(stream)
+		shared := *logproto.FromStream(stream)
 		shared.ResourceLogs[0].Attrs = []push.LabelAdapter{
 			{Name: "host", Value: "host-1"},
 			{Name: "cluster", Value: "prod-eu-west-2"},
@@ -324,7 +324,7 @@ func TestDecodeWithoutLabelsIsSafeForConcurrentUse(t *testing.T) {
 
 		flat, err := Encode(0, "test-tenant", stream, 10<<20)
 		require.NoError(t, err)
-		values = append(values, flat[0].Value, nestedRecord(t, logproto.FromStream(stream)).Value)
+		values = append(values, flat[0].Value, nestedRecord(t, *logproto.FromStream(stream)).Value)
 	}
 
 	done := make(chan struct{})
@@ -365,7 +365,7 @@ func nestedRecords(t testing.TB, stream logproto.Stream, entriesPerRecord int) [
 	var records []*kgo.Record
 	for start := 0; ; start += entriesPerRecord {
 		end := min(start+entriesPerRecord, len(stream.Entries))
-		records = append(records, nestedRecord(t, logproto.FromStream(logproto.Stream{
+		records = append(records, nestedRecord(t, *logproto.FromStream(logproto.Stream{
 			Labels:  stream.Labels,
 			Hash:    stream.Hash,
 			Entries: stream.Entries[start:end],

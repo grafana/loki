@@ -52,7 +52,7 @@ func (m *Mutex) Unlock() {
 // immediately return it (passing through the gate). Writers
 // take the token and hold it, which blocks all new readers
 // until the writer unlocks. This provides writer priority
-// naturally — the moment a writer calls Lock, new RLock
+// naturally: the moment a writer calls Lock, new RLock
 // calls block on the gate.
 //
 // A separate writerSignal channel (buffered 1) is used by

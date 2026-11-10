@@ -28,7 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -222,6 +222,8 @@ func (c *queryClientMock) Context() context.Context {
 type querySampleClientMock struct {
 	util.ExtendedMock
 	logproto.Querier_QueryClient
+
+	closeSendCalls int
 }
 
 func newQuerySampleClientMock() *querySampleClientMock {
@@ -246,6 +248,7 @@ func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
 }
 
 func (c *querySampleClientMock) CloseSend() error {
+	c.closeSendCalls++
 	return nil
 }
 
@@ -629,6 +632,10 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 
 func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*stats.Stats, error) {
 	return nil, nil
+}
+
+func (q *querierMock) LoglineIndex(_ context.Context, _ *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+	return &logproto.LoglineIndexResponse{}, nil
 }
 
 func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {

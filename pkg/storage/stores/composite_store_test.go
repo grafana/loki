@@ -373,6 +373,19 @@ func (m mockStoreShards) GetShards(_ context.Context, _ string, _, _ model.Time,
 }
 
 func TestCompositeStore_GetShards(t *testing.T) {
+	t.Run("an unmatched range returns an empty response", func(t *testing.T) {
+		cs := CompositeStore{
+			stores: []compositeStoreEntry{
+				{model.TimeFromUnix(10), mockStoreShards{mockStore: mockStore(0), resp: &logproto.ShardsResponse{}}},
+			},
+		}
+
+		got, err := cs.GetShards(context.Background(), "fake", model.TimeFromUnix(-60), model.TimeFromUnix(0), 100, chunk.Predicate{})
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Empty(t, got.Shards)
+	})
+
 	t.Run("a single contributing store is returned unmodified, chunk groups included", func(t *testing.T) {
 		resp := &logproto.ShardsResponse{
 			Shards:      []logproto.Shard{{Bounds: logproto.FPBounds{Min: 0, Max: 100}, Stats: &stats.Stats{Bytes: 10}}},

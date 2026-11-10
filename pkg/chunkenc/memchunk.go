@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -1046,7 +1046,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 		var it iter.EntryIterator
 		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs)
+			it = iter.NewChainedIterator(blockItrs)
 		} else {
 			it = iter.NewSortEntryIterator(blockItrs, direction)
 		}
@@ -1079,7 +1079,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs), nil
+		return iter.NewChainedIterator(blockItrs), nil
 	}
 	return iter.NewSortEntryIterator(blockItrs, direction), nil
 }
@@ -1132,9 +1132,9 @@ func (c *MemChunk) SampleIterator(
 
 	var it iter.SampleIterator
 	if ordered {
-		it = iter.NewNonOverlappingSampleIterator(its)
+		it = iter.NewChainedSampleIterator(its)
 	} else {
-		it = iter.NewSortSampleIterator(its)
+		it = iter.NewTimestampFirstSortSampleIterator(its)
 	}
 
 	return iter.NewTimeRangedSampleIterator(
@@ -1443,7 +1443,7 @@ func (hb *headBlock) SampleIterator(
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewTimestampFirstMultiSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}

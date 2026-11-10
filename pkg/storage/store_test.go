@@ -27,8 +27,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -98,7 +98,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	return store
 }
 
-func Test_store_SelectLogs(t *testing.T) {
+func Test_LokiStore_SelectLogs(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
@@ -390,7 +390,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	}
 }
 
-func Test_store_SelectSample(t *testing.T) {
+func Test_LokiStore_SelectSample(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *logproto.SampleQueryRequest
@@ -708,7 +708,7 @@ func Test_store_SelectSample(t *testing.T) {
 				return
 			}
 
-			series, _, err := iter.ReadSampleBatch(it, uint32(100000))
+			series, _, err := iter.ReadTimestampFirstSampleBatch(it, uint32(100000))
 			_ = it.Close()
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)
@@ -716,6 +716,22 @@ func Test_store_SelectSample(t *testing.T) {
 			assertSeries(t, tt.expected, series.Series)
 		})
 	}
+}
+
+func TestLokiStore_SelectSamples_ShouldErrorOnUnknownSampleOrder(t *testing.T) {
+	unknownOrder := logproto.SampleOrder(99)
+
+	s := &LokiStore{
+		Store:        storeFixture,
+		cfg:          Config{MaxChunkBatchSize: 10},
+		chunkMetrics: NilMetrics,
+	}
+	req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[5m])", from, from.Add(6*time.Millisecond), nil, nil)
+	req.Order = unknownOrder
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	_, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	require.ErrorContains(t, err, "unknown sample order")
 }
 
 type fakeChunkFilterer struct{}
@@ -732,7 +748,12 @@ func (f fakeChunkFilterer) RequiredLabelNames() []string {
 	return []string{"foo"}
 }
 
-func Test_ChunkFilterer(t *testing.T) {
+func (f fakeChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
+func TestLokiStore_SelectWithChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
 		cfg: Config{
@@ -742,34 +763,43 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectSamples() error = %v", err)
-		return
-	}
-	defer it.Close()
-	for it.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
-		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
 
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectLogs() error = %v", err)
-		return
-	}
-	defer logit.Close()
-	for logit.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
+	t.Run("SelectSamples", func(t *testing.T) {
+		for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+			t.Run(order.String(), func(t *testing.T) {
+				req := newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)
+				req.Order = order
+				it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+				require.NoError(t, err)
+				defer it.Close()
+				for it.Next() {
+					l, err := syntax.ParseLabels(it.Labels())
+					require.NoError(t, err)
+					require.NotEqual(t, "bazz", l.Get("foo"))
+				}
+				require.NoError(t, it.Err())
+			})
+		}
+	})
+
+	t.Run("SelectLogs", func(t *testing.T) {
+		logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
-	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	require.NoError(t, err)
-	for _, id := range ids {
-		require.NotEqual(t, "bazz", id.Get("foo"))
-	}
+		defer logit.Close()
+		for logit.Next() {
+			l, err := syntax.ParseLabels(logit.Labels())
+			require.NoError(t, err)
+			require.NotEqual(t, "bazz", l.Get("foo"))
+		}
+	})
+
+	t.Run("SelectSeries", func(t *testing.T) {
+		ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+		require.NoError(t, err)
+		for _, id := range ids {
+			require.NotEqual(t, "bazz", id.Get("foo"))
+		}
+	})
 }
 
 func Test_PipelineWrapper(t *testing.T) {
@@ -1050,6 +1080,31 @@ func Test_store_GetSeries(t *testing.T) {
 			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"plan without deprecated selector",
+			withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"deprecated selector without plan",
+			withoutPlan(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"neither selector nor plan selects all series",
+			withoutPlan(withoutSelector(newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil))),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
 			},
 			1,
 		},
@@ -1516,6 +1571,71 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.False(t, it.Next())
 }
 
+func TestLokiStore_SelectLogs_CountsChunksScanned(t *testing.T) {
+	periodConfig := config.PeriodConfig{
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
+	}
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	at := func(ms int64) time.Time { return time.Unix(0, ms*int64(time.Millisecond)) }
+	mkChunk := func(ms ...int64) chunk.Chunk {
+		entries := make([]logproto.Entry, 0, len(ms))
+		for _, m := range ms {
+			entries = append(entries, logproto.Entry{Timestamp: at(m), Line: fmt.Sprint(m)})
+		}
+		return newChunk(chunkfmt, headfmt, logproto.Stream{Labels: `{foo="bar"}`, Entries: entries})
+	}
+	chunks := []chunk.Chunk{
+		mkChunk(1, 2),
+		mkChunk(5, 6), // between the two hint ranges
+		mkChunk(9, 10),
+		mkChunk(20), // outside the hint bounds, dropped before hint filtering
+	}
+	s := &LokiStore{
+		Store:        &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
+		cfg:          Config{MaxChunkBatchSize: 10},
+		chunkMetrics: NilMetrics,
+	}
+
+	for _, tc := range []struct {
+		name            string
+		hintRanges      []logproto.HintTimeRange
+		expectedScanned int64
+	}{
+		{
+			name: "hinted request",
+			hintRanges: []logproto.HintTimeRange{
+				{Start: at(0), End: at(3)},
+				{Start: at(8), End: at(11)},
+			},
+			expectedScanned: 2,
+		},
+		{
+			name:            "no hints",
+			expectedScanned: 4,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "test-user"))
+			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+				Selector:   `{foo="bar"}`,
+				Limit:      1000,
+				Direction:  logproto.FORWARD,
+				Start:      at(0),
+				End:        at(30),
+				Plan:       testutil.MustPlan(`{foo="bar"}`),
+				HintRanges: tc.hintRanges,
+			}})
+			require.NoError(t, err)
+			require.NoError(t, it.Close())
+
+			require.Equal(t, tc.expectedScanned, statsCtx.Result(0, 0, 0).TotalChunksScanned())
+		})
+	}
+}
+
 func Test_GetSeries(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:   config.DayTime{Time: 0},
@@ -1768,6 +1888,95 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 }
 
+// TestStore_TSDBHeadLabelsOutsideTenantBounds queries labels through an
+// ingester's store (the call Ingester.Label makes) while the chunks are still in
+// the TSDB head. The window overlaps another tenant's chunk, so the heads are
+// consulted, but it misses all of this tenant's chunks, so nothing may come back.
+func TestStore_TSDBHeadLabelsOutsideTenantBounds(t *testing.T) {
+	tempDir := t.TempDir()
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = "ingester-1"
+
+	cfg := Config{
+		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "objects")},
+		TSDBShipperConfig: tsdbShipperConfig,
+	}
+
+	start := parseDate("2019-01-01")
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(start)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v13",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	defer store.Stop()
+
+	periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(start))
+	require.NoError(t, err)
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	put := func(userID, ls string, from, to time.Time) {
+		chk := newChunk(chunkfmt, headfmt, logproto.Stream{
+			Labels:  ls,
+			Entries: []logproto.Entry{{Timestamp: from, Line: "a"}, {Timestamp: to, Line: "b"}},
+		})
+		chk.UserID = userID
+		require.NoError(t, store.PutOne(ctx, chk.From, chk.Through, chk))
+	}
+	put("fake", `{app="db", env="prod"}`, start.Add(time.Hour), start.Add(70*time.Minute))
+	put("fake", `{app="web", env="dev"}`, start.Add(time.Hour), start.Add(70*time.Minute))
+	put("other", `{app="other"}`, start, start.Add(3*time.Hour))
+
+	eq := labels.MustNewMatcher(labels.MatchEqual, "app", "db")
+	excludeEq := labels.MustNewMatcher(labels.MatchNotRegexp, "app", "d.*")
+
+	for _, tc := range []struct {
+		desc          string
+		from, through time.Time
+		matchers      []*labels.Matcher
+		names, values []string
+	}{
+		{desc: "misses tenant", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq}},
+		{desc: "misses tenant, contradictory", from: start.Add(20 * time.Minute), through: start.Add(30 * time.Minute), matchers: []*labels.Matcher{eq, excludeEq}},
+		{desc: "window ends on tenant start", from: start.Add(20 * time.Minute), through: start.Add(time.Hour), matchers: []*labels.Matcher{eq}},
+		{desc: "overlaps tenant", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq}, names: []string{"app", "env"}, values: []string{"prod"}},
+		{desc: "overlaps tenant, contradictory", from: start.Add(time.Hour), through: start.Add(2 * time.Hour), matchers: []*labels.Matcher{eq, excludeEq}},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			from, through := timeToModelTime(tc.from), timeToModelTime(tc.through)
+
+			names, err := store.LabelNamesForMetricName(ctx, "fake", from, through, "logs", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.names, names)
+
+			values, err := store.LabelValuesForMetricName(ctx, "fake", from, through, "logs", "env", tc.matchers...)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.values, values)
+		})
+	}
+}
+
 func TestStore_SyncStopInteraction(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -1883,7 +2092,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 
 		require.NoError(t, chunkEnc.Close())
 		from, to := chunkEnc.Bounds()
-		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()), 0)
 		if err := c.Encode(); err != nil {
 			panic(err)
 		}

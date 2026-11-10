@@ -1,13 +1,17 @@
 package limiter
 
 import (
+	"time"
+
 	bloombuilder "github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	bloomplanner "github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
@@ -32,6 +36,9 @@ type CombinedLimits interface {
 	bloombuilder.Limits
 	pattern.Limits
 	bucket.SSEConfigProvider
+	logline_query_limits.Limits
 	SortSchemaLabels(userID string) []string
+	DataObjShardLayout(userID string) streams.ShardLayout
 	CompactionPhases(userID string) (runIndex, runLog bool)
+	PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool)
 }

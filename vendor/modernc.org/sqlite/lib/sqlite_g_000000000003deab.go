@@ -394,6 +394,12 @@ func _sameSrcAlias(tls *libc.TLS, p0 uintptr, pSrc uintptr) (r int32) {
 	return 0
 }
 
+func _sqlite3AutoincrementEnd(tls *libc.TLS, pParse uintptr) {
+	if int32(Tbft(*(*uint16)(unsafe.Pointer(pParse + 40))&0x200>>9)) != 0 {
+		_autoIncrementEnd(tls, pParse)
+	}
+}
+
 // C documentation
 //
 //	/*
@@ -448,6 +454,22 @@ func _sqlite3FreeIndex(tls *libc.TLS, db uintptr, p uintptr) {
 	}
 	Xsqlite3_free(tls, (*TIndex)(unsafe.Pointer(p)).FaiRowEst)
 	_sqlite3DbFree(tls, db, p)
+}
+
+// C documentation
+//
+//	/*
+//	** Get a VDBE for the given parser context.  Create a new one if necessary.
+//	** If an error occurs, return NULL and leave a message in pParse.
+//	*/
+func _sqlite3GetVdbe(tls *libc.TLS, pParse uintptr) (r uintptr) {
+	if (*TParse)(unsafe.Pointer(pParse)).FpVdbe != 0 {
+		return (*TParse)(unsafe.Pointer(pParse)).FpVdbe
+	}
+	if (*TParse)(unsafe.Pointer(pParse)).FpToplevel == uintptr(0) {
+		libc.SetBitFieldPtr16Uint32(pParse+40, libc.Uint32FromInt32(1), 7, 0x80)
+	}
+	return _sqlite3VdbeCreate(tls, pParse)
 }
 
 // C documentation

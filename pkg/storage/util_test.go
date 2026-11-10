@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -114,7 +114,7 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 		_, _ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through, 0)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)
@@ -143,6 +143,18 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 	for _, shard := range shards {
 		req.Shards = append(req.Shards, shard.String())
 	}
+	return req
+}
+
+// withoutSelector clears the deprecated Selector field, leaving only the query plan.
+func withoutSelector(req *logproto.QueryRequest) *logproto.QueryRequest {
+	req.Selector = ""
+	return req
+}
+
+// withoutPlan clears the query plan, leaving only the deprecated Selector field.
+func withoutPlan(req *logproto.QueryRequest) *logproto.QueryRequest {
+	req.Plan = nil
 	return req
 }
 
@@ -257,7 +269,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0, false)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0)
 	if err != nil {
 		panic(err)
 	}

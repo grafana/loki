@@ -13,7 +13,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
@@ -29,9 +30,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -63,6 +64,12 @@ var (
 	lastEntryMinTime = time.Unix(-100, 0)
 )
 
+// seriesLimitPartialResultsWarning returns the warning of a query that returns partial results
+// because it reached the series limit.
+func seriesLimitPartialResultsWarning(maxSeries int) string {
+	return fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries)
+}
+
 type QueryParams interface {
 	LogSelector() (syntax.LogSelectorExpr, error)
 	GetStart() time.Time
@@ -79,6 +86,15 @@ type SelectLogParams struct {
 func (s SelectLogParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectLogParams {
 	cpy := *s.QueryRequest
 	cpy.StoreChunks = chunkRefGroup
+	return SelectLogParams{&cpy}
+}
+
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectLogParams) WithTimeRange(start, end time.Time) SelectLogParams {
+	cpy := *s.QueryRequest
+	cpy.Start = start
+	cpy.End = end
 	return SelectLogParams{&cpy}
 }
 
@@ -110,6 +126,15 @@ type SelectSampleParams struct {
 func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
 	cpy := *s.SampleQueryRequest
 	cpy.StoreChunks = chunkRefGroup
+	return SelectSampleParams{&cpy}
+}
+
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectSampleParams) WithTimeRange(start, end time.Time) SelectSampleParams {
+	cpy := *s.SampleQueryRequest
+	cpy.Start = start
+	cpy.End = end
 	return SelectSampleParams{&cpy}
 }
 
@@ -159,6 +184,8 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -168,9 +195,27 @@ func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
+}
+
+// queryOpts is the subset of EngineOpts that a query reads at execution time. The remaining
+// EngineOpts fields only matter when an engine or its evaluator is constructed.
+type queryOpts struct {
+	// logExecutingQuery controls if the query is logged when Exec is called.
+	logExecutingQuery bool
+	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
+	maxQuerySeriesCutoff bool
+}
+
+// newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
+func newQueryOpts(opts EngineOpts) queryOpts {
+	return queryOpts{
+		logExecutingQuery:    opts.LogExecutingQuery,
+		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
+	}
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -195,7 +240,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 	}
 	return &QueryEngine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize, l),
 		limits:           l,
 		opts:             opts,
 	}
@@ -204,12 +249,12 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (qe *QueryEngine) Query(params Params) Query {
 	return &query{
-		logger:       qe.logger,
-		params:       params,
-		evaluator:    qe.evaluatorFactory,
-		record:       true,
-		logExecQuery: qe.opts.LogExecutingQuery,
-		limits:       qe.limits,
+		logger:    qe.logger,
+		params:    params,
+		evaluator: qe.evaluatorFactory,
+		record:    true,
+		opts:      newQueryOpts(qe.opts),
+		limits:    qe.limits,
 	}
 }
 
@@ -220,12 +265,12 @@ type Query interface {
 }
 
 type query struct {
-	logger       log.Logger
-	params       Params
-	limits       Limits
-	evaluator    EvaluatorFactory
-	record       bool
-	logExecQuery bool
+	logger    log.Logger
+	params    Params
+	limits    Limits
+	evaluator EvaluatorFactory
+	record    bool
+	opts      queryOpts
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -258,7 +303,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
-	if q.logExecQuery {
+	if q.opts.logExecutingQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
 
 		logValues := []interface{}{
@@ -298,7 +343,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data, err)
 	}
 
 	return logqlmodel.Result{
@@ -317,7 +362,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	defer cancel()
 
 	if q.checkBlocked(ctx, tenants) {
-		return nil, logqlmodel.ErrBlocked
+		return nil, logqlerr.ErrBlocked
 	}
 
 	switch e := q.params.GetExpression().(type) {
@@ -385,7 +430,21 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
+	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
+	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
+	//
+	// A query counts as stream-first when any part of it runs in stream-first order.
+	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
+		if sampleOrderForQuery(ctx, expr, q.limits) == logproto.SAMPLE_ORDER_BY_STREAM {
+			stats.FromContext(ctx).AddStreamFirstQueries(1)
+		} else {
+			stats.FromContext(ctx).AddTimestampFirstQueries(1)
+		}
+	}
+
+	maxSeries := seriesLimitFor(tenantIDs, q.limits)
+
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err
 	}
@@ -399,8 +458,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
-			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true
@@ -459,6 +516,22 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	return limitExceeded
 }
 
+// maxQuerySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
+// query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
+// exempt, so they still get partial results and a warning from JoinSampleVector.
+func (q *query) maxQuerySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
+	if !q.opts.maxQuerySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+		return 0
+	}
+	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a
+	// millisecond a range leg of a binary operation can run steps past the end of a vector() leg.
+	// The binary operation discards those steps, so they are not a lower bound on the output.
+	if step := q.params.Step(); step > 0 && step < time.Millisecond {
+		return 0
+	}
+	return maxSeries
+}
+
 func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
@@ -471,12 +544,12 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		if httpreq.IsLogsDrilldownRequest(ctx) {
 			// For Logs Drilldown requests, return partial results with warning
 			vec = vec[:maxSeries]
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			// Since we've already reached the series limit, skip processing additional steps and add the initial vector to seriesIndex
 			next = false
 			vectorsToSeries(vec, seriesIndex)
 		} else {
-			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			return nil, logqlerr.NewSeriesLimitError(maxSeries)
 		}
 	}
 
@@ -511,10 +584,10 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		// maxSeries regardless of request type.
 		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
 			if !httpreq.IsLogsDrilldownRequest(ctx) {
-				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+				return nil, logqlerr.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			break
 		}
 
@@ -540,7 +613,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 		switch e := e.(type) {
 		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
-				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlerr.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
 		}
 		return true
@@ -654,9 +727,14 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 }
 
 type groupedAggregation struct {
-	labels      labels.Labels
-	value       float64
-	mean        float64
+	labels labels.Labels
+	value  float64
+	// mean is the running mean of OpTypeStddev and OpTypeStdvar.
+	mean float64
+	// sum is the accumulation state of OpTypeSum. avg is the accumulation state of OpTypeAvg.
+	// Neither operation accumulates in value, mean or groupCount.
+	sum         kahanSum
+	avg         kahanAvg
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap

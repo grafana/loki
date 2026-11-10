@@ -121,6 +121,7 @@ TEXT syscallX(SB), NOSPLIT, $0
 	// save R4, R5
 	MOVV R4, syscallArgs_a1(R13)
 	MOVV R5, syscallArgs_a2(R13)
+	MOVV R0, syscallArgs_a3(R13) // no errno here: clear the input argument
 
 	// save f0-f3
 	MOVD F0, syscallArgs_f1(R13)

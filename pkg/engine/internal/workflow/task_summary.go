@@ -1,16 +1,11 @@
 package workflow
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -49,7 +44,7 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 
 		// Identity
 		"task_id", task.ULID,
-		"query_id", wf.opts.ID,
+		"workflow_id", wf.manifest.ID,
 		"parent_task_id", wf.parentTaskID(task),
 		"task_type", taskTypeName(task),
 		"operator_type", taskOperatorType(task),
@@ -81,90 +76,20 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 		// Stage 9 (leaf) counters.
 		"pages_total", xcap.Value[int64](capture, dataobj.StatDatasetPagesTotal),
 		"pages_pruned", xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned),
-		"pages_downloaded", pagesDownloaded, // Pages downloaded by readerDownloader
-		"pages_bytes_downloaded", bytesDownloaded, // Bytes downloaded for pages by readerDownloader
+		"pages_downloaded", pagesDownloaded,
+		"pages_bytes_downloaded", bytesDownloaded,
 		"total_bytes_downloaded", xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded),
 
 		// Stage 10 counters.
 		"batches_emitted", xcap.Value[int64](capture, workerstat.TaskRecordsSent),
 		"batches_consumed", xcap.Value[int64](capture, workerstat.TaskDrainRecordsReceived),
-		"bytes_processed", bytesProcessed, // TODO(rfratto): missing semantics for non-leaf nodes
-		"lines_processed", linesProcessed, // TODO(rfratto): missing semantics for non-leaf nodes
+		"bytes_processed", bytesProcessed,
+		"lines_processed", linesProcessed,
 		"lines_emitted", xcap.Value[int64](capture, workerstat.TaskRowsSent),
-
-		// Task result cache.
-		"cache_check", taskResultCacheOutcome(capture),
-	)
-
-	if isPostingsScanTask(task) {
-		wf.printTaskPostingsLocalitySummary(task, capture)
-	} else if isScanTask(task) {
-		// print log section data locality as a separate log line.
-		wf.printTaskLogLocalitySummary(task, capture)
-	}
-}
-
-func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Capture) {
-	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatDatasetMaxRows)
-	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatStreamRelevantRows)
-	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamPagesTotal)
-	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamRelevantPages)
-	streamPageRuns := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamPageRuns)
-
-	level.Info(wf.logger).Log(
-		"msg", "task-log-locality-summary",
-		// Identity
-		"task_id", task.ULID,
-		"query_id", wf.opts.ID,
-		"parent_task_id", wf.parentTaskID(task),
-
-		// Locality
-		"dataset_rows_total", rowsTotal,
-		"stream_relevant_rows", relevantRows,
-		"stream_pages_total", streamPagesTotal,
-		"stream_relevant_pages", streamRelevantPages,
-		"stream_page_runs", streamPageRuns,
-		"stream_row_relevance", ratio(relevantRows, rowsTotal),
-		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
-		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
 	)
 }
 
-func (wf *Workflow) printTaskPostingsLocalitySummary(task *Task, capture *xcap.Capture) {
-	labelPagesTotal := xcap.Value[int64](capture, metastore.StatPostingsLabelColumnNameTotalPages)
-	labelPagesRelevant := xcap.Value[int64](capture, metastore.StatPostingsLabelColumnNameRelevantPages)
-
-	bloomPagesTotal := xcap.Value[int64](capture, metastore.StatPostingsBloomColumnNameTotalPages)
-	bloomPagesRelevant := xcap.Value[int64](capture, metastore.StatPostingsBloomColumnNameRelevantPages)
-
-	level.Info(wf.logger).Log(
-		"msg", "task-postings-locality-summary",
-		// Identity
-		"task_id", task.ULID,
-		"query_id", wf.opts.ID,
-		"parent_task_id", wf.parentTaskID(task),
-
-		// Locality
-		"postings_label_column_name_pages_total", labelPagesTotal,
-		"postings_label_column_name_pages_relevant", labelPagesRelevant,
-		"postings_label_column_name_page_relevance", ratio(labelPagesRelevant, labelPagesTotal),
-
-		"postings_bloom_column_name_pages_total", bloomPagesTotal,
-		"postings_bloom_column_name_pages_relevant", bloomPagesRelevant,
-		"postings_bloom_column_name_page_relevance", ratio(bloomPagesRelevant, bloomPagesTotal),
-	)
-}
-
-func ratio(part, total int64) float64 {
-	if total <= 0 {
-		return 0
-	}
-
-	return float64(part) / float64(total)
-}
-
-// parentTaskID returns the task's parent ULID, or the zero ULID if the task
-// is a root (one-parent assumption per the workflow planner).
+// parentTaskID returns the task's parent ULID, or nil if the task is a root.
 //
 // tasksMut must be held by the caller.
 func (wf *Workflow) parentTaskID(task *Task) any {
@@ -173,9 +98,8 @@ func (wf *Workflow) parentTaskID(task *Task) any {
 	if len(parents) == 0 {
 		return nil
 	}
-	// One-parent assumption per the workflow planner. If multi-parent task
-	// graphs are ever introduced, this and the per-task log schema will need
-	// to be revisited.
+	// A task has at most one parent. If multi-parent task graphs appear,
+	// revisit this function and the per-task log schema.
 	return parents[0].ULID
 }
 
@@ -189,32 +113,9 @@ func taskTypeName(task *Task) string {
 	return "non-leaf"
 }
 
-func isScanTask(task *Task) bool {
-	if task.Fragment == nil {
-		return false
-	}
-	for node := range task.Fragment.Graph().Nodes() {
-		if node.Type() == physical.NodeTypeDataObjScan || node.Type() == physical.NodeTypePointersScan {
-			return true
-		}
-	}
-	return false
-}
-
-func isPostingsScanTask(task *Task) bool {
-	if task.Fragment == nil {
-		return false
-	}
-	for node := range task.Fragment.Graph().Nodes() {
-		if node.Type() == physical.NodeTypePointersScan {
-			return true
-		}
-	}
-	return false
-}
-
-// taskOperatorType returns the type name of the task's root operator, or
-// the empty string if the fragment has no usable root.
+// taskOperatorType returns the type name of the task's root operator. It
+// returns the empty string if the task has no fragment, and "none" if the
+// fragment has no single root.
 func taskOperatorType(task *Task) string {
 	if task.Fragment == nil {
 		return ""
@@ -224,46 +125,7 @@ func taskOperatorType(task *Task) string {
 	if err != nil {
 		return "none"
 	}
-	root, err = unwrapPhysicalNode(task.Fragment, root)
-	if err != nil {
-		return "none"
-	}
 	return root.Type().String()
-}
-
-// unwrapPhysicalNode unwraps "helper" physical nodes to reveal the actual root
-// node.
-func unwrapPhysicalNode(plan *physical.Plan, root physical.Node) (physical.Node, error) {
-	// TODO(rfratto): this should really be behaviour defined in the physical
-	// package.
-
-	switch root := root.(type) {
-	case *physical.Cache:
-		next, err := getRootChild("caching", plan.Children(root))
-		if err != nil {
-			return nil, err
-		}
-		return unwrapPhysicalNode(plan, next)
-	case *physical.Batching:
-		next, err := getRootChild("batching", plan.Children(root))
-		if err != nil {
-			return nil, err
-		}
-		return unwrapPhysicalNode(plan, next)
-	}
-
-	return root, nil
-}
-
-func getRootChild(parent string, children []physical.Node) (physical.Node, error) {
-	switch len(children) {
-	case 0:
-		return nil, fmt.Errorf("%s node has no children", parent)
-	case 1:
-		return children[0], nil
-	default:
-		return nil, fmt.Errorf("%s node has multiple children", parent)
-	}
 }
 
 // taskOutcomeName maps a [TaskOutcome] to the summary's outcome label.
@@ -295,22 +157,4 @@ func cancellationPhaseName(result TaskResult) any {
 		return "pre_assignment"
 	}
 	return "during_execution"
-}
-
-// taskResultCacheOutcome derives the task result cache outcome for the task
-// from its capture, returning "hit", "miss", or "n/a".
-func taskResultCacheOutcome(capture *xcap.Capture) string {
-	var (
-		hits, _   = xcap.TryValue[int64](capture, executor.TaskCacheHits)
-		misses, _ = xcap.TryValue[int64](capture, executor.TaskCacheMisses)
-	)
-
-	switch {
-	case hits > 0:
-		return "hit"
-	case misses > 0:
-		return "miss"
-	default:
-		return "n/a"
-	}
 }

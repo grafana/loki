@@ -7,8 +7,9 @@ env:
   DRY_RUN: false
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
+  GO_VERSION: "1.27.3"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+  RELEASE_LIB_REF: "84115a2e9d807167f054d106c81f5e9f3230387e"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-minor"
@@ -18,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+    uses: "grafana/loki-release/.github/workflows/check.yml@84115a2e9d807167f054d106c81f5e9f3230387e"
     with:
-      build_image: "golang:1.26.6"
-      golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+      build_image: "golang:1.27.3"
+      golang_ci_lint_version: "v2.14.0"
+      release_lib_ref: "84115a2e9d807167f054d106c81f5e9f3230387e"
       skip_validation: false
   create-release-pr:
     needs:
@@ -44,22 +45,22 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -110,7 +111,7 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
@@ -131,9 +132,9 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.6"
+          --entrypoint /bin/sh "golang:1.27.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.6" | grep -q "golang"; then
+          if echo "golang:1.27.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -154,9 +155,9 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.6"
+          --entrypoint /bin/sh "golang:1.27.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.6" | grep -q "golang"; then
+          if echo "golang:1.27.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
@@ -187,22 +188,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -226,7 +227,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -264,22 +267,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -303,7 +306,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -341,22 +346,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -380,7 +385,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/cmd/logcli/Dockerfile"
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -424,22 +431,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -463,7 +470,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
         outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -501,22 +510,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -540,7 +549,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/cmd/loki/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -584,22 +595,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -623,7 +634,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/cmd/loki-canary/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -667,22 +680,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -706,7 +719,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -748,22 +763,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -796,7 +811,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.6
+          BUILD_IMAGE=golang:1.27.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
@@ -847,22 +862,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -886,7 +901,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/production/helm/loki/src/helm-test/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -930,22 +947,22 @@ jobs:
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"
@@ -969,7 +986,9 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -1013,22 +1032,22 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
-        node-version: 24
+        node-version: "24.22.1"
         package-manager-cache: false
     - name: "enable corepack"
       run: "corepack enable"

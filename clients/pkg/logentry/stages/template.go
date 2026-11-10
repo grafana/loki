@@ -3,6 +3,7 @@ package stages
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/hex"
 	"errors"
 	"reflect"
@@ -16,8 +17,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
-
-	"golang.org/x/crypto/sha3"
 )
 
 // Config Errors

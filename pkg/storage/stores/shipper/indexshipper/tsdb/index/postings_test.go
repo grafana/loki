@@ -15,6 +15,7 @@ package index
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -476,6 +477,94 @@ func TestMergedPostings(t *testing.T) {
 			require.Equal(t, expected, res)
 		})
 	}
+}
+
+func TestMergedPostingsKeepsErrorWhenAllInputsFail(t *testing.T) {
+	errFail := errors.New("fail")
+	p := Merge(ErrPostings(errFail), ErrPostings(errFail))
+	require.False(t, p.Next())
+	require.ErrorIs(t, p.Err(), errFail)
+}
+
+// failingPostings returns the given refs and then fails with err, rather than
+// reporting that it's exhausted.
+type failingPostings struct {
+	*ListPostings
+	err    error
+	failed bool
+}
+
+func newFailingPostings(err error, refs ...storage.SeriesRef) *failingPostings {
+	return &failingPostings{ListPostings: newListPostings(refs...), err: err}
+}
+
+func (p *failingPostings) Next() bool {
+	ok := p.ListPostings.Next()
+	p.failed = p.failed || !ok
+	return ok
+}
+
+func (p *failingPostings) Seek(v storage.SeriesRef) bool {
+	ok := p.ListPostings.Seek(v)
+	p.failed = p.failed || !ok
+	return ok
+}
+
+func (p *failingPostings) Err() error {
+	if p.failed {
+		return p.err
+	}
+	return nil
+}
+
+func TestMergedPostingsStopsOnInputError(t *testing.T) {
+	errFail := errors.New("fail")
+
+	t.Run("Next", func(t *testing.T) {
+		p := Merge(
+			newFailingPostings(errFail, 1, 3),
+			newListPostings(2, 4, 5, 6),
+		)
+		var got []storage.SeriesRef
+		for p.Next() {
+			got = append(got, p.At())
+		}
+		require.Equal(t, []storage.SeriesRef{1, 2, 3}, got)
+		require.ErrorIs(t, p.Err(), errFail)
+		require.False(t, p.Next())
+		require.False(t, p.Seek(6))
+	})
+
+	t.Run("Seek", func(t *testing.T) {
+		p := Merge(
+			newFailingPostings(errFail, 1, 3),
+			newListPostings(2, 4, 5, 6),
+		)
+		require.False(t, p.Seek(5))
+		require.ErrorIs(t, p.Err(), errFail)
+		require.False(t, p.Next())
+	})
+}
+
+func TestMergedPostingsAllInputsEmpty(t *testing.T) {
+	inputs := func() []Postings {
+		exhausted := newListPostings(1, 2)
+		for exhausted.Next() {
+		}
+		return []Postings{newListPostings(), exhausted, EmptyPostings()}
+	}
+
+	t.Run("Next", func(t *testing.T) {
+		p := Merge(inputs()...)
+		require.False(t, p.Next())
+		require.NoError(t, p.Err())
+	})
+
+	t.Run("Seek", func(t *testing.T) {
+		p := Merge(inputs()...)
+		require.False(t, p.Seek(0))
+		require.NoError(t, p.Err())
+	})
 }
 
 func TestMergedPostingsSeek(t *testing.T) {
@@ -950,4 +1039,57 @@ func TestShardedPostings(t *testing.T) {
 		require.Equal(t, storage.SeriesRef(i), shardedPostings.At())
 	}
 	require.Equal(t, false, shardedPostings.Next())
+}
+
+func newShardBoundaryPostings(refs []storage.SeriesRef) Postings {
+	return NewShardedPostings(NewListPostings(refs), NewShard(1, 4), FingerprintOffsets{
+		{0, 0}, {5, 1 << 62}, {10, 1 << 63}, {15, 3 << 62},
+	})
+}
+
+func TestShardedPostingsSeekDoesNotEscapeShard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		refs []storage.SeriesRef
+	}{
+		{name: "past upper bound", refs: []storage.SeriesRef{20}},
+		{name: "gap across upper bound", refs: []storage.SeriesRef{1, 20}},
+		{name: "at exclusive upper bound", refs: []storage.SeriesRef{10}},
+		{name: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newShardBoundaryPostings(tc.refs)
+			// Seeking inside the candidate range must fail if the next ref is outside it.
+			require.False(t, p.Seek(5))
+			require.NoError(t, p.Err())
+		})
+	}
+}
+
+func TestShardedPostingsNextDoesNotEscapeShard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		refs []storage.SeriesRef
+		want []storage.SeriesRef
+	}{
+		{name: "starts past upper bound", refs: []storage.SeriesRef{20}},
+		{name: "stops at gap", refs: []storage.SeriesRef{1, 20}, want: []storage.SeriesRef{1}},
+		{name: "starts at exclusive upper bound", refs: []storage.SeriesRef{10}},
+		{name: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Next uses Seek during initialization, so even its first result must be bounded.
+			got, err := ExpandPostings(newShardBoundaryPostings(tc.refs))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestNewMergedPostingsNoInputs(t *testing.T) {
+	for _, in := range [][]Postings{nil, {}} {
+		var p Postings
+		require.NotPanics(t, func() { p = newMergedPostings(in) })
+		require.Equal(t, EmptyPostings(), p)
+	}
 }

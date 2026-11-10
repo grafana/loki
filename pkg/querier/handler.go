@@ -89,6 +89,13 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			return nil, err
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
+	case *logproto.LoglineIndexRequest:
+		result, err := h.api.LoglineIndexHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.LoglineIndexResponse{Response: result}, nil
+
 	case *logproto.ShardsRequest:
 		request := loghttp.NewRangeQueryWithDefaults()
 		request.Start = concrete.From.Time()

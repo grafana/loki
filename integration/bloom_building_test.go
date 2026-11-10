@@ -35,7 +35,7 @@ func TestBloomBuilding(t *testing.T) {
 	)
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		require.NoError(t, clu.Cleanup())
@@ -160,7 +160,7 @@ func writeSeries(t *testing.T, nSeries int, nLogsPerSeries int, cliDistributor *
 }
 
 func checkCompactionFinished(t *testing.T, cliCompactor *client.Client) {
-	checkForTimestampMetric(t, cliCompactor, "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds")
+	checkForTimestampMetric(t, cliCompactor, "loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds")
 }
 
 func checkBloomBuildFinished(t *testing.T, cliPlanner *client.Client) {
@@ -198,7 +198,7 @@ func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore 
 				},
 				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v13",
+				Schema:     fmt.Sprintf("v%d", config.LatestSchemaVersion),
 			},
 		},
 	}

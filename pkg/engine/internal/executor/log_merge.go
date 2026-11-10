@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -14,33 +13,41 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
+var errNoSourceObjects = errors.New("no source objects found")
+
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
-	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		arts, err := c.doLogObjectMerge(ctx, node)
+	return newLazyPipeline(func(ctx context.Context) Pipeline {
+		artifact, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		if len(arts) == 0 {
-			return emptyPipeline()
+		if artifact == nil {
+			return errorPipeline(ctx, errors.New("LogMerge: missing result artifact"))
 		}
-		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
-	}, nil)
+		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return NewBufferedPipeline(rec)
+	})
 }
 
 // dataObjectBucket returns the bucket for reading source log objects and writing
 // compacted log objects. Both live at the unprefixed dataobj root (the objects/
 // namespace), not under the index-storage prefix that c.bucket carries, so it
 // prefers dataBucket and falls back to bucket when dataBucket is unset (e.g.
-// query-only workers or tests that share a single bucket).
+// tests that share a single bucket).
 func (c *Context) dataObjectBucket() objstore.Bucket {
 	if c.dataBucket != nil {
 		return c.dataBucket
@@ -48,57 +55,49 @@ func (c *Context) dataObjectBucket() objstore.Bucket {
 	return c.bucket
 }
 
-func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
+func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) (*v2.ResultArtifact, error) {
 	start := time.Now()
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	sources, err := c.collectLogSources(ctx, node)
+	inputs, err := c.prepareLogMergeInputs(ctx, node)
 	if err != nil {
-		return nil, err
-	}
-	if len(sources) == 0 {
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return nil, fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
-	}
+		if errors.Is(err, errNoSourceObjects) {
+			c.logMergeObserver.ObserveLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		}
 
-	ok, mismatch, err := sourcesMatchSortLayout(ctx, sources, node.SortSchema)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		level.Warn(c.logger).Log(
-			"msg", "LogMerge: skipping task; source object sort layout does not match target",
-			"tenant", node.Tenant,
-			"path", mismatch,
-			"sort_schema", strings.Join(node.SortSchema, ","),
-		)
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return nil, nil
-	}
-
-	table, err := buildGlobalStreamTable(sources, node.SortSchema)
-	if err != nil {
 		return nil, err
 	}
 
-	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
+	indexBuilder, err := indexobj.NewBuilder(node.Tenant, c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	calc := dataobjindex.NewCalculator(indexBuilder)
+	calc := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
+	// The scratch store outlives the task. A failed or cancelled merge must
+	// release the sections it buffered, or they stay for the process
+	// lifetime. After a successful flush, the reset does nothing.
+	defer calc.Reset()
 
-	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.MixedObjectIterator(ctx, sections, remaps, node.SortSchema)
-	if err != nil {
-		return nil, fmt.Errorf("starting k-way log merge: %w", err)
-	}
+	merged := sortmerge.MixedRunIterator(ctx, inputs.runs)
 
 	// Consume the globally-sorted stream and build compacted object
-	w, err := c.newLogObjectWriter(node, table, calc)
+	w, err := c.newLogObjectWriter(node, inputs.layout, inputs.table, calc)
 	if err != nil {
 		return nil, err
+	}
+	defer w.discard()
+	var (
+		inputBytesTotal int64
+		dups            logs.DuplicateTracker
+		inputBytesBatch int64
+		count           int
+	)
+	batchRecords := 1000
+	observeBatch := func() {
+		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
+		inputBytesTotal += inputBytesBatch
 	}
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
@@ -108,63 +107,71 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return nil, err
 		}
+		size := rec.UncompressedSize()
+		inputBytesBatch += size
+		count++
+		if count%batchRecords == 0 {
+			observeBatch()
+			inputBytesBatch = 0
+			count = 0
+		}
+		_ = dups.IsDuplicate(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
+	}
+	// Count any remaining records that haven't been added to the metric yet
+	observeBatch()
+	// The index stats record the same UncompressedSize per record, so a
+	// difference means the planner and this merge disagree on which records
+	// the key range holds. Fail before the index is written, so the source
+	// index stays and no record is lost.
+	if node.InputBytes > 0 && inputBytesTotal != node.InputBytes {
+		return nil, fmt.Errorf("LogMerge: read %d input bytes, but the index stats hold %d bytes for the key range", inputBytesTotal, node.InputBytes)
 	}
 	stats, err := w.finish(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if stats.OutputObjects == 0 {
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.logMergeObserver.ObserveLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxObj, idxCloser, _, err := calc.Flush()
+	idxPath, err := c.flushAndUploadIndex(ctx, node.Tenant, calc)
 	if err != nil {
-		return nil, fmt.Errorf("flushing index: %w", err)
-	}
-
-	idxPathReader, err := idxObj.Reader(ctx)
-	if err != nil {
-		return nil, errors.Join(err, idxCloser.Close())
-	}
-	idxPath, hashErr := v2.CompactedIndexPath(node.Tenant, idxPathReader)
-	if cerr := idxPathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return nil, errors.Join(hashErr, idxCloser.Close())
-	}
-
-	if _, upErr := c.uploadObject(ctx, c.bucket, idxPath, idxObj); upErr != nil {
-		return nil, errors.Join(fmt.Errorf("uploading index %q: %w", idxPath, upErr), idxCloser.Close())
-	}
-
-	if err := idxCloser.Close(); err != nil {
-		return nil, fmt.Errorf("closing index %q: %w", idxPath, err)
+		return nil, err
 	}
 
 	stats.Outcome = logMergeOutcomeSuccess
-	stats.SourceObjects = len(sources)
-	for _, s := range sources {
-		stats.InputSections += len(s.logsSections)
+	stats.SourceObjects = len(inputs.sources)
+	for _, run := range inputs.runs {
+		stats.InputSections += len(run)
 	}
+	stats.InputBytes = inputBytesTotal
+	stats.DuplicateRecords = dups.Duplicates()
 
+	duration := time.Since(start)
+	var inputBytesPerSecond int64
+	if duration > 0 {
+		inputBytesPerSecond = int64(float64(stats.InputBytes) / duration.Seconds())
+	}
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
 		"tenant", node.Tenant,
 		"source_objects", stats.SourceObjects,
 		"input_sections", stats.InputSections,
+		"input_bytes", stats.InputBytes,
+		"input_bytes_per_second", inputBytesPerSecond,
+		"duplicate_records", stats.DuplicateRecords,
 		"output_objects", stats.OutputObjects,
 		"output_bytes", stats.OutputBytesCompressed,
-		"sort_schema", strings.Join(node.SortSchema, ","),
-		"duration", time.Since(start),
+		"sort_schema", strings.Join(inputs.layout.SchemaLabels(), ","),
+		"duration", duration,
 	)
 
-	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
-	return []v2.ResultArtifact{{Path: idxPath}}, nil
+	c.logMergeObserver.ObserveLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
+	return &v2.ResultArtifact{Path: idxPath}, nil
 }
 
 const (
@@ -178,6 +185,8 @@ type LogMergeObservedStats struct {
 	Outcome               string
 	SourceObjects         int
 	InputSections         int
+	InputBytes            int64 // Log line bytes plus structured metadata value bytes.
+	DuplicateRecords      int   // Records that repeat an earlier record's stream, timestamp, line, and metadata.
 	OutputObjects         int
 	OutputBytesCompressed int64
 }
@@ -190,67 +199,81 @@ type logMergeStats struct {
 	logMergeObservedStats
 }
 
-func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
-	if c.logMergeObserver != nil {
-		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
-	}
-}
-
 type logSource struct {
-	path         string
-	logsSections []*dataobj.Section
-	streams      map[int64]streams.Stream
+	path               string
+	logSectionsByIndex []*dataobj.Section // Logs-only index across tenants; unselected sections are nil.
+	streams            map[int64]streams.Stream
+	layout             streams.Layout
+	remap              map[int64]int64
+
+	// droppedStreamIDs holds the IDs of the streams outside the key range of
+	// the merge. Reads of the object skip their records.
+	droppedStreamIDs []int64
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
-// returns the tenant's logs sections plus its localStreamID->stream map. Objects are deduplicated by path
+// returns only the logs sections the task was assigned (by SectionIndex) plus the
+// tenant's localStreamID->stream map. Objects are deduplicated by path.
 func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge) ([]*logSource, error) {
-	// Deduplicate object paths across all runs
-	seen := make(map[string]struct{})
+	// Per object, the set of logs SectionIndex values this task must merge. The
+	// paths slice preserves first-seen order for deterministic output.
+	wanted := make(map[string]map[int64]struct{})
 	var paths []string
 	for _, run := range node.Runs {
-		if run == nil {
-			continue
-		}
 		for _, sec := range run.Sections {
 			if sec == nil {
 				continue
 			}
-			if _, ok := seen[sec.ObjectPath]; ok {
-				continue
+			set, ok := wanted[sec.ObjectPath]
+			if !ok {
+				set = make(map[int64]struct{})
+				wanted[sec.ObjectPath] = set
+				paths = append(paths, sec.ObjectPath)
 			}
-			seen[sec.ObjectPath] = struct{}{}
-			paths = append(paths, sec.ObjectPath)
+			set[sec.SectionIndex] = struct{}{}
 		}
 	}
 	srcBucket := c.dataObjectBucket()
+	keyRange, err := sortPrefixRange(node.KeyRange)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LogMerge task: %w", err)
+	}
 
-	// Gather log and streams sections
+	// Gather the assigned log sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
-		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
+		want := wanted[path]
+		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 1<<20) // 1MB
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
-		var (
-			logsSections   []*dataobj.Section
-			streamSections []*dataobj.Section
-		)
-		for _, sec := range obj.Sections() {
+		// Use a slice rather than a map iterated in order, sized for all log sections in the object.
+		// Slots for unselected sections or sections belonging to other tenants will remain nil
+		logSections := make([]*dataobj.Section, obj.Sections().Count(logs.CheckSection))
+		found := 0
+		// Filter indexes count logs sections across all tenants, matching the
+		// index calculator. Unselected sections need no layout or data reads.
+		for i, sec := range obj.Sections().Filter(logs.CheckSection) {
+			if _, ok := want[int64(i)]; !ok {
+				continue
+			}
+			if sec.Tenant != node.Tenant {
+				return nil, fmt.Errorf("object %q logs section %d belongs to tenant %q, expected %q", path, i, sec.Tenant, node.Tenant)
+			}
+			logSections[i] = sec
+			found++
+		}
+		if found != len(want) {
+			return nil, fmt.Errorf("object %q: found %d of %d requested logs sections for tenant %q (stale plan or index/object mismatch)", path, found, len(want), node.Tenant)
+		}
+
+		var streamSections []*dataobj.Section
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 			if sec.Tenant != node.Tenant {
 				continue
 			}
-			switch {
-			case logs.CheckSection(sec):
-				logsSections = append(logsSections, sec)
-			case streams.CheckSection(sec):
-				streamSections = append(streamSections, sec)
-			}
-		}
-
-		if len(logsSections) == 0 {
-			continue
+			streamSections = append(streamSections, sec)
 		}
 
 		if len(streamSections) == 0 {
@@ -260,104 +283,199 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			return nil, fmt.Errorf("object %q has %d streams sections for tenant %q, expected exactly one", path, len(streamSections), node.Tenant)
 		}
 
-		srcStreams, err := resolveStreams(ctx, streamSections[0])
+		layout, srcStreams, err := resolveStreams(ctx, streamSections[0], logSections)
 		if err != nil {
 			return nil, fmt.Errorf("resolving streams for object %q: %w", path, err)
 		}
+		dropped, err := dropStreamsOutsideRange(srcStreams, layout, keyRange)
+		if err != nil {
+			return nil, fmt.Errorf("filtering streams for object %q: %w", path, err)
+		}
 
 		sources = append(sources, &logSource{
-			path:         path,
-			logsSections: logsSections,
-			streams:      srcStreams,
+			path:               path,
+			streams:            srcStreams,
+			layout:             layout,
+			logSectionsByIndex: logSections,
+			droppedStreamIDs:   dropped,
 		})
 	}
 
 	return sources, nil
 }
 
-// sourcesMatchSortLayout reports whether every logs section in sources has the
-// target layout. mismatch is the first object path that does not match.
-func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (ok bool, mismatch string, err error) {
-	want := logs.SortLayout{
-		SchemaLabels: sortSchema,
-		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   streams.ShardFactor,
+// sortPrefixRange returns the stream sort prefixes in r. It returns an error
+// if r misses a bound, if its start is not below its end, or if its end is
+// above [streams.SortPrefixLimit]. A nil r holds every prefix.
+func sortPrefixRange(r *compactionv2pb.KeyRange) (v2.KeyRange[streams.SortPrefix], error) {
+	if r == nil {
+		r = v2.FullKeyRangeProto()
 	}
-	for _, src := range sources {
-		for _, sec := range src.logsSections {
-			opened, err := logs.Open(ctx, sec)
-			if err != nil {
-				return false, src.path, fmt.Errorf("opening logs section in %q: %w", src.path, err)
-			}
-			got := opened.SortLayout()
-			if !sortLayoutEqual(got, want) {
-				return false, src.path, nil
-			}
+	if r.Start == nil || r.End == nil {
+		return v2.KeyRange[streams.SortPrefix]{}, errors.New("key range must have a start and an end")
+	}
+	end := streams.NewSortPrefix(r.End.ShardBucket, r.End.SchemaValues)
+	if end.Compare(streams.SortPrefixLimit()) > 0 {
+		return v2.KeyRange[streams.SortPrefix]{}, fmt.Errorf("key range end %v is above the sort prefix limit", end)
+	}
+	return v2.NewKeyRange(streams.NewSortPrefix(r.Start.ShardBucket, r.Start.SchemaValues), end, streams.SortPrefix.Compare)
+}
+
+// dropStreamsOutsideRange deletes the streams outside keyRange from byID and
+// returns their IDs.
+func dropStreamsOutsideRange(byID map[int64]streams.Stream, layout streams.Layout, keyRange v2.KeyRange[streams.SortPrefix]) ([]int64, error) {
+	var dropped []int64
+	for id, stream := range byID {
+		prefix, err := logsobj.StreamSortPrefix(stream.Labels, layout)
+		if err != nil {
+			return nil, err
+		}
+		if !keyRange.Contains(prefix) {
+			dropped = append(dropped, id)
+			delete(byID, id)
 		}
 	}
-	return true, "", nil
+	return dropped, nil
 }
 
-func sortLayoutEqual(got, want logs.SortLayout) bool {
-	return slices.Equal(got.SchemaLabels, want.SchemaLabels) &&
-		got.StreamOrder == want.StreamOrder &&
-		got.ShardCount == want.ShardCount
+// sourcesLayout returns the layout that every source shares. It returns an
+// error if two sources have different layouts, because their stream IDs and
+// row orders are not comparable.
+func sourcesLayout(sources []*logSource) (streams.Layout, error) {
+	layout := sources[0].layout
+	for _, src := range sources[1:] {
+		if !src.layout.Equal(layout) {
+			return streams.Layout{}, fmt.Errorf("source object %q has a different stream layout than %q", src.path, sources[0].path)
+		}
+	}
+	return layout, nil
 }
 
-// resolveStreams decodes a streams section into a map from local stream ID to its
-// stream (labels + aggregates). Labels are deep-copied so they remain valid after
-// the underlying reader buffers are reused.
-func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]streams.Stream, error) {
+// resolveStreams returns the layout of a streams section and its streams by
+// local stream ID. It copies the labels, because the reader reuses its
+// buffers.
+//
+// If the streams section records no layout, resolveStreams takes the layout
+// from logsSections, which nil entries skip; see [logs.LegacyLayoutOf].
+func resolveStreams(ctx context.Context, section *dataobj.Section, logsSections []*dataobj.Section) (streams.Layout, map[int64]streams.Stream, error) {
 	sec, err := streams.Open(ctx, section)
 	if err != nil {
-		return nil, fmt.Errorf("opening streams section: %w", err)
+		return streams.Layout{}, nil, fmt.Errorf("opening streams section: %w", err)
+	}
+	layout, ok, err := sec.Layout()
+	if err != nil {
+		return streams.Layout{}, nil, fmt.Errorf("reading streams layout: %w", err)
+	}
+	if !ok {
+		layout, err = logs.LegacyLayoutOf(ctx, logsSections)
+		if err != nil {
+			return streams.Layout{}, nil, err
+		}
 	}
 
 	out := make(map[int64]streams.Stream)
 	for res := range streams.IterSection(ctx, sec) {
 		stream, err := res.Value()
 		if err != nil {
-			return nil, err
+			return streams.Layout{}, nil, err
 		}
 		stream.Labels = stream.Labels.Copy()
 		out[stream.ID] = stream
 	}
-	return out, nil
+	return layout, out, nil
 }
 
 // buildGlobalStreamTable ranks unique label sets across sources into one
 // ID space ranked by SortKey. Same labels in two objects share one ID.
-func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.MultiSourceRankedStreams, error) {
+func buildGlobalStreamTable(sources []*logSource, layout streams.Layout) (*logsobj.MultiSourceRankedStreams, error) {
 	maps := make([]map[int64]streams.Stream, 0, len(sources))
 	for _, src := range sources {
 		maps = append(maps, src.streams)
 	}
-	return logsobj.RankMixedStreams(sortSchema, maps...)
+	return logsobj.RankMixedStreams(layout.SchemaLabels(), layout.ShardLayout(), maps...)
 }
 
-// sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *logsobj.MultiSourceRankedStreams) ([]*dataobj.Section, []map[int64]int64) {
-	var (
-		sections []*dataobj.Section
-		remaps   []map[int64]int64
-	)
-	for sourceIdx, src := range sources {
-		for _, sec := range src.logsSections {
-			sections = append(sections, sec)
-			remaps = append(remaps, table.Remap(sourceIdx))
+// logMergeInputs owns source identity, run order, and the global stream namespace.
+type logMergeInputs struct {
+	sources []*logSource
+	layout  streams.Layout
+	runs    []sortmerge.Run
+	table   *logsobj.MultiSourceRankedStreams
+}
+
+func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogMerge) (*logMergeInputs, error) {
+	sources, err := c.collectLogSources(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	if len(sources) == 0 {
+		level.Warn(c.logger).Log("msg", "LogMerge: skipping task; no source objects found", "tenant", node.Tenant)
+		return nil, errNoSourceObjects
+	}
+
+	inputs := &logMergeInputs{sources: sources}
+	inputs.layout, err = sourcesLayout(sources)
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "LogMerge: skipping task; source objects do not share one stream layout", "tenant", node.Tenant, "err", err)
+		return nil, err
+	}
+
+	inputs.table, err = buildGlobalStreamTable(sources, inputs.layout)
+	if err != nil {
+		return nil, err
+	}
+	byPath := make(map[string]*logSource, len(sources))
+	for i, source := range sources {
+		source.remap = inputs.table.Remap(i)
+		byPath[source.path] = source
+	}
+	type sectionID struct {
+		path  string
+		index int64
+	}
+	seen := make(map[sectionID]struct{})
+	for _, ref := range node.Runs {
+		var run sortmerge.Run
+		for _, section := range ref.Sections {
+			id := sectionID{section.ObjectPath, section.SectionIndex}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			source := byPath[id.path]
+			if source == nil || id.index < 0 || id.index >= int64(len(source.logSectionsByIndex)) || source.logSectionsByIndex[id.index] == nil {
+				return nil, fmt.Errorf("invalid logs section reference %q#%d", id.path, id.index)
+			}
+			sec := source.logSectionsByIndex[id.index]
+			seen[id] = struct{}{}
+
+			// Skip the sections of an object whose streams the key range all
+			// dropped, so the task downloads none of their pages.
+			//
+			// A record of a stream that the streams section does not hold still
+			// fails a merge. The task whose range holds the object's streams
+			// reads the section. An object whose streams section holds no
+			// stream is read here, so its records fail at the remap.
+			if len(source.streams) == 0 && len(source.droppedStreamIDs) > 0 {
+				continue
+			}
+			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
+		}
+		if len(run) > 0 {
+			inputs.runs = append(inputs.runs, run)
 		}
 	}
-	return sections, remaps
+	return inputs, nil
 }
 
 // logObjectWriter consumes the globally-sorted merged record stream and builds
 // one or more compacted log objects, split at TargetObjectSize (never splitting a
 // stream across objects)
 type logObjectWriter struct {
-	c     *Context
-	node  *physical.LogMerge
-	table *logsobj.MultiSourceRankedStreams
-	calc  *dataobjindex.Calculator
+	c      *Context
+	node   *physical.LogMerge
+	layout streams.Layout
+	table  *logsobj.MultiSourceRankedStreams
+	calc   *dataobjindex.Calculator
 
 	builderMetrics *logsobj.BuilderMetrics
 
@@ -369,17 +487,25 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-type fixedSortSchema []string
+// fixedLayout gives every tenant the same layout, so the output builder
+// writes the layout of the source objects instead of the tenant overrides.
+type fixedLayout struct{ layout streams.Layout }
 
-func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
+func (l fixedLayout) SortSchemaLabels(string) []string { return l.layout.SchemaLabels() }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+func (l fixedLayout) DataObjShardLayout(string) streams.ShardLayout { return l.layout.ShardLayout() }
+
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, layout streams.Layout, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+	// Merging an object should not modify an object by dropping duplicates
+	c.logsobjCfg.DropDuplicates = false
+
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,
+		layout:         layout,
 		table:          table,
 		calc:           calc,
-		builderMetrics: logsobj.NewBuilderMetrics(),
+		builderMetrics: c.builderMetrics,
 	}
 	err := w.startNewObject()
 	if err != nil {
@@ -389,18 +515,14 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.Mul
 }
 
 func (w *logObjectWriter) startNewObject() error {
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig:    w.c.logsobjCfg,
-		AppendOrderedEnabled: true,
-	}
-	overrides := fixedSortSchema(w.node.SortSchema)
+	cfg := w.c.logsobjCfg
+	overrides := fixedLayout{layout: w.layout}
 
-	var err error
-	w.logsBuilder, err = logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)
+	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides)
 	if err != nil {
 		return err
 	}
-
+	w.logsBuilder = builder
 	return nil
 }
 
@@ -443,38 +565,37 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 	return w.stats, nil
 }
 
+// discard releases the sections of the in-progress object from the scratch
+// store. It does nothing after finish uploaded the last object.
+func (w *logObjectWriter) discard() {
+	w.logsBuilder.Reset()
+}
+
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
 // log object, computes its content-hash path, and uploads it to the data bucket.
-func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
+func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr error) {
+	// The merged records arrive in global stream key order, so the object
+	// records the source layout without a sort.
 	obj, closer, err := w.logsBuilder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing logs builder: %w", err)
 	}
+	defer util.CloseAndHandleError(closer, &returnErr)
 
 	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return errors.Join(err, closer.Close())
+		return fmt.Errorf("getting object reader: %w", err)
 	}
-	path, hashErr := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
-	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return errors.Join(hashErr, closer.Close())
+	defer util.CloseAndHandleError(pathReader, &returnErr)
+
+	path, err := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
+	if err != nil {
+		return fmt.Errorf("calculating object path: %w", err)
 	}
 
-	size, upErr := w.c.uploadObject(ctx, w.c.dataObjectBucket(), path, obj)
-	if upErr != nil {
-		return errors.Join(fmt.Errorf("uploading %q: %w", path, upErr), closer.Close())
-	}
-
-	// Build the index over the just-written object while it is still in memory.
-	if err := w.calc.Calculate(ctx, w.c.logger, obj, path); err != nil {
-		return errors.Join(fmt.Errorf("indexing %q: %w", path, err), closer.Close())
-	}
-
-	if err := closer.Close(); err != nil {
-		return fmt.Errorf("closing compacted object %q: %w", path, err)
+	size, err := w.c.uploadAndIndexObject(ctx, obj, path, w.calc)
+	if err != nil {
+		return fmt.Errorf("uploading index object: %w", err)
 	}
 
 	level.Info(w.c.logger).Log(
@@ -492,12 +613,12 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 // uploadObject streams a built object to the given bucket and returns its encoded
 // size. The index object goes to the index bucket; compacted log objects go to
 // the data bucket.
-func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (int64, error) {
+func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("getting object reader: %w", err)
 	}
-	defer reader.Close()
+	defer util.CloseAndHandleError(reader, &returnErr)
 
 	if err := bucket.Upload(ctx, path, reader); err != nil {
 		return 0, err

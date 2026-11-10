@@ -1,0 +1,1408 @@
+package querier
+
+import (
+	"context"
+	"fmt"
+	stditer "iter"
+	"maps"
+	"math"
+	"math/rand/v2"
+	"slices"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/metrics"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/dataobjread"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+
+	"github.com/grafana/loki/pkg/push"
+)
+
+func TestNewDataObjStore(t *testing.T) {
+	builder := objtest.NewBuilder(t)
+	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+	builder.Close()
+
+	t.Run("it fails without a chunk store, which every delegated method needs", func(t *testing.T) {
+		_, err := NewDataObjStore(nil, builder.Location().Bucket, builder.Metastore(), nil)
+		require.ErrorContains(t, err, "chunk store")
+	})
+
+	t.Run("it fails without a bucket", func(t *testing.T) {
+		_, err := NewDataObjStore(&chunkStoreSpy{}, nil, builder.Metastore(), nil)
+		require.ErrorContains(t, err, "bucket")
+	})
+
+	t.Run("it fails without a metastore", func(t *testing.T) {
+		_, err := NewDataObjStore(&chunkStoreSpy{}, builder.Location().Bucket, nil, nil)
+		require.ErrorContains(t, err, "metastore")
+	})
+}
+
+func TestWithDataObjMaxConcurrency(t *testing.T) {
+	builder := objtest.NewBuilder(t)
+	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+	builder.Close()
+
+	newStore := func(opts ...DataObjStoreOption) *DataObjStore {
+		store, err := NewDataObjStore(&chunkStoreSpy{}, builder.Location().Bucket, builder.Metastore(), nil, opts...)
+		require.NoError(t, err)
+		return store
+	}
+
+	t.Run("the default is the reader's default concurrency", func(t *testing.T) {
+		require.Equal(t, dataobjread.DefaultMaxConcurrency, newStore().maxConcurrency)
+	})
+
+	t.Run("a positive value replaces the default", func(t *testing.T) {
+		require.Equal(t, 100, newStore(WithDataObjMaxConcurrency(100)).maxConcurrency)
+	})
+
+	t.Run("a value below one becomes one", func(t *testing.T) {
+		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(0)).maxConcurrency)
+		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(-5)).maxConcurrency)
+	})
+}
+
+func TestWithDataObjMetadataCache(t *testing.T) {
+	appStream := logproto.Stream{
+		Labels:  `{app="a", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")},
+	}
+	otherStream := logproto.Stream{
+		Labels:  `{app="b", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "beta")},
+	}
+	const query = `sum by (app) (count_over_time({env="prod"}[1m]))`
+
+	t.Run("opening an object loads its metadata through the cache", func(t *testing.T) {
+		spy := newMetadataCacheSpy()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.Len(t, spy.callKeys(), 1, "the query opens the one object through the cache")
+		require.Equal(t, 1, spy.loadCount())
+	})
+
+	t.Run("a second query is served from the cache without loading again", func(t *testing.T) {
+		spy := newMetadataCacheSpy()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.Len(t, spy.callKeys(), 2, "each query opens the object through the cache")
+		require.Equal(t, 1, spy.loadCount(), "only the first query loads the metadata")
+	})
+
+	t.Run("each object loads its own metadata once", func(t *testing.T) {
+		spy := newMetadataCacheSpy()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withMetadataCache(spy))
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.Len(t, spy.distinctKeys(), 2, "two objects have two cache keys")
+		require.Equal(t, 2, spy.loadCount())
+	})
+
+	t.Run("returns the same samples from a cached object as from a freshly loaded one", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withMetadataCache(newMetadataCacheSpy()))
+
+		loaded := store.selectSamples(testCtx(t), query, at(0), at(10))
+		cached := store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, loaded)
+		require.Equal(t, loaded, cached)
+	})
+
+	t.Run("returns samples without a cache when none is configured", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+
+		got := store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, got)
+	})
+}
+
+func TestDataObjStore_SelectSamples(t *testing.T) {
+	appStream := logproto.Stream{
+		Labels:  `{app="a", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three")},
+	}
+	otherStream := logproto.Stream{
+		Labels:  `{app="b", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "beta")},
+	}
+	metadataStream := logproto.Stream{
+		Labels: `{app="c"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+			entry(t, 3, "blank", "level", ""),
+		},
+	}
+	packedStream := logproto.Stream{
+		Labels: `{app="k"}`,
+		Entries: []push.Entry{
+			entry(t, 1, `{"verb":"warn","_entry":"one"}`),
+			entry(t, 2, `{"verb":"info","_entry":"two"}`),
+		},
+	}
+
+	t.Run("a timestamp-first request is served by the chunk store", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+
+		it, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10),
+			func(req *logproto.SampleQueryRequest) { req.Order = logproto.SAMPLE_ORDER_BY_TIMESTAMP })
+		require.NoError(t, err)
+		require.NoError(t, it.Close())
+
+		require.Equal(t, 1, store.chunkStore.selectSamplesCalls, "a timestamp-first request must reach the chunk store")
+	})
+
+	t.Run("a literal expression reads no section and yields no sample", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `vector(1)`, at(0), at(10))
+		require.Empty(t, got)
+		require.Zero(t, store.chunkStore.selectSamplesCalls, "a stream-first request must not reach the chunk store")
+	})
+
+	t.Run("a selector with no stream matcher fails rather than returning an empty result", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		it, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({__name__=~".+"}[1m]))`, at(0), at(10))
+		require.NoError(t, err)
+		require.False(t, it.Next())
+		require.EqualError(t, it.Err(), "resolving data object sections: at least one stream matcher is required")
+		require.Error(t, it.Close(), "Close must report the failure the query ended with")
+	})
+
+	t.Run("sum(count_over_time) counts every line of the matching stream", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("it counts the object-store requests and bytes of the query for the metastore and the streams reader, and no failed request, and reports its objects and downloaded bytes in the query stats", func(t *testing.T) {
+		randomStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 4000, 300)}
+
+		for _, layout := range []struct {
+			name                                                                             string
+			opts                                                                             []testStoreOption
+			wantLogsCompacted, wantLogsUncompacted, wantIndexCompacted, wantIndexUncompacted int64
+		}{
+			{
+				name:                 "counts two uncompacted logs objects and one uncompacted index object when the builder wrote them",
+				wantLogsUncompacted:  2,
+				wantIndexUncompacted: 1,
+			},
+			{
+				name:               "counts two compacted logs objects and one compacted index object when the compactor wrote them",
+				opts:               []testStoreOption{withCompactedLayout()},
+				wantLogsCompacted:  2,
+				wantIndexCompacted: 1,
+			},
+		} {
+			t.Run(layout.name, func(t *testing.T) {
+				reg := prometheus.NewRegistry()
+				store := newTestDataObjStore(t, []logproto.Stream{randomStream, otherStream}, append(layout.opts, withObjectPerStream(), withRegisterer(reg))...)
+				statsCtx, ctx := stats.NewContext(testCtx(t))
+
+				store.selectSamples(ctx, `sum by (app) (count_over_time({env="prod"} |= "zz" [1m]))`, at(0), at(10))
+
+				families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+				require.NoError(t, err)
+				seriesValue := func(name string, labelNamesAndValues ...string) float64 {
+					series := metrics.FindMetricsInFamilyMatchingLabels(families[name], labelNamesAndValues...)
+					require.Len(t, series, 1, "series of %s with labels %v", name, labelNamesAndValues)
+					return series[0].GetCounter().GetValue()
+				}
+
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get_range"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "streams-reader", "operation", "get_range"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
+				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"))
+				require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
+
+				got := statsCtx.Result(0, 0, 0).Querier.Store.Dataobj
+				require.Equal(t, layout.wantLogsCompacted, got.LogsCompactedObjectsCount)
+				require.Equal(t, layout.wantLogsUncompacted, got.LogsUncompactedObjectsCount)
+				require.Equal(t, layout.wantIndexCompacted, got.IndexCompactedObjectsCount)
+				require.Equal(t, layout.wantIndexUncompacted, got.IndexUncompactedObjectsCount)
+				require.Positive(t, got.LogsDownloadedBytes)
+				require.Positive(t, got.IndexDownloadedBytes)
+				require.Equal(t,
+					seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader")+seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"),
+					float64(got.LogsDownloadedBytes))
+				require.Less(t, float64(got.IndexDownloadedBytes), seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"),
+					"the metastore counter also holds the table of contents, which the query stats leave out")
+			})
+		}
+	})
+
+	t.Run("the window includes a line at the start bound and excludes one at the end bound", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(1), at(3))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("sum(bytes_over_time) measures the line length", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (bytes_over_time({app="a"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 3, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 3, Value: 5, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a line filter drops the lines it does not match", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"} |= "t" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("it pushes down every line filter when no stage modifies the line", func(t *testing.T) {
+		filterStream := logproto.Stream{
+			Labels: `{app="f"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "alpha"),
+				entry(t, 2, "beta"),
+				entry(t, 3, "alpha beta"),
+				entry(t, 4, "beta alpha"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{filterStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="f"} |= "alpha" | logfmt |= "beta" [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="f"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+			{Labels: `{app="f"}`, TimestampSec: 4, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+		}, got)
+
+		// The fixture has no other secondary column, so the read reports none when the message is
+		// read as a primary column, which happens only when a line filter is pushed down.
+		require.Zero(t, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+	})
+
+	t.Run("it pushes down only the line filters before the stage that modifies the line", func(t *testing.T) {
+		filterStream := logproto.Stream{
+			Labels: `{app="f"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "alpha"),
+				entry(t, 2, "beta"),
+				entry(t, 3, "alpha beta"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{filterStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		// The filter on "beta" runs on the formatted line, not the stored one, so the read must ignore
+		// it. Pushed down, it would drop row 3, whose stored line has "beta".
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="f"} |= "alpha" | line_format "{{.app}}" != "beta" [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="f"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+			{Labels: `{app="f"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+		}, got)
+		require.Zero(t, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+	})
+
+	t.Run("a delete request with a line filter still excludes its lines when the query pushes a line filter", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"} |= "t" [1m]))`, at(0), at(10),
+			func(req *logproto.SampleQueryRequest) {
+				req.Deletes = []*logproto.Delete{{
+					Selector: `{app="a"} |= "three"`,
+					Start:    at(0).UnixNano(),
+					End:      at(10).UnixNano(),
+				}}
+			})
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a bare range aggregation surfaces structured metadata in the output labels", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `count_over_time({app="c"}[1m])`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="c", level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c", level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c", level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a grouping on a metadata key reads that key and groups by it", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata negation keeps the rows whose value is empty", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level!="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a parser keeps only the matching rows and reads the other columns for them only", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 1, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata inequality before a parser keeps the rows that do not match, including those with no value", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level!="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a negated metadata regular expression before a parser keeps the rows that do not match, including those with no value", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level!~"err.*" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("an or of metadata equalities before a parser keeps the rows that match either", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="c"} | level="error" or level="warn" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata equality after a numeric filter drops a row whose value does not convert without failing the query", func(t *testing.T) {
+		numericStream := logproto.Stream{
+			Labels: `{app="n"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "one", "level", "error", "status", "500"),
+				entry(t, 2, "two", "level", "warn", "status", "abc"),
+				entry(t, 3, "three", "level", "error", "status", "100"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{numericStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (level) (count_over_time({app="n"} | status > 400 | level="error" | logfmt [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(numericStream.Labels)},
+		}, got)
+		require.EqualValues(t, 2, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostFilterRows)
+	})
+
+	t.Run("a metadata equality before a line_format keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="warn" | line_format "{{.level}}" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a label_format keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | level="warn" | label_format verb=level [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a metadata equality before a drop keeps only the matching rows", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | level="error" | drop pod [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter on a stream label before a parser keeps every row of the stream", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="c"} | app="c" | logfmt [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level=""}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{level="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a parser reads the parsed label that the stored metadata lacks", func(t *testing.T) {
+		parsedStream := logproto.Stream{
+			Labels: `{app="p"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "level=error"),
+				entry(t, 2, "level=warn"),
+				entry(t, 3, "other=1"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{parsedStream})
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="p"} | logfmt | level="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(parsedStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a regexp stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | regexp "(?P<verb>.+)" | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a pattern stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | pattern "<verb>" | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after an unpack stage reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{packedStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="k"} | unpack | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(packedStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a label_format reads the label that the stage creates", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (verb) (count_over_time({app="c"} | label_format verb=level | verb="warn" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{verb="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a drop reads the dropped label as absent", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="c"} | drop level | level="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="c"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a filter after a keep reads the label that the stage removes as absent", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="c"} | keep app | level="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="c"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+			{Labels: `{app="c"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(metadataStream.Labels)},
+		}, got)
+	})
+
+	t.Run("a delete request with a line filter excludes the deleted lines", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10),
+			func(req *logproto.SampleQueryRequest) {
+				req.Deletes = []*logproto.Delete{{
+					Selector: `{app="a"} |= "two"`,
+					Start:    at(0).UnixNano(),
+					End:      at(10).UnixNano(),
+				}}
+			})
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("an access-control filter drops the streams it denies", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withStreamFilterer(denyAppFilterer{app: "a"}))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="b"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(otherStream.Labels)},
+		}, got)
+	})
+
+	t.Run("an access-control filter that denies every stream yields no sample and no error", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withStreamFilterer(denyEverythingFilterer{}))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({env="prod"}[1m]))`, at(0), at(10))
+		require.Empty(t, got)
+	})
+
+	t.Run("several logs sections of one object are all read", func(t *testing.T) {
+		var manyStreams []logproto.Stream
+		for i := 0; i < 8; i++ {
+			manyStreams = append(manyStreams, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="many", idx="%d"}`, i),
+				Entries: []push.Entry{entry(t, 1, "line")},
+			})
+		}
+		// A tiny section forces the builder to split these streams across sections.
+		store := newTestDataObjStore(t, manyStreams, withSectionSize(flagext.Bytes(1)))
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
+		require.Len(t, got, len(manyStreams))
+	})
+
+	t.Run("every section is read at each concurrency, including a non-positive one", func(t *testing.T) {
+		var manyStreams []logproto.Stream
+		for i := 0; i < 8; i++ {
+			manyStreams = append(manyStreams, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="many", idx="%d"}`, i),
+				Entries: []push.Entry{entry(t, 1, "line")},
+			})
+		}
+		for _, concurrency := range []int{-1, 1, 100} {
+			store := newTestDataObjStore(t, manyStreams, withSectionSize(flagext.Bytes(1)), withMaxConcurrency(concurrency))
+			got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
+			require.Len(t, got, len(manyStreams), "concurrency %d", concurrency)
+		}
+	})
+
+	t.Run("several objects are all read", func(t *testing.T) {
+		var manyStreams []logproto.Stream
+		for i := 0; i < 4; i++ {
+			manyStreams = append(manyStreams, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="split", idx="%d"}`, i),
+				Entries: []push.Entry{entry(t, 1, "line")},
+			})
+		}
+		store := newTestDataObjStore(t, manyStreams, withObjectPerStream())
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="split"}[1m]))`, at(0), at(10))
+		require.Len(t, got, len(manyStreams))
+	})
+
+	t.Run("another tenant's sections that come first in the same object are not read", func(t *testing.T) {
+		theirs := fixtures.NewLogsFixtureBuilder(t)
+		theirs.ForStream(appStream.Labels).Entry(1, "{}", "not mine").Entry(2, "{}", "not mine either")
+
+		mine := fixtures.NewLogsFixtureBuilder(t)
+		mine.ForStream(appStream.Labels).Entry(1, "{}", "one").Entry(2, "{}", "two").Entry(3, "{}", "three")
+
+		bucket := objstore.NewInMemBucket()
+		path := fixtures.StoredDataObject(t, bucket,
+			fixtures.StreamsSection(t, "other-tenant", theirs.Streams()),
+			fixtures.LogsSection(t, "other-tenant", theirs.Logs()),
+			fixtures.StreamsSection(t, objtest.Tenant, mine.Streams()),
+			fixtures.LogsSection(t, objtest.Tenant, mine.Logs()),
+		)
+
+		ms := &fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{{
+			SectionKey: metastore.SectionKey{ObjectPath: path, SectionIdx: 1},
+			StreamIDs:  []int64{mine.Streams()[0].ID},
+			RowCount:   len(mine.Logs()),
+			Start:      at(1),
+			End:        at(3),
+		}}}
+		dataObjStore, err := NewDataObjStore(&chunkStoreSpy{}, bucket, ms, nil)
+		require.Equal(t, int64(1), ms.descriptors[0].SectionIdx,
+			"this tenant's logs section comes after the other tenant's, so a read that counted from zero per tenant would return the other tenant's rows")
+		require.NoError(t, err)
+		store := &testDataObjStore{t: t, store: dataObjStore}
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
+		}, got)
+	})
+
+	t.Run("query statistics report the rows and bytes the read decompressed", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+		require.Len(t, got, 3)
+
+		result := statsCtx.Result(time.Second, 0, len(got))
+		require.Positive(t, result.Querier.Store.Dataobj.PrePredicateDecompressedBytes, "pre-predicate bytes")
+		require.Positive(t, result.Querier.Store.Dataobj.PrePredicateDecompressedRows, "pre-predicate rows")
+	})
+
+	t.Run("closing after reading only some samples reports no error", func(t *testing.T) {
+		var manyStreams []logproto.Stream
+		for i := 0; i < 40; i++ {
+			manyStreams = append(manyStreams, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="early", idx="%d"}`, i),
+				Entries: []push.Entry{entry(t, 1, "line"), entry(t, 2, "line")},
+			})
+		}
+		// One object per stream, so the planner is still resolving when the read stops.
+		store := newTestDataObjStore(t, manyStreams, withObjectPerStream())
+
+		it, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({app="early"}[1m]))`, at(0), at(10))
+		require.NoError(t, err)
+		require.True(t, it.Next())
+		require.NoError(t, it.Close(), "stopping early is not a query failure")
+	})
+
+	t.Run("a request carrying more than one shard fails rather than reading one of them", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		_, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10),
+			func(req *logproto.SampleQueryRequest) {
+				req.Shards = []string{
+					powerOfTwoShard(0, 2).String(),
+					powerOfTwoShard(1, 2).String(),
+				}
+			})
+		require.ErrorContains(t, err, "one shard per request")
+	})
+
+	t.Run("a query matching no stream yields no sample and no error", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="nothing"}[1m]))`, at(0), at(10))
+		require.Empty(t, got)
+	})
+}
+
+// TestDataObjStore_Sharding asserts that the shards of one query partition its samples: every
+// shard's samples together equal the unsharded result, and no series is served by two shards.
+func TestDataObjStore_Sharding(t *testing.T) {
+	var corpusStreams []logproto.Stream
+	for _, app := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		corpusStreams = append(corpusStreams, logproto.Stream{
+			Labels:  `{app="` + app + `", env="prod"}`,
+			Entries: []push.Entry{entry(t, 1, "line", "level", "info")},
+		})
+	}
+
+	const query = `sum by (app) (count_over_time({env="prod"}[1m]))`
+
+	for _, of := range []uint32{2, 3, 4, 8, 64} {
+		t.Run(fmt.Sprintf("%d shards together return every sample exactly once", of), func(t *testing.T) {
+			store := newTestDataObjStore(t, corpusStreams)
+
+			want := store.selectSamples(testCtx(t), query, at(0), at(10))
+			require.Len(t, want, len(corpusStreams), "the unsharded query must return one sample per stream")
+
+			var got []sampleRow
+			shardsPerSeries := map[string]int{}
+			for shard := uint32(0); shard < of; shard++ {
+				rows := store.selectSamples(testCtx(t), query, at(0), at(10), func(req *logproto.SampleQueryRequest) {
+					req.Shards = []string{powerOfTwoShard(shard, of).String()}
+				})
+				got = append(got, rows...)
+				for _, row := range rows {
+					shardsPerSeries[row.Labels]++
+				}
+			}
+			sortSamples(got)
+
+			require.Equal(t, want, got, "the shards together must return the unsharded result")
+			for series, shards := range shardsPerSeries {
+				require.Equal(t, 1, shards, "series %s was served by %d shards", series, shards)
+			}
+		})
+	}
+}
+
+// TestDataObjStore_ShardingAcrossLayouts asserts that the shards of one query read every sample
+// once when the data objects of the tenant have different numbers of shard buckets, as they do
+// after the tenant changes its shard factor.
+//
+// The expected samples come from the input, not from an unsharded read. A mistake that the
+// unsharded and the sharded reads share cannot hide that way.
+func TestDataObjStore_ShardingAcrossLayouts(t *testing.T) {
+	const (
+		streamCount = 128
+		query       = `sum by (app) (count_over_time({env="prod"}[1m]))`
+	)
+
+	var (
+		objects []testObject
+		want    []sampleRow
+	)
+	for objectIdx, buckets := range []uint32{1, 8, 32, 128, 256} {
+		second := 10*objectIdx + 1
+		objectStreams := make([]logproto.Stream, 0, streamCount)
+
+		for streamIdx := range streamCount {
+			streamLabels := fmt.Sprintf(`{app="app-%d", env="prod"}`, streamIdx)
+			objectStreams = append(objectStreams, logproto.Stream{
+				Labels:  streamLabels,
+				Entries: []push.Entry{entry(t, second, "line")},
+			})
+			want = append(want, sampleRow{
+				Labels:       fmt.Sprintf(`{app="app-%d"}`, streamIdx),
+				TimestampSec: int64(second),
+				Value:        1,
+				StreamHash:   streamHashOf(streamLabels),
+			})
+		}
+		objects = append(objects, testObject{shardBuckets: buckets, streams: objectStreams})
+	}
+	sortSamples(want)
+
+	store := newTestDataObjStoreOfObjects(t, objects)
+
+	// requireEverySampleOnce runs the query once for each shard and checks that the shards
+	// together return the expected samples, and that no stream is served by two shards.
+	requireEverySampleOnce := func(t *testing.T, shards []string) {
+		t.Helper()
+
+		var got []sampleRow
+		shardsPerStream := map[uint64]map[int]struct{}{}
+		for shard, annotation := range shards {
+			rows := store.selectSamples(testCtx(t), query, at(0), at(100), func(req *logproto.SampleQueryRequest) {
+				req.Shards = []string{annotation}
+			})
+			got = append(got, rows...)
+			for _, row := range rows {
+				if shardsPerStream[row.StreamHash] == nil {
+					shardsPerStream[row.StreamHash] = map[int]struct{}{}
+				}
+				shardsPerStream[row.StreamHash][shard] = struct{}{}
+			}
+		}
+		sortSamples(got)
+
+		require.Equal(t, want, got)
+		for streamHash, servedBy := range shardsPerStream {
+			require.Len(t, servedBy, 1, "the stream with hash %d was served by shards %v", streamHash, slices.Collect(maps.Keys(servedBy)))
+		}
+	}
+
+	t.Run("an unsharded query returns every sample once across objects of 1, 8, 32, 128 and 256 buckets", func(t *testing.T) {
+		got := store.selectSamples(testCtx(t), query, at(0), at(100))
+
+		require.Equal(t, want, got)
+	})
+
+	for _, of := range []uint32{2, 8, 32, 64, 256} {
+		t.Run(fmt.Sprintf("%d power-of-two shards together return every sample once across objects of 1, 8, 32, 128 and 256 buckets", of), func(t *testing.T) {
+			shards := make([]string, 0, of)
+			for shard := range of {
+				shards = append(shards, powerOfTwoShard(shard, of).String())
+			}
+
+			requireEverySampleOnce(t, shards)
+		})
+	}
+
+	for _, n := range []uint64{1, 3, 10} {
+		t.Run(fmt.Sprintf("%d bounded shards together return every sample once across objects of 1, 8, 32, 128 and 256 buckets", n), func(t *testing.T) {
+			requireEverySampleOnce(t, boundedShardsOfFingerprintSpace(n))
+		})
+	}
+}
+
+// TestDataObjStore_Unwrap reads the number a metric query unwraps out of a metadata column.
+func TestDataObjStore_Unwrap(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="u"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "first", "duration", "2"),
+			entry(t, 2, "second", "duration", "3"),
+			entry(t, 3, "third", "duration", "not-a-number"),
+		},
+	}
+
+	t.Run("it reads the unwrapped value of each line that converts", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		// The error filter drops the line whose value does not convert. Without it the engine
+		// would fail the whole query on that line's __error__ label.
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration | __error__="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got, "the line that does not convert must be dropped, not read as zero")
+	})
+
+	t.Run("a filter on the unwrapped label reads the column it names", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration | __error__="" | duration > 2 [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("a failed conversion reports a sample with the grouped labels even with no __error__ filter", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{
+				Labels:       `{__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"not-a-number\": invalid syntax", app="u"}`,
+				TimestampSec: 3,
+				Value:        0,
+				StreamHash:   streamHashOf(stream.Labels),
+			},
+			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+}
+
+// denyAppFilterer denies every stream whose app label has the given value.
+type denyAppFilterer struct{ app string }
+
+func (f denyAppFilterer) ForRequest(context.Context) chunk.Filterer { return f }
+
+func (f denyAppFilterer) ShouldFilter(streamLabels labels.Labels) bool {
+	return streamLabels.Get("app") == f.app
+}
+
+func (f denyAppFilterer) RequiredLabelNames() []string { return []string{"app"} }
+
+func (f denyAppFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
+// denyEverythingFilterer denies every stream.
+type denyEverythingFilterer struct{}
+
+func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { return f }
+
+func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
+
+func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
+// fixedMetastore yields the descriptors a test supplies as one batch from every SectionsStream
+// call. A test uses it for an object that no real index can describe, such as one that holds two
+// tenants. Its embedded Metastore is nil, so a call to any other method panics rather than
+// returning an empty answer.
+type fixedMetastore struct {
+	metastore.Metastore
+
+	descriptors metastore.DataobjSectionDescriptors
+}
+
+func (m *fixedMetastore) SectionsStream(context.Context, metastore.SectionsRequest) stditer.Seq2[metastore.DataobjSectionDescriptors, error] {
+	return func(yield func(metastore.DataobjSectionDescriptors, error) bool) {
+		if len(m.descriptors) > 0 {
+			yield(m.descriptors, nil)
+		}
+	}
+}
+
+// chunkStoreSpy counts the SelectSamples calls that reach the chunk store.
+type chunkStoreSpy struct {
+	Store
+
+	selectSamplesCalls int
+}
+
+func (s *chunkStoreSpy) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
+	s.selectSamplesCalls++
+	return iter.NoopSampleIterator, nil
+}
+
+// sampleRow is one emitted sample with its identity, for order-independent comparison. The read
+// path emits samples in no order, so a test compares sets, never sequences.
+type sampleRow struct {
+	Labels       string
+	TimestampSec int64
+	Value        float64
+	StreamHash   uint64
+}
+
+// testDataObjStore is a store over a bucket of data objects, with the chunk store it delegates to.
+type testDataObjStore struct {
+	t     *testing.T
+	store Store
+
+	// chunkStore counts what the store delegated, so a test can tell a served query from a
+	// passed-through one.
+	chunkStore *chunkStoreSpy
+}
+
+type testStoreOptions struct {
+	sectionSize      flagext.Bytes
+	flushEveryStream bool
+	filterer         chunk.RequestChunkFilterer
+	maxConcurrency   int
+	metadataCache    dataobj.MetadataCache
+	registerer       prometheus.Registerer
+	compactedLayout  bool
+}
+
+type testStoreOption func(*testStoreOptions)
+
+// withCompactedLayout stores the objects under the keys the compactor uses.
+func withCompactedLayout() testStoreOption {
+	return func(o *testStoreOptions) { o.compactedLayout = true }
+}
+
+// withSectionSize caps a logs section so the streams span several sections of one object.
+func withSectionSize(size flagext.Bytes) testStoreOption {
+	return func(o *testStoreOptions) { o.sectionSize = size }
+}
+
+// withObjectPerStream flushes after each stream, so each lands in its own data object.
+func withObjectPerStream() testStoreOption {
+	return func(o *testStoreOptions) { o.flushEveryStream = true }
+}
+
+func withMaxConcurrency(n int) testStoreOption {
+	return func(o *testStoreOptions) { o.maxConcurrency = n }
+}
+
+// withRegisterer registers the store's metrics on reg.
+func withRegisterer(reg prometheus.Registerer) testStoreOption {
+	return func(o *testStoreOptions) { o.registerer = reg }
+}
+
+func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
+	return func(o *testStoreOptions) { o.filterer = filterer }
+}
+
+func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
+	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
+}
+
+func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
+	t.Helper()
+
+	var options testStoreOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	var builderOpts []objtest.Option
+	if options.sectionSize > 0 {
+		builderOpts = append(builderOpts, objtest.WithTargetSectionSize(options.sectionSize))
+	}
+	if options.compactedLayout {
+		builderOpts = append(builderOpts, objtest.WithCompactedLayout())
+	}
+
+	builder := objtest.NewBuilder(t, builderOpts...)
+	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
+
+	for _, stream := range streams {
+		builder.Append(ctx, stream)
+		if options.flushEveryStream {
+			builder.Flush(ctx)
+		}
+	}
+	builder.Close()
+
+	var storeOpts []DataObjStoreOption
+	if options.filterer != nil {
+		storeOpts = append(storeOpts, WithDataObjStreamFilterer(options.filterer))
+	}
+
+	if options.maxConcurrency != 0 {
+		storeOpts = append(storeOpts, WithDataObjMaxConcurrency(options.maxConcurrency))
+	}
+
+	if options.metadataCache != nil {
+		storeOpts = append(storeOpts, WithDataObjMetadataCache(options.metadataCache))
+	}
+
+	location := builder.Location()
+	chunkStore := &chunkStoreSpy{}
+	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
+	require.NoError(t, err)
+
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+}
+
+// selectSamples runs a stream-first metric query and returns its samples as a set.
+func (s *testDataObjStore) selectSamples(ctx context.Context, query string, start, end time.Time, mutators ...func(*logproto.SampleQueryRequest)) []sampleRow {
+	s.t.Helper()
+	it, err := s.selectSamplesIter(ctx, query, start, end, mutators...)
+	require.NoError(s.t, err)
+	return collectSamples(s.t, it)
+}
+
+func (s *testDataObjStore) selectSamplesIter(ctx context.Context, query string, start, end time.Time, mutators ...func(*logproto.SampleQueryRequest)) (iter.SampleIterator, error) {
+	expr, err := syntax.ParseSampleExpr(query)
+	if err != nil {
+		return nil, err
+	}
+	req := &logproto.SampleQueryRequest{
+		Selector: query,
+		Start:    start,
+		End:      end,
+		Order:    logproto.SAMPLE_ORDER_BY_STREAM,
+		Plan:     &plan.QueryPlan{AST: expr},
+	}
+	for _, mutate := range mutators {
+		mutate(req)
+	}
+	return s.store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+}
+
+func collectSamples(t *testing.T, it iter.SampleIterator) []sampleRow {
+	t.Helper()
+	var got []sampleRow
+	for it.Next() {
+		sample := it.At()
+		got = append(got, sampleRow{
+			Labels:       it.Labels(),
+			TimestampSec: sample.Timestamp / int64(time.Second),
+			Value:        sample.Value,
+			StreamHash:   it.StreamHash(),
+		})
+	}
+	require.NoError(t, it.Err())
+	require.NoError(t, it.Close())
+	sortSamples(got)
+	return got
+}
+
+func sortSamples(rows []sampleRow) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Labels != rows[j].Labels {
+			return rows[i].Labels < rows[j].Labels
+		}
+		if rows[i].TimestampSec != rows[j].TimestampSec {
+			return rows[i].TimestampSec < rows[j].TimestampSec
+		}
+		if rows[i].Value != rows[j].Value {
+			return rows[i].Value < rows[j].Value
+		}
+		// StreamHash is part of the compared tuple, so it has to be part of the order too.
+		// Without it two streams that agree on labels, timestamp and value would sort at random.
+		return rows[i].StreamHash < rows[j].StreamHash
+	})
+}
+
+func testCtx(t *testing.T) context.Context {
+	return user.InjectOrgID(t.Context(), objtest.Tenant)
+}
+
+// epoch anchors every test timestamp, so a query range reads as plain seconds and the metastore's
+// time filter has something stable to match.
+var epoch = time.Unix(0, 0).UTC()
+
+// at returns the given number of seconds after [epoch].
+func at(second int) time.Time { return epoch.Add(time.Duration(second) * time.Second) }
+
+// entry returns one log line at [at](second), with the given structured metadata as alternating
+// name and value arguments.
+func entry(t *testing.T, second int, line string, metadata ...string) push.Entry {
+	t.Helper()
+	require.Zero(t, len(metadata)%2, "metadata must be name and value pairs")
+
+	e := push.Entry{Timestamp: at(second), Line: line}
+	for i := 0; i+1 < len(metadata); i += 2 {
+		e.StructuredMetadata = append(e.StructuredMetadata, push.LabelAdapter{Name: metadata[i], Value: metadata[i+1]})
+	}
+	return e
+}
+
+// randomLineEntries returns count lines of width random letters, all at [at](1).
+//
+// Random letters compress poorly. The lines make the logs section large enough that a scan
+// downloads its pages, instead of finding them in the prefetched head of the object.
+func randomLineEntries(t *testing.T, count, width int) []push.Entry {
+	t.Helper()
+
+	rng := rand.New(rand.NewPCG(1, 2))
+	line := make([]byte, width)
+	entries := make([]push.Entry, count)
+	for i := range entries {
+		for j := range line {
+			line[j] = byte('a' + rng.IntN(26))
+		}
+		entries[i] = entry(t, 1, string(line))
+	}
+	return entries
+}
+
+// streamHashOf returns the stream hash of a LogQL label set, which is what an emitted sample
+// carries to identify its stream.
+func streamHashOf(streamLabels string) uint64 {
+	parsed, err := syntax.ParseLabels(streamLabels)
+	if err != nil {
+		panic(err)
+	}
+	return labels.StableHash(parsed)
+}
+
+// powerOfTwoShard builds the shard annotation the query frontend sends.
+func powerOfTwoShard(shard, of uint32) *logql.Shard {
+	return logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: shard, Of: of}).Ptr()
+}
+
+// TestDataObjStore_MetadataNameCollision reads a metadata key whose name its own stream already
+// carries as a label.
+//
+// LogQL renames the metadata label to <name>_extracted so both reach the output, while the
+// column keeps the original name. A query can only name the renamed form, so the projection has
+// to read the column behind it.
+func TestDataObjStore_MetadataNameCollision(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="d", level="info"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+		},
+	}
+
+	t.Run("a grouping on the renamed key resolves to the metadata values", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="d"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{level_extracted="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got, "grouping on the renamed key must not collapse to empty labels")
+	})
+
+	t.Run("a filter on the renamed key keeps the rows it matches", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		// The matcher names the renamed form, so it must not be pushed as a predicate on a
+		// column of that name: no such column exists and every row would be dropped.
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="d"} | level_extracted="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("the stream label of the same name still reaches the output", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="d"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="info"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{level="info"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("a key that genuinely ends with the suffix is read under its own name", func(t *testing.T) {
+		// No stream label collides here, so nothing is renamed and level_extracted names its own
+		// column. This is why the plan reads both names rather than only the trimmed one.
+		genuine := logproto.Stream{
+			Labels: `{app="e"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "err", "level_extracted", "error"),
+				entry(t, 2, "warn", "level_extracted", "warn"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{genuine})
+
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="e"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(genuine.Labels)},
+			{Labels: `{level_extracted="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(genuine.Labels)},
+		}, got)
+	})
+}
+
+// TestDataObjStore_RepeatedMetadataFilter filters twice on one metadata key.
+//
+// Each filter is a pushdown candidate, and the metastore rejects a request that names one column
+// twice. Two candidates of the same name must therefore reach it as one, or the query fails
+// instead of answering.
+func TestDataObjStore_RepeatedMetadataFilter(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="r"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+		},
+	}
+
+	t.Run("the same equality twice keeps the rows it matches", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="r"} | level="error" | level="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("two equalities that no row satisfies yield nothing rather than failing", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="r"} | level="error" | level="warn" [1m]))`, at(0), at(10))
+		require.Empty(t, got)
+	})
+}
+
+// metadataCacheSpy wraps a metadatacache.Cache over an in-memory mock backend. It records the key of
+// each call and counts the loads.
+type metadataCacheSpy struct {
+	inner dataobj.MetadataCache
+
+	mu    sync.Mutex
+	calls []string
+	loads int
+}
+
+func newMetadataCacheSpy() *metadataCacheSpy {
+	return &metadataCacheSpy{inner: metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)}
+}
+
+func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {
+	s.mu.Lock()
+	s.calls = append(s.calls, key)
+	s.mu.Unlock()
+
+	return s.inner.GetOrLoadMetadataRegion(ctx, key, func(ctx context.Context) ([]byte, error) {
+		s.mu.Lock()
+		s.loads++
+		s.mu.Unlock()
+		return load(ctx)
+	})
+}
+
+func (s *metadataCacheSpy) MaxItemBytes() int64 { return s.inner.MaxItemBytes() }
+
+// callKeys returns the key of every call, in call order.
+func (s *metadataCacheSpy) callKeys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.calls...)
+}
+
+func (s *metadataCacheSpy) distinctKeys() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, key := range s.callKeys() {
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
+func (s *metadataCacheSpy) loadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loads
+}
+
+// boundedShardsOfFingerprintSpace splits the fingerprint space into n adjacent bounded shards, and
+// returns them as the query-frontend encodes them. n must not be zero.
+func boundedShardsOfFingerprintSpace(n uint64) []string {
+	width := math.MaxUint64 / n
+	shards := make([]string, 0, n)
+	for i := range n {
+		shard := logproto.Shard{Bounds: logproto.FPBounds{Min: model.Fingerprint(i * width), Max: model.Fingerprint((i+1)*width - 1)}}
+		if i == n-1 {
+			shard.Bounds.Max = math.MaxUint64
+		}
+		shards = append(shards, logql.NewBoundedShard(shard).String())
+	}
+	return shards
+}
+
+// testObject is one data object of a test store: the streams it holds and the number of shard
+// buckets it records.
+type testObject struct {
+	shardBuckets uint32
+	streams      []logproto.Stream
+}
+
+// newTestDataObjStoreOfObjects writes one data object for each of objects, in order, and returns
+// a store over them. Each object records its own number of shard buckets.
+func newTestDataObjStoreOfObjects(t *testing.T, objects []testObject) *testDataObjStore {
+	t.Helper()
+
+	overrides := &shardLayoutOverrides{}
+	builder := objtest.NewBuilder(t, objtest.WithTenantOverrides(overrides))
+	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
+	for _, object := range objects {
+		overrides.layout = dataobjstreams.MustShardLayoutFromBuckets(object.shardBuckets)
+
+		for _, stream := range object.streams {
+			builder.Append(ctx, stream)
+		}
+		builder.Flush(ctx)
+	}
+	builder.Close()
+
+	chunkStore := &chunkStoreSpy{}
+	store, err := NewDataObjStore(chunkStore, builder.Location().Bucket, builder.Metastore(), nil)
+	require.NoError(t, err)
+
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+}
+
+// shardLayoutOverrides gives every tenant the shard layout in its layout field and no schema labels.
+type shardLayoutOverrides struct{ layout dataobjstreams.ShardLayout }
+
+func (o *shardLayoutOverrides) SortSchemaLabels(string) []string { return nil }
+
+func (o *shardLayoutOverrides) DataObjShardLayout(string) dataobjstreams.ShardLayout {
+	return o.layout
+}

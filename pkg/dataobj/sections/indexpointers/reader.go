@@ -254,7 +254,7 @@ func (r *Reader) init(ctx context.Context) error {
 
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           dset.Columns(),
+		ProjectedColumns:  dset.Columns(),
 		Predicates:        preds,
 		PrefetchAllOnOpen: true,
 	}
@@ -450,12 +450,10 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 }
 
 var columnDatatypes = map[ColumnType]arrow.DataType{
-	ColumnTypeInvalid:              arrow.Null,
-	ColumnTypePath:                 arrow.BinaryTypes.String,
-	ColumnTypeMinTimestamp:         arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMaxTimestamp:         arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeFileSize:             arrow.PrimitiveTypes.Int64,
-	ColumnTypeUncompressedLogsSize: arrow.PrimitiveTypes.Int64,
+	ColumnTypeInvalid:      arrow.Null,
+	ColumnTypePath:         arrow.BinaryTypes.String,
+	ColumnTypeMinTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMaxTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
 }
 
 func columnToField(col *Column) arrow.Field {

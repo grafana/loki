@@ -143,6 +143,58 @@ func TestMemcached_fetchKeysBatched_contextCancellation(t *testing.T) {
 	})
 }
 
+func TestMemcachedFetchWithServerDown(t *testing.T) {
+	const (
+		numKeys         = 40
+		downKeyInterval = 10
+	)
+
+	for _, tc := range []struct {
+		name string
+		cfg  cache.MemcachedConfig
+	}{
+		{
+			name: "unbatched fetch returns the keys of the healthy servers and the server error",
+			cfg:  cache.MemcachedConfig{},
+		},
+		{
+			name: "batched fetch returns the keys of the healthy servers and the server error",
+			cfg:  cache.MemcachedConfig{BatchSize: 4, Parallelism: 2},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			serverDownErr := errors.New("dial tcp 10.0.0.3:11211: connect: connection refused")
+			client := newMockMemcacheServerDown(serverDownErr)
+
+			var keys, wantFound, wantMissed []string
+			var wantBufs [][]byte
+			for i := range numKeys {
+				key := fmt.Sprintf("key-%d", i)
+				keys = append(keys, key)
+				require.NoError(t, client.Set(&memcache.Item{Key: key, Value: []byte(key)}))
+
+				if i%downKeyInterval == 0 {
+					client.downKeys[key] = struct{}{}
+					wantMissed = append(wantMissed, key)
+					continue
+				}
+				wantFound = append(wantFound, key)
+				wantBufs = append(wantBufs, []byte(key))
+			}
+
+			mc := cache.NewMemcached(tc.cfg, client, "test", nil, log.NewNopLogger(), "test")
+			defer mc.Stop()
+
+			found, bufs, missed, err := mc.Fetch(t.Context(), keys)
+
+			require.EqualError(t, err, serverDownErr.Error())
+			require.Equal(t, wantFound, found)
+			require.Equal(t, wantBufs, bufs)
+			require.Equal(t, wantMissed, missed)
+		})
+	}
+}
+
 // mockMemcache whose calls fail 1/3rd of the time.
 type mockMemcacheFailing struct {
 	*mockMemcache
@@ -230,4 +282,39 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 			require.True(t, ok, "key missing %s", key)
 		}
 	}
+}
+
+// mockMemcacheServerDown simulates a cluster with one server down. The keys in
+// downKeys belong to that server. Like the real client, GetMulti returns the
+// items of the other servers together with the error of the down server.
+type mockMemcacheServerDown struct {
+	*mockMemcache
+	downKeys map[string]struct{}
+	err      error
+}
+
+func newMockMemcacheServerDown(err error) *mockMemcacheServerDown {
+	return &mockMemcacheServerDown{
+		mockMemcache: newMockMemcache(),
+		downKeys:     map[string]struct{}{},
+		err:          err,
+	}
+}
+
+func (m *mockMemcacheServerDown) GetMulti(ctx context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+	var err error
+	healthy := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, down := m.downKeys[key]; down {
+			err = m.err
+			continue
+		}
+		healthy = append(healthy, key)
+	}
+
+	items, getErr := m.mockMemcache.GetMulti(ctx, healthy)
+	if getErr != nil {
+		return nil, getErr
+	}
+	return items, err
 }

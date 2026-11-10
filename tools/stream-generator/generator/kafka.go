@@ -88,9 +88,11 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			startTime := time.Now()
 
+			flat := stream.Stream.FlatView()
+
 			// Calculate log size from actual entries
 			var logSize uint64
-			for _, entry := range stream.Stream.Entries {
+			for _, entry := range flat.Entries {
 				logSize += uint64(len(entry.Line))
 			}
 

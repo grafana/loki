@@ -72,9 +72,11 @@ test.ci.skip-vectorsets:
 	go vet -vettool ./internal/customvet/customvet
 
 # Replay the parametrized command integration suites through the AutoPipeliner
-# Cmdable faces (blocking + async) to prove the commands behave the same
-# batched as on a plain client. Selected via GOREDIS_TEST_SUBJECT (see
-# newUniversalSubject in main_test.go). Requires the docker env
+# Cmdable faces to prove the commands behave the same batched as on a plain
+# client: the half-duplex blocking + async faces and the same two faces with
+# FullDuplex on. Selected via GOREDIS_TEST_SUBJECT (see newUniversalSubject in
+# main_test.go). SUBJECTS picks which faces run (CI runs one per matrix cell so
+# they parallelize and a red cell names the face). Requires the docker env
 # (make docker.start).
 #
 # The focus covers every parametrized suite (some via the Commands/BitCount
@@ -82,14 +84,16 @@ test.ci.skip-vectorsets:
 # lightweight BeforeSuite doesn't build), HotKeys Commands (same), and
 # AutoPipeline Blocking Commands (the AP suite itself — running it through an
 # AP subject would nest engines).
+SUBJECTS ?= ap-blocking ap-async ap-fd-blocking ap-fd
+
 test.autopipeline-subjects:
 	# RE_CLUSTER=true forces the lightweight BeforeSuite (no sentinel/ring/cluster
 	# setup): the command suite only needs the standalone Redis, and running the
 	# full stateful BeforeSuite twice (once per subject) against the same server
-	# corrupts replication state and fails the second run. Both faces then run
+	# corrupts replication state and fails the second run. All faces then run
 	# cleanly against the same env. The explicit -timeout keeps a hang from
 	# eating go test's 10m default per subject.
-	set -e; for subj in ap-blocking ap-async; do \
+	set -e; for subj in $(SUBJECTS); do \
 	  echo "=== command suite via GOREDIS_TEST_SUBJECT=$$subj ==="; \
 	  (export RE_CLUSTER=true && \
 	   export RCE_DOCKER=$(RCE_DOCKER) && \

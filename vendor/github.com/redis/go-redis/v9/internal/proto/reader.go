@@ -502,7 +502,7 @@ func (r *Reader) ReadInt() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		return util.ParseInt([]byte(s), 10, 64)
+		return strconv.ParseInt(s, 10, 64)
 	case RespBigInt:
 		b, err := r.readBigInt(line)
 		if err != nil {
@@ -529,7 +529,7 @@ func (r *Reader) ReadUint() (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
-		return util.ParseUint([]byte(s), 10, 64)
+		return strconv.ParseUint(s, 10, 64)
 	case RespBigInt:
 		b, err := r.readBigInt(line)
 		if err != nil {

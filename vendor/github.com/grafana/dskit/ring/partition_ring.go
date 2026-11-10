@@ -60,6 +60,10 @@ type PartitionRing struct {
 
 // PartitionRingOptions holds optional configuration parameters for creating a PartitionRing.
 type PartitionRingOptions struct {
+	// TokenGenerator derives tokens for partitions using PartitionTokensSmt512.
+	// It may be nil if all partitions use stored tokens.
+	TokenGenerator PartitionTokenGenerator
+
 	// ShuffleShardCacheSize is the size of the cache used for shuffle sharding.
 	// If zero or negative, an unbounded map-based cache is used.
 	// If positive, an LRU cache with the specified size is used.
@@ -85,8 +89,11 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
-	ringTokens := desc.tokens()
-	partitionByToken := desc.partitionByToken()
+	ringTokens, partitionByToken, err := resolveRingTokens(desc, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	ringPartitionIDs, ringPartitionActive, err := buildRingTokenPartitionLookups(ringTokens, partitionByToken, desc.Partitions)
 	if err != nil {
 		return nil, err
@@ -104,6 +111,37 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		shuffleShardCache:     shuffleShardCache,
 		opts:                  opts,
 	}, nil
+}
+
+// partitionTokens returns the immutable tokens of a partition.
+func (r *PartitionRing) partitionTokens(id int32) (Tokens, error) {
+	return resolvePartitionTokens(r.desc, id, r.opts)
+}
+
+// countTokens returns the summed token distance of all tokens in each partition.
+func (r *PartitionRing) countTokens() map[int32]int64 {
+	owned := make(map[int32]int64, len(r.desc.Partitions))
+
+	for i, token := range r.ringTokens {
+		partition := r.ringPartitionIDs[i]
+
+		var prevToken uint32
+		if i == 0 {
+			prevToken = r.ringTokens[len(r.ringTokens)-1]
+		} else {
+			prevToken = r.ringTokens[i-1]
+		}
+		diff := tokenDistance(prevToken, token)
+		owned[partition] = owned[partition] + diff
+	}
+
+	// Partitions with 0 tokens should still exist in the result.
+	for id := range r.desc.Partitions {
+		if _, ok := owned[id]; !ok {
+			owned[id] = 0
+		}
+	}
+	return owned
 }
 
 // buildRingTokenPartitionLookups builds two slices parallel to ringTokens:
@@ -191,6 +229,8 @@ func (r *PartitionRing) ShuffleShardSize(size int) int {
 //   - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 //     set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *PartitionRing) ShuffleShard(identifier string, size int) (*PartitionRing, error) {
+	size = r.normalizeShuffleShardSize(size)
+
 	if cached := r.shuffleShardCache.getSubring(identifier, size); cached != nil {
 		return cached, nil
 	}
@@ -215,6 +255,8 @@ func (r *PartitionRing) ShuffleShard(identifier string, size int) (*PartitionRin
 // This function supports caching, but the cache will only be effective if successive calls for the
 // same identifier are with the same lookbackPeriod and increasing values of now.
 func (r *PartitionRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
+	size = r.normalizeShuffleShardSize(size)
+
 	if cached := r.shuffleShardCache.getSubringWithLookback(identifier, size, lookbackPeriod, now); cached != nil {
 		return cached, nil
 	}
@@ -228,12 +270,18 @@ func (r *PartitionRing) ShuffleShardWithLookback(identifier string, size int, lo
 	return subring, nil
 }
 
-func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
-	// If the size is too small or too large, run with a size equal to the total number of partitions.
-	// We have to run the function anyway because the logic may filter out some INACTIVE partitions.
+// normalizeShuffleShardSize gives equivalent out-of-range requests the same cache key.
+// The total partition count preserves the sharding algorithm's filtering and lookback behavior.
+func (r *PartitionRing) normalizeShuffleShardSize(size int) int {
 	if size <= 0 || size >= len(r.desc.Partitions) {
-		size = len(r.desc.Partitions)
+		return len(r.desc.Partitions)
 	}
+	return size
+}
+
+func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
+	// Normalize for callers bypassing the cache too. We still need to filter partitions below.
+	size = r.normalizeShuffleShardSize(size)
 
 	var lookbackUntil int64
 	if lookbackPeriod > 0 {
@@ -464,13 +512,13 @@ func (r *PartitionRing) String() string {
 // method does NOT take partition state into account, so if only active partitions should be
 // considered, then PartitionRing with only active partitions must be created first (e.g. using ShuffleShard method).
 func (r *PartitionRing) GetTokenRangesForPartition(partitionID int32) (TokenRanges, error) {
-	partition, ok := r.desc.Partitions[partitionID]
-	if !ok {
-		return nil, ErrPartitionDoesNotExist
+	tokens, err := r.partitionTokens(partitionID)
+	if err != nil {
+		return nil, err
 	}
 
 	// 1 range (2 values) per token + one additional if we need to split the rollover range.
-	ranges := make(TokenRanges, 0, 2*(len(partition.Tokens)+1))
+	ranges := make(TokenRanges, 0, 2*(len(tokens)+1))
 
 	addRange := func(start, end uint32) {
 		// check if we can group ranges. If so, we just update end of previous range.
@@ -488,7 +536,7 @@ func (r *PartitionRing) GetTokenRangesForPartition(partitionID int32) (TokenRang
 	// We start with all tokens, but will remove tokens we already skipped, to let binary search do less work.
 	ringTokens := r.ringTokens
 
-	for iter, t := range partition.Tokens {
+	for iter, t := range tokens {
 		lastOwnedToken := t - 1
 
 		ix := searchToken(ringTokens, lastOwnedToken)
