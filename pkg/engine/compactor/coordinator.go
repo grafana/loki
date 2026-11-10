@@ -133,14 +133,14 @@ func (c *coordinator) Run(ctx context.Context) error {
 		"plan_version", c.cfg.PlanVersion,
 	)
 	compaction := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
-	if c.sweeps == nil {
-		return compaction.Run(ctx)
-	}
-
-	sweeps := c.sweeps.supervisor(c.cfg.PollingInterval)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return compaction.Run(gctx) })
-	g.Go(func() error { return sweeps.Run(gctx) })
+	g.Go(func() error {
+		if c.sweeps == nil {
+			return nil
+		}
+		return c.sweeps.supervisor(c.cfg.PollingInterval).Run(gctx)
+	})
 	return g.Wait()
 }
 
