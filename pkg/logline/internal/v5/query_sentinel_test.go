@@ -15,16 +15,11 @@ func TestGetBitmapAllSentinels(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "q.lidx")
 
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0
 
-	w, err := newStreamingIndexWriter(path, cfg, 3)
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	w.AddDocuments([]format.DocumentMetadata{
-		{ID: 0, MinTimeUnix: 0, MaxTimeUnix: 1},
-		{ID: 1, MinTimeUnix: 1, MaxTimeUnix: 2},
-		{ID: 2, MinTimeUnix: 2, MaxTimeUnix: 3},
-	})
 	// Write two sentinel terms
 	require.NoError(t, w.WriteTermBitmap([8]byte{'a', 'a', 'a', 'a', 'a', 'a', 0, 0}, format.Bitmap{MatchesAll: true}))
 	require.NoError(t, w.WriteTermBitmap([8]byte{'b', 'b', 'b', 'b', 'b', 'b', 0, 0}, format.Bitmap{MatchesAll: true}))
@@ -45,8 +40,7 @@ func TestGetBitmapAllSentinels(t *testing.T) {
 		require.Nil(t, res.Roaring, "sentinel term should have nil bitmap")
 	}
 
-	// Documents() should return all 3
-	require.Len(t, r.Documents(), 3)
+	require.Nil(t, r.Documents(), "v5 indexes have no document table")
 }
 
 func TestGetBitmapMixedSentinel(t *testing.T) {
@@ -54,17 +48,11 @@ func TestGetBitmapMixedSentinel(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "q2.lidx")
 
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0
 
-	w, err := newStreamingIndexWriter(path, cfg, 4)
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	w.AddDocuments([]format.DocumentMetadata{
-		{ID: 0, MinTimeUnix: 0, MaxTimeUnix: 1},
-		{ID: 1, MinTimeUnix: 1, MaxTimeUnix: 2},
-		{ID: 2, MinTimeUnix: 2, MaxTimeUnix: 3},
-		{ID: 3, MinTimeUnix: 3, MaxTimeUnix: 4},
-	})
 
 	// "aaaaaa": sentinel (matches all)
 	require.NoError(t, w.WriteTermBitmap([8]byte{'a', 'a', 'a', 'a', 'a', 'a', 0, 0}, format.Bitmap{MatchesAll: true}))

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,14 @@ type testIndexSource struct {
 type docTimeKey struct {
 	min int64
 	max int64
+}
+
+// testLayout is the document layout of v5 test indexes. Its cells are 100 ms
+// of 1970-01-01, so the test documents' millisecond bounds map to cells (see
+// sourcesForVersion).
+var testLayout = format.DocumentLayout{
+	Interval: 100 * time.Millisecond,
+	DayStart: time.Unix(0, 0).UTC(),
 }
 
 func TestWriter_MinimalRoundTrip(t *testing.T) {
@@ -69,7 +78,7 @@ func TestWriter_BasicRoundTrip(t *testing.T) {
 			require.Equal(t, uint64(3), header.TermCount)
 			require.True(t, header.PostingsDataSize > 0)
 			require.True(t, header.TermDataSize > 0)
-			require.True(t, header.DocMetadataSize > 0)
+			requireDocMetadata(t, version, header)
 
 			require.Equal(t, expectedDocIDs(source, []string{"ALPHA0"}), openAndQueryTerms(t, version, path, size, header, []string{"ALPHA0"}))
 			require.Equal(t, expectedDocIDs(source, []string{"GAMMA0"}), openAndQueryTerms(t, version, path, size, header, []string{"GAMMA0"}))
@@ -82,6 +91,9 @@ func TestWriter_DocMetadataPreserved(t *testing.T) {
 	for _, version := range AllVersions() {
 
 		t.Run(version, func(t *testing.T) {
+			if !VersionHasDocumentTable(version) {
+				t.Skip("no document table; TestReader_DocumentLayout covers how its document IDs map to time")
+			}
 			source := testIndexSource{
 				docs: []format.DocumentMetadata{
 					{ID: 0, MinTimeUnix: 1700000000000, MaxTimeUnix: 1700000000123},
@@ -130,12 +142,82 @@ func TestWriter_EmptyIndex(t *testing.T) {
 	}
 }
 
+func TestValidateIndexHeader(t *testing.T) {
+	for _, tt := range []struct {
+		version       string
+		footerVersion uint32
+		wantErr       string
+	}{
+		{version: "v3", footerVersion: 4},
+		{version: "v4", footerVersion: 4},
+		{version: "v5", footerVersion: 5},
+		{version: "v5", footerVersion: 4, wantErr: "v5 index has footer version 4, want 5"},
+		{version: "v3", footerVersion: 5, wantErr: "v3 index has footer version 5, want 4"},
+		{version: "v99", footerVersion: 4, wantErr: `unsupported index version: "v99"`},
+	} {
+		t.Run(fmt.Sprintf("%s/footer%d", tt.version, tt.footerVersion), func(t *testing.T) {
+			err := ValidateIndexHeader(tt.version, format.HeaderInfo{Version: tt.footerVersion})
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestReader_DocumentLayout(t *testing.T) {
+	for _, version := range AllVersions() {
+
+		t.Run(version, func(t *testing.T) {
+			path, header := writeIndex(t, version, []format.DocumentMetadata{{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200}}, map[[8]byte][]uint32{term8("LAYOUT"): {0}})
+			size := fileSize(t, path)
+
+			reader, cached, file := openReader(t, version, path, size, header)
+			layout, ok := DocumentLayout(reader)
+			require.NoError(t, reader.Close())
+			require.NoError(t, file.Close())
+
+			fileReader, detected, err := OpenFile(path)
+			require.NoError(t, err)
+			fileLayout, fileOK := DocumentLayout(fileReader)
+			require.NoError(t, fileReader.Close())
+
+			cachedFile, err := os.Open(path)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, cachedFile.Close())
+			}()
+			cachedReader, err := OpenReaderCached(version, cachedFile, 0, size, cached)
+			require.NoError(t, err)
+			cachedLayout, cachedOK := DocumentLayout(cachedReader)
+			require.NoError(t, cachedReader.Close())
+
+			if VersionHasDocumentTable(version) {
+				require.False(t, ok)
+				require.False(t, fileOK)
+				require.False(t, cachedOK)
+				require.Equal(t, "v3", detected)
+				return
+			}
+			require.True(t, ok)
+			require.Equal(t, testLayout, layout)
+			require.True(t, fileOK)
+			require.Equal(t, testLayout, fileLayout)
+			require.True(t, cachedOK)
+			require.Equal(t, testLayout, cachedLayout)
+			require.Equal(t, version, detected)
+		})
+	}
+}
+
 func TestWriter_TermOrderingEnforced(t *testing.T) {
 	for _, version := range AllVersions() {
 
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "ordering.lidx")
-			writer, err := NewWriter(version, path, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
+			docs, cfg := writerArgs(version, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
+			writer, err := NewWriter(version, path, docs, cfg)
 			require.NoError(t, err)
 
 			bm := roaring.New()
@@ -164,7 +246,8 @@ func TestWriter_FailedWriteNoPartialFile(t *testing.T) {
 
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "partial.lidx")
-			writer, err := NewWriter(version, path, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
+			docs, cfg := writerArgs(version, []format.DocumentMetadata{{ID: 0}, {ID: 1}}, nil)
+			writer, err := NewWriter(version, path, docs, cfg)
 			require.NoError(t, err)
 
 			bm := roaring.New()
@@ -444,7 +527,8 @@ func TestMerger_TwoSources_CanReopen(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 			size := fileSize(t, path)
 
@@ -477,11 +561,17 @@ func TestMerger_DocIDsRemappedSequentially(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 			docIDs := openAndQueryTerms(t, version, path, fileSize(t, path), header, []string{"ALLDOC"})
 
 			require.Equal(t, expectedDocIDs(expected, []string{"ALLDOC"}), docIDs)
+			if !VersionHasDocumentTable(version) {
+				// Document IDs are the cells of the documents' start times.
+				require.Equal(t, []uint32{1, 3, 5, 7, 9}, docIDs)
+				return
+			}
 			for i, id := range docIDs {
 				require.Equal(t, uint32(i), id)
 			}
@@ -509,11 +599,16 @@ func TestMerger_QueryResultsUseRemappedDocIDs(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 			docIDs := openAndQueryTerms(t, version, path, fileSize(t, path), header, []string{"SHARED"})
 
 			require.Equal(t, expectedDocIDs(expected, []string{"SHARED"}), docIDs)
+			if !VersionHasDocumentTable(version) {
+				require.Equal(t, []uint32{1, 3, 5}, docIDs)
+				return
+			}
 			require.Equal(t, []uint32{0, 1, 2}, docIDs)
 		})
 	}
@@ -534,7 +629,8 @@ func TestMerger_DisjointTermsUnion(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 			size := fileSize(t, path)
 
@@ -569,7 +665,8 @@ func TestMerger_DeduplicatesDocsByTimeBounds(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 			size := fileSize(t, path)
 
@@ -616,8 +713,9 @@ func TestMerger_EmptyInputs(t *testing.T) {
 			for _, tc := range cases {
 
 				t.Run(tc.name, func(t *testing.T) {
-					expected := expectedMergedIndex(tc.sources)
-					path, header := writeAndMerge(t, version, tc.sources)
+					sources := sourcesForVersion(t, version, tc.sources)
+					expected := expectedMergedIndex(version, sources)
+					path, header := writeAndMerge(t, version, sources)
 					size := fileSize(t, path)
 
 					require.Equal(t, uint32(len(expected.docs)), header.DocumentCount)
@@ -696,7 +794,8 @@ func TestMerger_ThreeSources(t *testing.T) {
 				},
 			}
 
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 			path, header := writeAndMerge(t, version, sources)
 
 			require.Equal(t, uint32(4), header.DocumentCount)
@@ -730,12 +829,14 @@ func TestMerger_MergedCanBeMergedAgain(t *testing.T) {
 				docs:  []format.DocumentMetadata{{ID: 0, MinTimeUnix: 800, MaxTimeUnix: 900}},
 				terms: map[[8]byte][]uint32{term8("TERMAA"): {0}},
 			}
+			all := sourcesForVersion(t, version, append(sources, sourceC))
+			sources, sourceC = all[:len(sources)], all[len(sources)]
 
 			mergedPath, _ := writeAndMerge(t, version, sources)
 			pathC, _ := writeIndex(t, version, sourceC.docs, sourceC.terms)
 			remergedPath, header := mergePaths(context.Background(), t, version, []string{mergedPath, pathC})
 
-			expected := expectedMergedIndex(append(sources, sourceC))
+			expected := expectedMergedIndex(version, all)
 
 			require.Equal(t, uint32(6), header.DocumentCount)
 			require.Equal(t, expectedDocIDs(expected, []string{"TERMAA"}), openAndQueryTerms(t, version, remergedPath, fileSize(t, remergedPath), header, []string{"TERMAA"}))
@@ -794,7 +895,7 @@ func TestOpenReaderAt_Valid(t *testing.T) {
 			require.Equal(t, uint64(2), header.TermCount)
 			require.True(t, header.PostingsDataSize > 0)
 			require.True(t, header.TermDataSize > 0)
-			require.True(t, header.DocMetadataSize > 0)
+			requireDocMetadata(t, version, header)
 		})
 	}
 }
@@ -878,7 +979,8 @@ func TestMerge_Comprehensive(t *testing.T) {
 
 		t.Run(version, func(t *testing.T) {
 			sources := buildComprehensiveSources()
-			expected := expectedMergedIndex(sources)
+			sources = sourcesForVersion(t, version, sources)
+			expected := expectedMergedIndex(version, sources)
 
 			path, header := writeAndMerge(t, version, sources)
 			size := fileSize(t, path)
@@ -887,7 +989,7 @@ func TestMerge_Comprehensive(t *testing.T) {
 			require.Equal(t, uint64(len(expected.terms)), header.TermCount)
 			require.True(t, header.PostingsDataSize > 0)
 			require.True(t, header.TermDataSize > 0)
-			require.True(t, header.DocMetadataSize > 0)
+			requireDocMetadata(t, version, header)
 
 			for _, key := range sortedTerms(expected.terms) {
 				term := termString(key)
@@ -909,7 +1011,7 @@ func TestMerge_Comprehensive(t *testing.T) {
 
 			sourcePath, _ := writeIndex(t, version, sources[0].docs, sources[0].terms)
 			remergedPath, remergedHeader := mergePaths(context.Background(), t, version, []string{path, sourcePath})
-			remergedExpected := expectedMergedIndex([]testIndexSource{expected, sources[0]})
+			remergedExpected := expectedMergedIndex(version, []testIndexSource{expected, sources[0]})
 
 			require.Equal(t, uint32(len(remergedExpected.docs)), remergedHeader.DocumentCount)
 			require.Equal(t, uint64(len(remergedExpected.terms)), remergedHeader.TermCount)
@@ -960,12 +1062,13 @@ func FuzzMergeAndQuery(f *testing.F) {
 	f.Add(uint8(3), uint8(4), uint8(6))
 
 	f.Fuzz(func(t *testing.T, sourceSeed, docSeed, modeSeed uint8) {
-		sources, queries, remerge := buildFuzzMergeCase(sourceSeed, docSeed, modeSeed)
-		expected := expectedMergedIndex(sources)
+		cases, queries, remerge := buildFuzzMergeCase(sourceSeed, docSeed, modeSeed)
 
 		for _, version := range AllVersions() {
 
 			t.Run(version, func(t *testing.T) {
+				sources := sourcesForVersion(t, version, cases)
+				expected := expectedMergedIndex(version, sources)
 				path, header := writeAndMerge(t, version, sources)
 				size := fileSize(t, path)
 
@@ -985,7 +1088,7 @@ func FuzzMergeAndQuery(f *testing.F) {
 				if remerge && len(queries) > 0 && len(sources) > 0 {
 					sourcePath, _ := writeIndex(t, version, sources[0].docs, sources[0].terms)
 					remergedPath, remergedHeader := mergePaths(context.Background(), t, version, []string{path, sourcePath})
-					remergedExpected := expectedMergedIndex([]testIndexSource{expected, sources[0]})
+					remergedExpected := expectedMergedIndex(version, []testIndexSource{expected, sources[0]})
 					require.Equal(t,
 						expectedDocIDs(remergedExpected, queries[0]),
 						openAndQueryTerms(t, version, remergedPath, fileSize(t, remergedPath), remergedHeader, queries[0]),
@@ -1013,7 +1116,8 @@ func writeIndexAtPath(t *testing.T, version, path string, docs []format.Document
 
 	// Disable density filter so general-correctness tests get exact intersection semantics.
 	// Density-filter behaviour is covered by dedicated tests in pkg/logline/internal/v3/.
-	writer, err := NewWriter(version, path, docs, &format.WriterConfig{DensityThreshold: -1})
+	docs, cfg := writerArgs(version, docs, &format.WriterConfig{DensityThreshold: -1})
+	writer, err := NewWriter(version, path, docs, cfg)
 	require.NoError(t, err)
 
 	for _, term := range sortedTerms(terms) {
@@ -1021,6 +1125,77 @@ func writeIndexAtPath(t *testing.T, version, path string, docs []format.Document
 	}
 
 	require.NoError(t, writer.Close())
+}
+
+// writerArgs returns the NewWriter arguments for docs and cfg. A version
+// without a document table takes no documents, and its document IDs are
+// cells of testLayout.
+func writerArgs(version string, docs []format.DocumentMetadata, cfg *format.WriterConfig) ([]format.DocumentMetadata, *format.WriterConfig) {
+	if VersionHasDocumentTable(version) {
+		return docs, cfg
+	}
+	var c format.WriterConfig
+	if cfg != nil {
+		c = *cfg
+	}
+	c.DocumentInterval = testLayout.Interval
+	c.DocumentShardBits = int(testLayout.ShardBits)
+	c.DayStart = testLayout.DayStart
+	return nil, &c
+}
+
+// requireDocMetadata checks that header has a document table exactly when
+// version stores one.
+func requireDocMetadata(t *testing.T, version string, header format.HeaderInfo) {
+	t.Helper()
+	if VersionHasDocumentTable(version) {
+		require.Positive(t, header.DocMetadataSize)
+		return
+	}
+	require.Zero(t, header.DocMetadataSize)
+}
+
+// sourcesForVersion returns sources numbered as version numbers documents.
+// Versions with a document table keep the sources' IDs. Otherwise each
+// document becomes the cell of its start time in testLayout, so documents with
+// equal time bounds in different sources share a cell, as a v3 merge
+// deduplicates them by time bounds.
+func sourcesForVersion(t *testing.T, version string, sources []testIndexSource) []testIndexSource {
+	t.Helper()
+	if VersionHasDocumentTable(version) {
+		return sources
+	}
+	boundsOfCell := make(map[uint32]docTimeKey)
+	out := make([]testIndexSource, len(sources))
+	for i, source := range sources {
+		cellOfID := make(map[uint32]uint32, len(source.docs))
+		for _, doc := range source.docs {
+			cell := uint32(time.UnixMilli(doc.MinTimeUnix).Sub(testLayout.DayStart) / testLayout.Interval)
+			require.Less(t, uint64(cell), testLayout.CellsPerDay())
+			bounds := docTimeKey{min: doc.MinTimeUnix, max: doc.MaxTimeUnix}
+			if prev, ok := boundsOfCell[cell]; ok {
+				require.Equal(t, prev, bounds, "documents with different bounds share cell %d", cell)
+			}
+			boundsOfCell[cell] = bounds
+			cellOfID[doc.ID] = cell
+			out[i].docs = append(out[i].docs, format.DocumentMetadata{ID: cell, MinTimeUnix: doc.MinTimeUnix, MaxTimeUnix: doc.MaxTimeUnix})
+		}
+		if source.terms == nil {
+			continue
+		}
+		out[i].terms = make(map[[8]byte][]uint32, len(source.terms))
+		for term, ids := range source.terms {
+			cells := make([]uint32, len(ids))
+			for j, id := range ids {
+				cell, ok := cellOfID[id]
+				require.True(t, ok, "posting %d has no document", id)
+				cells[j] = cell
+			}
+			slices.Sort(cells)
+			out[i].terms[term] = cells
+		}
+	}
+	return out
 }
 
 func queryTerms(t *testing.T, reader Reader, terms []string) []uint32 {
@@ -1201,7 +1376,15 @@ func expectedDocIDs(source testIndexSource, terms []string) []uint32 {
 	return ids
 }
 
-func expectedMergedIndex(sources []testIndexSource) testIndexSource {
+// expectedMergedIndex returns what merging sources (numbered by
+// sourcesForVersion) produces. A version with a document table deduplicates
+// documents by time bounds and renumbers them densely. Otherwise document IDs
+// are kept, postings are unioned, and the documents are the cells postings
+// reference, which is what the footer's DocumentCount counts.
+func expectedMergedIndex(version string, sources []testIndexSource) testIndexSource {
+	if !VersionHasDocumentTable(version) {
+		return expectedMergedCells(sources)
+	}
 	docs := make([]format.DocumentMetadata, 0)
 	remaps := make([]map[uint32]uint32, len(sources))
 	seenDocs := make(map[docTimeKey]uint32)
@@ -1249,6 +1432,40 @@ func expectedMergedIndex(sources []testIndexSource) testIndexSource {
 		terms[term] = ids
 	}
 
+	return testIndexSource{docs: docs, terms: terms}
+}
+
+func expectedMergedCells(sources []testIndexSource) testIndexSource {
+	termSets := make(map[[8]byte]map[uint32]struct{})
+	referenced := make(map[uint32]struct{})
+	for _, source := range sources {
+		for term, postings := range source.terms {
+			docSet := termSets[term]
+			if docSet == nil {
+				docSet = make(map[uint32]struct{})
+				termSets[term] = docSet
+			}
+			for _, id := range postings {
+				docSet[id] = struct{}{}
+				referenced[id] = struct{}{}
+			}
+		}
+	}
+
+	terms := make(map[[8]byte][]uint32, len(termSets))
+	for term, docSet := range termSets {
+		ids := make([]uint32, 0, len(docSet))
+		for id := range docSet {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		terms[term] = ids
+	}
+	docs := make([]format.DocumentMetadata, 0, len(referenced))
+	for id := range referenced {
+		docs = append(docs, format.DocumentMetadata{ID: id})
+	}
+	slices.SortFunc(docs, func(a, b format.DocumentMetadata) int { return int(a.ID) - int(b.ID) })
 	return testIndexSource{docs: docs, terms: terms}
 }
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
@@ -16,18 +17,13 @@ func TestFooterLayout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.lidx")
 
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0 // disable density filter for this test
-	w, err := newStreamingIndexWriter(path, cfg, 3)
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	w.AddDocuments([]format.DocumentMetadata{
-		{ID: 0, MinTimeUnix: 0, MaxTimeUnix: 1},
-		{ID: 1, MinTimeUnix: 1, MaxTimeUnix: 2},
-		{ID: 2, MinTimeUnix: 2, MaxTimeUnix: 3},
-	})
 
 	bm := roaring.New()
-	bm.Add(0)
+	bm.AddMany([]uint32{0, 7})
 	require.NoError(t, w.WriteTermBitmap([8]byte{'a', 'b', 'c', 'd', 'e', 'f', 0, 0}, format.Bitmap{Roaring: bm}))
 	require.NoError(t, w.Close())
 
@@ -52,23 +48,26 @@ func TestFooterLayout(t *testing.T) {
 	h, err := parseIndexHeader(footerBuf)
 	require.NoError(t, err)
 	require.Equal(t, IndexMagic, h.Magic, "footer must have valid magic")
-	require.Equal(t, IndexVersion, h.Version, "footer version must match IndexVersion")
+	require.Equal(t, uint32(5), binary.LittleEndian.Uint32(footerBuf[4:8]), "v5 footer version is 5")
 	require.Equal(t, uint64(1), h.TermCount)
-	require.Equal(t, uint32(3), h.DocumentCount)
+	require.Equal(t, uint32(2), h.DocumentCount, "DocumentCount counts the cells postings reference")
+	require.Zero(t, h.DocMetadataSize, "v5 indexes have no document table")
+
+	// ReservedMid: interval (bytes 0-8), shard bits (8), day start (16-24).
+	mid := footerBuf[32:128]
+	require.Equal(t, uint64(time.Second), binary.LittleEndian.Uint64(mid[0:8]))
+	require.Equal(t, byte(0), mid[8])
+	require.Equal(t, uint64(testDayStart.UnixNano()), binary.LittleEndian.Uint64(mid[16:24]))
 }
 
 func TestFooterReadback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.lidx")
 
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0
-	w, err := newStreamingIndexWriter(path, cfg, 2)
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	w.AddDocuments([]format.DocumentMetadata{
-		{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-		{ID: 1, MinTimeUnix: 200, MaxTimeUnix: 300},
-	})
 
 	bm0 := roaring.New()
 	bm0.Add(0)

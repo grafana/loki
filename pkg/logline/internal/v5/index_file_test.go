@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/klauspost/compress/zstd"
@@ -28,12 +29,32 @@ func (r *openTrackingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return r.reader.ReadAt(p, off)
 }
 
-// writeTestIndex creates a LOGL index file with the given documents and term→bitmap
+// testDayStart is the day of test indexes; their document IDs are its cells.
+var testDayStart = time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)
+
+// testWriteConfig returns the default write config with one-second cells on
+// testDayStart, which holds document IDs below 86,400.
+func testWriteConfig() IndexWriteConfig {
+	cfg := DefaultFastIndexWriteConfig()
+	cfg.DocumentInterval = time.Second
+	cfg.DayStart = testDayStart
+	return cfg
+}
+
+// testLayout is the document layout of testWriteConfig.
+func testLayout(t testing.TB) documentLayout {
+	t.Helper()
+	l, err := testWriteConfig().documentLayout()
+	require.NoError(t, err)
+	return l
+}
+
+// writeTestIndex creates a LOGL index file with the given term→bitmap
 // postings. Returns the file path.
-func writeTestIndex(t *testing.T, dir, name string, docs []format.DocumentMetadata, postings map[[8]byte][]uint32) string {
+func writeTestIndex(t *testing.T, dir, name string, postings map[[8]byte][]uint32) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.DensityThreshold = 0 // disable density filter in test helpers
 
 	// Sort terms for StreamingIndexWriter (requires ascending order).
@@ -49,9 +70,8 @@ func writeTestIndex(t *testing.T, dir, name string, docs []format.DocumentMetada
 		return compareTerm8(sorted[i].term, sorted[j].term) < 0
 	})
 
-	w, err := newStreamingIndexWriter(path, cfg, uint32(len(docs)))
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	w.AddDocuments(docs)
 	bm := roaring.New()
 	for _, entry := range sorted {
 		bm.Clear()
@@ -73,10 +93,6 @@ func term(s string) [8]byte {
 func TestReadIndexHeader(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTestIndex(t, dir, "header.idx",
-		[]format.DocumentMetadata{
-			{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-			{ID: 1, MinTimeUnix: 300, MaxTimeUnix: 400},
-		},
 		map[[8]byte][]uint32{
 			term("TERMAA"): {0, 1},
 			term("TERMBB"): {1},
@@ -91,7 +107,7 @@ func TestReadIndexHeader(t *testing.T) {
 	require.Equal(t, uint64(2), h.TermCount)
 	require.True(t, h.PostingsDataSize > 0)
 	require.True(t, h.TermDataSize > 0)
-	require.True(t, h.DocMetadataSize > 0)
+	require.Zero(t, h.DocMetadataSize, "v5 indexes have no document table")
 }
 
 func TestReadIndexHeader_NotAnIndex(t *testing.T) {
@@ -116,10 +132,6 @@ func TestReadIndexHeader_TooSmall(t *testing.T) {
 func TestOpenIndexAtWithHeader_SkipsHeaderRead(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTestIndex(t, dir, "header-skip.idx",
-		[]format.DocumentMetadata{
-			{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-			{ID: 1, MinTimeUnix: 300, MaxTimeUnix: 400},
-		},
 		map[[8]byte][]uint32{
 			term("TERMAA"): {0, 1},
 			term("TERMBB"): {1},
@@ -136,20 +148,17 @@ func TestOpenIndexAtWithHeader_SkipsHeaderRead(t *testing.T) {
 	require.NoError(t, err)
 	defer reader.Close()
 
-	require.Len(t, tracker.offsets, 1, "expected a single metadata-region read during open")
+	require.Len(t, tracker.offsets, 1, "expected a single read of the metadata region and footer during open")
 	metadataOffset := int64(header.PostingsDataSize) + int64(header.TermDataSize)
-	metadataSize := int(header.DocMetadataSize + header.TermBlockDirSize + header.PostingsBlockDirSize)
-	require.Equal(t, metadataOffset, tracker.offsets[0], "open should skip header read at offset 0")
-	require.Equal(t, metadataSize, tracker.lengths[0], "open should read exactly the metadata region")
+	metadataSize := int(header.TermBlockDirSize + header.PostingsBlockDirSize)
+	require.Equal(t, metadataOffset, tracker.offsets[0], "open should start at the metadata region")
+	require.Equal(t, metadataSize+IndexFooterSize, tracker.lengths[0], "open should read the metadata region and the footer after it")
+	require.Equal(t, testLayout(t).public(), reader.DocumentLayout(), "the layout comes from the footer, not index_header")
 }
 
 func TestOpenIndexAtWithMetadata_SkipsOpenReads(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTestIndex(t, dir, "metadata-cache.idx",
-		[]format.DocumentMetadata{
-			{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-			{ID: 1, MinTimeUnix: 300, MaxTimeUnix: 400},
-		},
 		map[[8]byte][]uint32{
 			term("TERMAA"): {0, 1},
 			term("TERMBB"): {1},
@@ -174,14 +183,15 @@ func TestOpenIndexAtWithMetadata_SkipsOpenReads(t *testing.T) {
 	require.Empty(t, tracker.offsets, "opening with cached metadata should not issue range reads")
 
 	// Query still works and triggers normal block reads after open.
-	docIDs, err := reader.query("TERMAA")
+	docIDs, matchesAll, err := reader.query("TERMAA")
 	require.NoError(t, err)
+	require.False(t, matchesAll)
 	require.NotEmpty(t, docIDs)
 }
 
 func TestTermIterator_EmptyIndex(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.idx")
-	writer, err := newStreamingIndexWriter(path, DefaultFastIndexWriteConfig(), 0)
+	writer, err := newStreamingIndexWriter(path, testWriteConfig())
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 
@@ -223,7 +233,7 @@ func TestNewTermIterator_RejectsZeroTermBlock(t *testing.T) {
 	require.NoError(t, err)
 	_, err = file.Write(termDir)
 	require.NoError(t, err)
-	require.NoError(t, writeIndexHeader(file, IndexFooter{
+	footer := IndexFooter{
 		Magic:               IndexMagic,
 		Version:             IndexVersion,
 		Flags:               composeIndexFlags(format.PostingsEncodingFastDeltaVarIntBlocked, 1),
@@ -231,7 +241,9 @@ func TestNewTermIterator_RejectsZeroTermBlock(t *testing.T) {
 		TermBlockCount:      1,
 		TermDataSize:        uint64(len(termData)),
 		TermBlockDirSize:    uint64(len(termDir)),
-	}))
+	}
+	footer.setDocumentLayout(testLayout(t))
+	require.NoError(t, writeIndexHeader(file, footer))
 	require.NoError(t, file.Close())
 
 	r, err := OpenIndexFile(path)

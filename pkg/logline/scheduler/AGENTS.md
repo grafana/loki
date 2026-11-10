@@ -107,6 +107,7 @@ logline_index_scheduler_long_poll_waiting         # compactors blocked in long p
 logline_index_scheduler_job_requests_total        # HTTP requests from compactors
 logline_index_scheduler_tick_duration_seconds     # wall-clock time of each tick cycle
 logline_index_scheduler_jobs_skipped_oversized    # jobs skipped because source count exceeds limit
+logline_index_scheduler_indexes_unreadable        # indexes excluded from compaction: unreadable format (never becomes compactable)
 logline_index_scheduler_indexes_deleted_total     # indexes deleted (retention or compacted source cleanup)
 ```
 

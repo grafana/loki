@@ -17,9 +17,8 @@ func TestStreamingIndexWriter_CleanupOnError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "partial.idx")
 
-	w, err := newStreamingIndexWriter(path, DefaultFastIndexWriteConfig(), 1)
+	w, err := newStreamingIndexWriter(path, testWriteConfig())
 	require.NoError(t, err)
-	w.AddDocument(format.DocumentMetadata{ID: 0, MinTimeUnix: 1, MaxTimeUnix: 2})
 
 	// Inject an error so Close short-circuits and removes the partial file.
 	w.err = fmt.Errorf("injected error")
@@ -33,8 +32,7 @@ func TestStreamingIndexWriter_CleanupOnError(t *testing.T) {
 }
 
 // TestStreamingMerge_FromFiles verifies that the streaming merge produces a
-// valid merged index from multiple file-backed sources with overlapping
-// documents.
+// valid merged index from multiple file-backed sources.
 func TestStreamingMerge_FromFiles(t *testing.T) {
 	const numSources = 4
 	const docsPerSource = 500
@@ -44,17 +42,6 @@ func TestStreamingMerge_FromFiles(t *testing.T) {
 	inputPaths := make([]string, numSources)
 
 	for s := range numSources {
-		docs := make([]format.DocumentMetadata, docsPerSource)
-		for i := range docs {
-			// ~50% overlap: docs 0-249 shared across sources.
-			baseTime := int64((s/2)*100 + i)
-			docs[i] = format.DocumentMetadata{
-				ID:          uint32(i),
-				MinTimeUnix: baseTime,
-				MaxTimeUnix: baseTime + 50,
-			}
-		}
-
 		termPostings := make(map[[8]byte][]uint32)
 		for j := range termsPerSource {
 			var tk [8]byte
@@ -72,7 +59,7 @@ func TestStreamingMerge_FromFiles(t *testing.T) {
 			termPostings[tk] = ids
 		}
 
-		inputPaths[s] = writeTestIndex(t, dir, fmt.Sprintf("src%d.idx", s), docs, termPostings)
+		inputPaths[s] = writeTestIndex(t, dir, fmt.Sprintf("src%d.idx", s), termPostings)
 	}
 
 	cfg := DefaultFastIndexWriteConfig()

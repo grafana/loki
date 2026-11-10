@@ -192,16 +192,17 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 	// one cycle must agree on baseCell or the merged docIDs would disagree.
 	shardBits := uint(cfg.Index.DocumentShardBits)
 	pbCfg := postingsBufferConfig{
-		bufferPairs:       cfg.PostingsBufferPairs,
-		spillWatermark:    cfg.PostingsSpillWatermark,
-		intervalNanos:     intervalNanos,
-		documentShardBits: shardBits,
-		cellsPerDay:       uint64((24*time.Hour)/cfg.Index.DocumentInterval) << shardBits,
-		baseCell:          epochCell(docIDEpoch, intervalNanos, shardBits),
-		shardCount:        cfg.Index.ShardCount,
-		shardFn:           shardFn,
-		scratchDir:        runDir,
-		mergeThreads:      cfg.MergeThreads,
+		bufferPairs:        cfg.PostingsBufferPairs,
+		spillWatermark:     cfg.PostingsSpillWatermark,
+		intervalNanos:      intervalNanos,
+		documentShardBits:  shardBits,
+		cellsPerDay:        uint64((24*time.Hour)/cfg.Index.DocumentInterval) << shardBits,
+		baseCell:           epochCell(docIDEpoch, intervalNanos, shardBits),
+		shardCount:         cfg.Index.ShardCount,
+		shardFn:            shardFn,
+		scratchDir:         runDir,
+		mergeThreads:       cfg.MergeThreads,
+		trackDocumentTicks: logline.VersionHasDocumentTable(cfg.Index.Version),
 	}
 
 	newIngester := func(runPrefix string) *streamIngester {

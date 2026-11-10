@@ -68,16 +68,11 @@ func roaringOf(ids []uint32) *roaring.Bitmap {
 
 // writeEncodingTestIndex writes terms with cfg, alternating between the
 // bitmap and docID write paths so both encoder entry points are covered.
-func writeEncodingTestIndex(t testing.TB, path string, cfg IndexWriteConfig, numDocs int, terms []encodingTestTerm) format.HeaderInfo {
+func writeEncodingTestIndex(t testing.TB, path string, cfg IndexWriteConfig, terms []encodingTestTerm) format.HeaderInfo {
 	t.Helper()
 	cfg.DensityThreshold = 0
-	w, err := newStreamingIndexWriter(path, cfg, uint32(numDocs))
+	w, err := newStreamingIndexWriter(path, cfg)
 	require.NoError(t, err)
-	docs := make([]format.DocumentMetadata, numDocs)
-	for i := range docs {
-		docs[i] = format.DocumentMetadata{ID: uint32(i), MinTimeUnix: int64(i), MaxTimeUnix: int64(i) + 1}
-	}
-	w.AddDocuments(docs)
 	for i, term := range terms {
 		switch {
 		case term.matchesAll:
@@ -135,11 +130,11 @@ func TestPostingsEncodings_IndexRoundTrip(t *testing.T) {
 		{format.PostingsEncodingFastEliasFanoBlocked, postingsCompressionNoneXXH3},
 	} {
 		t.Run(fmt.Sprintf("encoding=%d", tc.encoding), func(t *testing.T) {
-			cfg := DefaultFastIndexWriteConfig()
+			cfg := testWriteConfig()
 			cfg.Encoding = tc.encoding
 			cfg.FastBlockTarget = 16 * 1024 // force many postings blocks
 			path := filepath.Join(t.TempDir(), "index.lidx")
-			info := writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+			info := writeEncodingTestIndex(t, path, cfg, terms)
 
 			encoding, _ := format.ParseFlags(info.Flags)
 			require.Equal(t, tc.encoding, encoding)
@@ -163,6 +158,25 @@ func TestPostingsEncodings_IndexRoundTrip(t *testing.T) {
 	}
 }
 
+// rewriteFooter writes a copy of the index at path with edit applied to its
+// footer, and returns the copy's path and index_header, so that meta.json and
+// the file agree on the edited footer.
+func rewriteFooter(t *testing.T, path string, edit func(*IndexFooter)) (string, format.HeaderInfo) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	tail := len(data) - IndexFooterSize
+	h, err := parseIndexHeader(data[tail:])
+	require.NoError(t, err)
+	edit(&h)
+	var footer bytes.Buffer
+	require.NoError(t, writeIndexHeader(&footer, h))
+	copy(data[tail:], footer.Bytes())
+	out := filepath.Join(t.TempDir(), filepath.Base(path))
+	require.NoError(t, os.WriteFile(out, data, 0o644))
+	return out, h.Info()
+}
+
 // Existing indexes all record zstd (1), so honoring the field is backward
 // compatible. A value that disagrees with how blocks were written must fail
 // loudly rather than return wrong postings.
@@ -176,10 +190,10 @@ func TestPostingsCompressionIsHonored(t *testing.T) {
 		format.PostingsEncodingFastDeltaVarIntBlocked,
 		format.PostingsEncodingFastEliasFanoBlocked,
 	} {
-		cfg := DefaultFastIndexWriteConfig()
+		cfg := testWriteConfig()
 		cfg.Encoding = encoding
 		path := filepath.Join(dir, fmt.Sprintf("index-%d.lidx", encoding))
-		info := writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+		info := writeEncodingTestIndex(t, path, cfg, terms)
 		written[info.PostingsCompression] = info
 		files[info.PostingsCompression] = path
 	}
@@ -187,9 +201,8 @@ func TestPostingsCompressionIsHonored(t *testing.T) {
 
 	for _, compression := range []uint32{0, 3} {
 		t.Run(fmt.Sprintf("rejects_%d", compression), func(t *testing.T) {
-			bad := written[postingsCompressionZstd]
-			bad.PostingsCompression = compression
-			f, size := openTestReaderAt(t, files[postingsCompressionZstd])
+			path, bad := rewriteFooter(t, files[postingsCompressionZstd], func(h *IndexFooter) { h.PostingsCompression = compression })
+			f, size := openTestReaderAt(t, path)
 			_, err := OpenIndexAtWithHeader(f, 0, size, bad)
 			require.ErrorContains(t, err, fmt.Sprintf("unsupported postings compression: %d", compression))
 		})
@@ -200,9 +213,8 @@ func TestPostingsCompressionIsHonored(t *testing.T) {
 		{postingsCompressionNoneXXH3, postingsCompressionZstd},
 	} {
 		t.Run(fmt.Sprintf("written_%d_read_as_%d", tc.written, tc.claimed), func(t *testing.T) {
-			bad := written[tc.written]
-			bad.PostingsCompression = tc.claimed
-			f, size := openTestReaderAt(t, files[tc.written])
+			path, bad := rewriteFooter(t, files[tc.written], func(h *IndexFooter) { h.PostingsCompression = tc.claimed })
+			f, size := openTestReaderAt(t, path)
 			r, err := OpenIndexAtWithHeader(f, 0, size, bad)
 			require.NoError(t, err)
 			defer r.Close()
@@ -222,11 +234,11 @@ func TestPostingsCompressionIsHonored(t *testing.T) {
 func TestUncompressedBlockFraming(t *testing.T) {
 	const numDocs = 2000
 	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(7, 7)), numDocs, 1500)
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.Encoding = format.PostingsEncodingFastEliasFanoBlocked
 	cfg.FastBlockTarget = 8 * 1024
 	path := filepath.Join(t.TempDir(), "index.lidx")
-	info := writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+	info := writeEncodingTestIndex(t, path, cfg, terms)
 	require.Greater(t, info.PostingsBlockCount, uint32(1))
 
 	data, err := os.ReadFile(path)
@@ -254,10 +266,10 @@ func TestUncompressedBlockFraming(t *testing.T) {
 func TestUncompressedBlockChecksumDetectsCorruption(t *testing.T) {
 	const numDocs = 2000
 	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(8, 8)), numDocs, 300)
-	cfg := DefaultFastIndexWriteConfig()
+	cfg := testWriteConfig()
 	cfg.Encoding = format.PostingsEncodingFastEliasFanoBlocked
 	path := filepath.Join(t.TempDir(), "index.lidx")
-	writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+	writeEncodingTestIndex(t, path, cfg, terms)
 	clean, err := os.ReadFile(path)
 	require.NoError(t, err)
 
@@ -285,13 +297,35 @@ func TestUnknownPostingsEncodingIsRejected(t *testing.T) {
 	const numDocs = 100
 	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(3, 3)), numDocs, 50)
 	path := filepath.Join(t.TempDir(), "index.lidx")
-	info := writeEncodingTestIndex(t, path, DefaultFastIndexWriteConfig(), numDocs, terms)
+	writeEncodingTestIndex(t, path, testWriteConfig(), terms)
+	path, bad := rewriteFooter(t, path, func(h *IndexFooter) {
+		h.Flags = composeIndexFlags(format.PostingsEncodingFastEliasFanoBlocked+1, 1)
+	})
 	f, size := openTestReaderAt(t, path)
 
-	bad := info
-	bad.Flags = composeIndexFlags(format.PostingsEncodingFastEliasFanoBlocked+1, 1)
 	_, err := OpenIndexAtWithHeader(f, 0, size, bad)
 	require.ErrorContains(t, err, "unsupported postings encoding")
+}
+
+// OpenIndexAtWithHeader reads the footer with the metadata region, because
+// index_header does not record the document layout. An index_header that
+// disagrees with the footer is refused rather than trusted.
+func TestOpenIndexAtWithHeader_HeaderMustMatchFooter(t *testing.T) {
+	const numDocs = 100
+	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(4, 4)), numDocs, 50)
+	path := filepath.Join(t.TempDir(), "index.lidx")
+	info := writeEncodingTestIndex(t, path, testWriteConfig(), terms)
+	f, size := openTestReaderAt(t, path)
+
+	r, err := OpenIndexAtWithHeader(f, 0, size, info)
+	require.NoError(t, err)
+	require.Equal(t, testLayout(t).public(), r.DocumentLayout())
+	require.NoError(t, r.Close())
+
+	bad := info
+	bad.PostingsCompression = postingsCompressionNoneXXH3
+	_, err = OpenIndexAtWithHeader(f, 0, size, bad)
+	require.ErrorContains(t, err, "does not match index_header")
 }
 
 // Compaction reads sources of either encoding and writes one. Every mix must
@@ -308,15 +342,15 @@ func TestMergeMixedPostingsEncodings(t *testing.T) {
 		buildEncodingTestTerms(rand.New(rand.NewPCG(5, 5)), numDocs, numTerms/2),
 	}
 	writeSource := func(i int, encoding format.PostingsEncoding) string {
-		cfg := DefaultFastIndexWriteConfig()
+		cfg := testWriteConfig()
 		cfg.Encoding = encoding
 		cfg.FastBlockTarget = 4 * 1024
 		path := filepath.Join(dir, fmt.Sprintf("src%d-%d.lidx", i, encoding))
-		writeEncodingTestIndex(t, path, cfg, numDocs, sources[i])
+		writeEncodingTestIndex(t, path, cfg, sources[i])
 		return path
 	}
 	merge := func(inputs []string, out format.PostingsEncoding) []byte {
-		cfg := DefaultFastIndexWriteConfig()
+		cfg := testWriteConfig()
 		cfg.Encoding = out
 		var buf bytes.Buffer
 		info, err := mergeFilesTo(context.Background(), t, inputs, &buf, cfg)
@@ -372,10 +406,10 @@ func BenchmarkPostingsDecode(b *testing.B) {
 		format.PostingsEncodingFastDeltaVarIntBlocked,
 		format.PostingsEncodingFastEliasFanoBlocked,
 	} {
-		cfg := DefaultFastIndexWriteConfig()
+		cfg := testWriteConfig()
 		cfg.Encoding = encoding
 		path := filepath.Join(b.TempDir(), "index.lidx")
-		info := writeEncodingTestIndex(b, path, cfg, numDocs, terms)
+		info := writeEncodingTestIndex(b, path, cfg, terms)
 
 		b.Run(fmt.Sprintf("encoding=%d", encoding), func(b *testing.B) {
 			data, err := os.ReadFile(path)

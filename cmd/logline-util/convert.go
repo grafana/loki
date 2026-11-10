@@ -141,7 +141,24 @@ func convertIndex(src, dst, version string, threshold float32, enc format.Postin
 		DensityThreshold: threshold,
 	}
 
-	writer, err := logline.NewWriter(version, dst, reader.Documents(), &cfg)
+	// v5 document IDs are cells of a day and v3/v4 IDs index a document
+	// table, so convert only keeps one numbering or the other.
+	var docs []format.DocumentMetadata
+	layout, hasLayout := logline.DocumentLayout(reader)
+	switch dstTable := logline.VersionHasDocumentTable(version); {
+	case dstTable && hasLayout:
+		return nil, fmt.Errorf("cannot convert a %s index to %s: it has no document table", srcVersion, version)
+	case !dstTable && !hasLayout:
+		return nil, fmt.Errorf("cannot convert a %s index to %s: its document IDs are not cells of a day", srcVersion, version)
+	case hasLayout:
+		cfg.DocumentInterval = layout.Interval
+		cfg.DocumentShardBits = int(layout.ShardBits)
+		cfg.DayStart = layout.DayStart
+	default:
+		docs = reader.Documents()
+	}
+
+	writer, err := logline.NewWriter(version, dst, docs, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create output writer: %w", err)
 	}

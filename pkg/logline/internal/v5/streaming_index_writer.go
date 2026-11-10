@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/bits"
 	"os"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
@@ -14,7 +15,7 @@ import (
 // FastPostingsEncoder satisfies.
 type incrementalEncoder interface {
 	StreamingPostingsEncoder
-	beginStream(w io.Writer, documentCount uint32) error
+	beginStream(w io.Writer) error
 	writeTerm(term [8]byte, bm format.Bitmap) error
 	writeTermDocIDs(term [8]byte, docIDs []uint32, matchesAll bool) error
 	endStream() (int64, []postingsBlockDirEntry, error)
@@ -24,9 +25,9 @@ type incrementalEncoder interface {
 var _ incrementalEncoder = (*FastPostingsEncoder)(nil)
 
 // StreamingIndexWriter writes an index file incrementally, without accumulating
-// all postings in memory. Documents must be registered via AddDocument before
-// the first WriteTerm call, because the total document count must be known
-// before the postings stream is opened.
+// all postings in memory. Document IDs are cells of the configured day and
+// must be below its cell count; the writer keeps no document table and counts
+// the cells its postings reference.
 //
 // When constructed from a path (NewStreamingIndexWriter), the writer owns the
 // underlying file: Close closes it and removes it on error. When constructed
@@ -34,30 +35,36 @@ var _ incrementalEncoder = (*FastPostingsEncoder)(nil)
 // path), Close only finalises the index bytes and leaves the writer to the
 // caller.
 type StreamingIndexWriter struct {
-	config   IndexWriteConfig
-	encoder  incrementalEncoder
-	w        io.Writer
-	f        *os.File // non-nil when the writer owns a backing file
-	path     string   // set alongside f; used for cleanup on error
-	docs     []format.DocumentMetadata
-	terms    [][NgramLength]byte
-	lastTerm [NgramLength]byte
-	started  bool
-	closed   bool
-	err      error
-	docCount uint32
-	footer   IndexFooter
+	config  IndexWriteConfig
+	encoder incrementalEncoder
+	w       io.Writer
+	f       *os.File // non-nil when the writer owns a backing file
+	path    string   // set alongside f; used for cleanup on error
+	layout  documentLayout
+	// cells is a bitset of the cells referenced by any posting, sized to the
+	// day's cell count. Its popcount is the footer's DocumentCount.
+	cells       []uint64
+	cellsPerDay uint64
+	terms       [][NgramLength]byte
+	lastTerm    [NgramLength]byte
+	started     bool
+	closed      bool
+	err         error
+	footer      IndexFooter
 }
 
 // newStreamingIndexWriter opens path for writing and returns a writer that
 // finalises an index file at that path. Close closes the file and removes
 // it on error.
-func newStreamingIndexWriter(path string, cfg IndexWriteConfig, documentCount uint32) (*StreamingIndexWriter, error) {
+func newStreamingIndexWriter(path string, cfg IndexWriteConfig) (*StreamingIndexWriter, error) {
+	if _, err := cfg.documentLayout(); err != nil {
+		return nil, err
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("create index file: %w", err)
 	}
-	sw, err := newStreamingIndexWriterTo(f, cfg, documentCount)
+	sw, err := newStreamingIndexWriterTo(f, cfg)
 	if err != nil {
 		f.Close()
 		_ = os.Remove(path)
@@ -72,7 +79,11 @@ func newStreamingIndexWriter(path string, cfg IndexWriteConfig, documentCount ui
 // The caller owns w; the writer never closes it and never attempts any
 // cleanup on error. Used by the streaming merge path, which feeds bytes
 // into an io.Pipe rather than a file.
-func newStreamingIndexWriterTo(w io.Writer, cfg IndexWriteConfig, documentCount uint32) (*StreamingIndexWriter, error) {
+func newStreamingIndexWriterTo(w io.Writer, cfg IndexWriteConfig) (*StreamingIndexWriter, error) {
+	layout, err := cfg.documentLayout()
+	if err != nil {
+		return nil, err
+	}
 	enc, err := buildPostingsEncoder(cfg)
 	if err != nil {
 		return nil, err
@@ -82,24 +93,34 @@ func newStreamingIndexWriterTo(w io.Writer, cfg IndexWriteConfig, documentCount 
 		return nil, fmt.Errorf("postings encoder type %T does not implement incrementalEncoder", enc)
 	}
 
+	cellsPerDay := layout.public().CellsPerDay()
 	return &StreamingIndexWriter{
-		config:   cfg,
-		encoder:  ie,
-		w:        w,
-		docs:     make([]format.DocumentMetadata, 0, int(documentCount)),
-		terms:    make([][NgramLength]byte, 0, 256),
-		docCount: documentCount,
+		config:      cfg,
+		encoder:     ie,
+		w:           w,
+		layout:      layout,
+		cells:       make([]uint64, (cellsPerDay+63)/64),
+		cellsPerDay: cellsPerDay,
+		terms:       make([][NgramLength]byte, 0, 256),
 	}, nil
 }
 
-// AddDocument appends a document to the index. Must be called before WriteTerm.
-func (w *StreamingIndexWriter) AddDocument(doc format.DocumentMetadata) {
-	w.docs = append(w.docs, doc)
+// recordCell notes that a posting references cell, or returns an error if
+// cell is not a cell of the day.
+func (w *StreamingIndexWriter) recordCell(cell uint32) error {
+	if uint64(cell) >= w.cellsPerDay {
+		return fmt.Errorf("document ID %d is not a cell of the day: the layout has %d cells per day", cell, w.cellsPerDay)
+	}
+	w.cells[cell>>6] |= 1 << (cell & 63)
+	return nil
 }
 
-// AddDocuments appends multiple documents. Must be called before WriteTerm.
-func (w *StreamingIndexWriter) AddDocuments(docs []format.DocumentMetadata) {
-	w.docs = append(w.docs, docs...)
+func (w *StreamingIndexWriter) documentCount() uint32 {
+	var n int
+	for _, word := range w.cells {
+		n += bits.OnesCount64(word)
+	}
+	return uint32(n)
 }
 
 // WriteTerm writes a single term's bitmap into the postings stream.
@@ -115,7 +136,7 @@ func (w *StreamingIndexWriter) WriteTermBitmap(term [8]byte, bm format.Bitmap) e
 	}
 	if !w.started {
 		// Open the postings stream on the first term.
-		if err := w.encoder.beginStream(w.w, w.docCount); err != nil {
+		if err := w.encoder.beginStream(w.w); err != nil {
 			w.err = fmt.Errorf("begin postings stream: %w", err)
 			return w.err
 		}
@@ -131,6 +152,18 @@ func (w *StreamingIndexWriter) WriteTermBitmap(term [8]byte, bm format.Bitmap) e
 	if len(w.terms) > 0 && bytes.Compare(key[:], w.lastTerm[:]) <= 0 {
 		w.err = fmt.Errorf("WriteTerm: out-of-order term %x after %x", key, w.lastTerm)
 		return w.err
+	}
+
+	if !bm.MatchesAll && bm.Roaring != nil {
+		var cellErr error
+		bm.Roaring.Iterate(func(cell uint32) bool {
+			cellErr = w.recordCell(cell)
+			return cellErr == nil
+		})
+		if cellErr != nil {
+			w.err = cellErr
+			return w.err
+		}
 	}
 
 	w.terms = append(w.terms, key)
@@ -160,7 +193,7 @@ func (w *StreamingIndexWriter) WriteTermDocIDs(term [8]byte, docIDs []uint32, ca
 		return w.err
 	}
 	if !w.started {
-		if err := w.encoder.beginStream(w.w, w.docCount); err != nil {
+		if err := w.encoder.beginStream(w.w); err != nil {
 			w.err = fmt.Errorf("begin postings stream: %w", err)
 			return w.err
 		}
@@ -173,6 +206,13 @@ func (w *StreamingIndexWriter) WriteTermDocIDs(term [8]byte, docIDs []uint32, ca
 	if len(w.terms) > 0 && bytes.Compare(key[:], w.lastTerm[:]) <= 0 {
 		w.err = fmt.Errorf("WriteTermDocIDs: out-of-order term %x after %x", key, w.lastTerm)
 		return w.err
+	}
+
+	for _, cell := range docIDs {
+		if err := w.recordCell(cell); err != nil {
+			w.err = err
+			return w.err
+		}
 	}
 
 	w.terms = append(w.terms, key)
@@ -189,8 +229,8 @@ func (w *StreamingIndexWriter) WriteTermDocIDs(term [8]byte, docIDs []uint32, ca
 	return nil
 }
 
-// Close finalises the index by appending the term dictionary, document
-// metadata, directory sections, and the 256-byte footer. If this writer
+// Close finalises the index by appending the term dictionary, directory
+// sections, and the 256-byte footer. If this writer
 // owns a backing file (opened via NewStreamingIndexWriter), Close also
 // closes the file and removes it on error. Otherwise the caller remains
 // responsible for closing and cleaning up the destination.
@@ -222,24 +262,13 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 		return w.err
 	}
 
-	// Ensure the encoder stream is opened even when WriteTerm was never called,
-	// so the postings section is written with valid (empty) state.
-	if !w.started {
-		if w.docCount > 0 {
-			if err := w.encoder.beginStream(w.w, w.docCount); err != nil {
-				return fmt.Errorf("begin postings stream: %w", err)
-			}
-		}
-		w.started = true
-	}
-
+	// An index with no terms has no postings section.
 	var (
 		postingsDataSize int64
 		postingsDir      []postingsBlockDirEntry
 		err              error
 	)
-
-	if w.docCount > 0 || len(w.terms) > 0 {
+	if w.started {
 		postingsDataSize, postingsDir, err = w.encoder.endStream()
 		if err != nil {
 			return fmt.Errorf("end postings stream: %w", err)
@@ -249,11 +278,6 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 		}
 	}
 
-	// Validate document count matches what was promised at construction.
-	if uint32(len(w.docs)) != w.docCount {
-		return fmt.Errorf("document count mismatch: added %d documents but declared %d", len(w.docs), w.docCount)
-	}
-
 	// Terms arrive pre-sorted from the k-way merge. Do NOT call normalizeTermBitmaps:
 	// sorting would reassign term IDs and corrupt the postings section, which was
 	// already flushed in sorted order.
@@ -261,8 +285,6 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 	if err != nil {
 		return fmt.Errorf("build term data: %w", err)
 	}
-
-	docsSection := encodeDocumentMetadata(w.docs)
 
 	termDirSection, err := encodeTermBlockDirEntries(termDir)
 	if err != nil {
@@ -277,9 +299,6 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 	if _, err := w.w.Write(termData); err != nil {
 		return fmt.Errorf("write term data: %w", err)
 	}
-	if _, err := w.w.Write(docsSection); err != nil {
-		return fmt.Errorf("write document metadata: %w", err)
-	}
 	if _, err := w.w.Write(termDirSection); err != nil {
 		return fmt.Errorf("write term directory: %w", err)
 	}
@@ -291,21 +310,17 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 		Magic:                IndexMagic,
 		Version:              IndexVersion,
 		Flags:                composeIndexFlags(w.encoder.Encoding(), w.encoder.PackingFactor()),
-		DocumentCount:        uint32(len(w.docs)),
+		DocumentCount:        w.documentCount(),
 		TermBlockCount:       uint32(len(termDir)),
 		PostingsBlockCount:   uint32(len(postingsDir)),
 		PostingsCompression:  w.encoder.CompressionType(),
 		TermCount:            uint64(len(w.terms)),
 		PostingsDataSize:     uint64(postingsDataSize),
 		TermDataSize:         uint64(len(termData)),
-		DocMetadataSize:      uint64(len(docsSection)),
 		TermBlockDirSize:     uint64(len(termDirSection)),
 		PostingsBlockDirSize: uint64(len(postingsDirSection)),
 	}
-	w.footer.setDocumentLayout(documentLayout{
-		interval:  w.config.DocumentInterval,
-		shardBits: uint8(w.config.DocumentShardBits),
-	})
+	w.footer.setDocumentLayout(w.layout)
 
 	// v2: append footer at EOF (no seek needed).
 	if err := writeIndexHeader(w.w, w.footer); err != nil {
