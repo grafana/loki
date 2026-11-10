@@ -13,6 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 var _ dataobj.WholeBlockMetadataCache = (*MemoryCache)(nil)
@@ -236,6 +237,95 @@ func TestMemoryCache_GetOrLoadMetadataRegion(t *testing.T) {
 	})
 }
 
-func newTestMemoryCache() *MemoryCache {
-	return NewMemoryCache(KindLogs, NewMetrics(nil), nil)
+func TestMemoryCache_WithRemoteCache(t *testing.T) {
+	t.Run("a miss asks the remote cache, loads once and stores the block there", func(t *testing.T) {
+		backend := cache.NewMockCache()
+		c := newTestMemoryCache(WithRemoteCache(newTestCache(backend, 0, nil)))
+
+		var loads int
+		load := func(context.Context) ([]byte, error) {
+			loads++
+			return []byte("block"), nil
+		}
+
+		got, err := c.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+		require.Equal(t, []byte("block"), got)
+		require.Equal(t, 1, loads)
+		require.Contains(t, backend.GetInternal(), keyPrefix+wholeBlockKeyPrefix+"obj")
+
+		_, err = c.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+		require.Equal(t, 1, loads, "the second call is a memory hit")
+	})
+
+	t.Run("a pod with an empty memory finds the block in the remote cache and does not load", func(t *testing.T) {
+		metrics := NewMetrics(nil)
+		remote := NewCache(cache.NewMockCache(), 0, KindLogs, metrics, nil)
+		first := NewMemoryCache(KindLogsMemory, metrics, nil, WithRemoteCache(remote))
+		second := NewMemoryCache(KindLogsMemory, metrics, nil, WithRemoteCache(remote))
+
+		_, err := first.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			return []byte("block"), nil
+		})
+		require.NoError(t, err)
+
+		got, err := second.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			t.Error("load must not run: the remote cache holds the block")
+			return nil, nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("block"), got)
+		require.Equal(t, 1, second.Len())
+		require.Equal(t, float64(1), testutil.ToFloat64(remote.hits))
+		require.Equal(t, float64(1), testutil.ToFloat64(remote.misses))
+		require.Equal(t, float64(2), testutil.ToFloat64(metrics.misses.WithLabelValues(KindLogsMemory)), "each memory cache missed once")
+	})
+
+	t.Run("an entry that a plain cache wrote for the same object is not reused", func(t *testing.T) {
+		remote := newTestCache(cache.NewMockCache(), 0, nil)
+		c := newTestMemoryCache(WithRemoteCache(remote))
+
+		_, err := remote.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			return []byte("short-region"), nil
+		})
+		require.NoError(t, err)
+
+		got, err := c.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			return []byte("whole-block"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("whole-block"), got)
+	})
+
+	t.Run("a remote cache fetch error degrades to a load", func(t *testing.T) {
+		backend := cache.NewMockCache()
+		backend.SetErr(nil, errors.New("fetch boom"))
+		c := newTestMemoryCache(WithRemoteCache(newTestCache(backend, 0, nil)))
+
+		got, err := c.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			return []byte("block"), nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, []byte("block"), got)
+		require.Equal(t, 1, c.Len())
+	})
+
+	t.Run("a failed load is kept in neither tier", func(t *testing.T) {
+		backend := cache.NewMockCache()
+		c := newTestMemoryCache(WithRemoteCache(newTestCache(backend, 0, nil)))
+		loadErr := errors.New("load boom")
+
+		_, err := c.GetOrLoadMetadataRegion(t.Context(), "obj", func(context.Context) ([]byte, error) {
+			return nil, loadErr
+		})
+
+		require.ErrorIs(t, err, loadErr)
+		require.Zero(t, c.Len())
+		require.Empty(t, backend.GetInternal())
+	})
+}
+
+func newTestMemoryCache(opts ...MemoryCacheOption) *MemoryCache {
+	return NewMemoryCache(KindLogsMemory, NewMetrics(nil), nil, opts...)
 }

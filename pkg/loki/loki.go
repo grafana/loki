@@ -513,7 +513,7 @@ type Loki struct {
 	dataObjMetastore  *metastore.ObjectMetastore
 
 	// dataObjLogsMemoryCache is nil unless data objects and -dataobj.logs-metadata-memory-cache-enabled are
-	// both on. The querier uses it instead of dataObjLogsCache for log objects.
+	// both on. The querier uses it for log objects. On a miss it asks dataObjLogsCache, when that is set.
 	dataObjLogsMemoryCache *metadatacache.MemoryCache
 
 	ClientMetrics       storage.ClientMetrics

@@ -13,6 +13,16 @@ import (
 // allocation when an object layout is corrupt.
 const memoryMaxItemBytes = 64 << 20
 
+// KindLogsMemory labels the counters of the MemoryCache that serves logs objects. It differs from
+// KindLogs, so the memory tier and the backend tier behind it each report their own hits and misses.
+const KindLogsMemory = "logs_memory"
+
+// wholeBlockKeyPrefix separates the entries MemoryCache writes to its remote cache from the entries a
+// plain Cache writes for the same object. A plain entry stops before the logs section metadata.
+// MemoryCache would keep such an entry for the life of the process, and every open would then read
+// the logs section metadata from object storage.
+const wholeBlockKeyPrefix = "whole-block:"
+
 // MemoryCache is an in-memory metadata cache. It never evicts and has no limit on its total size.
 //
 // It keeps the metadata block of every object it loads, or the whole object if it is tiny, for the
@@ -30,19 +40,35 @@ type MemoryCache struct {
 
 	sf singleflight.Group
 
+	// remote, when set, sits between the memory and object storage.
+	remote *Cache
+
 	hits    prometheus.Counter
 	misses  prometheus.Counter
 	entries prometheus.Gauge
 	bytes   prometheus.Gauge
 }
 
+// MemoryCacheOption configures a MemoryCache.
+type MemoryCacheOption func(*MemoryCache)
+
+// WithRemoteCache puts remote behind the MemoryCache. On a miss the MemoryCache asks remote before it
+// loads from object storage, and remote keeps what the load returns. A pod that starts empty then
+// finds the metadata of the other pods in remote.
+//
+// remote keeps the whole metadata block under its own keys. It does not reuse the entries a plain
+// Cache wrote for the same object.
+func WithRemoteCache(remote *Cache) MemoryCacheOption {
+	return func(c *MemoryCache) { c.remote = remote }
+}
+
 // NewMemoryCache returns an empty MemoryCache. It counts its hits and misses under kind in m, and it
 // registers its size gauges on reg. reg may be nil.
 //
 // It panics if reg already holds the gauges of a MemoryCache of the same kind.
-func NewMemoryCache(kind string, m *Metrics, reg prometheus.Registerer) *MemoryCache {
+func NewMemoryCache(kind string, m *Metrics, reg prometheus.Registerer, opts ...MemoryCacheOption) *MemoryCache {
 	labels := prometheus.Labels{"kind": kind}
-	return &MemoryCache{
+	c := &MemoryCache{
 		items:  make(map[string][]byte),
 		hits:   m.hits.WithLabelValues(kind),
 		misses: m.misses.WithLabelValues(kind),
@@ -57,11 +83,15 @@ func NewMemoryCache(kind string, m *Metrics, reg prometheus.Registerer) *MemoryC
 			ConstLabels: labels,
 		}),
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
-// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load and returns the
-// result. It keeps the result for the life of the process, unless the result is empty or larger than
-// MaxItemBytes. A failed load is not kept, so the next call loads again.
+// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it asks the remote cache, if
+// any, and then calls load. It returns the result and keeps it for the life of the process, unless the
+// result is empty or larger than MaxItemBytes. A failed load is not kept, so the next call loads again.
 //
 // Concurrent misses for the same key share a single load. It runs on a context that keeps the values
 // of the first caller's context but drops its cancellation. A timeout bounds the load.
@@ -90,7 +120,14 @@ func (c *MemoryCache) GetOrLoadMetadataRegion(ctx context.Context, key string, l
 		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), loadTimeout)
 		defer cancel()
 
-		md, err := load(loadCtx)
+		fetch := load
+		if c.remote != nil {
+			fetch = func(ctx context.Context) ([]byte, error) {
+				return c.remote.GetOrLoadMetadataRegion(ctx, wholeBlockKeyPrefix+key, load)
+			}
+		}
+
+		md, err := fetch(loadCtx)
 		if err != nil {
 			return nil, err
 		}

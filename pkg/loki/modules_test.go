@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -474,6 +475,25 @@ func TestInitDataObjCache(t *testing.T) {
 		require.NotNil(t, loki.dataObjTOCCache)
 	})
 
+	t.Run("a memory miss asks the logs cache of the backend, and a memory hit does not", func(t *testing.T) {
+		reg := useFreshRegistry(t)
+		loki := &Loki{}
+		loki.Cfg.DataObj = dataobjconfig.Config{Enabled: true, LogsMetadataMemoryCache: true, MetadataCache: embeddedBackend}
+		_, err := loki.initDataObjCache()
+		require.NoError(t, err)
+		load := func(context.Context) ([]byte, error) { return []byte("block"), nil }
+
+		_, err = loki.dataObjLogsMemoryCache.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+		_, err = loki.dataObjLogsMemoryCache.GetOrLoadMetadataRegion(t.Context(), "obj", load)
+		require.NoError(t, err)
+
+		require.Equal(t, float64(1), counterValue(t, reg, "loki_dataobj_metadata_cache_misses_total", "logs_memory"))
+		require.Equal(t, float64(1), counterValue(t, reg, "loki_dataobj_metadata_cache_hits_total", "logs_memory"))
+		require.Equal(t, float64(1), counterValue(t, reg, "loki_dataobj_metadata_cache_misses_total", "logs"), "only the memory miss reached the backend")
+		require.Zero(t, counterValue(t, reg, "loki_dataobj_metadata_cache_hits_total", "logs"))
+	})
+
 	t.Run("builds no memory cache when the flag is off", func(t *testing.T) {
 		useFreshRegistry(t)
 		loki := &Loki{}
@@ -490,10 +510,34 @@ func TestInitDataObjCache(t *testing.T) {
 
 // useFreshRegistry gives the test its own default registerer, so a cache built by one test does not
 // collide with the metrics of another.
-func useFreshRegistry(t *testing.T) {
+func useFreshRegistry(t *testing.T) *prometheus.Registry {
 	t.Helper()
 
 	previous := prometheus.DefaultRegisterer
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	reg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer = reg
 	t.Cleanup(func() { prometheus.DefaultRegisterer = previous })
+	return reg
+}
+
+// counterValue returns the value of the counter series of name that carries the given kind label.
+func counterValue(t *testing.T, reg *prometheus.Registry, name, kind string) float64 {
+	t.Helper()
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "kind" && label.GetValue() == kind {
+					return metric.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	t.Fatalf("no series %q with kind %q", name, kind)
+	return 0
 }

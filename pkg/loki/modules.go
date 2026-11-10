@@ -818,7 +818,7 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 // returns no service when data objects are disabled or no cache backend is configured.
 //
 // It builds the in-memory cache for log objects when -dataobj.logs-metadata-memory-cache-enabled is set. That cache
-// needs no service.
+// needs no service. When a backend is also configured, the in-memory cache asks the logs cache of the backend on a miss.
 func (t *Loki) initDataObjCache() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
@@ -830,31 +830,38 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 	}
 
 	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+
+	var svc services.Service
+	if backendConfigured {
+		logger := log.With(util_log.Logger, "component", "querier")
+
+		backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+		}
+
+		t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
+		t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
+		t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+
+		// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
+		svc = services.NewIdleService(nil, func(error) error {
+			t.dataObjLogsCache.Stop()
+			t.dataObjIndexCache.Stop()
+			t.dataObjTOCCache.Stop()
+			return nil
+		})
+	}
+
 	if t.Cfg.DataObj.LogsMetadataMemoryCache {
-		t.dataObjLogsMemoryCache = metadatacache.NewMemoryCache(metadatacache.KindLogs, cacheMetrics, prometheus.DefaultRegisterer)
-	}
-	if !backendConfigured {
-		return nil, nil
-	}
-
-	logger := log.With(util_log.Logger, "component", "querier")
-
-	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+		var memoryOpts []metadatacache.MemoryCacheOption
+		if t.dataObjLogsCache != nil {
+			memoryOpts = append(memoryOpts, metadatacache.WithRemoteCache(t.dataObjLogsCache))
+		}
+		t.dataObjLogsMemoryCache = metadatacache.NewMemoryCache(metadatacache.KindLogsMemory, cacheMetrics, prometheus.DefaultRegisterer, memoryOpts...)
 	}
 
-	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
-
-	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
-	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
-		t.dataObjIndexCache.Stop()
-		t.dataObjTOCCache.Stop()
-		return nil
-	}), nil
+	return svc, nil
 }
 
 // initDataObjMetastore builds the metastore of the data objects. The metastore is also a service, which refreshes its
