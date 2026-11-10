@@ -58,6 +58,26 @@ func TestNeedleKey(t *testing.T) {
 		key(t, `{app="api"} |= "a" |= "b"`, 1))
 }
 
+// ngramDelegate is a delegate that reports an n-gram length.
+type ngramDelegate struct {
+	*stubHintProvider
+	n int
+}
+
+func (d ngramDelegate) NgramLength() int { return d.n }
+
+func TestCacheKeyNgramLength(t *testing.T) {
+	require.Zero(t, cacheKeyNgramLength(&stubHintProvider{}), "a delegate that reports none")
+	require.Equal(t, 7, cacheKeyNgramLength(ngramDelegate{&stubHintProvider{}, 7}))
+
+	provider, err := NewLoglineHintProvider(newTestStore(t), 6, 0, nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, 6, cacheKeyNgramLength(provider))
+
+	var none *LoglineHintProvider
+	require.Zero(t, none.NgramLength())
+}
+
 func TestNeedleKey_NotUsable(t *testing.T) {
 	for name, tc := range map[string]struct {
 		query string

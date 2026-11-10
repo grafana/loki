@@ -77,6 +77,10 @@ type minDateProvider interface {
 	MinDate() time.Time
 }
 
+type ngramLengthProvider interface {
+	NgramLength() int
+}
+
 // CachingHintProvider wraps another QueryHintProvider with day-aligned caching.
 type CachingHintProvider struct {
 	delegate QueryHintProvider
@@ -368,6 +372,16 @@ func cacheKeyMinDate(delegate QueryHintProvider) string {
 		return ""
 	}
 	return minDate.Format(hintCacheDayLayout)
+}
+
+// cacheKeyNgramLength returns the delegate's n-gram length, or 0 when it doesn't
+// report one.
+func cacheKeyNgramLength(delegate QueryHintProvider) int {
+	p, ok := delegate.(ngramLengthProvider)
+	if !ok {
+		return 0
+	}
+	return p.NgramLength()
 }
 
 func buildDayWindows(tenant, query, minDate string, from, through time.Time) []dayWindow {
