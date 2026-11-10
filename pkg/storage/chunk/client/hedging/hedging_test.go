@@ -1,7 +1,10 @@
 package hedging
 
 import (
+	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,4 +75,40 @@ func TestHedgingRateLimit(t *testing.T) {
 	require.Equal(t, int32(2), count.Load())
 	require.Equal(t, 1.0, testutil.ToFloat64(totalHedgeRequests)-beforeTotal)
 	require.Equal(t, 18.0, testutil.ToFloat64(totalRateLimitedHedgeRequests)-beforeLimited)
+}
+
+// The winning request's context must be cancelled once its body is closed,
+// otherwise it stays attached to a long-lived parent context and leaks.
+func TestHedgingCancelsWinnerContextOnBodyClose(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg := &Config{
+		At:           time.Hour,
+		UpTo:         2,
+		MaxPerSecond: 1000,
+	}
+	ctxs := make(chan context.Context, 1)
+	rt, err := cfg.RoundTripperWithRegisterer(RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		ctxs <- req.Context()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	}), nil)
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(parent, http.MethodGet, "http://example.com", nil)
+	require.NoError(t, err)
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+
+	winnerCtx := <-ctxs
+	require.NoError(t, winnerCtx.Err(), "context cancelled before body was read")
+
+	_, err = io.Copy(io.Discard, resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.ErrorIs(t, winnerCtx.Err(), context.Canceled)
+	require.NoError(t, parent.Err())
 }
