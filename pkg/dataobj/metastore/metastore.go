@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -83,6 +84,9 @@ type IndexEntry struct {
 	Path  string
 	Start time.Time
 	End   time.Time
+
+	// ShardBuckets is the shard layout of the tenant in the index object.
+	ShardBuckets indexpointers.ShardBuckets
 }
 
 type GetIndexesResponse struct {
@@ -95,6 +99,11 @@ type IndexSectionsReaderRequest struct {
 	SectionsRequest SectionsRequest
 	PrefetchBytes   int64
 	BatchSize       int
+
+	// ShardBuckets is the shard layout of the tenant in the index object, as
+	// the ToC records it. If it is the zero ShardBuckets, the reader reads the
+	// layout from the index object.
+	ShardBuckets indexpointers.ShardBuckets
 }
 
 type IndexSectionsReaderResponse struct {

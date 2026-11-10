@@ -126,9 +126,9 @@ func TestDecodeRunID(t *testing.T) {
 	})
 }
 
-func TestDecodeShardBuckets(t *testing.T) {
+func TestShardBucketsFromCount(t *testing.T) {
 	t.Run("returns the bucket count for a power of two", func(t *testing.T) {
-		buckets, err := decodeShardBuckets(64)
+		buckets, err := ShardBucketsFromCount(64)
 		require.NoError(t, err)
 		layout, ok := buckets.Layout()
 		require.True(t, ok)
@@ -136,17 +136,17 @@ func TestDecodeShardBuckets(t *testing.T) {
 	})
 
 	t.Run("returns an error when the count is not a power of two", func(t *testing.T) {
-		_, err := decodeShardBuckets(3)
+		_, err := ShardBucketsFromCount(3)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the count is not positive", func(t *testing.T) {
-		_, err := decodeShardBuckets(0)
+		_, err := ShardBucketsFromCount(0)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the count does not fit in 32 bits", func(t *testing.T) {
-		_, err := decodeShardBuckets(1 << 40)
+		_, err := ShardBucketsFromCount(1 << 40)
 		require.Error(t, err)
 	})
 }

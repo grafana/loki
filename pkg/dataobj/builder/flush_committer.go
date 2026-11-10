@@ -209,9 +209,10 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// A WriteEntry error fails the flush, so the offset is not committed and
 	// the records are read again.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
-		Path:      res.Path,
-		StartTime: res.TimeRange.MinTime,
-		EndTime:   res.TimeRange.MaxTime,
+		Path:         res.Path,
+		StartTime:    res.TimeRange.MinTime,
+		EndTime:      res.TimeRange.MaxTime,
+		ShardBuckets: res.ShardBuckets,
 	}); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}

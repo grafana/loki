@@ -181,7 +181,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			buckets, err := decodeShardBuckets(columnValue.Int64())
+			buckets, err := ShardBucketsFromCount(columnValue.Int64())
 			if err != nil {
 				return err
 			}
@@ -229,9 +229,11 @@ func decodeRunID(value int64) (RunID, error) {
 	return RunID(value), nil
 }
 
-// decodeShardBuckets returns the ShardBuckets with the given bucket count. It
-// returns an error if buckets is not a valid bucket count.
-func decodeShardBuckets(buckets int64) (ShardBuckets, error) {
+// ShardBucketsFromCount returns the ShardBuckets with the given bucket count,
+// as the shard_buckets column stores it. It returns an error if buckets is not
+// a valid bucket count. A valid count is never zero, so the result is never
+// the zero ShardBuckets.
+func ShardBucketsFromCount(buckets int64) (ShardBuckets, error) {
 	if buckets <= 0 || buckets > math.MaxUint32 {
 		return ShardBuckets{}, fmt.Errorf("invalid %s value %d", ColumnTypeShardBuckets, buckets)
 	}

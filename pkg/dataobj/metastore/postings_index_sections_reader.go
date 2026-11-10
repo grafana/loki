@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	lokimem "github.com/grafana/loki/v3/pkg/memory"
@@ -103,6 +104,10 @@ type postingsIndexSectionsReader struct {
 	batchSize  int
 	hashRange  *streams.HashRange
 
+	// shardBuckets is the shard layout from the ToC. The zero value means the
+	// reader reads the layout from obj.
+	shardBuckets indexpointers.ShardBuckets
+
 	initialized bool
 	resolved    bool
 	selector    *streamSelector
@@ -123,19 +128,21 @@ func newPostingsIndexSectionsReader(
 	predicates []*labels.Matcher,
 	batchSize int,
 	hashRange *streams.HashRange,
+	shardBuckets indexpointers.ShardBuckets,
 ) *postingsIndexSectionsReader {
 	if batchSize <= 0 {
 		batchSize = 8192
 	}
 	return &postingsIndexSectionsReader{
-		logger:     logger,
-		obj:        obj,
-		matchers:   matchers,
-		predicates: predicates,
-		start:      start,
-		end:        end,
-		batchSize:  batchSize,
-		hashRange:  hashRange,
+		logger:       logger,
+		obj:          obj,
+		matchers:     matchers,
+		predicates:   predicates,
+		start:        start,
+		end:          end,
+		batchSize:    batchSize,
+		hashRange:    hashRange,
+		shardBuckets: shardBuckets,
 	}
 }
 
@@ -213,15 +220,29 @@ func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tena
 		return nil, nil
 	}
 
-	layout, err := indexobj.TenantShardLayout(ctx, r.obj, tenant)
+	layout, err := r.shardLayout(ctx, tenant)
 	if err != nil {
-		return nil, fmt.Errorf("reading the shard layout of the index object: %w", err)
+		return nil, err
 	}
 	from, to := layout.BucketRange(*r.hashRange)
 	if layout.CoversAllShardBuckets(from, to) {
 		return nil, nil
 	}
 	return &postings.ShardBucketRange{From: from, To: to}, nil
+}
+
+// shardLayout returns the shard layout of tenant in this index object. It
+// takes the layout from the ToC if the ToC records it, so it reads no stats
+// section.
+func (r *postingsIndexSectionsReader) shardLayout(ctx context.Context, tenant string) (streams.ShardLayout, error) {
+	if layout, ok := r.shardBuckets.Layout(); ok {
+		return layout, nil
+	}
+	layout, err := indexobj.TenantShardLayout(ctx, r.obj, tenant)
+	if err != nil {
+		return streams.ShardLayout{}, fmt.Errorf("reading the shard layout of the index object: %w", err)
+	}
+	return layout, nil
 }
 
 var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")

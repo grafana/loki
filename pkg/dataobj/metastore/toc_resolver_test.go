@@ -1403,6 +1403,35 @@ func TestObjectMetastore_GetIndexes(t *testing.T) {
 			require.True(t, resp.Indexes[i].Start.Equal(start))
 			require.True(t, resp.Indexes[i].End.Equal(end))
 		}
+		require.Equal(t, buckets, resp.Indexes[0].ShardBuckets)
+		require.Zero(t, resp.Indexes[1].ShardBuckets)
+	})
+
+	t.Run("returns no shard layout for an entry that records none when an earlier read batch held one", func(t *testing.T) {
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(8))
+		start, end := tocTestWindow, tocTestWindow.Add(time.Hour)
+
+		// Each read batch holds 1024 pointers, so the pointers with a layout fill the first batch and
+		// the pointers without one start the second.
+		pointers := make([]indexpointers.IndexPointer, 1500)
+		want := make(map[string]indexpointers.ShardBuckets, len(pointers))
+		for i := range pointers {
+			pointers[i] = indexpointers.IndexPointer{Path: fmt.Sprintf("index/%04d", i), StartTs: start, EndTs: end}
+			if i < 1024 {
+				pointers[i].ShardBuckets = buckets
+			}
+			want[pointers[i].Path] = pointers[i].ShardBuckets
+		}
+		bucket := newTOCTestBucket()
+		bucket.upload(t, IndexStoragePrefix+"/"+TableOfContentsPath(tenantID, tocTestWindow), newTOCBytes(t, tenantID, pointers...))
+
+		resp, err := NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry()).GetIndexes(ctx, GetIndexesRequest{Start: start, End: end})
+		require.NoError(t, err)
+		got := make(map[string]indexpointers.ShardBuckets, len(resp.Indexes))
+		for _, index := range resp.Indexes {
+			got[index.Path] = index.ShardBuckets
+		}
+		require.Equal(t, want, got)
 	})
 }
 
