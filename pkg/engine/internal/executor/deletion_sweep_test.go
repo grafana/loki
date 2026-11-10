@@ -59,9 +59,14 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		require.ErrorIs(t, err, deletion.ErrMalformedFileList)
 	})
 
-	t.Run("fails when no bucket is configured", func(t *testing.T) {
-		_, err := run(t, Config{}, &physical.DeletionSweep{Tenant: "t1"})
-		require.ErrorContains(t, err, "no object store bucket configured")
+	t.Run("fails without a write to the index bucket when no data bucket is configured", func(t *testing.T) {
+		indexBucket := newBucket(t)
+
+		_, err := run(t, Config{Bucket: indexBucket}, &physical.DeletionSweep{Tenant: "t1"})
+		require.ErrorContains(t, err, "no data object bucket configured")
+		exists, err := indexBucket.Exists(t.Context(), "deletion/t1/files.jsonl.gz")
+		require.NoError(t, err)
+		require.False(t, exists)
 	})
 
 	t.Run("fails when the tenant is empty", func(t *testing.T) {

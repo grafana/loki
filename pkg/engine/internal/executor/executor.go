@@ -43,7 +43,8 @@ type Config struct {
 	// objects from it, and DeletionSweep scans objects and stores file lists
 	// in it. Unlike Bucket, which the compaction wiring prefixes with the
 	// index-storage prefix for index I/O and ToC, it holds objects/ and the
-	// index storage. Optional; when nil the executor falls back to Bucket.
+	// index storage. LogMerge falls back to Bucket when it is nil.
+	// DeletionSweep requires it.
 	DataBucket objstore.Bucket
 
 	// GetExternalInputs is an optional function called for each node in the
