@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -447,8 +446,7 @@ func (i *Ingester) loop() {
 			i.sweepUsers(false, true)
 		case t := <-downsampleTicker.C:
 			downsampleTicker.Reset(i.cfg.MetricAggregation.SamplePeriod)
-			now := model.TimeFromUnixNano(t.UnixNano())
-			i.downsampleMetrics(now)
+			i.downsampleMetrics(t)
 		case <-i.loopQuit:
 			return
 		}
@@ -600,6 +598,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			metricWriter,
 			patternWriter,
 			aggregationMetrics,
+			i.cfg.MetricAggregation.SamplePeriod,
 			i.cfg.VolumeThreshold,
 		)
 		if err != nil {
@@ -654,7 +653,7 @@ func (i *Ingester) flushPatterns() {
 	}
 }
 
-func (i *Ingester) downsampleMetrics(ts model.Time) {
+func (i *Ingester) downsampleMetrics(ts time.Time) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {

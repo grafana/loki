@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -51,12 +52,18 @@ type instance struct {
 	owner           streamOwner
 	volumeThreshold float64
 
-	aggMetricsLock             sync.Mutex
-	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
+	aggMetricsMtx sync.Mutex
+	aggMetrics    map[int32]metricsBucket // partition -> metricsBucket
+	samplePeriod  time.Duration
 
 	metricWriter       aggregation.EntryWriter
 	patternWriter      aggregation.EntryWriter
 	aggregationMetrics *aggregation.Metrics
+}
+
+type metricsBucket struct {
+	start, end time.Time
+	metrics    map[string]map[string]*aggregatedMetrics
 }
 
 type aggregatedMetrics struct {
@@ -74,6 +81,7 @@ func newInstance(
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	samplePeriod time.Duration,
 	volumeThreshold float64,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
@@ -81,20 +89,21 @@ func newInstance(
 		return nil, err
 	}
 	i := &instance{
-		buf:                        make([]byte, 0, 1024),
-		logger:                     logger,
-		instanceID:                 instanceID,
-		streams:                    newStreamsMap(),
-		index:                      index,
-		metrics:                    metrics,
-		drainCfg:                   drainCfg,
-		limits:                     drainLimits,
-		owner:                      owner,
-		volumeThreshold:            volumeThreshold,
-		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
-		metricWriter:               metricWriter,
-		patternWriter:              patternWriter,
-		aggregationMetrics:         aggregationMetrics,
+		buf:                make([]byte, 0, 1024),
+		logger:             logger,
+		instanceID:         instanceID,
+		streams:            newStreamsMap(),
+		index:              index,
+		metrics:            metrics,
+		drainCfg:           drainCfg,
+		limits:             drainLimits,
+		owner:              owner,
+		volumeThreshold:    volumeThreshold,
+		aggMetrics:         make(map[int32]metricsBucket),
+		samplePeriod:       samplePeriod,
+		metricWriter:       metricWriter,
+		patternWriter:      patternWriter,
+		aggregationMetrics: aggregationMetrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -117,7 +126,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
+		i.Observe(ctx, reqStream.Labels, reqStream.Entries, time.Now())
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
@@ -326,9 +335,15 @@ func (i *instance) flushPatterns() {
 	})
 }
 
-func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
-	i.aggMetricsLock.Lock()
-	defer i.aggMetricsLock.Unlock()
+// noPartition is the partition metrics are aggregated under.
+// TODO: use the partition of the Kafka record.
+const noPartition int32 = 0
+
+// Observe adds the entries to the aggregated metrics of the sample period that
+// contains now.
+func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry, now time.Time) {
+	i.aggMetricsMtx.Lock()
+	defer i.aggMetricsMtx.Unlock()
 
 	_, sp := tracer.Start(ctx, "patternIngester.Observe")
 	defer sp.End()
@@ -338,6 +353,17 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 		attribute.Int("entries", len(entries)),
 	))
 
+	b, ok := i.aggMetrics[noPartition]
+	if !ok {
+		start := now.Truncate(i.samplePeriod)
+		b = metricsBucket{
+			start:   start,
+			end:     start.Add(i.samplePeriod),
+			metrics: make(map[string]map[string]*aggregatedMetrics),
+		}
+		i.aggMetrics[noPartition] = b
+	}
+
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
@@ -345,10 +371,10 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
 		}
 
-		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
-
+		streamMetrics, ok := b.metrics[stream]
 		if !ok {
 			streamMetrics = map[string]*aggregatedMetrics{}
+			b.metrics[stream] = streamMetrics
 		}
 
 		if _, ok := streamMetrics[lvl]; !ok {
@@ -357,30 +383,32 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))
 		streamMetrics[lvl].count++
-
-		i.aggMetricsByStreamAndLevel[stream] = streamMetrics
 	}
 }
 
-func (i *instance) Downsample(now model.Time) {
-	i.aggMetricsLock.Lock()
-	defer func() {
-		i.aggMetricsByStreamAndLevel = make(map[string]map[string]*aggregatedMetrics)
-		i.aggMetricsLock.Unlock()
-	}()
+// Downsample writes the buckets whose sample period has ended.
+func (i *instance) Downsample(now time.Time) {
+	i.aggMetricsMtx.Lock()
+	defer i.aggMetricsMtx.Unlock()
 
-	for stream, metricsByLevel := range i.aggMetricsByStreamAndLevel {
-		lbls, err := syntax.ParseLabels(stream)
-		if err != nil {
+	for partition, b := range i.aggMetrics {
+		if b.end.After(now) {
 			continue
 		}
+		for stream, metricsByLevel := range b.metrics {
+			lbls, err := syntax.ParseLabels(stream)
+			if err != nil {
+				continue
+			}
 
-		for level, metrics := range metricsByLevel {
-			// we start with an empty bucket for each level, so only write if we have metrics
-			if metrics.count > 0 {
-				i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+			for level, metrics := range metricsByLevel {
+				// we start with an empty bucket for each level, so only write if we have metrics
+				if metrics.count > 0 {
+					i.writeAggregatedMetrics(model.TimeFromUnixNano(b.start.UnixNano()), lbls, level, metrics.bytes, metrics.count)
+				}
 			}
 		}
+		delete(i.aggMetrics, partition)
 	}
 }
 

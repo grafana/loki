@@ -67,6 +67,7 @@ func TestInstancePushQuery(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -189,7 +190,7 @@ func TestIngesterPushInternal(t *testing.T) {
 	inst, ok := ing.getInstanceByID("foo")
 	require.True(t, ok)
 	counts := map[string]uint64{}
-	for lvl, m := range inst.aggMetricsByStreamAndLevel[`{service_name="checkout"}`] {
+	for lvl, m := range inst.aggMetrics[0].metrics[`{service_name="checkout"}`] {
 		counts[lvl] = m.count
 	}
 	require.Equal(t, map[string]uint64{constants.LogLevelError: 2, constants.LogLevelInfo: 1}, counts)
@@ -240,6 +241,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			10*time.Second,
 			0.99,
 		)
 		require.NoError(t, err)
@@ -339,40 +341,43 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		now := time.Now()
 		inst, _ := setup(now)
 
-		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
+		require.Len(t, inst.aggMetrics[0].metrics, 3)
 
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes)
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes)
-		require.Equal(t, uint64(17), inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetrics[0].metrics[lbs.String()]["info"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetrics[0].metrics[lbs2.String()]["error"].bytes)
+		require.Equal(t, uint64(17), inst.aggMetrics[0].metrics[lbs3.String()]["error"].bytes)
 
 		require.Equal(
 			t,
 			uint64(31),
-			inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].count,
+			inst.aggMetrics[0].metrics[lbs.String()]["info"].count,
 		)
 		require.Equal(
 			t,
 			uint64(31),
-			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].count,
+			inst.aggMetrics[0].metrics[lbs2.String()]["error"].count,
 		)
 		require.Equal(
 			t,
 			uint64(1),
-			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].count,
+			inst.aggMetrics[0].metrics[lbs3.String()]["error"].count,
 		)
 	})
 
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
 		now := model.Now()
 		inst, mockWriter := setup(now.Time())
-		inst.Downsample(now)
+		// Entries are written at the start of the bucket, once its sample period has ended.
+		bucket := inst.aggMetrics[0]
+		start := model.TimeFromUnixNano(bucket.start.UnixNano())
+		inst.Downsample(bucket.end)
 
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(14+(15*30)),
 				uint64(31),
 				lbs,
@@ -388,9 +393,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(14+(15*30)),
 				uint64(31),
 				lbs2,
@@ -406,9 +411,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(17),
 				uint64(1),
 				lbs3,
@@ -421,7 +426,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			},
 		)
 
-		require.Equal(t, 0, len(inst.aggMetricsByStreamAndLevel))
+		require.Empty(t, inst.aggMetrics)
 	})
 }
 
@@ -471,6 +476,7 @@ func TestInstancePushSkipsInternalStreams(t *testing.T) {
 				nil,
 				nil,
 				aggregation.NewMetrics(nil),
+				10*time.Second,
 				0.99,
 			)
 			require.NoError(t, err)
@@ -569,6 +575,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -651,6 +658,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -1075,6 +1083,7 @@ func TestInstancePushOwnership(t *testing.T) {
 				nil,
 				nil,
 				aggregation.NewMetrics(nil),
+				10*time.Second,
 				0.99,
 			)
 			require.NoError(t, err)
