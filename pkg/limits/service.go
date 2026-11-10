@@ -295,7 +295,7 @@ func (s *Service) CheckLimitsAndShard(
 // isLiveMode reports whether the tenant/policy's shard-streams config
 // currently has the limits-service-stream-sharding-mode set to "live". It
 // mirrors the mode check the distributor makes when building candidates for
-// CheckLimitsAndShard (see maybeShardByRate), so it tells apart the one mode
+// CheckLimitsAndShard (see the distributor's streamSharder.shardByRate), so it tells apart the one mode
 // where this service's own shard-count decision is also the acceptance
 // decision, with no corresponding ExceedsLimits call to track the stream in
 // the usage store.
