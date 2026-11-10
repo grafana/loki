@@ -70,6 +70,10 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### `max_query_bytes_read` counts the data that split metric queries read again
+
+The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
+
 ### `ip()` label filters no longer keep lines with an `__error__` label
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
