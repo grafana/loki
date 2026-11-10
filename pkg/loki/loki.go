@@ -72,6 +72,7 @@ import (
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
@@ -511,6 +512,11 @@ type Loki struct {
 	dataObjTOCCache   *metadatacache.Cache
 	dataObjBucket     objstore.Bucket
 	dataObjMetastore  *metastore.ObjectMetastore
+
+	// The DataObjCache module sets the backend of the index lookup cache. It is nil when data objects are
+	// disabled or no index cache is configured.
+	dataObjIndexLookupCacheBackend       cache.Cache
+	dataObjIndexLookupCacheMaxEntryBytes int
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
