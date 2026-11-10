@@ -45,6 +45,7 @@ type ObjectMetastoreMetrics struct {
 
 	indexReadRowsPerObject    prometheus.Histogram
 	resolvedSectionsPerObject prometheus.Histogram
+	skippedIndexObjects       prometheus.Histogram
 	duplicateSectionsTotal    *prometheus.CounterVec
 }
 
@@ -108,7 +109,7 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 		}),
 		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_read_rows_per_object",
-			Help:                            "Number of index rows read while resolving a single index object",
+			Help:                            "Number of index rows read while resolving a single logical index: one index object, or the index objects of one run",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -116,7 +117,15 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 		}),
 		resolvedSectionsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_per_object",
-			Help:                            "Number of sections resolved from a single index object",
+			Help:                            "Number of sections resolved from a single logical index: one index object, or the index objects of one run",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		skippedIndexObjects: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_skipped_index_objects",
+			Help:                            "Number of index objects that a Metastore query skips, because their posting key range holds no label that the query reads",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -157,6 +166,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 		p.resolvedSectionsRatio,
 		p.indexReadRowsPerObject,
 		p.resolvedSectionsPerObject,
+		p.skippedIndexObjects,
 		p.duplicateSectionsTotal,
 	}
 

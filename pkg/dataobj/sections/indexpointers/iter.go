@@ -155,7 +155,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			runID, err := decodeRunID(columnValue.Int64())
+			runID, err := RunIDFromValue(columnValue.Int64())
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 		}
 	}
 
-	keys, err := decodePostingKeys(minPostingKey, maxPostingKey)
+	keys, err := PostingKeysFromBounds(minPostingKey, maxPostingKey)
 	if err != nil {
 		return err
 	}
@@ -202,10 +202,12 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 	return nil
 }
 
-// decodePostingKeys returns the posting key range of a pointer from its
-// encoded bounds. It returns the zero KeyRange if both bounds are nil, and an
-// error if only one bound is nil.
-func decodePostingKeys(minEncoded, maxEncoded []byte) (postings.KeyRange, error) {
+// PostingKeysFromBounds returns the posting key range of a pointer from its
+// encoded bounds, as the min_posting_key and max_posting_key columns store
+// them. A nil bound is a null value. It returns the zero KeyRange if both bounds
+// are nil, and an error if only one bound is nil. The range does not borrow
+// memory from the bounds.
+func PostingKeysFromBounds(minEncoded, maxEncoded []byte) (postings.KeyRange, error) {
 	switch {
 	case minEncoded == nil && maxEncoded == nil:
 		return postings.KeyRange{}, nil
@@ -220,9 +222,10 @@ func decodePostingKeys(minEncoded, maxEncoded []byte) (postings.KeyRange, error)
 	return keys, nil
 }
 
-// decodeRunID returns the run ID with the given value. It returns an error if
-// value is not positive, because writers store no value for the zero RunID.
-func decodeRunID(value int64) (RunID, error) {
+// RunIDFromValue returns the run ID with the given value, as the run_id column
+// stores it. It returns an error if value is not positive, because writers store
+// no value for the zero RunID.
+func RunIDFromValue(value int64) (RunID, error) {
 	if value <= 0 {
 		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunID, value)
 	}

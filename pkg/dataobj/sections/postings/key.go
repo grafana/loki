@@ -140,6 +140,22 @@ func DecodeKeyRange(minEncoded, maxEncoded []byte) (KeyRange, error) {
 // IsZero reports whether r is the zero KeyRange, which means no bounds.
 func (r KeyRange) IsZero() bool { return r == KeyRange{} }
 
+// OverlapsColumn reports whether r can hold a key of kind with the column name
+// name, whatever its label value. The zero KeyRange can hold any key, so it
+// overlaps every column.
+func (r KeyRange) OverlapsColumn(kind PostingKind, name string) bool {
+	if r.IsZero() {
+		return true
+	}
+	// The keys of one column are adjacent, and the empty label value sorts
+	// first. So r overlaps the column unless r ends before its first key or
+	// starts after its last key.
+	if r.max.Compare(Key{Kind: kind, ColumnName: name}) < 0 {
+		return false
+	}
+	return cmp.Or(cmp.Compare(r.min.Kind, kind), cmp.Compare(r.min.ColumnName, name)) <= 0
+}
+
 // Min returns the smallest key of r.
 func (r KeyRange) Min() Key { return r.min }
 

@@ -1146,7 +1146,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		batches, err := collectSectionBatches(t, m.SectionsStream(ctx, request))
 
 		require.Empty(t, batches)
-		require.EqualError(t, err, fmt.Sprintf("reading the sections of index object %q: corrupt index object", panickingIndex))
+		require.EqualError(t, err, fmt.Sprintf("reading the sections of %s: corrupt index object", panickingIndex))
 		require.Contains(t, logs.String(), "panic reading the sections of an index object")
 	})
 
@@ -1495,7 +1495,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-				IndexPath: path,
+				Indexes: []IndexEntry{{Path: path}},
 				SectionsRequest: SectionsRequest{
 					Start:      now.Add(-4 * time.Hour),
 					End:        now.Add(time.Hour),
@@ -1674,7 +1674,7 @@ func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
 	m, path := uploadIndexObject(t, obj)
 
 	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-		IndexPath: path,
+		Indexes: []IndexEntry{{Path: path}},
 		SectionsRequest: SectionsRequest{
 			Start:    now.Add(-4 * time.Hour),
 			End:      now,
@@ -1837,13 +1837,13 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 			{ObjectPath: "object-b", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, IndexEntry{Path: indexPath})
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Len(t, sections, 2)
 		require.ElementsMatch(t, []string{"object-a", "object-b"}, []string{sections[0].ObjectPath, sections[1].ObjectPath})
-		require.Equal(t, indexPath, sections[0].IndexPath)
-		require.Equal(t, indexPath, sections[1].IndexPath)
+		require.Equal(t, indexPath, sections[0].Index)
+		require.Equal(t, indexPath, sections[1].Index)
 		require.Positive(t, readRows)
 	})
 
@@ -1853,7 +1853,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "bar", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, IndexEntry{Path: indexPath})
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Empty(t, sections)
@@ -1861,7 +1861,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 	})
 
 	t.Run("returns an error that names the index object when the index object does not exist", func(t *testing.T) {
-		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, IndexEntry{Path: "missing-index-object"})
+		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, logicalIndex{entries: []IndexEntry{{Path: "missing-index-object"}}})
 
 		require.ErrorContains(t, err, "missing-index-object")
 		require.Empty(t, sections)

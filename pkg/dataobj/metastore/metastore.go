@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -18,13 +19,14 @@ type Metastore interface {
 	Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error)
 
 	// SectionsStream yields the sections that Sections returns, in batches. It yields the sections
-	// of an index object when its read ends, without waiting for the slowest one.
+	// of a logical index when its read ends, without waiting for the slowest one. A logical index
+	// is one index object, or the index objects of one run, which the metastore reads as one index.
 	//
 	// The reads do not wait for the caller. The batches wait in memory until the caller receives
 	// them.
 	//
-	// Each section appears in at most one batch. A batch holds the sections of one index object
-	// that no earlier batch listed. A batch is never empty, so an index object that lists no new
+	// Each section appears in at most one batch. A batch holds the sections of one logical index
+	// that no earlier batch listed. A batch is never empty, so a logical index that lists no new
 	// section yields no batch. The sections of one data object can span several batches. The order
 	// of the batches, and of the sections in a batch, is unspecified.
 	//
@@ -87,6 +89,16 @@ type IndexEntry struct {
 
 	// ShardBuckets is the shard layout of the tenant in the index object.
 	ShardBuckets indexpointers.ShardBuckets
+
+	// TableOfContentsPath is the path of the ToC that lists the index object.
+	TableOfContentsPath string
+	// RunID is the run that holds the index object. A run ID is unique within
+	// one ToC only, so the index objects of one run share TableOfContentsPath
+	// and RunID.
+	RunID indexpointers.RunID
+	// PostingKeys bounds the posting keys of the index object. The zero value
+	// means the index object can hold any posting key.
+	PostingKeys postings.KeyRange
 }
 
 type GetIndexesResponse struct {
@@ -95,15 +107,14 @@ type GetIndexesResponse struct {
 }
 
 type IndexSectionsReaderRequest struct {
-	IndexPath       string
+	// Indexes are the index objects of one logical index: the index objects
+	// of one run, or one index object of no run. The reader reads them as one
+	// index. An entry with the zero ShardBuckets makes the reader read the
+	// layout from its index object.
+	Indexes         []IndexEntry
 	SectionsRequest SectionsRequest
 	PrefetchBytes   int64
 	BatchSize       int
-
-	// ShardBuckets is the shard layout of the tenant in the index object, as
-	// the ToC records it. If it is the zero ShardBuckets, the reader reads the
-	// layout from the index object.
-	ShardBuckets indexpointers.ShardBuckets
 }
 
 type IndexSectionsReaderResponse struct {

@@ -88,9 +88,12 @@ func forEachIndexPointer(
 				break
 			}
 
-			// A null shard_buckets value leaves its field unset, so clear the
-			// rows of the previous batch first.
+			// A null value of an optional column leaves its field unset, so
+			// clear the rows of the previous batch first.
 			clear(buf[:numRows])
+
+			// The posting key bounds decode together, after both columns.
+			var minPostingKeys, maxPostingKeys *array.Binary
 
 			for colIdx := range int(rec.NumCols()) {
 				col := rec.Column(colIdx)
@@ -133,9 +136,33 @@ func forEachIndexPointer(
 						}
 						buf[rIdx].ShardBuckets = buckets
 					}
+				case indexpointers.ColumnTypeRunID:
+					values := col.(*array.Int64)
+					for rIdx := range numRows {
+						if col.IsNull(rIdx) {
+							continue
+						}
+						runID, err := indexpointers.RunIDFromValue(values.Value(rIdx))
+						if err != nil {
+							return fmt.Errorf("decoding index pointer %d: %w", rIdx, err)
+						}
+						buf[rIdx].RunID = runID
+					}
+				case indexpointers.ColumnTypeMinPostingKey:
+					minPostingKeys = col.(*array.Binary)
+				case indexpointers.ColumnTypeMaxPostingKey:
+					maxPostingKeys = col.(*array.Binary)
 				default:
 					continue
 				}
+			}
+
+			for rIdx := range numRows {
+				keys, err := indexpointers.PostingKeysFromBounds(binaryValue(minPostingKeys, rIdx), binaryValue(maxPostingKeys, rIdx))
+				if err != nil {
+					return fmt.Errorf("decoding index pointer %d: %w", rIdx, err)
+				}
+				buf[rIdx].PostingKeys = keys
 			}
 
 			for rowIdx := range numRows {
@@ -149,4 +176,13 @@ func forEachIndexPointer(
 	}
 
 	return nil
+}
+
+// binaryValue returns the value of values at row i, or nil if values is nil or
+// the value is null. The value borrows memory from values.
+func binaryValue(values *array.Binary, i int) []byte {
+	if values == nil || values.IsNull(i) {
+		return nil
+	}
+	return values.Value(i)
 }
