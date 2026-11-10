@@ -27,6 +27,7 @@ import (
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -70,6 +71,7 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 
 		// Add rule details to context
 		ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
+		ctx = httpreq.InjectRulerEval(ctx)
 		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
