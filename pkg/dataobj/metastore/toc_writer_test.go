@@ -933,10 +933,11 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.ElementsMatch(t, []watermarks.Watermark{wm(0, 99), wm(1, 5)}, readWatermarks(ctx, t, bucket, wmTocPath()))
 	})
 
-	t.Run("lists the watermarks section first when it rewrites a ToC", func(t *testing.T) {
+	t.Run("moves the watermarks section before the index pointers when it rewrites an old-order ToC", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
-		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		seedOldOrderToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		require.Equal(t, []string{"indexpointers", "watermarks"}, sectionKinds(ctx, t, bucket, wmTocPath()))
 		writer := newTableOfContentsWriter(t, bucket)
 
 		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, []TableOfContentsEntry{
@@ -945,14 +946,8 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, replaced)
 
-		raw := readRawToC(ctx, t, bucket, wmTocPath())
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
-		require.NoError(t, err)
-		var kinds []string
-		for _, sec := range obj.Sections() {
-			kinds = append(kinds, sec.Type.Kind)
-		}
-		require.Equal(t, []string{"watermarks", "indexpointers"}, kinds)
+		require.Equal(t, []string{"watermarks", "indexpointers"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
 	})
 
 	t.Run("writes nothing when another writer removed an old path and the ToC holds watermarks", func(t *testing.T) {

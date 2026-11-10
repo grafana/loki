@@ -52,6 +52,50 @@ func seedWatermarkToC(t *testing.T, bucket objstore.Bucket, indexPaths []string,
 	require.NoError(t, reader.Close())
 }
 
+// seedOldOrderToC uploads a ToC that holds the index pointers section before
+// the watermarks section, the order that writers used before the watermarks
+// section got priority.
+func seedOldOrderToC(t *testing.T, bucket objstore.Bucket, indexPaths []string, rows []watermarks.Watermark) {
+	t.Helper()
+
+	builder := dataobj.NewBuilder(nil)
+	pointers := indexpointers.NewBuilder(indexpointers.NewMetrics(), 4*1024*1024, 1000)
+	pointers.SetTenant(wmTenant)
+	for _, p := range indexPaths {
+		pointers.Append(indexpointers.IndexPointer{Path: p, StartTs: unixTime(10), EndTs: unixTime(20)})
+	}
+	require.NoError(t, builder.Append(pointers))
+	if len(rows) > 0 {
+		marks := watermarks.NewBuilder(watermarks.NewMetrics(nil), wmTenant, 4*1024*1024, 1000)
+		for _, r := range rows {
+			require.NoError(t, marks.Set(r.Topic, r.Partition, r.Watermark))
+		}
+		require.NoError(t, builder.Append(marks))
+	}
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(t.Context(), wmTocPath(), reader))
+	require.NoError(t, reader.Close())
+}
+
+// sectionKinds returns the kind of every section of the ToC at path, in object order.
+func sectionKinds(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []string {
+	t.Helper()
+
+	raw := readRawToC(ctx, t, bucket, path)
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	require.NoError(t, err)
+	var kinds []string
+	for _, sec := range obj.Sections() {
+		kinds = append(kinds, sec.Type.Kind)
+	}
+	return kinds
+}
+
 func readWatermarks(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []watermarks.Watermark {
 	t.Helper()
 
@@ -72,6 +116,29 @@ func wm(partition int32, value int64) watermarks.Watermark {
 
 func TestWriteEntryWithWatermark(t *testing.T) {
 	ctx := context.Background()
+
+	t.Run("moves the watermarks section before the index pointers when it appends to an old-order ToC", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedOldOrderToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 99)})
+		writer := newTableOfContentsWriter(t, bucket)
+
+		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/b", 0, 199, int64Ptr(99)))
+
+		require.Equal(t, []string{"watermarks", "indexpointers"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 199)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("adds the watermarks section before the index pointers when the old ToC has no watermarks", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedOldOrderToC(t, bucket, []string{"indexes/a"}, nil)
+		require.Equal(t, []string{"indexpointers"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		writer := newTableOfContentsWriter(t, bucket)
+
+		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/b", 0, 99, nil))
+
+		require.Equal(t, []string{"watermarks", "indexpointers"}, sectionKinds(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
 
 	t.Run("writes the pointer and the first watermark when the caller and the ToC have no value", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
