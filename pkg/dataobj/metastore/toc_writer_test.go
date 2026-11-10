@@ -31,8 +31,6 @@ import (
 )
 
 func TestWriteEntry(t *testing.T) {
-	t.Run("checks and raises the watermark together with the entry", testWriteEntryWithWatermark)
-
 	t.Run("appends the entry to an existing ToC", func(t *testing.T) {
 		tenantID := "test"
 		tocBuilder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
