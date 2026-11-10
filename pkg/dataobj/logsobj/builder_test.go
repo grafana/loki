@@ -121,6 +121,31 @@ func TestNewBuilder(t *testing.T) {
 		require.EqualError(t, err, "tenant overrides must not be nil")
 		require.Nil(t, builder)
 	})
+
+	flush := func(t *testing.T, opts ...dataobj.BuilderOption) *dataobj.Object {
+		t.Helper()
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{}, opts...)
+		require.NoError(t, err)
+		require.NoError(t, builder.Append("tenant", logproto.Stream{
+			Labels:  `{app="foo"}`,
+			Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
+		}, time.Now()))
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	t.Run("builds objects with no size-leveled compaction when it has no options", func(t *testing.T) {
+		_, ok := flush(t).SizeLeveledCompaction()
+		require.False(t, ok)
+	})
+
+	t.Run("builds objects with the size-leveled compaction of the options", func(t *testing.T) {
+		info, ok := flush(t, dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: 1})).SizeLeveledCompaction()
+		require.True(t, ok)
+		require.Equal(t, dataobj.SizeLeveledCompaction{Level: 1}, info)
+	})
 }
 
 // TestBuilder_Append ensures that appending to the buffer eventually reports

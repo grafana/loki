@@ -361,15 +361,15 @@ func TestE2ECompactionConvergence(t *testing.T) {
 
 	t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
 		// A fresh source run holds about 80KB. A 100KB base with a ratio of 2
-		// puts fresh runs in level 0, a merge of two in level 1, and a merge
-		// of two level 1 runs in level 2.
+		// puts fresh runs in level 1, a merge of two in level 2, and a merge
+		// of two level 2 runs in level 3.
 		runConvergenceTest(t, convergenceCase{
 			layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
 			levelBase:   100_000,
 			levelRatio:  2,
 			wantRunsEnd: 2,
-			// Five level 0 runs give two merges and a filter. The two level 1
-			// outputs then merge into level 2, and the lone level 0 run is
+			// Five level 1 runs give two merges and a filter. The two level 2
+			// outputs then merge into level 3, and the lone level 1 run is
 			// filtered again.
 			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})

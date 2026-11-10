@@ -274,6 +274,17 @@ func (o *Object) Tenant() (string, error) {
 	return tenants[0], nil
 }
 
+// SizeLeveledCompaction returns where the size-leveled compaction strategy
+// placed the object. The bool is false for index objects, log objects from an
+// older compactor, and objects that another strategy placed.
+func (o *Object) SizeLeveledCompaction() (SizeLeveledCompaction, bool) {
+	sizeLeveled := o.metadata.GetCompaction().GetSizeLeveled()
+	if sizeLeveled == nil {
+		return SizeLeveledCompaction{}, false
+	}
+	return SizeLeveledCompaction{Level: sizeLeveled.Level}, true
+}
+
 // Reader returns a reader for the entire raw data object.
 func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {
 	return o.rr.Read(ctx)
