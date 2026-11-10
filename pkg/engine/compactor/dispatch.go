@@ -38,10 +38,10 @@ type planDispatcher struct {
 	logger  log.Logger
 	runPlan runFunc
 	// limit caps how many plans run at once. A value <= 0 means no cap. The
-	// cap applies to each call to Run, not to the dispatcher as a whole.
+	// cap applies to each run, not to the dispatcher as a whole.
 	limit int
 	// maxRetries is how many times a failed plan runs again before it fails
-	// the Run. Zero disables retries.
+	// the run. Zero disables retries.
 	maxRetries int
 	// retryBackoff sets the wait before each retry. Its MaxRetries is
 	// ignored, because maxRetries limits the retries.
@@ -62,12 +62,13 @@ func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int
 	}
 }
 
-// planRun holds what the plans of one Run share.
+// planRun holds what the plans of one run share.
 type planRun struct {
 	tenant string
 
-	// siblingCtx is done when a plan of the Run failed. Run then discards
-	// every result.
+	// siblingCtx is done when a plan of the run failed. The run then
+	// discards every result. In a cancellable run, it is also done when the
+	// caller cancels.
 	siblingCtx context.Context
 
 	// retryCtx is the context of the caller. It is done at shutdown or when
@@ -76,35 +77,52 @@ type planRun struct {
 	retryCtx context.Context
 }
 
-// Run executes every plan and returns their artifacts in plan order. Each
-// plan runs under the actor of its root node.
+// RunToCompletion executes every plan and returns their artifacts in plan
+// order. Each plan runs under the actor of its root node.
 //
 // A failed plan runs again up to maxRetries times, after an exponential
 // backoff. Failures often come in bursts, for example while the scheduler or
 // a worker restarts, and the backoff lets a later attempt outlast the burst.
 //
-// Run returns an error if any plan fails with no retry left, and then returns
-// no artifacts. The first such failure cancels the running plans, and the
-// plans that did not start yet do not run.
+// RunToCompletion returns an error if any plan fails with no retry left, and
+// then returns no artifacts. The first such failure cancels the running
+// plans, and the plans that did not start yet do not run.
 //
 // Cancelling ctx, at shutdown or when the tenant stops, does not stop the
-// plans. Plans that did not start yet still start, so Run returns only after
-// every plan finishes. Cancelling ctx stops only the retries: a plan that
-// fails after ctx is done fails the Run at once.
+// plans. Compaction needs this, because a cancelled plan wastes the work of
+// a long merge. Plans that did not start yet still start, so RunToCompletion
+// returns only after every plan finishes. Cancelling ctx stops only the
+// retries: a plan that fails after ctx is done fails the run at once.
 //
 // Each attempt must return a valid artifact or an error:
 //
 //   - A valid artifact with a nil error is ready for publication. The ToC does
 //     not reference it yet.
-//   - A non-nil error fails the attempt. Run ignores any artifact that comes
-//     with it.
+//   - A non-nil error fails the attempt. The dispatcher ignores any artifact
+//     that comes with it.
 //   - A nil artifact with a nil error, or an artifact with an empty path, is
 //     an invalid response and fails the attempt.
 //
 // No-work decisions belong to planning, before dispatch.
-func (d *planDispatcher) Run(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
+func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
+	return d.run(ctx, context.WithoutCancel(ctx), tenant, plans)
+}
+
+// RunCancellable is like RunToCompletion, but cancelling ctx also stops the
+// plans. A running plan fails, and the plans that did not start yet do not
+// run. RunCancellable then returns an error and no artifacts.
+//
+// Use RunCancellable for plans that are safe to stop at any time and cheap
+// to run again.
+func (d *planDispatcher) RunCancellable(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
+	return d.run(ctx, ctx, tenant, plans)
+}
+
+// run executes plans under planCtx. The run stops when planCtx is done or a
+// plan fails. Retries stop when ctx is done.
+func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
 	artifacts := make([]v2.ResultArtifact, len(plans))
-	g, siblingCtx := errgroup.WithContext(context.WithoutCancel(ctx))
+	g, siblingCtx := errgroup.WithContext(planCtx)
 	if d.limit > 0 {
 		g.SetLimit(d.limit)
 	}
@@ -144,7 +162,7 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 	logger = log.With(logger, "actor", actor, "node_id", root.ID())
 	retryBackoff := backoff.New(context.Background(), d.retryBackoff)
 	for attempt := 1; ; attempt++ {
-		// After a sibling fails, Run discards every result, so skip the
+		// After a sibling fails, the run discards every result, so skip the
 		// attempt.
 		if err := run.siblingCtx.Err(); err != nil {
 			return nil, err
@@ -191,7 +209,7 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 }
 
 // siblingCancelled records an attempt that a failed sibling task cut short.
-// Run returns only its first error, so siblingCancelled logs err.
+// The run returns only its first error, so siblingCancelled logs err.
 func (d *planDispatcher) siblingCancelled(logger log.Logger, actor string, attempt int, err error) {
 	d.attempts.WithLabelValues(actor, attemptOutcomeCancelled).Inc()
 	lvl := level.Warn

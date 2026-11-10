@@ -187,6 +187,28 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 		})
 	})
 
+	t.Run("stops a running sweep when the context is cancelled", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			var sweepErr error
+			recorder := &sweepRecorder{respond: func(runCtx context.Context, _ int) (*v2.ResultArtifact, error) {
+				<-runCtx.Done()
+				sweepErr = runCtx.Err()
+				return nil, sweepErr
+			}}
+			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
+
+			var wg sync.WaitGroup
+			wg.Go(func() { s.sweep(ctx, "a") })
+			synctest.Wait()
+			cancel()
+			wg.Wait()
+
+			require.ErrorIs(t, sweepErr, context.Canceled)
+			require.Empty(t, s.slots, "the stopped sweep must free its slot")
+		})
+	})
+
 	t.Run("returns without a sweep when the context ends while it waits for a slot", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			release := make(chan struct{})

@@ -106,8 +106,15 @@ func (s *sweepScheduler) sweep(ctx context.Context, tenant string) {
 	}
 	defer func() { <-s.slots }()
 
+	// A sweep is safe to stop at any time: a stopped scan stores nothing, and
+	// the next sweep starts over. So shutdown stops a running sweep.
 	plan := buildDeletionSweepPlan(tenant)
-	if _, err := s.dispatcher.Run(ctx, tenant, []*physical.Plan{plan}); err != nil {
+	_, err := s.dispatcher.RunCancellable(ctx, tenant, []*physical.Plan{plan})
+	switch {
+	case err == nil:
+	case ctx.Err() != nil:
+		level.Info(s.logger).Log("msg", "deletion sweep stopped", "tenant", tenant, "err", err)
+	default:
 		level.Warn(s.logger).Log("msg", "deletion sweep failed; the next one starts in the next hour", "tenant", tenant, "err", err)
 	}
 }
