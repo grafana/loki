@@ -82,17 +82,25 @@ func (s *Section) Columns() []*Column { return s.columns }
 type ColumnType int
 
 const (
-	ColumnTypeInvalid      ColumnType = iota // ColumnTypeInvalid is an invalid column.
-	ColumnTypePath                           // ColumnTypePath is a column containing the path to the index object.
-	ColumnTypeMinTimestamp                   // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
-	ColumnTypeMaxTimestamp                   // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+	ColumnTypeInvalid       ColumnType = iota // ColumnTypeInvalid is an invalid column.
+	ColumnTypePath                            // ColumnTypePath is a column containing the path to the index object.
+	ColumnTypeMinTimestamp                    // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
+	ColumnTypeMaxTimestamp                    // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+	ColumnTypeRunID                           // ColumnTypeRunID is an optional column containing the ID of the run that holds the index object.
+	ColumnTypeMinPostingKey                   // ColumnTypeMinPostingKey is an optional column containing the encoded smallest posting key of the index object.
+	ColumnTypeMaxPostingKey                   // ColumnTypeMaxPostingKey is an optional column containing the encoded largest posting key of the index object.
+	ColumnTypeShardBuckets                    // ColumnTypeShardBuckets is an optional column containing the shard bucket count of the tenant's layout in the index object.
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid:      "invalid",
-	ColumnTypePath:         "path",
-	ColumnTypeMinTimestamp: "min_timestamp",
-	ColumnTypeMaxTimestamp: "max_timestamp",
+	ColumnTypeInvalid:       "invalid",
+	ColumnTypePath:          "path",
+	ColumnTypeMinTimestamp:  "min_timestamp",
+	ColumnTypeMaxTimestamp:  "max_timestamp",
+	ColumnTypeRunID:         "run_id",
+	ColumnTypeMinPostingKey: "min_posting_key",
+	ColumnTypeMaxPostingKey: "max_posting_key",
+	ColumnTypeShardBuckets:  "shard_buckets",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -107,6 +115,14 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":
 		return ColumnTypeMaxTimestamp, nil
+	case "run_id":
+		return ColumnTypeRunID, nil
+	case "min_posting_key":
+		return ColumnTypeMinPostingKey, nil
+	case "max_posting_key":
+		return ColumnTypeMaxPostingKey, nil
+	case "shard_buckets":
+		return ColumnTypeShardBuckets, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
