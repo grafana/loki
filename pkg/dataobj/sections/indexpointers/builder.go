@@ -30,15 +30,15 @@ type IndexPointer struct {
 	// RunID is the run that holds the index object.
 	RunID RunID
 
-	// PostingKeys bounds the posting keys of the index object. Nil means the
-	// bounds are unknown, so the index object can hold any posting key.
-	PostingKeys *postings.KeyRange
+	// PostingKeys bounds the posting keys of the index object. The zero value
+	// means the bounds are unknown, so the index object can hold any posting
+	// key.
+	PostingKeys postings.KeyRange
 
-	// ShardLayout is the shard layout of the tenant in the index object. It
+	// ShardBuckets is the shard layout of the tenant in the index object. It
 	// must equal the layout that indexobj.TenantShardLayout reads from the
-	// object, because readers trust it. Nil means the layout is unknown, so a
-	// reader must read it from the index object.
-	ShardLayout *streams.ShardLayout
+	// object, because readers trust it.
+	ShardBuckets ShardBuckets
 }
 
 // RunID identifies a run: the index objects of one ToC that form one logical
@@ -48,6 +48,30 @@ type IndexPointer struct {
 // The zero RunID means no run, so the index object is a run of its own. Valid
 // run IDs are positive.
 type RunID int64
+
+// ShardBuckets is the shard bucket count of the tenant's layout in one index
+// object.
+//
+// The zero ShardBuckets means the layout is unknown, so a reader must read it
+// from the index object. Every other value is a valid bucket count.
+type ShardBuckets struct {
+	count uint32
+}
+
+// NewShardBuckets returns the ShardBuckets of layout. It never returns the
+// zero ShardBuckets, because every layout has at least one bucket.
+func NewShardBuckets(layout streams.ShardLayout) ShardBuckets {
+	return ShardBuckets{count: layout.Buckets()}
+}
+
+// Layout returns the shard layout of b. ok is false if b is the zero
+// ShardBuckets.
+func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
+	if b.count == 0 {
+		return streams.ShardLayout{}, false
+	}
+	return streams.MustShardLayoutFromBuckets(b.count), true
+}
 
 // TenantIndexPointer is meant to collectively hold IndexPointer with the ID of the tenant it belongs to.
 type TenantIndexPointer struct {
@@ -94,7 +118,7 @@ func (b *Builder) Append(pointer IndexPointer) {
 	pointer.EndTs = pointer.EndTs.UTC()
 	b.indexPointers = append(b.indexPointers, &pointer)
 
-	if keys := pointer.PostingKeys; keys != nil {
+	if keys := pointer.PostingKeys; !keys.IsZero() {
 		b.postingKeyBytes += len(keys.Min().ColumnName) + len(keys.Min().LabelValue)
 		b.postingKeyBytes += len(keys.Max().ColumnName) + len(keys.Max().LabelValue)
 	}
@@ -260,12 +284,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if pointer.RunID != 0 {
 			_ = runIDBuilder.Append(i, dataset.Int64Value(int64(pointer.RunID)))
 		}
-		if keys := pointer.PostingKeys; keys != nil {
+		if keys := pointer.PostingKeys; !keys.IsZero() {
 			minEncoded, maxEncoded := keys.Encode()
 			_ = minPostingKeyBuilder.Append(i, dataset.BinaryValue(minEncoded))
 			_ = maxPostingKeyBuilder.Append(i, dataset.BinaryValue(maxEncoded))
 		}
-		if layout := pointer.ShardLayout; layout != nil {
+		if layout, ok := pointer.ShardBuckets.Layout(); ok {
 			_ = shardBucketsBuilder.Append(i, dataset.Int64Value(int64(layout.Buckets())))
 		}
 	}

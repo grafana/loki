@@ -64,20 +64,45 @@ func TestNewKeyRange(t *testing.T) {
 	})
 
 	t.Run("returns an error when a kind is negative", func(t *testing.T) {
-		_, err := NewKeyRange(Key{Kind: -1}, high)
+		_, err := NewKeyRange(Key{Kind: -1, ColumnName: "x"}, high)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when a kind does not fit in one byte", func(t *testing.T) {
-		_, err := NewKeyRange(low, Key{Kind: 256})
+		_, err := NewKeyRange(low, Key{Kind: 256, ColumnName: "x"})
+		require.Error(t, err)
+	})
+
+	t.Run("returns an error when a key has an empty column name", func(t *testing.T) {
+		_, err := NewKeyRange(Key{Kind: KindBloom}, high)
 		require.Error(t, err)
 	})
 }
 
+func TestKeyRange_IsZero(t *testing.T) {
+	t.Run("returns true for the zero KeyRange", func(t *testing.T) {
+		require.True(t, KeyRange{}.IsZero())
+	})
+
+	t.Run("returns false for every range that NewKeyRange returns", func(t *testing.T) {
+		low := Key{Kind: KindBloom, ColumnName: "a"}
+		r, err := NewKeyRange(low, low)
+		require.NoError(t, err)
+		require.False(t, r.IsZero())
+	})
+}
+
 func TestDecodeKeyRange(t *testing.T) {
+	var keys []Key
+	for _, key := range keyOrderCases {
+		if key.ColumnName != "" {
+			keys = append(keys, key)
+		}
+	}
+
 	t.Run("returns the same range for the encoding of every range", func(t *testing.T) {
-		for i, low := range keyOrderCases {
-			for _, high := range keyOrderCases[i:] {
+		for i, low := range keys {
+			for _, high := range keys[i:] {
 				want, err := NewKeyRange(low, high)
 				require.NoError(t, err)
 
@@ -86,6 +111,11 @@ func TestDecodeKeyRange(t *testing.T) {
 				require.Equal(t, want, got)
 			}
 		}
+	})
+
+	t.Run("returns an error when a bound has an empty column name", func(t *testing.T) {
+		_, err := DecodeKeyRange([]byte{byte(KindLabel), 0, 0}, []byte{byte(KindLabel), 1, 'a', 0})
+		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the min bound sorts after the max bound", func(t *testing.T) {

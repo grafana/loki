@@ -92,21 +92,27 @@ func decodeString(data []byte) (string, []byte, error) {
 	return string(data[:length]), data[length:], nil
 }
 
-// KeyRange is an inclusive range of posting keys. Min never sorts after Max,
-// and the kinds of both keys fit in one byte.
+// KeyRange is an inclusive range of posting keys. Min never sorts after Max.
+// The kinds of both keys fit in one byte, and their column names are not
+// empty.
 //
-// The zero value is the range that holds only the zero Key.
+// The zero value means no bounds: the range is unknown and can hold any key.
+// [NewKeyRange] never returns the zero value, because no posting has an empty
+// column name.
 type KeyRange struct {
 	min, max Key
 }
 
 // NewKeyRange returns the range from minKey to maxKey, both inclusive. It
-// returns an error if minKey sorts after maxKey, or if the kind of a key does
-// not fit in one byte.
+// returns an error if minKey sorts after maxKey, if the kind of a key does not
+// fit in one byte, or if a key has an empty column name.
 func NewKeyRange(minKey, maxKey Key) (KeyRange, error) {
 	for _, key := range []Key{minKey, maxKey} {
 		if key.Kind < 0 || key.Kind > math.MaxUint8 {
 			return KeyRange{}, fmt.Errorf("posting key range: kind %d does not fit in one byte", key.Kind)
+		}
+		if key.ColumnName == "" {
+			return KeyRange{}, errors.New("posting key range: empty column name")
 		}
 	}
 	if minKey.Compare(maxKey) > 0 {
@@ -131,13 +137,17 @@ func DecodeKeyRange(minEncoded, maxEncoded []byte) (KeyRange, error) {
 	return NewKeyRange(minKey, maxKey)
 }
 
+// IsZero reports whether r is the zero KeyRange, which means no bounds.
+func (r KeyRange) IsZero() bool { return r == KeyRange{} }
+
 // Min returns the smallest key of r.
 func (r KeyRange) Min() Key { return r.min }
 
 // Max returns the largest key of r.
 func (r KeyRange) Max() Key { return r.max }
 
-// Encode returns the encodings of the min and max bounds of r.
+// Encode returns the encodings of the min and max bounds of r. r must not be
+// the zero KeyRange.
 func (r KeyRange) Encode() (minEncoded, maxEncoded []byte) {
 	return r.min.appendEncoding(nil), r.max.appendEncoding(nil)
 }

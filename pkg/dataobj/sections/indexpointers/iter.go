@@ -181,11 +181,11 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			layout, err := decodeShardLayout(columnValue.Int64())
+			buckets, err := decodeShardBuckets(columnValue.Int64())
 			if err != nil {
 				return err
 			}
-			pointer.ShardLayout = layout
+			pointer.ShardBuckets = buckets
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
@@ -203,21 +203,21 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 }
 
 // decodePostingKeys returns the posting key range of a pointer from its
-// encoded bounds. It returns nil if both bounds are nil, and an error if only
-// one bound is nil.
-func decodePostingKeys(minEncoded, maxEncoded []byte) (*postings.KeyRange, error) {
+// encoded bounds. It returns the zero KeyRange if both bounds are nil, and an
+// error if only one bound is nil.
+func decodePostingKeys(minEncoded, maxEncoded []byte) (postings.KeyRange, error) {
 	switch {
 	case minEncoded == nil && maxEncoded == nil:
-		return nil, nil
+		return postings.KeyRange{}, nil
 	case minEncoded == nil || maxEncoded == nil:
-		return nil, fmt.Errorf("posting key range has only one bound: min=%t max=%t", minEncoded != nil, maxEncoded != nil)
+		return postings.KeyRange{}, fmt.Errorf("posting key range has only one bound: min=%t max=%t", minEncoded != nil, maxEncoded != nil)
 	}
 
 	keys, err := postings.DecodeKeyRange(minEncoded, maxEncoded)
 	if err != nil {
-		return nil, fmt.Errorf("decoding %s and %s: %w", ColumnTypeMinPostingKey, ColumnTypeMaxPostingKey, err)
+		return postings.KeyRange{}, fmt.Errorf("decoding %s and %s: %w", ColumnTypeMinPostingKey, ColumnTypeMaxPostingKey, err)
 	}
-	return &keys, nil
+	return keys, nil
 }
 
 // decodeRunID returns the run ID with the given value. It returns an error if
@@ -229,17 +229,17 @@ func decodeRunID(value int64) (RunID, error) {
 	return RunID(value), nil
 }
 
-// decodeShardLayout returns the shard layout with the given bucket count. It
+// decodeShardBuckets returns the ShardBuckets with the given bucket count. It
 // returns an error if buckets is not a valid bucket count.
-func decodeShardLayout(buckets int64) (*streams.ShardLayout, error) {
+func decodeShardBuckets(buckets int64) (ShardBuckets, error) {
 	if buckets <= 0 || buckets > math.MaxUint32 {
-		return nil, fmt.Errorf("invalid %s value %d", ColumnTypeShardBuckets, buckets)
+		return ShardBuckets{}, fmt.Errorf("invalid %s value %d", ColumnTypeShardBuckets, buckets)
 	}
 	layout, err := streams.ShardLayoutFromBuckets(uint32(buckets))
 	if err != nil {
-		return nil, fmt.Errorf("invalid %s value: %w", ColumnTypeShardBuckets, err)
+		return ShardBuckets{}, fmt.Errorf("invalid %s value: %w", ColumnTypeShardBuckets, err)
 	}
-	return &layout, nil
+	return NewShardBuckets(layout), nil
 }
 
 func unsafeString(data []byte) string {

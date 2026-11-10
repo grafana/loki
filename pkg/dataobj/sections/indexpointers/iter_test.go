@@ -26,7 +26,7 @@ func TestDecodeRow(t *testing.T) {
 	keyRange, err := postings.NewKeyRange(lowKey, highKey)
 	require.NoError(t, err)
 	minEncoded, maxEncoded := keyRange.Encode()
-	shardLayout := streams.MustShardLayoutFromBuckets(64)
+	shardBuckets := NewShardBuckets(streams.MustShardLayoutFromBuckets(64))
 
 	tests := []struct {
 		name     string
@@ -166,12 +166,12 @@ func TestDecodeRow(t *testing.T) {
 				},
 			},
 			expected: IndexPointer{
-				Path:        "test-path",
-				StartTs:     time.Unix(0, 1234567890000000000),
-				EndTs:       time.Unix(0, 1234567890000000000),
-				RunID:       7,
-				PostingKeys: &keyRange,
-				ShardLayout: &shardLayout,
+				Path:         "test-path",
+				StartTs:      time.Unix(0, 1234567890000000000),
+				EndTs:        time.Unix(0, 1234567890000000000),
+				RunID:        7,
+				PostingKeys:  keyRange,
+				ShardBuckets: shardBuckets,
 			},
 		},
 		{

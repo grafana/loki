@@ -1386,12 +1386,12 @@ func TestObjectMetastore_GetIndexes(t *testing.T) {
 			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
 		)
 		require.NoError(t, err)
-		layout := streams.MustShardLayoutFromBuckets(8)
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(8))
 		start, end := tocTestWindow, tocTestWindow.Add(time.Hour)
 
 		bucket := newTOCTestBucket()
 		bucket.upload(t, IndexStoragePrefix+"/"+TableOfContentsPath(tenantID, tocTestWindow), newTOCBytes(t, tenantID,
-			indexpointers.IndexPointer{Path: "index/a", StartTs: start, EndTs: end, RunID: 1, PostingKeys: &keys, ShardLayout: &layout},
+			indexpointers.IndexPointer{Path: "index/a", StartTs: start, EndTs: end, RunID: 1, PostingKeys: keys, ShardBuckets: buckets},
 			indexpointers.IndexPointer{Path: "index/b", StartTs: start, EndTs: end},
 		))
 

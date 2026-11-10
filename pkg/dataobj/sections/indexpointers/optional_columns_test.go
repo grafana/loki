@@ -19,12 +19,12 @@ func optionalFieldPointers(t *testing.T) []IndexPointer {
 		postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api\x00"},
 	)
 	require.NoError(t, err)
-	layout := streams.MustShardLayoutFromBuckets(64)
+	buckets := NewShardBuckets(streams.MustShardLayoutFromBuckets(64))
 
 	return []IndexPointer{
-		{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 1, PostingKeys: &keys, ShardLayout: &layout},
-		{Path: "indexes/b", StartTs: unixTime(30).UTC(), EndTs: unixTime(40).UTC(), ShardLayout: &layout},
-		{Path: "indexes/c", StartTs: unixTime(50).UTC(), EndTs: unixTime(60).UTC(), RunID: 1, PostingKeys: &keys},
+		{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 1, PostingKeys: keys, ShardBuckets: buckets},
+		{Path: "indexes/b", StartTs: unixTime(30).UTC(), EndTs: unixTime(40).UTC(), ShardBuckets: buckets},
+		{Path: "indexes/c", StartTs: unixTime(50).UTC(), EndTs: unixTime(60).UTC(), RunID: 1, PostingKeys: keys},
 		{Path: "indexes/d", StartTs: unixTime(70).UTC(), EndTs: unixTime(80).UTC()},
 	}
 }
@@ -61,8 +61,8 @@ func TestIter(t *testing.T) {
 			pointer, err := res.Value()
 			require.NoError(t, err)
 			require.Zero(t, pointer.RunID)
-			require.Nil(t, pointer.PostingKeys)
-			require.Nil(t, pointer.ShardLayout)
+			require.True(t, pointer.PostingKeys.IsZero())
+			require.Zero(t, pointer.ShardBuckets)
 		}
 	})
 }
@@ -84,7 +84,7 @@ func TestDecodePostingKeys(t *testing.T) {
 	t.Run("returns no range when both bounds are missing", func(t *testing.T) {
 		keys, err := decodePostingKeys(nil, nil)
 		require.NoError(t, err)
-		require.Nil(t, keys)
+		require.True(t, keys.IsZero())
 	})
 
 	t.Run("returns an error when only the min bound is present", func(t *testing.T) {
@@ -126,26 +126,44 @@ func TestDecodeRunID(t *testing.T) {
 	})
 }
 
-func TestDecodeShardLayout(t *testing.T) {
-	t.Run("returns the layout for a power of two", func(t *testing.T) {
-		layout, err := decodeShardLayout(64)
+func TestDecodeShardBuckets(t *testing.T) {
+	t.Run("returns the bucket count for a power of two", func(t *testing.T) {
+		buckets, err := decodeShardBuckets(64)
 		require.NoError(t, err)
+		layout, ok := buckets.Layout()
+		require.True(t, ok)
 		require.Equal(t, uint32(64), layout.Buckets())
 	})
 
 	t.Run("returns an error when the count is not a power of two", func(t *testing.T) {
-		_, err := decodeShardLayout(3)
+		_, err := decodeShardBuckets(3)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the count is not positive", func(t *testing.T) {
-		_, err := decodeShardLayout(0)
+		_, err := decodeShardBuckets(0)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the count does not fit in 32 bits", func(t *testing.T) {
-		_, err := decodeShardLayout(1 << 40)
+		_, err := decodeShardBuckets(1 << 40)
 		require.Error(t, err)
+	})
+}
+
+func TestShardBuckets_Layout(t *testing.T) {
+	t.Run("returns no layout for the zero ShardBuckets", func(t *testing.T) {
+		_, ok := ShardBuckets{}.Layout()
+		require.False(t, ok)
+	})
+
+	t.Run("returns the layout that NewShardBuckets got, including one bucket", func(t *testing.T) {
+		for _, count := range []uint32{1, 32, 256} {
+			want := streams.MustShardLayoutFromBuckets(count)
+			got, ok := NewShardBuckets(want).Layout()
+			require.True(t, ok)
+			require.Equal(t, want, got)
+		}
 	})
 }
 

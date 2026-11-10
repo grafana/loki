@@ -161,8 +161,8 @@ func TestWriteEntry(t *testing.T) {
 			postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"},
 		)
 		require.NoError(t, err)
-		layout := streams.MustShardLayoutFromBuckets(16)
-		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, PostingKeys: &keys, ShardLayout: &layout}
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
+		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, PostingKeys: keys, ShardBuckets: buckets}
 		uploadToCPointers(t, bucket, tocPath, "tenant-a", existing)
 
 		writer := newTableOfContentsWriter(t, bucket)
