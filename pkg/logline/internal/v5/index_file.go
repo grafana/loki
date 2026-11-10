@@ -164,12 +164,16 @@ func (c IndexWriteConfig) documentLayout() (documentLayout, error) {
 
 // withLayout returns c with the document layout of merge inputs. Merged
 // postings keep the inputs' cells, so a configured interval, shard bits, or
-// day start that disagree with them are an error.
+// day start that disagree with them are an error. A zero interval or day start
+// leaves that field to the inputs. Zero shard bits are a real layout (one
+// shard), so they are compared whenever the interval is set: a caller that
+// sets the interval states the whole layout, as the compactor does from
+// meta.json.
 func (c IndexWriteConfig) withLayout(l documentLayout) (IndexWriteConfig, error) {
 	if c.DocumentInterval != 0 && c.DocumentInterval != l.interval {
 		return c, fmt.Errorf("merge: configured document interval %v differs from the inputs' %v", c.DocumentInterval, l.interval)
 	}
-	if c.DocumentShardBits != 0 && c.DocumentShardBits != int(l.shardBits) {
+	if (c.DocumentInterval != 0 || c.DocumentShardBits != 0) && c.DocumentShardBits != int(l.shardBits) {
 		return c, fmt.Errorf("merge: configured document shard bits %d differ from the inputs' %d", c.DocumentShardBits, l.shardBits)
 	}
 	if !c.DayStart.IsZero() && c.DayStart.UnixNano() != l.dayStartUnixNano {

@@ -230,6 +230,29 @@ func TestMerge_DocumentLayoutMustMatch(t *testing.T) {
 		require.ErrorContains(t, err, "configured document shard bits 1 differ from the inputs' 5")
 	})
 
+	t.Run("zero shard bits configured with an interval are one shard, not unset", func(t *testing.T) {
+		// The compactor sets both from meta.json. A meta that records one
+		// shard over footers with five bits must fail the job rather than
+		// merge into an index whose meta.json and footer disagree.
+		cfg := DefaultFastIndexWriteConfig()
+		cfg.DocumentInterval = 16 * time.Second
+		cfg.DocumentShardBits = 0
+		cfg.DayStart = testDayStart
+		var out bytes.Buffer
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 16*time.Second, 5, testDayStart)}, &out, cfg)
+		require.ErrorContains(t, err, "configured document shard bits 0 differ from the inputs' 5")
+	})
+
+	t.Run("an unset interval and shard bits take the inputs' layout", func(t *testing.T) {
+		cfg := DefaultFastIndexWriteConfig()
+		cfg.DayStart = testDayStart
+		var out bytes.Buffer
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 16*time.Second, 5, testDayStart)}, &out, cfg)
+		require.NoError(t, err)
+		layout, _ := mergedPostings(t, &out)
+		require.Equal(t, uint8(5), layout.shardBits)
+	})
+
 	t.Run("a configured day start that disagrees with the inputs is rejected", func(t *testing.T) {
 		cfg := DefaultFastIndexWriteConfig()
 		cfg.DayStart = testDayStart.AddDate(0, 0, -1)

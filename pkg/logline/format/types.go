@@ -171,7 +171,9 @@ type WriterConfig struct {
 	DocumentInterval time.Duration
 
 	// DocumentShardBits is log2 of the number of stream shards per document
-	// interval; 0 is one shard. Only v5 reads it.
+	// interval; 0 is one shard. Only v5 reads it. A v5 merge checks it against
+	// its inputs whenever DocumentInterval is set, so 0 then means one shard,
+	// not "take the inputs'".
 	DocumentShardBits int
 
 	// DayStart is the UTC midnight of the day a v5 index covers. Its postings
