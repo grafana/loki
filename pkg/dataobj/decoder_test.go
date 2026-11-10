@@ -120,3 +120,86 @@ func TestDecoder_ExtendedMetadataRegionEnd(t *testing.T) {
 		require.ErrorIs(t, err, errCannotCacheMetadata)
 	})
 }
+
+func TestWholeMetadataBlockEnd(t *testing.T) {
+	const (
+		startOff = int64(100)
+		maxBytes = int64(1 << 20)
+	)
+
+	type region struct{ offset, length uint64 }
+
+	newTestMD := func(regions ...region) *filemd.Metadata {
+		md := &filemd.Metadata{}
+		for _, r := range regions {
+			md.Sections = append(md.Sections, &filemd.SectionInfo{
+				Layout: &filemd.SectionLayout{Metadata: &filemd.Region{Offset: r.offset, Length: r.length}},
+			})
+		}
+		return md
+	}
+
+	t.Run("ends at the last metadata region of any section", func(t *testing.T) {
+		md := newTestMD(region{0, 10}, region{10, 500}, region{510, 20})
+
+		end, err := wholeMetadataBlockEnd(md, startOff, maxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff+530, end)
+	})
+
+	t.Run("ends at the same offset whatever the order of the sections", func(t *testing.T) {
+		md := newTestMD(region{510, 20}, region{0, 10}, region{10, 500})
+
+		end, err := wholeMetadataBlockEnd(md, startOff, maxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff+530, end)
+	})
+
+	t.Run("ends at the file metadata when no section has a metadata region", func(t *testing.T) {
+		end, err := wholeMetadataBlockEnd(newTestMD(), startOff, maxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff, end)
+	})
+
+	t.Run("ends at the file metadata when a section has no layout", func(t *testing.T) {
+		md := &filemd.Metadata{Sections: []*filemd.SectionInfo{{}}}
+
+		end, err := wholeMetadataBlockEnd(md, startOff, maxBytes)
+		require.NoError(t, err)
+		require.Equal(t, startOff, end)
+	})
+
+	t.Run("accepts a block that ends exactly at maxBytes", func(t *testing.T) {
+		end, err := wholeMetadataBlockEnd(newTestMD(region{0, uint64(maxBytes - startOff)}), startOff, maxBytes)
+		require.NoError(t, err)
+		require.Equal(t, maxBytes, end)
+	})
+
+	t.Run("rejects a block that ends one byte above maxBytes", func(t *testing.T) {
+		_, err := wholeMetadataBlockEnd(newTestMD(region{0, uint64(maxBytes-startOff) + 1}), startOff, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("rejects a block whose last region starts beyond maxBytes", func(t *testing.T) {
+		_, err := wholeMetadataBlockEnd(newTestMD(region{0, 10}, region{uint64(maxBytes), 1}), startOff, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("rejects file metadata that alone exceeds maxBytes", func(t *testing.T) {
+		_, err := wholeMetadataBlockEnd(newTestMD(), maxBytes+1, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("rejects an offset or length above int64 max", func(t *testing.T) {
+		_, err := wholeMetadataBlockEnd(newTestMD(region{uint64(math.MaxInt64) + 1, 0}), startOff, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+
+		_, err = wholeMetadataBlockEnd(newTestMD(region{0, uint64(math.MaxInt64) + 1}), startOff, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+
+	t.Run("rejects a region whose offset and length each fit the limit alone but not together", func(t *testing.T) {
+		_, err := wholeMetadataBlockEnd(newTestMD(region{uint64(math.MaxInt64), uint64(math.MaxInt64)}), startOff, maxBytes)
+		require.ErrorIs(t, err, errCannotCacheMetadata)
+	})
+}

@@ -15,8 +15,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
-// errCannotCacheMetadata signals that extendedMetadataRegionEnd could not size a region to cache: it
-// would exceed the cache's size limit, or a section's type or layout is invalid or overflows.
+// errCannotCacheMetadata signals that extendedMetadataRegionEnd or wholeMetadataBlockEnd could not
+// size a region to cache. The region would exceed the cache's size limit, or a section's type or
+// layout is invalid or overflows.
 var errCannotCacheMetadata = errors.New("cannot cache data-object metadata region")
 
 // logsSectionType duplicates an identity pkg/dataobj/sections/logs owns, to avoid an import cycle; the
@@ -110,23 +111,29 @@ func (d *decoder) decodeMetadataRegion(blob []byte) (md *filemd.Metadata, metada
 	return md, header.MetadataSize, nil
 }
 
-// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata
-// plus, per extendedMetadataRegionEnd, every non-logs section's own metadata. A tiny object is
-// returned whole.
+// fetchExtendedMetadataRegion reads the metadata region its caller should cache. Per
+// extendedMetadataRegionEnd, the region holds the file metadata and every non-logs section's own
+// metadata. When the cache asks for the whole metadata block, the region ends at wholeMetadataBlockEnd
+// instead, so it also holds the logs sections' metadata. A tiny object is returned whole.
 //
-// extendedMetadataRegionEnd already wraps its own error in errCannotCacheMetadata, so metadataViaCache
-// falls back to a direct read instead of failing the open.
+// extendedMetadataRegionEnd and wholeMetadataBlockEnd already wrap their errors in
+// errCannotCacheMetadata, so metadataViaCache falls back to a direct read instead of failing the open.
 func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, error) {
 	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// MaxItemBytes is the cache backend's own size limit: asking upfront, before extending the region
-	// with further reads or allocations, avoids doing that work for a region the backend would reject
-	// anyway. MetadataCache guarantees a positive value, so there is nothing to default here.
+	// MaxItemBytes is the cache's own size limit: asking upfront, before extending the region with
+	// further reads or allocations, avoids doing that work for a region the cache would reject anyway.
+	// MetadataCache guarantees a positive value, so there is nothing to default here.
 	startOff := int64(8) + int64(metadataSize)
-	regionEnd, err := d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
+	var regionEnd int64
+	if cache, ok := d.metadataCache.(WholeBlockMetadataCache); ok && cache.WholeMetadataBlock() {
+		regionEnd, err = wholeMetadataBlockEnd(md, startOff, d.metadataCache.MaxItemBytes())
+	} else {
+		regionEnd, err = d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +238,35 @@ func (d *decoder) extendedMetadataRegionEnd(md *filemd.Metadata, startOff, maxBy
 	}
 
 	return regionEnd, nil
+}
+
+// wholeMetadataBlockEnd returns the object offset where the whole metadata block of md ends. That is
+// the highest end of any section's metadata, logs sections included.
+//
+// It fails with errCannotCacheMetadata when a section layout is invalid or the block would exceed
+// maxBytes.
+func wholeMetadataBlockEnd(md *filemd.Metadata, startOff, maxBytes int64) (int64, error) {
+	if startOff > maxBytes {
+		return 0, fmt.Errorf("%w: file metadata alone is %d bytes, exceeding the %d byte limit", errCannotCacheMetadata, startOff, maxBytes)
+	}
+
+	// Section offsets count from startOff, so the block is [0, end) of the object. maxBytes also stops a
+	// corrupt layout from driving a huge allocation in fetchExtendedMetadataRegion.
+	end := startOff
+	for i, sec := range md.Sections {
+		region := sec.GetLayout().GetMetadata()
+		if region.GetOffset() > math.MaxInt64 || region.GetLength() > math.MaxInt64 {
+			return 0, fmt.Errorf("%w: section %d metadata region is invalid: offset=%d length=%d", errCannotCacheMetadata, i, region.GetOffset(), region.GetLength())
+		}
+
+		// Compare against what is left of the limit instead of adding first, so the sum cannot overflow.
+		offset, length := int64(region.GetOffset()), int64(region.GetLength())
+		if offset > maxBytes-startOff || length > maxBytes-startOff-offset {
+			return 0, fmt.Errorf("%w: metadata block exceeds the %d byte limit at section %d: offset=%d length=%d", errCannotCacheMetadata, maxBytes, i, offset, length)
+		}
+		end = max(end, startOff+offset+length)
+	}
+	return end, nil
 }
 
 // fetchAndDecodeMetadata reads the prefetch window from offset 0 and decodes the file metadata. It

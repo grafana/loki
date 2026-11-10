@@ -22,8 +22,9 @@ type Config struct {
 	// MetadataCache caches the metadata region of log objects and index objects, or the entire object
 	// if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), it also
 	// holds the tables of contents (ToCs) that the resolver refreshes. It is enabled when a backend is
-	// configured.
-	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// configured. When -dataobj.logs-metadata-memory-cache-enabled is set, log objects use the in-memory
+	// cache instead.
+	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend. When -dataobj.logs-metadata-memory-cache-enabled is set, log objects use the in-memory cache instead."`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -32,6 +33,10 @@ type Config struct {
 	StorageBucketPrefix string        `yaml:"storage_bucket_prefix"`
 	Enabled             bool          `yaml:"enabled"`
 	StorageLag          time.Duration `yaml:"storage_lag" category:"experimental"`
+
+	// LogsMetadataMemoryCache enables an in-memory cache of the whole metadata block of every log object
+	// the querier reads, or of the whole object if it is tiny. The cache never evicts.
+	LogsMetadataMemoryCache bool `yaml:"logs_metadata_memory_cache_enabled" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -57,6 +62,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"dataobj.storage-lag",
 		DefaultStorageLag,
 		"Delay after which data objects hold all the data.",
+	)
+	f.BoolVar(
+		&cfg.LogsMetadataMemoryCache,
+		"dataobj.logs-metadata-memory-cache-enabled",
+		false,
+		"Keep the whole metadata block of every log object the querier reads in an in-memory cache, or the whole object if it is tiny. The cache never evicts and has no limit on its total size, so memory use grows with the number of distinct objects read. Log objects use this cache instead of the backend cache set in -dataobj.metadata-cache.*. Index objects and ToCs still use the backend cache. It has no effect unless data objects are enabled.",
 	)
 }
 

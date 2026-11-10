@@ -14,9 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/compactor"
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
@@ -421,4 +423,77 @@ func TestCompactorAddress(t *testing.T) {
 			require.Equal(t, tc.wantGRPC, isGRPC)
 		})
 	}
+}
+
+func TestInitDataObjCache(t *testing.T) {
+	embeddedBackend := cache.Config{
+		Prefix:        "dataobj.metadata-cache.",
+		EmbeddedCache: cache.EmbeddedCacheConfig{Enabled: true, MaxSizeMB: 1, TTL: time.Minute},
+	}
+
+	t.Run("builds no cache when data objects are off, even with the memory cache flag set", func(t *testing.T) {
+		useFreshRegistry(t)
+		loki := &Loki{}
+		loki.Cfg.DataObj = dataobjconfig.Config{Enabled: false, LogsMetadataMemoryCache: true, MetadataCache: embeddedBackend}
+
+		svc, err := loki.initDataObjCache()
+
+		require.NoError(t, err)
+		require.Nil(t, svc)
+		require.Nil(t, loki.dataObjLogsMemoryCache)
+		require.Nil(t, loki.dataObjLogsCache)
+	})
+
+	t.Run("builds only the memory cache and no service when the flag is set and no backend is configured", func(t *testing.T) {
+		useFreshRegistry(t)
+		loki := &Loki{}
+		loki.Cfg.DataObj = dataobjconfig.Config{Enabled: true, LogsMetadataMemoryCache: true}
+
+		svc, err := loki.initDataObjCache()
+
+		require.NoError(t, err)
+		require.Nil(t, svc)
+		require.NotNil(t, loki.dataObjLogsMemoryCache)
+		require.Nil(t, loki.dataObjLogsCache)
+		require.Nil(t, loki.dataObjIndexCache)
+		require.Nil(t, loki.dataObjTOCCache)
+	})
+
+	t.Run("builds the memory cache and the backend caches when both are configured", func(t *testing.T) {
+		useFreshRegistry(t)
+		loki := &Loki{}
+		loki.Cfg.DataObj = dataobjconfig.Config{Enabled: true, LogsMetadataMemoryCache: true, MetadataCache: embeddedBackend}
+
+		svc, err := loki.initDataObjCache()
+
+		require.NoError(t, err)
+		require.NotNil(t, svc)
+		require.NotNil(t, loki.dataObjLogsMemoryCache)
+		require.NotNil(t, loki.dataObjLogsCache)
+		require.NotNil(t, loki.dataObjIndexCache)
+		require.NotNil(t, loki.dataObjTOCCache)
+	})
+
+	t.Run("builds no memory cache when the flag is off", func(t *testing.T) {
+		useFreshRegistry(t)
+		loki := &Loki{}
+		loki.Cfg.DataObj = dataobjconfig.Config{Enabled: true, MetadataCache: embeddedBackend}
+
+		svc, err := loki.initDataObjCache()
+
+		require.NoError(t, err)
+		require.NotNil(t, svc)
+		require.Nil(t, loki.dataObjLogsMemoryCache)
+		require.NotNil(t, loki.dataObjLogsCache)
+	})
+}
+
+// useFreshRegistry gives the test its own default registerer, so a cache built by one test does not
+// collide with the metrics of another.
+func useFreshRegistry(t *testing.T) {
+	t.Helper()
+
+	previous := prometheus.DefaultRegisterer
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	t.Cleanup(func() { prometheus.DefaultRegisterer = previous })
 }

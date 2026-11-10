@@ -1135,7 +1135,9 @@ dataobj:
   # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
   # backend is configured. Entries are keyed by object path, so the cache cannot
   # differentiate entries between different buckets and clusters. Multiple
-  # installations must not share the same cache backend.
+  # installations must not share the same cache backend. When
+  # -dataobj.logs-metadata-memory-cache-enabled is set, log objects use the
+  # in-memory cache instead.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
@@ -1369,6 +1371,15 @@ dataobj:
   # Delay after which data objects hold all the data.
   # CLI flag: -dataobj.storage-lag
   [storage_lag: <duration> | default = 3h]
+
+  # Keep the whole metadata block of every log object the querier reads in an
+  # in-memory cache, or the whole object if it is tiny. The cache never evicts
+  # and has no limit on its total size, so memory use grows with the number of
+  # distinct objects read. Log objects use this cache instead of the backend
+  # cache set in -dataobj.metadata-cache.*. Index objects and ToCs still use the
+  # backend cache. It has no effect unless data objects are enabled.
+  # CLI flag: -dataobj.logs-metadata-memory-cache-enabled
+  [logs_metadata_memory_cache_enabled: <boolean> | default = false]
 
 ingest_limits:
   # Enable the ingest limits service.

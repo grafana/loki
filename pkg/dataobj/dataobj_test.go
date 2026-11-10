@@ -608,6 +608,121 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 	})
 }
 
+func TestFromBucket_WholeBlockMetadataCache(t *testing.T) {
+	// Each section's metadata exceeds the 16 KiB minimum prefetch window, so the metadata of the second
+	// section starts beyond the first read.
+	const sectionMetaBytes = 24 * 1024
+
+	streamsMeta := bytes.Repeat([]byte("s"), sectionMetaBytes)
+	logsMeta := bytes.Repeat([]byte("l"), sectionMetaBytes)
+	logsData := bytes.Repeat([]byte("d"), 32*1024)
+	raw := buildObject(t,
+		sectionSpec{typ: streamsSectionType, meta: streamsMeta, data: []byte("streams-data")},
+		sectionSpec{typ: logsSectionType, meta: logsMeta, data: logsData},
+	)
+
+	readMetadata := func(t *testing.T, obj *dataobj.Object, kind string) []byte {
+		t.Helper()
+		sec := sectionByKind(t, obj.Sections(), kind)
+		return readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.MetadataRange(t.Context(), 0, sec.Reader.MetadataSize())
+		})
+	}
+
+	newBucket := func(t *testing.T) *countingBucket {
+		t.Helper()
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(t.Context(), "obj", bytes.NewReader(raw)))
+		return &countingBucket{Bucket: inmem}
+	}
+
+	t.Run("a cold open reads the metadata of every section, so reading it needs no further request", func(t *testing.T) {
+		cb := newBucket(t)
+		memoryCache := metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+
+		obj, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(memoryCache))
+		require.NoError(t, err)
+
+		cb.reset()
+		require.Equal(t, streamsMeta, readMetadata(t, obj, streamsSectionType.Kind))
+		require.Equal(t, logsMeta, readMetadata(t, obj, logsSectionType.Kind))
+		require.Zero(t, cb.getRanges.Load(), "the cold open already read the metadata of both sections")
+		require.Equal(t, 1, memoryCache.Len())
+	})
+
+	t.Run("a cache that does not ask for the whole block leaves the logs section metadata to a later read", func(t *testing.T) {
+		cb := newBucket(t)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
+		t.Cleanup(metadataCache.Stop)
+
+		obj, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+
+		cb.reset()
+		require.Equal(t, logsMeta, readMetadata(t, obj, logsSectionType.Kind))
+		require.Positive(t, cb.getRanges.Load())
+	})
+
+	t.Run("a warm open makes no request for the metadata and still reads the section data", func(t *testing.T) {
+		cb := newBucket(t)
+		memoryCache := metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+
+		_, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(memoryCache))
+		require.NoError(t, err)
+
+		cb.reset()
+		obj, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(memoryCache))
+		require.NoError(t, err)
+		require.Equal(t, streamsMeta, readMetadata(t, obj, streamsSectionType.Kind))
+		require.Equal(t, logsMeta, readMetadata(t, obj, logsSectionType.Kind))
+		require.Zero(t, cb.getRanges.Load(), "the warm open is served from memory")
+
+		sec := sectionByKind(t, obj.Sections(), logsSectionType.Kind)
+		gotData := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(t.Context(), 0, sec.Reader.DataSize()) })
+		require.Equal(t, logsData, gotData)
+		require.Positive(t, cb.getRanges.Load(), "the data stays in object storage")
+		require.Equal(t, 1, memoryCache.Len())
+	})
+
+	t.Run("an object that fits in the prefetch window is cached whole, so a warm open reads no data from object storage", func(t *testing.T) {
+		smallRaw := buildObject(t, sectionSpec{typ: logsSectionType, meta: []byte("logs-meta"), data: []byte("logs-data")})
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(t.Context(), "obj", bytes.NewReader(smallRaw)))
+		cb := &countingBucket{Bucket: inmem}
+		memoryCache := metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+
+		_, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(memoryCache))
+		require.NoError(t, err)
+
+		cb.reset()
+		obj, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(memoryCache))
+		require.NoError(t, err)
+		sec := sectionByKind(t, obj.Sections(), logsSectionType.Kind)
+		gotData := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(t.Context(), 0, sec.Reader.DataSize()) })
+
+		require.Equal(t, []byte("logs-data"), gotData)
+		require.Zero(t, cb.getRanges.Load())
+		require.Equal(t, int64(len(smallRaw)), memoryCache.Bytes())
+	})
+
+	t.Run("a metadata block above the cache limit is read directly and not kept", func(t *testing.T) {
+		cb := newBucket(t)
+		limited := limitedWholeBlockCache{
+			MemoryCache:  metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil),
+			maxItemBytes: sectionMetaBytes,
+		}
+		logger := &test.CapturingLogger{}
+
+		obj, err := dataobj.FromBucket(t.Context(), cb, "obj", 0, dataobj.WithMetadataCache(limited), dataobj.WithLogger(logger))
+		require.NoError(t, err)
+		require.Equal(t, streamsMeta, readMetadata(t, obj, streamsSectionType.Kind))
+		require.Equal(t, logsMeta, readMetadata(t, obj, logsSectionType.Kind))
+		require.Zero(t, limited.Len())
+		require.Len(t, logger.Entries(), 1)
+		require.Contains(t, logger.Entries()[0], "data-object metadata cannot be cached; reading directly")
+	})
+}
+
 // countingBucket counts GetRange calls and the bytes they request, to prove which reads hit storage.
 type countingBucket struct {
 	objstore.Bucket
@@ -747,3 +862,11 @@ func (b *truncatedHeadBucket) GetRange(ctx context.Context, name string, off, le
 func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadatacache.Cache {
 	return metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
 }
+
+// limitedWholeBlockCache is a MemoryCache with a small MaxItemBytes, so a metadata block can exceed it.
+type limitedWholeBlockCache struct {
+	*metadatacache.MemoryCache
+	maxItemBytes int64
+}
+
+func (c limitedWholeBlockCache) MaxItemBytes() int64 { return c.maxItemBytes }

@@ -562,7 +562,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
-		if t.dataObjLogsCache != nil {
+		switch {
+		case t.dataObjLogsMemoryCache != nil:
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsMemoryCache))
+		case t.dataObjLogsCache != nil:
 			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
@@ -811,10 +814,26 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the metadata caches of the data objects. The caches that use a backend share one backend. It
+// returns no service when data objects are disabled or no cache backend is configured.
+//
+// It builds the in-memory cache for log objects when -dataobj.logs-metadata-memory-cache-enabled is set. That cache
+// needs no service.
 func (t *Loki) initDataObjCache() (services.Service, error) {
-	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+	if !t.Cfg.DataObj.Enabled {
+		return nil, nil
+	}
+
+	backendConfigured := cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache)
+	if !backendConfigured && !t.Cfg.DataObj.LogsMetadataMemoryCache {
+		return nil, nil
+	}
+
+	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
+	if t.Cfg.DataObj.LogsMetadataMemoryCache {
+		t.dataObjLogsMemoryCache = metadatacache.NewMemoryCache(metadatacache.KindLogs, cacheMetrics, prometheus.DefaultRegisterer)
+	}
+	if !backendConfigured {
 		return nil, nil
 	}
 
@@ -825,7 +844,6 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 	}
 
-	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
 	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
 	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
 	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)

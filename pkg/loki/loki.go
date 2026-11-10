@@ -503,14 +503,18 @@ type Loki struct {
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
 
-	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache is
-	// configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
+	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache
+	// backend is configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
 	// disabled.
 	dataObjLogsCache  *metadatacache.Cache
 	dataObjIndexCache *metadatacache.Cache
 	dataObjTOCCache   *metadatacache.Cache
 	dataObjBucket     objstore.Bucket
 	dataObjMetastore  *metastore.ObjectMetastore
+
+	// dataObjLogsMemoryCache is nil unless data objects and -dataobj.logs-metadata-memory-cache-enabled are
+	// both on. The querier uses it instead of dataObjLogsCache for log objects.
+	dataObjLogsMemoryCache *metadatacache.MemoryCache
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics

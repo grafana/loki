@@ -148,6 +148,36 @@ func TestWithDataObjMetadataCache(t *testing.T) {
 
 		require.NotEmpty(t, got)
 	})
+
+	t.Run("the in-memory cache keeps one entry per small object and returns the same samples as no cache", func(t *testing.T) {
+		streams := []logproto.Stream{appStream, otherStream}
+		memoryCache := metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+		cachedStore := newTestDataObjStore(t, streams, withObjectPerStream(), withMetadataCache(memoryCache))
+		uncachedStore := newTestDataObjStore(t, streams, withObjectPerStream())
+
+		loaded := cachedStore.selectSamples(testCtx(t), query, at(0), at(10))
+		cached := cachedStore.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, loaded)
+		require.Equal(t, loaded, cached)
+		require.Equal(t, uncachedStore.selectSamples(testCtx(t), query, at(0), at(10)), cached)
+		require.Equal(t, 2, memoryCache.Len())
+	})
+
+	t.Run("the in-memory cache returns the same samples as no cache for an object larger than the head prefetch window", func(t *testing.T) {
+		largeStream := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: randomLineEntries(t, 300, 200)}
+		memoryCache := metadatacache.NewMemoryCache(metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+		cachedStore := newTestDataObjStore(t, []logproto.Stream{largeStream}, withHeadPrefetchBytes(1), withMetadataCache(memoryCache))
+		uncachedStore := newTestDataObjStore(t, []logproto.Stream{largeStream}, withHeadPrefetchBytes(1))
+
+		loaded := cachedStore.selectSamples(testCtx(t), query, at(0), at(10))
+		cached := cachedStore.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.Len(t, loaded, 300)
+		require.Equal(t, loaded, cached)
+		require.Equal(t, uncachedStore.selectSamples(testCtx(t), query, at(0), at(10)), cached)
+		require.Equal(t, 1, memoryCache.Len())
+	})
 }
 
 func TestDataObjStore_SelectSamples(t *testing.T) {
@@ -997,6 +1027,7 @@ type testStoreOptions struct {
 	metadataCache    dataobj.MetadataCache
 	registerer       prometheus.Registerer
 	compactedLayout  bool
+	headPrefetch     int64
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -1031,6 +1062,12 @@ func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
 
 func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
+}
+
+// withHeadPrefetchBytes sets the bytes an object open reads up front. The reader enforces a minimum, so a
+// small value gives the smallest window.
+func withHeadPrefetchBytes(n int64) testStoreOption {
+	return func(o *testStoreOptions) { o.headPrefetch = n }
 }
 
 func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
@@ -1071,6 +1108,10 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 
 	if options.metadataCache != nil {
 		storeOpts = append(storeOpts, WithDataObjMetadataCache(options.metadataCache))
+	}
+
+	if options.headPrefetch != 0 {
+		storeOpts = append(storeOpts, WithDataObjHeadPrefetchBytes(options.headPrefetch))
 	}
 
 	location := builder.Location()

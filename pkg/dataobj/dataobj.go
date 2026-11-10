@@ -99,6 +99,10 @@ type Object struct {
 // MetadataCache caches the metadata region of data objects, or the entire object if it is tiny, keyed
 // by an opaque key. A key must name an object that never changes, so a cached entry never goes stale:
 // do not cache a ToC. Implementations must be safe for concurrent use.
+//
+// By default the region holds the file metadata and the metadata of the non-logs sections that fit in
+// MaxItemBytes. Logs section metadata grows with the number of columns and pages. A cache that
+// implements [WholeBlockMetadataCache] can ask for the metadata of every section.
 type MetadataCache interface {
 	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
 	// result, and returns it; concurrent calls for the same key share a single load. A load error is
@@ -115,8 +119,25 @@ type MetadataCache interface {
 	GetOrLoadMetadataRegion(ctx context.Context, key string, load func(ctx context.Context) ([]byte, error)) ([]byte, error)
 
 	// MaxItemBytes returns the largest region the underlying backend will store. It must always be
-	// positive: an implementation with no real backend limit still reports a safe, conservative value.
+	// positive. An implementation with no backend limit still reports a finite value, because the
+	// decoder uses it to bound the allocation when an object layout is corrupt.
 	MaxItemBytes() int64
+}
+
+// WholeBlockMetadataCache is a [MetadataCache] that can ask to cache the whole metadata block of an
+// object.
+//
+// The whole metadata block is every byte up to the highest end of any section's metadata. It holds the
+// header, the file metadata, and the metadata of every section, logs sections included. A warm open
+// then finds the metadata of every section in memory.
+//
+// If the whole block is larger than [MetadataCache.MaxItemBytes], the open reads the metadata directly
+// and the cache keeps nothing.
+type WholeBlockMetadataCache interface {
+	MetadataCache
+
+	// WholeMetadataBlock reports whether the cache asks for the whole metadata block.
+	WholeMetadataBlock() bool
 }
 
 // OpenOption customizes how an Object is opened.
