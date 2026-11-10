@@ -48,7 +48,7 @@ const (
 // internal push requests and collects ingestion statistics. If deferAttributeExpansion
 // is true, resource and scope attributes remain on their groups.
 func NewOTLPRequestParser(deferAttributeExpansion bool) RequestParser {
-	return func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error) {
+	return func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.ParsedPushRequest, *Stats, error) {
 		stats := NewPushStats()
 		otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
 		if err != nil {
@@ -148,9 +148,9 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string, deferAttributeExpansion bool) (*logproto.InternalPushRequest, error) {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string, deferAttributeExpansion bool) (*logproto.ParsedPushRequest, error) {
 	if ld.LogRecordCount() == 0 {
-		return &logproto.InternalPushRequest{}, nil
+		return &logproto.ParsedPushRequest{}, nil
 	}
 
 	rls := ld.ResourceLogs()
@@ -159,7 +159,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		stream := pushRequestsByStream[labelsStr]
 		if stream == nil {
 			stream = &otlpStream{
-				stream:        logproto.InternalStreamAdapter{Labels: labelsStr},
+				stream:        logproto.ParsedStream{InternalStreamAdapter: logproto.InternalStreamAdapter{Labels: labelsStr}, ParsedLabels: lbs},
 				resourceIndex: -1, scopeIndex: -1,
 			}
 			pushRequestsByStream[labelsStr] = stream
@@ -426,8 +426,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 	stats.MostRecentEntryTimestamp = mostRecentEntryTimestamp
 
-	pr := &logproto.InternalPushRequest{
-		Streams: make([]logproto.InternalStreamAdapter, 0, len(pushRequestsByStream)),
+	pr := &logproto.ParsedPushRequest{
+		Streams: make([]logproto.ParsedStream, 0, len(pushRequestsByStream)),
 	}
 
 	for _, built := range pushRequestsByStream {
@@ -464,7 +464,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 // otlpStream tracks the last source resource and scope added to one Loki stream.
 // Log attributes as index labels can route records from the same scope to different streams.
 type otlpStream struct {
-	stream        logproto.InternalStreamAdapter
+	stream        logproto.ParsedStream
 	resourceIndex int
 	scopeIndex    int
 }

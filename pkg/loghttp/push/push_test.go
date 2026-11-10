@@ -464,6 +464,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
+		require.Equal(t, data.Streams[0].Labels, data.Streams[0].ParsedLabels.String())
 	})
 
 	t.Run("detects service from OTLP push requests using default indexing", func(t *testing.T) {
@@ -475,6 +476,7 @@ func Test_ServiceDetection(t *testing.T) {
 		data, _, err := NewOTLPRequestParser(false)("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
+		require.Equal(t, data.Streams[0].Labels, data.Streams[0].ParsedLabels.String())
 	})
 
 	t.Run("detects service from OTLP push requests using custom indexing", func(t *testing.T) {
@@ -490,6 +492,7 @@ func Test_ServiceDetection(t *testing.T) {
 		data, _, err := NewOTLPRequestParser(false)("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
+		require.Equal(t, data.Streams[0].Labels, data.Streams[0].ParsedLabels.String())
 	})
 
 	t.Run("only detects custom service label from indexed labels", func(t *testing.T) {
@@ -505,6 +508,7 @@ func Test_ServiceDetection(t *testing.T) {
 		data, _, err := NewOTLPRequestParser(false)("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
+		require.Equal(t, data.Streams[0].Labels, data.Streams[0].ParsedLabels.String())
 	})
 }
 
