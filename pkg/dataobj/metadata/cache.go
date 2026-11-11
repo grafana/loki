@@ -1,4 +1,4 @@
-package metadatacache
+package metadata
 
 import (
 	"context"
@@ -81,7 +81,7 @@ type Cache struct {
 //
 // maxItemBytes is the largest item c's backend will actually store. A non-positive value falls back to
 // DefaultMaxItemBytes.
-func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *Metrics, logger log.Logger) *Cache {
+func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *CacheMetrics, logger log.Logger) *Cache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}

@@ -24,7 +24,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -1297,7 +1297,7 @@ func TestDataObjStore_RepeatedMetadataFilter(t *testing.T) {
 	})
 }
 
-// metadataCacheSpy wraps a metadatacache.Cache over an in-memory mock backend. It records the key of
+// metadataCacheSpy wraps a metadata.Cache over an in-memory mock backend. It records the key of
 // each call and counts the loads.
 type metadataCacheSpy struct {
 	inner dataobj.MetadataCache
@@ -1308,7 +1308,7 @@ type metadataCacheSpy struct {
 }
 
 func newMetadataCacheSpy() *metadataCacheSpy {
-	return &metadataCacheSpy{inner: metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)}
+	return &metadataCacheSpy{inner: metadata.NewCache(cache.NewMockCache(), 0, metadata.KindLogs, metadata.NewCacheMetrics(nil), nil)}
 }
 
 func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {

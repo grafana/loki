@@ -27,7 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -75,7 +75,7 @@ func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
 
 // WithTOCResolverCache makes the ToC resolver of the metastore read through cache when it refreshes a ToC. A nil cache
 // disables it.
-func WithTOCResolverCache(cache *metadatacache.Cache) ObjectMetastoreOption {
+func WithTOCResolverCache(cache *metadata.Cache) ObjectMetastoreOption {
 	return func(m *ObjectMetastore) { m.tocCache = cache }
 }
 
@@ -97,7 +97,7 @@ type ObjectMetastore struct {
 	// tocCache is the shared cache that tocResolver reads through when it refreshes a ToC. It is separate from
 	// indexMetadataCache because the resolver rejects a cached ToC that is too old, and indexMetadataCache accepts every
 	// cached value.
-	tocCache *metadatacache.Cache
+	tocCache *metadata.Cache
 
 	// indexMetadataCache caches the metadata region of index objects. It is nil when no cache is
 	// configured.

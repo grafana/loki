@@ -1,4 +1,4 @@
-package metadatacache
+package metadata
 
 import (
 	"context"
@@ -413,7 +413,7 @@ func TestCache_GetOrLoad(t *testing.T) {
 func TestNewCache(t *testing.T) {
 	t.Run("caches of different kinds that share a backend and metrics count under their own kind", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
-		metrics := NewMetrics(reg)
+		metrics := NewCacheMetrics(reg)
 		backend := cache.NewMockCache()
 		logs := NewCache(backend, 0, KindLogs, metrics, nil)
 		index := NewCache(backend, 0, KindIndex, metrics, nil)
@@ -538,5 +538,5 @@ type stopCountingCache struct {
 func (c *stopCountingCache) Stop() { c.stops.Inc() }
 
 func newTestCache(backend cache.Cache, maxItemBytes int64, logger log.Logger) *Cache {
-	return NewCache(backend, maxItemBytes, KindLogs, NewMetrics(nil), logger)
+	return NewCache(backend, maxItemBytes, KindLogs, NewCacheMetrics(nil), logger)
 }
