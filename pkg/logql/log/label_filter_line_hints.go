@@ -316,8 +316,9 @@ var (
 
 // decodedLiteral needs the line to contain match, or an escape that json or logfmt can decode into
 // a byte of it. match has no quote, backslash or control character, which have escapes of their own.
+// A `\u` escape can decode into any byte, so ShouldParseLine checks for it once for all literals.
 func decodedLiteral(match []byte) lineLiteral {
-	escapes := [][]byte{unicodeEscape}
+	var escapes [][]byte
 	if bytes.IndexByte(match, '/') >= 0 {
 		escapes = append(escapes, slashEscape)
 	}

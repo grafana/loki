@@ -31,6 +31,8 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "json: the key is escaped", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenant\u0049d":"abc123"}`, want: true},
 		{name: "json: an escape that cannot decode into the value", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenantId":"abc\n123"}`, want: false},
 		{name: "json: a slash is escaped", query: `{app="foo"} | json | path="/api/v1"`, line: `{"path":"\/api\/v1"}`, want: true},
+		{name: "json: a \\u escape can hold every value", query: `{app="foo"} | json | foo="abcd" | bar="efgh"`, line: `{"foo":"\u0061bcd"}`, want: true},
+		{name: "json: an escaped slash only holds its own value", query: `{app="foo"} | json | path="/api/v1" | foo="abcd"`, line: `{"path":"\/api\/v1"}`, want: false},
 		{name: "json: nested keys", query: `{app="foo"} | json | tenant_id="abc123"`, line: `{"tenant":{"id":"abc123"}}`, want: true},
 		{name: "json: the key has a dash", query: `{app="foo"} | json | tenant_id="abc123"`, line: `{"tenant-id":"abc123"}`, want: true},
 		{name: "json: the key has spaces around it", query: `{app="foo"} | json | tenantId="abc123"`, line: `{" tenantId ":"abc123"}`, want: true},

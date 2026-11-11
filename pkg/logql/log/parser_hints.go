@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -192,6 +193,7 @@ type labelFilterHints struct {
 	// filter on more than one label can still contribute one. They stop at the first stage that can
 	// modify labels, like labelFilters.
 	lineRequirements []lineRequirement
+	decoded          bool // whether the parser is json or logfmt
 }
 
 func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
@@ -208,7 +210,8 @@ func (h *labelFilterHints) ShouldParseLine(line []byte, lbs *LabelsBuilder) bool
 	for _, r := range h.lineRequirements {
 		// labelSet comes first because it costs less than a search of the line.
 		if !r.labelSet(lbs) && !r.need.mayHold(line) {
-			return false
+			// json and logfmt can decode a \u escape into any byte that a requirement needs.
+			return h.decoded && bytes.Contains(line, unicodeEscape)
 		}
 	}
 	return true
@@ -305,5 +308,5 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		return NoLabelFilterHints()
 	}
 
-	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames, lineRequirements: lineRequirements}
+	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames, lineRequirements: lineRequirements, decoded: values == valuesDecoded}
 }
