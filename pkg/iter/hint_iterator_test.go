@@ -69,6 +69,45 @@ func TestHintTimeRangesOverlapSemantics(t *testing.T) {
 	require.False(t, ranges.OverlapsClosed(base.Add(2*time.Millisecond), base.Add(3*time.Millisecond)))
 }
 
+func TestHintTimeRangesForFingerprint(t *testing.T) {
+	base := time.Unix(100, 0)
+	at := func(ms int) time.Time { return base.Add(time.Duration(ms) * time.Millisecond) }
+	// inShard returns a fingerprint in document shard s at 2 bits.
+	inShard := func(s uint64) uint64 { return s << 62 }
+	ranges := NewHintTimeRanges([]logproto.HintTimeRange{
+		{Start: at(0), End: at(1)},
+		{Start: at(2), End: at(3), DocumentShard: 1, DocumentShardBits: 1},
+		{Start: at(4), End: at(5), DocumentShard: 2, DocumentShardBits: 2},
+		{Start: at(6), End: at(7), DocumentShard: 4, DocumentShardBits: 2}, // too wide for its bits: every stream
+	}, base, at(8))
+
+	for _, tc := range []struct {
+		name string
+		fp   uint64
+		want []int
+	}{
+		{name: "wildcard ranges only", fp: inShard(0), want: []int{0, 6}},
+		{name: "coarser and exact shard", fp: inShard(2), want: []int{0, 2, 4, 6}},
+		{name: "coarser shard", fp: inShard(3), want: []int{0, 2, 6}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			view := ranges.ForFingerprint(tc.fp)
+			var got []int
+			for ms := range 8 {
+				if view.contains(at(ms).UnixNano()) {
+					got = append(got, ms)
+				}
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	require.True(t, ranges.Overlaps(at(4), at(5)), "the time union covers every shard")
+
+	unsharded := NewHintTimeRanges([]logproto.HintTimeRange{{Start: at(0), End: at(1)}}, base, at(8))
+	require.Equal(t, unsharded, unsharded.ForFingerprint(inShard(3)))
+}
+
 func TestHintIterators(t *testing.T) {
 	base := time.Unix(100, 0)
 	allOffsets := []time.Duration{0, time.Millisecond, 2 * time.Millisecond, 3 * time.Millisecond, 4 * time.Millisecond, 5 * time.Millisecond}

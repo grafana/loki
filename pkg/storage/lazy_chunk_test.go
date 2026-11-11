@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -133,6 +134,42 @@ func TestLazyChunkIteratorAppliesHintRangesInBothDirections(t *testing.T) {
 	}
 }
 
+func TestLazyChunkIteratorsApplyTheChunksDocumentShard(t *testing.T) {
+	periodConfig := config.PeriodConfig{From: config.DayTime{Time: 0}, Schema: "v13"}
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	start := time.Unix(0, 0)
+	end := start.Add(6 * time.Millisecond)
+	lazyChunk := newLazyChunk(chunkfmt, headfmt, mkStream("a", 0, 1, 2, 3, 4, 5))
+	shard := logline.DocumentShard(lazyChunk.Chunk.Fingerprint, 1)
+	hintRanges := iter.NewHintTimeRanges([]logproto.HintTimeRange{
+		{Start: start.Add(time.Millisecond), End: start.Add(2 * time.Millisecond), DocumentShard: shard, DocumentShardBits: 1},
+		{Start: start.Add(3 * time.Millisecond), End: start.Add(5 * time.Millisecond), DocumentShard: 1 - shard, DocumentShardBits: 1},
+	}, start, end)
+	lbs := labels.New(labels.Label{Name: "foo", Value: "a"})
+
+	it, err := lazyChunk.Iterator(context.Background(), start, end, logproto.FORWARD, log.NewNoopPipeline().ForStream(lbs), nil, hintRanges)
+	require.NoError(t, err)
+	var entries []time.Duration
+	for it.Next() {
+		entries = append(entries, it.At().Timestamp.Sub(start))
+	}
+	require.NoError(t, it.Close())
+	require.Equal(t, []time.Duration{time.Millisecond}, entries)
+
+	extractor, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	sampleIt, err := lazyChunk.SampleIterator(context.Background(), start, end, nil, extractor.ForStream(lbs), hintRanges)
+	require.NoError(t, err)
+	var samples []time.Duration
+	for sampleIt.Next() {
+		samples = append(samples, time.Duration(sampleIt.At().Timestamp))
+	}
+	require.NoError(t, sampleIt.Close())
+	require.Equal(t, []time.Duration{time.Millisecond}, samples)
+}
+
 func TestFilterBlocksByHintRanges(t *testing.T) {
 	base := time.Unix(100, 0)
 	blocks := []chunkenc.Block{
@@ -175,6 +212,21 @@ func TestFilterChunksByHintRanges(t *testing.T) {
 
 	require.Len(t, filtered, 1)
 	require.Equal(t, chunks[1].ChunkRef, filtered[0].ChunkRef)
+}
+
+func TestFilterChunksByHintRangesAppliesTheChunksDocumentShard(t *testing.T) {
+	base := time.Unix(100, 0)
+	inShard := func(fp uint64) chunk.Chunk {
+		return chunk.Chunk{ChunkRef: logproto.ChunkRef{Fingerprint: fp, From: model.Time(base.UnixMilli()), Through: model.Time(base.UnixMilli())}}
+	}
+	chunks := []chunk.Chunk{inShard(0), inShard(1 << 63)}
+	ranges := iter.NewHintTimeRanges(
+		[]logproto.HintTimeRange{{Start: base, End: base.Add(time.Millisecond), DocumentShard: 1, DocumentShardBits: 1}},
+		base,
+		base.Add(time.Millisecond),
+	)
+
+	require.Equal(t, chunks[1:], filterChunksByHintRanges(chunks, ranges))
 }
 
 func TestLazyChunksPop(t *testing.T) {
