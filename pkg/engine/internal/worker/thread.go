@@ -94,6 +94,10 @@ type thread struct {
 	LogsobjCfg     logsobj.BuilderBaseConfig
 	BuilderMetrics *logsobj.BuilderMetrics
 
+	// DeletionSweepMaxOpenFiles is optional; zero uses the default of the
+	// executor.
+	DeletionSweepMaxOpenFiles int
+
 	// IndexMergeObserver is optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
 
@@ -213,6 +217,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		IndexobjCfg:    t.IndexobjCfg,
 		LogsobjCfg:     t.LogsobjCfg,
 		BuilderMetrics: t.BuilderMetrics,
+
+		DeletionSweepMaxOpenFiles: t.DeletionSweepMaxOpenFiles,
 
 		IndexMergeObserver: t.IndexMergeObserver,
 		LogMergeObserver:   t.LogMergeObserver,

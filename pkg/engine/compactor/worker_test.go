@@ -26,6 +26,8 @@ func validWorkerCfg() WorkerConfig {
 		SchedulerLookupInterval: time.Second,
 		AdvertiseAddr:           "127.0.0.1:0",
 		Endpoint:                defaultEndpoint,
+
+		DeletionSweepMaxOpenFiles: 1,
 	}
 }
 
@@ -128,6 +130,30 @@ func TestNewWorker_RequiresEndpoint(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint",
 		"error must name the missing field for operator clarity, got: %v", err)
+}
+
+func TestNewWorker_DeletionSweepMaxOpenFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		maxOpenFiles int
+	}{
+		{"returns an error when the deletion sweep max open files is zero", 0},
+		{"returns an error when the deletion sweep max open files is negative", -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validWorkerCfg()
+			cfg.DeletionSweepMaxOpenFiles = tc.maxOpenFiles
+
+			_, err := NewWorker(WorkerParams{
+				Config:       cfg,
+				Bucket:       objstore.NewInMemBucket(),
+				ScratchStore: scratch.NewMemory(),
+				Logger:       log.NewNopLogger(),
+				Registerer:   prometheus.NewRegistry(),
+			})
+			require.ErrorContains(t, err, "deletion_sweep_max_open_files must be at least 1")
+		})
+	}
 }
 
 // TestNewWorker_InvalidAdvertiseAddr exercises the constructor error

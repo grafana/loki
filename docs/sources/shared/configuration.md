@@ -1295,6 +1295,13 @@ dataobj:
       # CLI flag: -dataobj.compaction.worker.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
+      # Experimental: Maximum number of objects that one deletion sweep opens at
+      # the same time. A sweep opens every uncompacted object of the bucket to
+      # read its tenants, so a higher value makes a sweep faster and adds load
+      # on object storage.
+      # CLI flag: -dataobj.compaction.worker.deletion-sweep-max-open-files
+      [deletion_sweep_max_open_files: <int> | default = 64]
+
     indexobj_builder:
       # The target maximum amount of uncompressed data to hold in data pages
       # (for columnar sections). Uncompressed size is used for consistent I/O

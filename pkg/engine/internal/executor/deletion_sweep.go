@@ -46,7 +46,11 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 	}
 
 	logger := log.With(c.logger, "tenant", node.Tenant)
-	sweeper, err := deletion.NewSweeper(bucket, logger)
+	maxOpenFiles := c.deletionSweepMaxOpenFiles
+	if maxOpenFiles == 0 {
+		maxOpenFiles = deletion.DefaultSweepMaxOpenFiles
+	}
+	sweeper, err := deletion.NewSweeper(bucket, maxOpenFiles, logger)
 	if err != nil {
 		return nil, err
 	}

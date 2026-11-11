@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 )
 
@@ -206,6 +207,10 @@ type WorkerConfig struct {
 	// wire frame handler is registered. Defaults to
 	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
+
+	// DeletionSweepMaxOpenFiles limits the objects that one deletion sweep
+	// opens at the same time. NewWorker rejects a value below 1.
+	DeletionSweepMaxOpenFiles int `yaml:"deletion_sweep_max_open_files"`
 }
 
 // taskRetryBackoff returns the backoff before each retry of a compaction task.
@@ -325,6 +330,8 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 		"Experimental: host:port the embedded compaction worker advertises to schedulers. Required when -target=dataobj-compaction-worker.")
 	f.StringVar(&cfg.Endpoint, prefix+"endpoint", defaultEndpoint,
 		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
+	f.IntVar(&cfg.DeletionSweepMaxOpenFiles, prefix+"deletion-sweep-max-open-files", deletion.DefaultSweepMaxOpenFiles,
+		"Experimental: Maximum number of objects that one deletion sweep opens at the same time. A sweep opens every uncompacted object of the bucket to read its tenants, so a higher value makes a sweep faster and adds load on object storage.")
 }
 
 // Validate checks the config. It checks only the deletion sweep gate while

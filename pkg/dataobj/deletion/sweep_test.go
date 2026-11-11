@@ -16,7 +16,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	newSweeper := func(t *testing.T, bucket objstore.Bucket) *Sweeper {
 		t.Helper()
-		sweeper, err := NewSweeper(bucket, log.NewNopLogger())
+		sweeper, err := NewSweeper(bucket, 2, log.NewNopLogger())
 		require.NoError(t, err)
 		return sweeper
 	}

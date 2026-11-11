@@ -38,9 +38,10 @@ const (
 	SweepSuperseded SweepOutcome = "superseded"
 )
 
-// sweepMaxOpenFiles limits the objects that one sweep opens at the same time.
-// A worker can run several sweeps at once, so the limit is per sweep.
-const sweepMaxOpenFiles = 16
+// DefaultSweepMaxOpenFiles is the default number of objects that one sweep
+// opens at the same time. A sweep opens every uncompacted object of the
+// bucket, and spends most of its time waiting for the first read of each.
+const DefaultSweepMaxOpenFiles = 64
 
 var sweepWriterBackoff = backoff.Config{
 	MinBackoff: 100 * time.Millisecond,
@@ -62,8 +63,12 @@ type Sweeper struct {
 // NewSweeper returns a Sweeper for bucket. bucket is the root of the data
 // object storage. It must report modification times and support conditional
 // writes. See [NewFileListScanner] and [NewFileListWriter].
-func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
-	scanner, err := NewFileListScanner(bucket, sweepMaxOpenFiles, logger)
+//
+// maxOpenFiles limits the objects that one sweep opens at the same time. A
+// worker can run several sweeps at once, so the limit is per sweep. It must
+// be at least 1.
+func NewSweeper(bucket objstore.Bucket, maxOpenFiles int, logger log.Logger) (*Sweeper, error) {
+	scanner, err := NewFileListScanner(bucket, maxOpenFiles, logger)
 	if err != nil {
 		return nil, err
 	}

@@ -62,6 +62,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Config.Endpoint == "" {
 		return nil, errors.New("dataobj compaction worker: endpoint is required")
 	}
+	if params.Config.DeletionSweepMaxOpenFiles < 1 {
+		return nil, fmt.Errorf("dataobj compaction worker: deletion_sweep_max_open_files must be at least 1, got %d", params.Config.DeletionSweepMaxOpenFiles)
+	}
 
 	logger := params.Logger
 	if logger == nil {
@@ -91,12 +94,13 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 			SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 		},
-		AdvertiseAddr:       advertiseAddr,
-		Endpoint:            params.Config.Endpoint,
-		IndexobjCfg:         params.IndexobjCfg,
-		LogsobjCfg:          params.LogsobjCfg,
-		IndexMergeObserver:  wm,
-		NewLogMergeObserver: wm.logMergeObserver,
+		AdvertiseAddr:             advertiseAddr,
+		Endpoint:                  params.Config.Endpoint,
+		IndexobjCfg:               params.IndexobjCfg,
+		LogsobjCfg:                params.LogsobjCfg,
+		DeletionSweepMaxOpenFiles: params.Config.DeletionSweepMaxOpenFiles,
+		IndexMergeObserver:        wm,
+		NewLogMergeObserver:       wm.logMergeObserver,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

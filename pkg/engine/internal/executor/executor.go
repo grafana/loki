@@ -29,6 +29,11 @@ type Config struct {
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
+	// DeletionSweepMaxOpenFiles limits the objects that one DeletionSweep
+	// opens at the same time. Optional; zero uses
+	// [deletion.DefaultSweepMaxOpenFiles].
+	DeletionSweepMaxOpenFiles int
+
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver IndexMergeObserver
@@ -80,17 +85,18 @@ type NewLogMergeObserverFunc func(thread int) LogMergeObserver
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:               plan,
-		bucket:             cfg.Bucket,
-		dataBucket:         cfg.DataBucket,
-		logger:             logger,
-		getExternalInputs:  cfg.GetExternalInputs,
-		scratchStore:       cfg.ScratchStore,
-		indexobjCfg:        cfg.IndexobjCfg,
-		logsobjCfg:         cfg.LogsobjCfg,
-		builderMetrics:     cfg.BuilderMetrics,
-		indexMergeObserver: cfg.IndexMergeObserver,
-		logMergeObserver:   cfg.LogMergeObserver,
+		plan:                      plan,
+		bucket:                    cfg.Bucket,
+		dataBucket:                cfg.DataBucket,
+		logger:                    logger,
+		getExternalInputs:         cfg.GetExternalInputs,
+		scratchStore:              cfg.ScratchStore,
+		indexobjCfg:               cfg.IndexobjCfg,
+		logsobjCfg:                cfg.LogsobjCfg,
+		builderMetrics:            cfg.BuilderMetrics,
+		deletionSweepMaxOpenFiles: cfg.DeletionSweepMaxOpenFiles,
+		indexMergeObserver:        cfg.IndexMergeObserver,
+		logMergeObserver:          cfg.LogMergeObserver,
 	}
 	if c.logMergeObserver == nil {
 		c.logMergeObserver = nopLogMergeObserver{}
@@ -119,6 +125,8 @@ type Context struct {
 	indexobjCfg    logsobj.BuilderBaseConfig
 	logsobjCfg     logsobj.BuilderBaseConfig
 	builderMetrics *logsobj.BuilderMetrics
+
+	deletionSweepMaxOpenFiles int
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver

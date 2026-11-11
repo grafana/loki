@@ -29,6 +29,11 @@ import (
 // yet. A later step could then select such an object for deletion by mistake.
 const MinObjectAge = time.Hour
 
+// scanProgressInterval is the time between two progress lines of a scan. A
+// scan of a large bucket can take more than an hour, and the progress lines
+// show how far it got.
+const scanProgressInterval = 5 * time.Minute
+
 // FileListScanner lists the objects of a tenant in a data object bucket.
 //
 // FileListScanner is safe for concurrent use.
@@ -36,6 +41,8 @@ type FileListScanner struct {
 	bucket       objstore.BucketReader
 	maxOpenFiles int
 	logger       log.Logger
+	// progressInterval is scanProgressInterval. Tests make it shorter.
+	progressInterval time.Duration
 }
 
 // NewFileListScanner returns a FileListScanner for bucket. bucket is the root
@@ -54,9 +61,10 @@ func NewFileListScanner(bucket objstore.BucketReader, maxOpenFiles int, logger l
 		return nil, errors.New("bucket does not report modification times")
 	}
 	return &FileListScanner{
-		bucket:       bucket,
-		maxOpenFiles: maxOpenFiles,
-		logger:       logger,
+		bucket:           bucket,
+		maxOpenFiles:     maxOpenFiles,
+		logger:           logger,
+		progressInterval: scanProgressInterval,
 	}, nil
 }
 
@@ -83,6 +91,9 @@ func NewFileListScanner(bucket objstore.BucketReader, maxOpenFiles int, logger l
 //
 // List returns an error if it cannot open an uncompacted object, or if the
 // bucket does not report the modification time of an object.
+//
+// List logs the progress of the scan every few minutes, and a summary at the
+// end.
 func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time) (FileList, error) {
 	if err := validateTenant(tenant); err != nil {
 		return FileList{}, err
@@ -95,8 +106,13 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 		tenant:       tenant,
 		cutoff:       cutoff,
 	}
+	start := time.Now()
+	level.Info(s.logger).Log("msg", "scanning objects of tenant", "tenant", tenant, "cutoff", cutoff.Format(time.RFC3339), "max_open_files", s.maxOpenFiles)
+	stopProgress := s.logProgress(ctx, sc, start)
 	paths, stats, err := sc.run(ctx)
+	stopProgress()
 	if err != nil {
+		level.Warn(s.logger).Log("msg", "scan of objects of tenant failed", "tenant", tenant, "duration", time.Since(start), "err", err)
 		return FileList{}, err
 	}
 
@@ -115,6 +131,7 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 		"opened", stats.Opened,
 		"multi_tenant", len(stats.MultiTenant),
 		"included", len(paths),
+		"duration", time.Since(start),
 	)
 
 	slices.Sort(paths)
@@ -125,6 +142,43 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 		return FileList{}, fmt.Errorf("scan produced an invalid file list: %w", err)
 	}
 	return list, nil
+}
+
+// logProgress logs the counters of sc every progressInterval, until the
+// returned function is called or ctx ends. The returned function waits for
+// the last log line.
+func (s *FileListScanner) logProgress(ctx context.Context, sc *scan, start time.Time) (stop func()) {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		ticker := time.NewTicker(s.progressInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sc.resultsMu.Lock()
+				included := len(sc.paths)
+				sc.resultsMu.Unlock()
+				level.Info(s.logger).Log(
+					"msg", "scan of objects of tenant in progress",
+					"tenant", sc.tenant,
+					"listed", sc.listed.Load(),
+					"too_young", sc.tooYoung.Load(),
+					"opened", sc.opened.Load(),
+					"included", included,
+					"elapsed", time.Since(start),
+				)
+			}
+		}
+	})
+	return func() {
+		close(done)
+		wg.Wait()
+	}
 }
 
 const metadataPrefetchBytes = 64 << 10

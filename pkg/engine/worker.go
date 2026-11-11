@@ -59,6 +59,11 @@ type WorkerParams struct {
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
+	// DeletionSweepMaxOpenFiles limits the objects that one deletion sweep
+	// opens at the same time. Optional; zero uses
+	// [deletion.DefaultSweepMaxOpenFiles].
+	DeletionSweepMaxOpenFiles int
+
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -127,6 +132,8 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		IndexobjCfg:    params.IndexobjCfg,
 		LogsobjCfg:     params.LogsobjCfg,
 		BuilderMetrics: builderMetrics,
+
+		DeletionSweepMaxOpenFiles: params.DeletionSweepMaxOpenFiles,
 
 		IndexMergeObserver:  params.IndexMergeObserver,
 		NewLogMergeObserver: params.NewLogMergeObserver,

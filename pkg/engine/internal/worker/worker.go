@@ -85,6 +85,11 @@ type Config struct {
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
+	// DeletionSweepMaxOpenFiles limits the objects that one deletion sweep
+	// opens at the same time. Optional; zero uses the default of the
+	// executor.
+	DeletionSweepMaxOpenFiles int
+
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -199,6 +204,8 @@ func (w *Worker) run(ctx context.Context) error {
 			IndexobjCfg:    w.config.IndexobjCfg,
 			LogsobjCfg:     w.config.LogsobjCfg,
 			BuilderMetrics: w.config.BuilderMetrics,
+
+			DeletionSweepMaxOpenFiles: w.config.DeletionSweepMaxOpenFiles,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
 			LogMergeObserver:   logMergeObserver,

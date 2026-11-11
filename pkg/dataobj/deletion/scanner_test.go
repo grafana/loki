@@ -202,6 +202,37 @@ func TestFileListScanner_List(t *testing.T) {
 		require.Equal(t, []string{"objects/00/single-a", "objects/tenants/a/aa/compacted"}, list.Paths)
 	})
 
+	t.Run("logs the progress of the scan while an open runs and a summary with the duration at the end", func(t *testing.T) {
+		files := newFileBucket(t)
+		files.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
+		logs := &signalingLogger{msg: "scan of objects of tenant in progress", key: "listed", value: int64(1), seen: make(chan struct{})}
+		bucket := &blockOpenBucket{fileBucket: files, name: "objects/00/single-a", release: logs.seen}
+		scanner, err := NewFileListScanner(bucket, 2, logs)
+		require.NoError(t, err)
+		scanner.progressInterval = time.Millisecond
+
+		list, err := scanner.List(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, []string{"objects/00/single-a"}, list.Paths)
+		out := logs.String()
+		require.Contains(t, out, `msg="scanning objects of tenant" tenant=a`)
+		require.Contains(t, out, `msg="scan of objects of tenant in progress" tenant=a listed=1 too_young=0 opened=0 included=0 elapsed=`)
+		require.Contains(t, out, `msg="listed objects of tenant" tenant=a`)
+		require.Contains(t, out, "included=1 duration=")
+	})
+
+	t.Run("logs the failure and the duration when the scan fails", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/01/corrupt", notADataObject, old)
+		var logs bytes.Buffer
+		scanner, err := NewFileListScanner(bucket, 2, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
+		require.NoError(t, err)
+
+		_, err = scanner.List(t.Context(), "a", now)
+		require.Error(t, err)
+		require.Contains(t, logs.String(), `level=warn msg="scan of objects of tenant failed" tenant=a duration=`)
+	})
+
 	t.Run("returns an error naming the object when an uncompacted object cannot be opened", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/00/single-a", objectBytes(t, "a"), old)
@@ -420,6 +451,62 @@ func iterFailures(t *testing.T, reg *prometheus.Registry) float64 {
 }
 
 var errListing = errors.New("listing failed")
+
+// signalingLogger writes logfmt lines to a buffer. It closes seen the first
+// time that it logs a line with the message msg and the value value for key.
+type signalingLogger struct {
+	msg   string
+	key   string
+	value any
+	seen  chan struct{}
+
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	once sync.Once
+}
+
+func (l *signalingLogger) Log(keyvals ...any) error {
+	l.mu.Lock()
+	err := log.NewLogfmtLogger(&l.buf).Log(keyvals...)
+	l.mu.Unlock()
+	var msgMatches, valueMatches bool
+	for i := 0; i+1 < len(keyvals); i += 2 {
+		msgMatches = msgMatches || (keyvals[i] == "msg" && keyvals[i+1] == l.msg)
+		valueMatches = valueMatches || (keyvals[i] == l.key && keyvals[i+1] == l.value)
+	}
+	if msgMatches && valueMatches {
+		l.once.Do(func() { close(l.seen) })
+	}
+	return err
+}
+
+func (l *signalingLogger) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// blockOpenBucket blocks the reads of the object name until release is
+// closed.
+type blockOpenBucket struct {
+	fileBucket
+	name    string
+	release <-chan struct{}
+}
+
+func (b *blockOpenBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	if name == b.name {
+		<-b.release
+	}
+	return b.fileBucket.GetRange(ctx, name, off, length)
+}
+
+func (b *blockOpenBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if name == b.name {
+		<-b.release
+	}
+	return b.fileBucket.Get(ctx, name)
+}
 
 // listFailsDuringOpenBucket blocks the reads of the object blockOpen until
 // the context of the read ends. After the first such read starts, the listing

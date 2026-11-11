@@ -16,10 +16,10 @@ import (
 )
 
 func TestExecuteDeletionSweep(t *testing.T) {
-	run := func(t *testing.T, cfg Config, node *physical.DeletionSweep) (v2.ResultArtifact, error) {
+	runWithLogger := func(t *testing.T, cfg Config, node *physical.DeletionSweep, logger log.Logger) (v2.ResultArtifact, error) {
 		var graph dag.Graph[physical.Node]
 		graph.Add(node)
-		pipeline := Run(t.Context(), cfg, physical.FromGraph(graph), log.NewNopLogger())
+		pipeline := Run(t.Context(), cfg, physical.FromGraph(graph), logger)
 		defer pipeline.Close()
 		if err := pipeline.Open(t.Context()); err != nil {
 			return v2.ResultArtifact{}, err
@@ -31,6 +31,9 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		var artifact v2.ResultArtifact
 		require.NoError(t, artifact.FromRecordBatch(rec))
 		return artifact, nil
+	}
+	run := func(t *testing.T, cfg Config, node *physical.DeletionSweep) (v2.ResultArtifact, error) {
+		return runWithLogger(t, cfg, node, log.NewNopLogger())
 	}
 
 	newBucket := func(t *testing.T) objstore.Bucket {
@@ -49,6 +52,28 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		r, err := deletion.OpenFileList(t.Context(), bucket, "t1")
 		require.NoError(t, err)
 		require.NoError(t, r.Close())
+	})
+
+	for _, tc := range []struct {
+		name         string
+		maxOpenFiles int
+		want         string
+	}{
+		{"scans with the default max open files when the config sets none", 0, "max_open_files=64"},
+		{"scans with the max open files of the config", 7, "max_open_files=7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+
+			_, err := runWithLogger(t, Config{DataBucket: newBucket(t), DeletionSweepMaxOpenFiles: tc.maxOpenFiles}, &physical.DeletionSweep{Tenant: "t1"}, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
+			require.NoError(t, err)
+			require.Contains(t, logs.String(), tc.want)
+		})
+	}
+
+	t.Run("fails when the max open files is negative", func(t *testing.T) {
+		_, err := run(t, Config{DataBucket: newBucket(t), DeletionSweepMaxOpenFiles: -1}, &physical.DeletionSweep{Tenant: "t1"})
+		require.ErrorContains(t, err, "max open files must be at least 1")
 	})
 
 	t.Run("fails with ErrMalformedFileList when the stored file list is malformed", func(t *testing.T) {
