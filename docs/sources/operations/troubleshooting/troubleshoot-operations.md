@@ -1242,7 +1242,7 @@ initialize s3 client: <details>
 
 **Cause:**
 
-The underlying MinIO-based S3 client failed to initialize. This is typically caused by an invalid endpoint, region, or transport/TLS configuration.
+The underlying S3 client failed to initialize. This is typically caused by an invalid endpoint, region, or transport/TLS configuration.
 
 {{< admonition type="note" >}}
 This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
@@ -1748,7 +1748,7 @@ While listing objects in the bucket, Loki couldn't determine when an object was 
 
 Loki classifies certain S3 and GCS errors as transient/retryable so that calling code (such as the compactor or index/metastore readers) knows it can safely retry the operation. There's no single error message; instead, Loki checks the underlying error against known transient conditions:
 
-- **S3** (MinIO-backed client): HTTP `429 Too Many Requests`, any `5xx` response, connection resets/`EOF`, request timeouts, and error codes `RequestTimeout`, `TooManyRequests`, `TooManyRequestsException`, `InternalError`, `ServiceUnavailable`, and `SlowDown`.
+- **S3**: HTTP `429 Too Many Requests`, any `5xx` response, connection resets/`EOF`, request timeouts, and error codes `RequestTimeout`, `TooManyRequests`, `TooManyRequestsException`, `InternalError`, `ServiceUnavailable`, and `SlowDown`.
 - **GCS**: HTTP `408 Request Timeout`, `429 Too Many Requests`, any `5xx` response, connection resets/`EOF`, and request timeouts.
 
 **Cause:**
