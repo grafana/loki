@@ -34,7 +34,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -820,15 +820,15 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "querier")
 
-	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+	backend, maxItemBytes, err := metadata.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 	}
 
-	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
+	t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
+	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {
