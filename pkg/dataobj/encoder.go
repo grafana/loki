@@ -7,17 +7,14 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var magic = []byte("DOBJ")
-
-const (
-	fileFormatVersion = 0x1
-)
+var magic = []byte(format.FileMagic)
 
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
@@ -274,11 +271,11 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, fmt.Errorf("writing magic header: %w", err)
 	}
 
-	metadataSize := streamio.UvarintSize(fileFormatVersion) + protocodec.Size(metadata)
+	metadataSize := streamio.UvarintSize(format.FileFormatVersion) + protocodec.Size(metadata)
 
 	if err := binary.Write(&headerBuffer, binary.LittleEndian, uint32(metadataSize)); err != nil {
 		return nil, fmt.Errorf("writing metadata size: %w", err)
-	} else if err := streamio.WriteUvarint(&headerBuffer, fileFormatVersion); err != nil {
+	} else if err := streamio.WriteUvarint(&headerBuffer, format.FileFormatVersion); err != nil {
 		return nil, err
 	} else if err := protocodec.Encode(&headerBuffer, metadata); err != nil {
 		return nil, err

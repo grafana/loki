@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "indexpointers",
+	Namespace: format.SectionNamespace,
+	Kind:      format.IndexPointersSectionKind,
 	Version:   columnar.FormatVersion,
 }
 
