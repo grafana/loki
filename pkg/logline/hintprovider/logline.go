@@ -312,14 +312,17 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 }
 
 // NormalizeRanges sorts, drops empty [start, end) windows, and merges
-// overlapping or abutting ranges. Abutting ranges (a.End == b.Start) merge
-// because they form a contiguous half-open cover.
+// overlapping or abutting ranges of one document shard. Abutting ranges
+// (a.End == b.Start) merge because they form a contiguous half-open cover.
 func NormalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
 
 	sort.Slice(ranges, func(i, j int) bool {
+		if ki, kj := ranges[i].documentShardKey(), ranges[j].documentShardKey(); ki != kj {
+			return ki < kj
+		}
 		if ranges[i].Start.Equal(ranges[j].Start) {
 			return ranges[i].End.Before(ranges[j].End)
 		}
@@ -336,7 +339,7 @@ func NormalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 			continue
 		}
 		last := &out[len(out)-1]
-		if !current.Start.After(last.End) {
+		if last.documentShardKey() == current.documentShardKey() && !current.Start.After(last.End) {
 			if current.End.After(last.End) {
 				last.End = current.End
 			}

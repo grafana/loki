@@ -2,7 +2,6 @@ package hintprovider
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
@@ -47,20 +46,57 @@ func (k shardKey) String() string {
 	return fmt.Sprintf("%s/%s/%d/%d", k.Version, k.ShardAlgorithm, k.ShardCount, k.ShardValue)
 }
 
-// intersectRanges returns the overlapping portions of two sorted, normalized
-// range sets under [start, end) semantics. Both inputs must already be sorted
-// by Start and non-overlapping (as produced by normalizeRanges). The output is
-// also sorted and non-overlapping. Adjacent ranges that only touch at a
-// boundary (a.End == b.Start) have empty intersection and are omitted.
+// intersectRanges returns the overlapping portions of two range sets under
+// [start, end) semantics, per document shard. Ranges of two document shards
+// intersect only if one shard holds the other, and the result keeps the
+// narrower one; a range with zero shard bits holds every shard. The output may
+// hold overlapping ranges of one shard, which NormalizeRanges merges.
 func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
-	if len(a) == 0 || len(b) == 0 {
-		return []HintTimeRange{}
+	out := []HintTimeRange{}
+	bShards := byDocumentShard(b)
+	for _, as := range byDocumentShard(a) {
+		for _, bs := range bShards {
+			shard, ok := narrowerDocumentShard(as[0], bs[0])
+			if !ok {
+				continue
+			}
+			for _, r := range intersectTimeRanges(as, bs) {
+				r.DocumentShard, r.DocumentShardBits = shard.DocumentShard, shard.DocumentShardBits
+				out = append(out, r)
+			}
+		}
 	}
+	return out
+}
 
-	// Defensive: sort inputs if caller didn't.
-	sort.Slice(a, func(i, j int) bool { return a[i].Start.Before(a[j].Start) })
-	sort.Slice(b, func(i, j int) bool { return b[i].Start.Before(b[j].Start) })
+// byDocumentShard normalizes ranges and splits them into one list per
+// document shard.
+func byDocumentShard(ranges []HintTimeRange) [][]HintTimeRange {
+	var out [][]HintTimeRange
+	normalized := NormalizeRanges(ranges)
+	for i, r := range normalized {
+		if i == 0 || r.documentShardKey() != normalized[i-1].documentShardKey() {
+			out = append(out, nil)
+		}
+		out[len(out)-1] = append(out[len(out)-1], r)
+	}
+	return out
+}
 
+// narrowerDocumentShard returns whichever of a and b has more shard bits, if
+// the other's shard holds it: a shard's top bits name each coarser shard
+// holding it.
+func narrowerDocumentShard(a, b HintTimeRange) (HintTimeRange, bool) {
+	if a.DocumentShardBits > b.DocumentShardBits {
+		a, b = b, a
+	}
+	return b, b.DocumentShard>>(b.DocumentShardBits-a.DocumentShardBits) == a.DocumentShard
+}
+
+// intersectTimeRanges intersects two sorted, non-overlapping range sets by
+// time alone. Adjacent ranges that only touch at a boundary (a.End ==
+// b.Start) have empty intersection and are omitted.
+func intersectTimeRanges(a, b []HintTimeRange) []HintTimeRange {
 	out := []HintTimeRange{}
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
