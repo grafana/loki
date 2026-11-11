@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"math"
 	"testing"
 	"time"
 
@@ -79,23 +78,14 @@ func TestIndexStatsCache(t *testing.T) {
 	require.Equal(t, 0, *calls)
 	require.Equal(t, statsResp, resp)
 
-	// Doing a request with new start later than the previous query and end time later than the previous one,
-	// should reuse part of the previous request and issue a new request for the remaining time till end.
-	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
+	// Doing a request for a sub-range of the previous query shouldn't extrapolate the cached stats,
+	// but issue a new request for the sub-range.
 	*calls = 0
-	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute))
-	expectedStats := &IndexStatsResponse{
-		Response: &logproto.IndexStatsResponse{
-			Streams: 2,
-			Chunks:  4,
-			Bytes:   (1<<10)*0.75 + (1 << 10),
-			Entries: uint64(math.Floor(10*0.75) + 10),
-		},
-	}
+	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd())
 	resp, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls)
-	require.Equal(t, expectedStats, resp)
+	require.Equal(t, statsResp, resp)
 }
 
 func TestIndexStatsCache_RecentData(t *testing.T) {
