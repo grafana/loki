@@ -801,8 +801,8 @@ storage_config:
 
 			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
 			assert.Equal(t, 17, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
-
-			// TODO: common config should be set on ruler bucket config
+			require.Equal(t, "gcs", config.RulerStorage.Backend)
+			require.Equal(t, "foobar", config.RulerStorage.GCS.BucketName)
 		})
 
 		t.Run("explicit thanos object storage config provided via config file is preserved", func(t *testing.T) {
@@ -822,8 +822,213 @@ storage_config:
 
 			assert.Equal(t, "barfoo", config.StorageConfig.ObjectStore.GCS.BucketName)
 			assert.Equal(t, 27, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+			require.Equal(t, "gcs", config.RulerStorage.Backend)
+			require.Equal(t, "foobar", config.RulerStorage.GCS.BucketName)
+			require.Equal(t, 17, config.RulerStorage.GCS.ChunkBufferSize)
+		})
 
-			// TODO: common config should be set on ruler bucket config
+		t.Run("common object_store config is applied to ruler_storage for each provider", func(t *testing.T) {
+			for _, tc := range []struct {
+				name            string
+				config          string
+				expectedBackend string
+			}{
+				{
+					name: "s3",
+					config: `common:
+  storage:
+    object_store:
+      s3:
+        endpoint: s3.example.local:443
+        bucket_name: loki
+        http:
+          tls_ca_path: /etc/ssl/ca.crt
+      storage_prefix: prefix`,
+					expectedBackend: "s3",
+				},
+				{
+					name: "gcs",
+					config: `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: loki`,
+					expectedBackend: "gcs",
+				},
+				{
+					name: "azure",
+					config: `common:
+  storage:
+    object_store:
+      azure:
+        container_name: loki`,
+					expectedBackend: "azure",
+				},
+				{
+					name: "swift",
+					config: `common:
+  storage:
+    object_store:
+      swift:
+        container_name: loki`,
+					expectedBackend: "swift",
+				},
+				{
+					name: "filesystem",
+					config: `common:
+  storage:
+    object_store:
+      filesystem:
+        dir: /loki`,
+					expectedBackend: "filesystem",
+				},
+				{
+					name: "alibaba",
+					config: `common:
+  storage:
+    object_store:
+      alibaba:
+        bucket: loki`,
+					expectedBackend: "alibabacloud",
+				},
+				{
+					name: "bos",
+					config: `common:
+  storage:
+    object_store:
+      bos:
+        bucket: loki`,
+					expectedBackend: "bos",
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					config, _ := testContext(tc.config, nil)
+
+					require.Equal(t, tc.expectedBackend, config.RulerStorage.Backend)
+					require.Equal(t, config.Common.Storage.ObjectStore.S3, config.RulerStorage.S3)
+					require.Equal(t, config.Common.Storage.ObjectStore.GCS, config.RulerStorage.GCS)
+					require.Equal(t, config.Common.Storage.ObjectStore.Azure, config.RulerStorage.Azure)
+					require.Equal(t, config.Common.Storage.ObjectStore.Swift, config.RulerStorage.Swift)
+					require.Equal(t, config.Common.Storage.ObjectStore.Filesystem, config.RulerStorage.Filesystem)
+					require.Equal(t, config.Common.Storage.ObjectStore.Alibaba, config.RulerStorage.Alibaba)
+					require.Equal(t, config.Common.Storage.ObjectStore.BOS, config.RulerStorage.BOS)
+					require.Equal(t, config.Common.Storage.ObjectStore.StoragePrefix, config.RulerStorage.StoragePrefix)
+					// ExtraBackends is not set from YAML and must survive the copy.
+					require.Equal(t, []string{"local"}, config.RulerStorage.ExtraBackends)
+				})
+			}
+		})
+
+		t.Run("common object_store s3 config with a custom CA is applied to ruler_storage", func(t *testing.T) {
+			config, _ := testContext(`common:
+  storage:
+    object_store:
+      s3:
+        endpoint: s3.example.local:443
+        bucket_name: loki
+        http:
+          tls_ca_path: /etc/ssl/ca.crt
+      storage_prefix: prefix`, nil)
+
+			require.Equal(t, "s3", config.RulerStorage.Backend)
+			require.Equal(t, "s3.example.local:443", config.RulerStorage.S3.Endpoint)
+			require.Equal(t, "loki", config.RulerStorage.S3.BucketName)
+			require.Equal(t, "/etc/ssl/ca.crt", config.RulerStorage.S3.HTTP.TLSConfig.CAPath)
+			require.Equal(t, "prefix", config.RulerStorage.StoragePrefix)
+		})
+
+		t.Run("ruler_storage is left unchanged when the common object_store config is ambiguous or not used", func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				config string
+				args   []string
+			}{
+				{
+					name: "several providers",
+					config: `common:
+  storage:
+    object_store:
+      s3:
+        bucket_name: loki
+      gcs:
+        bucket_name: loki`,
+				},
+				{
+					name: "only storage_prefix",
+					config: `common:
+  storage:
+    object_store:
+      storage_prefix: prefix`,
+				},
+				{
+					name: "use_thanos_objstore disabled in config file",
+					config: `common:
+  storage:
+    object_store:
+      s3:
+        bucket_name: loki
+storage_config:
+  use_thanos_objstore: false`,
+				},
+				{
+					name: "use_thanos_objstore disabled by flag",
+					config: `common:
+  storage:
+    object_store:
+      s3:
+        bucket_name: loki`,
+					args: []string{"-use-thanos-objstore=false"},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					config, defaults := testContext(tc.config, tc.args)
+
+					require.Equal(t, defaults.RulerStorage, config.RulerStorage)
+				})
+			}
+		})
+
+		t.Run("partial ruler_storage config from file is honored when common object_store config is provided", func(t *testing.T) {
+			config, _ := testContext(`common:
+  storage:
+    object_store:
+      s3:
+        endpoint: s3.example.local:443
+        bucket_name: chunks
+ruler_storage:
+  s3:
+    bucket_name: rules`, nil)
+
+			require.Equal(t, "s3", config.RulerStorage.Backend)
+			require.Equal(t, "rules", config.RulerStorage.S3.BucketName)
+
+			// from common config
+			require.Equal(t, "s3.example.local:443", config.RulerStorage.S3.Endpoint)
+		})
+
+		t.Run("explicit local ruler_storage backend is preserved when common object_store config is provided", func(t *testing.T) {
+			config, _ := testContext(`common:
+  storage:
+    object_store:
+      s3:
+        bucket_name: chunks
+ruler_storage:
+  backend: local
+  local:
+    directory: /etc/loki/rules`, nil)
+
+			require.Equal(t, "local", config.RulerStorage.Backend)
+			require.Equal(t, "/etc/loki/rules", config.RulerStorage.Local.Directory)
+		})
+
+		t.Run("ruler_storage flags take precedence over common object_store config", func(t *testing.T) {
+			config, _ := testContext(`common:
+  storage:
+    object_store:
+      s3:
+        bucket_name: chunks`, []string{"-ruler-storage.backend=gcs"})
+
+			require.Equal(t, "gcs", config.RulerStorage.Backend)
 		})
 
 		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
