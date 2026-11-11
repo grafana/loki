@@ -63,7 +63,7 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 		return nil, err
 	}
 	d.setPrefetchedBytes(0, buf)
-	d.startOff = int64(8) + int64(metadataSize)
+	d.startOff = headerSize + int64(metadataSize)
 	return md, nil
 }
 
@@ -80,7 +80,7 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 		return nil, err
 	}
 
-	md, metadataSize, decodeErr := d.decodeMetadataRegion(blob)
+	md, metadataSize, decodeErr := d.decodeHeaderAndFileMetadata(blob)
 	if decodeErr != nil {
 		level.Warn(d.logger).Log("msg", "cached data-object metadata region did not decode; falling back to a direct read",
 			"key", d.metadataKey, "blob_bytes", len(blob), "err", decodeErr)
@@ -88,22 +88,23 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 	}
 
 	d.setPrefetchedBytes(0, blob)
-	d.startOff = int64(8) + int64(metadataSize)
+	d.startOff = headerSize + int64(metadataSize)
 	return md, nil
 }
 
-// decodeMetadataRegion decodes the file metadata from a cached metadata region and returns the
-// file metadata size from the header (which the caller uses to compute startOff). A non-nil error
-// means the blob is too short or does not decode, so the caller can fall back and report why.
-func (d *decoder) decodeMetadataRegion(blob []byte) (md *filemd.Metadata, metadataSize uint64, err error) {
+// decodeHeaderAndFileMetadata decodes the header and the file metadata from a cached metadata region
+// and returns the file metadata size from the header (which the caller uses to compute startOff). A
+// non-nil error means the blob is too short or does not decode, so the caller can fall back and
+// report why.
+func (d *decoder) decodeHeaderAndFileMetadata(blob []byte) (md *filemd.Metadata, metadataSize uint64, err error) {
 	header, err := d.header(blob)
 	if err != nil {
 		return nil, 0, fmt.Errorf("scanning header: %w", err)
 	}
-	if uint64(len(blob)) < header.MetadataSize+8 {
-		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+8)
+	if uint64(len(blob)) < header.MetadataSize+headerSize {
+		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+headerSize)
 	}
-	md, err = decodeFileMetadata(bytes.NewReader(blob[8:]))
+	md, err = decodeFileMetadata(bytes.NewReader(blob[headerSize:]))
 	if err != nil {
 		return nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 	}
@@ -125,7 +126,7 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 	// MaxItemBytes is the cache backend's own size limit: asking upfront, before extending the region
 	// with further reads or allocations, avoids doing that work for a region the backend would reject
 	// anyway. MetadataCache guarantees a positive value, so there is nothing to default here.
-	startOff := int64(8) + int64(metadataSize)
+	startOff := headerSize + int64(metadataSize)
 	regionEnd, err := d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
 	if err != nil {
 		return nil, err
@@ -256,16 +257,16 @@ func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata,
 	}
 
 	var md *filemd.Metadata
-	if header.MetadataSize+8 <= uint64(len(buf)) {
+	if header.MetadataSize+headerSize <= uint64(len(buf)) {
 		// Optimistic read was successful, so we can decode the metadata from
 		// the buffer.
-		md, err = decodeFileMetadata(bytes.NewReader(buf[8:]))
+		md, err = decodeFileMetadata(bytes.NewReader(buf[headerSize:]))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 		}
 	} else {
 		// Optimistic read was too small, so we need to read the metadata fully.
-		rc, err := d.rr.ReadRange(ctx, int64(8), int64(header.MetadataSize))
+		rc, err := d.rr.ReadRange(ctx, headerSize, int64(header.MetadataSize))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("getting metadata: %w", err)
 		}
@@ -315,7 +316,7 @@ type header struct {
 }
 
 func (d *decoder) header(headData []byte) (header, error) {
-	off := min(int64(len(headData)), 8)
+	off := min(int64(len(headData)), headerSize)
 
 	br := bytes.NewReader(headData[:off])
 
