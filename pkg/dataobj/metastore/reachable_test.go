@@ -77,8 +77,8 @@ func TestReachableObjects(t *testing.T) {
 	for _, kind := range testBucketKinds {
 		t.Run("returns the index objects of every window and the log objects that they reference in the "+kind.name+" bucket", func(t *testing.T) {
 			bucket := kind.new(t)
-			storeIndex(t, bucket, "indexes/aa/first", tenant, []string{"objects/00/log-1", "objects/00/log-2"}, []string{"objects/00/log-1"})
-			storeIndex(t, bucket, "indexes/tenants/tenant-a/bb/second", tenant, []string{"objects/tenants/tenant-a/cc/log-3"}, nil)
+			storeIndexFor(t, bucket, "indexes/aa/first", tenant, []string{"objects/00/log-1", "objects/00/log-2"})
+			storeIndexFor(t, bucket, "indexes/tenants/tenant-a/bb/second", tenant, []string{"objects/tenants/tenant-a/cc/log-3"})
 			registerIndex(t, bucket, tenant, first, "indexes/aa/first")
 			registerIndex(t, bucket, tenant, second, "indexes/tenants/tenant-a/bb/second")
 
@@ -107,7 +107,7 @@ func TestReachableObjects(t *testing.T) {
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.NoError(t, err)
-		require.Equal(t, []string{"index/v0/indexes/aa/built", "objects/00/in-postings", "objects/00/in-stats"}, paths)
+		require.Equal(t, []string{"index/v0/indexes/aa/built", "objects/00/in-stats"}, paths)
 	})
 
 	t.Run("returns the log objects of an index object with stats and no postings", func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestReachableObjects(t *testing.T) {
 		for i := range logPaths {
 			logPaths[i] = fmt.Sprintf("objects/00/log-%05d", i)
 		}
-		storeIndex(t, bucket, "indexes/aa/index", tenant, logPaths, nil)
+		storeIndexFor(t, bucket, "indexes/aa/index", tenant, logPaths)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/index")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
@@ -149,8 +149,8 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns a log object once when two index objects reference it", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/one", tenant, []string{"objects/00/shared"}, nil)
-		storeIndex(t, bucket, "indexes/aa/two", tenant, []string{"objects/00/shared"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/one", tenant, []string{"objects/00/shared"})
+		storeIndexFor(t, bucket, "indexes/aa/two", tenant, []string{"objects/00/shared"})
 		registerIndex(t, bucket, tenant, first, "indexes/aa/one")
 		registerIndex(t, bucket, tenant, first, "indexes/aa/two")
 
@@ -163,7 +163,7 @@ func TestReachableObjects(t *testing.T) {
 		files := objstore.NewInMemBucket()
 		for i := range 8 {
 			indexPath := fmt.Sprintf("indexes/aa/index-%d", i)
-			storeIndex(t, files, indexPath, tenant, []string{fmt.Sprintf("objects/00/log-%d", i)}, nil)
+			storeIndexFor(t, files, indexPath, tenant, []string{fmt.Sprintf("objects/00/log-%d", i)})
 			registerIndex(t, files, tenant, first, indexPath)
 		}
 		bucket := &concurrencyBucket{Bucket: files}
@@ -174,19 +174,29 @@ func TestReachableObjects(t *testing.T) {
 		require.Greater(t, bucket.peak.Load(), int32(1))
 	})
 
-	t.Run("returns the log objects of both the postings and the stats sections", func(t *testing.T) {
+	t.Run("returns only the log objects of the stats sections", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		storeIndex(t, bucket, "indexes/aa/index", tenant, []string{"objects/00/in-postings"}, []string{"objects/00/in-stats"})
 		registerIndex(t, bucket, tenant, first, "indexes/aa/index")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.NoError(t, err)
-		require.Equal(t, []string{"index/v0/indexes/aa/index", "objects/00/in-postings", "objects/00/in-stats"}, paths)
+		require.Equal(t, []string{"index/v0/indexes/aa/index", "objects/00/in-stats"}, paths)
+	})
+
+	t.Run("returns an error and no paths when an index object holds postings and no stats", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		storeIndex(t, bucket, "indexes/aa/index", tenant, []string{"objects/00/in-postings"}, nil)
+		registerIndex(t, bucket, tenant, first, "indexes/aa/index")
+
+		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		require.ErrorContains(t, err, "index object indexes/aa/index has postings but no stats")
+		require.Nil(t, paths)
 	})
 
 	t.Run("returns an index object once when the ToCs of two windows point to it", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/index", tenant, []string{"objects/00/log"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/index", tenant, []string{"objects/00/log"})
 		registerIndex(t, bucket, tenant, first, "indexes/aa/index")
 		registerIndex(t, bucket, tenant, second, "indexes/aa/index")
 
@@ -197,8 +207,8 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("does not return the objects of another tenant or of legacy shared ToCs", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/mine", tenant, []string{"objects/00/mine"}, nil)
-		storeIndex(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/mine", tenant, []string{"objects/00/mine"})
+		storeIndexFor(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"})
 		registerIndex(t, bucket, tenant, first, "indexes/aa/mine")
 		registerIndex(t, bucket, "tenant-b", second, "indexes/aa/other")
 		require.NoError(t, NewIndexBucket(bucket).Upload(t.Context(), "tocs/2025-01-01T12_00_00Z.toc", strings.NewReader("legacy")))
@@ -210,7 +220,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns no paths when the tenant has no ToC", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"})
 		registerIndex(t, bucket, "tenant-b", first, "indexes/aa/other")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
@@ -220,7 +230,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns an error and no paths when an index object that a ToC points to is missing", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/present", tenant, []string{"objects/00/log"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/present", tenant, []string{"objects/00/log"})
 		registerIndex(t, bucket, tenant, first, "indexes/aa/present")
 		registerIndex(t, bucket, tenant, second, "indexes/aa/missing")
 
@@ -231,7 +241,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns an error and no paths when a ToC read fails with an error other than not found", func(t *testing.T) {
 		files := objstore.NewInMemBucket()
-		storeIndex(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"}, nil)
+		storeIndexFor(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"})
 		registerIndex(t, files, tenant, first, "indexes/aa/index")
 		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first), get: failGet}
 
@@ -242,7 +252,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns an error and no paths when a ToC read fails partway", func(t *testing.T) {
 		files := objstore.NewInMemBucket()
-		storeIndex(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"}, nil)
+		storeIndexFor(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"})
 		registerIndex(t, files, tenant, first, "indexes/aa/index")
 		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first), get: failGetAfter8Bytes}
 
@@ -254,7 +264,7 @@ func TestReachableObjects(t *testing.T) {
 	t.Run("returns the index read error and not a context error when a later ToC read sees the cancellation", func(t *testing.T) {
 		files := objstore.NewInMemBucket()
 		registerIndex(t, files, tenant, first, "indexes/aa/broken")
-		storeIndex(t, files, "indexes/aa/later", tenant, []string{"objects/00/log"}, nil)
+		storeIndexFor(t, files, "indexes/aa/later", tenant, []string{"objects/00/log"})
 		registerIndex(t, files, tenant, second, "indexes/aa/later")
 		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, second), get: blockUntilCancelled}
 
@@ -266,7 +276,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns an error and no paths when a ToC holds the sections of another tenant", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		storeIndex(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"}, nil)
+		storeIndexFor(t, bucket, "indexes/aa/other", "tenant-b", []string{"objects/00/other"})
 		registerIndex(t, bucket, "tenant-b", first, "indexes/aa/other")
 		indexBucket := NewIndexBucket(bucket)
 		r, err := indexBucket.Get(t.Context(), TableOfContentsPath("tenant-b", first))
@@ -320,7 +330,7 @@ func TestReachableObjects(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
-			storeIndex(t, bucket, "indexes/aa/index", tenant, []string{tc.path}, nil)
+			storeIndexFor(t, bucket, "indexes/aa/index", tenant, []string{tc.path})
 			registerIndex(t, bucket, tenant, first, "indexes/aa/index")
 
 			paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
@@ -420,6 +430,14 @@ func storeIndex(t *testing.T, bucket objstore.Bucket, path, tenant string, posti
 		require.NoError(t, objBuilder.Append(statsBuilder))
 	}
 	uploadObject(t, bucket, path, objBuilder.Flush)
+}
+
+// storeIndexFor stores an index object of tenant at path in the index
+// storage of bucket. Its postings and stats sections both reference logPaths,
+// as the index builder writes them.
+func storeIndexFor(t *testing.T, bucket objstore.Bucket, path, tenant string, logPaths []string) {
+	t.Helper()
+	storeIndex(t, bucket, path, tenant, logPaths, logPaths)
 }
 
 // uploadObject stores the object that flush builds at path in the index

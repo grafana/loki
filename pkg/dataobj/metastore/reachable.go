@@ -234,10 +234,12 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 // addReferencedObjects adds the log objects that the index object at
 // indexPath references.
 //
-// It reads the object paths of both the postings and the stats sections,
-// because the format does not promise that one section type lists every log
-// object. For example, a legacy index, or a merged index without a stream
-// layout, holds postings but no stats.
+// It reads the object paths of the stats sections only. The index builder
+// computes the stats and the postings of a log section from the same rows,
+// so the postings reference no log object that the stats do not. A merged
+// index without a stream layout can hold postings but no stats, so
+// addReferencedObjects returns an error for an index object with postings
+// and no stats.
 //
 // It reads the sections of every tenant, and sections without a tenant. An
 // index object can hold sections of several tenants, and a legacy section
@@ -253,78 +255,50 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 		return fmt.Errorf("opening index object %s: %w", indexPath, err)
 	}
 
+	var hasPostings, hasStats bool
 	for i, section := range obj.Sections() {
-		var err error
 		switch {
-		case postings.CheckSection(section):
-			err = w.addPostingsObjectPaths(ctx, section)
 		case stats.CheckSection(section):
-			err = w.addStatsObjectPaths(ctx, section)
+			hasStats = true
+			if err := w.addStatsObjectPaths(ctx, section); err != nil {
+				return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
+			}
+		case postings.CheckSection(section):
+			hasPostings = true
 		case watermarks.CheckSection(section):
-			continue
 		default:
 			return fmt.Errorf("index object %s: section %d has unknown type %s, so the log objects that it references are unknown", indexPath, i, section.Type)
 		}
-		if err != nil {
-			return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
-		}
+	}
+	if hasPostings && !hasStats {
+		return fmt.Errorf("index object %s has postings but no stats, so the log objects that it references are unknown", indexPath)
 	}
 	return nil
 }
 
-func (w *reachabilityWalk) addPostingsObjectPaths(ctx context.Context, section *dataobj.Section) error {
-	sec, err := postings.Open(ctx, section)
-	if err != nil {
-		return err
-	}
-	column, err := objectPathColumn(sec.Columns(), func(c *postings.Column) bool { return c.Type == postings.ColumnTypeObjectPath })
-	if err != nil {
-		return err
-	}
-	reader := postings.NewReader(postings.ReaderOptions{Columns: []*postings.Column{column}})
-	defer reader.Close()
-	if err := reader.Open(ctx); err != nil {
-		return err
-	}
-	return w.addObjectPaths(ctx, reader.Read)
-}
-
+// addStatsObjectPaths adds the object paths of a stats section. It returns an
+// error if the section has no object_path column or more than one, because
+// reading only one of several columns could miss object paths.
 func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) error {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
 		return err
 	}
-	column, err := objectPathColumn(sec.Columns(), func(c *stats.Column) bool { return c.Type == stats.ColumnTypeObjectPath })
-	if err != nil {
-		return err
+	var columns []*stats.Column
+	for _, c := range sec.Columns() {
+		if c.Type == stats.ColumnTypeObjectPath {
+			columns = append(columns, c)
+		}
 	}
-	reader := stats.NewReader(stats.ReaderOptions{Columns: []*stats.Column{column}})
+	if len(columns) != 1 {
+		return fmt.Errorf("stats section has %d object_path columns, want 1", len(columns))
+	}
+	reader := stats.NewReader(stats.ReaderOptions{Columns: columns})
 	defer reader.Close()
 	if err := reader.Open(ctx); err != nil {
 		return err
 	}
 	return w.addObjectPaths(ctx, reader.Read)
-}
-
-// objectPathColumn returns the one column of columns that isObjectPath
-// accepts. It returns an error if there is no such column, or more than one,
-// because reading only one of several columns could miss object paths.
-func objectPathColumn[C any](columns []C, isObjectPath func(C) bool) (C, error) {
-	var (
-		found C
-		n     int
-	)
-	for _, c := range columns {
-		if isObjectPath(c) {
-			found = c
-			n++
-		}
-	}
-	if n != 1 {
-		var zero C
-		return zero, fmt.Errorf("section has %d object_path columns, want 1", n)
-	}
-	return found, nil
 }
 
 // addObjectPaths adds the paths of the single string column that read
