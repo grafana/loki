@@ -4,7 +4,7 @@ Streaming Kafka consumer that builds partial n-gram indexes. This is the most co
 
 ## Public builder API
 
-`Builder` is the existing core object, not a wrapper or a one-shot build function. Its API and `PreparedIndexes` live in `index_builder.go`. `NewBuilder` validates/defaults build settings without Kafka; `Service` keeps using `newIndexBuilder` with already-validated settings and shared metrics. Each object is single-cycle: call `ProcessStream` repeatedly, then `Prepare`, `PreparedIndexes.Upload`, and `Clear`. Pass `RecordRef{}` without Kafka context. Serialize these operations externally; the caller owns any asynchronous flush goroutine and store polling. The builder owns prepared file handles and scratch: uploads can be retried until `Clear` or the next `Prepare` attempt, which invalidates the previous result. Never process more streams after preparing or reuse a cleared builder. Both API and service uploads use the same uploader in `upload.go`.
+`Builder` is the existing core object, not a wrapper or a one-shot build function. Its API and `PreparedIndexes` live in `index_builder.go`. `NewBuilder` validates/defaults build settings without Kafka; `Service` keeps using `newIndexBuilder` with already-validated settings and shared metrics. Each object is single-cycle: call `ProcessStream` repeatedly, then `Prepare`, `PreparedIndexes.Upload`, and `Clear`. Pass `RecordRef{}` without Kafka context. Serialize ingestion, preparation, cleanup, and uploads externally; concurrent upload calls are serialized internally across prepared-value copies. The caller owns any asynchronous flush goroutine and store polling. The builder owns prepared file handles and scratch: uploads can be retried until `Clear` or the next `Prepare` attempt, which invalidates the previous result. Never process more streams after preparing or reuse a cleared builder. Both API and service uploads use the same uploader in `upload.go`.
 
 ## Architecture: flat buffer, deferred bucketing
 
@@ -37,7 +37,7 @@ The full sequence in `flushAndCommit` / `executeFlush`:
 1. `builder.Prepare()` — finish the buffer, merge runs into per-(date,shard) .lidx files
 2. `PreparedIndexes.Upload()` — upload all files via `store.Store` (parallel, with retry)
 3. `commitOffsets()` — commit Kafka offsets
-4. `Clear()` — reset all builder state, remove the scratch subdir
+4. `Clear()` — release builder state and remove the scratch subdir; construct a new builder for the next cycle
 
 If any step fails, retry that step (unbounded, with backoff). Never skip ahead. Never clear without committing. Known gap: `prepareIndexes` re-reads scratch runs, so a truncated/corrupt run fails identically on every attempt and the flush goroutine retries forever (and, via backpressure, eventually stalls the poll loop) until the pod is restarted — no data loss, but no forward progress. Fail-fast handling (bounded prepare retries → self-healing restart) is a backlog item.
 

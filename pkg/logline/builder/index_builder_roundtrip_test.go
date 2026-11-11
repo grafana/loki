@@ -2,6 +2,7 @@ package builder
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -21,6 +22,50 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
+
+func TestBuilder_SingleCycle(t *testing.T) {
+	for _, threads := range []int{1, 2} {
+		for _, end := range []string{"prepare", "failed prepare", "clear"} {
+			t.Run(fmt.Sprintf("threads=%d/%s", threads, end), func(t *testing.T) {
+				cfg := roundTripConfig(t, 1, minPostingsBufferPairs)
+				cfg.ExtractThreads = threads
+				if end == "failed prepare" {
+					// Ingestion fits in memory; the first spill during Prepare fails.
+					cfg.ScratchDir = filepath.Join(cfg.ScratchDir, "not-a-directory")
+					require.NoError(t, os.WriteFile(cfg.ScratchDir, nil, 0o600))
+				}
+				b, err := NewBuilder(cfg, "2026-01-01", nil, nil)
+				require.NoError(t, err)
+				t.Cleanup(b.Clear)
+				stream := &logproto.Stream{Entries: []logproto.Entry{{
+					Timestamp: docIDEpoch.Add(time.Hour), Line: "request failed at endpoint alpha",
+				}}}
+				require.NoError(t, b.ProcessStream(stream, nil, docIDEpoch, RecordRef{}))
+
+				switch end {
+				case "prepare":
+					prepared, err := b.Prepare()
+					require.NoError(t, err)
+					require.Positive(t, prepared.Len())
+				case "failed prepare":
+					prepared, err := b.Prepare()
+					require.Error(t, err)
+					require.Zero(t, prepared.Len())
+					require.ErrorContains(t, prepared.Upload(context.Background(), nil), "without a successful Prepare")
+				case "clear":
+					b.Clear()
+				}
+
+				require.ErrorContains(t, b.ProcessStream(stream, nil, docIDEpoch, RecordRef{}), "after Prepare or Clear")
+				require.ErrorContains(t, b.ProcessStream(&logproto.Stream{}, nil, docIDEpoch, RecordRef{}), "after Prepare or Clear")
+				b.Clear()
+				require.ErrorContains(t, b.ProcessStream(stream, nil, docIDEpoch, RecordRef{}), "after Prepare or Clear")
+				_, err = b.Prepare()
+				require.ErrorContains(t, err, "Prepare after Clear")
+			})
+		}
+	}
+}
 
 type docRange struct{ min, max int64 }
 
@@ -568,10 +613,8 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 	require.Equal(t, uint64(1), durCount)
 }
 
-// TestBuilder_Clear_FullReset verifies Clear() is a complete reset: handles
-// closed, the private scratch subdir removed wholesale, and every piece of
-// postings-buffer run state zeroed (builders are single-cycle, but Clear must
-// not leave stale state as a trap).
+// TestBuilder_Clear_FullReset verifies that Clear releases the cycle's handles,
+// scratch files, and postings state. It does not make the builder reusable.
 func TestBuilder_Clear_FullReset(t *testing.T) {
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)

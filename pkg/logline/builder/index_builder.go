@@ -2,9 +2,11 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"go.uber.org/atomic"
@@ -106,12 +108,20 @@ type streamIngester struct {
 // and merges them into partial indexes for one accumulation cycle.
 //
 // Call ProcessStream for each stream, then Prepare, upload the prepared indexes,
-// and Clear. ProcessStream, Prepare, prepared uploads, and Clear must be externally
-// serialized. After the first Prepare attempt, only retry Prepare or upload,
+// and Clear. ProcessStream, Prepare, and Clear must be externally serialized with
+// each other and with prepared uploads. Upload calls are serialized internally.
+// After the first Prepare attempt, only retry Prepare or upload,
 // or Clear; construct a new Builder for the next cycle. The caller owns any
 // goroutine used for asynchronous preparation or upload.
 type Builder struct {
 	cfg Config
+
+	// Preparation ends ingestion even if it fails; Clear ends the whole cycle.
+	prepared bool
+	cleared  bool
+
+	// Copied PreparedIndexes values share file cursors, so uploads must not overlap.
+	uploadMu sync.Mutex
 
 	// Exactly one ingest path is active for the builder's lifetime:
 	// ing (serial, extract_threads=1 — the default; no queue, no goroutines)
@@ -307,7 +317,8 @@ func (w *streamIngester) formatDate(t time.Time) string {
 
 // ProcessStream stamps the wall-clock flush-trigger timestamps and routes the
 // decoded stream to the ingest path: inline in serial mode, enqueued to the
-// worker pipeline in catchup mode. Returns an error only if a run spill fails
+// worker pipeline in catchup mode. Returns an error after Prepare or Clear,
+// or if a run spill fails
 // (non-recoverable I/O; bubbles up so running() fails and the pod restarts
 // from the last committed offset) — in pipeline mode the first worker's spill
 // error surfaces here on the next call, and every later call fails fast.
@@ -323,6 +334,9 @@ func (w *streamIngester) formatDate(t time.Time) string {
 // label and structured-metadata backing data immutable until Prepare or Clear
 // drains the workers. Do not call ProcessStream after the first Prepare attempt.
 func (s *Builder) ProcessStream(stream *logproto.Stream, parsedLabels *labels.Labels, enqueuedAt time.Time, ref RecordRef) error {
+	if s.prepared || s.cleared {
+		return errors.New("logline builder: ProcessStream after Prepare or Clear")
+	}
 	if len(stream.Entries) == 0 {
 		return nil
 	}
@@ -525,7 +539,8 @@ func (s *Builder) Prepare() (PreparedIndexes, error) {
 // PreparedIndexes is an opaque view of one successful Prepare result. The
 // producing Builder owns its file handles and scratch files. Upload may be
 // retried until that builder is cleared or Prepare is called again; copying
-// this value does not extend the files' lifetime or permit concurrent uploads.
+// this value does not extend the files' lifetime. Uploads are serialized across
+// copies of this value.
 type PreparedIndexes struct {
 	builder *Builder
 	files   []fileInfo
@@ -542,6 +557,12 @@ func (p PreparedIndexes) Len() int {
 // store or launch a background flush; the caller owns polling and any goroutine
 // used to run this operation asynchronously.
 func (p PreparedIndexes) Upload(ctx context.Context, indexStore *store.Store) error {
+	if p.builder == nil {
+		return errors.New("logline builder: Upload without a successful Prepare")
+	}
+	p.builder.uploadMu.Lock()
+	defer p.builder.uploadMu.Unlock()
+
 	return uploadPartialIndexes(ctx, indexStore, p.builder.cfg.Index, p.files, p.builder.logger, p.builder.metrics)
 }
 
@@ -559,6 +580,11 @@ func (p PreparedIndexes) Upload(ctx context.Context, indexStore *store.Store) er
 // the merge re-reads the surviving runs. On merge failure any .lidx written
 // this attempt is discarded and the runs are preserved.
 func (s *Builder) prepareIndexes() ([]fileInfo, error) {
+	if s.cleared {
+		return nil, errors.New("logline builder: Prepare after Clear")
+	}
+	// Drain/finish may consume the ingest state before returning an error.
+	s.prepared = true
 	if s.pipeline != nil {
 		// The barrier is once-guarded and returns the latched first worker
 		// error on every retry: a worker spill failure is permanent for this
@@ -688,13 +714,13 @@ func (s *Builder) discardIndexes() {
 	s.lidxPaths = nil
 }
 
-// Clear removes every on-disk file produced by this cycle (.lidx + scratch
-// runs), closes open handles, and fully resets builder state — including the
-// postings buffers' run counters and referenced-tick bitsets. Builders are
-// nonetheless single-cycle (swapBuilder always constructs a fresh one); the
-// full reset exists so no stale state lies in wait for a future caller that
-// assumes clear means clear. Called from Service.executeFlush at cycle end.
+// Clear ends this builder's single accumulation cycle: it drains workers,
+// closes prepared file handles, and removes all index and scratch files.
+// It is safe to call repeatedly, but does not make the builder reusable.
+// Construct a new Builder for the next cycle. Service calls Clear after upload
+// and offset commit; callers abandoning a cycle may call it without Prepare.
 func (s *Builder) Clear() {
+	s.cleared = true
 	if s.pipeline != nil {
 		// Normally the drain barrier already ran inside prepareIndexes; this
 		// covers flushes abandoned before/without a successful prepare (ctx
