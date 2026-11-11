@@ -2447,12 +2447,16 @@ func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
 	// keeps its own watcher rather than reusing t.PartitionRingWatcher so its
 	// logline_partition_ring_* metrics stay unchanged; see the TODO on
 	// builder.PartitionRingWatcher.
-	t.loglinePartitionRing = loglinebuilder.NewPartitionRingWatcher(
+	var err error
+	t.loglinePartitionRing, err = loglinebuilder.NewPartitionRingWatcher(
 		t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore,
 		ingester.PartitionRingKey,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
 	return t.loglinePartitionRing, nil
 }
 
