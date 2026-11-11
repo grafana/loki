@@ -355,7 +355,7 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 
 		if req, ok := req.(*logproto.LoglineIndexRequest); ok {
 			if provider == nil {
-				return nil, fmt.Errorf("Logline hint provider not configured")
+				return nil, fmt.Errorf("logline hint provider not configured")
 			}
 			expr, err := syntax.ParseExpr(req.Expr)
 			if err != nil {
