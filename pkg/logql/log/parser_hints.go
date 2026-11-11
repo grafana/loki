@@ -299,6 +299,7 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		}
 	}
 
+	lineRequirements = withinBudget(lineRequirements)
 	if len(labelNames) == 0 && len(lineRequirements) == 0 {
 		return NoLabelFilterHints()
 	}

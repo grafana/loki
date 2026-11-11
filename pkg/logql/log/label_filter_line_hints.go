@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"math"
 	"slices"
 	"strings"
 
@@ -143,10 +144,64 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 		if need == nil {
 			return dst
 		}
-		return append(dst, lineRequirement{name: f.Name, need: need})
+		return appendParts(dst, f.Name, need)
 	default:
 		return dst
 	}
+}
+
+// appendParts appends a requirement for each need that the line must hold for need to hold, so that
+// withinBudget can keep some of them. A line that fails need fails one of them.
+func appendParts(dst []lineRequirement, name string, need lineNeed) []lineRequirement {
+	if all, ok := need.(allLineNeeds); ok {
+		for _, n := range all {
+			dst = appendParts(dst, name, n)
+		}
+		return dst
+	}
+	return append(dst, lineRequirement{name: name, need: need})
+}
+
+// maxLineSearches is the most literals ShouldParseLine searches a line for, not counting escapes.
+const maxLineSearches = 4
+
+// withinBudget sorts reqs longest first, because a longer literal is in fewer lines, and keeps them
+// while they search the line for at most maxLineSearches literals. An alternation counts as long as
+// its shortest literal and searches for each of them, so it is dropped whole when it does not fit.
+func withinBudget(reqs []lineRequirement) []lineRequirement {
+	slices.SortStableFunc(reqs, func(a, b lineRequirement) int {
+		_, aLen := searchCost(a.need)
+		_, bLen := searchCost(b.need)
+		return bLen - aLen
+	})
+	budget := maxLineSearches
+	kept := reqs[:0]
+	for _, r := range reqs {
+		if searches, _ := searchCost(r.need); searches <= budget {
+			kept = append(kept, r)
+			budget -= searches
+		}
+	}
+	return kept
+}
+
+// searchCost returns how many literals need searches the line for, and the length of the shortest.
+func searchCost(need lineNeed) (searches, shortest int) {
+	var needs []lineNeed
+	switch n := need.(type) {
+	case lineLiteral:
+		return 1, len(n.match)
+	case allLineNeeds:
+		needs = n
+	case anyLineNeeds:
+		needs = n
+	}
+	shortest = math.MaxInt
+	for _, n := range needs {
+		s, l := searchCost(n)
+		searches, shortest = searches+s, min(shortest, l)
+	}
+	return searches, shortest
 }
 
 // appendLineFilterLiterals appends the case-sensitive literals that every line the line filter f
