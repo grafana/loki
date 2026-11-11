@@ -147,8 +147,10 @@ func TestReaderClientMaxDecompressBatchBytes(t *testing.T) {
 	}
 }
 
-// TestReaderClientResetOffset checks that the reader client doesn't rewind
-// after data loss by default, and that a caller's reset offset replaces it.
+// TestReaderClientResetOffset checks the reset offset of the reader client:
+// by default it's RewindOffset(0), so after data loss the client continues
+// right after the missing records. If the code creating the client passes
+// its own reset offset, that one is used instead.
 func TestReaderClientResetOffset(t *testing.T) {
 	_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "test")
 
