@@ -1,9 +1,22 @@
 package hintprovider
 
 import (
+	"context"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+)
+
+const (
+	keyTestLogQuery = `{app="api"} |= "timeout"`
+	// The shape of Grafana's logs volume query for keyTestLogQuery.
+	keyTestVolumeQuery = `sum by (level, detected_level) (count_over_time({app="api"} |= "timeout" | drop __error__ [5m]))`
 )
 
 func TestNeedleKey(t *testing.T) {
@@ -76,6 +89,99 @@ func TestCacheKeyNgramLength(t *testing.T) {
 
 	var none *LoglineHintProvider
 	require.Zero(t, none.NgramLength())
+}
+
+// exprRecorder records the expressions its delegate is asked about.
+type exprRecorder struct {
+	ngramDelegate
+	mu    sync.Mutex
+	exprs []string
+}
+
+func (r *exprRecorder) ProvideHints(
+	ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time,
+) (*Hints, *QueryStats, error) {
+	r.mu.Lock()
+	r.exprs = append(r.exprs, expr.String())
+	r.mu.Unlock()
+	return r.ngramDelegate.ProvideHints(ctx, tenant, expr, from, through)
+}
+
+func newRecorder(ngramLength int, delay time.Duration) *exprRecorder {
+	hints := &Hints{TimeRanges: []HintTimeRange{{
+		Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC),
+	}}}
+	return &exprRecorder{ngramDelegate: ngramDelegate{&stubHintProvider{hints: hints, delay: delay}, ngramLength}}
+}
+
+func provideKeyTestHints(t *testing.T, p *CachingHintProvider, query string, from, through time.Time) {
+	t.Helper()
+	_, _, err := p.ProvideHints(context.Background(), "tenant-a", mustParseExpr(t, query),
+		model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
+	require.NoError(t, err)
+}
+
+func TestCachingHintProvider_SharesEntriesByNeedles(t *testing.T) {
+	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	through := from.Add(time.Hour)
+
+	t.Run("the delegate reports an n-gram length", func(t *testing.T) {
+		delegate := newRecorder(6, 0)
+		provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+
+		provideKeyTestHints(t, provider, keyTestVolumeQuery, from, through)
+		provideKeyTestHints(t, provider, keyTestLogQuery, from, through)
+		// One lookup. The delegate was asked about the volume query as written, not
+		// about a selector or the key, and the log query was served from its entry.
+		require.Equal(t, []string{mustParseExpr(t, keyTestVolumeQuery).String()}, delegate.exprs)
+
+		provideKeyTestHints(t, provider, `{app="api"} |= "another-needle"`, from, through)
+		require.Len(t, delegate.exprs, 2, "different needles are a different entry")
+	})
+
+	t.Run("the delegate reports none", func(t *testing.T) {
+		delegate := newRecorder(0, 0)
+		provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+
+		provideKeyTestHints(t, provider, keyTestVolumeQuery, from, through)
+		provideKeyTestHints(t, provider, keyTestLogQuery, from, through)
+		require.Len(t, delegate.exprs, 2, "keyed on the expression, so nothing is shared")
+	})
+}
+
+// Concurrent lookups for a log query and a volume query with the same needles
+// share one delegate call.
+func TestCachingHintProvider_SingleflightSharesByNeedles(t *testing.T) {
+	delegate := newRecorder(6, 100*time.Millisecond)
+	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	through := from.Add(time.Hour)
+
+	logExpr := mustParseExpr(t, keyTestLogQuery)
+	volumeExpr := mustParseExpr(t, keyTestVolumeQuery)
+
+	const workers = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for i := range workers {
+		expr := logExpr
+		if i%2 == 1 {
+			expr = volumeExpr
+		}
+		wg.Go(func() {
+			_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr,
+				model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
+			errCh <- err
+		})
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, delegate.Calls())
 }
 
 func TestNeedleKey_NotUsable(t *testing.T) {

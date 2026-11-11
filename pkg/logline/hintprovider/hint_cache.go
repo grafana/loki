@@ -224,7 +224,12 @@ func (p *CachingHintProvider) ProvideHints(
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
 	}
 
+	// Key on what the lookup does, so queries with the same needles share entries.
+	// The delegate is still asked about expr. Without needles, key on expr.
 	queryString := expr.String()
+	if key, ok := needleKey(expr, cacheKeyNgramLength(p.delegate)); ok {
+		queryString = key
+	}
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
 
