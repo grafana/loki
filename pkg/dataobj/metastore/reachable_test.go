@@ -28,19 +28,9 @@ func TestListTableOfContentsWindows(t *testing.T) {
 	first := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	second := first.Add(MetastoreWindowSize)
 
-	for _, tc := range []struct {
-		name   string
-		bucket func(t *testing.T) objstore.Bucket
-	}{
-		{name: "in-memory", bucket: func(*testing.T) objstore.Bucket { return objstore.NewInMemBucket() }},
-		{name: "filesystem", bucket: func(t *testing.T) objstore.Bucket {
-			bucket, err := filesystem.NewBucket(t.TempDir())
-			require.NoError(t, err)
-			return bucket
-		}},
-	} {
-		t.Run("returns the sorted windows and skips legacy shared ToCs in the "+tc.name+" bucket", func(t *testing.T) {
-			bucket := tc.bucket(t)
+	for _, kind := range testBucketKinds {
+		t.Run("returns the sorted windows and skips legacy shared ToCs in the "+kind.name+" bucket", func(t *testing.T) {
+			bucket := kind.new(t)
 			for _, name := range []string{
 				TableOfContentsPath("tenant-a", second),
 				TableOfContentsPath("tenant-b", first),
@@ -69,6 +59,14 @@ func TestListTableOfContentsWindows(t *testing.T) {
 		_, err := ListTableOfContentsWindows(t.Context(), bucket)
 		require.ErrorContains(t, err, "tocs/not-a-window/ is not a window")
 	})
+
+	t.Run("returns an error for a ToC directory that parses as a window in another form", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), "tocs/2025-01-01T01_00_00+01_00/tenant-a/toc.toc", strings.NewReader("")))
+
+		_, err := ListTableOfContentsWindows(t.Context(), bucket)
+		require.ErrorContains(t, err, "the window 2025-01-01T00:00:00Z has the directory tocs/2025-01-01T00_00_00Z/")
+	})
 }
 
 func TestReachableObjects(t *testing.T) {
@@ -76,19 +74,9 @@ func TestReachableObjects(t *testing.T) {
 	first := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	second := first.Add(MetastoreWindowSize)
 
-	for _, kind := range []struct {
-		name   string
-		bucket func(t *testing.T) objstore.Bucket
-	}{
-		{name: "in-memory", bucket: func(*testing.T) objstore.Bucket { return objstore.NewInMemBucket() }},
-		{name: "filesystem", bucket: func(t *testing.T) objstore.Bucket {
-			bucket, err := filesystem.NewBucket(t.TempDir())
-			require.NoError(t, err)
-			return bucket
-		}},
-	} {
+	for _, kind := range testBucketKinds {
 		t.Run("returns the index objects of every window and the log objects that they reference in the "+kind.name+" bucket", func(t *testing.T) {
-			bucket := kind.bucket(t)
+			bucket := kind.new(t)
 			storeIndex(t, bucket, "indexes/aa/first", tenant, []string{"objects/00/log-1", "objects/00/log-2"}, []string{"objects/00/log-1"})
 			storeIndex(t, bucket, "indexes/tenants/tenant-a/bb/second", tenant, []string{"objects/tenants/tenant-a/cc/log-3"}, nil)
 			registerIndex(t, bucket, tenant, first, "indexes/aa/first")
@@ -114,10 +102,7 @@ func TestReachableObjects(t *testing.T) {
 		require.NoError(t, builder.AppendStat("objects/00/in-stats", 0, 0, nil, time.Unix(10, 0), time.Unix(20, 0), 1, 1))
 		builder.ObserveLabelPosting(postings.LabelObservation{ObjectPath: "objects/00/in-postings", ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(time.Unix(10, 0))})
 		require.NoError(t, builder.AppendWatermark("topic", 0, 10))
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		uploadObject(t, bucket, "indexes/aa/built", obj)
+		uploadObject(t, bucket, "indexes/aa/built", builder.Flush)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/built")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
@@ -140,10 +125,7 @@ func TestReachableObjects(t *testing.T) {
 		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		require.NoError(t, builder.AppendWatermark("topic", 0, 10))
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		uploadObject(t, bucket, "indexes/aa/empty", obj)
+		uploadObject(t, bucket, "indexes/aa/empty", builder.Flush)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/empty")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
@@ -184,7 +166,7 @@ func TestReachableObjects(t *testing.T) {
 			storeIndex(t, files, indexPath, tenant, []string{fmt.Sprintf("objects/00/log-%d", i)}, nil)
 			registerIndex(t, files, tenant, first, indexPath)
 		}
-		bucket := &concurrencyBucket{Bucket: files, prefix: "index/v0/indexes/"}
+		bucket := &concurrencyBucket{Bucket: files}
 
 		_, err := ReachableObjects(t.Context(), bucket, tenant, 3)
 		require.NoError(t, err)
@@ -251,7 +233,7 @@ func TestReachableObjects(t *testing.T) {
 		files := objstore.NewInMemBucket()
 		storeIndex(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"}, nil)
 		registerIndex(t, files, tenant, first, "indexes/aa/index")
-		bucket := &failingGetBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first)}
+		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first), get: failGet}
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.ErrorIs(t, err, errGetFailed)
@@ -262,7 +244,7 @@ func TestReachableObjects(t *testing.T) {
 		files := objstore.NewInMemBucket()
 		storeIndex(t, files, "indexes/aa/index", tenant, []string{"objects/00/log"}, nil)
 		registerIndex(t, files, tenant, first, "indexes/aa/index")
-		bucket := &failingGetBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first), partial: true}
+		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, first), get: failGetAfter8Bytes}
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.ErrorIs(t, err, errGetFailed)
@@ -274,11 +256,12 @@ func TestReachableObjects(t *testing.T) {
 		registerIndex(t, files, tenant, first, "indexes/aa/broken")
 		storeIndex(t, files, "indexes/aa/later", tenant, []string{"objects/00/log"}, nil)
 		registerIndex(t, files, tenant, second, "indexes/aa/later")
-		bucket := &cancelAwareBucket{Bucket: files, failIndex: "index/v0/indexes/aa/broken", blockToC: "index/v0/" + TableOfContentsPath(tenant, second)}
+		bucket := &getOverrideBucket{Bucket: files, name: "index/v0/" + TableOfContentsPath(tenant, second), get: blockUntilCancelled}
 
 		_, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.ErrorContains(t, err, "opening index object indexes/aa/broken")
 		require.NotErrorIs(t, err, context.Canceled)
+		require.NotErrorIs(t, err, errNotCancelled)
 	})
 
 	t.Run("returns an error and no paths when a ToC holds the sections of another tenant", func(t *testing.T) {
@@ -303,14 +286,26 @@ func TestReachableObjects(t *testing.T) {
 		streamsBuilder.SetTenant(tenant)
 		streamsBuilder.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 		require.NoError(t, objBuilder.Append(streamsBuilder))
-		obj, closer, err := objBuilder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		uploadObject(t, bucket, "indexes/aa/unknown", obj)
+		uploadObject(t, bucket, "indexes/aa/unknown", objBuilder.Flush)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/unknown")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
-		require.ErrorContains(t, err, "has unknown type")
+		require.ErrorContains(t, err, "index object indexes/aa/unknown: section 0 has unknown type")
+		require.Nil(t, paths)
+	})
+
+	t.Run("returns an error and no paths when a ToC holds a section of an unknown type", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 1<<20, 1000, streams.DefaultShardLayout())
+		streamsBuilder.SetTenant(tenant)
+		streamsBuilder.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
+		require.NoError(t, objBuilder.Append(streamsBuilder))
+		uploadObject(t, bucket, TableOfContentsPath(tenant, first), objBuilder.Flush)
+
+		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		require.ErrorContains(t, err, "section 0 has unknown type")
+		require.ErrorContains(t, err, "the index objects that it points to are unknown")
 		require.Nil(t, paths)
 	})
 
@@ -321,6 +316,7 @@ func TestReachableObjects(t *testing.T) {
 	}{
 		{"returns an error and no paths for a log object path with a leading slash", "/objects/00/log", "not a clean relative path"},
 		{"returns an error and no paths for a log object path that is not clean", "objects//00/log", "not a clean relative path"},
+		{"returns an error and no paths for an empty log object path", "", "null or empty value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
@@ -340,6 +336,7 @@ func TestReachableObjects(t *testing.T) {
 	}{
 		{"returns an error and no paths for an index pointer outside indexes/", "index/v0/indexes/aa/index", "not in indexes/"},
 		{"returns an error and no paths for an index pointer that is not clean", "indexes/aa/../bb/index", "not a clean relative path"},
+		{"returns an error and no paths for an index pointer with a leading slash", "/indexes/aa/index", "not a clean relative path"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
@@ -382,10 +379,24 @@ func TestReachableObjects(t *testing.T) {
 	}
 }
 
+// testBucketKinds are the buckets that tests run against. The in-memory and
+// the filesystem buckets list directories in different ways.
+var testBucketKinds = []struct {
+	name string
+	new  func(t *testing.T) objstore.Bucket
+}{
+	{name: "in-memory", new: func(*testing.T) objstore.Bucket { return objstore.NewInMemBucket() }},
+	{name: "filesystem", new: func(t *testing.T) objstore.Bucket {
+		bucket, err := filesystem.NewBucket(t.TempDir())
+		require.NoError(t, err)
+		return bucket
+	}},
+}
+
 // storeIndex stores an index object of tenant at path in the index storage
-// of bucket. It holds a postings section that references postingsPaths, and a
-// stats section that references statsPaths. It leaves out a section whose
-// paths are empty.
+// of bucket. The object holds a postings section that references
+// postingsPaths, and a stats section that references statsPaths. It leaves
+// out a section whose paths are empty.
 func storeIndex(t *testing.T, bucket objstore.Bucket, path, tenant string, postingsPaths, statsPaths []string) {
 	t.Helper()
 
@@ -408,15 +419,16 @@ func storeIndex(t *testing.T, bucket objstore.Bucket, path, tenant string, posti
 		}
 		require.NoError(t, objBuilder.Append(statsBuilder))
 	}
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, closer.Close()) })
-	uploadObject(t, bucket, path, obj)
+	uploadObject(t, bucket, path, objBuilder.Flush)
 }
 
-// uploadObject stores obj at path in the index storage of bucket.
-func uploadObject(t *testing.T, bucket objstore.Bucket, path string, obj *dataobj.Object) {
+// uploadObject stores the object that flush builds at path in the index
+// storage of bucket.
+func uploadObject(t *testing.T, bucket objstore.Bucket, path string, flush func() (*dataobj.Object, io.Closer, error)) {
 	t.Helper()
+	obj, closer, err := flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 	r, err := obj.Reader(t.Context())
 	require.NoError(t, err)
 	defer r.Close()
@@ -446,24 +458,34 @@ func (failingIterBucket) Iter(context.Context, string, func(string) error, ...ob
 	return errListingFailed
 }
 
-var errGetFailed = errors.New("get failed")
+var (
+	errGetFailed    = errors.New("get failed")
+	errNotCancelled = errors.New("the context was not cancelled in time")
+)
 
-// failingGetBucket fails the Get of the object name. If partial is set, the
-// Get succeeds, and the read fails after the first bytes.
-type failingGetBucket struct {
+// getOverrideBucket calls get for a Get of the object at name. Other calls
+// go to the wrapped bucket.
+type getOverrideBucket struct {
 	objstore.Bucket
-	name    string
-	partial bool
+	name string
+	get  func(ctx context.Context, b objstore.Bucket, name string) (io.ReadCloser, error)
 }
 
-func (b *failingGetBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	if name != b.name {
-		return b.Bucket.Get(ctx, name)
+func (b *getOverrideBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if name == b.name {
+		return b.get(ctx, b.Bucket, name)
 	}
-	if !b.partial {
-		return nil, errGetFailed
-	}
-	r, err := b.Bucket.Get(ctx, name)
+	return b.Bucket.Get(ctx, name)
+}
+
+// failGet fails the Get.
+func failGet(context.Context, objstore.Bucket, string) (io.ReadCloser, error) {
+	return nil, errGetFailed
+}
+
+// failGetAfter8Bytes lets the Get succeed, and fails the read after 8 bytes.
+func failGetAfter8Bytes(ctx context.Context, b objstore.Bucket, name string) (io.ReadCloser, error) {
+	r, err := b.Get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -473,61 +495,66 @@ func (b *failingGetBucket) Get(ctx context.Context, name string) (io.ReadCloser,
 	}{io.MultiReader(io.LimitReader(r, 8), iotest.ErrReader(errGetFailed)), r}, nil
 }
 
-// cancelAwareBucket fails every read of the index object failIndex. A Get of
-// the ToC blockToC waits until its context ends and returns the context
-// error.
-type cancelAwareBucket struct {
-	objstore.Bucket
-	failIndex string
-	blockToC  string
-}
-
-func (b *cancelAwareBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	switch name {
-	case b.failIndex:
-		return nil, errGetFailed
-	case b.blockToC:
-		<-ctx.Done()
+// blockUntilCancelled waits until ctx ends and returns its error. It returns
+// errNotCancelled after 10 seconds, so that a test fails and does not hang.
+func blockUntilCancelled(ctx context.Context, _ objstore.Bucket, _ string) (io.ReadCloser, error) {
+	select {
+	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-time.After(10 * time.Second):
+		return nil, errNotCancelled
 	}
-	return b.Bucket.Get(ctx, name)
 }
 
-func (b *cancelAwareBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	if name == b.failIndex {
-		return nil, errGetFailed
-	}
-	return b.Bucket.GetRange(ctx, name, off, length)
-}
-
-func (b *cancelAwareBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	if name == b.failIndex {
-		return objstore.ObjectAttributes{}, errGetFailed
-	}
-	return b.Bucket.Attributes(ctx, name)
-}
-
-// concurrencyBucket records the peak number of reads of objects below prefix
-// that run at the same time. Each read waits a little, so that reads of
-// different objects overlap.
+// concurrencyBucket records the peak number of range reads that run at the
+// same time. Only index objects get range reads, because ToCs are read with
+// one Get. Each range read waits a little, so that reads of different objects
+// overlap.
 type concurrencyBucket struct {
 	objstore.Bucket
-	prefix string
 	active atomic.Int32
 	peak   atomic.Int32
 }
 
 func (b *concurrencyBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	if strings.HasPrefix(name, b.prefix) {
-		n := b.active.Inc()
-		defer b.active.Dec()
-		for {
-			peak := b.peak.Load()
-			if n <= peak || b.peak.CompareAndSwap(peak, n) {
-				break
-			}
+	n := b.active.Inc()
+	defer b.active.Dec()
+	for {
+		peak := b.peak.Load()
+		if n <= peak || b.peak.CompareAndSwap(peak, n) {
+			break
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
+	time.Sleep(50 * time.Millisecond)
 	return b.Bucket.GetRange(ctx, name, off, length)
+}
+
+func TestCheckObjectPath(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"accepts a clean relative path", "objects/00/log", false},
+		{"accepts a path with dots inside a segment", "objects/00/a..b", false},
+		{"accepts a path with a space", "objects/00/a b", false},
+		{"rejects an empty path", "", true},
+		{"rejects the current directory", ".", true},
+		{"rejects the parent directory", "..", true},
+		{"rejects a path that starts with the parent directory", "../objects/00/log", true},
+		{"rejects a path with a current directory segment", "objects/./00/log", true},
+		{"rejects a path with a parent directory segment", "objects/00/../log", true},
+		{"rejects a path with a double slash", "objects//00/log", true},
+		{"rejects a path with a trailing slash", "objects/00/", true},
+		{"rejects a path with a leading slash", "/objects/00/log", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkObjectPath(tc.path)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "not a clean relative path")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
