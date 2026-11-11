@@ -92,10 +92,10 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 	return md, nil
 }
 
-// decodeHeaderAndFileMetadata decodes the header and the file metadata from a cached metadata region
-// and returns the file metadata size from the header (which the caller uses to compute startOff). A
-// non-nil error means the blob is too short or does not decode, so the caller can fall back and
-// report why.
+// decodeHeaderAndFileMetadata decodes the header and the file metadata from blob, the first bytes of
+// the object, and returns the file metadata size from the header (which the caller uses to compute
+// startOff). A non-nil error means the blob is too short or does not decode, so the caller can fall
+// back and report why.
 func (d *decoder) decodeHeaderAndFileMetadata(blob []byte) (md *filemd.Metadata, metadataSize uint64, err error) {
 	header, err := d.header(blob)
 	if err != nil {
