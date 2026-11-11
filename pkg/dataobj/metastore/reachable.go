@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
 // reachableIndexPrefetchBytes is the number of bytes that ReachableObjects
@@ -30,10 +32,10 @@ const reachableIndexPrefetchBytes = 64 << 10
 // ListTableOfContentsWindows returns the windows that have a ToC directory in
 // bucket, sorted. bucket is the index storage, as [NewIndexBucket] returns it.
 //
-// It skips the legacy shared ToC files at tocs/<window>.toc. Nothing reads
-// them since ToCs are per tenant. It returns an error for a directory name
-// that is not a window, because a caller that skips a window can miss the
-// objects that its ToCs reference.
+// It skips the legacy shared ToC files at tocs/<window>.toc. No reader uses
+// them, because each tenant has its own ToC for each window. It returns an
+// error for a directory name that is not a window, because a caller that
+// skips a window can miss the objects that its ToCs reference.
 func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReader) ([]time.Time, error) {
 	var windows []time.Time
 	err := bucket.Iter(ctx, TocPrefix, func(name string) error {
@@ -55,23 +57,31 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 	return windows, nil
 }
 
-// ReachableObjects returns the sorted paths of the objects of tenant that the
-// metastore can reach. The paths are relative to bucket, which is the root of
-// the data object storage. The objects are:
+// ReachableObjects returns the sorted paths of the objects that the ToCs of
+// tenant make reachable. The paths are relative to bucket, which is the root
+// of the data object storage. The objects are:
 //
-//   - The index objects that the ToC of tenant points to, in any window.
+//   - The index objects that a ToC of tenant points to, in any window.
 //   - The log objects that those index objects reference.
 //
-// An object that ReachableObjects does not return is garbage: no query can
-// read it.
+// The result can hold objects of other tenants that share an index object.
+// It is a superset of the reachable objects of tenant, so compare it only
+// against the objects of tenant.
 //
-// ReachableObjects returns an error, and no paths, if it cannot read a ToC or
-// an index object. A partial result would make reachable objects look like
-// garbage. maxOpenFiles limits the index objects that it opens at the same
-// time, and must be at least 1.
+// No query can read an object that ReachableObjects does not return. That
+// does not make the object garbage: a new log object stays unreachable until
+// an index object references it.
 //
-// The result is a snapshot. Compaction keeps changing the ToCs, so an object
-// can become reachable or unreachable right after the call.
+// A missing ToC is not an error. ReachableObjects returns an error, and no
+// paths, if it cannot read a ToC or an index object. It also returns an error
+// for a section that it does not know, and for a path that is not clean and
+// relative. A partial result would make reachable objects look unreachable.
+//
+// maxOpenFiles limits the index objects that ReachableObjects opens at the
+// same time. It must be at least 1.
+//
+// The result is a snapshot. Index builders and compaction change the ToCs, so
+// an object can become reachable or unreachable right after the call.
 func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, maxOpenFiles int) ([]string, error) {
 	if tenantID == "" {
 		return nil, errors.New("tenant must not be empty")
@@ -104,6 +114,10 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 			return nil, err
 		}
 		for _, indexPath := range indexPaths {
+			if !strings.HasPrefix(indexPath, "indexes/") {
+				_ = g.Wait()
+				return nil, fmt.Errorf("ToC of tenant %q for window %s points to %q, which is not in indexes/", tenantID, window.Format(time.RFC3339), indexPath)
+			}
 			if _, ok := opened[indexPath]; ok {
 				continue
 			}
@@ -117,8 +131,8 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 	}
 
 	paths := make([]string, 0, len(walk.reachable))
-	for path := range walk.reachable {
-		paths = append(paths, path)
+	for p := range walk.reachable {
+		paths = append(paths, p)
 	}
 	slices.Sort(paths)
 	return paths, nil
@@ -134,10 +148,10 @@ type reachabilityWalk struct {
 	reachable map[string]struct{}
 }
 
-func (w *reachabilityWalk) add(path string) {
+func (w *reachabilityWalk) add(p string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.reachable[path] = struct{}{}
+	w.reachable[p] = struct{}{}
 }
 
 // tocIndexPaths returns the index object paths in the ToC of the tenant for
@@ -168,8 +182,19 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 		return nil, fmt.Errorf("ToC %s: %w", tocPath, err)
 	}
 
+	// forEachTocPointer reads only the index pointers sections. Check that
+	// the ToC holds no other section that could point to index objects.
+	for i, section := range toc.Sections() {
+		if !indexpointers.CheckSection(section) && !watermarks.CheckSection(section) {
+			return nil, fmt.Errorf("ToC %s: section %d has unknown type %s, so the index objects that it points to are unknown", tocPath, i, section.Type)
+		}
+	}
+
 	var paths []string
 	err = forEachTocPointer(ctx, toc, func(pointer indexpointers.IndexPointer) error {
+		if err := checkObjectPath(pointer.Path); err != nil {
+			return err
+		}
 		paths = append(paths, strings.Clone(pointer.Path))
 		return nil
 	})
@@ -181,12 +206,18 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 
 // addReferencedObjects adds the log objects that the index object at
 // indexPath references. It reads the object paths of the postings sections
-// and the stats sections. A merged index can hold postings without stats, so
-// neither section alone lists every log object.
+// and the stats sections. A merged index without a stream layout, or a
+// legacy index, holds postings but no stats. The format does not promise
+// that one section lists every log object.
 //
-// It reads the sections of every tenant. A path of another tenant is not in
-// the objects of tenant, so it changes nothing, and reading it is the safe
-// choice for a section of mixed tenants.
+// It reads the sections of every tenant, and sections without a tenant. An
+// index object can hold sections of several tenants, and a legacy section
+// can have no tenant. A filter by tenant could drop paths that the tenant can
+// read. The paths of other tenants only make the result larger.
+//
+// It returns an error for a section that it does not know. A new section type
+// could reference log objects, and skipping it would make them look
+// unreachable.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
 	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, reachableIndexPrefetchBytes)
 	if err != nil {
@@ -200,8 +231,10 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 			err = w.addPostingsObjectPaths(ctx, section)
 		case stats.CheckSection(section):
 			err = w.addStatsObjectPaths(ctx, section)
-		default:
+		case watermarks.CheckSection(section):
 			continue
+		default:
+			return fmt.Errorf("index object %s: section %d has unknown type %s, so the log objects that it references are unknown", indexPath, i, section.Type)
 		}
 		if err != nil {
 			return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
@@ -274,18 +307,25 @@ func (w *reachabilityWalk) addObjectPaths(ctx context.Context, read func(context
 				return fmt.Errorf("object_path column has type %s, want string", rec.Column(0).DataType())
 			}
 			batch = batch[:0]
+			var pathErr error
 			for i := range column.Len() {
 				if column.IsNull(i) || column.Value(i) == "" {
 					continue
+				}
+				if pathErr = checkObjectPath(column.Value(i)); pathErr != nil {
+					break
 				}
 				// The values point into the buffers of rec. Clone them so that
 				// the result does not keep every batch in memory.
 				batch = append(batch, strings.Clone(column.Value(i)))
 			}
 			rec.Release()
+			if pathErr != nil {
+				return pathErr
+			}
 			w.mu.Lock()
-			for _, path := range batch {
-				w.reachable[path] = struct{}{}
+			for _, p := range batch {
+				w.reachable[p] = struct{}{}
 			}
 			w.mu.Unlock()
 		}
@@ -293,4 +333,14 @@ func (w *reachabilityWalk) addObjectPaths(ctx context.Context, read func(context
 			return nil
 		}
 	}
+}
+
+// checkObjectPath returns an error unless p is a clean, relative path. The
+// caller compares the result with object keys as strings, so a path such as
+// "/objects/x" or "objects//x" would never match the key of its object.
+func checkObjectPath(p string) error {
+	if p != path.Clean(p) || strings.HasPrefix(p, "/") || p == "." || p == ".." || strings.HasPrefix(p, "../") {
+		return fmt.Errorf("object path %q is not a clean relative path", p)
+	}
+	return nil
 }
