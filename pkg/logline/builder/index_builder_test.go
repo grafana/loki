@@ -720,7 +720,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 	func() {
 		defer func() {
 			r := recover()
-			require.NotNil(t, r, "out-of-window timestamp with a valid recordRef must panic")
+			require.NotNil(t, r, "out-of-window timestamp with a valid RecordRef must panic")
 			msg, ok := r.(string)
 			require.True(t, ok, "panic value must be the attribution string, got %T", r)
 			require.Contains(t, msg, "partition=3")

@@ -277,7 +277,7 @@ func sortedKeys[V any](m map[string]V) []string {
 // TestBuilder_PrepareIndexesRetryable verifies that a second prepareIndexes
 // (as happens when an upload fails and the flush is retried) reproduces the
 // same files from the surviving scratch runs (invariant: runs are removed only
-// by clear, never by prepareIndexes).
+// by Clear, never by prepareIndexes).
 func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 	cfg := roundTripConfig(t, 4, 64)
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
@@ -305,7 +305,7 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 	require.Equal(t, fileKeys(first), fileKeys(second), "retry must reproduce the same (date,shard) files")
 
 	b.Clear()
-	require.Empty(t, b.ing.postings.runPaths, "clear must drop runs")
+	require.Empty(t, b.ing.postings.runPaths, "Clear must drop runs")
 }
 
 func fileKeys(files []fileInfo) []string {
@@ -317,7 +317,7 @@ func fileKeys(files []fileInfo) []string {
 	return ks
 }
 
-// retryTestEntries is a fixed dataset shared by the failure-retry and clear
+// retryTestEntries is a fixed dataset shared by the failure-retry and Clear
 // tests: enough repeated lines to force multiple run spills under a tiny
 // buffer, with deterministic timestamps.
 func retryTestEntries() []logproto.Entry {
@@ -568,9 +568,9 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 	require.Equal(t, uint64(1), durCount)
 }
 
-// TestBuilder_Clear_FullReset verifies clear() is a complete reset: handles
+// TestBuilder_Clear_FullReset verifies Clear() is a complete reset: handles
 // closed, the private scratch subdir removed wholesale, and every piece of
-// postings-buffer run state zeroed (builders are single-cycle, but clear must
+// postings-buffer run state zeroed (builders are single-cycle, but Clear must
 // not leave stale state as a trap).
 func TestBuilder_Clear_FullReset(t *testing.T) {
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
@@ -587,13 +587,13 @@ func TestBuilder_Clear_FullReset(t *testing.T) {
 
 	b.Clear()
 
-	// Handles were closed by clear — a second Close reports ErrClosed.
+	// Handles were closed by Clear — a second Close reports ErrClosed.
 	for _, fh := range handles {
-		require.ErrorIs(t, fh.Close(), os.ErrClosed, "clear must close .lidx handles")
+		require.ErrorIs(t, fh.Close(), os.ErrClosed, "Clear must close .lidx handles")
 	}
 	// The whole scratch subdir (runs + .lidx) is gone.
 	_, statErr := os.Stat(runDir)
-	require.True(t, os.IsNotExist(statErr), "clear must remove the builder's scratch subdir")
+	require.True(t, os.IsNotExist(statErr), "Clear must remove the builder's scratch subdir")
 
 	// Builder and postings-buffer state fully reset.
 	require.Zero(t, b.runDiskBytes())

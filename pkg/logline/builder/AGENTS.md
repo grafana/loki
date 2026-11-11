@@ -152,7 +152,7 @@ Buffer sizing is configured by two builder-level knobs: `postings_buffer_pairs` 
 
 ```
 <scratch_dir>/
-  flat_<storageID>/            # one private subdir per builder cycle; clear() removes it wholesale
+  flat_<storageID>/            # one private subdir per builder cycle; Clear() removes it wholesale
     run_<seq>.frun             # sorted (ngram, docID) runs — per-shard seekable s2 streams (run_file.go)
     <YYYY-MM-DD>_s<shard>.lidx # merged indexes produced by prepareIndexes, pending upload
 ```

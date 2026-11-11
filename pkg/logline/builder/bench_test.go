@@ -313,7 +313,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		return builder
 	}
 
-	// Full pipeline: pre-decoded streams through processStream
+	// Full pipeline: pre-decoded streams through ProcessStream
 	b.Run("process_only", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(totalBytes)
@@ -352,7 +352,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		}
 	})
 
-	// Process + clear: measures ingest plus memory release. clear() discards
+	// Process + Clear: measures ingest plus memory release. Clear() discards
 	// the buffered pairs without finish()/merge, so this does NOT exercise the
 	// flush path — TestBuilderE2E measures prepareIndexes end to end.
 	b.Run("process_and_clear", func(b *testing.B) {
@@ -538,7 +538,7 @@ func (s *e2ePeakSampler) stopPeak() uint64 {
 }
 
 // TestBuilderE2E is the end-to-end builder benchmark: it streams the captured
-// records through the real builder (decode → processStream) exactly as the
+// records through the real builder (decode → ProcessStream) exactly as the
 // service does, then runs prepareIndexes (the full flush-to-.lidx path), and
 // reports throughput, total allocations, and peak heap — at each requested
 // shard count. It only uses the builder's public surface, so implementations
@@ -641,7 +641,7 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 			continue
 		}
 		if err := builder.ProcessStream(&stream, &parsedLabels, rec.timestamp, RecordRef{}); err != nil {
-			t.Fatalf("processStream: %v", err)
+			t.Fatalf("ProcessStream: %v", err)
 		}
 	}
 	ingestSec := time.Since(istart).Seconds()

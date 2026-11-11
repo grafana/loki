@@ -60,7 +60,7 @@ func waitForGoroutineBaseline(t *testing.T, baseline int, msg string) {
 	require.LessOrEqual(t, runtime.NumGoroutine(), baseline, msg)
 }
 
-// feedInChunks streams entries through processStream in small per-call chunks
+// feedInChunks streams entries through ProcessStream in small per-call chunks
 // so pipeline mode scatters items across the competing workers (a single call
 // is one queue item and would land on one worker).
 func feedInChunks(t *testing.T, b *Builder, entries []logproto.Entry, chunk int) {
@@ -253,10 +253,10 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 }
 
 // TestBuilder_ExtractPipelineWorkerErrorPropagates verifies the failure
-// contract: a worker spill error surfaces on the main path (processStream
+// contract: a worker spill error surfaces on the main path (ProcessStream
 // fails fast, exactly like a serial spill error failing running()), a
 // subsequent prepareIndexes reports the same latched error, and no worker
-// goroutine outlives clear().
+// goroutine outlives Clear().
 func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	baseline := runtime.NumGoroutine()
 
@@ -280,7 +280,7 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 			return true
 		}
 		return false
-	}, 10*time.Second, 5*time.Millisecond, "worker spill failure must surface through processStream")
+	}, 10*time.Second, 5*time.Millisecond, "worker spill failure must surface through ProcessStream")
 	require.ErrorContains(t, streamErr, "not a directory")
 	require.ErrorContains(t, streamErr, "partition=7 offset=99")
 
@@ -292,7 +292,7 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	require.Contains(t, err.Error(), "partition=7 offset=99")
 
 	b.Clear()
-	waitForGoroutineBaseline(t, baseline, "no worker goroutine may outlive clear()")
+	waitForGoroutineBaseline(t, baseline, "no worker goroutine may outlive Clear()")
 }
 
 // TestService_ExtractThreadsFlushCommit drives the real service flush path
