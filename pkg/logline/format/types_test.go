@@ -74,14 +74,17 @@ func TestDocumentLayout(t *testing.T) {
 	for _, tt := range []struct {
 		cell  uint32
 		start time.Time
+		shard uint32
 	}{
-		{cell: 0, start: day},
-		{cell: 31, start: day},
-		{cell: 32, start: day.Add(16 * time.Second)},
-		{cell: 172799, start: day.Add(24*time.Hour - 16*time.Second)},
+		{cell: 0, start: day, shard: 0},
+		{cell: 31, start: day, shard: 31},
+		{cell: 32, start: day.Add(16 * time.Second), shard: 0},
+		{cell: 172799, start: day.Add(24*time.Hour - 16*time.Second), shard: 31},
 	} {
 		start, end := layout.TimeRange(tt.cell)
 		require.Equal(t, tt.start, start, "cell %d", tt.cell)
 		require.Equal(t, tt.start.Add(16*time.Second), end, "cell %d", tt.cell)
+		require.Equal(t, tt.shard, layout.Shard(tt.cell), "cell %d", tt.cell)
 	}
+	require.Zero(t, format.DocumentLayout{Interval: 16 * time.Second}.Shard(7), "one shard")
 }
