@@ -108,7 +108,7 @@ To keep the franz-go 1.21 limit, this release adds a new setting.
 
 Data loss means that, while a Kafka consumer is reading a partition, records it hasn't read yet no longer exist, for example because retention deleted them first. franz-go 1.21 then continued right after the missing records. franz-go 1.22 continues from the consumer's reset offset instead. Its default reset offset goes back one minute before the last record read, and re-reads that minute.
 
-Loki sets the reset offset for each consumer. There is no setting for this.
+Loki sets the reset offset for each consumer in code. You can't change it with a configuration option.
 
 | Consumer | After data loss, before this release | After data loss, with this release |
 |---|---|---|
