@@ -18,9 +18,8 @@ const (
 	valuesUnknown parserValues = iota
 
 	// valuesDecoded is for json and logfmt. They take the label name from a key and the value from
-	// the line, and both can differ from the bytes of the line: both parsers sanitize the key, json
-	// unescapes keys and values, logfmt unescapes quoted values, and both replace invalid UTF-8 and
-	// U+FFFD in a value with a space.
+	// the line, and the value can differ from the bytes of the line: json unescapes values, logfmt
+	// unescapes quoted values, and both replace invalid UTF-8 and U+FFFD in a value with a space.
 	valuesDecoded
 
 	// valuesVerbatim is for regexp and pattern. They take the label name from the query and the
@@ -110,9 +109,8 @@ func (a anyLineNeeds) mayHold(line []byte) bool {
 
 // appendLineRequirements appends a requirement for each `=` or `=~` filter in f, descending into both
 // sides of an `and`. Other filters, including `or`, add nothing, and neither do reserved `__` labels,
-// filters that accept the empty value, or a `=~` filter after regexp or pattern whose regexp does not
-// simplify to literals, such as `e[rx]ror`, because those parsers have no key to require. It returns
-// dst unchanged for parsers whose values are unknown.
+// filters that accept the empty value, or a `=~` filter whose regexp does not simplify to literals,
+// such as `e[rx]ror`. It returns dst unchanged for parsers whose values are unknown.
 func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parserValues) []lineRequirement {
 	if values == valuesUnknown {
 		return dst
@@ -138,53 +136,14 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 			return dst
 		}
 
-		// The value comes first because usually fewer lines contain it than the key, so a line without it
-		// fails after one search.
-		var need allLineNeeds
-		if v := valueNeed(f.Filter, values); v != nil {
-			need = append(need, v)
-		}
-		if values == valuesDecoded {
-			need = append(need, keyNeeds(f.Name)...)
-		}
-		if len(need) == 0 {
+		need := valueNeed(f.Filter, values)
+		if need == nil {
 			return dst
 		}
 		return append(dst, lineRequirement{name: f.Name, need: need})
 	default:
 		return dst
 	}
-}
-
-// keyNeeds returns what the line must contain for json or logfmt to set the label name.
-//
-// They make the name from one or more keys: they trim the spaces around each key, replace each
-// character other than [A-Za-z0-9_] with an underscore, join the keys of nested objects with an
-// underscore, and add the DuplicateSuffix when the name is taken. So each run of [A-Za-z0-9] in the
-// name without the suffix is in a key. A key that itself ends in the suffix only makes the
-// requirement looser, which is safe.
-func keyNeeds(name string) []lineNeed {
-	name = strings.TrimSuffix(name, DuplicateSuffix)
-
-	var needs []lineNeed
-	start := -1
-	for i := 0; i <= len(name); i++ {
-		if i < len(name) && isAlphanumeric(name[i]) {
-			if start < 0 {
-				start = i
-			}
-			continue
-		}
-		if start >= 0 {
-			needs = append(needs, decodedLiteral([]byte(name[start:i]), false))
-			start = -1
-		}
-	}
-	return needs
-}
-
-func isAlphanumeric(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // valueNeed returns what the line must contain for the parser to set a value that f matches, or

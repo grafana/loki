@@ -26,7 +26,7 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		// json
 		{name: "json: the line has the key and the value", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenantId":"abc123"}`, want: true},
 		{name: "json: the line does not have the value", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenantId":"zzz"}`, want: false},
-		{name: "json: the line does not have the key", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"other":"abc123"}`, want: false},
+		{name: "json: the key is not needed", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"other":"abc123"}`, want: true},
 		{name: "json: the value is escaped", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenantId":"\u0061bc123"}`, want: true},
 		{name: "json: the key is escaped", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenant\u0049d":"abc123"}`, want: true},
 		{name: "json: an escape that cannot decode into the value", query: `{app="foo"} | json | tenantId="abc123"`, line: `{"tenantId":"abc\n123"}`, want: false},
@@ -37,9 +37,8 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "json: invalid UTF-8 becomes a space", query: `{app="foo"} | json | foo="a b"`, line: "{\"foo\":\"a\xffb\"}", want: true},
 		{name: "json: U+FFFD becomes a space", query: `{app="foo"} | json | foo="a b"`, line: `{"foo":"a�b"}`, want: true},
 		{name: "json: a part of a value with a space is missing", query: `{app="foo"} | json | foo="a b"`, line: `{"foo":"a-c"}`, want: false},
-		{name: "json: a value with a quote only needs the key", query: `{app="foo"} | json | foo="say \"hi\""`, line: `{"foo":"x"}`, want: true},
-		{name: "json: a value with a quote still needs the key", query: `{app="foo"} | json | foo="say \"hi\""`, line: `{"bar":"x"}`, want: false},
-		{name: "json: a value with a control character only needs the key", query: `{app="foo"} | json | foo="a\tb"`, line: `{"foo":"x"}`, want: true},
+		{name: "json: a value with a quote requires nothing", query: `{app="foo"} | json | foo="say \"hi\""`, line: `{"bar":"x"}`, want: true},
+		{name: "json: a value with a control character requires nothing", query: `{app="foo"} | json | foo="a\tb"`, line: `{"bar":"x"}`, want: true},
 
 		// The label is set before the parser runs.
 		{name: "json: the stream has the label", query: `{app="foo"} | json | tenantId="abc123"`, stream: labels.FromStrings("app", "foo", "tenantId", "abc123"), line: `{"tenantId":"zzz"}`, want: true},
@@ -55,8 +54,7 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "regexp filter: a case-insensitive literal", query: `{app="foo"} | json | tenantId=~"(?i)abc"`, line: `{"tenantId":"aBc"}`, want: true},
 		{name: "regexp filter: one side of an alternation", query: `{app="foo"} | json | tenantId=~"abc|def"`, line: `{"tenantId":"def"}`, want: true},
 		{name: "regexp filter: no side of an alternation", query: `{app="foo"} | json | tenantId=~"abc|def"`, line: `{"tenantId":"ghi"}`, want: false},
-		{name: "regexp filter: a character class only needs the key", query: `{app="foo"} | json | tenantId=~"a[bc]d"`, line: `{"tenantId":"zzz"}`, want: true},
-		{name: "regexp filter: a character class still needs the key", query: `{app="foo"} | json | tenantId=~"a[bc]d"`, line: `{"other":"abd"}`, want: false},
+		{name: "regexp filter: a character class requires nothing", query: `{app="foo"} | json | tenantId=~"a[bc]d"`, line: `{"other":"zzz"}`, want: true},
 
 		// Filters that require nothing of the line
 		{name: "a filter that accepts the empty value", query: `{app="foo"} | json | tenantId=~"(abc)?"`, line: `{}`, want: true},

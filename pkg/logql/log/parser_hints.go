@@ -58,10 +58,10 @@ type LabelFilterHints interface {
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 
 	// ShouldParseLine returns false when the line cannot pass the label filters after the parser,
-	// because it does not contain the strings the parser would read their labels from: the key and
-	// the value for json and logfmt, the value for regexp and pattern. It returns true when there are
-	// no requirements, and when the label is already set by the stream, structured metadata or an
-	// earlier stage. The parser drops a line that it returns false for without parsing it.
+	// because it does not contain the values the parser would read their labels from. It returns
+	// true when there are no requirements, and when the label is already set by the stream,
+	// structured metadata or an earlier stage. The parser drops a line that it returns false for
+	// without parsing it.
 	ShouldParseLine(line []byte, lbs *LabelsBuilder) bool
 }
 
