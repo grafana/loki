@@ -325,6 +325,14 @@ var cases = []struct {
 		expected: false,
 	},
 	{
+		// Σ/σ don't share a UTF-8 lead byte (unlike Γ/γ above), so the fast
+		// path's raw first-byte compare has to fall back to a decoded rune.
+		name:     "utf8_case_insensitive_lead_byte_differs",
+		line:     "ΣΧΟΛΕΊΟ",
+		substr:   "σχολείο",
+		expected: true,
+	},
+	{
 		name:     "empty_substr",
 		line:     "any line",
 		substr:   "",
