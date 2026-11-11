@@ -69,6 +69,14 @@ func (h HintTimeRange) MatchesFingerprint(fp uint64) bool {
 	return logline.DocumentShard(fp, uint(h.DocumentShardBits)) == h.DocumentShard
 }
 
+// MatchesFingerprintRange reports whether h covers a stream with a
+// fingerprint in [from, through), the bounds of a query shard
+// (GetFromThrough).
+func (h HintTimeRange) MatchesFingerprintRange(from, through uint64) bool {
+	bits := uint(h.DocumentShardBits)
+	return logline.DocumentShard(from, bits) <= h.DocumentShard && h.DocumentShard <= logline.DocumentShard(through-1, bits)
+}
+
 // documentShardKey identifies h's document shard. Ranges merge and intersect
 // only within one.
 func (h HintTimeRange) documentShardKey() uint64 {

@@ -81,7 +81,7 @@ func (p *LoglineHintProvider) QueryHints(
 	if err != nil {
 		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
-	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(timeUnion(ranges)), Stats: &snap}, nil
+	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(TimeUnion(ranges)), Stats: &snap}, nil
 }
 
 // queryRanges returns the ranges matching req, per document shard.
@@ -116,10 +116,10 @@ func (p *LoglineHintProvider) queryRanges(
 	return aggregateShardRanges(shardRanges), stats, nil
 }
 
-// timeUnion merges ranges by time alone, across document shards. Ranges
+// TimeUnion merges ranges by time alone, across document shards. Ranges
 // without a document shard are returned as they are, so they must be
 // normalized.
-func timeUnion(ranges []HintTimeRange) []HintTimeRange {
+func TimeUnion(ranges []HintTimeRange) []HintTimeRange {
 	if !hasDocumentShards(ranges) {
 		return ranges
 	}
