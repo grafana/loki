@@ -139,6 +139,7 @@ Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/lok
 - The setting `-store.disable-broad-index-queries` (`storage_config.disable_broad_index_queries` in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The `chunks` block (`chunks:` under a `schema_config` `period_config` in the yaml file) has been removed as it only configured chunk tables for legacy storage backends that have been removed as well. TSDB stores chunks directly in object storage. Remove the `chunks` block from every `period_config`.
 - The `tags` setting (`tags:` under the `index` block of a `schema_config` `period_config` in the yaml file) has been removed as it only applied to managed tables of legacy storage backends that have been removed as well. Remove the `tags` setting from every `period_config`.
+- The setting `-store.query-chunk-limit` (`limits_config.max_chunks_per_query` in the yaml file) has been removed, because it stems from the pre-TSDB era and isn't been used with TSDB any more.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
