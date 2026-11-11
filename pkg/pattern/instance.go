@@ -389,7 +389,6 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 			metrics: make(map[string]map[string]*aggregatedMetrics),
 		}
 	}
-	// b is a copy, so it must be stored again for lastObserved to be kept.
 	b.lastObserved = time.Now()
 	i.aggMetrics[partition] = b
 
