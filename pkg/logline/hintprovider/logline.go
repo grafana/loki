@@ -116,8 +116,13 @@ func (p *LoglineHintProvider) queryRanges(
 	return aggregateShardRanges(shardRanges), stats, nil
 }
 
-// timeUnion merges ranges by time alone, across document shards.
+// timeUnion merges ranges by time alone, across document shards. Ranges
+// without a document shard are returned as they are, so they must be
+// normalized.
 func timeUnion(ranges []HintTimeRange) []HintTimeRange {
+	if !hasDocumentShards(ranges) {
+		return ranges
+	}
 	out := make([]HintTimeRange, len(ranges))
 	for i, r := range ranges {
 		out[i] = HintTimeRange{Start: r.Start, End: r.End}

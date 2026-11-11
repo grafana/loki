@@ -2,6 +2,7 @@ package hintprovider
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
@@ -51,7 +52,13 @@ func (k shardKey) String() string {
 // intersect only if one shard holds the other, and the result keeps the
 // narrower one; a range with zero shard bits holds every shard. The output may
 // hold overlapping ranges of one shard, which NormalizeRanges merges.
+//
+// When neither set has a document shard, both must be normalized
+// (NormalizeRanges), and so is the output.
 func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
+	if !hasDocumentShards(a) && !hasDocumentShards(b) {
+		return intersectTimeRanges(a, b)
+	}
 	out := []HintTimeRange{}
 	bShards := byDocumentShard(b)
 	for _, as := range byDocumentShard(a) {
@@ -91,6 +98,11 @@ func narrowerDocumentShard(a, b HintTimeRange) (HintTimeRange, bool) {
 		a, b = b, a
 	}
 	return b, b.DocumentShard>>(b.DocumentShardBits-a.DocumentShardBits) == a.DocumentShard
+}
+
+// hasDocumentShards reports whether any range is limited to a document shard.
+func hasDocumentShards(ranges []HintTimeRange) bool {
+	return slices.ContainsFunc(ranges, func(r HintTimeRange) bool { return r.DocumentShardBits > 0 })
 }
 
 // intersectTimeRanges intersects two sorted, non-overlapping range sets by
