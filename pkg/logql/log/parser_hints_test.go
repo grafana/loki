@@ -585,7 +585,7 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 	})
 
 	t.Run("a multi-label filter only lets the parser skip lines", func(t *testing.T) {
-		h := log.NewLabelFilterHints(stagesFor(t, `{app="foo"} | logfmt | foo > 5 and bar="baz"`))
+		h := log.NewLabelFilterHints(stagesFor(t, `{app="foo"} | logfmt | foo > 5 and bar="bazz"`))
 
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo"), 0)
 		lb.Set(log.ParsedLabel, "foo", "1")
@@ -595,7 +595,7 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 
 		lb.Reset()
 		require.False(t, h.ShouldParseLine([]byte("foo=1 bar=nope"), lb))
-		require.True(t, h.ShouldParseLine([]byte("foo=1 bar=baz"), lb))
+		require.True(t, h.ShouldParseLine([]byte("foo=1 bar=bazz"), lb))
 	})
 }
 

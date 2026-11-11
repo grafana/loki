@@ -60,8 +60,7 @@ type lineNeed interface {
 
 // lineLiteral needs the line to contain match.
 type lineLiteral struct {
-	match           []byte
-	caseInsensitive bool
+	match []byte
 
 	// escapes are the escape sequences that the parser can decode into a byte of match. A line
 	// with one of them can hold match without containing it.
@@ -69,7 +68,7 @@ type lineLiteral struct {
 }
 
 func (l lineLiteral) mayHold(line []byte) bool {
-	if contains(line, l.match, l.caseInsensitive) {
+	if bytes.Contains(line, l.match) {
 		return true
 	}
 	if len(l.escapes) == 0 || bytes.IndexByte(line, '\\') < 0 {
@@ -186,13 +185,19 @@ func valueNeed(f Filterer, values parserValues) lineNeed {
 	}
 }
 
+// minLiteralLen is the length of the shortest literal worth searching a line for. Shorter ones are
+// in too many lines to reject many.
+const minLiteralLen = 4
+
 // literalNeed returns what the line must contain for the parser to set a value that contains match.
+// A case-insensitive match requires nothing, because contains checks it a byte at a time, which
+// costs several case-sensitive searches.
 func literalNeed(match []byte, caseInsensitive bool, values parserValues) lineNeed {
-	if len(match) == 0 {
+	if caseInsensitive || len(match) < minLiteralLen {
 		return nil
 	}
 	if values == valuesVerbatim {
-		return lineLiteral{match: match, caseInsensitive: caseInsensitive}
+		return lineLiteral{match: match}
 	}
 
 	// The line can hold an escape such as `\"`, `\\` or `\t` instead of a quote, a backslash or a
@@ -208,8 +213,8 @@ func literalNeed(match []byte, caseInsensitive bool, values parserValues) lineNe
 	// contains the parts between the spaces.
 	var need allLineNeeds
 	for _, part := range bytes.Split(match, []byte(" ")) {
-		if len(part) > 0 {
-			need = append(need, decodedLiteral(part, caseInsensitive))
+		if len(part) >= minLiteralLen {
+			need = append(need, decodedLiteral(part))
 		}
 	}
 	switch len(need) {
@@ -229,7 +234,7 @@ var (
 
 // decodedLiteral needs the line to contain match, or an escape that json or logfmt can decode into
 // a byte of it. match has no quote, backslash or control character, which have escapes of their own.
-func decodedLiteral(match []byte, caseInsensitive bool) lineLiteral {
+func decodedLiteral(match []byte) lineLiteral {
 	escapes := [][]byte{unicodeEscape}
 	if bytes.IndexByte(match, '/') >= 0 {
 		escapes = append(escapes, slashEscape)
@@ -237,5 +242,5 @@ func decodedLiteral(match []byte, caseInsensitive bool) lineLiteral {
 	if bytes.IndexByte(match, '\'') >= 0 {
 		escapes = append(escapes, apostropheEscape)
 	}
-	return lineLiteral{match: match, caseInsensitive: caseInsensitive, escapes: escapes}
+	return lineLiteral{match: match, escapes: escapes}
 }
