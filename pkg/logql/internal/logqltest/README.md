@@ -292,6 +292,10 @@ Each `eval` runs on multiple execution stacks:
   aggregation that is not stream-first, because that source does not read data objects.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
+- `query-frontend + query-scheduler (sharding, timestamp-first, logline)` — the sharded timestamp-first
+  loop with the production Logline hint middleware over stored chunks.
+  Only eligible queries receive hints; unsupported queries, instant metric queries, and
+  `absent_over_time` intentionally bypass hints.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
   and stream-first execution on.
 - `query-frontend + query-scheduler (sharding, dataobj)` — the sharded stream-first loop over the
@@ -301,6 +305,13 @@ Each `eval` runs on multiple execution stacks:
   the samples before 90s from chunks.
 - `query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)` — the
   unsharded loop with max query series cutoff on in every engine.
+
+The logline fixture (`store_logline.go`) uses the production `builder.NewBuilder`, `ProcessStream`,
+`Prepare`, and `Upload` path, with `Clear` for cleanup. It publishes indexes and their metadata through
+the production store rather than handcrafting them, using the default index version and a 16s
+document interval. Before the next `eval` after an additive `load` or `clear`, `scriptStores.setStreams`
+rebuilds a shared snapshot of the current streams and synchronously polls the logline store, including
+for empty data. The logline stack runs without an ingester, Kafka builder service, or caches.
 
 Every stack runs with the default series limit of a tenant, which no script reaches.
 
