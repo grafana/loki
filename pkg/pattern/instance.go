@@ -55,15 +55,36 @@ type instance struct {
 	aggMetricsMtx sync.Mutex
 	aggMetrics    map[int32]metricsBucket // partition -> metricsBucket
 	samplePeriod  time.Duration
+	// clock returns the wall clock time. It is replaced in tests.
+	clock func() time.Time
 
 	metricWriter       aggregation.EntryWriter
 	patternWriter      aggregation.EntryWriter
 	aggregationMetrics *aggregation.Metrics
 }
 
+// idleBuckets is the number of sample periods a bucket must be idle for, with
+// no entries added, before Downsample writes it.
+const idleBuckets = 3
+
+// metricsBucket holds the aggregated metrics for one partition over one sample
+// period. A bucket covers the window [start, end).
 type metricsBucket struct {
-	start, end time.Time
-	metrics    map[string]map[string]*aggregatedMetrics
+	// The start of the window, inclusive. It truncated to the sample period, not
+	// the wall clock time, and is used as the timestamp for both the ts field and
+	// the log line timestamp when downsampling.
+	start time.Time
+	// The end of the window, exclusive. It is equal to start plus the sample
+	// period. Entries with a record time at or after end belong to a newer bucket.
+	end time.Time
+	// The wall clock time entries were last added. Downsample uses it to avoid
+	// writing a bucket before the window has expired. It cannot compare end to the
+	// wall clock, because with consumer lag end is in the past while the bucket is
+	// still being filled. Writing it then would split one window into several
+	// entries. Instead Downsample waits until the bucket has been idle, or later
+	// records start a new window.
+	lastObserved time.Time
+	metrics      map[string]map[string]*aggregatedMetrics
 }
 
 type aggregatedMetrics struct {
@@ -101,6 +122,7 @@ func newInstance(
 		volumeThreshold:    volumeThreshold,
 		aggMetrics:         make(map[int32]metricsBucket),
 		samplePeriod:       samplePeriod,
+		clock:              time.Now,
 		metricWriter:       metricWriter,
 		patternWriter:      patternWriter,
 		aggregationMetrics: aggregationMetrics,
@@ -365,8 +387,10 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 			end:     start.Add(i.samplePeriod),
 			metrics: make(map[string]map[string]*aggregatedMetrics),
 		}
-		i.aggMetrics[partition] = b
 	}
+	// b is a copy, so it must be stored again for lastObserved to be kept.
+	b.lastObserved = i.clock()
+	i.aggMetrics[partition] = b
 
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
@@ -390,22 +414,26 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	}
 }
 
-// Downsample writes the buckets whose sample period has ended.
+// Downsample writes the buckets that have not been observed for idleBuckets
+// sample periods. A newer record writes the bucket of its partition in Observe,
+// so this is for the buckets that no newer record will write, such as those of
+// partitions that were revoked or have stopped receiving records. It must not
+// write a bucket that is still being filled, as when a partition replays a
+// backlog, because the record time of that bucket is in the past.
 func (i *instance) Downsample(now time.Time) {
 	i.aggMetricsMtx.Lock()
 	defer i.aggMetricsMtx.Unlock()
 
 	for partition, b := range i.aggMetrics {
-		if b.end.After(now) {
-			continue
+		if now.Sub(b.lastObserved) >= idleBuckets*i.samplePeriod {
+			i.flushBucket(b)
+			delete(i.aggMetrics, partition)
 		}
-		i.flushBucket(b)
-		delete(i.aggMetrics, partition)
 	}
 }
 
-// flushBucket writes the aggregated metrics of the bucket, with the start of the
-// bucket as their timestamp. The caller must hold aggMetricsMtx and is
+// flushBucket writes the aggregated metrics of the bucket, with the start of
+// the bucket as their timestamp. The caller must hold aggMetricsMtx and is
 // responsible for removing the bucket.
 func (i *instance) flushBucket(b metricsBucket) {
 	ts := model.TimeFromUnixNano(b.start.UnixNano())

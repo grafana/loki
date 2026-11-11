@@ -368,10 +368,11 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
 		now := model.Now()
 		inst, mockWriter := setup(now.Time())
-		// Entries are written at the start of the bucket, once its sample period has ended.
+		// Entries are written at the start of the bucket, once the bucket has been
+		// idle for three sample periods.
 		bucket := inst.aggMetrics[testPartition]
 		start := model.TimeFromUnixNano(bucket.start.UnixNano())
-		inst.Downsample(bucket.end)
+		inst.Downsample(bucket.lastObserved.Add(3 * 10 * time.Second))
 
 		mockWriter.AssertCalled(
 			t,
@@ -1122,7 +1123,11 @@ func TestInstanceObserveWindows(t *testing.T) {
 		}
 		return entries
 	}
+	// wall is the wall clock of the instances created by setup. It is separate
+	// from the record time passed to Observe, as when a backlog is replayed.
+	var wall time.Time
 	setup := func(t *testing.T) (*instance, *mockEntryWriter) {
+		wall = window0
 		w := &mockEntryWriter{}
 		w.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		inst, err := newInstance(
@@ -1139,6 +1144,7 @@ func TestInstanceObserveWindows(t *testing.T) {
 			0.99,
 		)
 		require.NoError(t, err)
+		inst.clock = func() time.Time { return wall }
 		return inst, w
 	}
 	ctx := context.Background()
@@ -1216,9 +1222,38 @@ func TestInstanceObserveWindows(t *testing.T) {
 		require.Equal(t, uint64(1), inst.aggMetrics[lagging].metrics[lbs.String()][constants.LogLevelUnknown].count)
 		require.Equal(t, uint64(3), inst.aggMetrics[current].metrics[lbs.String()][constants.LogLevelUnknown].count)
 
-		// Downsample writes the bucket of each partition whose window has ended.
-		inst.Downsample(window1.Add(period))
+		// Downsample writes the bucket of each partition that has been idle for
+		// three sample periods.
+		inst.Downsample(wall.Add(3 * period))
 		w.AssertNumberOfCalls(t, "WriteEntry", 3)
+		require.Empty(t, inst.aggMetrics)
+	})
+
+	t.Run("downsample does not write a bucket that is still being observed", func(t *testing.T) {
+		inst, w := setup(t)
+		// The records are from window0, but the wall clock has moved on, as when a
+		// backlog is replayed.
+		inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second), testPartition)
+		wall = window0.Add(20 * time.Second)
+		inst.Observe(ctx, lbs.String(), lines(3), window0.Add(2*time.Second), testPartition)
+
+		// The window ended long ago in record time, but the bucket was observed 29s
+		// ago, which is less than three sample periods.
+		inst.Downsample(wall.Add(29 * time.Second))
+		w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		require.Len(t, inst.aggMetrics, 1)
+		require.Equal(t, uint64(5), inst.aggMetrics[testPartition].metrics[lbs.String()][constants.LogLevelUnknown].count)
+
+		// Once it has been idle for three sample periods it is written once, as a
+		// single entry with the totals of both calls.
+		inst.Downsample(wall.Add(30 * time.Second))
+		w.AssertNumberOfCalls(t, "WriteEntry", 1)
+		w.AssertCalled(t, "WriteEntry",
+			window0,
+			aggregation.AggregatedMetricEntry(model.TimeFromUnixNano(window0.UnixNano()), 50, 5, lbs),
+			labels.New(labels.Label{Name: constants.AggregatedMetricLabel, Value: "svc"}),
+			[]logproto.LabelAdapter{{Name: constants.LevelLabel, Value: constants.LogLevelUnknown}},
+		)
 		require.Empty(t, inst.aggMetrics)
 	})
 }
