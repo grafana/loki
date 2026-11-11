@@ -69,8 +69,8 @@ func NewLoglineHintProvider(
 	return p, nil
 }
 
-// QueryHints answers a hint lookup sent over the wire. logproto ranges carry
-// no document shard, so it returns the time union of the matching ranges.
+// QueryHints answers a hint lookup sent over the wire, with one range per
+// document shard like ProvideHints.
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
@@ -81,7 +81,7 @@ func (p *LoglineHintProvider) QueryHints(
 	if err != nil {
 		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
-	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(TimeUnion(ranges)), Stats: &snap}, nil
+	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(ranges), Stats: &snap}, nil
 }
 
 // queryRanges returns the ranges matching req, per document shard.
