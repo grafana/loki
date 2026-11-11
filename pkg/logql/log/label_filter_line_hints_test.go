@@ -133,6 +133,33 @@ func shouldParseLine(t *testing.T, query string, stream, metadata labels.Labels,
 	return false
 }
 
+// TestLabelFilterHints_LineFilterBeforeParser checks which line filters before the parser make a
+// value require nothing. The line does not contain the value, so the hints only let the parser
+// parse it when the value requires nothing.
+func TestLabelFilterHints_LineFilterBeforeParser(t *testing.T) {
+	lb := log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+	for _, tc := range []struct {
+		query string
+		want  bool
+	}{
+		{`{app="foo"} |= "abc123" | json | tenantId="abc123"`, true},
+		{`{app="foo"} |= "id=abc123;" | json | tenantId="abc123"`, true},
+		{`{app="foo"} |= "abc123" |= "defg" | json | tenantId="abc123"`, true},
+		{`{app="foo"} |= "abc123" != "defg" | json | tenantId="abc123"`, true},
+		{`{app="foo"} |= "abc123" | json | tenantId=~"abc123|defg"`, true},
+		{`{app="foo"} |= "abc1" | json | tenantId="abc123"`, false},
+		{`{app="foo"} |= "abc123" | json | tenantId="abc123" | foo="defg"`, false},
+		{`{app="foo"} |~ "(?i)abc123" | json | tenantId="abc123"`, false},
+		{`{app="foo"} |= "abc123" or "defg" | json | tenantId="abc123"`, false},
+		{`{app="foo"} |= "abc123" | line_format "{{.foo}}" | json | tenantId="abc123"`, false},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			h := log.NewLabelFilterHints(stagesFor(t, tc.query))
+			require.Equal(t, tc.want, h.ShouldParseLine([]byte(`{"tenantId":"zzz"}`), lb))
+		})
+	}
+}
+
 // TestLabelFilterHints_SameResults processes random lines with and without the hints, and requires
 // the same results.
 func TestLabelFilterHints_SameResults(t *testing.T) {

@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -110,7 +111,10 @@ func (a anyLineNeeds) mayHold(line []byte) bool {
 // sides of an `and`. Other filters, including `or`, add nothing, and neither do reserved `__` labels,
 // filters that accept the empty value, or a `=~` filter whose regexp does not simplify to literals,
 // such as `e[rx]ror`. It returns dst unchanged for parsers whose values are unknown.
-func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parserValues) []lineRequirement {
+//
+// guaranteed are literals that every line contains, because a line filter before the parser
+// requires them. A value that one of them contains requires nothing more.
+func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parserValues, guaranteed [][]byte) []lineRequirement {
 	if values == valuesUnknown {
 		return dst
 	}
@@ -120,8 +124,8 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 		if !f.And {
 			return dst
 		}
-		dst = appendLineRequirements(dst, f.Left, values)
-		return appendLineRequirements(dst, f.Right, values)
+		dst = appendLineRequirements(dst, f.Left, values, guaranteed)
+		return appendLineRequirements(dst, f.Right, values, guaranteed)
 	case *LineFilterLabelFilter:
 		if f.Type != labels.MatchEqual && f.Type != labels.MatchRegexp {
 			return dst
@@ -135,7 +139,7 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 			return dst
 		}
 
-		need := valueNeed(f.Filter, values)
+		need := valueNeed(f.Filter, values, guaranteed)
 		if need == nil {
 			return dst
 		}
@@ -145,18 +149,38 @@ func appendLineRequirements(dst []lineRequirement, f LabelFilterer, values parse
 	}
 }
 
+// appendLineFilterLiterals appends the case-sensitive literals that every line the line filter f
+// keeps contains, for `|=` filters and the filters that join them.
+func appendLineFilterLiterals(dst [][]byte, f Filterer) [][]byte {
+	switch f := f.(type) {
+	case *containsFilter:
+		if !f.caseInsensitive {
+			dst = append(dst, f.match)
+		}
+	case *containsAllFilter:
+		for _, m := range f.matches {
+			dst = appendLineFilterLiterals(dst, &m)
+		}
+	case andFilters:
+		for _, f := range f.filters {
+			dst = appendLineFilterLiterals(dst, f)
+		}
+	}
+	return dst
+}
+
 // valueNeed returns what the line must contain for the parser to set a value that f matches, or
 // nil when any line can hold one. f is the simplified filter of an `=` or `=~` label filter.
-func valueNeed(f Filterer, values parserValues) lineNeed {
+func valueNeed(f Filterer, values parserValues, guaranteed [][]byte) lineNeed {
 	switch f := f.(type) {
 	case equalFilter:
-		return literalNeed(f.match, f.caseInsensitive, values)
+		return literalNeed(f.match, f.caseInsensitive, values, guaranteed)
 	case *containsFilter:
-		return literalNeed(f.match, f.caseInsensitive, values)
+		return literalNeed(f.match, f.caseInsensitive, values, guaranteed)
 	case containsAllFilter:
 		var need allLineNeeds
 		for _, m := range f.matches {
-			if n := literalNeed(m.match, m.caseInsensitive, values); n != nil {
+			if n := literalNeed(m.match, m.caseInsensitive, values, guaranteed); n != nil {
 				need = append(need, n)
 			}
 		}
@@ -165,7 +189,7 @@ func valueNeed(f Filterer, values parserValues) lineNeed {
 		}
 		return need
 	case andFilter:
-		left, right := valueNeed(f.left, values), valueNeed(f.right, values)
+		left, right := valueNeed(f.left, values, guaranteed), valueNeed(f.right, values, guaranteed)
 		switch {
 		case left == nil:
 			return right
@@ -174,7 +198,7 @@ func valueNeed(f Filterer, values parserValues) lineNeed {
 		}
 		return allLineNeeds{left, right}
 	case orFilter:
-		left, right := valueNeed(f.left, values), valueNeed(f.right, values)
+		left, right := valueNeed(f.left, values, guaranteed), valueNeed(f.right, values, guaranteed)
 		if left == nil || right == nil {
 			return nil
 		}
@@ -192,8 +216,11 @@ const minLiteralLen = 4
 // literalNeed returns what the line must contain for the parser to set a value that contains match.
 // A case-insensitive match requires nothing, because contains checks it a byte at a time, which
 // costs several case-sensitive searches.
-func literalNeed(match []byte, caseInsensitive bool, values parserValues) lineNeed {
+func literalNeed(match []byte, caseInsensitive bool, values parserValues, guaranteed [][]byte) lineNeed {
 	if caseInsensitive || len(match) < minLiteralLen {
+		return nil
+	}
+	if slices.ContainsFunc(guaranteed, func(g []byte) bool { return bytes.Contains(g, match) }) {
 		return nil
 	}
 	if values == valuesVerbatim {

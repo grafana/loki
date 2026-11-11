@@ -215,6 +215,7 @@ type StageFunc struct {
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
 	hints          StageHints
+	lineFilter     Filterer // the line filter the stage runs, for the filters whose literals NewLabelFilterHints reads.
 }
 
 // NewStageFunc builds a StageFunc from its required label names, its hints, and its process function.

@@ -273,13 +273,23 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		return NoLabelFilterHints()
 	}
 
+	var guaranteed [][]byte
+	for _, s := range stages[:parserIdx] {
+		if s.Hints().CanModifyLine {
+			guaranteed = nil
+		}
+		if f, ok := s.(StageFunc); ok {
+			guaranteed = appendLineFilterLiterals(guaranteed, f.lineFilter)
+		}
+	}
+
 	values := parserValuesOf(stages[parserIdx])
 	for i := parserIdx + 1; i < len(stages); i++ {
 		s := stages[i]
 
 		addIfLabelFilterer(s)
 		if f, ok := s.(LabelFilterer); ok {
-			lineRequirements = appendLineRequirements(lineRequirements, f, values)
+			lineRequirements = appendLineRequirements(lineRequirements, f, values, guaranteed)
 		}
 
 		// we found a stage that modifies labels, all future filters are not eligible for the optimization
