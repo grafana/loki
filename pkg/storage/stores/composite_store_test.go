@@ -499,14 +499,14 @@ func TestFilterForTimeRange(t *testing.T) {
 			input:   mkRefs(0, 5),
 			from:    2,
 			through: 3,
-			exp:     mkChks(2, 3),
+			exp:     mkChks(1, 3),
 		},
 		{
 			desc:    "left overlap",
 			input:   mkRefs(0, 5),
 			from:    3,
 			through: 7,
-			exp:     mkChks(3, 5),
+			exp:     mkChks(2, 5),
 		},
 		{
 			desc:    "right overlap",
@@ -530,6 +530,19 @@ func TestFilterForTimeRange(t *testing.T) {
 				{ChunkRef: logproto.ChunkRef{From: 2, Through: 2}},
 				{ChunkRef: logproto.ChunkRef{From: 3, Through: 3}},
 				{ChunkRef: logproto.ChunkRef{From: 4, Through: 4}},
+			},
+		},
+		{
+			desc: "multi-entry chunk ending on query start boundary",
+			input: []*logproto.ChunkRef{
+				{From: 1, Through: 5}, // Through == from
+				{From: 6, Through: 10},
+			},
+			from:    5,
+			through: 8,
+			exp: []chunk.Chunk{
+				{ChunkRef: logproto.ChunkRef{From: 1, Through: 5}},
+				{ChunkRef: logproto.ChunkRef{From: 6, Through: 10}},
 			},
 		},
 	} {
