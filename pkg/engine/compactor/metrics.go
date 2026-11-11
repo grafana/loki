@@ -32,6 +32,9 @@ const (
 	failReasonPlan      = "plan"
 	failReasonStalePlan = "stale_plan"
 	failReasonExecute   = "execute"
+	// failReasonIndexRun means the log merge skipped the index objects of a
+	// run, because it can't compact a run yet.
+	failReasonIndexRun = "index_run"
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
@@ -52,7 +55,8 @@ type coordinatorMetrics struct {
 	tenantLogCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
 
 	// indexesRemovedTotal counts source indexes removed by compaction
-	// (cumulative). Use with indexesAddedTotal to compute net reduction:
+	// (cumulative). The index objects of one index run count as one index.
+	// Use with indexesAddedTotal to compute net reduction:
 	// removed - added = net_reduction.
 	indexesRemovedTotal *prometheus.CounterVec // tenant
 
@@ -116,7 +120,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	return &coordinatorMetrics{
 		unconsolidatedBacklog: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_unconsolidated_index_backlog",
-			Help: "Per-tenant count of nonterminal index runs beyond one. Steady state: 0.",
+			Help: "Per-tenant count of nonterminal sorted runs of indexes beyond one. Steady state: 0.",
 		}, []string{labelTenant}),
 		oldestBacklogLogAgeSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_oldest_backlog_log_age_seconds",
@@ -124,7 +128,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant raw index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
+			Help: "Per-tenant index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
 		}, []string{labelTenant}),
 
 		// Operational counters / histograms.
@@ -182,7 +186,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant, labelAge}),
 		logMergeFailedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
-			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), or execute (any other execution failure).",
+			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), execute (any other execution failure), or index_run (the index is a run, which log merge can't compact yet; a run counts once).",
 		}, []string{labelTenant, labelReason}),
 		indexMergeFailedGroupsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_index_merge_failed_groups_total",
@@ -202,7 +206,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		singleObjectLogRuns: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_single_object_log_runs",
-			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
+			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports, and index runs, which log merge skips. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
 		}, []string{labelTenant}),
 	}
 }

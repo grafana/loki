@@ -28,9 +28,9 @@ import (
 
 const prefetchBytes = 2 * 1024 * 1024
 
-// errCorruptIndex reports an index whose sections of one tenant do not share
-// one stream layout, or whose layout cannot be read. No retry can fix it, so
-// compaction skips it.
+// errCorruptIndex reports an index or index run whose sections of one tenant
+// do not share one stream layout, or whose layout cannot be read. No retry can
+// fix it, so compaction skips it.
 var errCorruptIndex = errors.New("corrupt index")
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
@@ -223,44 +223,26 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 
 const indexSectionReadConcurrency = 16
 
-// indexSectionRefsFor returns one bounded reference per postings section of
-// tenant in entries. It skips a postings section without rows.
-//
-// It also returns, for each index object of entries without postings rows of
-// tenant, a reference to its first stats section of tenant. Planning gives no
-// bounds to such an index object, but a merge of its run must still read and
-// remove it.
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], map[string]*compactionv2pb.SectionRef, error) {
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
 	type sectionRead struct {
 		objectPath   string
 		sectionIndex int64
 		section      *dataobj.Section
 	}
 
-	var (
-		reads      []sectionRead
-		firstStats = make(map[string]int64)
-	)
+	var reads []sectionRead
 	for _, entry := range entries {
 		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
+			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
 		for sectionIndex, section := range obj.Sections() {
-			if section.Tenant != tenant {
-				continue
-			}
-			switch {
-			case postings.CheckSection(section):
+			if postings.CheckSection(section) && section.Tenant == tenant {
 				reads = append(reads, sectionRead{
 					objectPath:   entry.Path,
 					sectionIndex: int64(sectionIndex),
 					section:      section,
 				})
-			case stats.CheckSection(section):
-				if _, ok := firstStats[entry.Path]; !ok {
-					firstStats[entry.Path] = int64(sectionIndex)
-				}
 			}
 		}
 	}
@@ -279,25 +261,16 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	refs := make([]v2.Section[indexSortKey], 0, len(results))
-	withRows := make(map[string]struct{})
 	for _, ref := range results {
 		if ref != nil {
 			refs = append(refs, *ref)
-			withRows[ref.Ref.ObjectPath] = struct{}{}
 		}
 	}
-
-	statsOnly := make(map[string]*compactionv2pb.SectionRef)
-	for path, sectionIndex := range firstStats {
-		if _, ok := withRows[path]; !ok {
-			statsOnly[path] = &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: sectionIndex}
-		}
-	}
-	return refs, statsOnly, nil
+	return refs, nil
 }
 
 func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {

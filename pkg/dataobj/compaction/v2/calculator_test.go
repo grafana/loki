@@ -32,69 +32,70 @@ func testSection(path string, index int64, minKey, maxKey testKey) Section[testK
 	}
 }
 
+// unitSection is testSection in the unit named unit.
+func unitSection(unit, path string, index int64, minKey, maxKey testKey) Section[testKey] {
+	section := testSection(path, index, minKey, maxKey)
+	section.Unit = unit
+	return section
+}
+
 func key(label string, timestamp int64) testKey {
 	return testKey{labels: []string{label}, timestamp: timestamp}
 }
 
-func TestGroupSectionsByObject(t *testing.T) {
-	sections := []Section[testKey]{
-		testSection("b", 1, key("h", 0), key("i", 0)),
-		testSection("a", 2, key("e", 0), key("f", 0)),
-		testSection("a", 0, key("c", 0), key("d", 0)),
-		testSection("b", 0, key("g", 0), key("h", 0)),
-		testSection("a", 1, key("a", 0), key("z", 0)),
-	}
-	original := append([]Section[testKey](nil), sections...)
+func TestGroupSectionsByUnit(t *testing.T) {
+	t.Run("groups the sections of each object in section index order", func(t *testing.T) {
+		sections := []Section[testKey]{
+			testSection("b", 1, key("h", 0), key("i", 0)),
+			testSection("a", 2, key("e", 0), key("f", 0)),
+			testSection("a", 0, key("c", 0), key("d", 0)),
+			testSection("b", 0, key("g", 0), key("h", 0)),
+			testSection("a", 1, key("a", 0), key("z", 0)),
+		}
+		original := append([]Section[testKey](nil), sections...)
 
-	got := groupSectionsByObject(sections, compareTestKey)
+		got := groupSectionsByUnit(sections, compareTestKey)
 
-	require.Equal(t, []object[testKey]{
-		{
-			path:     "a",
-			sections: []*compactionv2pb.SectionRef{sections[2].Ref, sections[4].Ref, sections[1].Ref},
-			min:      key("a", 0),
-			max:      key("z", 0),
-		},
-		{
-			path:     "b",
-			sections: []*compactionv2pb.SectionRef{sections[3].Ref, sections[0].Ref},
-			min:      key("g", 0),
-			max:      key("i", 0),
-		},
-	}, got)
-	require.Equal(t, original, sections, "grouping must not mutate the input")
-}
-
-func TestGroupSectionsByObject_OrdersTiesByMaxThenPath(t *testing.T) {
-	sections := []Section[testKey]{
-		testSection("z", 0, key("a", 0), key("c", 0)),
-		testSection("b", 0, key("a", 0), key("b", 0)),
-		testSection("a", 0, key("a", 0), key("b", 0)),
-	}
-
-	got := groupSectionsByObject(sections, compareTestKey)
-
-	require.Equal(t, []string{"a", "b", "z"}, []string{got[0].path, got[1].path, got[2].path})
-}
-
-func TestGroupSectionsByObject_Empty(t *testing.T) {
-	require.Empty(t, groupSectionsByObject([]Section[int](nil), cmp.Compare[int]))
-}
-
-func TestGroupSectionsByObject_NilRefPanics(t *testing.T) {
-	require.PanicsWithValue(t, "nil section reference", func() {
-		groupSectionsByObject([]Section[int]{{Min: 1, Max: 2}}, cmp.Compare[int])
+		require.Equal(t, []object[testKey]{
+			{
+				unit:     "a",
+				sections: []*compactionv2pb.SectionRef{sections[2].Ref, sections[4].Ref, sections[1].Ref},
+				min:      key("a", 0),
+				max:      key("z", 0),
+			},
+			{
+				unit:     "b",
+				sections: []*compactionv2pb.SectionRef{sections[3].Ref, sections[0].Ref},
+				min:      key("g", 0),
+				max:      key("i", 0),
+			},
+		}, got)
+		require.Equal(t, original, sections, "grouping must not mutate the input")
 	})
-}
 
-func TestGroupSectionsByObject_Units(t *testing.T) {
-	unitSection := func(unit, path string, index int64, minKey, maxKey testKey) Section[testKey] {
-		section := testSection(path, index, minKey, maxKey)
-		section.Unit = unit
-		return section
-	}
+	t.Run("orders units with equal lower bounds by upper bound, then by name", func(t *testing.T) {
+		sections := []Section[testKey]{
+			testSection("z", 0, key("a", 0), key("c", 0)),
+			testSection("b", 0, key("a", 0), key("b", 0)),
+			testSection("a", 0, key("a", 0), key("b", 0)),
+		}
 
-	t.Run("groups the objects of one unit into one group in key order", func(t *testing.T) {
+		got := groupSectionsByUnit(sections, compareTestKey)
+
+		require.Equal(t, []string{"a", "b", "z"}, []string{got[0].unit, got[1].unit, got[2].unit})
+	})
+
+	t.Run("returns no units for no sections", func(t *testing.T) {
+		require.Empty(t, groupSectionsByUnit([]Section[int](nil), cmp.Compare[int]))
+	})
+
+	t.Run("panics when a section has no reference", func(t *testing.T) {
+		require.PanicsWithValue(t, "nil section reference", func() {
+			groupSectionsByUnit([]Section[int]{{Min: 1, Max: 2}}, cmp.Compare[int])
+		})
+	})
+
+	t.Run("groups the objects of one unit into one unit in key order", func(t *testing.T) {
 		sections := []Section[testKey]{
 			unitSection("run", "run-b", 0, key("m", 0), key("z", 0)),
 			testSection("plain", 0, key("c", 0), key("d", 0)),
@@ -102,46 +103,22 @@ func TestGroupSectionsByObject_Units(t *testing.T) {
 			unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
 		}
 
-		got := groupSectionsByObject(sections, compareTestKey)
+		got := groupSectionsByUnit(sections, compareTestKey)
 
 		require.Equal(t, []object[testKey]{
 			{
-				path:     "run",
+				unit:     "run",
 				sections: []*compactionv2pb.SectionRef{sections[3].Ref, sections[2].Ref, sections[0].Ref},
 				min:      key("a", 0),
 				max:      key("z", 0),
 			},
 			{
-				path:     "plain",
+				unit:     "plain",
 				sections: []*compactionv2pb.SectionRef{sections[1].Ref},
 				min:      key("c", 0),
 				max:      key("d", 0),
 			},
 		}, got)
-	})
-
-	t.Run("puts the objects of one unit in one run when another object lies between them", func(t *testing.T) {
-		sections := []Section[testKey]{
-			unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
-			unitSection("run", "run-b", 0, key("y", 0), key("z", 0)),
-			testSection("plain", 0, key("m", 0), key("n", 0)),
-		}
-
-		runs := CalculateRuns(sections, compareTestKey)
-
-		require.Len(t, runs, 2)
-		require.Equal(t, []*compactionv2pb.SectionRef{sections[0].Ref, sections[1].Ref}, runs[0].Sections())
-		require.False(t, IsConverged(sections, compareTestKey))
-	})
-
-	t.Run("reports converged for the objects of one unit alone", func(t *testing.T) {
-		sections := []Section[testKey]{
-			unitSection("run", "run-a", 0, key("a", 0), key("m", 0)),
-			unitSection("run", "run-b", 0, key("n", 0), key("z", 0)),
-		}
-
-		require.True(t, IsConverged(sections, compareTestKey))
-		require.Len(t, CalculateRuns(sections, compareTestKey), 1)
 	})
 }
 
@@ -187,6 +164,15 @@ func TestCalculateRuns(t *testing.T) {
 				testSection("a", 0, key("api", 10), key("api", 20)),
 			},
 			want: [][]int64{{0, 1}},
+		},
+		{
+			name: "keeps the objects of one unit in one run when another object lies between them",
+			sections: []Section[testKey]{
+				unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
+				unitSection("run", "run-b", 1, key("y", 0), key("z", 0)),
+				testSection("plain", 2, key("m", 0), key("n", 0)),
+			},
+			want: [][]int64{{0, 1}, {2}},
 		},
 		{
 			name: "best fit",
@@ -285,6 +271,30 @@ func TestIsConverged(t *testing.T) {
 			sections: []Section[testKey]{
 				testSection("a", 0, key("a", 0), key("b", 0)),
 				testSection("b", 0, key("b", 0), key("c", 0)),
+			},
+			converged: true,
+		},
+		{
+			name: "reports converged for one unit whose objects do not overlap",
+			sections: []Section[testKey]{
+				unitSection("run", "run-a", 0, key("a", 0), key("m", 0)),
+				unitSection("run", "run-b", 0, key("n", 0), key("z", 0)),
+			},
+			converged: true,
+		},
+		{
+			name: "reports not converged when an object lies inside the bounds of a unit",
+			sections: []Section[testKey]{
+				unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
+				unitSection("run", "run-b", 0, key("y", 0), key("z", 0)),
+				testSection("plain", 0, key("m", 0), key("n", 0)),
+			},
+		},
+		{
+			name: "reports converged for one unit whose objects overlap, because planning sees only its bounds",
+			sections: []Section[testKey]{
+				unitSection("run", "run-a", 0, key("a", 0), key("n", 0)),
+				unitSection("run", "run-b", 0, key("m", 0), key("z", 0)),
 			},
 			converged: true,
 		},

@@ -54,10 +54,10 @@ var (
 	errChangeSuperseded = errors.New("ToC is missing paths to remove")
 )
 
-// ErrPartialRun means a change removes some index objects of a run and keeps
+// errPartialRun means a change removes some index objects of a run and keeps
 // the others. A query reads the index objects of a run as one index, so the
-// kept index objects would lose the postings of the removed ones.
-var ErrPartialRun = fmt.Errorf("%w: change removes only some index objects of a run", errUnrecoverable)
+// kept index objects would miss the postings of the removed ones.
+var errPartialRun = fmt.Errorf("%w: change removes only some index objects of a run", errUnrecoverable)
 
 // ErrWatermarkMismatch means the watermark in a ToC differs from the one the
 // caller expected.
@@ -86,11 +86,9 @@ type TableOfContentsEntry struct {
 	StartTime time.Time
 	EndTime   time.Time
 
-	// ShardBuckets is the shard layout of the tenant in the index object.
-	// Readers trust it. For an index object of no run, it must equal
-	// [indexobj.TenantShardBuckets] of the object. For an index object of a
-	// run, it must equal the shard layout of the run, even if the index object
-	// has no stats section that records it.
+	// ShardBuckets is the shard layout of the tenant in the index object. It
+	// must equal [indexobj.TenantShardBuckets] of the object, because readers
+	// trust it.
 	ShardBuckets indexpointers.ShardBuckets
 }
 
@@ -551,7 +549,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 
 	for runID, run := range runs {
 		if run.removed > 0 && run.removed < run.total {
-			return nil, fmt.Errorf("%w: run %d: %d of %d index objects", ErrPartialRun, runID, run.removed, run.total)
+			return nil, fmt.Errorf("%w: run %d: %d of %d index objects", errPartialRun, runID, run.removed, run.total)
 		}
 	}
 

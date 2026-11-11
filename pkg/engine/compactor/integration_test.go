@@ -747,7 +747,7 @@ func TestRunPlan(t *testing.T) {
 		seedSourceIndexObject(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), "acme")
 		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
 		entries := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
-		sections, _, err := indexSectionRefsFor(ctx, bucket, "acme", entries)
+		sections, err := indexSectionRefsFor(ctx, bucket, "acme", entries)
 		require.NoError(t, err)
 		specs := v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), "acme", c.cfg.MaxRunsPerTask)
 		require.Len(t, specs, 1)
@@ -1180,9 +1180,17 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, tenant, window,
 			pointer(runPaths[0], 1), pointer(runPaths[1], 1), pointer(runPaths[2], 1), pointer("indexes/plain", 0))
 
+		before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		runIDs := make(map[string]indexpointers.RunID)
+		for _, entry := range before {
+			runIDs[entry.Path] = entry.RunID
+		}
+		require.Equal(t, map[string]indexpointers.RunID{runPaths[0]: 1, runPaths[1]: 1, runPaths[2]: 1, "indexes/plain": 0}, runIDs)
+
 		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
-		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		stats, err := c.compactTenantIndexes(ctx, tenant, window, before)
 		require.NoError(t, err)
+		require.Equal(t, 2, stats.removed, "the index objects of the run count as one index")
 
 		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 		require.Len(t, after, 1, "the run and the other index must merge into one index")
@@ -1218,22 +1226,43 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
 		require.NoError(t, err)
 
-		// A task writes one plain index object, so the postings of the run must all land in one
-		// output.
 		outputsOfRun := make(map[string][]string)
 		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
 			require.NotContains(t, runPaths, entry.Path, "a task must replace every index object of the run")
-			postingRows, _ := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			postingRows, statRows := readIndexRows(ctx, t, bucket, tenant, entry.Path)
 			for _, row := range postingRows {
 				if row.ObjectPath == "logs/run" {
 					outputsOfRun[entry.Path] = append(outputsOfRun[entry.Path], row.ColumnName+"="+row.LabelValue)
 				}
 			}
+			for _, row := range statRows {
+				if row.ObjectPath == "logs/run" {
+					outputsOfRun[entry.Path] = append(outputsOfRun[entry.Path], "stats")
+				}
+			}
 		}
 		require.Len(t, outputsOfRun, 1, "one task must merge every index object of the run: %v", outputsOfRun)
 		for _, keys := range outputsOfRun {
-			require.ElementsMatch(t, []string{"app=api", "env=a"}, keys)
+			require.ElementsMatch(t, []string{"app=api", "env=a", "stats"}, keys)
 		}
+	})
+
+	t.Run("log merge skips a run, counts it and keeps the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		runPaths := seedRun(ctx, t, bucket, 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer(runPaths[0], 1), pointer(runPaths[1], 1), pointer(runPaths[2], 1))
+		before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		c.limits = integrationLimits{}
+		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(ctx, tenant))
+
+		require.Equal(t, before, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, failReasonIndexRun)))
 	})
 
 	t.Run("skips a run whose index objects record different layouts and keeps it in the ToC", func(t *testing.T) {
@@ -1255,13 +1284,45 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
 		require.NoError(t, err)
 
+		var runEntries, others []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			} else {
+				others = append(others, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/a", "indexes/run/b"}, runEntries)
+		require.Len(t, others, 1, "the other indexes must still merge")
+		require.NotContains(t, []string{"indexes/plain-0", "indexes/plain-1"}, others[0])
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+
+	t.Run("skips a run with a corrupt index object and keeps every index object of the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/a", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{stat("logs/run", "api")}})
+		buildMixedLayoutIndex(ctx, t, bucket, tenant, "indexes/run/corrupt")
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/a", 1), pointer("indexes/run/corrupt", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
 		var runEntries []string
 		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
 			if entry.RunID == 1 {
 				runEntries = append(runEntries, entry.Path)
 			}
 		}
-		require.ElementsMatch(t, []string{"indexes/run/a", "indexes/run/b"}, runEntries)
+		require.ElementsMatch(t, []string{"indexes/run/a", "indexes/run/corrupt"}, runEntries)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
 	})
 }

@@ -13,8 +13,12 @@ type run[K any] struct {
 	topMax   K
 }
 
+// object is one planning unit: one object, or the objects of one
+// [Section.Unit].
 type object[K any] struct {
-	path     string
+	// For a unit of one object without a Section.Unit, unit is the path of
+	// the object.
+	unit     string
 	sections []*compactionv2pb.SectionRef
 	min, max K
 }
@@ -29,10 +33,11 @@ func (r *run[K]) Size() uint64 {
 	return total
 }
 
-// groupSectionsByObject groups sections into their units. The sections of a
-// unit are in object order, by the lowest key of each object, and in section
-// index order within an object.
-func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K]) []object[K] {
+// groupSectionsByUnit groups sections into their units, and returns the units
+// sorted by bounds, then by unit name. The sections of a unit are in object
+// order, by the lowest key of each object, and in section index order within
+// an object.
+func groupSectionsByUnit[K any](sections []Section[K], compare CompareFunc[K]) []object[K] {
 	for _, section := range sections {
 		if section.Ref == nil {
 			panic("nil section reference")
@@ -63,7 +68,7 @@ func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K])
 		sortObjects(members, compare)
 
 		group := members[0]
-		group.path = unit
+		group.unit = unit
 		for _, member := range members[1:] {
 			group.sections = append(group.sections, member.sections...)
 			if compare(member.min, group.min) < 0 {
@@ -88,7 +93,7 @@ func newObject[K any](path string, sections []Section[K], compare CompareFunc[K]
 	})
 
 	obj := object[K]{
-		path:     path,
+		unit:     path,
 		sections: make([]*compactionv2pb.SectionRef, len(sections)),
 		min:      sections[0].Min,
 		max:      sections[0].Max,
@@ -105,7 +110,7 @@ func newObject[K any](path string, sections []Section[K], compare CompareFunc[K]
 	return obj
 }
 
-// sortObjects sorts objects by their bounds, then by path.
+// sortObjects sorts objects by their bounds, then by unit name.
 func sortObjects[K any](objects []object[K], compare CompareFunc[K]) {
 	sort.Slice(objects, func(i, j int) bool {
 		a, b := objects[i], objects[j]
@@ -115,14 +120,14 @@ func sortObjects[K any](objects []object[K], compare CompareFunc[K]) {
 		if n := compare(a.max, b.max); n != 0 {
 			return n < 0
 		}
-		return a.path < b.path
+		return a.unit < b.unit
 	})
 }
 
 func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K] {
-	// Place each object in the run with the greatest upper bound that still
-	// ends before this object starts. If no run is eligible, start a new one.
-	// An object is assumed to be internally sorted and is considered a single Run to simplify planning.
+	// Place each unit in the run with the greatest upper bound that still
+	// ends before the unit starts. If no run is eligible, start a new one.
+	// Planning assumes each unit is internally sorted, so it treats a unit as one block.
 	//
 	// When two runs have the same upper bound, the oldest run wins.
 	//
