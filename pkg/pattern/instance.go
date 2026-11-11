@@ -38,6 +38,9 @@ var tracer = otel.Tracer("pkg/pattern")
 
 const indexShards = 32
 
+// fakePartition is used in tests.
+const fakePartition int32 = -1
+
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
 	instanceID      string
@@ -55,8 +58,6 @@ type instance struct {
 	aggMetricsMtx sync.Mutex
 	aggMetrics    map[int32]metricsBucket // partition -> metricsBucket
 	samplePeriod  time.Duration
-	// clock returns the wall clock time. It is replaced in tests.
-	clock func() time.Time
 
 	metricWriter       aggregation.EntryWriter
 	patternWriter      aggregation.EntryWriter
@@ -122,7 +123,6 @@ func newInstance(
 		volumeThreshold:    volumeThreshold,
 		aggMetrics:         make(map[int32]metricsBucket),
 		samplePeriod:       samplePeriod,
-		clock:              time.Now,
 		metricWriter:       metricWriter,
 		patternWriter:      patternWriter,
 		aggregationMetrics: aggregationMetrics,
@@ -389,7 +389,7 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 		}
 	}
 	// b is a copy, so it must be stored again for lastObserved to be kept.
-	b.lastObserved = i.clock()
+	b.lastObserved = time.Now()
 	i.aggMetrics[partition] = b
 
 	for _, entry := range entries {
