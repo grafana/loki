@@ -2,6 +2,7 @@ package regexliteral
 
 import (
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 )
 
 func TestLiterals(t *testing.T) {
@@ -157,6 +159,24 @@ func TestNeedles(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, Needles(tc.pattern, tc.maxConjunctions).Prune().String())
+		})
+	}
+}
+
+func TestNeedles_OrCollapse(t *testing.T) {
+	upper := func(s string) (string, bool) { return strings.ToUpper(s), true }
+	for _, maxConjunctions := range []int{1, 2, 3, 4, 5, 64} {
+		t.Run(strconv.Itoa(maxConjunctions), func(t *testing.T) {
+			// The two regexes have five alternatives in total. Their shared
+			// text must survive both an OR over the cap and a later collapse.
+			e := needle.Or(maxConjunctions,
+				Needles(`(get|put) foo`, maxConjunctions).Map(upper),
+				Needles(`(1|2|3) foobaz`, maxConjunctions).Map(upper),
+			)
+			require.Equal(t, `{" FOO"}`, e.Collapse().Prune().String())
+			if maxConjunctions == 4 {
+				require.Equal(t, `{" FOO"}`, e.Prune().String())
+			}
 		})
 	}
 }

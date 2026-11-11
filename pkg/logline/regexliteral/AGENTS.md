@@ -49,6 +49,7 @@ and `TestLiterals` pins the one-conjunction behaviour.
    `maxConjunctions` 1 gives {verylongliteral}. Products of several runs in
    `And` can still collapse, which only drops precision.
 6. **Not pruned.** `Needles` does not call `Prune`. A later collapse in
-   the caller keeps the literals shared by every set, and pruning first can
-   remove one of them. The caller prunes the final requirement. `Literals`
-   prunes, because it is final.
+   the caller keeps the existing literals implied by every set, including
+   substrings of longer literals, and pruning first can remove one of them.
+   The caller prunes the final requirement. `Literals` prunes, because it is
+   final.
