@@ -76,16 +76,16 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 	return out
 }
 
-// byDocumentShard normalizes ranges and splits them into one list per
+// byDocumentShard normalizes ranges and splits them into one subslice per
 // document shard.
 func byDocumentShard(ranges []HintTimeRange) [][]HintTimeRange {
 	var out [][]HintTimeRange
 	normalized := NormalizeRanges(ranges)
-	for i, r := range normalized {
-		if i == 0 || r.documentShardKey() != normalized[i-1].documentShardKey() {
-			out = append(out, nil)
+	for start, i := 0, 1; i <= len(normalized); i++ {
+		if i == len(normalized) || normalized[i].documentShardKey() != normalized[start].documentShardKey() {
+			out = append(out, normalized[start:i])
+			start = i
 		}
-		out[len(out)-1] = append(out[len(out)-1], r)
 	}
 	return out
 }
