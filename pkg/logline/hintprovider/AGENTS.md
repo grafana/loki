@@ -55,7 +55,10 @@ Query-shape support and hint lookup for logline index lookups.
 8. **Only successful results are cached**
    - `ErrUnsupported` and all other errors are passthrough and never stored.
 9. **Cached payload is minimal**
-   - JSON stores only time ranges (`s`/`e` epoch millis).
+   - JSON stores only time ranges (`s`/`e` epoch millis) and their document
+     shard (`d`/`n`, omitted for ranges that cover every stream).
+   - A range without `d`/`n` decodes as covering every stream, so an entry
+     written without them reads as a superset under the same generation.
    - `HintTimeRange.Source` is diagnostic-only and intentionally omitted.
 10. **Per-request cache bypass is context-driven**
    - `WithSkipCache` and `SkipCache` propagate bypass state from request handling.
