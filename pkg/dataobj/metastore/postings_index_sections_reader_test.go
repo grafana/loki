@@ -29,7 +29,7 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 8192, nil, indexpointers.ShardBuckets{})
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-4*time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -61,7 +61,7 @@ func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, matchers, nil, 8192, nil, indexpointers.ShardBuckets{})
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 
 	// No org ID injected into the context.
@@ -81,7 +81,7 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 2, nil, indexpointers.ShardBuckets{})
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-4*time.Hour), now, matchers, nil, 2, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -108,7 +108,7 @@ func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 	})
 	defer closer()
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, nil, nil, 8192, nil, indexpointers.ShardBuckets{})
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-time.Hour), now, nil, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -118,7 +118,7 @@ func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 }
 
 func TestPostingsIndexSectionsReader_ReadBeforeOpenErrors(t *testing.T) {
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, nil, indexpointers.ShardBuckets{})
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, nil)
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
 	require.Nil(t, rec)
@@ -163,7 +163,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 		obj, closer := buildIndexObject(t, tenantID, observations, layouts...)
 		t.Cleanup(closer)
 		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-		reader := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now.Add(time.Hour), matchers, nil, 0, hashRange, tocBuckets)
+		reader := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj, shardBuckets: tocBuckets}}, now.Add(-time.Hour), now.Add(time.Hour), matchers, nil, 0, hashRange)
 		t.Cleanup(reader.Close)
 		return reader
 	}
@@ -175,7 +175,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	t.Run("maps the upper half of the hashes to the upper buckets of the layout that the index records", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err)
 		require.Equal(t, &postings.ShardBucketRange{From: 4, To: 7}, got)
 	})
@@ -183,7 +183,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	t.Run("returns no range when the range covers every bucket of the layout", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 0, To: math.MaxUint64}, eightBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err)
 		require.Nil(t, got)
 	})
@@ -191,7 +191,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	t.Run("fails when the stats sections record different layouts", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets, sixtyFourBuckets)
 
-		_, err := reader.shardBucketRange(ctx, tenantID)
+		_, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
 		require.ErrorIs(t, reader.Open(ctx), indexobj.ErrMixedLayouts)
 	})
@@ -202,7 +202,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 		tocBuckets := indexpointers.NewShardBuckets(sixtyFourBuckets.ShardLayout())
 		reader := setupWithToC(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, tocBuckets, eightBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err)
 		require.Equal(t, &postings.ShardBucketRange{From: 32, To: 63}, got)
 	})
@@ -211,7 +211,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 		tocBuckets := indexpointers.NewShardBuckets(eightBuckets.ShardLayout())
 		reader := setupWithToC(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, tocBuckets, eightBuckets, sixtyFourBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err, "the mixed layouts of the stats sections must not be read")
 		require.Equal(t, &postings.ShardBucketRange{From: 4, To: 7}, got)
 	})
