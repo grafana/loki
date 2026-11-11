@@ -16,7 +16,9 @@ type parserValues int
 
 const (
 	// valuesUnknown is for the parsers whose labels the line does not determine in a way the hints
-	// model, such as unpack, which replaces the line, and the expression parsers.
+	// model, such as unpack, which replaces the line, and the expression parsers. It is also for
+	// pattern, which parses a line in about the time a search of it takes, so a search pays off only
+	// when it skips more than half the lines.
 	valuesUnknown parserValues = iota
 
 	// valuesDecoded is for json and logfmt. They take the label name from a key and the value from
@@ -24,8 +26,8 @@ const (
 	// unescapes quoted values, and both replace invalid UTF-8 and U+FFFD in a value with a space.
 	valuesDecoded
 
-	// valuesVerbatim is for regexp and pattern. They take the label name from the query and the
-	// value is a slice of the line.
+	// valuesVerbatim is for regexp. It takes the label name from the query and the value is a
+	// slice of the line.
 	valuesVerbatim
 )
 
@@ -33,7 +35,7 @@ func parserValuesOf(parser Stage) parserValues {
 	switch parser.(type) {
 	case *JSONParser, *LogfmtParser:
 		return valuesDecoded
-	case *RegexpParser, *PatternParser:
+	case *RegexpParser:
 		return valuesVerbatim
 	default:
 		return valuesUnknown

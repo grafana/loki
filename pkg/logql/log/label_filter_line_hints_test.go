@@ -95,7 +95,7 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "logfmt: an apostrophe is escaped", query: `{app="foo"} | logfmt | name="o'brien"`, line: `name="o\'brien"`, want: true},
 		{name: "logfmt: the stream has the label", query: `{app="foo"} | logfmt | foo="abcd"`, stream: labels.FromStrings("app", "foo", "foo", "abcd"), line: `foo=zzz`, want: true},
 
-		// regexp and pattern take the value from the line as it is, and the label name from the query.
+		// regexp takes the value from the line as it is, and the label name from the query.
 		{name: "regexp: the line has the value", query: `{app="foo"} | regexp "tenant=(?P<tenant>\\w+)" | tenant="abc123"`, line: `tenant=abc123`, want: true},
 		{name: "regexp: the line does not have the value", query: `{app="foo"} | regexp "tenant=(?P<tenant>\\w+)" | tenant="abc123"`, line: `tenant=zzz`, want: false},
 		{name: "regexp: an escape is not decoded", query: `{app="foo"} | regexp "tenant=(?P<tenant>\\S+)" | tenant="abc123"`, line: `tenant=\u0061bc123`, want: false},
@@ -105,8 +105,7 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "regexp: a value with a quote is missing", query: `{app="foo"} | regexp "msg=(?P<msg>.*)" | msg="say \"hi\""`, line: `msg=say hi`, want: false},
 		{name: "regexp: the stream has the label", query: `{app="foo"} | regexp "tenant=(?P<tenant>\\w+)" | tenant="abc123"`, stream: labels.FromStrings("app", "foo", "tenant", "abc123"), line: `tenant=zzz`, want: true},
 		{name: "regexp: the structured metadata has the label", query: `{app="foo"} | regexp "tenant=(?P<tenant>\\w+)" | tenant="abc123"`, metadata: labels.FromStrings("tenant", "abc123"), line: `tenant=zzz`, want: true},
-		{name: "pattern: the line has the value", query: `{app="foo"} | pattern "<_> tenant=<tenant>" | tenant="abc123"`, line: `GET tenant=abc123`, want: true},
-		{name: "pattern: the line does not have the value", query: `{app="foo"} | pattern "<_> tenant=<tenant>" | tenant="abc123"`, line: `GET tenant=zzz`, want: false},
+		{name: "pattern requires nothing", query: `{app="foo"} | pattern "<_> tenant=<tenant>" | tenant="abc123"`, line: `GET tenant=zzz`, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := tc.stream
@@ -305,7 +304,6 @@ func BenchmarkLabelFilterHints_ShouldParseLine(b *testing.B) {
 		{"logfmt/equal", `{app="foo"} | logfmt | tenantId="` + tenant + `"`, logfmtLines},
 		{"logfmt/regexp", `{app="foo"} | logfmt | tenantId=~"6f1c2a9e.*"`, logfmtLines},
 		{"regexp/equal", `{app="foo"} | regexp "tenantId=(?P<tenantId>\\S+)" | tenantId="` + tenant + `"`, logfmtLines[:2]},
-		{"pattern/equal", `{app="foo"} | pattern "<_>tenantId=<tenantId>" | tenantId="` + tenant + `"`, logfmtLines[:2]},
 	} {
 		for _, l := range q.lines {
 			b.Run(q.name+"/"+l.name, func(b *testing.B) {
