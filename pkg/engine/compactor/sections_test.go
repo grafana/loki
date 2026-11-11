@@ -407,7 +407,7 @@ func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
 		{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, _, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[indexSortKey]{
 		{
@@ -437,7 +437,7 @@ func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
 		},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, _, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
 	require.NoError(t, err)
 	require.Len(t, refs, 2)
 	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
@@ -452,7 +452,7 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
 	}})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
+	refs, _, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
 }

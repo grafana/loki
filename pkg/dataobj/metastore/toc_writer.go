@@ -54,6 +54,11 @@ var (
 	errChangeSuperseded = errors.New("ToC is missing paths to remove")
 )
 
+// ErrPartialRun means a change removes some index objects of a run and keeps
+// the others. A query reads the index objects of a run as one index, so the
+// kept index objects would lose the postings of the removed ones.
+var ErrPartialRun = fmt.Errorf("%w: change removes only some index objects of a run", errUnrecoverable)
+
 // ErrWatermarkMismatch means the watermark in a ToC differs from the one the
 // caller expected.
 var ErrWatermarkMismatch = errors.New("ToC watermark differs from the expected value")
@@ -81,9 +86,11 @@ type TableOfContentsEntry struct {
 	StartTime time.Time
 	EndTime   time.Time
 
-	// ShardBuckets is the shard layout of the tenant in the index object. It
-	// must equal [indexobj.TenantShardBuckets] of the object, because readers
-	// trust it.
+	// ShardBuckets is the shard layout of the tenant in the index object.
+	// Readers trust it. For an index object of no run, it must equal
+	// [indexobj.TenantShardBuckets] of the object. For an index object of a
+	// run, it must equal the shard layout of the run, even if the index object
+	// has no stats section that records it.
 	ShardBuckets indexpointers.ShardBuckets
 }
 
@@ -462,6 +469,10 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		removed = make(map[string]struct{}, len(change.remove))
 		// current is the watermark in existing that change.watermark raises.
 		current *int64
+
+		// runs counts the pointers of each run in existing, and the pointers
+		// of each run that change removes.
+		runs = make(map[indexpointers.RunID]struct{ total, removed int })
 	)
 	if buf.Len() > 0 {
 		tocObject, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -473,7 +484,16 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 
 		err = forEachTocPointer(ctx, tocObject, func(pointer indexpointers.IndexPointer) error {
-			if _, ok := change.remove[pointer.Path]; ok {
+			_, remove := change.remove[pointer.Path]
+			if pointer.RunID != 0 {
+				run := runs[pointer.RunID]
+				run.total++
+				if remove {
+					run.removed++
+				}
+				runs[pointer.RunID] = run
+			}
+			if remove {
 				removed[pointer.Path] = struct{}{}
 				return nil
 			}
@@ -527,6 +547,12 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 
 	if len(removed) == 0 && holdsEveryEntry && change.watermark == nil {
 		return nil, errChangeAlreadyApplied
+	}
+
+	for runID, run := range runs {
+		if run.removed > 0 && run.removed < run.total {
+			return nil, fmt.Errorf("%w: run %d: %d of %d index objects", ErrPartialRun, runID, run.removed, run.total)
+		}
 	}
 
 	if change.watermark != nil {

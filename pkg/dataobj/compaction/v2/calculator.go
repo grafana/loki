@@ -29,6 +29,9 @@ func (r *run[K]) Size() uint64 {
 	return total
 }
 
+// groupSectionsByObject groups sections into their units. The sections of a
+// unit are in object order, by the lowest key of each object, and in section
+// index order within an object.
 func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K]) []object[K] {
 	for _, section := range sections {
 		if section.Ref == nil {
@@ -36,38 +39,74 @@ func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K])
 		}
 	}
 
-	byPath := make(map[string][]Section[K])
+	unitOf := func(section Section[K]) string {
+		if section.Unit != "" {
+			return section.Unit
+		}
+		return section.Ref.ObjectPath
+	}
+	byUnit := make(map[string]map[string][]Section[K])
 	for _, section := range sections {
-		path := section.Ref.ObjectPath
-		byPath[path] = append(byPath[path], section)
+		unit := unitOf(section)
+		if byUnit[unit] == nil {
+			byUnit[unit] = make(map[string][]Section[K])
+		}
+		byUnit[unit][section.Ref.ObjectPath] = append(byUnit[unit][section.Ref.ObjectPath], section)
 	}
 
-	objects := make([]object[K], 0, len(byPath))
-	for path, objectSections := range byPath {
-		// Sort indexes
-		sort.Slice(objectSections, func(i, j int) bool {
-			a, b := objectSections[i], objectSections[j]
-			return a.Ref.SectionIndex < b.Ref.SectionIndex
-		})
-
-		group := object[K]{
-			path:     path,
-			sections: make([]*compactionv2pb.SectionRef, len(objectSections)),
-			min:      objectSections[0].Min,
-			max:      objectSections[0].Max,
+	objects := make([]object[K], 0, len(byUnit))
+	for unit, byPath := range byUnit {
+		members := make([]object[K], 0, len(byPath))
+		for path, objectSections := range byPath {
+			members = append(members, newObject(path, objectSections, compare))
 		}
-		for i, section := range objectSections {
-			group.sections[i] = section.Ref
-			if compare(section.Min, group.min) < 0 {
-				group.min = section.Min
+		sortObjects(members, compare)
+
+		group := members[0]
+		group.path = unit
+		for _, member := range members[1:] {
+			group.sections = append(group.sections, member.sections...)
+			if compare(member.min, group.min) < 0 {
+				group.min = member.min
 			}
-			if compare(section.Max, group.max) > 0 {
-				group.max = section.Max
+			if compare(member.max, group.max) > 0 {
+				group.max = member.max
 			}
 		}
 		objects = append(objects, group)
 	}
 
+	sortObjects(objects, compare)
+	return objects
+}
+
+// newObject returns the object at path that holds sections, with its sections
+// in section index order.
+func newObject[K any](path string, sections []Section[K], compare CompareFunc[K]) object[K] {
+	sort.Slice(sections, func(i, j int) bool {
+		return sections[i].Ref.SectionIndex < sections[j].Ref.SectionIndex
+	})
+
+	obj := object[K]{
+		path:     path,
+		sections: make([]*compactionv2pb.SectionRef, len(sections)),
+		min:      sections[0].Min,
+		max:      sections[0].Max,
+	}
+	for i, section := range sections {
+		obj.sections[i] = section.Ref
+		if compare(section.Min, obj.min) < 0 {
+			obj.min = section.Min
+		}
+		if compare(section.Max, obj.max) > 0 {
+			obj.max = section.Max
+		}
+	}
+	return obj
+}
+
+// sortObjects sorts objects by their bounds, then by path.
+func sortObjects[K any](objects []object[K], compare CompareFunc[K]) {
 	sort.Slice(objects, func(i, j int) bool {
 		a, b := objects[i], objects[j]
 		if n := compare(a.min, b.min); n != 0 {
@@ -78,7 +117,6 @@ func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K])
 		}
 		return a.path < b.path
 	})
-	return objects
 }
 
 func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K] {

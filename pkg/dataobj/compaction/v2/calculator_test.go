@@ -87,6 +87,64 @@ func TestGroupSectionsByObject_NilRefPanics(t *testing.T) {
 	})
 }
 
+func TestGroupSectionsByObject_Units(t *testing.T) {
+	unitSection := func(unit, path string, index int64, minKey, maxKey testKey) Section[testKey] {
+		section := testSection(path, index, minKey, maxKey)
+		section.Unit = unit
+		return section
+	}
+
+	t.Run("groups the objects of one unit into one group in key order", func(t *testing.T) {
+		sections := []Section[testKey]{
+			unitSection("run", "run-b", 0, key("m", 0), key("z", 0)),
+			testSection("plain", 0, key("c", 0), key("d", 0)),
+			unitSection("run", "run-a", 1, key("e", 0), key("f", 0)),
+			unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
+		}
+
+		got := groupSectionsByObject(sections, compareTestKey)
+
+		require.Equal(t, []object[testKey]{
+			{
+				path:     "run",
+				sections: []*compactionv2pb.SectionRef{sections[3].Ref, sections[2].Ref, sections[0].Ref},
+				min:      key("a", 0),
+				max:      key("z", 0),
+			},
+			{
+				path:     "plain",
+				sections: []*compactionv2pb.SectionRef{sections[1].Ref},
+				min:      key("c", 0),
+				max:      key("d", 0),
+			},
+		}, got)
+	})
+
+	t.Run("puts the objects of one unit in one run when another object lies between them", func(t *testing.T) {
+		sections := []Section[testKey]{
+			unitSection("run", "run-a", 0, key("a", 0), key("b", 0)),
+			unitSection("run", "run-b", 0, key("y", 0), key("z", 0)),
+			testSection("plain", 0, key("m", 0), key("n", 0)),
+		}
+
+		runs := CalculateRuns(sections, compareTestKey)
+
+		require.Len(t, runs, 2)
+		require.Equal(t, []*compactionv2pb.SectionRef{sections[0].Ref, sections[1].Ref}, runs[0].Sections())
+		require.False(t, IsConverged(sections, compareTestKey))
+	})
+
+	t.Run("reports converged for the objects of one unit alone", func(t *testing.T) {
+		sections := []Section[testKey]{
+			unitSection("run", "run-a", 0, key("a", 0), key("m", 0)),
+			unitSection("run", "run-b", 0, key("n", 0), key("z", 0)),
+		}
+
+		require.True(t, IsConverged(sections, compareTestKey))
+		require.Len(t, CalculateRuns(sections, compareTestKey), 1)
+	})
+}
+
 func TestCalculateRuns(t *testing.T) {
 	tests := []struct {
 		name     string

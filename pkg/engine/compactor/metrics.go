@@ -124,7 +124,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant raw index count for the current ToC window. Bounded cardinality (1 series per tenant).",
+			Help: "Per-tenant raw index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
 		}, []string{labelTenant}),
 
 		// Operational counters / histograms.
@@ -142,7 +142,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
-			Help: "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
+			Help: "Cumulative count of source indexes removed from the ToC by successful tenant cycles. The index objects of one run count as one index.",
 		}, []string{labelTenant}),
 		indexesAddedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_added_total",

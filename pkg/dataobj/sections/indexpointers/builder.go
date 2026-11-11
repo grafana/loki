@@ -35,9 +35,11 @@ type IndexPointer struct {
 	// key.
 	PostingKeys postings.KeyRange
 
-	// ShardBuckets is the shard layout of the tenant in the index object. It
-	// must equal the layout that indexobj.TenantShardLayout reads from the
-	// object, because readers trust it.
+	// ShardBuckets is the shard layout of the tenant in the index object.
+	// Readers trust it. For an index object of no run, it must equal the
+	// layout that indexobj.TenantShardLayout reads from the object. For an
+	// index object of a run, it must equal the shard layout of the run, even
+	// if the index object has no stats section that records it.
 	ShardBuckets ShardBuckets
 }
 

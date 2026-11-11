@@ -14,6 +14,14 @@ type Section[K any] struct {
 	Ref      *compactionv2pb.SectionRef
 	Min, Max K
 
+	// Unit names the indivisible unit that holds the section. Planning keeps
+	// the sections of one unit together, in one run and one task. An empty
+	// Unit makes the object of the section its unit.
+	//
+	// The objects of one unit must hold sorted, non-overlapping key ranges,
+	// like the index objects of a run that a compaction splits by key.
+	Unit string
+
 	// Keys holds the size of each key in the section, in any order. An empty
 	// Keys means the sizes are unknown, not that the section holds no key.
 	Keys []KeySize[K]
@@ -28,7 +36,8 @@ type Run interface {
 }
 
 // CalculateRuns groups sections into N disjoint, contiguous runs based on the Min and Max sort keys.
-// Sections of the same object are treated as one indivisible unit and always land in the same run.
+// Sections of the same unit, by default the same object, are treated as one indivisible unit and
+// always land in the same run. See [Section.Unit].
 // It panics if a section has a nil Ref.
 func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 	if len(sections) == 0 {

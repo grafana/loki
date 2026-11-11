@@ -38,6 +38,10 @@ type indexEntry struct {
 	Path  string
 	Start time.Time
 	End   time.Time
+
+	// RunID is the run that holds the index object. The zero value means the
+	// index object is in no run.
+	RunID indexpointers.RunID
 }
 
 // logSortPrefix is the planner key for log sections. It orders by the shared
@@ -192,6 +196,18 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 					}
 					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
 				}
+			case indexpointers.ColumnTypeRunID:
+				values := col.(*array.Int64)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					runID, err := indexpointers.RunIDFromValue(values.Value(rIdx))
+					if err != nil {
+						return nil, fmt.Errorf("decoding index pointer %d: %w", rIdx, err)
+					}
+					scratch[rIdx].RunID = runID
+				}
 			}
 		}
 
@@ -207,26 +223,44 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 
 const indexSectionReadConcurrency = 16
 
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
+// indexSectionRefsFor returns one bounded reference per postings section of
+// tenant in entries. It skips a postings section without rows.
+//
+// It also returns, for each index object of entries without postings rows of
+// tenant, a reference to its first stats section of tenant. Planning gives no
+// bounds to such an index object, but a merge of its run must still read and
+// remove it.
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], map[string]*compactionv2pb.SectionRef, error) {
 	type sectionRead struct {
 		objectPath   string
 		sectionIndex int64
 		section      *dataobj.Section
 	}
 
-	var reads []sectionRead
+	var (
+		reads      []sectionRead
+		firstStats = make(map[string]int64)
+	)
 	for _, entry := range entries {
 		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
-			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
+			return nil, nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
 		for sectionIndex, section := range obj.Sections() {
-			if postings.CheckSection(section) && section.Tenant == tenant {
+			if section.Tenant != tenant {
+				continue
+			}
+			switch {
+			case postings.CheckSection(section):
 				reads = append(reads, sectionRead{
 					objectPath:   entry.Path,
 					sectionIndex: int64(sectionIndex),
 					section:      section,
 				})
+			case stats.CheckSection(section):
+				if _, ok := firstStats[entry.Path]; !ok {
+					firstStats[entry.Path] = int64(sectionIndex)
+				}
 			}
 		}
 	}
@@ -245,16 +279,25 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	refs := make([]v2.Section[indexSortKey], 0, len(results))
+	withRows := make(map[string]struct{})
 	for _, ref := range results {
 		if ref != nil {
 			refs = append(refs, *ref)
+			withRows[ref.Ref.ObjectPath] = struct{}{}
 		}
 	}
-	return refs, nil
+
+	statsOnly := make(map[string]*compactionv2pb.SectionRef)
+	for path, sectionIndex := range firstStats {
+		if _, ok := withRows[path]; !ok {
+			statsOnly[path] = &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: sectionIndex}
+		}
+	}
+	return refs, statsOnly, nil
 }
 
 func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {
