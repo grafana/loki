@@ -28,8 +28,7 @@ type RunFile struct {
 
 // SplitIndexesIntoRuns replaces every index object with a run of at most parts
 // index objects, split by posting key as the compactor will split them. It
-// returns the index objects of
-// every run. Call it after [Builder.Close].
+// returns the index objects of every run. Call it after [Builder.Close].
 //
 // Each index object of a run holds the postings of a contiguous range of
 // posting keys, and never splits the rows of one key. The first index object
