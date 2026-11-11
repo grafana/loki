@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestGroupIndexRuns(t *testing.T) {
@@ -66,7 +66,7 @@ func TestIndexRun_String(t *testing.T) {
 
 func TestLayoutGroup_CompleteTasks(t *testing.T) {
 	newGroup := func(runs ...indexRun) *layoutGroup {
-		group := newLayoutGroup(indexpointers.ShardBuckets{})
+		group := newLayoutGroup(streams.Layout{}, false)
 		for _, run := range runs {
 			group.add(run)
 		}
@@ -133,7 +133,7 @@ func TestLayoutGroup_CompleteTasks(t *testing.T) {
 }
 
 func TestLayoutGroup_CountRuns(t *testing.T) {
-	group := newLayoutGroup(indexpointers.ShardBuckets{})
+	group := newLayoutGroup(streams.Layout{}, false)
 	group.add(indexRun{entries: []indexEntry{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
 	group.add(indexRun{entries: []indexEntry{{Path: "plain"}}})
 

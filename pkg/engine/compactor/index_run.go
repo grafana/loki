@@ -6,6 +6,7 @@ import (
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // indexRun is the index objects of one run in a ToC, which compaction plans,
@@ -85,19 +86,31 @@ func (r indexRun) String() string {
 //
 // The zero value is not usable. Use [newLayoutGroup].
 type layoutGroup struct {
-	// shardBuckets is the shard layout of the index runs. It is the zero
-	// ShardBuckets if the index runs have no stats sections, so they have no
-	// layout.
-	shardBuckets indexpointers.ShardBuckets
-	runs         []indexRun
+	// layout is the stream layout of the index runs. It has no meaning when
+	// hasLayout is false, because the index runs have no stats sections.
+	layout    streams.Layout
+	hasLayout bool
+
+	runs []indexRun
 
 	// runOfPath maps the path of each index object of runs to its index in
 	// runs.
 	runOfPath map[string]int
 }
 
-func newLayoutGroup(shardBuckets indexpointers.ShardBuckets) *layoutGroup {
-	return &layoutGroup{shardBuckets: shardBuckets, runOfPath: make(map[string]int)}
+// newLayoutGroup returns an empty group of the index runs with layout.
+// hasLayout is false for the group of the index runs without stats sections.
+func newLayoutGroup(layout streams.Layout, hasLayout bool) *layoutGroup {
+	return &layoutGroup{layout: layout, hasLayout: hasLayout, runOfPath: make(map[string]int)}
+}
+
+// shardBuckets returns the shard layout of the index runs of g, as a ToC entry
+// records it. It is the zero ShardBuckets if g has no layout.
+func (g *layoutGroup) shardBuckets() indexpointers.ShardBuckets {
+	if !g.hasLayout {
+		return indexpointers.ShardBuckets{}
+	}
+	return indexpointers.NewShardBuckets(g.layout.ShardLayout())
 }
 
 // add adds run to g. run must not share an index object with a run of g.

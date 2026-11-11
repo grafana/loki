@@ -14,15 +14,14 @@ type Section[K any] struct {
 	Ref      *compactionv2pb.SectionRef
 	Min, Max K
 
-	// Unit names the indivisible unit that holds the section. Planning keeps
-	// the sections of one unit together, in one run and one task. An empty
-	// Unit makes the object of the section its unit, named by its path.
+	// Unit names the indivisible unit that holds the section, for example
+	// one logs object, or the index objects of one index run. Planning keeps
+	// the sections of one unit together, in one run and one task. Unit must
+	// not be empty.
 	//
-	// A Unit must not equal the path of an object outside the unit, or the two
-	// would merge into one unit. Planning uses the lowest and the highest
-	// bound of a unit. If the objects of a unit overlap, it can't see the
-	// overlap, and IsConverged can report a unit as converged when its objects
-	// overlap.
+	// Planning uses the lowest and the highest bound of a unit. If the objects
+	// of a unit overlap, it can't see the overlap, and IsConverged can report
+	// a unit as converged when its objects overlap.
 	Unit string
 
 	// Keys holds the size of each key in the section, in any order. An empty
@@ -59,18 +58,18 @@ func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 // overlap. Touching bounds are considered converged because rewriting cannot remove their
 // ambiguity. It does not mutate sections.
 func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
-	objects := groupSectionsByUnit(sections, compare)
-	if len(objects) <= 1 {
+	units := groupSectionsByUnit(sections, compare)
+	if len(units) <= 1 {
 		return true
 	}
 
-	maxKey := objects[0].max
-	for _, obj := range objects[1:] {
-		if compare(maxKey, obj.min) > 0 {
+	maxKey := units[0].max
+	for _, u := range units[1:] {
+		if compare(maxKey, u.min) > 0 {
 			return false
 		}
-		if compare(obj.max, maxKey) > 0 {
-			maxKey = obj.max
+		if compare(u.max, maxKey) > 0 {
+			maxKey = u.max
 		}
 	}
 	return true

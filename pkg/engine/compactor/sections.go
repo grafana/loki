@@ -312,13 +312,16 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 	if compareIndexSortKey(minKey, maxKey) > 0 {
 		return nil, errors.New("postings section bounds are out of order")
 	}
+	// The index object is the unit of its sections. The caller joins the
+	// index objects of one index run into one unit.
 	return &v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
 			ObjectPath:   objectPath,
 			SectionIndex: sectionIndex,
 		},
-		Min: minKey,
-		Max: maxKey,
+		Min:  minKey,
+		Max:  maxKey,
+		Unit: objectPath,
 	}, nil
 }
 
@@ -457,7 +460,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
+					// A log merge rewrites whole logs objects, so each logs
+					// object is a planning unit.
 					bySection[id] = &v2.Section[logSortPrefix]{
+						Unit: intern(interned, stat.ObjectPath),
 						Ref: &compactionv2pb.SectionRef{
 							ObjectPath:       intern(interned, stat.ObjectPath),
 							SectionIndex:     stat.SectionIndex,

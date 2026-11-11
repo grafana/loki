@@ -2451,9 +2451,10 @@ func TestRunLogMergePhase(t *testing.T) {
 func TestCountSingleObjectRuns(t *testing.T) {
 	section := func(path string, index int64, minKey, maxKey string) v2.Section[string] {
 		return v2.Section[string]{
-			Ref: &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index},
-			Min: minKey,
-			Max: maxKey,
+			Ref:  &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index},
+			Min:  minKey,
+			Max:  maxKey,
+			Unit: path,
 		}
 	}
 

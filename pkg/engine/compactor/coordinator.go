@@ -537,17 +537,13 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		}
 		// An index run without stats sections for tenant has no layout. Such
 		// runs share the zero key, so they merge only with each other.
-		var (
-			key          layoutKey
-			shardBuckets indexpointers.ShardBuckets
-		)
+		var key layoutKey
 		if ok {
 			key = newLayoutKey(layout)
-			shardBuckets = indexpointers.NewShardBuckets(layout.ShardLayout())
 		}
 		group, found := groups[key]
 		if !found {
-			group = newLayoutGroup(shardBuckets)
+			group = newLayoutGroup(layout, ok)
 			groups[key] = group
 		}
 		group.add(run)
@@ -677,7 +673,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		newEntries[i] = metastore.TableOfContentsEntry{
 			StartTime:    start.UTC(),
 			EndTime:      end.UTC(),
-			ShardBuckets: group.shardBuckets,
+			ShardBuckets: group.shardBuckets(),
 		}
 	}
 

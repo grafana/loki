@@ -240,8 +240,9 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: newLogSortPrefix(0, []string{"auth"}),
-			Max: newLogSortPrefix(0, []string{"billing"}),
+			Unit: "logs/log-0",
+			Min:  newLogSortPrefix(0, []string{"auth"}),
+			Max:  newLogSortPrefix(0, []string{"billing"}),
 			Keys: []v2.KeySize[logSortPrefix]{
 				{Key: newLogSortPrefix(0, []string{"auth"}), UncompressedSize: 300},
 				{Key: newLogSortPrefix(0, []string{"billing"}), UncompressedSize: 200},
@@ -301,6 +302,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
+			Unit: "logs/log-0",
 			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
 			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
 			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
@@ -411,9 +413,10 @@ func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[indexSortKey]{
 		{
-			Ref: &compactionv2pb.SectionRef{ObjectPath: path},
-			Min: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
-			Max: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+			Ref:  &compactionv2pb.SectionRef{ObjectPath: path},
+			Unit: path,
+			Min:  indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+			Max:  indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
 		},
 	}, refs)
 }

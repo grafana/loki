@@ -14,7 +14,7 @@ import (
 // splitTestSection returns a section of object path that holds the given
 // sizes of service_name values in shard bucket 0.
 func splitTestSection(path string, sizes map[string]uint64) v2.Section[logSortPrefix] {
-	section := v2.Section[logSortPrefix]{Ref: &compactionv2pb.SectionRef{ObjectPath: path}}
+	section := v2.Section[logSortPrefix]{Ref: &compactionv2pb.SectionRef{ObjectPath: path}, Unit: path}
 	for service, size := range sizes {
 		section.Keys = append(section.Keys, v2.KeySize[logSortPrefix]{Key: newLogSortPrefix(0, []string{service}), UncompressedSize: size})
 		section.Ref.UncompressedSize += int64(size)

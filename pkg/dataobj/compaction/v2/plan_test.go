@@ -92,8 +92,8 @@ func TestCalculateRuns_WrapsRunsWithoutMutatingInput(t *testing.T) {
 	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 5}
 	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, UncompressedSize: 7}
 	input := []Section[int]{
-		{Ref: b, Min: 30, Max: 40},
-		{Ref: a, Min: 10, Max: 20},
+		{Ref: b, Min: 30, Max: 40, Unit: "b"},
+		{Ref: a, Min: 10, Max: 20, Unit: "a"},
 	}
 	original := append([]Section[int](nil), input...)
 
