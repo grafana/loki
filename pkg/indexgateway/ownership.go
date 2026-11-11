@@ -122,8 +122,8 @@ func (o *IndexOwnership) Owns(instanceAddr, tenant, table string, op ring.Operat
 	return rs.Includes(instanceAddr), nil
 }
 
-// IndexOwnershipFilter keeps the tenants whose index in a table is owned by
-// one index gateway instance, for loading (IndexesSync).
+// IndexOwnershipFilter selects the tenants whose index for a time period
+// (table) is owned by the gateway at instanceAddr.
 type IndexOwnershipFilter struct {
 	ownership    *IndexOwnership
 	r            ring.ReadRing
@@ -171,11 +171,12 @@ const (
 	preloadStatusCanceled = "canceled"
 )
 
-// NewOwnedIndexPreload returns the function an index gateway runs after it is
-// JOINING in the ring and before it becomes ACTIVE: wait for the ring to
-// settle, then preload the indexes it owns. A preload that times out is logged
-// and does not stop the instance from becoming ACTIVE; any other preload error
-// is returned.
+
+// NewOwnedIndexPreload returns the function an ingex gateway runs while it is
+// JOINING the ring, before it becomes ACTIVE. This funciton is used to preload
+// data. If the ring does not settle before the preoload timeout, it logs and
+// returns nil so the gateway still becomes ACTIVE. Any other error fails
+// startup.
 func NewOwnedIndexPreload(cfg PerIndexOwnershipConfig, r ring.ReadRing, store index.QueryReadinessEnsurer, logger log.Logger, reg prometheus.Registerer) func(context.Context) error {
 	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
