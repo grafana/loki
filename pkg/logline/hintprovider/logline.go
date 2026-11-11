@@ -69,11 +69,27 @@ func NewLoglineHintProvider(
 	return p, nil
 }
 
+// QueryHints answers a hint lookup sent over the wire. logproto ranges carry
+// no document shard, so it returns the time union of the matching ranges.
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
 	req *logproto.LoglineIndexRequest,
 ) (*logproto.LoglineIndexResponse, error) {
+	ranges, stats, err := p.queryRanges(ctx, expr, req)
+	snap := stats.Snapshot()
+	if err != nil {
+		return &logproto.LoglineIndexResponse{Stats: &snap}, err
+	}
+	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(timeUnion(ranges)), Stats: &snap}, nil
+}
+
+// queryRanges returns the ranges matching req, per document shard.
+func (p *LoglineHintProvider) queryRanges(
+	ctx context.Context,
+	expr syntax.Expr,
+	req *logproto.LoglineIndexRequest,
+) ([]HintTimeRange, *QueryStats, error) {
 	if req == nil {
 		req = &logproto.LoglineIndexRequest{}
 	}
@@ -84,29 +100,29 @@ func (p *LoglineHintProvider) QueryHints(
 	through := req.GetEnd()
 
 	if len(filters) == 0 {
-		snap := stats.Snapshot()
-		return &logproto.LoglineIndexResponse{
-			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
-			Stats:      &snap,
-		}, nil
+		return []HintTimeRange{passthroughForInclusiveThrough(through)}, stats, nil
 	}
 
 	started := time.Now()
 	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel)
 	stats.SetWallTime(time.Since(started))
-	snap := stats.Snapshot()
 
 	if errors.Is(err, ErrUnconstrained) {
-		return &logproto.LoglineIndexResponse{
-			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
-			Stats:      &snap,
-		}, nil
+		return []HintTimeRange{passthroughForInclusiveThrough(through)}, stats, nil
 	}
 	if err != nil {
-		return &logproto.LoglineIndexResponse{Stats: &snap}, err
+		return nil, stats, err
 	}
+	return aggregateShardRanges(shardRanges), stats, nil
+}
 
-	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+// timeUnion merges ranges by time alone, across document shards.
+func timeUnion(ranges []HintTimeRange) []HintTimeRange {
+	out := make([]HintTimeRange, len(ranges))
+	for i, r := range ranges {
+		out[i] = HintTimeRange{Start: r.Start, End: r.End}
+	}
+	return NormalizeRanges(out)
 }
 
 func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
@@ -179,12 +195,11 @@ func (p *LoglineHintProvider) ProvideHints(
 	if err != nil || len(plan.Indexes) == 0 {
 		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
 	}
-	resp, err := p.QueryHints(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
+	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
 	if err != nil {
 		return nil, plan.Stats, err
 	}
-	ranges := append(plan.Ranges, FromProtoRanges(resp.TimeRanges)...)
-	return &Hints{TimeRanges: NormalizeRanges(ranges)}, FromProtoStats(resp.Stats), nil
+	return &Hints{TimeRanges: NormalizeRanges(append(plan.Ranges, ranges...))}, stats, nil
 }
 
 func loglineIndexRequest(
