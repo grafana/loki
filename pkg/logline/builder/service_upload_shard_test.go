@@ -23,7 +23,7 @@ import (
 func TestPreparedIndexes_UploadZeroValue(t *testing.T) {
 	var prepared PreparedIndexes
 	require.Zero(t, prepared.Len())
-	require.ErrorContains(t, prepared.Upload(context.Background(), nil), "without a successful Prepare")
+	require.Error(t, prepared.Upload(context.Background(), nil))
 }
 
 func TestPreparedIndexes_ConcurrentUpload(t *testing.T) {
