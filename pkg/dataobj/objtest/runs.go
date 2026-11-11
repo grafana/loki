@@ -97,13 +97,13 @@ func (b *Builder) splitIndex(ctx context.Context, original *dataobj.Object, part
 	var rows []postings.Row
 	for _, section := range original.Sections().Filter(postings.CheckSection) {
 		if section.Tenant == Tenant {
-			rows = append(rows, readRows(b.t, ctx, section, openPostingsRows)...)
+			rows = append(rows, readRows(ctx, b.t, section, openPostingsRows)...)
 		}
 	}
 	var statRows []stats.Stat
 	for _, section := range original.Sections().Filter(stats.CheckSection) {
 		if section.Tenant == Tenant {
-			statRows = append(statRows, readRows(b.t, ctx, section, openStatsRows)...)
+			statRows = append(statRows, readRows(ctx, b.t, section, openStatsRows)...)
 		}
 	}
 	require.NotEmpty(b.t, rows, "an index object without postings can't be split by posting key")
@@ -198,7 +198,7 @@ func openStatsRows(ctx context.Context, section *dataobj.Section) (rowIterator[s
 }
 
 // readRows returns every row of section.
-func readRows[R any](t require.TestingT, ctx context.Context, section *dataobj.Section, open func(context.Context, *dataobj.Section) (rowIterator[R], error)) []R {
+func readRows[R any](ctx context.Context, t require.TestingT, section *dataobj.Section, open func(context.Context, *dataobj.Section) (rowIterator[R], error)) []R {
 	rows, err := open(ctx, section)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rows.Close()) }()
