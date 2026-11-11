@@ -29,8 +29,8 @@ var (
 	ErrInvalidProducerMaxRecordSizeBytes           = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, MaxProducerRecordDataBytesLimit)
 	ErrInvalidProducerMaxInflightRequestsPerBroker = errors.New("the configured producer max inflight requests per broker must be greater than or equal to 1")
 	ErrInvalidProducerLinger                       = errors.New("the configured producer linger must be greater than or equal to 0")
-	ErrInvalidAPIVersionsMaxVersion                = fmt.Errorf("the configured ApiVersions max version must be between 0 and %d (0 uses the franz-go default)", DefaultAPIVersionsMaxVersion)
-	ErrInvalidMaxDecompressBatchBytes              = fmt.Errorf("the configured max decompress batch bytes must be between 0 and %d (0 uses the franz-go default)", DefaultMaxDecompressBatchBytes)
+	ErrInvalidAPIVersionsMaxVersion                = fmt.Errorf("the configured ApiVersions max version must be between 0 and %d (0 removes the cap)", DefaultAPIVersionsMaxVersion)
+	ErrInvalidMaxDecompressBatchBytes              = fmt.Errorf("the configured max decompress batch bytes must be between 0 and %d (0 uses the Kafka client default of 1 GiB)", DefaultMaxDecompressBatchBytes)
 )
 
 // Config holds the generic config for the Kafka backend.

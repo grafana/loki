@@ -76,13 +76,45 @@ The query-frontend splits a metric range query by time. Each split of a range ag
 
 ### Kafka client upgraded to franz-go 1.22
 
-Loki now uses franz-go v1.22.2. Where franz-go 1.22 changes a default, Loki keeps the previous behavior:
+Loki uses the franz-go library as its Kafka client. This release upgrades franz-go from v1.21.7 to v1.22.2. franz-go 1.22 changes some defaults, and Loki overrides them so that its Kafka clients behave as before. You don't need to change your configuration.
 
-- ApiVersions requests are capped at v4 (`-kafka.api-versions-max-version`, default `4`). franz-go 1.22 sends v5 first, and some Kafka-compatible backends, such as WarpStream, close the connection instead of falling back. Set it to `0` to use the franz-go default.
-- A new option, `-kafka.max-decompress-batch-bytes` (default `2147483647`), sets the largest size a fetched batch may decompress to. franz-go 1.22 lowers its own default to 1 GiB and stops consuming a partition when a batch is bigger. Set it to `0` to use the franz-go default.
-- After data loss while consuming, for example when records are deleted by retention before they are read, the ingesters, the data object builder, and the logline builder resume right after the lost records, as before. The franz-go 1.22 default would re-read about a minute of records.
+#### ApiVersions request version
 
-franz-go 1.22 also uses the reset offset after data loss while consuming, where older versions ignored it. Ingest limits resume at the first record from one active window before the pod started, which can re-read records. The pattern ingester resumes at the end of the topic, which skips records.
+When a Kafka client connects to a broker, it first sends an ApiVersions request to find out which requests the broker supports. franz-go 1.21 sent version 4 of this request. franz-go 1.22 sends version 5. Some Kafka-compatible backends, such as WarpStream, close the connection when they receive version 5, instead of replying with an error that lets the client retry with version 4.
+
+To avoid this, Loki caps the ApiVersions request at version 4 by default.
+
+| Setting | Default | Valid values |
+|---|---|---|
+| `-kafka.api-versions-max-version` (`kafka_config.api_versions_max_version`) | `4` | `0` to `4` |
+
+- `1` to `4`: the highest ApiVersions version Loki sends.
+- `0`: no cap. franz-go 1.22.2 sends version 5. Use `0` only if your Kafka backend supports ApiVersions version 5.
+
+#### Maximum decompressed batch size
+
+Kafka stores records in compressed batches, and the Kafka client decompresses each batch it reads. franz-go 1.21 allowed a batch to decompress to up to 2147483647 bytes (2 GiB minus 1 byte). franz-go 1.22 lowers this limit to 1073741824 bytes (1 GiB). When a batch is bigger than the limit, the client stops reading that partition. The partition stays stuck until its offset is moved past that batch.
+
+To keep the franz-go 1.21 limit, this release adds a new setting.
+
+| Setting | Default | Valid values |
+|---|---|---|
+| `-kafka.max-decompress-batch-bytes` (`kafka_config.max_decompress_batch_bytes`) | `2147483647` (2 GiB minus 1 byte) | `0` to `2147483647` |
+
+- `1` to `2147483647`: the largest size, in bytes, that one batch may decompress to. `2147483647` is the highest value franz-go accepts.
+- `0`: use the franz-go 1.22 default of 1073741824 bytes (1 GiB).
+
+#### Reading after data loss
+
+Data loss means that, while a Kafka consumer is reading a partition, records it hasn't read yet no longer exist, for example because retention deleted them first. franz-go 1.21 then continued right after the missing records. franz-go 1.22 continues from the consumer's reset offset instead. Its default reset offset goes back one minute before the last record read, and re-reads that minute.
+
+Loki sets the reset offset for each consumer. There is no setting for this.
+
+| Consumer | After data loss, before this release | After data loss, with this release |
+|---|---|---|
+| Ingesters, data object builder | Continue right after the missing records | Same: continue right after the missing records |
+| Ingest limits | Continue right after the missing records | Go back to when the pod started, minus `-ingest-limits.active-window` (default `2h`). On a pod that has run for a long time, this re-reads many records. |
+| Pattern ingester | Continue right after the missing records | Jump to the end of the topic, which skips the records it hasn't read |
 
 ### `ip()` label filters no longer keep lines with an `__error__` label
 

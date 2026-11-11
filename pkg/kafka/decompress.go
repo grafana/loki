@@ -12,9 +12,10 @@ import (
 // the highest value franz-go accepts.
 const DefaultMaxDecompressBatchBytes = math.MaxInt32
 
-const maxDecompressBatchBytesUsage = "The largest size a fetched Kafka batch may decompress to. " +
-	"A bigger batch stops consuming the partition. The default keeps the limit franz-go had before 1.22. " +
-	"0 to use the franz-go default."
+const maxDecompressBatchBytesUsage = "The largest size, in bytes, that one fetched Kafka batch may decompress to. " +
+	"A bigger batch stops the client from reading its partition. " +
+	"The default of 2147483647 (2 GiB minus 1 byte) is the highest value allowed. " +
+	"0 uses the Kafka client default of 1073741824 (1 GiB)."
 
 // MaxDecompressBatchBytesOpts returns the client option that sets the
 // decompress limit, or none if maxBytes is 0 or less. Values above
