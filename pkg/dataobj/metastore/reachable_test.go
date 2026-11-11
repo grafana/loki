@@ -184,14 +184,14 @@ func TestReachableObjects(t *testing.T) {
 		require.Equal(t, []string{"index/v0/indexes/aa/index", "objects/00/in-stats"}, paths)
 	})
 
-	t.Run("returns an error and no paths when an index object holds postings and no stats", func(t *testing.T) {
+	t.Run("returns only the index object when it holds postings and no stats", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		storeIndex(t, bucket, "indexes/aa/index", tenant, []string{"objects/00/in-postings"}, nil)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/index")
 
 		paths, err := ReachableObjects(t.Context(), bucket, tenant, 1)
-		require.ErrorContains(t, err, "index object indexes/aa/index has postings but no stats")
-		require.Nil(t, paths)
+		require.NoError(t, err)
+		require.Equal(t, []string{"index/v0/indexes/aa/index"}, paths)
 	})
 
 	t.Run("returns an index object once when the ToCs of two windows point to it", func(t *testing.T) {

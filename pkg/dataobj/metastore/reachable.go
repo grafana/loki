@@ -236,10 +236,7 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 //
 // It reads the object paths of the stats sections only. The index builder
 // computes the stats and the postings of a log section from the same rows,
-// so the postings reference no log object that the stats do not. A merged
-// index without a stream layout can hold postings but no stats, so
-// addReferencedObjects returns an error for an index object with postings
-// and no stats.
+// so the postings reference no log object that the stats do not.
 //
 // It reads the sections of every tenant, and sections without a tenant. An
 // index object can hold sections of several tenants, and a legacy section
@@ -255,23 +252,16 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 		return fmt.Errorf("opening index object %s: %w", indexPath, err)
 	}
 
-	var hasPostings, hasStats bool
 	for i, section := range obj.Sections() {
 		switch {
 		case stats.CheckSection(section):
-			hasStats = true
 			if err := w.addStatsObjectPaths(ctx, section); err != nil {
 				return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
 			}
-		case postings.CheckSection(section):
-			hasPostings = true
-		case watermarks.CheckSection(section):
+		case postings.CheckSection(section), watermarks.CheckSection(section):
 		default:
 			return fmt.Errorf("index object %s: section %d has unknown type %s, so the log objects that it references are unknown", indexPath, i, section.Type)
 		}
-	}
-	if hasPostings && !hasStats {
-		return fmt.Errorf("index object %s has postings but no stats, so the log objects that it references are unknown", indexPath)
 	}
 	return nil
 }
