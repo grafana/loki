@@ -209,6 +209,11 @@ func (l DocumentLayout) TimeRange(cell uint32) (start, end time.Time) {
 	return start, start.Add(l.Interval)
 }
 
+// Shard returns cell's document shard: its low ShardBits bits.
+func (l DocumentLayout) Shard(cell uint32) uint32 {
+	return cell & (1<<l.ShardBits - 1)
+}
+
 // HeaderInfo is the meta.json index_header schema: a summary of the on-disk
 // index file header. It is not the wire type; convert at the IndexMeta boundary.
 type HeaderInfo struct {

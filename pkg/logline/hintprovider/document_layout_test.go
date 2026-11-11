@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -81,8 +82,8 @@ func writeV5TestIndex(t *testing.T, indexStore *store.Store, hash, needle string
 }
 
 // TestLoglineHintProvider_ProvideHints_V5Cells checks that v5 hints come from
-// the footer's layout and the matching cells: cells of one bucket in
-// different document shards give one time-only range.
+// the footer's layout and the matching cells, one range per document shard,
+// and that QueryHints sends their time union over the wire.
 func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	const needle = "9fA81cD2Ef0077aa"
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
@@ -94,20 +95,37 @@ func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	require.NoError(t, err)
 
 	t0 := day.Add(10 * time.Hour)
-	hints, _, err := provider.ProvideHints(
-		context.Background(),
-		"test-tenant",
-		mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`),
-		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
-		model.TimeFromUnixNano(t0.Add(5*time.Minute).UnixNano()),
-	)
+	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	from, through := model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()), model.TimeFromUnixNano(t0.Add(5*time.Minute).UnixNano())
+	hints, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, from, through)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
-	require.Len(t, hints.TimeRanges, 2)
-	require.Equal(t, t0, hints.TimeRanges[0].Start)
-	require.Equal(t, t0.Add(16*time.Second), hints.TimeRanges[0].End)
-	require.Equal(t, t0.Add(160*time.Second), hints.TimeRanges[1].Start)
-	require.Equal(t, t0.Add(176*time.Second), hints.TimeRanges[1].End)
+	require.Len(t, hints.TimeRanges, 3)
+	for i, want := range []struct {
+		start time.Time
+		shard uint32
+	}{
+		{t0, 3},
+		{t0.Add(160 * time.Second), 3},
+		{t0, 17},
+	} {
+		r := hints.TimeRanges[i]
+		require.Equal(t, want.start, r.Start, "range %d", i)
+		require.Equal(t, want.start.Add(16*time.Second), r.End, "range %d", i)
+		require.Equal(t, want.shard, r.DocumentShard, "range %d", i)
+		require.Equal(t, uint8(v5TestShardBits), r.DocumentShardBits, "range %d", i)
+	}
+
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		From:    from,
+		Through: through,
+		Indexes: ToProtoIndexMetas(indexStore.Snapshot().Active()),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []HintTimeRange{
+		{Start: t0, End: t0.Add(16 * time.Second)},
+		{Start: t0.Add(160 * time.Second), End: t0.Add(176 * time.Second)},
+	}, FromProtoRanges(resp.TimeRanges))
 }
 
 // TestLoglineHintProvider_ProvideHints_V5DayMismatchFails checks that a v5
@@ -139,17 +157,24 @@ func TestRangesForCells(t *testing.T) {
 	meta := store.Meta{Date: "2026-02-26", Hash: "aaaaaaaaaaaaaaaa"}
 
 	ranges := rangesForCells(meta, layout, []uint32{v5Cell(0, 0), v5Cell(0, 1), v5Cell(0, 31), v5Cell(1, 0), v5Cell(5399, 31)})
-	require.Len(t, ranges, 3)
-	for i, want := range []struct{ start, end time.Time }{
-		{day, day.Add(16 * time.Second)},
-		{day.Add(16 * time.Second), day.Add(32 * time.Second)},
-		{day.Add(24*time.Hour - 16*time.Second), day.Add(24 * time.Hour)},
+	require.Len(t, ranges, 5)
+	for i, want := range []struct {
+		start, end time.Time
+		shard      uint32
+	}{
+		{day, day.Add(16 * time.Second), 0},
+		{day, day.Add(16 * time.Second), 1},
+		{day, day.Add(16 * time.Second), 31},
+		{day.Add(16 * time.Second), day.Add(32 * time.Second), 0},
+		{day.Add(24*time.Hour - 16*time.Second), day.Add(24 * time.Hour), 31},
 	} {
 		require.Equal(t, want.start, ranges[i].Start, "range %d", i)
 		require.Equal(t, want.end, ranges[i].End, "range %d", i)
+		require.Equal(t, want.shard, ranges[i].DocumentShard, "range %d", i)
+		require.Equal(t, uint8(v5TestShardBits), ranges[i].DocumentShardBits, "range %d", i)
 	}
 	require.Contains(t, ranges[0].Source, "doc=0,")
-	require.Contains(t, ranges[2].Source, "doc=172799,")
+	require.Contains(t, ranges[4].Source, "doc=172799,")
 }
 
 func TestCheckLayoutDay(t *testing.T) {

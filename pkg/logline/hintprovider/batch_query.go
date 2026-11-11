@@ -416,19 +416,17 @@ func checkLayoutDay(meta store.Meta, layout format.DocumentLayout) error {
 	return nil
 }
 
-// rangesForCells converts matching v5 cells to time ranges. Ranges are
-// time-only: the cells of one bucket in different document shards share a
-// range, and cells arrive sorted, so each bucket yields one range.
+// rangesForCells converts matching v5 cells to ranges, one per cell, each
+// limited to the cell's document shard.
 func rangesForCells(meta store.Meta, layout format.DocumentLayout, cells []uint32) []HintTimeRange {
 	ranges := make([]HintTimeRange, 0, len(cells))
-	for i, cell := range cells {
-		if i > 0 && cell>>layout.ShardBits == cells[i-1]>>layout.ShardBits {
-			continue
-		}
+	for _, cell := range cells {
 		start, end := layout.TimeRange(cell)
 		ranges = append(ranges, HintTimeRange{
-			Start: start,
-			End:   end,
+			Start:             start,
+			End:               end,
+			DocumentShard:     layout.Shard(cell),
+			DocumentShardBits: layout.ShardBits,
 			Source: fmt.Sprintf(
 				"index=%s,doc=%d,min=%s,max=%s",
 				meta.ID(),
