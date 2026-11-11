@@ -128,6 +128,40 @@ func TestIntersectRanges(t *testing.T) {
 			b:        []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m), Source: "shard=1"}},
 			expected: []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m), Source: "shard=0;shard=1"}},
 		},
+		{
+			name:     "all streams and one document shard",
+			a:        []HintTimeRange{{Start: t0, End: t0.Add(10 * m)}},
+			b:        []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m), DocumentShard: 3, DocumentShardBits: 5}},
+			expected: []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5}},
+		},
+		{
+			name: "same document shard",
+			a: []HintTimeRange{
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5},
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 4, DocumentShardBits: 5},
+			},
+			b:        []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(15 * m), DocumentShard: 3, DocumentShardBits: 5}},
+			expected: []HintTimeRange{{Start: t0.Add(5 * m), End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5}},
+		},
+		{
+			name:     "different document shards",
+			a:        []HintTimeRange{{Start: t0, End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5}},
+			b:        []HintTimeRange{{Start: t0, End: t0.Add(10 * m), DocumentShard: 4, DocumentShardBits: 5}},
+			expected: []HintTimeRange{},
+		},
+		{
+			name: "coarser document shard holds finer ones",
+			a:    []HintTimeRange{{Start: t0, End: t0.Add(10 * m), DocumentShard: 1, DocumentShardBits: 4}},
+			b: []HintTimeRange{
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 2, DocumentShardBits: 5},
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5},
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 4, DocumentShardBits: 5},
+			},
+			expected: []HintTimeRange{
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 2, DocumentShardBits: 5},
+				{Start: t0, End: t0.Add(10 * m), DocumentShard: 3, DocumentShardBits: 5},
+			},
+		},
 	}
 
 	for _, tc := range tests {

@@ -97,11 +97,18 @@ Query-shape support and hint lookup for logline index lookups.
       up to `maxSharedLookupAttempts` times, and the retry runs under its own
       context. Retries are counted in
       `logline_hint_cache_singleflight_retries_total`.
-15. **v5 ranges come from the footer's layout and stay time-only**
-    - v5 indexes have no document table. `rangesForCells` maps matching cells
-      to their bucket's range through `logline.DocumentLayout`. Cells of one
-      bucket in different document shards give one range; the shard is not
-      used yet.
+15. **v5 ranges come from the footer's layout, one per document shard**
+    - v5 indexes have no document table. `rangesForCells` maps each matching
+      cell to its bucket's range and its document shard through
+      `logline.DocumentLayout`. Other ranges (v3/v4 documents, `MatchesAll`,
+      passthrough) have zero shard bits and cover every stream.
+    - `NormalizeRanges` merges ranges only within one document shard.
+      `intersectRanges` intersects two shards' ranges only when one shard holds
+      the other, and keeps the narrower shard.
+    - `logproto.HintTimeRange` has no shard, so `QueryHints` returns the time
+      union, and the query frontend (adapter, hint cache, dry run) sees only
+      times. `ProvideHints` keeps the shards, and correctness checks them per
+      stream.
     - `checkLayoutDay` requires the footer's day to be the meta's date. A
       mismatch fails the lookup, so the query runs without hints instead of
       getting ranges on the wrong day.

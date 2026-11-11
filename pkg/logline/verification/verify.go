@@ -1,6 +1,7 @@
 package verification
 
 import (
+	"slices"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
@@ -63,6 +64,47 @@ func CountFalsePositives(ranges []hintprovider.HintTimeRange, timestamps []time.
 		}
 	}
 	return count
+}
+
+// Entry is a log entry's timestamp and its stream's fingerprint
+// (logline.StreamFingerprint).
+type Entry struct {
+	Timestamp   time.Time
+	Fingerprint uint64
+}
+
+// VerifyStreamEntries is VerifyEntries for ranges limited to document shards:
+// a range covers an entry only if it also covers the entry's stream.
+func VerifyStreamEntries(ranges []hintprovider.HintTimeRange, entries []Entry) Report {
+	r := Report{
+		HintRanges:   len(ranges),
+		TotalEntries: len(entries),
+	}
+	for _, e := range entries {
+		if slices.ContainsFunc(ranges, func(h hintprovider.HintTimeRange) bool { return RangeCoversEntry(h, e) }) {
+			r.CoveredEntries++
+		} else {
+			r.FalseNegativeTimestamps = append(r.FalseNegativeTimestamps, e.Timestamp)
+		}
+	}
+	r.FalseNegatives = r.TotalEntries - r.CoveredEntries
+	return r
+}
+
+// CountStreamFalsePositives counts hint ranges that cover no entry.
+func CountStreamFalsePositives(ranges []hintprovider.HintTimeRange, entries []Entry) int {
+	count := 0
+	for _, h := range ranges {
+		if !slices.ContainsFunc(entries, func(e Entry) bool { return RangeCoversEntry(h, e) }) {
+			count++
+		}
+	}
+	return count
+}
+
+// RangeCoversEntry returns true when r covers e's timestamp and stream.
+func RangeCoversEntry(r hintprovider.HintTimeRange, e Entry) bool {
+	return RangeCoversTimestamp(r, e.Timestamp) && r.MatchesFingerprint(e.Fingerprint)
 }
 
 // TimestampCovered returns true when ts falls within at least one hint range.
