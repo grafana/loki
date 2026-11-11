@@ -80,8 +80,8 @@ func TestKafkaClientMaxDecompressBatchBytes(t *testing.T) {
 		want  int
 	}{
 		{name: "default", value: kafka.DefaultMaxDecompressBatchBytes, want: kafka.DefaultMaxDecompressBatchBytes},
-		{name: "custom", value: 1 << 20, want: 1 << 20},
-		{name: "zero uses the franz-go default", value: 0, want: 1 << 30},
+		{name: "custom", value: 1 << 20, want: 1 << 20},                   // 1 MiB
+		{name: "zero uses the franz-go default", value: 0, want: 1 << 30}, // 1 GiB
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

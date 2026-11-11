@@ -576,7 +576,9 @@ func TestKafkaMaxDecompressBatchBytesMustBeValid(t *testing.T) {
 	}{
 		{name: "the default is valid", value: kafka.DefaultMaxDecompressBatchBytes},
 		{name: "zero is valid, and uses the franz-go default", value: 0},
+		{name: "a custom value is valid", value: 1 << 20}, // 1 MiB
 		{name: "unset is invalid, as ApplyDefaultsFrom must fill it first", value: maxDecompressBatchBytesUnset, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
+		{name: "negative is invalid", value: -2, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
 		{name: "above the default is invalid", value: kafka.DefaultMaxDecompressBatchBytes + 1, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
 	}
 	for _, tt := range tests {

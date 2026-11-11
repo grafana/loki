@@ -195,6 +195,7 @@ func TestMaxDecompressBatchBytesMustBeValid(t *testing.T) {
 	}{
 		{name: "the default is valid", value: DefaultMaxDecompressBatchBytes},
 		{name: "zero is valid, and uses the franz-go default", value: 0},
+		{name: "a custom value is valid", value: 1 << 20}, // 1 MiB
 		{name: "negative is invalid", value: -1, expectedErr: ErrInvalidMaxDecompressBatchBytes},
 		{name: "above the default is invalid", value: DefaultMaxDecompressBatchBytes + 1, expectedErr: ErrInvalidMaxDecompressBatchBytes},
 	}
