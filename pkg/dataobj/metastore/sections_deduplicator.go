@@ -73,8 +73,8 @@ func (d *sectionsDeduplicator) deduplicate(ctx context.Context, sections []Datao
 				"msg", errDifferentSectionStatistics.Error(),
 				"object", first.ObjectPath,
 				"section", first.SectionIdx,
-				"first_index", first.Index,
-				"second_index", section.Index,
+				"first_index", first.IndexRun,
+				"second_index", section.IndexRun,
 			)
 			return nil, errDifferentSectionStatistics
 		}
@@ -83,8 +83,8 @@ func (d *sectionsDeduplicator) deduplicate(ctx context.Context, sections []Datao
 			"msg", "the same section was found in multiple index objects, deduplicating it",
 			"object", first.ObjectPath,
 			"section", first.SectionIdx,
-			"kept_index", first.Index,
-			"dropped_index", section.Index,
+			"kept_index", first.IndexRun,
+			"dropped_index", section.IndexRun,
 		)
 		d.metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse).Inc()
 	}

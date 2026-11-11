@@ -149,8 +149,14 @@ func forEachIndexPointer(
 						buf[rIdx].RunID = runID
 					}
 				case indexpointers.ColumnTypeMinPostingKey:
+					if minPostingKeys != nil {
+						return fmt.Errorf("section has more than one %s column", pointerCol.Type)
+					}
 					minPostingKeys = col.(*array.Binary)
 				case indexpointers.ColumnTypeMaxPostingKey:
+					if maxPostingKeys != nil {
+						return fmt.Errorf("section has more than one %s column", pointerCol.Type)
+					}
 					maxPostingKeys = col.(*array.Binary)
 				default:
 					continue

@@ -27,11 +27,11 @@ func TestIndexRuns(t *testing.T) {
 		tocA = "tocs/a/tenant/toc.toc"
 		tocB = "tocs/b/tenant/toc.toc"
 	)
-	paths := func(indexes []indexRun) [][]string {
+	paths := func(runs []indexRun) [][]string {
 		var out [][]string
-		for _, index := range indexes {
+		for _, run := range runs {
 			var group []string
-			for _, entry := range index.entries {
+			for _, entry := range run.entries {
 				group = append(group, entry.Path)
 			}
 			out = append(out, group)
@@ -66,6 +66,32 @@ func TestIndexRuns(t *testing.T) {
 	})
 }
 
+func TestIndexRun_String(t *testing.T) {
+	const toc = "tocs/a/tenant/toc.toc"
+	runOf := func(n int) indexRun {
+		var run indexRun
+		for i := range n {
+			run.entries = append(run.entries, IndexEntry{Path: fmt.Sprintf("indexes/%02d", i), TableOfContentsPath: toc, RunID: 3})
+		}
+		return run
+	}
+
+	t.Run("returns the path of an index object of no run", func(t *testing.T) {
+		require.Equal(t, "indexes/a", indexRun{entries: []IndexEntry{{Path: "indexes/a"}}}.String())
+	})
+
+	t.Run("lists every path of a run of at most eight index objects", func(t *testing.T) {
+		require.Equal(t, "run 3 of tocs/a/tenant/toc.toc [indexes/00 indexes/01]", runOf(2).String())
+	})
+
+	t.Run("lists eight paths and counts the rest of a larger run", func(t *testing.T) {
+		require.Equal(t,
+			"run 3 of tocs/a/tenant/toc.toc [indexes/00 indexes/01 indexes/02 indexes/03 indexes/04 indexes/05 indexes/06 indexes/07 and 2 more]",
+			runOf(10).String(),
+		)
+	})
+}
+
 func TestIndexRun_WithPostingsFor(t *testing.T) {
 	keyRange := func(t *testing.T, minKey, maxKey postings.Key) postings.KeyRange {
 		t.Helper()
@@ -78,14 +104,14 @@ func TestIndexRun_WithPostingsFor(t *testing.T) {
 	}
 	bloom := func(name string) postings.Key { return postings.Key{Kind: postings.KindBloom, ColumnName: name} }
 
-	index := indexRun{entries: []IndexEntry{
+	run := indexRun{entries: []IndexEntry{
 		{Path: "blooms", PostingKeys: keyRange(t, bloom("trace_id"), bloom("trace_id"))},
 		{Path: "app", PostingKeys: keyRange(t, label("app", "api"), label("app", "web"))},
 		{Path: "env", PostingKeys: keyRange(t, label("env", "dev"), label("env", "prod"))},
 	}}
 	keptPaths := func(t *testing.T, matchers, predicates []*labels.Matcher) []string {
 		t.Helper()
-		kept, ok := index.withPostingsFor(matchers, predicates)
+		kept, ok := run.withPostingsFor(matchers, predicates)
 		if !ok {
 			return nil
 		}
@@ -124,7 +150,7 @@ func TestIndexRun_WithPostingsFor(t *testing.T) {
 	})
 
 	t.Run("returns false when no index object holds a label of the request", func(t *testing.T) {
-		_, ok := index.withPostingsFor([]*labels.Matcher{matcher(labels.MatchEqual, "namespace", "x")}, nil)
+		_, ok := run.withPostingsFor([]*labels.Matcher{matcher(labels.MatchEqual, "namespace", "x")}, nil)
 		require.False(t, ok)
 	})
 

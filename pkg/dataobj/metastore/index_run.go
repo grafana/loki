@@ -3,6 +3,7 @@ package metastore
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -53,13 +54,29 @@ func indexRuns(entries []IndexEntry) []indexRun {
 	return out
 }
 
-// String describes r for logs.
+// maxLoggedRunPaths is the largest number of index object paths that
+// [indexRun.String] lists, so a log line of a large run stays short.
+const maxLoggedRunPaths = 8
+
+// String describes r for logs and errors. It names the paths of up to
+// maxLoggedRunPaths index objects of r.
 func (r indexRun) String() string {
 	first := r.entries[0]
 	if first.RunID == 0 {
 		return first.Path
 	}
-	return fmt.Sprintf("run %d of %s (%d index objects)", first.RunID, first.TableOfContentsPath, len(r.entries))
+
+	var paths strings.Builder
+	for i, entry := range r.entries[:min(len(r.entries), maxLoggedRunPaths)] {
+		if i > 0 {
+			paths.WriteString(" ")
+		}
+		paths.WriteString(entry.Path)
+	}
+	if more := len(r.entries) - maxLoggedRunPaths; more > 0 {
+		fmt.Fprintf(&paths, " and %d more", more)
+	}
+	return fmt.Sprintf("run %d of %s [%s]", first.RunID, first.TableOfContentsPath, paths.String())
 }
 
 // withPostingsFor returns r with only the index objects that can hold a

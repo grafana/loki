@@ -93,9 +93,9 @@ type IndexEntry struct {
 
 	// TableOfContentsPath is the path of the ToC that lists the index object.
 	TableOfContentsPath string
-	// RunID is the run that holds the index object. A run ID is unique within
-	// one ToC only, so the index objects of one run share TableOfContentsPath
-	// and RunID.
+	// RunID is the run that holds the index object. The zero value means the
+	// index object is in no run. A run ID is unique within one ToC only, so the
+	// index objects of one run share TableOfContentsPath and RunID.
 	RunID indexpointers.RunID
 	// PostingKeys bounds the posting keys of the index object. The zero value
 	// means the index object can hold any posting key.

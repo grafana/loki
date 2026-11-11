@@ -1134,7 +1134,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
-	t.Run("yields an error that names the index object and the panic when a read panics", func(t *testing.T) {
+	t.Run("yields an error that names the index object and the panic when opening it panics", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		panickingIndex := addIndexObject(t, inMem, sectionOf("object-a"))
 		bucket := newGatedBucket(inMem)
@@ -1146,8 +1146,8 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		batches, err := collectSectionBatches(t, m.SectionsStream(ctx, request))
 
 		require.Empty(t, batches)
-		require.EqualError(t, err, fmt.Sprintf("reading the sections of %s: corrupt index object", panickingIndex))
-		require.Contains(t, logs.String(), "panic reading the sections of an index object")
+		require.ErrorContains(t, err, fmt.Sprintf("opening index object %s: panic: corrupt index object", panickingIndex))
+		require.Contains(t, logs.String(), "panic opening an index object")
 	})
 
 	t.Run("cancels the other index reads when one read fails, even while the caller handles a batch", func(t *testing.T) {
@@ -1842,8 +1842,8 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, sections, 2)
 		require.ElementsMatch(t, []string{"object-a", "object-b"}, []string{sections[0].ObjectPath, sections[1].ObjectPath})
-		require.Equal(t, indexPath, sections[0].Index)
-		require.Equal(t, indexPath, sections[1].Index)
+		require.Equal(t, indexPath, sections[0].IndexRun)
+		require.Equal(t, indexPath, sections[1].IndexRun)
 		require.Positive(t, readRows)
 	})
 

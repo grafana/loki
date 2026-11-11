@@ -178,14 +178,15 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		withPosting []indexObject
 	)
 	for _, object := range r.objects {
-		before := len(matching)
+		objectHasPostings := false
 		for _, section := range object.obj.Sections() {
 			if section.Tenant != tenant || !postings.CheckSection(section) {
 				continue
 			}
 			matching = append(matching, section)
+			objectHasPostings = true
 		}
-		if len(matching) > before {
+		if objectHasPostings {
 			withPosting = append(withPosting, object)
 		}
 	}
