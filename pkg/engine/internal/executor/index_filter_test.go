@@ -345,7 +345,7 @@ func TestDoIndexFilter(t *testing.T) {
 
 		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
 		indexPointersBuilder.SetTenant("acme")
-		indexPointersBuilder.Append("indexes/other", time.Unix(0, 1_000), time.Unix(0, 2_000))
+		indexPointersBuilder.Append(indexpointers.IndexPointer{Path: "indexes/other", StartTs: time.Unix(0, 1_000), EndTs: time.Unix(0, 2_000)})
 		require.NoError(t, objBuilder.Append(indexPointersBuilder))
 
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)

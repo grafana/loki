@@ -188,6 +188,24 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 		}, readWatermarks(t, obj))
 	})
 
+	t.Run("lists the watermarks section before the index pointers section", func(t *testing.T) {
+		builder := newBuilder(t)
+		for _, p := range testPointers {
+			require.NoError(t, builder.AppendIndexPointer(p))
+		}
+		require.NoError(t, builder.AppendWatermark("topic", 7, 42))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		var kinds []string
+		for _, sec := range obj.Sections() {
+			kinds = append(kinds, sec.Type.Kind)
+		}
+		require.Equal(t, []string{"watermarks", "indexpointers"}, kinds)
+	})
+
 	t.Run("returns an error and records nothing for an invalid watermark", func(t *testing.T) {
 		builder := newBuilder(t)
 		require.Error(t, builder.AppendWatermark("", 0, 1))

@@ -31,6 +31,8 @@ type encoder struct {
 	// object, in this order. Types match by [SectionType.Equals].
 	prioritySections []SectionType
 
+	sizeLeveled *SizeLeveledCompaction
+
 	typesReady       bool
 	dictionary       []string
 	dictionaryLookup map[string]uint32
@@ -52,11 +54,13 @@ type sectionInfo struct {
 }
 
 // newEncoder returns an encoder that buffers sections in store and puts
-// sections with a type in prioritySections first.
-func newEncoder(store scratch.Store, prioritySections []SectionType) *encoder {
+// sections with a type in prioritySections first. If sizeLeveled is not nil,
+// the encoder writes it into the file metadata of every object.
+func newEncoder(store scratch.Store, prioritySections []SectionType, sizeLeveled *SizeLeveledCompaction) *encoder {
 	return &encoder{
 		store:            store,
 		prioritySections: slices.Clone(prioritySections),
+		sizeLeveled:      sizeLeveled,
 	}
 }
 
@@ -220,6 +224,11 @@ func (enc *encoder) metadata() (*filemd.Metadata, error) {
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
 	}
+	if enc.sizeLeveled != nil {
+		md.Compaction = &filemd.CompactionInfo{
+			SizeLeveled: &filemd.SizeLeveledCompaction{Level: enc.sizeLeveled.Level},
+		}
+	}
 	return md, nil
 }
 
@@ -305,7 +314,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 }
 
 // Reset resets the Encoder to a fresh state, removing any sections it still
-// holds from the scratch store.
+// holds from the scratch store. Reset keeps the size-leveled compaction info.
 func (enc *encoder) Reset() {
 	for _, section := range enc.sections {
 		// A failed removal is not actionable: the handle is unreachable either

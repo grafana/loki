@@ -1897,8 +1897,8 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 				Query:   r.GetQuery(),
 				Limit:   uint32(r.GetLimit()),
 				Step:    r.GetStep(),
-				StartTs: time.UnixMilli(r.GetStart().UnixNano()),
-				EndTs:   time.UnixMilli(r.GetEnd().UnixNano()),
+				StartTs: r.GetStart(),
+				EndTs:   r.GetEnd(),
 			},
 		}, nil
 	case *LokiInstantRequest:

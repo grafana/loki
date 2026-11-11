@@ -2103,7 +2103,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
+		_, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -2143,7 +2143,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
+			parsed, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
 			}), streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -2151,9 +2151,9 @@ func TestParseStreamLabels(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedLabels.String(), lbsString)
-			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
+			require.Equal(t, tc.expectedLabels.String(), parsed.labelsString)
+			require.Equal(t, tc.expectedLabels, parsed.lbs)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), parsed.hash)
 		})
 	}
 }
@@ -4372,8 +4372,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		// Note: When some streams are rejected, validationErr is set and returned.
-		// The request will succeed (streams are written) but validationErr is returned.
+		// The stream-limit 429 is returned with the response, as the other
+		// streams are still written.
 		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
 		expectedResponse:         success, // Response is returned even when some streams are rejected
 		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
@@ -4918,7 +4918,7 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 		name string
 		// shardStreamsEnabled controls the local rate store's sharding. It has
 		// to be true for candidates to be collected at all, see
-		// maybeShardByRate: there is nothing to compare against otherwise.
+		// streamSharder.shardByRate: there is nothing to compare against otherwise.
 		shardStreamsEnabled            bool
 		checkLimitsAndShardResponse    *limitsproto.CheckLimitsAndShardResponse
 		checkLimitsAndShardResponseErr error

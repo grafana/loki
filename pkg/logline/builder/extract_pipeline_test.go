@@ -119,44 +119,51 @@ func TestBuilder_RoundTrip_ExtractThreads(t *testing.T) {
 // for every merge_threads that Validate accepts at that shard count.
 // Identical output for every N proves mergeShard concurrency does not
 // change which postings land in which file.
+//
+// Run for every version because each concurrent shardMerger owns its own
+// per-day state: v5 opens one writer per (day, shard) with that day's
+// DayStart and its own cell bitset, so a leak across merge threads would
+// misnumber cells rather than fail.
 func TestBuilder_RoundTrip_MergeThreads(t *testing.T) {
 	entries := pipelineTestEntries(120)
 
-	extractFn, err := logline.ExtractorForVersion("v3")
-	require.NoError(t, err)
+	for _, version := range logline.AllVersions() {
+		extractFn, err := logline.ExtractorForVersion(version)
+		require.NoError(t, err)
 
-	for _, shardCount := range []int{1, 4} {
-		shardFn := shard.Noop
-		if shardCount > 1 {
-			shardFn, err = shard.New("murmur3_mix")
-			require.NoError(t, err)
-		}
-		want := referenceRanges(entries, extractFn, shardFn, shardCount)
-
-		threads := []int{1}
-		if shardCount >= 2 {
-			threads = append(threads, 2)
-		}
-		if shardCount >= 4 {
-			threads = append(threads, 4)
-		}
-		for _, n := range threads {
-			t.Run(fmt.Sprintf("shard%d_merge%d", shardCount, n), func(t *testing.T) {
-				cfg := roundTripConfig(t, shardCount, 32)
-				cfg.MergeThreads = n
-				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+		for _, shardCount := range []int{1, 4} {
+			shardFn := shard.Noop
+			if shardCount > 1 {
+				shardFn, err = shard.New("murmur3_mix")
 				require.NoError(t, err)
-				defer b.clear()
+			}
+			want := referenceRanges(entries, extractFn, shardFn, shardCount)
 
-				feedInChunks(t, b, entries, 1)
+			threads := []int{1}
+			if shardCount >= 2 {
+				threads = append(threads, 2)
+			}
+			if shardCount >= 4 {
+				threads = append(threads, 4)
+			}
+			for _, n := range threads {
+				t.Run(fmt.Sprintf("%s/shard%d_merge%d", version, shardCount, n), func(t *testing.T) {
+					cfg := roundTripConfigForVersion(t, version, shardCount, 32)
+					cfg.MergeThreads = n
+					b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+					require.NoError(t, err)
+					defer b.clear()
 
-				files, err := b.prepareIndexes()
-				require.NoError(t, err)
-				require.Equal(t, sortedKeys(want), fileKeys(files), "(date,shard) file set mismatch")
+					feedInChunks(t, b, entries, 1)
 
-				require.Equal(t, want, termRangesByFile(t, files),
-					"merge_threads=%d output must equal the reference", n)
-			})
+					files, err := b.prepareIndexes()
+					require.NoError(t, err)
+					require.Equal(t, sortedKeys(want), fileKeys(files), "(date,shard) file set mismatch")
+
+					require.Equal(t, want, termRangesByFile(t, files),
+						"merge_threads=%d output must equal the reference", n)
+				})
+			}
 		}
 	}
 }

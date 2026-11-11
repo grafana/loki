@@ -27,7 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -75,7 +75,7 @@ func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
 
 // WithTOCResolverCache makes the ToC resolver of the metastore read through cache when it refreshes a ToC. A nil cache
 // disables it.
-func WithTOCResolverCache(cache *metadatacache.Cache) ObjectMetastoreOption {
+func WithTOCResolverCache(cache *metadata.Cache) ObjectMetastoreOption {
 	return func(m *ObjectMetastore) { m.tocCache = cache }
 }
 
@@ -97,7 +97,7 @@ type ObjectMetastore struct {
 	// tocCache is the shared cache that tocResolver reads through when it refreshes a ToC. It is separate from
 	// indexMetadataCache because the resolver rejects a cached ToC that is too old, and indexMetadataCache accepts every
 	// cached value.
-	tocCache *metadatacache.Cache
+	tocCache *metadata.Cache
 
 	// indexMetadataCache caches the metadata region of index objects. It is nil when no cache is
 	// configured.
@@ -237,13 +237,13 @@ func (d *DataobjSectionDescriptor) sameStreamAndStatistics(other *DataobjSection
 		(d.Size == 0 || other.Size == 0 || d.Size == other.Size)
 }
 
-// DataobjSectionDescriptorWithIndex is a section descriptor with the path of the index object
-// that listed it.
+// DataobjSectionDescriptorWithIndex is a section descriptor with the index run that listed
+// it.
 type DataobjSectionDescriptorWithIndex struct {
 	*DataobjSectionDescriptor
 
-	// IndexPath is the path of the index object that listed the section.
-	IndexPath string
+	// IndexRun describes the index run that listed the section, for logs.
+	IndexRun string
 }
 
 // sortedIDs returns the IDs in ascending order. It returns ids itself when they already are, so
@@ -415,9 +415,13 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 
 	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
 		entries = append(entries, IndexEntry{
-			Path:  indexPointer.Path,
-			Start: indexPointer.StartTs,
-			End:   indexPointer.EndTs,
+			Path:                indexPointer.Path,
+			Start:               indexPointer.StartTs,
+			End:                 indexPointer.EndTs,
+			ShardBuckets:        indexPointer.ShardBuckets,
+			TableOfContentsPath: path,
+			RunID:               indexPointer.RunID,
+			PostingKeys:         indexPointer.PostingKeys,
 		})
 	})
 	if err != nil {
@@ -504,7 +508,29 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// batch carries the deduplicated sections of one index object, or the error that ends the
+	// Read each index run with one reader, and only its index objects that can hold a posting
+	// that the request reads.
+	var (
+		toRead  []indexRun
+		skipped int
+	)
+	for _, run := range indexRuns(indexes.Indexes) {
+		kept, ok := run.withPostingsFor(req.Matchers, req.Predicates)
+		skipped += len(run.entries) - len(kept.entries)
+		if ok {
+			toRead = append(toRead, kept)
+		}
+	}
+	m.metrics.skippedIndexObjects.Observe(float64(skipped))
+
+	if len(toRead) == 0 {
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index object holds postings of the matchers")
+		span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		return
+	}
+
+	// batch carries the deduplicated sections of one index run, or the error that ends the
 	// resolution. A batch without an error holds at least one section.
 	type batch struct {
 		sections DataobjSectionDescriptors
@@ -516,10 +542,11 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	// The resolution runs in the background and never waits for the caller. So its duration excludes
 	// the time the caller spends on the batches.
 	//
-	// The channel holds one batch for each index object, so no send waits for the caller. The batches
-	// stay in memory until the caller receives them. The channel closes after the resolution ends.
+	// The channel holds one batch for each index run, so no send waits for the caller. The
+	// batches stay in memory until the caller receives them. The channel closes after the resolution
+	// ends.
 	readCtx, cancelReads := context.WithCancel(ctx)
-	batches := make(chan batch, len(indexes.Indexes))
+	batches := make(chan batch, len(toRead))
 
 	go func() {
 		defer close(batches)
@@ -553,7 +580,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		}
 
 		g.SetLimit(m.parallelism)
-		for _, indexEntry := range indexes.Indexes {
+		for _, run := range toRead {
 			g.Go(func() error {
 				// The caller cannot recover a panic on this goroutine, and the panic would end the
 				// process. End the resolution with an error instead. The deferred Unlock below runs
@@ -563,18 +590,18 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 						serverutil.RecordPanic()
 						level.Error(utillog.WithContext(ctx, m.logger)).Log(
 							"msg", "panic reading the sections of an index object",
-							"index", indexEntry.Path,
+							"index", run.String(),
 							"panic", panicked,
 							"stack", string(debug.Stack()),
 						)
 
 						mu.Lock()
 						defer mu.Unlock()
-						fail(fmt.Errorf("reading the sections of index object %q: %v", indexEntry.Path, panicked))
+						fail(fmt.Errorf("reading the sections of %s: %v", run, panicked))
 					}
 				}()
 
-				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry.Path)
+				sections, readRows, err := m.readIndexSections(readCtx, req, run)
 
 				mu.Lock()
 				defer mu.Unlock()
@@ -640,6 +667,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 			"duration", duration,
 			"tables", len(indexes.TableOfContentsPaths),
 			"indexes", len(indexes.Indexes),
+			"skipped_indexes", skipped,
 			"sections", uniqueSections,
 			"ratio", ratio,
 			"matchers", matchersToString(req.Matchers),
@@ -668,11 +696,11 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	}
 }
 
-// readIndexSections reads the sections that one index object lists. It returns them with the number
-// of rows the index reader resolved, before deduplication.
-func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, indexPath string) ([]DataobjSectionDescriptorWithIndex, int, error) {
+// readIndexSections reads the sections that one index run lists. It returns them with the
+// number of rows the index reader resolved, before deduplication.
+func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, run indexRun) ([]DataobjSectionDescriptorWithIndex, int, error) {
 	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-		IndexPath:       indexPath,
+		Indexes:         run.entries,
 		SectionsRequest: req,
 		PrefetchBytes:   indexPrefetchBytes,
 	})
@@ -684,12 +712,13 @@ func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsReq
 
 	sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
 	if err != nil {
-		return nil, 0, fmt.Errorf("collect sections of index object %q: %w", indexPath, err)
+		return nil, 0, fmt.Errorf("collect sections of %s: %w", run, err)
 	}
 
+	name := run.String()
 	sections := make([]DataobjSectionDescriptorWithIndex, 0, len(sectionsResp.SectionsResponse.Sections))
 	for _, section := range sectionsResp.SectionsResponse.Sections {
-		sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexPath})
+		sections = append(sections, DataobjSectionDescriptorWithIndex{section, name})
 	}
 
 	sp := reader.(statsProvider)
@@ -702,14 +731,18 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
+	if len(req.Indexes) == 0 {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one index object is required")
+	}
+
+	objects, err := m.openIndexObjects(ctx, req.Indexes, req.PrefetchBytes)
 	if err != nil {
-		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
+		return IndexSectionsReaderResponse{}, err
 	}
 
 	reader := newPostingsIndexSectionsReader(
 		m.logger,
-		idxObj,
+		objects,
 		req.SectionsRequest.Start,
 		req.SectionsRequest.End,
 		req.SectionsRequest.Matchers,
@@ -718,6 +751,43 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.StreamHashRange,
 	)
 	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
+}
+
+// openIndexObjects opens the index objects of entries in parallel.
+//
+// A panic of an open becomes an error of that open. The caller can't recover a
+// panic on another goroutine, so the open logs the panic with its stack, and
+// counts it in the panic total.
+func (m *ObjectMetastore) openIndexObjects(ctx context.Context, entries []IndexEntry, prefetchBytes int64) ([]indexObject, error) {
+	objects := make([]indexObject, len(entries))
+	g, groupCtx := errgroup.WithContext(ctx)
+	for i, entry := range entries {
+		g.Go(func() (err error) {
+			defer func() {
+				if panicked := recover(); panicked != nil {
+					serverutil.RecordPanic()
+					level.Error(utillog.WithContext(ctx, m.logger)).Log(
+						"msg", "panic opening an index object",
+						"index", entry.Path,
+						"panic", panicked,
+						"stack", string(debug.Stack()),
+					)
+					err = fmt.Errorf("opening index object %s: panic: %v", entry.Path, panicked)
+				}
+			}()
+
+			obj, err := dataobj.FromBucket(groupCtx, m.bucket, entry.Path, prefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
+			if err != nil {
+				return fmt.Errorf("prepare obj %s: %w", entry.Path, err)
+			}
+			objects[i] = indexObject{obj: obj, shardBuckets: entry.ShardBuckets}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return objects, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {

@@ -18,6 +18,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -79,6 +80,34 @@ func TestSimpleIndexer_Index(t *testing.T) {
 
 		// The index points back at the data object it was built from.
 		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
+	})
+
+	t.Run("should report the shard layout that a reader finds in the uploaded index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, _ := newTestSimpleIndexer(t, bucket)
+
+		layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:app"})
+		lr := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		lr.ForStream(`{app="foo"}`).Entry(10, `{}`, "hello")
+		lr.ForStream(`{app="bar"}`).Entry(20, `{}`, "world")
+		obj, closer := fixtures.DataObject(t,
+			fixtures.LogsSection(t, "tenant-0", lr.Logs()),
+			fixtures.StreamsSection(t, "tenant-0", lr.Streams(), fixtures.WithStreamsLayout(layout)),
+		)
+		t.Cleanup(func() { closer.Close() })
+
+		res, err := idx.Index(t.Context(), obj, "objects/test")
+		require.NoError(t, err)
+
+		got, ok := res.ShardBuckets.Layout()
+		require.True(t, ok)
+		require.Equal(t, layout.ShardLayout(), got)
+
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		want, err := indexobj.TenantShardBuckets(t.Context(), idxObj, "tenant-0")
+		require.NoError(t, err)
+		require.Equal(t, want, res.ShardBuckets)
 	})
 
 	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {

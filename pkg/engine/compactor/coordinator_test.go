@@ -224,7 +224,7 @@ func TestNewCoordinator(t *testing.T) {
 			LogMaxRunsPerTask:            2,
 		}
 
-		c, err := newCoordinator(cfg, log.NewNopLogger(), objstore.NewInMemBucket(), nil, nil, prometheus.NewRegistry(), newFakeLimits())
+		c, err := newCoordinator(cfg, log.NewNopLogger(), objstore.NewInMemBucket(), nil, nil, nil, prometheus.NewRegistry(), newFakeLimits())
 		require.NoError(t, err)
 		require.Equal(t, 5, c.indexDispatcher.limit)
 		require.Equal(t, 7, c.logDispatcher.limit)

@@ -1904,6 +1904,50 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 	})
 }
 
+func TestMemoryStreamsMetric_PerPolicy(t *testing.T) {
+	cfg := defaultLimitsTestConfig()
+	cfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": {{Selector: `{app="billing"}`, Priority: 1}},
+		"debug":   {{Selector: `{app="debug"}`, Priority: 1}},
+	}
+	require.NoError(t, cfg.PolicyStreamMapping.Validate())
+
+	limits, err := validation.NewOverrides(cfg, nil)
+	require.NoError(t, err)
+
+	metrics := newIngesterMetrics(prometheus.NewPedanticRegistry(), constants.Loki)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantID := "loki"
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+	require.NoError(t, err)
+
+	now := time.Now().Add(-5 * time.Minute)
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="billing", n="0"}`, Entries: entries(1, now)},
+		{Labels: `{app="billing", n="1"}`, Entries: entries(1, now)},
+		{Labels: `{app="debug"}`, Entries: entries(1, now)},
+		{Labels: `{app="other"}`, Entries: entries(1, now)},
+	}}))
+
+	gauge := func(policy string) float64 {
+		return promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, policy))
+	}
+	require.Equal(t, 2.0, gauge("finance"))
+	require.Equal(t, 1.0, gauge("debug"))
+	require.Equal(t, 1.0, gauge(noPolicy))
+
+	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+		if s.policy == "finance" {
+			inst.removeStream(s)
+		}
+		return true, nil
+	}))
+
+	require.Equal(t, 0.0, gauge("finance"))
+	require.Equal(t, 1.0, gauge("debug"))
+	require.Equal(t, 1.0, gauge(noPolicy))
+}
+
 func TestMemoryStreamShardsMetric(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -1918,7 +1962,7 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 	require.NoError(t, err)
 
-	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams), "metric needs to be instatiated with zero value")
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)), "metric needs to be instatiated with zero value")
 	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards), "metric needs to be instantiated with zero value")
 
 	now := time.Now().Add(-5 * time.Minute)
@@ -1928,10 +1972,10 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 		{Labels: `{__stream_shard__="1", app="bar"}`, Entries: entries(1, now)},
 	}}))
 
-	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, noPolicy)))
 	require.Equal(t, 2.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
 
-	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)))
 	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 
 	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
@@ -1941,10 +1985,10 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 		return true, nil
 	}))
 
-	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, noPolicy)))
 	require.Equal(t, 0.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
 
-	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)))
 	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 }
 

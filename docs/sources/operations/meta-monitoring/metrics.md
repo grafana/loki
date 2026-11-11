@@ -251,12 +251,14 @@ Abnormal behavior:
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
 
-Connection metrics just for S3:
+Connection-level metrics (all object storage backends):
 
 - `net_conntrack_dialer_conn_attempted_total`
 - `net_conntrack_dialer_conn_established_total`
 - `net_conntrack_dialer_conn_failed_total`
 - `net_conntrack_dialer_conn_closed_total`
+
+These metrics come from the HTTP transport Loki uses to talk to object storage, and apply to every supported backend (S3, GCS, Azure Blob Storage, and others), not only S3. Filter by the label `dialer_name="objstore"` to isolate object store connections from any other connection-tracking metrics in the same process.
 
 Abnormal behavior:
 
@@ -334,6 +336,24 @@ Abnormal behavior:
 
 - Increasing sweeper lag.
 - Falling delete throughput or sustained delete failures.
+
+## Version tracking
+
+During a rollout, it helps to know which Loki version each component is running, and to catch a rollout that gets stuck partway through.
+
+Key metric:
+
+- `loki_build_info`: a gauge that is always `1`, with `version`, `revision`, `branch`, and `goversion` labels identifying the build.
+
+Example query:
+
+```promql
+count by (version) (loki_build_info{cluster="$cluster", namespace="$namespace"})
+```
+
+Abnormal behavior:
+
+- More than one `version` value present outside of an active rollout window usually means a rollout is stuck or a component failed to update.
 
 ## Next steps
 

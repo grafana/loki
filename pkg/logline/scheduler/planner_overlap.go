@@ -16,17 +16,16 @@ type overlapPlanner struct {
 	groups  [][]string
 	idx     int
 	skipped int // indexes skipped because they were oversized or isolated singletons
+	// unreadable counts indexes excluded from compaction entirely because
+	// compactionKeyFor rejected them, and unreadableReason is the first such
+	// reason. Unlike skipped, these never become compactable, so the scheduler
+	// reports them separately.
+	unreadable       int
+	unreadableReason error
 }
 
 func newOverlapPlanner(metas []store.Meta, maxJobSizeBytes int64) CompactionPlanner {
-	byKey := make(map[compactionKey][]store.Meta)
-	for _, m := range metas {
-		k, ok := compactionKeyFor(m)
-		if !ok {
-			continue // skip metas that cannot be merged
-		}
-		byKey[k] = append(byKey[k], m)
-	}
+	byKey, unreadable, unreadableReason := groupByCompactionKey(metas)
 
 	// Sort keys for deterministic output order.
 	keys := make([]compactionKey, 0, len(byKey))
@@ -90,7 +89,12 @@ func newOverlapPlanner(metas []store.Meta, maxJobSizeBytes int64) CompactionPlan
 		dates = remaining
 	}
 
-	return &overlapPlanner{groups: allGroups, skipped: skipped}
+	return &overlapPlanner{
+		groups:           allGroups,
+		skipped:          skipped,
+		unreadable:       unreadable,
+		unreadableReason: unreadableReason,
+	}
 }
 
 func (p *overlapPlanner) Plan() []string {

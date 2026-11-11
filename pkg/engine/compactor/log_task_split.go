@@ -172,10 +172,11 @@ func (s sizeLogTaskSplitter) split(spec *compactionv2pb.TaskSpec) []*compactionv
 	for _, split := range splits {
 		runs := s.runsInRange(spec.Runs, split.Range)
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
-			Tenant:     spec.Tenant,
-			Runs:       runs,
-			KeyRange:   &compactionv2pb.KeyRange{Start: sortPrefixProto(split.Range.Start()), End: sortPrefixProto(split.Range.End())},
-			InputBytes: s.keys.bytesIn(runs, split.Range),
+			Tenant:      spec.Tenant,
+			Runs:        runs,
+			KeyRange:    &compactionv2pb.KeyRange{Start: sortPrefixProto(split.Range.Start()), End: sortPrefixProto(split.Range.End())},
+			InputBytes:  s.keys.bytesIn(runs, split.Range),
+			OutputLevel: spec.OutputLevel,
 		})
 	}
 	return tasks

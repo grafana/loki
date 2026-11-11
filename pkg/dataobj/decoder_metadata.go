@@ -12,6 +12,10 @@ import (
 
 // decode* methods for metadata shared by Decoder implementations.
 
+// headerSize is the size of the header of the file: the magic value and the little-endian metadata
+// size, which take four bytes each. The file metadata follows the header.
+const headerSize = 8
+
 // decodeHeader decodes the header of the file to retrieve the metadata size
 // and the magic value.
 func decodeHeader(r streamio.Reader) (metadataSize uint32, err error) {

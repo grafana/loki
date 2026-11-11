@@ -2,11 +2,14 @@ package scheduler
 
 import (
 	"math/rand"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -523,25 +526,35 @@ func shardValueForID(id string, metas ...store.Meta) int {
 	return -1
 }
 
-// TestOverlapPlanner_SkipsDocumentShardedIndexes checks that v5 indexes with
-// document shard bits are never planned, since the v5 merge rejects them,
-// while v5 indexes without them still compact.
-func TestOverlapPlanner_SkipsDocumentShardedIndexes(t *testing.T) {
+// TestOverlapPlanner_DocumentShardedIndexes checks that v5 indexes with
+// document shard bits compact with indexes of the same bits, and that v5
+// indexes written before day-relative cells (footer version 4) are never
+// planned: the v5 merge refuses them, so their jobs would fail on every pass.
+func TestOverlapPlanner_DocumentShardedIndexes(t *testing.T) {
 	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	v5Meta := func(hash string, shardBits int) store.Meta {
+	v5Meta := func(hash string, shardBits int, footerVersion uint32) store.Meta {
 		m := makeMeta("2026-01-01", hash, epoch, epoch.Add(10*time.Minute), 100*mib)
 		m.Version = "v5"
 		m.DocumentInterval = 16 * time.Second
 		m.DocumentShardBits = shardBits
+		m.IndexHeader = &format.HeaderInfo{Version: footerVersion}
 		return m
 	}
-	timeOnly1, timeOnly2 := v5Meta("plain1", 0), v5Meta("plain2", 0)
-	sharded1, sharded2 := v5Meta("shard1", 5), v5Meta("shard2", 5)
+	timeOnly1, timeOnly2 := v5Meta("plain1", 0, 5), v5Meta("plain2", 0, 5)
+	sharded1, sharded2 := v5Meta("shard1", 5, 5), v5Meta("shard2", 5, 5)
+	old1, old2 := v5Meta("old1", 5, 4), v5Meta("old2", 5, 4)
 
-	p := newOverlapPlanner([]store.Meta{timeOnly1, sharded1, timeOnly2, sharded2}, 512*mib)
+	p := newOverlapPlanner([]store.Meta{timeOnly1, sharded1, old1, timeOnly2, sharded2, old2}, 512*mib)
 
-	require.ElementsMatch(t, []string{timeOnly1.ID(), timeOnly2.ID()}, p.Plan())
-	require.Nil(t, p.Plan())
+	var groups [][]string
+	for g := p.Plan(); g != nil; g = p.Plan() {
+		slices.Sort(g)
+		groups = append(groups, g)
+	}
+	require.ElementsMatch(t, [][]string{
+		{timeOnly1.ID(), timeOnly2.ID()},
+		{sharded1.ID(), sharded2.ID()},
+	}, groups)
 }
 
 func TestOverlapPlanner_MixedShardConfigsDontMix(t *testing.T) {
@@ -586,4 +599,70 @@ func TestOverlapPlanner_MixedShardConfigsDontMix(t *testing.T) {
 		hasNew := ids[sharded.ID()] || ids[sharded2.ID()]
 		require.False(t, hasOld && hasNew, "unsharded and sharded indexes must not compact together: group %v", g)
 	}
+}
+
+// TestOverlapPlanner_UnreadableIndexesAreCountedAndReported checks that
+// indexes the planner refuses are reported rather than silently dropped: they
+// never become compactable, so an operator needs a count and a reason. A v5
+// meta with no index_header is refused too — its footer version cannot be
+// checked — while v3 metas, which predate the field, still group without it.
+func TestOverlapPlanner_UnreadableIndexesAreCountedAndReported(t *testing.T) {
+	epoch := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	meta := func(hash, version string, header *format.HeaderInfo) store.Meta {
+		m := makeMeta("2026-01-01", hash, epoch, epoch.Add(10*time.Minute), 100*mib)
+		m.Version = version
+		m.IndexHeader = header
+		if !logline.VersionHasDocumentTable(version) {
+			m.DocumentInterval = 16 * time.Second
+		}
+		return m
+	}
+	footer5 := &format.HeaderInfo{Version: 5}
+
+	t.Run("v5 without an index_header is refused", func(t *testing.T) {
+		good1, good2 := meta("good1", "v5", footer5), meta("good2", "v5", footer5)
+		headerless := meta("headerless", "v5", nil)
+
+		p := newOverlapPlanner([]store.Meta{good1, good2, headerless}, 512*mib).(*overlapPlanner)
+
+		require.Equal(t, 1, p.unreadable)
+		require.ErrorContains(t, p.unreadableReason, "no index_header")
+		require.ErrorContains(t, p.unreadableReason, headerless.ID())
+		require.Equal(t, [][]string{{good1.ID(), good2.ID()}}, p.Groups())
+	})
+
+	t.Run("v3 without an index_header still groups", func(t *testing.T) {
+		v3a, v3b := meta("v3a", "v3", nil), meta("v3b", "v3", nil)
+
+		p := newOverlapPlanner([]store.Meta{v3a, v3b}, 512*mib).(*overlapPlanner)
+
+		require.Zero(t, p.unreadable)
+		require.NoError(t, p.unreadableReason)
+		require.Len(t, p.Groups(), 1)
+	})
+
+	t.Run("v5 without a document interval is refused", func(t *testing.T) {
+		// It would otherwise key as interval 0 and group with any other such
+		// meta, then fail in the merge's layout comparison on every pass.
+		good1, good2 := meta("good1", "v5", footer5), meta("good2", "v5", footer5)
+		noInterval := meta("nointerval", "v5", footer5)
+		noInterval.DocumentInterval = 0
+
+		p := newOverlapPlanner([]store.Meta{good1, good2, noInterval}, 512*mib).(*overlapPlanner)
+
+		require.Equal(t, 1, p.unreadable)
+		require.ErrorContains(t, p.unreadableReason, "no document_interval")
+		require.Equal(t, [][]string{{good1.ID(), good2.ID()}}, p.Groups())
+	})
+
+	t.Run("an unrecognised version is refused with its reason", func(t *testing.T) {
+		p := newOverlapPlanner([]store.Meta{
+			meta("bogus1", "v99", footer5),
+			meta("bogus2", "v99", footer5),
+		}, 512*mib).(*overlapPlanner)
+
+		require.Equal(t, 2, p.unreadable)
+		require.ErrorContains(t, p.unreadableReason, "v99")
+		require.Empty(t, p.Groups())
+	})
 }

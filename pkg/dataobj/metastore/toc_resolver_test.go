@@ -26,8 +26,10 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
@@ -1377,6 +1379,60 @@ func TestObjectMetastore_GetIndexes(t *testing.T) {
 			require.Equal(t, 1, n, "ToC %s read more than once", name)
 		}
 	})
+
+	t.Run("returns the indexes of a ToC whose entries hold a run ID, posting keys and shard layout", func(t *testing.T) {
+		keys, err := postings.NewKeyRange(
+			postings.Key{Kind: postings.KindBloom, ColumnName: "trace_id"},
+			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
+		)
+		require.NoError(t, err)
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(8))
+		start, end := tocTestWindow, tocTestWindow.Add(time.Hour)
+
+		bucket := newTOCTestBucket()
+		bucket.upload(t, IndexStoragePrefix+"/"+TableOfContentsPath(tenantID, tocTestWindow), newTOCBytes(t, tenantID,
+			indexpointers.IndexPointer{Path: "index/a", StartTs: start, EndTs: end, RunID: 1, PostingKeys: keys, ShardBuckets: buckets},
+			indexpointers.IndexPointer{Path: "index/b", StartTs: start, EndTs: end},
+		))
+
+		resp, err := NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry()).GetIndexes(ctx, GetIndexesRequest{Start: start, End: end})
+		require.NoError(t, err)
+		require.Len(t, resp.Indexes, 2)
+		for i, path := range []string{"index/a", "index/b"} {
+			require.Equal(t, path, resp.Indexes[i].Path)
+			require.True(t, resp.Indexes[i].Start.Equal(start))
+			require.True(t, resp.Indexes[i].End.Equal(end))
+		}
+		require.Equal(t, buckets, resp.Indexes[0].ShardBuckets)
+		require.Zero(t, resp.Indexes[1].ShardBuckets)
+	})
+
+	t.Run("returns no shard layout for an entry that records none when an earlier read batch held one", func(t *testing.T) {
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(8))
+		start, end := tocTestWindow, tocTestWindow.Add(time.Hour)
+
+		// Each read batch holds 1024 pointers, so the pointers with a layout fill the first batch and
+		// the pointers without one start the second.
+		pointers := make([]indexpointers.IndexPointer, 1500)
+		want := make(map[string]indexpointers.ShardBuckets, len(pointers))
+		for i := range pointers {
+			pointers[i] = indexpointers.IndexPointer{Path: fmt.Sprintf("index/%04d", i), StartTs: start, EndTs: end}
+			if i < 1024 {
+				pointers[i].ShardBuckets = buckets
+			}
+			want[pointers[i].Path] = pointers[i].ShardBuckets
+		}
+		bucket := newTOCTestBucket()
+		bucket.upload(t, IndexStoragePrefix+"/"+TableOfContentsPath(tenantID, tocTestWindow), newTOCBytes(t, tenantID, pointers...))
+
+		resp, err := NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry()).GetIndexes(ctx, GetIndexesRequest{Start: start, End: end})
+		require.NoError(t, err)
+		got := make(map[string]indexpointers.ShardBuckets, len(resp.Indexes))
+		for _, index := range resp.Indexes {
+			got[index.Path] = index.ShardBuckets
+		}
+		require.Equal(t, want, got)
+	})
 }
 
 func TestObjectMetastore_DataObjects(t *testing.T) {
@@ -1536,14 +1592,14 @@ func testResolverConfig() TOCResolverConfig {
 }
 
 // newTestResolver returns a resolver on bucket that reads the time from clock. It does not run.
-func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *metadatacache.Cache, cacheKeyPrefix string, clock *testClock) *TOCResolver {
+func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *metadata.Cache, cacheKeyPrefix string, clock *testClock) *TOCResolver {
 	r := NewTOCResolver(bucket, cfg, c, cacheKeyPrefix, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 	r.now = clock.Now
 	return r
 }
 
-func newTestMetadataCache(backend cache.Cache, maxItemBytes int64) *metadatacache.Cache {
-	return metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, metadatacache.NewMetrics(nil), nil)
+func newTestMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, metadata.NewCacheMetrics(nil), nil)
 }
 
 func entryOf(r *TOCResolver, path string) *tocEntry {

@@ -40,5 +40,6 @@ type CombinedLimits interface {
 	SortSchemaLabels(userID string) []string
 	DataObjShardLayout(userID string) streams.ShardLayout
 	CompactionPhases(userID string) (runIndex, runLog bool)
+	DeletionSweepEnabled(userID string) bool
 	PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool)
 }

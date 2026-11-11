@@ -79,11 +79,14 @@ type postingsBuffer struct {
 	shardScratch []uint8
 	sortedHead   int // len of the sorted+deduped ngram-ordered prefix of keys/docs
 
-	// Referenced cell-of-day bitset per (shard, dayIndex), populated at spill.
-	// Each (date, shard) .lidx has a documents table: the set of document
-	// cells that appear in that file. recordDocumentTick records those cells as
-	// we spill so merge can build the table (and dense-rank postings into it).
-	refTicks map[refKey][]uint64
+	// Referenced cell-of-day bitset per (shard, dayIndex), populated at spill
+	// when trackDocumentTicks is set. A (date, shard) .lidx of a version with a
+	// document table (v3, v4) lists the document cells that appear in that
+	// file. recordDocumentTick records those cells as we spill so merge can
+	// build the table (and dense-rank postings into it). v5 files have no
+	// table, so v5 buffers leave refTicks empty.
+	trackDocumentTicks bool
+	refTicks           map[refKey][]uint64
 	// refTicksBytes is the running total of bitset bytes allocated in refTicks,
 	// maintained on the allocation path of recordDocumentTick (once per
 	// (shard, day), never per pair) so residentBytes doesn't have to walk the
@@ -140,6 +143,9 @@ type postingsBufferConfig struct {
 	scratchDir        string
 	runPrefix         string
 	mergeThreads      int
+	// trackDocumentTicks records refTicks for versions whose files have a
+	// document table (logline.VersionHasDocumentTable).
+	trackDocumentTicks bool
 }
 
 func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
@@ -148,23 +154,24 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		prefix = "run_"
 	}
 	return &postingsBuffer{
-		bufferPairs:       cfg.bufferPairs,
-		spillWatermark:    cfg.spillWatermark,
-		intervalNanos:     cfg.intervalNanos,
-		documentShardBits: cfg.documentShardBits,
-		cellsPerDay:       cfg.cellsPerDay,
-		baseCell:          cfg.baseCell,
-		shardCount:        cfg.shardCount,
-		shardFn:           cfg.shardFn,
-		scratchDir:        cfg.scratchDir,
-		runPrefix:         prefix,
-		mergeThreads:      cfg.mergeThreads,
-		keys:              make([][8]byte, 0, cfg.bufferPairs),
-		docs:              make([]uint32, 0, cfg.bufferPairs),
-		keyBuf:            make([][8]byte, cfg.bufferPairs),
-		docBuf:            make([]uint32, cfg.bufferPairs),
-		sortBufBytes:      sortBufferFloorBytes(cfg.bufferPairs),
-		refTicks:          make(map[refKey][]uint64),
+		bufferPairs:        cfg.bufferPairs,
+		spillWatermark:     cfg.spillWatermark,
+		intervalNanos:      cfg.intervalNanos,
+		documentShardBits:  cfg.documentShardBits,
+		cellsPerDay:        cfg.cellsPerDay,
+		baseCell:           cfg.baseCell,
+		shardCount:         cfg.shardCount,
+		shardFn:            cfg.shardFn,
+		scratchDir:         cfg.scratchDir,
+		runPrefix:          prefix,
+		mergeThreads:       cfg.mergeThreads,
+		keys:               make([][8]byte, 0, cfg.bufferPairs),
+		docs:               make([]uint32, 0, cfg.bufferPairs),
+		keyBuf:             make([][8]byte, cfg.bufferPairs),
+		docBuf:             make([]uint32, cfg.bufferPairs),
+		sortBufBytes:       sortBufferFloorBytes(cfg.bufferPairs),
+		trackDocumentTicks: cfg.trackDocumentTicks,
+		refTicks:           make(map[refKey][]uint64),
 	}
 }
 
@@ -288,16 +295,19 @@ func (b *postingsBuffer) spillSorted() error {
 }
 
 // shardSortAndTrack reorders the ngram-sorted head [0:n] into shard-contiguous
-// order (stable within a shard, so ngram order is preserved) and records every
-// pair's document tick for that shard's documents table. Scatters into
-// keyBuf/docBuf (free at spill time) and returns them plus the per-shard
-// record counts (used to write the run's shard directory). When sharding is
-// disabled the reorder is skipped and ticks are recorded against shard 0.
+// order (stable within a shard, so ngram order is preserved) and, when
+// trackDocumentTicks is set, records every pair's document tick for that
+// shard's documents table. Scatters into keyBuf/docBuf (free at spill time)
+// and returns them plus the per-shard record counts (used to write the run's
+// shard directory). When sharding is disabled the reorder is skipped and
+// ticks are recorded against shard 0.
 func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32) {
 	src, srcD := b.keys[:n], b.docs[:n]
 	if b.shardCount <= 1 {
-		for i := range n {
-			b.recordDocumentTick(0, srcD[i])
+		if b.trackDocumentTicks {
+			for i := range n {
+				b.recordDocumentTick(0, srcD[i])
+			}
 		}
 		return src, srcD, []int32{int32(n)}
 	}
@@ -312,7 +322,9 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 		s := uint8(b.shardFn(src[i], b.shardCount))
 		shards[i] = s
 		cnt[s]++
-		b.recordDocumentTick(int(s), srcD[i])
+		if b.trackDocumentTicks {
+			b.recordDocumentTick(int(s), srcD[i])
+		}
 	}
 	pos := make([]int32, b.shardCount)
 	for i := 1; i < b.shardCount; i++ {
@@ -348,7 +360,8 @@ func (b *postingsBuffer) recordDocumentTick(shardVal int, tick uint32) {
 
 // releaseSortBuffers frees the large ingest sort buffers once ingest is
 // complete; the merge streams runs from disk and does not need them. refTicks
-// is retained — the merge needs it for doc-metadata synthesis.
+// is retained — the merge needs it for doc-metadata synthesis (document-table
+// versions only).
 func (b *postingsBuffer) releaseSortBuffers() {
 	b.keys = nil
 	b.docs = nil

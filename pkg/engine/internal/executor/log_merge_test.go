@@ -308,6 +308,9 @@ type compactedObject struct {
 	streamApp    map[int64]string
 	streamLabels map[int64]labels.Labels
 	records      []outputRecord
+
+	sizeLeveled    dataobj.SizeLeveledCompaction
+	hasSizeLeveled bool
 }
 
 // readCompactedObjectsFromIndex reads the index at indexPath from the index bucket,
@@ -391,7 +394,14 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 			}
 		}
 
-		out = append(out, compactedObject{streamApp: streamApp, streamLabels: streamLabels, records: records})
+		sizeLeveled, hasSizeLeveled := logObj.SizeLeveledCompaction()
+		out = append(out, compactedObject{
+			streamApp:      streamApp,
+			streamLabels:   streamLabels,
+			records:        records,
+			sizeLeveled:    sizeLeveled,
+			hasSizeLeveled: hasSizeLeveled,
+		})
 	}
 	return out
 }
@@ -1351,6 +1361,23 @@ func TestDoLogObjectMerge(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 		require.Zero(t, store.Live())
 	})
+
+	t.Run("writes the output level of the task as the size level in the file metadata of every output object", func(t *testing.T) {
+		dataBucket, runs := splitSources(t)
+		indexBucket := objstore.NewInMemBucket()
+		c := newSmallObjectExecutorContext(t, indexBucket)
+		c.dataBucket = dataBucket
+
+		arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, OutputLevel: 2})
+		require.NoError(t, err)
+
+		objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts.Path, tenant)
+		require.GreaterOrEqual(t, len(objs), 2, "the merge must split into multiple objects")
+		for _, o := range objs {
+			require.True(t, o.hasSizeLeveled)
+			require.Equal(t, dataobj.SizeLeveledCompaction{Level: 2}, o.sizeLeveled)
+		}
+	})
 }
 
 func TestDropStreamsOutsideRange(t *testing.T) {
@@ -1920,7 +1947,7 @@ func TestLogObjectWriter_StartNewObject(t *testing.T) {
 		layout := streams.NewLayout(fourBuckets, []string{"label:cluster"})
 
 		c := newTestExecutorContext(t, objstore.NewInMemBucket())
-		w := &logObjectWriter{c: c, layout: layout, builderMetrics: c.builderMetrics}
+		w := &logObjectWriter{c: c, node: &physical.LogMerge{Tenant: "T"}, layout: layout, builderMetrics: c.builderMetrics}
 		require.NoError(t, w.startNewObject())
 
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

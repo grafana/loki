@@ -114,6 +114,26 @@ func TestLogTaskSplitter(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("copies the output level of the merge to every split task", func(t *testing.T) {
+		spec := splitTestSpec([]v2.Section[logSortPrefix]{a}, []v2.Section[logSortPrefix]{b, c})
+		spec.OutputLevel = 2
+		got := newSizeLogTaskSplitter(log.NewNopLogger(), 125, newSectionKeySizes(sections)).split(spec)
+
+		require.Len(t, got, 3)
+		for _, task := range got {
+			require.Equal(t, uint32(2), task.OutputLevel)
+		}
+	})
+
+	t.Run("keeps the output level when the task fits in one split", func(t *testing.T) {
+		spec := splitTestSpec([]v2.Section[logSortPrefix]{a, b, c})
+		spec.OutputLevel = 2
+		got := newSizeLogTaskSplitter(log.NewNopLogger(), 1000, newSectionKeySizes(sections)).split(spec)
+
+		require.Len(t, got, 1)
+		require.Equal(t, uint32(2), got[0].OutputLevel)
+	})
+
 	t.Run("finds the sizes of sections that the task refers to by copies of their refs", func(t *testing.T) {
 		spec := splitTestSpec([]v2.Section[logSortPrefix]{a}, []v2.Section[logSortPrefix]{b, c})
 		for _, run := range spec.Runs {
@@ -171,5 +191,16 @@ func TestNoopLogTaskSplitter(t *testing.T) {
 		require.Equal(t, []*compactionv2pb.TaskSpec{spec}, got)
 		require.Equal(t, fullKeyRange, got[0].KeyRange)
 		require.Equal(t, int64(130), got[0].InputBytes)
+	})
+
+	t.Run("keeps the output level of the task", func(t *testing.T) {
+		a := splitTestSection("a", map[string]uint64{"auth": 60})
+		spec := splitTestSpec([]v2.Section[logSortPrefix]{a})
+		spec.OutputLevel = 2
+
+		got := newNoopLogTaskSplitter(newSectionKeySizes([]v2.Section[logSortPrefix]{a})).split(spec)
+
+		require.Len(t, got, 1)
+		require.Equal(t, uint32(2), got[0].OutputLevel)
 	})
 }
