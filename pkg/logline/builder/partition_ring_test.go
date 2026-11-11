@@ -2,11 +2,14 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,6 +49,21 @@ func newTestPartitionRingService(t *testing.T) (*PartitionRingWatcher, func(cont
 		}))
 	}
 	return s, write
+}
+
+// TestNewPartitionRingWatcher_BuildsMemberlistKV keeps the memberlist KV out
+// of starting: /metrics is served by then, and scraping it mid-build panics.
+func TestNewPartitionRingWatcher_BuildsMemberlistKV(t *testing.T) {
+	built := false
+	cfg := kv.Config{Store: "memberlist"}
+	cfg.MemberlistKV = func() (*memberlist.KV, error) {
+		built = true
+		return nil, errors.New("not needed")
+	}
+
+	_, err := NewPartitionRingWatcher(cfg, "key", log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	require.Error(t, err)
+	require.True(t, built)
 }
 
 // TestWaitForPartitions_TimesOutOnEmptyRing locks in the "fail loudly"
