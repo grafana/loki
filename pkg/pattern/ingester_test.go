@@ -1168,7 +1168,6 @@ func TestInstanceObserveWindows(t *testing.T) {
 		// The open bucket holds only the entries of the newer window.
 		b := inst.aggMetrics[fakePartition]
 		require.Equal(t, window1, b.start)
-		require.Equal(t, window1.Add(period), b.end)
 		require.Equal(t, uint64(3), b.metrics[lbs.String()][constants.LogLevelUnknown].count)
 	})
 

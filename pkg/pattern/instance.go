@@ -69,21 +69,19 @@ type instance struct {
 const idleBuckets = 3
 
 // metricsBucket holds the aggregated metrics for one partition over one sample
-// period. A bucket covers the window [start, end).
+// period. A bucket covers the window from start to start plus the sample
+// period.
 type metricsBucket struct {
 	// The start of the window, inclusive. It truncated to the sample period, not
 	// the wall clock time, and is used as the timestamp for both the ts field and
 	// the log line timestamp when downsampling.
 	start time.Time
-	// The end of the window, exclusive. It is equal to start plus the sample
-	// period. Entries with a record time at or after end belong to a newer bucket.
-	end time.Time
 	// The wall clock time entries were last added. Downsample uses it to avoid
-	// writing a bucket before the window has expired. It cannot compare end to the
-	// wall clock, because with consumer lag end is in the past while the bucket is
-	// still being filled. Writing it then would split one window into several
-	// entries. Instead Downsample waits until the bucket has been idle, or later
-	// records start a new window.
+	// writing a bucket before the window has expired. It cannot compare the end
+	// of the window to the wall clock, because with consumer lag the end is in
+	// the past while the bucket is still being filled. Writing it then would
+	// split one window into several entries. Instead Downsample waits until the
+	// bucket has been idle, or later records start a new window.
 	lastObserved time.Time
 	metrics      map[string]map[string]*aggregatedMetrics
 }
@@ -384,7 +382,6 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	if !ok {
 		b = metricsBucket{
 			start:   start,
-			end:     start.Add(i.samplePeriod),
 			metrics: make(map[string]map[string]*aggregatedMetrics),
 		}
 	}
