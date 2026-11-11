@@ -147,3 +147,41 @@ func TestDecodeKeyRange(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyRange_OverlapsColumn(t *testing.T) {
+	newRange := func(t *testing.T, minKey, maxKey Key) KeyRange {
+		t.Helper()
+		r, err := NewKeyRange(minKey, maxKey)
+		require.NoError(t, err)
+		return r
+	}
+	label := func(name, value string) Key { return Key{Kind: KindLabel, ColumnName: name, LabelValue: value} }
+	bloom := func(name string) Key { return Key{Kind: KindBloom, ColumnName: name} }
+
+	for _, tc := range []struct {
+		name   string
+		r      KeyRange
+		kind   PostingKind
+		column string
+		want   bool
+	}{
+		{name: "overlaps every column when the range is the zero KeyRange", r: KeyRange{}, kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column that the range holds whole", r: newRange(t, label("a", "x"), label("z", "x")), kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column when the range starts inside it", r: newRange(t, label("app", "m"), label("env", "prod")), kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column when the range ends inside it", r: newRange(t, label("a", "x"), label("app", "m")), kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column when the range starts at its first key", r: newRange(t, label("app", ""), label("env", "")), kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column when the range ends at its first key", r: newRange(t, label("a", "x"), label("app", "")), kind: KindLabel, column: "app", want: true},
+		{name: "overlaps a column when the range holds one of its keys", r: newRange(t, label("app", "api"), label("app", "api")), kind: KindLabel, column: "app", want: true},
+		{name: "does not overlap a column when the range ends before it", r: newRange(t, label("a", "x"), label("ap", "zzz")), kind: KindLabel, column: "app", want: false},
+		{name: "does not overlap a column when the range starts after it", r: newRange(t, label("appz", ""), label("env", "")), kind: KindLabel, column: "app", want: false},
+		{name: "does not overlap a column that is a prefix of the range's only column", r: newRange(t, label("apps", "a"), label("apps", "z")), kind: KindLabel, column: "app", want: false},
+		{name: "does not overlap the label column when the range holds only its bloom key", r: newRange(t, bloom("app"), bloom("app")), kind: KindLabel, column: "app", want: false},
+		{name: "overlaps the bloom column when the range holds its bloom key", r: newRange(t, bloom("app"), bloom("app")), kind: KindBloom, column: "app", want: true},
+		{name: "overlaps the bloom column when the range starts with blooms and ends with labels", r: newRange(t, bloom("a"), label("z", "")), kind: KindBloom, column: "trace_id", want: true},
+		{name: "does not overlap the bloom column when the range holds only labels", r: newRange(t, label("a", ""), label("z", "")), kind: KindBloom, column: "trace_id", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.r.OverlapsColumn(tc.kind, tc.column))
+		})
+	}
+}

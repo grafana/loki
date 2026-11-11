@@ -26,7 +26,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -1592,14 +1592,14 @@ func testResolverConfig() TOCResolverConfig {
 }
 
 // newTestResolver returns a resolver on bucket that reads the time from clock. It does not run.
-func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *metadatacache.Cache, cacheKeyPrefix string, clock *testClock) *TOCResolver {
+func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *metadata.Cache, cacheKeyPrefix string, clock *testClock) *TOCResolver {
 	r := NewTOCResolver(bucket, cfg, c, cacheKeyPrefix, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 	r.now = clock.Now
 	return r
 }
 
-func newTestMetadataCache(backend cache.Cache, maxItemBytes int64) *metadatacache.Cache {
-	return metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, metadatacache.NewMetrics(nil), nil)
+func newTestMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, metadata.NewCacheMetrics(nil), nil)
 }
 
 func entryOf(r *TOCResolver, path string) *tocEntry {

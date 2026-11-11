@@ -67,7 +67,7 @@ func TestIter(t *testing.T) {
 	})
 }
 
-func TestDecodePostingKeys(t *testing.T) {
+func TestPostingKeysFromBounds(t *testing.T) {
 	low := postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}
 	high := postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"}
 	keys, err := postings.NewKeyRange(low, high)
@@ -75,53 +75,53 @@ func TestDecodePostingKeys(t *testing.T) {
 	lowEncoded, highEncoded := keys.Encode()
 
 	t.Run("returns the range when both bounds are present", func(t *testing.T) {
-		keys, err := decodePostingKeys(lowEncoded, highEncoded)
+		keys, err := PostingKeysFromBounds(lowEncoded, highEncoded)
 		require.NoError(t, err)
 		require.Equal(t, low, keys.Min())
 		require.Equal(t, high, keys.Max())
 	})
 
 	t.Run("returns no range when both bounds are missing", func(t *testing.T) {
-		keys, err := decodePostingKeys(nil, nil)
+		keys, err := PostingKeysFromBounds(nil, nil)
 		require.NoError(t, err)
 		require.True(t, keys.IsZero())
 	})
 
 	t.Run("returns an error when only the min bound is present", func(t *testing.T) {
-		_, err := decodePostingKeys(lowEncoded, nil)
+		_, err := PostingKeysFromBounds(lowEncoded, nil)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when only the max bound is present", func(t *testing.T) {
-		_, err := decodePostingKeys(nil, highEncoded)
+		_, err := PostingKeysFromBounds(nil, highEncoded)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the min bound sorts after the max bound", func(t *testing.T) {
-		_, err := decodePostingKeys(highEncoded, lowEncoded)
+		_, err := PostingKeysFromBounds(highEncoded, lowEncoded)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when a bound is not a valid encoding", func(t *testing.T) {
-		_, err := decodePostingKeys([]byte("bad"), highEncoded)
+		_, err := PostingKeysFromBounds([]byte("bad"), highEncoded)
 		require.Error(t, err)
 	})
 }
 
-func TestDecodeRunID(t *testing.T) {
+func TestRunIDFromValue(t *testing.T) {
 	t.Run("returns the run ID for a positive value", func(t *testing.T) {
-		runID, err := decodeRunID(7)
+		runID, err := RunIDFromValue(7)
 		require.NoError(t, err)
 		require.Equal(t, RunID(7), runID)
 	})
 
 	t.Run("returns an error when the value is zero", func(t *testing.T) {
-		_, err := decodeRunID(0)
+		_, err := RunIDFromValue(0)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the value is negative", func(t *testing.T) {
-		_, err := decodeRunID(-1)
+		_, err := RunIDFromValue(-1)
 		require.Error(t, err)
 	})
 }

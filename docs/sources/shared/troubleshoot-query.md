@@ -424,48 +424,6 @@ The estimated data volume for the query exceeds the configured limit. This is de
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-### Error: Too many chunks (count)
-
-**Error message:**
-
-`the query hit the max number of chunks limit (limit: 2000000 chunks)`
-
-**Cause:**
-
-The number of chunks that the query would read exceeds the configured limit. This protects against queries that would scan excessive amounts of data and consume too much memory.
-
-**Default configuration:**
-
-- `max_chunks_per_query`: 2000000
-
-**Resolution:**
-
-* **Narrow stream selectors** to reduce the number of matching chunks:
-
-   ```logql
-   # Too broad
-   {job="app"}
-   
-   # More specific
-   {job="app", environment="production", namespace="api"}
-   ```
-
-* **Reduce the query time range** to scan fewer chunks.
-
-* **Increase the limit** if resources allow:
-
-   ```yaml
-   limits_config:
-     max_chunks_per_query: 5000000  #default is 2000000
-   ```
-
-**Properties:**
-
-- Enforced by: Query Frontend
-- Retryable: No (query must be modified)
-- HTTP status: 400 Bad Request
-- Configurable per tenant: Yes
-
 ### Error: Stream matcher limits
 
 **Error message:**
