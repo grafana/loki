@@ -2,6 +2,7 @@ package builder
 
 import (
 	"bytes"
+
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -148,11 +149,11 @@ func TestBuilder_RoundTrip(t *testing.T) {
 				reg := prometheus.NewRegistry()
 				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
 				require.NoError(t, err)
-				require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+				require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 
 				files, err := b.prepareIndexes()
 				require.NoError(t, err)
-				defer b.clear()
+				defer b.Clear()
 
 				got := map[string]map[string]map[docRange]bool{}
 				for _, f := range files {
@@ -277,7 +278,7 @@ func sortedKeys[V any](m map[string]V) []string {
 // TestBuilder_PrepareIndexesRetryable verifies that a second prepareIndexes
 // (as happens when an upload fails and the flush is retried) reproduces the
 // same files from the surviving scratch runs (invariant: runs are removed only
-// by clear, never by prepareIndexes).
+// by Clear, never by prepareIndexes).
 func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 	cfg := roundTripConfig(t, 4, 64)
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
@@ -291,7 +292,7 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 			Line:      fmt.Sprintf("request %d failed with status 500 at endpoint alpha", i%7),
 		})
 	}
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, now, recordRef{}))
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, now, RecordRef{}))
 
 	first, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -304,8 +305,8 @@ func TestBuilder_PrepareIndexesRetryable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fileKeys(first), fileKeys(second), "retry must reproduce the same (date,shard) files")
 
-	b.clear()
-	require.Empty(t, b.ing.postings.runPaths, "clear must drop runs")
+	b.Clear()
+	require.Empty(t, b.ing.postings.runPaths, "Clear must drop runs")
 }
 
 func fileKeys(files []fileInfo) []string {
@@ -317,7 +318,7 @@ func fileKeys(files []fileInfo) []string {
 	return ks
 }
 
-// retryTestEntries is a fixed dataset shared by the failure-retry and clear
+// retryTestEntries is a fixed dataset shared by the failure-retry and Clear
 // tests: enough repeated lines to force multiple run spills under a tiny
 // buffer, with deterministic timestamps.
 func retryTestEntries() []logproto.Entry {
@@ -356,8 +357,8 @@ func TestBuilder_PrepareIndexesRetryAfterFailure(t *testing.T) {
 	// Control: identical input, never failed.
 	ctl, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer ctl.clear()
-	require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+	defer ctl.Clear()
+	require.NoError(t, ctl.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 	ctlFiles, err := ctl.prepareIndexes()
 	require.NoError(t, err)
 	require.NotEmpty(t, ctlFiles)
@@ -365,8 +366,8 @@ func TestBuilder_PrepareIndexesRetryAfterFailure(t *testing.T) {
 
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 	require.NotEmpty(t, b.ing.postings.runPaths, "test requires spilled runs before prepareIndexes")
 
 	// Corrupt one run's magic so the merge fails after finish().
@@ -461,8 +462,8 @@ func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
 			ctlCfg.MergeThreads = threads
 			ctl, err := newIndexBuilder(ctlCfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 			require.NoError(t, err)
-			defer ctl.clear()
-			require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+			defer ctl.Clear()
+			require.NoError(t, ctl.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 			ctlFiles, err := ctl.prepareIndexes()
 			require.NoError(t, err)
 			// At least one non-victim shard must produce files, or "completed
@@ -474,8 +475,8 @@ func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
 			cfg.MergeThreads = threads
 			b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 			require.NoError(t, err)
-			defer b.clear()
-			require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+			defer b.Clear()
+			require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: entries}, nil, time.Now(), RecordRef{}))
 
 			// Spill the remaining head now so the run set is final before corrupting
 			// (finish is idempotent — prepareIndexes below won't create new runs).
@@ -524,8 +525,8 @@ func TestMergeRuns_StopsSchedulingAfterShardFailure(t *testing.T) {
 	cfg.MergeThreads = 1
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 	require.NoError(t, b.ing.postings.finish())
 	require.NotEmpty(t, b.ing.postings.runPaths)
 	corruptShardPayload(t, b.ing.postings.runPaths, 0)
@@ -549,8 +550,8 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(reg))
 	require.NoError(t, err)
-	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	defer b.Clear()
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 
 	_, err = b.prepareIndexes()
 	require.NoError(t, err)
@@ -568,14 +569,12 @@ func TestBuilder_SpillAndMergeMetrics(t *testing.T) {
 	require.Equal(t, uint64(1), durCount)
 }
 
-// TestBuilder_Clear_FullReset verifies clear() is a complete reset: handles
-// closed, the private scratch subdir removed wholesale, and every piece of
-// postings-buffer run state zeroed (builders are single-cycle, but clear must
-// not leave stale state as a trap).
+// TestBuilder_Clear_FullReset verifies that Clear releases the cycle's handles,
+// scratch files, and postings state. It does not make the builder reusable.
 func TestBuilder_Clear_FullReset(t *testing.T) {
 	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
+	require.NoError(t, b.ProcessStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), RecordRef{}))
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -585,15 +584,15 @@ func TestBuilder_Clear_FullReset(t *testing.T) {
 	require.NotEmpty(t, handles)
 	runDir := b.runDir
 
-	b.clear()
+	b.Clear()
 
-	// Handles were closed by clear — a second Close reports ErrClosed.
+	// Handles were closed by Clear — a second Close reports ErrClosed.
 	for _, fh := range handles {
-		require.ErrorIs(t, fh.Close(), os.ErrClosed, "clear must close .lidx handles")
+		require.ErrorIs(t, fh.Close(), os.ErrClosed, "Clear must close .lidx handles")
 	}
 	// The whole scratch subdir (runs + .lidx) is gone.
 	_, statErr := os.Stat(runDir)
-	require.True(t, os.IsNotExist(statErr), "clear must remove the builder's scratch subdir")
+	require.True(t, os.IsNotExist(statErr), "Clear must remove the builder's scratch subdir")
 
 	// Builder and postings-buffer state fully reset.
 	require.Zero(t, b.runDiskBytes())
