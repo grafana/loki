@@ -206,7 +206,8 @@ func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *Labe
 
 func (h *labelFilterHints) ShouldParseLine(line []byte, lbs *LabelsBuilder) bool {
 	for _, r := range h.lineRequirements {
-		if !r.need.mayHold(line) && !r.labelSet(lbs) {
+		// labelSet comes first because it costs less than a search of the line.
+		if !r.labelSet(lbs) && !r.need.mayHold(line) {
 			return false
 		}
 	}
