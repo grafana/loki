@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -16,6 +15,10 @@ import (
 // A run splits the postings of one logs section across its index objects, and
 // a query reads them as one index. If compaction replaced only some of them,
 // the remaining index objects would miss the postings of the replaced ones.
+//
+// Every index object holds a postings section of its tenant. Planning places an
+// index object by its postings, so it keeps every index object of a run in the
+// unit of the run.
 type indexRun struct {
 	// entries is never empty. Its entries share RunID.
 	entries []indexEntry
@@ -138,60 +141,6 @@ func (g *layoutGroup) runOf(path string) (indexRun, error) {
 		return indexRun{}, fmt.Errorf("index %q is not in the layout group", path)
 	}
 	return g.runs[i], nil
-}
-
-// completeTasks adds to each task every index object of the index runs that
-// it merges, so the task merges whole runs and the ToC swap removes them.
-//
-// Planning places only the index objects with postings rows. A run can also
-// hold an index object without them, for example one with only stats. The
-// added reference names the index object only. IndexMerge reads every section
-// of the tenant in a referenced index object, whatever the section index.
-//
-// It returns an error if a task references an index object that g doesn't
-// hold, or if two tasks reference index objects of one run. Both tasks would
-// then write the whole run.
-func (g *layoutGroup) completeTasks(tasks []*compactionv2pb.TaskSpec) error {
-	taskOfRun := make(map[int]int)
-	for taskIdx, task := range tasks {
-		for _, runRef := range task.Runs {
-			for _, section := range runRef.Sections {
-				run, ok := g.runOfPath[section.ObjectPath]
-				if !ok {
-					return fmt.Errorf("index %q is not in the layout group", section.ObjectPath)
-				}
-				if other, seen := taskOfRun[run]; seen && other != taskIdx {
-					return fmt.Errorf("tasks %d and %d both merge %s", other, taskIdx, g.runs[run])
-				}
-				taskOfRun[run] = taskIdx
-			}
-		}
-	}
-
-	for _, task := range tasks {
-		inTask := make(map[string]struct{})
-		for _, runRef := range task.Runs {
-			for _, section := range runRef.Sections {
-				inTask[section.ObjectPath] = struct{}{}
-			}
-		}
-		for _, runRef := range task.Runs {
-			var added []*compactionv2pb.SectionRef
-			for _, section := range runRef.Sections {
-				// The first pass checked that g holds every referenced path.
-				run := g.runs[g.runOfPath[section.ObjectPath]]
-				for _, entry := range run.entries {
-					if _, ok := inTask[entry.Path]; ok {
-						continue
-					}
-					added = append(added, &compactionv2pb.SectionRef{ObjectPath: entry.Path})
-					inTask[entry.Path] = struct{}{}
-				}
-			}
-			runRef.Sections = append(runRef.Sections, added...)
-		}
-	}
-	return nil
 }
 
 // countRuns returns the number of index runs that the index objects at paths

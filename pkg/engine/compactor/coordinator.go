@@ -14,10 +14,12 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -589,13 +591,25 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 // sections. ok is false if no index object of run has one.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run is
-// corrupt, or if two index objects of run record different layouts.
+// corrupt, has no postings section of tenant, or records another layout than
+// an index object of the same run.
 func (c *coordinator) runLayout(ctx context.Context, tenant string, run indexRun) (layout streams.Layout, ok bool, err error) {
 	var source string
 	for _, entry := range run.entries {
-		entryLayout, entryOK, err := indexLayoutAt(ctx, c.bucket, tenant, entry.Path)
+		obj, err := dataobj.FromBucket(ctx, c.bucket, entry.Path, prefetchBytes)
+		if err != nil {
+			return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, entry.Path, err)
+		}
+		entryLayout, entryOK, err := indexLayout(ctx, obj, tenant, entry.Path)
 		if err != nil {
 			return streams.Layout{}, false, err
+		}
+		// Planning places an index object by its postings. Without them, a
+		// task would leave the index object out of its run.
+		if !slices.ContainsFunc(obj.Sections(), func(section *dataobj.Section) bool {
+			return section.Tenant == tenant && postings.CheckSection(section)
+		}) {
+			return streams.Layout{}, false, fmt.Errorf("%w: index %s has no postings section", errCorruptIndex, entry.Path)
 		}
 		if !entryOK {
 			continue
@@ -624,9 +638,8 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
 	}
 
-	// Give each section the unit of its index run. Planning then puts the
-	// index objects with postings of one index run in one task, and
-	// completeTasks adds the others.
+	// Give each section the unit of its index run, so planning puts every
+	// index object of one index run in one task.
 	for i := range sections {
 		run, err := group.runOf(sections[i].Ref.ObjectPath)
 		if err != nil {
@@ -648,9 +661,6 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask)
 	if len(tasks) == 0 {
 		return compactionStats{}, fmt.Errorf("no index merge tasks to execute")
-	}
-	if err := group.completeTasks(tasks); err != nil {
-		return compactionStats{}, fmt.Errorf("complete index merge tasks: %w", err)
 	}
 
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))

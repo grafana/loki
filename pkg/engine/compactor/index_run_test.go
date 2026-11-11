@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -61,74 +60,6 @@ func TestIndexRun_String(t *testing.T) {
 			"run 3 [indexes/00 indexes/01 indexes/02 indexes/03 indexes/04 indexes/05 indexes/06 indexes/07 and 2 more]",
 			runOf(10).String(),
 		)
-	})
-}
-
-func TestLayoutGroup_CompleteTasks(t *testing.T) {
-	newGroup := func(runs ...indexRun) *layoutGroup {
-		group := newLayoutGroup(streams.Layout{}, false)
-		for _, run := range runs {
-			group.add(run)
-		}
-		return group
-	}
-	run := indexRun{entries: []indexEntry{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}, {Path: "run/stats", RunID: 1}}}
-	plain := indexRun{entries: []indexEntry{{Path: "plain"}}}
-	paths := func(task *compactionv2pb.TaskSpec) [][]string {
-		var out [][]string
-		for _, runRef := range task.Runs {
-			var refs []string
-			for _, section := range runRef.Sections {
-				refs = append(refs, section.ObjectPath)
-			}
-			out = append(out, refs)
-		}
-		return out
-	}
-
-	t.Run("adds every missing index object of a run once, to the planner run that holds the run", func(t *testing.T) {
-		task := &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "run/a"}, {ObjectPath: "run/a", SectionIndex: 1}}},
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "plain"}}},
-		}}
-
-		require.NoError(t, newGroup(run, plain).completeTasks([]*compactionv2pb.TaskSpec{task}))
-		require.Equal(t, [][]string{{"run/a", "run/a", "run/b", "run/stats"}, {"plain"}}, paths(task))
-	})
-
-	t.Run("adds nothing to a task that holds every index object of its runs", func(t *testing.T) {
-		task := &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "run/a"}, {ObjectPath: "run/b"}, {ObjectPath: "run/stats"}}},
-		}}
-
-		require.NoError(t, newGroup(run).completeTasks([]*compactionv2pb.TaskSpec{task}))
-		require.Equal(t, [][]string{{"run/a", "run/b", "run/stats"}}, paths(task))
-	})
-
-	t.Run("adds no index object of a run that the task does not merge", func(t *testing.T) {
-		task := &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "plain"}}},
-		}}
-
-		require.NoError(t, newGroup(run, plain).completeTasks([]*compactionv2pb.TaskSpec{task}))
-		require.Equal(t, [][]string{{"plain"}}, paths(task))
-	})
-
-	t.Run("returns an error when two tasks reference index objects of one run", func(t *testing.T) {
-		tasks := []*compactionv2pb.TaskSpec{
-			{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "run/a"}}}}},
-			{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "run/b"}}}}},
-		}
-
-		require.Error(t, newGroup(run).completeTasks(tasks))
-	})
-
-	t.Run("returns an error when a task references an index object outside the group", func(t *testing.T) {
-		task := &compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "unknown"}}},
-		}}
-
-		require.Error(t, newGroup(plain).completeTasks([]*compactionv2pb.TaskSpec{task}))
 	})
 }
 

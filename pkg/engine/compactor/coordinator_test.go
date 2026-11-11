@@ -3449,7 +3449,9 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 
 	t.Run("IndexMerge skips an index with an invalid layout and still groups the other indexes", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/healthy", []stats.Stat{{ObjectPath: "logs/a", SortSchema: "label:service_name"}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: "indexes/healthy", sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
+			stats:    []stats.Stat{{ObjectPath: "logs/a", SortSchema: "label:service_name"}},
+			postings: []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api"}}})
 		// The zero layout records a shard count but no stream order, which
 		// readers reject.
 		builder := dataobj.NewBuilder(nil)
