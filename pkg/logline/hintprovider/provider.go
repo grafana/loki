@@ -134,7 +134,8 @@ func (h *Hints) String() string {
 
 // FormatHintRanges renders ranges as:
 // [start +dur];[start +dur];... and truncates to maxLoggedHintRanges.
-// Example: [2026-07-09T08:42:59.123Z +1s]
+// A range of one document shard ends with the shard, like a query shard.
+// Example: [2026-07-09T08:42:59.123Z +1s];[2026-07-09T08:43:00.000Z +16s 17_of_32]
 func FormatHintRanges(ranges []HintTimeRange) string {
 	if len(ranges) == 0 {
 		return "[]"
@@ -160,6 +161,9 @@ func FormatHintRanges(ranges []HintTimeRange) string {
 			b.WriteString(start.Format(hintRangeTimeFormat))
 			b.WriteString(" +")
 			b.WriteString(dur.String())
+		}
+		if ranges[i].DocumentShardBits > 0 {
+			fmt.Fprintf(&b, " %d_of_%d", ranges[i].DocumentShard, 1<<ranges[i].DocumentShardBits)
 		}
 		b.WriteString("]")
 	}

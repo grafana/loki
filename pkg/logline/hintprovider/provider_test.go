@@ -31,6 +31,12 @@ func TestFormatHintRanges_Basic(t *testing.T) {
 	require.Equal(t, got, (&Hints{TimeRanges: ranges}).String())
 }
 
+func TestFormatHintRanges_DocumentShard(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	got := FormatHintRanges([]HintTimeRange{{Start: base, End: base.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: 5}})
+	require.Equal(t, "[2026-02-26T10:00:00.000Z +16s 17_of_32]", got)
+}
+
 func TestFormatHintRanges_Passthrough(t *testing.T) {
 	end := time.Date(2026, 7, 9, 8, 42, 59, 500*int(time.Millisecond), time.UTC)
 	got := FormatHintRanges([]HintTimeRange{{End: end, Source: HintSourcePreMinDate}})
