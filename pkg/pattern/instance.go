@@ -68,10 +68,6 @@ type instance struct {
 	aggregationMetrics *aggregation.Metrics
 }
 
-// idleBuckets is the number of sample periods a bucket must be idle for, with
-// no entries added, before Downsample writes it.
-const idleBuckets = 3
-
 // metricsBucket holds the aggregated metrics for one partition over one sample
 // period. A bucket covers the window from start to start plus the sample
 // period.
@@ -414,8 +410,8 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	}
 }
 
-// Downsample writes the buckets that have not been observed for idleBuckets
-// sample periods. A newer record writes the bucket of its partition in Observe,
+// Downsample writes the buckets that have not been observed for a sample
+// period. A newer record writes the bucket of its partition in Observe,
 // so this is for the buckets that no newer record will write, such as those of
 // partitions that were revoked or have stopped receiving records. It must not
 // write a bucket that is still being filled, as when a partition replays a
@@ -425,7 +421,7 @@ func (i *instance) Downsample(now time.Time) {
 	defer i.aggMetricsMtx.Unlock()
 
 	for partition, b := range i.aggMetrics {
-		if now.Sub(b.lastObserved) >= idleBuckets*i.samplePeriod {
+		if now.Sub(b.lastObserved) >= i.samplePeriod {
 			i.flushBucket(b)
 			delete(i.aggMetrics, partition)
 		}

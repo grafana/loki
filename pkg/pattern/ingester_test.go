@@ -370,10 +370,10 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		now := model.Now()
 		inst, mockWriter := setup(now.Time())
 		// Entries are written at the start of the bucket, once the bucket has been
-		// idle for three sample periods.
+		// idle for a sample period.
 		bucket := inst.aggMetrics[fakePartition]
 		start := model.TimeFromUnixNano(bucket.start.UnixNano())
-		inst.Downsample(bucket.lastObserved.Add(3 * 10 * time.Second))
+		inst.Downsample(bucket.lastObserved.Add(10 * time.Second))
 
 		mockWriter.AssertCalled(
 			t,
@@ -1217,8 +1217,8 @@ func TestInstanceObserveWindows(t *testing.T) {
 			require.Equal(t, uint64(3), inst.aggMetrics[current].metrics[lbs.String()][constants.LogLevelUnknown].count)
 
 			// Downsample writes the bucket of each partition that has been idle for
-			// three sample periods.
-			time.Sleep(3 * period)
+			// a sample period.
+			time.Sleep(period)
 			inst.Downsample(time.Now())
 			w.AssertNumberOfCalls(t, "WriteEntry", 3)
 			require.Empty(t, inst.aggMetrics)
@@ -1235,15 +1235,15 @@ func TestInstanceObserveWindows(t *testing.T) {
 			time.Sleep(20 * time.Second)
 			inst.Observe(ctx, lbs.String(), lines(3), window0.Add(2*time.Second), fakePartition)
 
-			// The window ended long ago in record time, but the bucket was observed 29s
-			// ago, which is less than three sample periods.
-			time.Sleep(29 * time.Second)
+			// The window ended long ago in record time, but the bucket was observed 9s
+			// ago, which is less than a sample period.
+			time.Sleep(9 * time.Second)
 			inst.Downsample(time.Now())
 			w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 			require.Len(t, inst.aggMetrics, 1)
 			require.Equal(t, uint64(5), inst.aggMetrics[fakePartition].metrics[lbs.String()][constants.LogLevelUnknown].count)
 
-			// Once it has been idle for three sample periods it is written once, as a
+			// Once it has been idle for a sample period it is written once, as a
 			// single entry with the totals of both calls.
 			time.Sleep(time.Second)
 			inst.Downsample(time.Now())
