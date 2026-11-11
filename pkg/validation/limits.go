@@ -133,7 +133,6 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery           int                `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
 	MaxQuerySeries              int                `yaml:"max_query_series" json:"max_query_series"`
 	MaxQueryLookback            model.Duration     `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength              model.Duration     `yaml:"max_query_length" json:"max_query_length"`
@@ -460,8 +459,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
 	_ = l.PerStreamRateLimitBurst.Set(strconv.Itoa(defaultPerStreamBurstLimit))
 	f.Var(&l.PerStreamRateLimitBurst, "ingester.per-stream-rate-limit-burst", "Maximum burst bytes per stream, also expressible in human readable forms (1MB, 256KB, etc). This is how far above the rate limit a stream can 'burst' before the stream is limited.")
-
-	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
@@ -895,11 +892,6 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
-}
-
-// MaxChunksPerQuery returns the maximum number of chunks allowed per query.
-func (o *Overrides) MaxChunksPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
