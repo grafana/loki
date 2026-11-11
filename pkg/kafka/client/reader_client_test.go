@@ -148,20 +148,38 @@ func TestReaderClientMaxDecompressBatchBytes(t *testing.T) {
 }
 
 // TestReaderClientResetOffset checks that the reader client doesn't rewind
-// after data loss by default, and that callers can replace the reset offset.
+// after data loss by default, and that a caller's reset offset replaces it.
 func TestReaderClientResetOffset(t *testing.T) {
 	_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "test")
-	cfg := kafka.Config{Topic: "test", ReaderConfig: kafka.ClientConfig{Address: addr}}
 
-	client, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
-	t.Cleanup(client.Close)
-	require.Equal(t, kgo.RewindOffset(0), client.OptValue(kgo.ConsumeResetOffset))
-	require.Equal(t, kgo.NewOffset().AtStart(), client.OptValue(kgo.ConsumeStartOffset))
+	tests := []struct {
+		name      string
+		opts      []kgo.Opt
+		wantReset kgo.Offset
+		wantStart kgo.Offset
+	}{
+		{
+			name:      "default",
+			wantReset: kgo.RewindOffset(0),
+			wantStart: kgo.NewOffset().AtStart(),
+		},
+		{
+			// Like the pattern ingester: franz-go copies the reset offset to the start offset.
+			name:      "caller sets its own reset offset",
+			opts:      []kgo.Opt{kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd())},
+			wantReset: kgo.NewOffset().AtEnd(),
+			wantStart: kgo.NewOffset().AtEnd(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := kafka.Config{Topic: "test", ReaderConfig: kafka.ClientConfig{Address: addr}}
+			client, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry(), tt.opts...)
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
 
-	custom, err := NewReaderClient("test-reader", cfg, log.NewNopLogger(), prometheus.NewRegistry(),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()))
-	require.NoError(t, err)
-	t.Cleanup(custom.Close)
-	require.Equal(t, kgo.NewOffset().AtEnd(), custom.OptValue(kgo.ConsumeResetOffset))
+			require.Equal(t, tt.wantReset, client.OptValue(kgo.ConsumeResetOffset))
+			require.Equal(t, tt.wantStart, client.OptValue(kgo.ConsumeStartOffset))
+		})
+	}
 }
