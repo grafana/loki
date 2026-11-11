@@ -37,6 +37,15 @@ func TestFormatHintRanges_Passthrough(t *testing.T) {
 	require.Equal(t, "[passthrough,2026-07-09T08:42:59.500Z]", got)
 }
 
+func TestProtoRangesKeepDocumentShards(t *testing.T) {
+	start := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	ranges := []HintTimeRange{
+		{Start: start, End: start.Add(time.Second)},
+		{Start: start, End: start.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: 5},
+	}
+	require.Equal(t, ranges, FromProtoRanges(ToProtoRanges(ranges)))
+}
+
 func TestPassthroughForInclusiveThrough(t *testing.T) {
 	through := time.Date(2026, 3, 10, 23, 59, 59, 999*int(time.Millisecond), time.UTC)
 	got := passthroughForInclusiveThrough(through)

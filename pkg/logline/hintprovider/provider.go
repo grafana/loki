@@ -99,7 +99,7 @@ type Hints struct {
 func ToProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
 	out := make([]logproto.HintTimeRange, len(in))
 	for i, r := range in {
-		out[i] = logproto.HintTimeRange{Start: r.Start, End: r.End}
+		out[i] = logproto.HintTimeRange{Start: r.Start, End: r.End, DocumentShard: r.DocumentShard, DocumentShardBits: uint32(r.DocumentShardBits)}
 	}
 	return out
 }
@@ -107,7 +107,7 @@ func ToProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
 func FromProtoRanges(in []logproto.HintTimeRange) []HintTimeRange {
 	out := make([]HintTimeRange, len(in))
 	for i, r := range in {
-		out[i] = HintTimeRange{Start: r.Start, End: r.End}
+		out[i] = HintTimeRange{Start: r.Start, End: r.End, DocumentShard: r.DocumentShard, DocumentShardBits: uint8(r.DocumentShardBits)}
 	}
 	return out
 }
