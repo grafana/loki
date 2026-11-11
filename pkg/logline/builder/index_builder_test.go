@@ -348,6 +348,7 @@ func BenchmarkProcessStream(b *testing.B) {
 			// Create a new builder for each sub-benchmark to avoid state pollution
 			builder, err := newIndexBuilder(cfg, "2026-01-01", logger, metrics)
 			require.NoError(b, err)
+			b.Cleanup(func() { builder.Clear() })
 
 			// Generate realistic log lines
 			entries := make([]logproto.Entry, bm.entryCount)
@@ -371,14 +372,20 @@ func BenchmarkProcessStream(b *testing.B) {
 
 			// Run benchmark
 			for i := 0; i < b.N; i++ {
-				_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
+				if err := builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{}); err != nil {
+					b.Fatal(err)
+				}
 
-				// Flush periodically to prevent memory exhaustion in long benchmarks
+				// Flush periodically to prevent memory exhaustion in long benchmarks.
+				// Builders are single-cycle, so replace the builder after preparing it.
 				if i%1000 == 0 && i > 0 {
 					b.StopTimer()
-					if files, err := builder.prepareIndexes(); err == nil && files != nil {
-						builder.Clear()
-					}
+					_, err := builder.Prepare()
+					require.NoError(b, err)
+					builder.Clear()
+					nextBuilder, err := newIndexBuilder(cfg, "2026-01-01", logger, metrics)
+					require.NoError(b, err)
+					builder = nextBuilder
 					b.StartTimer()
 				}
 			}
@@ -414,6 +421,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 	metrics := NewMetrics(prometheus.NewRegistry())
 	builder, err := newIndexBuilder(cfg, "2026-01-01", logger, metrics)
 	require.NoError(b, err)
+	b.Cleanup(builder.Clear)
 
 	// Typical production log line (~200 bytes with 5 entries)
 	entries := make([]logproto.Entry, 5)
@@ -433,7 +441,9 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
+		if err := builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{}); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	// Calculate approximate bytes
@@ -484,19 +494,30 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 		metrics := NewMetrics(prometheus.NewRegistry())
 		builder, err := newIndexBuilder(cfg, "2026-01-01", logger, metrics)
 		require.NoError(b, err)
+		defer func() { builder.Clear() }()
 
 		i := 0
 
 		for pb.Next() {
-			_ = builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{})
+			if err := builder.ProcessStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), RecordRef{}); err != nil {
+				b.Error(err)
+				return
+			}
 			i++
 
-			// Periodic flush to prevent OOM
+			// Periodic flush to prevent OOM; each cycle needs a fresh builder.
 			if i%500 == 0 {
-				if files, err := builder.prepareIndexes(); err == nil && files != nil {
-					_ = files
-					builder.Clear()
+				if _, err := builder.Prepare(); err != nil {
+					b.Error(err)
+					return
 				}
+				builder.Clear()
+				nextBuilder, err := newIndexBuilder(cfg, "2026-01-01", logger, metrics)
+				if err != nil {
+					b.Error(err)
+					return
+				}
+				builder = nextBuilder
 			}
 		}
 	})
