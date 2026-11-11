@@ -656,9 +656,10 @@ func (i *Ingester) flushPatterns() {
 func (i *Ingester) downsampleMetrics(ts time.Time) {
 	instances := i.getInstances()
 
+	// Aggregation is only observed for tenants that have it enabled, so an
+	// instance has nothing to write unless it was enabled. A tenant that was
+	// disabled still has its remaining buckets written once they are idle.
 	for _, instance := range instances {
-		if i.limits.MetricAggregationEnabled(instance.instanceID) {
-			instance.Downsample(ts)
-		}
+		instance.Downsample(ts)
 	}
 }

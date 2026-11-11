@@ -144,9 +144,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time
 			continue
 		}
 
-		// All streams are observed for metrics
+		// All streams are observed for metrics, if aggregation is enabled for the
+		// tenant. Tenants that disable it must not accumulate metrics that would
+		// never be written.
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries, now, partition)
+		if i.limits.MetricAggregationEnabled(i.instanceID) {
+			i.Observe(ctx, reqStream.Labels, reqStream.Entries, now, partition)
+		}
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)

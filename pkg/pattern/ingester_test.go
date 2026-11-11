@@ -162,7 +162,7 @@ func TestIngesterPushInternal(t *testing.T) {
 	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(ring.ReplicationSet{Instances: []ring.InstanceDesc{{Id: "localhost", Addr: "ingester0"}}}, nil)
 
-	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{metricAggregationEnabled: true}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -238,7 +238,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			log.NewNopLogger(),
 			newIngesterMetrics(nil, "test"),
 			drain.DefaultConfig(),
-			&fakeLimits{},
+			&fakeLimits{metricAggregationEnabled: true},
 			&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 			mockWriter,
 			mockWriter,
@@ -1257,4 +1257,49 @@ func TestInstanceObserveWindows(t *testing.T) {
 			require.Empty(t, inst.aggMetrics)
 		})
 	})
+}
+
+func TestInstancePushAggregationDisabled(t *testing.T) {
+	const period = 10 * time.Second
+	window0 := time.Unix(1_700_000_000, 0).Truncate(period)
+	window1 := window0.Add(period)
+	lbs := labels.New(labels.Label{Name: "service_name", Value: "svc"})
+
+	w := &mockEntryWriter{}
+	w.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		drain.DefaultConfig(),
+		&fakeLimits{metricAggregationEnabled: false},
+		allStreamsOwner{},
+		w,
+		w,
+		aggregation.NewMetrics(nil),
+		period,
+		0.99,
+	)
+	require.NoError(t, err)
+
+	pushAt := func(now time.Time) {
+		err := inst.Push(t.Context(), &push.PushRequest{
+			Streams: []push.Stream{{
+				Labels:  lbs.String(),
+				Entries: []push.Entry{{Timestamp: now, Line: "ts=1 msg=hello"}},
+			}},
+		}, now, fakePartition)
+		require.NoError(t, err)
+	}
+
+	// Pushes in two windows must not be tracked, so the second push does not
+	// write the first window as it would if aggregation was enabled.
+	pushAt(window0.Add(time.Second))
+	pushAt(window1.Add(time.Second))
+	require.Empty(t, inst.aggMetrics)
+	w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	// Downsample has nothing to write either.
+	inst.Downsample(window1.Add(time.Hour))
+	w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
