@@ -21,7 +21,7 @@ import (
 // unit of the run.
 type indexRun struct {
 	// entries is never empty. Its entries share RunID.
-	entries []indexEntry
+	entries []indexpointers.IndexPointer
 }
 
 // maxLoggedRunPaths is the largest number of index object paths that
@@ -31,7 +31,7 @@ const maxLoggedRunPaths = 8
 // groupIndexRuns groups the entries of one ToC into index runs. Each entry of
 // no run is a run of its own. The runs and their entries keep the order of
 // entries.
-func groupIndexRuns(entries []indexEntry) []indexRun {
+func groupIndexRuns(entries []indexpointers.IndexPointer) []indexRun {
 	type runKey struct {
 		runID indexpointers.RunID
 		path  string
@@ -51,16 +51,16 @@ func groupIndexRuns(entries []indexEntry) []indexRun {
 			continue
 		}
 		runs[key] = len(out)
-		out = append(out, indexRun{entries: []indexEntry{entry}})
+		out = append(out, indexRun{entries: []indexpointers.IndexPointer{entry}})
 	}
 	return out
 }
 
-// unit returns the name of r for the Unit field of the planner sections. It is
-// the path of the first index object of r. An index object belongs to one run
-// only, so the name is unique, and it can't equal the path of an index object
-// of another run.
-func (r indexRun) unit() string { return r.entries[0].Path }
+// planningUnit returns the name of r for the PlanningUnit field of the planner
+// sections. It is the path of the first index object of r. An index object
+// belongs to one run only, so the name is unique, and it can't equal the path
+// of an index object of another run.
+func (r indexRun) planningUnit() string { return r.entries[0].Path }
 
 // String describes r for logs and errors. It names the paths of up to
 // maxLoggedRunPaths index objects of r.
@@ -125,8 +125,8 @@ func (g *layoutGroup) add(run indexRun) {
 }
 
 // entries returns the index objects of every run of g.
-func (g *layoutGroup) entries() []indexEntry {
-	var out []indexEntry
+func (g *layoutGroup) entries() []indexpointers.IndexPointer {
+	var out []indexpointers.IndexPointer
 	for _, run := range g.runs {
 		out = append(out, run.entries...)
 	}

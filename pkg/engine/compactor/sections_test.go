@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -109,10 +110,9 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	}
 }
 
-// requireIndexPaths asserts the indexEntry slice contains exactly the supplied
-// paths (set equality; order-independent because ToC iteration order is not a
-// contract).
-func requireIndexPaths(t *testing.T, got []indexEntry, want ...string) {
+// requireIndexPaths asserts that got holds exactly the paths want, in any
+// order, because the order of ToC iteration is not part of the contract.
+func requireIndexPaths(t *testing.T, got []indexpointers.IndexPointer, want ...string) {
 	t.Helper()
 	gotPaths := make([]string, len(got))
 	for i, e := range got {
@@ -240,9 +240,9 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Unit: "logs/log-0",
-			Min:  newLogSortPrefix(0, []string{"auth"}),
-			Max:  newLogSortPrefix(0, []string{"billing"}),
+			PlanningUnit: "logs/log-0",
+			Min:          newLogSortPrefix(0, []string{"auth"}),
+			Max:          newLogSortPrefix(0, []string{"billing"}),
 			Keys: []v2.KeySize[logSortPrefix]{
 				{Key: newLogSortPrefix(0, []string{"auth"}), UncompressedSize: 300},
 				{Key: newLogSortPrefix(0, []string{"billing"}), UncompressedSize: 200},
@@ -302,10 +302,10 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Unit: "logs/log-0",
-			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
-			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
-			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
+			PlanningUnit: "logs/log-0",
+			Min:          newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max:          newLogSortPrefix(0, []string{"auth", "eu"}),
+			Keys:         []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
 		},
 	}, refs)
 }
@@ -409,14 +409,14 @@ func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
 		{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[indexSortKey]{
 		{
-			Ref:  &compactionv2pb.SectionRef{ObjectPath: path},
-			Unit: path,
-			Min:  indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
-			Max:  indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+			Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
+			PlanningUnit: path,
+			Min:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+			Max:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
 		},
 	}, refs)
 }
@@ -440,7 +440,7 @@ func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
 		},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
 	require.NoError(t, err)
 	require.Len(t, refs, 2)
 	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
@@ -455,7 +455,7 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
 	}})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 )
 
@@ -211,7 +212,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	}
 }
 
-func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexEntry, now time.Time) {
+func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexpointers.IndexPointer, now time.Time) {
 	backlog := max(0, runs-1)
 	if converged {
 		backlog = 0
@@ -230,10 +231,10 @@ func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bo
 
 // oldestEnd returns the minimum End timestamp across entries, or the zero
 // time when entries is empty.
-func oldestEnd(entries []indexEntry) (oldest time.Time) {
+func oldestEnd(entries []indexpointers.IndexPointer) (oldest time.Time) {
 	for _, e := range entries {
-		if oldest.IsZero() || e.End.Before(oldest) {
-			oldest = e.End
+		if oldest.IsZero() || e.EndTs.Before(oldest) {
+			oldest = e.EndTs
 		}
 	}
 	return oldest

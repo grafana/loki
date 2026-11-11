@@ -237,7 +237,7 @@ func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexEntry,
+	sourceIndex indexpointers.IndexPointer,
 	newEntries []metastore.TableOfContentsEntry,
 ) (compactionStats, error) {
 	if len(newEntries) == 0 {
@@ -264,7 +264,7 @@ func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexEntry,
+	sourceIndex indexpointers.IndexPointer,
 ) (compactionStats, error) {
 	plan, err := c.planLogCompaction(ctx, tenant, window, sourceIndex)
 	if err != nil {
@@ -288,7 +288,7 @@ func (c *coordinator) planLogCompaction(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexEntry,
+	sourceIndex indexpointers.IndexPointer,
 ) (logCompactionPlan, error) {
 	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
@@ -305,7 +305,7 @@ func (c *coordinator) planLogCompaction(
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
-	sourceIndex indexEntry,
+	sourceIndex indexpointers.IndexPointer,
 	shardBuckets indexpointers.ShardBuckets,
 	sections []v2.Section[logSortPrefix],
 ) (logCompactionPlan, error) {
@@ -480,7 +480,7 @@ func countSingleObjectRuns(runs []v2.Run) int {
 
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
 // unmerged runs from sourceIndex. Its ToC entry spans the unmerged runs.
-func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []*compactionv2pb.RunRef) indexFilterTask {
+func indexFilterForUnmerged(sourceIndex indexpointers.IndexPointer, unmerged []*compactionv2pb.RunRef) indexFilterTask {
 	var objectPaths []string
 	for _, run := range unmerged {
 		for _, section := range run.Sections {
@@ -526,7 +526,7 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 //
 // When ctx is done, no new group starts. The error is the shutdown error only
 // if no group failed, so a shutdown does not hide a real failure.
-func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexpointers.IndexPointer) (compactionStats, error) {
 	groups := make(map[layoutKey]*layoutGroup)
 	for _, run := range groupIndexRuns(entries) {
 		layout, ok, err := c.runLayout(ctx, tenant, run)
@@ -645,7 +645,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		if err != nil {
 			return compactionStats{}, err
 		}
-		sections[i].Unit = run.unit()
+		sections[i].PlanningUnit = run.planningUnit()
 	}
 
 	runs := v2.CalculateRuns(sections, compareIndexSortKey)
@@ -666,7 +666,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	entriesByPath := make(map[string]indexEntry, len(entries))
+	entriesByPath := make(map[string]indexpointers.IndexPointer, len(entries))
 	for _, entry := range entries {
 		entriesByPath[entry.Path] = entry
 	}
@@ -799,7 +799,7 @@ func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
 
 // indexTaskBounds returns the time range covered by the source indexes that
 // task merges. inputsByPath maps each source index path to its ToC entry.
-func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexEntry) (start, end time.Time, err error) {
+func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexpointers.IndexPointer) (start, end time.Time, err error) {
 	first := true
 	for _, run := range task.Runs {
 		for _, section := range run.Sections {
@@ -807,11 +807,11 @@ func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]inde
 			if !ok {
 				return time.Time{}, time.Time{}, fmt.Errorf("task references unknown index %q", section.ObjectPath)
 			}
-			if first || input.Start.Before(start) {
-				start = input.Start
+			if first || input.StartTs.Before(start) {
+				start = input.StartTs
 			}
-			if first || input.End.After(end) {
-				end = input.End
+			if first || input.EndTs.After(end) {
+				end = input.EndTs
 			}
 			first = false
 		}
@@ -904,7 +904,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 // A missing ToC yields (nil, true) — no work, not an error. Any other read
 // error yields (nil, false). It logs no warning when ctx is done, because the
 // caller treats that case as a shutdown.
-func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexEntry, bool) {
+func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexpointers.IndexPointer, bool) {
 	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {

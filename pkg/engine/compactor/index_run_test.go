@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -23,12 +24,12 @@ func TestGroupIndexRuns(t *testing.T) {
 	}
 
 	t.Run("makes each entry of no run a run of its own", func(t *testing.T) {
-		got := groupIndexRuns([]indexEntry{{Path: "b"}, {Path: "a"}})
+		got := groupIndexRuns([]indexpointers.IndexPointer{{Path: "b"}, {Path: "a"}})
 		require.Equal(t, [][]string{{"b"}, {"a"}}, paths(got))
 	})
 
 	t.Run("groups the entries of one run in the order of the entries", func(t *testing.T) {
-		got := groupIndexRuns([]indexEntry{
+		got := groupIndexRuns([]indexpointers.IndexPointer{
 			{Path: "run-1/b", RunID: 1},
 			{Path: "single"},
 			{Path: "run-1/a", RunID: 1},
@@ -42,13 +43,13 @@ func TestIndexRun_String(t *testing.T) {
 	runOf := func(n int) indexRun {
 		var run indexRun
 		for i := range n {
-			run.entries = append(run.entries, indexEntry{Path: fmt.Sprintf("indexes/%02d", i), RunID: 3})
+			run.entries = append(run.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%02d", i), RunID: 3})
 		}
 		return run
 	}
 
 	t.Run("returns the path of an index object of no run", func(t *testing.T) {
-		require.Equal(t, "indexes/a", indexRun{entries: []indexEntry{{Path: "indexes/a"}}}.String())
+		require.Equal(t, "indexes/a", indexRun{entries: []indexpointers.IndexPointer{{Path: "indexes/a"}}}.String())
 	})
 
 	t.Run("lists every path of a run of at most eight index objects", func(t *testing.T) {
@@ -65,8 +66,8 @@ func TestIndexRun_String(t *testing.T) {
 
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
-	group.add(indexRun{entries: []indexEntry{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
-	group.add(indexRun{entries: []indexEntry{{Path: "plain"}}})
+	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
+	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "plain"}}})
 
 	t.Run("counts the index objects of one run as one run", func(t *testing.T) {
 		got, err := group.countRuns([]string{"run/a", "run/b", "plain"})

@@ -14,15 +14,15 @@ type Section[K any] struct {
 	Ref      *compactionv2pb.SectionRef
 	Min, Max K
 
-	// Unit names the indivisible unit that holds the section, for example
-	// one logs object, or the index objects of one index run. Planning keeps
-	// the sections of one unit together, in one run and one task. Unit must
-	// not be empty.
+	// PlanningUnit names the indivisible unit that holds the section, for
+	// example one logs object, or the index objects of one index run. Planning
+	// keeps the sections of one unit together, in one run and one task. It
+	// only groups sections for planning. PlanningUnit must not be empty.
 	//
 	// Planning uses the lowest and the highest bound of a unit. If the objects
 	// of a unit overlap, it can't see the overlap, and IsConverged can report
 	// a unit as converged when its objects overlap.
-	Unit string
+	PlanningUnit string
 
 	// Keys holds the size of each key in the section, in any order. An empty
 	// Keys means the sizes are unknown, not that the section holds no key.
@@ -38,7 +38,7 @@ type Run interface {
 }
 
 // CalculateRuns groups sections into N disjoint, contiguous runs based on the Min and Max sort keys.
-// It keeps the sections of one [Section.Unit] in one run.
+// It keeps the sections of one [Section.PlanningUnit] in one run.
 // It panics if a section has a nil Ref.
 func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 	if len(sections) == 0 {

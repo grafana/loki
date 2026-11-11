@@ -13,7 +13,7 @@ type run[K any] struct {
 	topMax   K
 }
 
-// unit is one planning unit: the objects of one [Section.Unit], with the
+// unit is one planning unit: the objects of one [Section.PlanningUnit], with the
 // union of their bounds.
 type unit[K any] struct {
 	name     string
@@ -40,17 +40,17 @@ func groupSectionsByUnit[K any](sections []Section[K], compare CompareFunc[K]) [
 		if section.Ref == nil {
 			panic("nil section reference")
 		}
-		if section.Unit == "" {
+		if section.PlanningUnit == "" {
 			panic("section has no unit")
 		}
 	}
 
 	byUnit := make(map[string]map[string][]Section[K])
 	for _, section := range sections {
-		if byUnit[section.Unit] == nil {
-			byUnit[section.Unit] = make(map[string][]Section[K])
+		if byUnit[section.PlanningUnit] == nil {
+			byUnit[section.PlanningUnit] = make(map[string][]Section[K])
 		}
-		byUnit[section.Unit][section.Ref.ObjectPath] = append(byUnit[section.Unit][section.Ref.ObjectPath], section)
+		byUnit[section.PlanningUnit][section.Ref.ObjectPath] = append(byUnit[section.PlanningUnit][section.Ref.ObjectPath], section)
 	}
 
 	units := make([]unit[K], 0, len(byUnit))

@@ -296,8 +296,8 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 			requireLogContents(t, contents, sourceLines, test.expectedLayouts...)
 			var indexLayouts []streams.Layout
 			for _, entry := range after {
-				require.True(t, entry.Start.Equal(base))
-				require.True(t, entry.End.Equal(base.Add(time.Second)))
+				require.True(t, entry.StartTs.Equal(base))
+				require.True(t, entry.EndTs.Equal(base.Add(time.Second)))
 				exists, err := bucket.Exists(ctx, entry.Path)
 				require.NoError(t, err)
 				require.True(t, exists, "replacement index %q must exist", entry.Path)
@@ -799,11 +799,11 @@ func (integrationLimits) DeletionSweepEnabled(string) bool {
 }
 
 // mustLoadTenantIndexes loads the ToC of every tenant in the window, keyed by tenant.
-func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexEntry {
+func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexpointers.IndexPointer {
 	t.Helper()
 	tenants, err := metastore.ListTableOfContentsTenants(ctx, b, window)
 	require.NoError(t, err)
-	out := make(map[string][]indexEntry, len(tenants))
+	out := make(map[string][]indexpointers.IndexPointer, len(tenants))
 	for _, tenant := range tenants {
 		got, err := loadTenantIndexes(ctx, b, window, tenant)
 		require.NoError(t, err)
@@ -846,7 +846,7 @@ func requireToCShardBuckets(ctx context.Context, t *testing.T, bucket objstore.B
 	require.Equal(t, want, got, "ToC row of %q", path)
 }
 
-func pathsOf(entries []indexEntry) []string {
+func pathsOf(entries []indexpointers.IndexPointer) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		out[i] = e.Path

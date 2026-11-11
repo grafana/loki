@@ -28,17 +28,17 @@ func compareTestKey(a, b testKey) int {
 // own.
 func testSection(path string, index int64, minKey, maxKey testKey) Section[testKey] {
 	return Section[testKey]{
-		Ref:  &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index},
-		Min:  minKey,
-		Max:  maxKey,
-		Unit: path,
+		Ref:          &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index},
+		Min:          minKey,
+		Max:          maxKey,
+		PlanningUnit: path,
 	}
 }
 
 // unitSection returns a section of the object at path in the unit named unit.
 func unitSection(unit, path string, index int64, minKey, maxKey testKey) Section[testKey] {
 	section := testSection(path, index, minKey, maxKey)
-	section.Unit = unit
+	section.PlanningUnit = unit
 	return section
 }
 

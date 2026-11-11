@@ -1671,7 +1671,7 @@ func TestDoLogObjectMerge_PlannedRuns(t *testing.T) {
 		require.NoError(t, err)
 		sortKey := streams.DefaultShardLayout().NewSortKey(lbls, key)
 		for _, ref := range sourceLogRuns(t, bucket, tenant, path)[0].Sections {
-			sections = append(sections, v2.Section[streams.SortKey]{Ref: ref, Min: sortKey, Max: sortKey, Unit: ref.ObjectPath})
+			sections = append(sections, v2.Section[streams.SortKey]{Ref: ref, Min: sortKey, Max: sortKey, PlanningUnit: ref.ObjectPath})
 		}
 	}
 	runs := v2.CalculateRuns(sections, func(a, b streams.SortKey) int {
