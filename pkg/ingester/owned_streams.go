@@ -118,6 +118,31 @@ func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
 	return notOwned
 }
 
+// policyGauges caches the per-policy children of a tenant's gauge vector, so that hot paths don't
+// have to resolve the label values on every update.
+type policyGauges struct {
+	vec    *prometheus.GaugeVec
+	tenant string
+
+	// gauges maps a policy to its prometheus.Gauge. The set of policies is small and each key is
+	// written once, which is the case sync.Map is optimized for.
+	gauges sync.Map
+}
+
+func newPolicyGauges(vec *prometheus.GaugeVec, tenant string) *policyGauges {
+	return &policyGauges{vec: vec, tenant: tenant}
+}
+
+// For returns the gauge for the given policy, creating it on first use.
+func (g *policyGauges) For(policy string) prometheus.Gauge {
+	if gauge, ok := g.gauges.Load(policy); ok {
+		return gauge.(prometheus.Gauge)
+	}
+	// WithLabelValues returns the same child for the same labels, so racing creators are harmless.
+	gauge, _ := g.gauges.LoadOrStore(policy, g.vec.WithLabelValues(g.tenant, policy))
+	return gauge.(prometheus.Gauge)
+}
+
 // policyStreamCounts tracks the number of streams per policy. Streams without a policy are not
 // tracked.
 type policyStreamCounts struct {
