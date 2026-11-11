@@ -3467,12 +3467,8 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 **Error message:**
 
 ```text
-at least one of kafka and ingestor writes must be enabled
+at least one of kafka and ingester writes must be enabled
 ```
-
-{{< admonition type="note" >}}
-The message says "ingestor", not "ingester" — that's a typo in Loki's own error text, not in this documentation. Quote it exactly as shown if you're searching logs for it.
-{{< /admonition >}}
 
 **Cause:**
 
