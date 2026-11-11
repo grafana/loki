@@ -482,7 +482,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req, time.Now())
+	return &logproto.PushResponse{}, instance.Push(ctx, req, time.Now(), -1)
 }
 
 // PushInternal accepts streams in the internal data model, with resource and

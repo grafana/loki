@@ -111,7 +111,7 @@ func newInstance(
 
 // Push pushes the log entries in the given PushRequest to the appropriate streams.
 // It returns an error if any error occurs during the push operation.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time.Time) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time.Time, partition int32) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
@@ -126,7 +126,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time
 
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries, now)
+		i.Observe(ctx, reqStream.Labels, reqStream.Entries, now, partition)
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
@@ -335,14 +335,10 @@ func (i *instance) flushPatterns() {
 	})
 }
 
-// noPartition is the partition metrics are aggregated under.
-// TODO: use the partition of the Kafka record.
-const noPartition int32 = 0
-
 // Observe adds the entries to the aggregated metrics of the sample period that
 // contains now. If now is in a newer sample period than the open bucket, the
 // open bucket is written first.
-func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry, now time.Time) {
+func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry, now time.Time, partition int32) {
 	i.aggMetricsMtx.Lock()
 	defer i.aggMetricsMtx.Unlock()
 
@@ -355,7 +351,7 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	))
 
 	start := now.Truncate(i.samplePeriod)
-	b, ok := i.aggMetrics[noPartition]
+	b, ok := i.aggMetrics[partition]
 	if ok && start.After(b.start) {
 		// The entries are in a newer window. Records only move forward in time,
 		// so nothing more will arrive for the open bucket and it can be written.
@@ -369,7 +365,7 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 			end:     start.Add(i.samplePeriod),
 			metrics: make(map[string]map[string]*aggregatedMetrics),
 		}
-		i.aggMetrics[noPartition] = b
+		i.aggMetrics[partition] = b
 	}
 
 	for _, entry := range entries {
