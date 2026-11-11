@@ -38,7 +38,11 @@ var tracer = otel.Tracer("pkg/pattern")
 
 const indexShards = 32
 
-// fakePartition is used in tests.
+// fakePartition is the partition that pushes which do not come from Kafka,
+// such as those received over gRPC, are aggregated under. It stands in for a
+// real Kafka partition so these pushes can use the same code as records
+// consumed from Kafka. It is negative so it cannot collide with a real
+// partition, and it is also used in tests.
 const fakePartition int32 = -1
 
 // instance is a tenant instance of the pattern ingester.
