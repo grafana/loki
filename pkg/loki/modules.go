@@ -826,9 +826,9 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 	}
 
 	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOC, cacheMetrics, logger)
+	t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
+	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {

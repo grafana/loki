@@ -415,8 +415,8 @@ func TestNewCache(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
 		metrics := NewCacheMetrics(reg)
 		backend := cache.NewMockCache()
-		logs := NewCache(backend, 0, KindLogs, metrics, nil)
-		index := NewCache(backend, 0, KindIndex, metrics, nil)
+		logs := NewCache(backend, 0, KindLogsCache, metrics, nil)
+		index := NewCache(backend, 0, KindIndexCache, metrics, nil)
 		load := func(context.Context) ([]byte, error) { return []byte("metadata-blob"), nil }
 
 		_, err := index.GetOrLoadMetadataRegion(t.Context(), "obj", load)
@@ -538,5 +538,5 @@ type stopCountingCache struct {
 func (c *stopCountingCache) Stop() { c.stops.Inc() }
 
 func newTestCache(backend cache.Cache, maxItemBytes int64, logger log.Logger) *Cache {
-	return NewCache(backend, maxItemBytes, KindLogs, NewCacheMetrics(nil), logger)
+	return NewCache(backend, maxItemBytes, KindLogsCache, NewCacheMetrics(nil), logger)
 }

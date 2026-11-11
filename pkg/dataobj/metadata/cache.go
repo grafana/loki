@@ -27,12 +27,13 @@ const loadTimeout = 30 * time.Second
 // backend's real one.
 const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
-// KindLogs, KindIndex and KindTOC label the counters of a Cache by the kind of object it serves. One
-// backend can serve several Caches, and each Cache reports its own hits, misses and errors.
+// KindLogsCache, KindIndexCache and KindTOCCache label the counters of a Cache by the kind of object
+// it serves. One backend can serve several Caches, and each Cache reports its own hits, misses and
+// errors.
 const (
-	KindLogs  = "logs"
-	KindIndex = "index"
-	KindTOC   = "toc"
+	KindLogsCache  = "logs"
+	KindIndexCache = "index"
+	KindTOCCache   = "toc"
 )
 
 // NewBackend builds the cache backend that cfg describes. It also returns the largest region that the

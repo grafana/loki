@@ -2231,7 +2231,7 @@ func (g *readGate) open() {
 // backend.
 func newTestMetastoreWithCache(bucket objstore.Bucket) (*ObjectMetastore, cache.MockCache) {
 	memoryCache := cache.NewMockCache()
-	metadataCache := metadata.NewCache(memoryCache, 0, metadata.KindIndex, metadata.NewCacheMetrics(nil), nil)
+	metadataCache := metadata.NewCache(memoryCache, 0, metadata.KindIndexCache, metadata.NewCacheMetrics(nil), nil)
 	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry(), WithIndexMetadataCache(metadataCache)), memoryCache
 }
 

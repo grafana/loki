@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	kinds      = []string{KindLogs, KindIndex, KindTOC}
+	kinds      = []string{KindLogsCache, KindIndexCache, KindTOCCache}
 	operations = []string{operationFetch, operationStore}
 )
 

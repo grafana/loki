@@ -745,5 +745,5 @@ func (b *truncatedHeadBucket) GetRange(ctx context.Context, name string, off, le
 }
 
 func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
-	return metadata.NewCache(backend, maxItemBytes, metadata.KindLogs, metadata.NewCacheMetrics(nil), nil)
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)
 }

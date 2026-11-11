@@ -1308,7 +1308,7 @@ type metadataCacheSpy struct {
 }
 
 func newMetadataCacheSpy() *metadataCacheSpy {
-	return &metadataCacheSpy{inner: metadata.NewCache(cache.NewMockCache(), 0, metadata.KindLogs, metadata.NewCacheMetrics(nil), nil)}
+	return &metadataCacheSpy{inner: metadata.NewCache(cache.NewMockCache(), 0, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)}
 }
 
 func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {

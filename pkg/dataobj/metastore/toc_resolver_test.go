@@ -1599,7 +1599,7 @@ func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *met
 }
 
 func newTestMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
-	return metadata.NewCache(backend, maxItemBytes, metadata.KindTOC, metadata.NewCacheMetrics(nil), nil)
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, metadata.NewCacheMetrics(nil), nil)
 }
 
 func entryOf(r *TOCResolver, path string) *tocEntry {
