@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -24,17 +25,15 @@ var RegionRead = "logs.Reader.Read"
 // streams section.
 const schemaSortVersion uint32 = 3
 
-// Namespace and Kind here are duplicated in pkg/dataobj/decoder.go's logsSectionType, to avoid an
-// import cycle. Update it there too if these change.
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "logs",
+	Namespace: format.SectionNamespace,
+	Kind:      format.LogsSectionKind,
 	Version:   columnar.FormatVersion,
 }
 
 var schemaSortSectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "logs",
+	Namespace: format.SectionNamespace,
+	Kind:      format.LogsSectionKind,
 	Version:   schemaSortVersion,
 }
 

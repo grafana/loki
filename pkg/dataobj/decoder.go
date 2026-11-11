@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -19,9 +20,8 @@ import (
 // would exceed the cache's size limit, or a section's type or layout is invalid or overflows.
 var errCannotCacheMetadata = errors.New("cannot cache data-object metadata region")
 
-// logsSectionType duplicates an identity pkg/dataobj/sections/logs owns, to avoid an import cycle; the
-// kind string is part of the on-disk format, not an internal detail that could drift.
-var logsSectionType = SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"}
+// logsSectionType is the type of the logs sections, without a version.
+var logsSectionType = SectionType{Namespace: format.SectionNamespace, Kind: format.LogsSectionKind}
 
 // minimumPrefetchBytes is the minimum number of bytes to prefetch before
 // decoding.
@@ -63,7 +63,7 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 		return nil, err
 	}
 	d.setPrefetchedBytes(0, buf)
-	d.startOff = headerSize + int64(metadataSize)
+	d.startOff = format.HeaderSize + int64(metadataSize)
 	return md, nil
 }
 
@@ -88,7 +88,7 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 	}
 
 	d.setPrefetchedBytes(0, blob)
-	d.startOff = headerSize + int64(metadataSize)
+	d.startOff = format.HeaderSize + int64(metadataSize)
 	return md, nil
 }
 
@@ -101,10 +101,10 @@ func (d *decoder) decodeHeaderAndFileMetadata(blob []byte) (md *filemd.Metadata,
 	if err != nil {
 		return nil, 0, fmt.Errorf("scanning header: %w", err)
 	}
-	if uint64(len(blob)) < header.MetadataSize+headerSize {
-		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+headerSize)
+	if uint64(len(blob)) < header.MetadataSize+format.HeaderSize {
+		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+format.HeaderSize)
 	}
-	md, err = decodeFileMetadata(bytes.NewReader(blob[headerSize:]))
+	md, err = decodeFileMetadata(bytes.NewReader(blob[format.HeaderSize:]))
 	if err != nil {
 		return nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 	}
@@ -126,7 +126,7 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 	// MaxItemBytes is the cache backend's own size limit: asking upfront, before extending the region
 	// with further reads or allocations, avoids doing that work for a region the backend would reject
 	// anyway. MetadataCache guarantees a positive value, so there is nothing to default here.
-	startOff := headerSize + int64(metadataSize)
+	startOff := format.HeaderSize + int64(metadataSize)
 	regionEnd, err := d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
 	if err != nil {
 		return nil, err
@@ -257,16 +257,16 @@ func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata,
 	}
 
 	var md *filemd.Metadata
-	if header.MetadataSize+headerSize <= uint64(len(buf)) {
+	if header.MetadataSize+format.HeaderSize <= uint64(len(buf)) {
 		// Optimistic read was successful, so we can decode the metadata from
 		// the buffer.
-		md, err = decodeFileMetadata(bytes.NewReader(buf[headerSize:]))
+		md, err = decodeFileMetadata(bytes.NewReader(buf[format.HeaderSize:]))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 		}
 	} else {
 		// Optimistic read was too small, so we need to read the metadata fully.
-		rc, err := d.rr.ReadRange(ctx, headerSize, int64(header.MetadataSize))
+		rc, err := d.rr.ReadRange(ctx, format.HeaderSize, int64(header.MetadataSize))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("getting metadata: %w", err)
 		}
@@ -316,7 +316,7 @@ type header struct {
 }
 
 func (d *decoder) header(headData []byte) (header, error) {
-	off := min(int64(len(headData)), headerSize)
+	off := min(int64(len(headData)), format.HeaderSize)
 
 	br := bytes.NewReader(headData[:off])
 
