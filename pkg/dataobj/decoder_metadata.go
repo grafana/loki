@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
 // decode* methods for metadata shared by Decoder implementations.
-
-// headerSize is the size of the header of the file: the magic value and the little-endian metadata
-// size, which take four bytes each. The file metadata follows the header.
-const headerSize = 8
 
 // decodeHeader decodes the header of the file to retrieve the metadata size
 // and the magic value.
@@ -37,8 +34,8 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read file format version: %w", err)
-	} else if gotVersion != fileFormatVersion {
-		return nil, fmt.Errorf("unexpected file format version: got=%d want=%d", gotVersion, fileFormatVersion)
+	} else if gotVersion != format.FileFormatVersion {
+		return nil, fmt.Errorf("unexpected file format version: got=%d want=%d", gotVersion, format.FileFormatVersion)
 	}
 
 	var md filemd.Metadata
