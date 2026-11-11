@@ -323,11 +323,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid kafka config: %w", err)
 	}
 
-	return c.validateBuild()
+	return c.validateWithoutKafka()
 }
 
-// validateBuild validates and defaults the build settings without requiring Kafka.
-func (c *Config) validateBuild() error {
+// validateWithoutKafka validates the configuration and applies defaults, except for Kafka settings.
+func (c *Config) validateWithoutKafka() error {
 	if c.ScratchDir == "" {
 		return fmt.Errorf("scratch_dir is required")
 	}

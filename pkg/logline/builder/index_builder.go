@@ -140,14 +140,14 @@ type Builder struct {
 	metrics *Metrics
 }
 
-// NewBuilder validates and defaults cfg's build settings without requiring Kafka.
+// NewBuilder validates and defaults cfg without requiring Kafka.
 // minDate must be a non-empty YYYY-MM-DD date at or after the docID epoch
 // (2026-01-01); entries before that date are dropped. Scratch files are created
 // lazily in a private subdirectory of cfg.ScratchDir, which Clear removes without
 // disturbing other builders or files. Metrics can be shared across accumulation
 // cycles, as in Service. Nil metrics use unregistered collectors.
 func NewBuilder(cfg Config, minDate string, logger log.Logger, metrics *Metrics) (*Builder, error) {
-	if err := cfg.validateBuild(); err != nil {
+	if err := cfg.validateWithoutKafka(); err != nil {
 		return nil, fmt.Errorf("invalid builder settings: %w", err)
 	}
 	date, err := time.Parse(time.DateOnly, minDate)
