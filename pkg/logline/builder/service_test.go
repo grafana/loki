@@ -375,7 +375,7 @@ func TestService_FlushSwap(t *testing.T) {
 	builderDuringBackpressure := svc.activeBuilder
 	svc.builderMtx.Unlock()
 	// Pointer compare only — require.Same formats the whole builder and can
-	// race with a background clear() on failure.
+	// race with a background Clear() on failure.
 	require.True(t, builderBeforeBackpressure == builderDuringBackpressure,
 		"active builder should not change while flush is running")
 	require.Equal(t, 1.0, testutil.ToFloat64(svc.metrics.flushBackpressuredTotal),
