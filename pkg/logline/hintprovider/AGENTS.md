@@ -44,9 +44,25 @@ Query-shape support and hint lookup for logline index lookups.
    - Bare `| json | field="literal"` can also match stream/SM labels of that
      name; that residual is accepted. We cannot tell parsed-field vs stream
      vs SM, so we do not re-escape needles — only values already in the line.
-6. **Hint cache keys are day-aligned**
+6. **Hint cache keys are day-aligned and keyed on needles**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
-   - Logical format: `logline:1:<tenant>:<expr.String()>:<min-date>:<YYYY-MM-DD>`.
+   - Logical format: `logline:2:<tenant>:<key>:<min-date>:<YYYY-MM-DD>`.
+   - `<key>` is `needleKey(expr, ngramLength)`: the sorted needles `SupportedQuery`
+     extracts, plus the n-gram length. Queries with the same needles share an
+     entry whatever else they contain. A metric query shares with the log query
+     it wraps, and Grafana's logs volume query, which appends `| drop __error__`,
+     shares with its log query. Stream matchers are not part of the key.
+   - With no needles or no single log selector, or when the delegate reports no
+     n-gram length (`NgramLength()`, like `MinDate()`), the key is `expr.String()`.
+   - **Everything the lookup reads must be in the key.** The delegate is asked
+     about the expression as written, so equal keys give equal hints only while
+     the lookup reads nothing but the needles and the n-gram length. If it starts
+     to read anything else, such as stream matchers, other pipeline stages or new
+     config, add that to `needleKey` and bump `hintCacheGeneration`.
+     `TestNeedleKey_EqualKeysGetEqualHints` fails when equal keys stop giving
+     equal hints.
+   - Bump `hintCacheGeneration` when the key format or the meaning of a cached
+     value changes.
    - On cache miss, delegate lookups are also day-aligned: each missed day calls the delegate with that full day window (`[day_start, day_end)`).
    - Responses are post-filtered back to the caller's `[from, through]` overlap window so API behavior stays window-scoped while cache payloads stay day-complete.
 7. **Cache API keys must be hashed**
@@ -87,8 +103,9 @@ Query-shape support and hint lookup for logline index lookups.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.
 14. **A shared day lookup runs under the context of the caller that started it**
-    - Concurrent lookups of the same tenant, query and day share one delegate
-      call through singleflight.
+    - Concurrent lookups of the same tenant, key (invariant 6) and day share one
+      delegate call through singleflight. A log query and a metric query with the
+      same needles therefore share a call.
     - Each caller stops waiting when its own context ends. The query frontend
       cancels a lookup when its query returns first, and the shared call keeps
       running for the callers still waiting on it.
