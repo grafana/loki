@@ -11,9 +11,9 @@ import (
 )
 
 // logCompactionPlan is the work that replaces one source index in one window.
-// The source index is one index run: one index object, or the index objects of
-// one run. Each task produces one artifact, and the swap replaces every index
-// object of the source index with one ToC entry per task.
+// The source index is an index run: one index object, or every index object
+// that shares a RunID. Each task produces one artifact, and the swap replaces
+// every index object of the run with one ToC entry per task.
 //
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
@@ -133,7 +133,9 @@ func (t logMergeTask) logStats() logTaskStats {
 // indexFilterTask writes a new index that keeps only the rows of objectPaths
 // from the source index. It keeps log data without rewriting it.
 type indexFilterTask struct {
-	// sourceIndexPaths are the index objects of the source index run.
+	// sourceIndexPaths are the paths of every index object of the source index
+	// run. A run splits postings across its index objects, so a filter over
+	// part of a run loses postings.
 	sourceIndexPaths []string
 	objectPaths      []string
 	entry            metastore.TableOfContentsEntry

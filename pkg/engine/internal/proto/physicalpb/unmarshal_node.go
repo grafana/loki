@@ -106,9 +106,9 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
 		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
 	}
-	// A worker without source_index_paths reads only source_index_path. Set
-	// it only for a source of one index object, so such a worker can't
-	// filter part of an index run.
+	// A worker that predates source_index_paths reads only source_index_path.
+	// Leave it empty for a run of several index objects, so such a worker
+	// rejects the plan as malformed and does not filter part of the run.
 	if len(indexFilter.SourceIndexPaths) == 1 {
 		n.SourceIndexPath = indexFilter.SourceIndexPaths[0]
 	}

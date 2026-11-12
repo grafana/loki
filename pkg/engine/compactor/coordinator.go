@@ -25,8 +25,8 @@ import (
 
 const indexMergeIterations = 3
 
-// errStalePlan marks a log compaction plan whose source index the ToC no
-// longer lists.
+// errStalePlan marks a log compaction plan whose source index run the ToC no
+// longer lists in full.
 var errStalePlan = errors.New("source index no longer exists in ToC")
 
 // coordinator drives the per-tenant compaction workers. Each iteration
@@ -399,7 +399,8 @@ func (c *coordinator) skipOversizedMerges(logger log.Logger, tenant string, keys
 // no-op.
 //
 // It reads the latest ToC of the window first. It returns an error that wraps
-// errStalePlan if the ToC no longer lists the source index.
+// errStalePlan if the ToC no longer lists every index object of the source
+// index run.
 func (c *coordinator) executeLogCompaction(
 	ctx context.Context,
 	tenant string,
@@ -409,7 +410,7 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, nil
 	}
 
-	// A swap leaves the old index object in storage, so only the ToC shows
+	// A swap leaves the old index objects in storage, so only the ToC shows
 	// that the plan is stale. A swap by another writer while the tasks run is
 	// still safe, because our swap then fails and writes nothing.
 	exists, err := c.existsInToC(ctx, tenant, plan.window, plan.sourceIndexRun)
@@ -591,13 +592,14 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 }
 
 // runLayout opens the index objects of run and returns the stream layout that
-// they record for tenant, as [layoutOfRun] does.
+// they record for tenant. It returns an error that wraps errCorruptIndex if
+// run is corrupt, as layoutOfRun reports it.
 func (c *coordinator) runLayout(ctx context.Context, tenant string, run indexRun) (layout streams.Layout, hasLayout bool, err error) {
-	objects, err := openRunObjects(ctx, c.bucket, tenant, run)
+	opened, err := openRunObjects(ctx, c.bucket, tenant, run)
 	if err != nil {
 		return streams.Layout{}, false, err
 	}
-	return layoutOfRun(ctx, tenant, run, objects)
+	return layoutOfRun(ctx, tenant, opened)
 }
 
 // dropRunsWithoutPostings returns sections without the sections of each index
@@ -957,9 +959,9 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 // The phase holds every plan in memory to avoid a second read of each index.
 // Its memory grows with the number of windows and indexes. A held plan stays
 // safe to execute because index objects are written once. A plan fails before
-// its tasks run if the ToC no longer lists its source index. If another writer
-// replaces the source index while the tasks run, the swap fails and the work
-// is not used.
+// its tasks run if the ToC no longer lists every index object of its source
+// index run. If another writer replaces the run while the tasks run, the swap
+// fails and the work is not used.
 //
 // Cancelling ctx starts no new index. The index in progress runs to its swap,
 // the cycle records any swaps, and the phase returns phaseOutcomeInterrupted

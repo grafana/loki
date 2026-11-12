@@ -244,45 +244,51 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
+// openedIndex is an opened index object and its path.
+type openedIndex struct {
+	path string
+	obj  *dataobj.Object
+}
+
 // openRunObjects opens the index objects of run, in the order of run.
-func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]*dataobj.Object, error) {
-	objects := make([]*dataobj.Object, len(run.entries))
-	for i, entry := range run.entries {
+func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
+	opened := make([]openedIndex, 0, len(run.entries))
+	for _, entry := range run.entries {
 		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
 			return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
-		objects[i] = obj
+		opened = append(opened, openedIndex{path: entry.Path, obj: obj})
 	}
-	return objects, nil
+	return opened, nil
 }
 
-// layoutOfRun returns the stream layout that objects, the opened index
-// objects of run, record for tenant. hasLayout is false if no index object of
-// run has a stats section of tenant.
+// layoutOfRun returns the stream layout that the opened index objects of a
+// run record for tenant. hasLayout is false if no index object has a stats
+// section of tenant.
 //
 // Every index object of a run records the layout of the run in a stats
 // section, even if the section holds no rows. layoutOfRun returns an error that
-// wraps errCorruptIndex if an index object of run is corrupt, records no
-// layout while another index object of run does, or records another layout.
-func layoutOfRun(ctx context.Context, tenant string, run indexRun, objects []*dataobj.Object) (layout streams.Layout, hasLayout bool, err error) {
+// wraps errCorruptIndex if an index object is corrupt, records no layout while
+// another index object does, or records another layout.
+func layoutOfRun(ctx context.Context, tenant string, run []openedIndex) (layout streams.Layout, hasLayout bool, err error) {
 	var (
 		source        string
 		withoutLayout string
 	)
-	for i, entry := range run.entries {
-		entryLayout, entryHasLayout, err := indexLayout(ctx, objects[i], tenant, entry.Path)
+	for _, index := range run {
+		objLayout, objHasLayout, err := indexLayout(ctx, index.obj, tenant, index.path)
 		if err != nil {
 			return streams.Layout{}, false, err
 		}
-		if !entryHasLayout {
-			withoutLayout = entry.Path
+		if !objHasLayout {
+			withoutLayout = index.path
 			continue
 		}
-		if hasLayout && !entryLayout.Equal(layout) {
-			return streams.Layout{}, false, fmt.Errorf("%w: index %s has stream layout %v, but index %s of the same run has %v", errCorruptIndex, entry.Path, entryLayout, source, layout)
+		if hasLayout && !objLayout.Equal(layout) {
+			return streams.Layout{}, false, fmt.Errorf("%w: index %s has stream layout %v, but index %s of the same run has %v", errCorruptIndex, index.path, objLayout, source, layout)
 		}
-		layout, hasLayout, source = entryLayout, true, entry.Path
+		layout, hasLayout, source = objLayout, true, index.path
 	}
 	if hasLayout && withoutLayout != "" {
 		return streams.Layout{}, false, fmt.Errorf("%w: index %s records no stream layout, but index %s of the same run does", errCorruptIndex, withoutLayout, source)
@@ -290,20 +296,18 @@ func layoutOfRun(ctx context.Context, tenant string, run indexRun, objects []*da
 	return layout, hasLayout, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section that the
-// index objects of run index, and the shard buckets of run. The stats rows of
-// one log section can sit in several index objects of a run, so it folds the
-// stats rows of every index object into one reference per log section.
+// logSectionRefsFor returns one bounded reference per log section in the
+// stats rows of run, and the shard buckets of run.
 //
 // It returns no references and the zero ShardBuckets if run has no stats
-// section for tenant. It returns an error that wraps errCorruptIndex if the
-// index objects of run do not share one stream layout.
+// section for tenant. It returns an error that wraps errCorruptIndex if run is
+// corrupt, as layoutOfRun reports it.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
-	objects, err := openRunObjects(ctx, bucket, tenant, run)
+	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {
 		return nil, indexpointers.ShardBuckets{}, err
 	}
-	layout, ok, err := layoutOfRun(ctx, tenant, run, objects)
+	layout, ok, err := layoutOfRun(ctx, tenant, opened)
 	if err != nil {
 		return nil, indexpointers.ShardBuckets{}, err
 	}
@@ -316,14 +320,13 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 	}
 
 	folder := newLogSectionFolder(labelNames)
-	for i, obj := range objects {
-		idxPath := run.entries[i].Path
-		for _, section := range obj.Sections().Filter(stats.CheckSection) {
+	for _, index := range opened {
+		for _, section := range index.obj.Sections().Filter(stats.CheckSection) {
 			if section.Tenant != tenant {
 				continue
 			}
 			if err := folder.addSection(ctx, section); err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
 			}
 		}
 	}
@@ -354,7 +357,7 @@ func newLogSectionFolder(labelNames []string) *logSectionFolder {
 	}
 }
 
-// addSection folds every row of the stats section.
+// addSection folds every row of section, which must be a stats section.
 func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Section) (err error) {
 	statsSection, err := stats.Open(ctx, section)
 	if err != nil {

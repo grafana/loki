@@ -107,7 +107,7 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 }
 
 func TestIndexFilter_UnmarshalPhysical(t *testing.T) {
-	t.Run("sets the single source path of an old planner for a source of one index object", func(t *testing.T) {
+	t.Run("sets the single source path for an old worker when the source is one index object", func(t *testing.T) {
 		var got physicalpb.IndexFilter
 		require.NoError(t, got.UnmarshalPhysical(&physical.IndexFilter{Tenant: "acme", SourceIndexPaths: []string{"index/a"}}))
 		require.Equal(t, "index/a", got.SourceIndexPath)

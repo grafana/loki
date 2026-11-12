@@ -3483,6 +3483,45 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.Zero(t, singleObjectRuns)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
+
+	t.Run("LogMerge skips an index run with an index object without a layout, counts the run once, and reports no planning error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/a", []stats.Stat{{
+			ObjectPath: "logs/log-0", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+			MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100,
+		}})
+		buildIndexWithPostings(ctx, t, bucket, "acme", "indexes/run/b", 1<<20, []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/log-0", ColumnName: "app", LabelValue: "api"}})
+		writeToCWithPointers(ctx, t, bucket, "acme", window,
+			indexpointers.IndexPointer{Path: "indexes/run/a", StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1},
+			indexpointers.IndexPointer{Path: "indexes/run/b", StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1},
+		)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		plans, singleObjectRuns, anyError := c.planLogCompactions(ctx, "acme")
+		require.False(t, anyError)
+		require.Empty(t, plans)
+		require.Zero(t, singleObjectRuns)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
+	})
+}
+
+func TestIndexFilterForUnmerged(t *testing.T) {
+	t.Run("filters every index object of the source run and keeps the distinct log objects of the unmerged runs", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{
+			{Path: "indexes/run/a", RunID: 1},
+			{Path: "indexes/run/b", RunID: 1},
+		}}
+		unmerged := []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b", MinTimestamp: 20, MaxTimestamp: 30}, {ObjectPath: "logs/a", MinTimestamp: 10, MaxTimestamp: 15}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b", SectionIndex: 1, MinTimestamp: 25, MaxTimestamp: 40}}},
+		}
+
+		task := indexFilterForUnmerged(run, unmerged)
+		require.Equal(t, []string{"indexes/run/a", "indexes/run/b"}, task.sourceIndexPaths)
+		require.Equal(t, []string{"logs/a", "logs/b"}, task.objectPaths)
+		require.Equal(t, time.Unix(0, 10).UTC(), task.entry.StartTime)
+		require.Equal(t, time.Unix(0, 40).UTC(), task.entry.EndTime)
+	})
 }
 
 func TestNewLayoutKey(t *testing.T) {

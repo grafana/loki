@@ -15,8 +15,9 @@ type IndexFilter struct {
 	// are not copied.
 	Tenant string
 
-	// SourceIndexPaths are the object-storage paths of the index objects of
-	// the index to filter.
+	// SourceIndexPaths are the object-storage paths of every index object of
+	// the index to filter. A run splits postings across its index objects, so
+	// a filter over part of a run loses postings.
 	SourceIndexPaths []string
 
 	// ObjectPaths are the log objects whose rows the new index keeps.

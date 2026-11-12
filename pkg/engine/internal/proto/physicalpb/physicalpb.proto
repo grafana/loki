@@ -81,13 +81,14 @@ message LogMerge {
 // index, which is one index object or the index objects of one index run.
 message IndexFilter {
   string tenant = 1;
-  // source_index_path is the source index of one index object. A planner sets
-  // it only for such a source, so a worker that reads only this field never
-  // filters part of an index run.
+  // source_index_path is the path of the source index when it has one index
+  // object. Workers that predate source_index_paths read only this field. The
+  // planner leaves it empty for an index run of several index objects, so such
+  // a worker rejects the plan as malformed and does not filter part of the run.
   string source_index_path = 2;
   repeated string object_paths = 3;
-  // source_index_paths are the index objects of the source index. A worker
-  // reads source_index_path if this field is empty.
+  // source_index_paths lists the paths of every index object of the source
+  // index. A worker reads source_index_path if this field is empty.
   repeated string source_index_paths = 4;
 }
 

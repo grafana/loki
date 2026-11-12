@@ -450,13 +450,14 @@ func (m *LogMerge) GetOutputLevel() uint32 {
 // index, which is one index object or the index objects of one index run.
 type IndexFilter struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	// source_index_path is the source index of one index object. A planner sets
-	// it only for such a source, so a worker that reads only this field never
-	// filters part of an index run.
+	// source_index_path is the path of the source index when it has one index
+	// object. Workers that predate source_index_paths read only this field. The
+	// planner leaves it empty for an index run of several index objects, so such
+	// a worker rejects the plan as malformed and does not filter part of the run.
 	SourceIndexPath string   `protobuf:"bytes,2,opt,name=source_index_path,json=sourceIndexPath,proto3" json:"source_index_path,omitempty"`
 	ObjectPaths     []string `protobuf:"bytes,3,rep,name=object_paths,json=objectPaths,proto3" json:"object_paths,omitempty"`
-	// source_index_paths are the index objects of the source index. A worker
-	// reads source_index_path if this field is empty.
+	// source_index_paths lists the paths of every index object of the source
+	// index. A worker reads source_index_path if this field is empty.
 	SourceIndexPaths []string `protobuf:"bytes,4,rep,name=source_index_paths,json=sourceIndexPaths,proto3" json:"source_index_paths,omitempty"`
 }
 

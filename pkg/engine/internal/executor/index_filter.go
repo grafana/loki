@@ -104,15 +104,19 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 // openFilterSources opens the source index objects of node and returns their
 // postings and stats sections of the tenant, and their stream layout.
 //
-// It returns an error if a source index object holds a section of another type
-// than postings, stats or streams, or if two source index objects record
-// different layouts. A source without stats sections has no layout, and the
-// builder then gets the zero layout, which rejects any stat.
+// It returns an error if a source index object holds a section of the tenant
+// of another type than postings, stats or streams. Every index object of a run
+// records the layout of the run, so it also returns an error if two source
+// index objects record different layouts, or if only some record one.
+//
+// If no source index object records a layout, the layout is the zero layout.
+// The builder then rejects any stat.
 func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFilter) ([]objectSections, streams.Layout, error) {
 	var (
-		sources      []objectSections
-		layout       streams.Layout
-		layoutSource string
+		sources       []objectSections
+		layout        streams.Layout
+		layoutSource  string
+		withoutLayout string
 	)
 	for _, path := range node.SourceIndexPaths {
 		obj, err := dataobj.FromBucket(ctx, c.bucket, path, indexPrefetchBytes)
@@ -140,13 +144,18 @@ func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFil
 		if err != nil {
 			return nil, streams.Layout{}, fmt.Errorf("reading stream layout of source index %q: %w", path, err)
 		}
-		if hasLayout {
+		if !hasLayout {
+			withoutLayout = path
+		} else {
 			if layoutSource != "" && !objLayout.Equal(layout) {
 				return nil, streams.Layout{}, fmt.Errorf("source index %q has stream layout %v, but source index %q has %v", path, objLayout, layoutSource, layout)
 			}
 			layout, layoutSource = objLayout, path
 		}
 		sources = append(sources, group)
+	}
+	if layoutSource != "" && withoutLayout != "" {
+		return nil, streams.Layout{}, fmt.Errorf("source index %q records no stream layout, but source index %q records %v", withoutLayout, layoutSource, layout)
 	}
 	return sources, layout, nil
 }

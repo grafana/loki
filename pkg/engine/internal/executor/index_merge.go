@@ -21,8 +21,8 @@ import (
 )
 
 // indexPrefetchBytes is how many bytes the index merge and filter read up
-// front when they open a source index object. It matches the prefetch that
-// the metastore uses for index objects.
+// front when they open a source index object. If the metadata of the object
+// fits in these bytes, opening the object takes one request.
 const indexPrefetchBytes = 64 * 1024
 
 // executeIndexMerge orchestrates the index merge: classify sections,
@@ -161,8 +161,8 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	// For each unique source object, scan its sections and classify by type,
 	// preserving section order. Other section types (streams, indexPointers)
-	// are skipped silently. doIndexFilter also skips streams sections, but it
-	// rejects every other type.
+	// are skipped silently. openFilterSources also skips streams sections, but
+	// it rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
 	var (
 		layout       streams.Layout
@@ -221,8 +221,8 @@ type objectSections struct {
 func keepAll(string) bool { return true }
 
 // mergePostingsIntoBuilder merges the postings sections of all source index
-// objects with a K-way loser-tree merge. It feeds into the builder each row
-// whose referenced log object path keep accepts.
+// objects with a K-way loser-tree merge. It writes a row to builder only if
+// keep returns true for the log object path of the row.
 func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
@@ -313,8 +313,8 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 }
 
 // mergeStatsIntoBuilder merges the stats sections of all source index objects
-// with a K-way loser-tree merge. It feeds into the builder each row whose
-// referenced log object path keep accepts. Uses D3 aggregation with schema/label validation.
+// with a K-way loser-tree merge. It writes a row to builder only if keep
+// returns true for the log object path of the row.
 func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
@@ -438,8 +438,7 @@ func (s *sectionConcatSeq[R]) Next() bool {
 			return true
 		}
 		// Current section drained or errored: capture any error, close, advance.
-		err := s.cur.Err()
-		_ = s.cur.Close()
+		err := errors.Join(s.cur.Err(), s.cur.Close())
 		s.cur = nil
 		if err != nil {
 			s.err = err
@@ -508,6 +507,10 @@ func heapAt[R any](s sequence[R]) heapVal[R] {
 }
 
 // closeSeq closes a sequence when the loser tree is done with it.
+//
+// It drops the close error. A drained sequence has no open reader, because
+// Next closes each reader and keeps its close error in Err. A sequence that
+// still has an open reader belongs to a merge that already failed.
 func closeSeq[R any](s sequence[R]) {
 	_ = s.Close()
 }

@@ -232,6 +232,20 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ErrorContains(t, err, "no stats rows for object \"logs/b\"")
 	})
 
+	t.Run("returns an error when only some index objects of the source record a layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		runSource(t, bucket, "indexes/run/a", "app", []string{"logs/a"}, []string{"logs/a"})
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
+		uploadFilterSourceIndex(t, bucket, "indexes/run/b", objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/b"},
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "records no stream layout")
+	})
+
 	t.Run("returns an error when the index objects of the source record different layouts", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		runSource(t, bucket, "indexes/run/a", "app", []string{"logs/a"}, []string{"logs/a"})

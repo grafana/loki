@@ -547,6 +547,28 @@ func TestLogSectionRefsFor(t *testing.T) {
 		require.Equal(t, streams.DefaultShardLayout(), layout)
 	})
 
+	t.Run("ignores the stats rows of another tenant in an index object that holds both tenants", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		builder := dataobj.NewBuilder(nil)
+		for _, tenant := range []string{"acme", "other"} {
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000), streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}))
+			statsBuilder.SetTenant(tenant)
+			row := stat("auth", 300)
+			row.ObjectPath = "logs/" + tenant
+			statsBuilder.Append(row)
+			require.NoError(t, builder.Append(statsBuilder))
+		}
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		uploadObject(ctx, t, bucket, "indexes/run/a", obj)
+
+		refs, _, err := logSectionRefsFor(ctx, bucket, "acme", runOf("indexes/run/a"))
+		require.NoError(t, err)
+		require.Len(t, refs, 1)
+		require.Equal(t, "logs/acme", refs[0].Ref.ObjectPath)
+	})
+
 	t.Run("returns a corrupt index error when an index object of a run records no layout and another does", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/a", []stats.Stat{stat("auth", 300)})
