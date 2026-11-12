@@ -152,7 +152,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 				continue
 			}
 			opened[indexPath] = struct{}{}
-			w.addAll([]string{IndexStoragePrefix + "/" + indexPath})
+			w.add(IndexStoragePrefix + "/" + indexPath)
 			g.Go(func() error { return w.addReferencedObjects(gctx, indexPath) })
 		}
 	}
@@ -168,12 +168,10 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 	return paths, nil
 }
 
-func (w *reachabilityWalk) addAll(paths []string) {
+func (w *reachabilityWalk) add(p string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, p := range paths {
-		w.reachable[p] = struct{}{}
-	}
+	w.reachable[p] = struct{}{}
 }
 
 // tocIndexPaths returns the index object paths in the ToC of the tenant for
@@ -335,11 +333,13 @@ func (w *reachabilityWalk) addObjectPaths(ctx context.Context, read func(context
 // corrupt section or a reader bug. Skipping it could drop a reachable object.
 func (w *reachabilityWalk) addRecordPaths(rec arrow.RecordBatch) error {
 	defer rec.Release()
+	if n := rec.NumCols(); n != 1 {
+		return fmt.Errorf("object_path record has %d columns, want 1", n)
+	}
 	column, ok := rec.Column(0).(*array.String)
 	if !ok {
 		return fmt.Errorf("object_path column has type %s, want string", rec.Column(0).DataType())
 	}
-	paths := make([]string, 0, column.Len())
 	for i := range column.Len() {
 		if column.IsNull(i) || column.Value(i) == "" {
 			return errors.New("object_path column holds a null or empty value")
@@ -347,11 +347,18 @@ func (w *reachabilityWalk) addRecordPaths(rec arrow.RecordBatch) error {
 		if err := checkObjectPath(column.Value(i)); err != nil {
 			return err
 		}
-		// The values point into the buffers of rec. Clone them so that the
-		// result does not keep every batch in memory.
-		paths = append(paths, strings.Clone(column.Value(i)))
 	}
-	w.addAll(paths)
+
+	// The values point into the buffer of the whole batch. Clone a new path
+	// so that the set does not keep every batch alive. Many rows reference
+	// the same log object, so check the set before the clone.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i := range column.Len() {
+		if _, ok := w.reachable[column.Value(i)]; !ok {
+			w.reachable[strings.Clone(column.Value(i))] = struct{}{}
+		}
+	}
 	return nil
 }
 
