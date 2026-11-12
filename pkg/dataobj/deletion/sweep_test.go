@@ -98,25 +98,6 @@ func TestSweeper_Sweep(t *testing.T) {
 		}}, readFileList(t, bucket, "a"))
 	})
 
-	t.Run("stores the list and logs no deletion candidates when the stored list is a version 1 list of every object", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
-		bucket.put(t, "objects/tenants/a/01/reachable", notADataObject, old)
-		storeReachableIndex(t, bucket, "a", "indexes/tenants/a/aa/index", []string{"objects/tenants/a/01/reachable"}, old)
-		upload(t, bucket, fileListPath("a"), gzipText(t, `{"version":1,"tenant":"a","created_at":"`+stale.Format(time.RFC3339)+`"}`+"\n"+
-			`{"path":"index/v0/indexes/tenants/a/aa/index"}`+"\n"+`{"path":"objects/tenants/a/00/orphan"}`+"\n"+`{"path":"objects/tenants/a/01/reachable"}`+"\n"))
-		sweeper, logs := newLoggedSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		require.Contains(t, logs.String(), "stored file list holds every object, not the unreachable ones")
-		require.NotContains(t, logs.String(), "dry run")
-		r := openFileList(t, bucket, "a")
-		require.True(t, r.dec.header.holdsUnreachableObjects())
-		require.Equal(t, []string{"objects/tenants/a/00/orphan"}, collectPaths(t, r))
-	})
-
 	t.Run("excludes reachable compacted log and index objects and keeps a compacted index that no ToC reaches", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/tenants/a/aa/compacted-log", notADataObject, old)
@@ -208,22 +189,6 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, logs.String(), "candidates=0 log_objects=0 index_objects=0\n")
 		require.NotContains(t, logs.String(), "dry run: candidate")
-	})
-
-	t.Run("returns SweepSuperseded without a write when a version 1 list with the same creation time replaces the stored list during the scan", func(t *testing.T) {
-		files := newFileBucket(t)
-		storeAnyReachableIndex(t, files)
-		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
-		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
-		legacy := gzipText(t, `{"version":1,"tenant":"a","created_at":"`+stale.Format(time.RFC3339)+`"}`+"\n"+`{"path":"objects/tenants/a/00/orphan"}`+"\n")
-		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { upload(t, files, fileListPath("a"), legacy) }}
-		sweeper, logs := newLoggedSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		require.NotContains(t, logs.String(), "dry run")
-		require.Equal(t, string(legacy), readRaw(t, files, fileListPath("a")))
 	})
 
 	t.Run("returns ErrMalformedFileList without a write when the stored list is malformed at the second read", func(t *testing.T) {
@@ -364,6 +329,18 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, SweepScanned, outcome)
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/00/single-a"}}, readFileList(t, bucket, "a"))
+	})
+
+	t.Run("returns ErrMalformedFileList without a scan and keeps a stored version 1 list", func(t *testing.T) {
+		files := newFileBucket(t)
+		stored := gzipText(t, `{"version":1,"tenant":"a","created_at":"`+stale.Format(time.RFC3339)+`"}`+"\n"+`{"path":"objects/tenants/a/00/x"}`+"\n")
+		upload(t, files, fileListPath("a"), stored)
+		bucket := &listRecordingBucket{fileBucket: files}
+
+		_, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		require.ErrorIs(t, err, ErrMalformedFileList)
+		require.Empty(t, bucket.dirs)
+		require.Equal(t, string(stored), readRaw(t, files, fileListPath("a")))
 	})
 
 	t.Run("returns ErrMalformedFileList without a scan, logs an error, and keeps a malformed stored list", func(t *testing.T) {

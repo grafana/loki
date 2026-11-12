@@ -92,9 +92,8 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 //  2. It scans the objects of tenant, and then finds the objects that a ToC
 //     of tenant can reach. The scanned objects that no ToC can reach form
 //     the new list.
-//  3. It compares the new list with the stored list, if the stored list also
-//     holds unreachable objects. The objects in both are the deletion
-//     candidates.
+//  3. It compares the new list with the stored list, if one is stored. The
+//     objects in both are the deletion candidates.
 //  4. It stores the new list.
 //  5. It logs a summary and examples of the deletion candidates. It does not
 //     delete them.
@@ -110,18 +109,13 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 // after a ToC stops listing it. An object is a candidate only if two sweeps,
 // at least MinSweepInterval apart, find it unreachable.
 //
-// A stored list in the older format holds every object of tenant, not the
-// unreachable ones. Sweep stores the new list, but finds no candidates from
-// such a list. Comparing it would make every object that is unreachable now
-// a candidate after one sweep.
-//
 // Sweep stores the new list before it logs the candidates, so it logs
 // candidates only for a list that it stored.
 //
 // Sweep returns SweepSuperseded, and logs no candidates, if the stored list
 // is not older than the new list when Sweep writes. It also returns
-// SweepSuperseded if the stored list held unreachable objects, and changed
-// or was removed during the sweep.
+// SweepSuperseded if the stored list changed or was removed during the
+// sweep.
 //
 // Two overlapping sweeps can still both store a list and both log
 // candidates. Both find their candidates from the same stored list.
@@ -174,8 +168,6 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	switch {
 	case previous == nil:
 		level.Info(logger).Log("msg", "deletion sweep found no candidates: no file list is stored, so this list is the first")
-	case !previous.holdsUnreachableObjects():
-		level.Info(logger).Log("msg", "deletion sweep found no candidates: stored file list holds every object, not the unreachable ones", "previous_list_created_at", previous.CreatedAt.Format(time.RFC3339))
 	default:
 		found, err := s.findStoredCandidates(ctx, *previous, list.Paths)
 		switch {

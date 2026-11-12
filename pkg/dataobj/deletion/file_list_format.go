@@ -20,23 +20,15 @@ import (
 // does not fix it.
 var ErrMalformedFileList = errors.New("malformed file list")
 
-// The versions of the stored format. The encoding is the same in both. Only
-// the meaning of the paths differs:
+// fileListVersion is the version of the stored format that this package
+// writes and reads. The paths of the list are the objects of the tenant that
+// no ToC could reach.
 //
-//   - In version 1, the paths are every object of the tenant. Older
-//     binaries write this version.
-//   - In version 2, the paths are the objects of the tenant that no ToC could
-//     reach.
-//
-// A binary that knows only version 1 rejects a version 2 list as malformed.
-// So it never replaces a version 2 list.
-const (
-	fileListVersionAllObjects  = 1
-	fileListVersionUnreachable = 2
-
-	// fileListVersion is the version that this package writes.
-	fileListVersion = fileListVersionUnreachable
-)
+// Older binaries wrote version 1 lists, whose paths are every object of the
+// tenant. Each side rejects the other version as malformed. So a sweep never
+// compares with a list of every object, and an older binary never replaces
+// a newer list.
+const fileListVersion = 2
 
 // fileListHeader is the first record of a stored file list.
 //
@@ -49,7 +41,7 @@ const (
 //	{"path":"index/v0/indexes/tenants/a/00/x"}
 //	{"path":"objects/tenants/a/aa/y"}
 //
-// Decoding rejects unknown fields and unknown versions. The writer reads only
+// Decoding rejects unknown fields and other versions. The writer reads only
 // the header, so a change to the format must change the version. Then older
 // writers do not replace a list that they cannot read.
 type fileListHeader struct {
@@ -58,20 +50,14 @@ type fileListHeader struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// holdsUnreachableObjects reports whether the paths of the list are the
-// objects that no ToC could reach.
-func (h fileListHeader) holdsUnreachableObjects() bool {
-	return h.Version == fileListVersionUnreachable
-}
-
 // equal reports whether h and other describe the same stored list.
 func (h fileListHeader) equal(other fileListHeader) bool {
 	return h.Version == other.Version && h.Tenant == other.Tenant && h.CreatedAt.Equal(other.CreatedAt)
 }
 
 func (h fileListHeader) validate() error {
-	if h.Version != fileListVersionAllObjects && h.Version != fileListVersionUnreachable {
-		return fmt.Errorf("unsupported version %d, want %d or %d", h.Version, fileListVersionAllObjects, fileListVersionUnreachable)
+	if h.Version != fileListVersion {
+		return fmt.Errorf("unsupported version %d, want %d", h.Version, fileListVersion)
 	}
 	if err := validateTenant(h.Tenant); err != nil {
 		return err
