@@ -532,6 +532,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // the response. The push is rejected with the error instead when nothing is left to write, or
 // when a stream of the push resolves to a policy with reject_partial_writes and the error is a
 // 429.
+//
+// A push rejected before the write returns a nil response with its error, and so does a failed
+// write, which may have been partly written by then. A response with an error means a partial
+// write. A push left with nothing to write and no error, such as one whose streams were all
+// blocked with status code 200, succeeds with a response.
 func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -543,7 +548,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	if len(req.Streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
-		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
 	now := time.Now()
@@ -566,7 +571,12 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// still to be written: they only lack their shard count.
 	if len(sharder.streams) == 0 && len(sharder.liveCandidates) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
-		return &logproto.PushResponse{}, validated.err
+		// Nothing was left to write. Without an error, for example when every
+		// stream was empty or blocked with status code 200, that is a success.
+		if validated.err != nil {
+			return nil, validated.err
+		}
+		return &logproto.PushResponse{}, nil
 	}
 
 	// An admitted push keeps its tokens even if a later stage rejects it.
@@ -769,7 +779,7 @@ func (d *Distributor) validateStreams(
 		// Truncate first so subsequent steps have consistent line lengths
 		d.truncateLines(vCtx, stream)
 
-		parsed, err := d.parseStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver, format)
+		parsed, labelsReason, err := d.parseAndValidateStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
 		stream.Labels, stream.Hash = parsed.labelsString, parsed.hash
 		if !result.rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, parsed.policy) {
 			result.rejectPartialWrites = true
@@ -780,12 +790,12 @@ func (d *Distributor) validateStreams(
 		// as discarded for reason.
 		discard := func(reason string, err error) {
 			d.writeFailuresManager.Log(tenantID, err)
-			d.validator.reportDiscardedDataWithTracker(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
+			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 		}
 
 		if err != nil {
 			validationErrors.Add(err)
-			discard(validation.InvalidLabels, err)
+			discard(labelsReason, err)
 			continue
 		}
 
@@ -944,8 +954,8 @@ func (d *Distributor) enforceStreamLimits(
 }
 
 // rejectOverStreamLimit reports streams the limits service rejected for the stream limit as
-// discarded, see trackDiscardedData, and returns an error naming the first of them. rejected must
-// not be empty.
+// discarded, see reportDiscardedStreams, and returns an error naming the first of them. rejected
+// must not be empty.
 func (d *Distributor) rejectOverStreamLimit(
 	ctx context.Context,
 	tenantID string,
@@ -954,7 +964,7 @@ func (d *Distributor) rejectOverStreamLimit(
 	streamResolver push.StreamResolver,
 	format string,
 ) error {
-	d.trackDiscardedData(ctx, rejected, vCtx, tenantID, validation.StreamLimit, streamResolver, format)
+	d.reportDiscardedStreams(ctx, rejected, vCtx, validation.StreamLimit, streamResolver, format)
 
 	// Only the first stream is named, in the insight log and the error. Any stream can hit the
 	// limit, so the name rarely points at the cause.
@@ -1008,7 +1018,7 @@ func (d *Distributor) processStreamEntries(
 			var scopeDiscardReason string
 			for _, entry := range scope.Entries {
 				if reason, err := d.validator.ValidateEntry(vContext, lbs, entry, sharedMetadataSize, sharedMetadataCount); err != nil {
-					d.validator.reportDiscardedDataWithTracker(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
+					d.validator.reportDiscardedData(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
 					scopeDiscardReason = reason
 					resourceDiscardReason = reason
 					d.writeFailuresManager.Log(tenantID, err)
@@ -1054,7 +1064,7 @@ func (d *Distributor) processStreamEntries(
 			if scopeEntriesKept == 0 {
 				// Charge shared bytes only when the group is emptied, using its last rejection reason.
 				if scopeDiscardReason != "" && scopeMetadata.originalSize > 0 {
-					d.validator.reportDiscardedDataWithTracker(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
+					d.validator.reportDiscardedData(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
 				}
 				continue
 			}
@@ -1067,7 +1077,7 @@ func (d *Distributor) processStreamEntries(
 		resource.ScopeLogs = resource.ScopeLogs[:scopesKept]
 		if scopesKept == 0 {
 			if resourceDiscardReason != "" && resourceMetadata.originalSize > 0 {
-				d.validator.reportDiscardedDataWithTracker(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
+				d.validator.reportDiscardedData(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
 			}
 			continue
 		}
@@ -1268,8 +1278,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 	}
 
 	// The whole request is dropped, so attribute every stream as discarded (each under its
-	// own policy label, handled by trackDiscardedData).
-	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
+	// own policy label, handled by reportDiscardedStreams).
+	d.reportDiscardedStreams(ctx, streams, validationContext, validation.RateLimited, streamResolver, format)
 
 	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
 	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
@@ -1289,30 +1299,24 @@ func (d *Distributor) enforceIngestionRateLimits(
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
-// trackDiscardedData reports streams as discarded for reason. It resolves each stream's labels with
-// parseStreamLabels, which reports a stream whose labels fail validation under that failure's
-// reason instead, as happens to a shard of a stream at max_label_names_per_series.
-func (d *Distributor) trackDiscardedData(
+// reportDiscardedStreams reports whole streams that passed validation as discarded for reason,
+// resolving each stream's labels, retention and policy for the report. It does not validate the
+// labels again: they may be the labels of a shard, which carry an extra shard label.
+func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
 	streams []logproto.InternalStreamAdapter,
-	validationContext validationContext,
-	tenantID string,
+	vCtx validationContext,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
 ) {
 	for _, stream := range streams {
-		parsed, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		parsed, _, err := d.parseStreamLabels(ctx, vCtx.userID, stream.Labels, streamResolver)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
 		}
-		discardedStreamBytes := nestedStreamSize(stream)
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, parsed.retentionHours, parsed.policy, format).Add(float64(stream.EntryCount()))
-		validation.DiscardedBytes.WithLabelValues(reason, tenantID, parsed.retentionHours, parsed.policy, format).Add(float64(discardedStreamBytes))
-		if d.usageTracker != nil {
-			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, parsed.lbs, float64(discardedStreamBytes), format)
-		}
+		d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 	}
 }
 
@@ -1737,34 +1741,48 @@ type parsedStreamLabels struct {
 	policy         string
 }
 
-// parseStreamLabels parses stream labels using a request-scoped policy resolver. On an error,
-// only retentionHours and policy are set, as far as they could be resolved, for discard reporting.
-// Labels that fail validation have already been reported as discarded by ValidateLabels.
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver, format string) (parsedStreamLabels, error) {
+// parseStreamLabels takes the labels for key from the label cache, or parses them, and resolves the
+// stream's retention and policy using a request-scoped policy resolver. cached reports a cache hit.
+// It neither validates the labels nor adds them to the cache, which only holds labels
+// parseAndValidateStreamLabels has validated. If key does not parse, only retentionHours is set.
+func (d *Distributor) parseStreamLabels(ctx context.Context, tenantID, key string, streamResolver push.StreamResolver) (parsed parsedStreamLabels, cached bool, err error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
-		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, nil
+		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, true, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
+		retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, false, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ctx, ls)
-	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, ls)
+	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: labels.StableHash(ls), retentionHours: retentionHours, policy: policy}, false, nil
+}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
-		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours, policy: policy}, err
+// parseAndValidateStreamLabels parses stream labels (see parseStreamLabels) and validates them,
+// adding them to the label cache once valid. If they are invalid, it returns the reason to discard
+// the stream's data for with the error, and only lbs (empty), retentionHours and policy are set, as
+// far as they could be resolved, for discard reporting.
+func (d *Distributor) parseAndValidateStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
+	parsed, cached, err := d.parseStreamLabels(ctx, vContext.userID, key, streamResolver)
+	if err != nil {
+		return parsed, validation.InvalidLabels, err
+	}
+	if cached {
+		return parsed, "", nil
 	}
 
-	lsHash := labels.StableHash(ls)
+	if reason, err := d.validator.ValidateLabels(vContext, parsed.lbs, stream); err != nil {
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: parsed.retentionHours, policy: parsed.policy}, reason, err
+	}
 
-	d.labelCache.Add(key, labelData{ls, lsHash})
-	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: lsHash, retentionHours: retentionHours, policy: policy}, nil
+	d.labelCache.Add(key, labelData{parsed.lbs, parsed.hash})
+	return parsed, "", nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
