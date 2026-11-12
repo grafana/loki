@@ -112,7 +112,7 @@ Loki sets the reset offset for each consumer in code. You can't change it with a
 
 | Consumer | After data loss, before this release | After data loss, with this release |
 |---|---|---|
-| Ingesters, data object builder | Continue right after the missing records | Same: continue right after the missing records |
+| Ingesters, data object builder, logline builder | Continue right after the missing records | Same: continue right after the missing records |
 | Ingest limits | Continue right after the missing records | Go back to when the pod started, minus `-ingest-limits.active-window` (default `2h`). On a pod that has run for a long time, this re-reads many records. |
 | Pattern ingester | Continue right after the missing records | Jump to the end of the topic, which skips the records it hasn't read |
 
