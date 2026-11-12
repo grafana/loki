@@ -1147,6 +1147,40 @@ dataobj:
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
+  metadata_prefetcher:
+    # Experimental: Serve the metadata of log objects from separate cache items,
+    # so a query reads only the metadata it needs.
+    # CLI flag: -dataobj.metadata-prefetcher.enabled
+    [enabled: <boolean> | default = false]
+
+    # The codec of the cache items. Supported values are: zstd, none.
+    # CLI flag: -dataobj.metadata-prefetcher.compression
+    [compression: <string> | default = "zstd"]
+
+    # A cache item stays uncompressed when compression shrinks it by less than
+    # this ratio.
+    # CLI flag: -dataobj.metadata-prefetcher.min-compression-ratio
+    [min_compression_ratio: <float> | default = 1.5]
+
+    # Size in bytes of the first object storage read of an object whose metadata
+    # is not cached. The header and the file metadata of the object must fit in
+    # it, or the prefetcher skips the object. The minimum is 16 KiB.
+    # CLI flag: -dataobj.metadata-prefetcher.head-bytes
+    [head_bytes: <int> | default = 262144]
+
+    # The largest metadata region, in bytes, that the prefetcher handles. The
+    # metadata region of an object is the part of the object from its start to
+    # the end of the metadata of all sections. The prefetcher skips an object
+    # with a larger region, and a query reads the metadata of that object
+    # directly. When the metadata cache has a maximum item size, this value plus
+    # 64 KiB must not exceed it.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
+    [max_region_bytes: <int> | default = 4194304]
+
+    # The time limit of the load that follows a cache miss.
+    # CLI flag: -dataobj.metadata-prefetcher.load-timeout
+    [load_timeout: <duration> | default = 5s]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).

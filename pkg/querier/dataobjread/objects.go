@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -41,6 +42,10 @@ type OpenObjects struct {
 	// shared across queries, and nil when caching is off.
 	metadataCache dataobj.MetadataCache
 
+	// metadataPrefetcher, when set, serves the metadata that the prefetch set reads.
+	metadataPrefetcher  metadata.Prefetcher
+	metadataPrefetchSet metadata.PrefetchSet
+
 	mu     sync.Mutex
 	byPath map[string]*openObject
 
@@ -54,6 +59,12 @@ type OpenObjectsOption func(*OpenObjects)
 // WithMetadataCache caches the metadata region of every opened object in cache.
 func WithMetadataCache(cache dataobj.MetadataCache) OpenObjectsOption {
 	return func(o *OpenObjects) { o.metadataCache = cache }
+}
+
+// WithMetadataPrefetcher serves the metadata of every opened object through prefetcher, which
+// returns the metadata that the prefetch set reads.
+func WithMetadataPrefetcher(prefetcher metadata.Prefetcher, prefetchSet metadata.PrefetchSet) OpenObjectsOption {
+	return func(o *OpenObjects) { o.metadataPrefetcher, o.metadataPrefetchSet = prefetcher, prefetchSet }
 }
 
 func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, opts ...OpenObjectsOption) *OpenObjects {
@@ -108,7 +119,11 @@ func (o *OpenObjects) open(ctx context.Context, path string) (*openObject, error
 
 	// Open outside the lock so concurrent opens of different objects do not serialize on the
 	// object-storage read.
-	opened, err := dataobj.FromBucket(ctx, o.bucket, path, o.prefetchBytes, dataobj.WithMetadataCache(o.metadataCache))
+	openOpts := []dataobj.OpenOption{dataobj.WithMetadataCache(o.metadataCache)}
+	if o.metadataPrefetcher != nil {
+		openOpts = append(openOpts, dataobj.WithMetadataPrefetcher(o.metadataPrefetcher, o.metadataPrefetchSet))
+	}
+	opened, err := dataobj.FromBucket(ctx, o.bucket, path, o.prefetchBytes, openOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("opening data object %q: %w", path, err)
 	}

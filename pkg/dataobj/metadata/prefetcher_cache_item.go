@@ -1,7 +1,12 @@
 package metadata
 
 // The prefetcher stores one cache item under each cache key. A cache item wraps a raw payload in the
-// envelope below. The envelope does not look at the payload.
+// envelope below. The raw payload is one of two things:
+//
+//   - A group of prefetched ranges, in the layout below. A group is the file metadata, the
+//     core metadata, the message column, or one structured metadata column.
+//   - The whole metadata region of an object, as it lies in the data object file. It is not encoded
+//     any further.
 //
 // A uvarint is encoded like binary.PutUvarint. A fixed size integer is little endian.
 //
@@ -25,12 +30,55 @@ package metadata
 //   - key is the unhashed cache key of the item. The cache stores the item under a hash of the key,
 //     and two keys can have the same hash. A reader counts a cache item whose key differs from the key
 //     it asked for as a miss.
+//
+// Prefetched ranges, the raw bytes of a group:
+//
+//	┌────────────────────────────────────────┐
+//	│ #ranges <uvarint>                      │
+//	├────────────────────────────────────────┤
+//	│ ┌────────────────────────────────────┐ │
+//	│ │ range 0                            │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ ...                                │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ range #ranges-1                    │ │
+//	│ └────────────────────────────────────┘ │
+//	├────────────────────────────────────────┤
+//	│ #columnNames <uvarint>                 │
+//	├────────────────────────────────────────┤
+//	│ ┌────────────────────────────────────┐ │
+//	│ │ column name 0                      │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ ...                                │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ column name #columnNames-1         │ │
+//	│ └────────────────────────────────────┘ │
+//	└────────────────────────────────────────┘
+//
+// Range:
+//
+//	┌──────────────────┬──────────────────┬──────────────┐
+//	│ offset <uvarint> │ length <uvarint> │ data <bytes> │
+//	└──────────────────┴──────────────────┴──────────────┘
+//
+// Column name:
+//
+//	┌─────────────────────┬──────────────┐
+//	│ len(name) <uvarint> │ name <bytes> │
+//	└─────────────────────┴──────────────┘
+//
+//   - offset is the absolute offset of the range in the data object file. length is the number of
+//     bytes of data.
+//   - Only the core group has column names. It lists every structured metadata column of the object,
+//     sorted by name. Every other group has none.
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"math"
+	"slices"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -57,8 +105,7 @@ const (
 
 	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the raw bytes of
 	// the ranges of a group: the range headers, the column names and the cache item envelope. The
-	// prefetcher adds it to the max region size, and rejects a config where the sum is above the
-	// largest cache item of the cache.
+	// prefetcher subtracts it from the largest cache item of the cache to get the largest region.
 	cacheItemOverheadBytes = 64 * 1024
 )
 
@@ -188,4 +235,82 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 		return nil, errors.New("cache item checksum mismatch")
 	}
 	return raw, nil
+}
+
+// marshalPrefetchedRanges encodes the ranges of a group and, for the core group, the names of the
+// structured metadata columns of the object.
+func marshalPrefetchedRanges(ranges PrefetchedRanges, columnNames map[string]struct{}) []byte {
+	var out []byte
+	out = binary.AppendUvarint(out, uint64(len(ranges)))
+	for _, r := range ranges {
+		out = binary.AppendUvarint(out, uint64(r.Offset))
+		out = binary.AppendUvarint(out, uint64(len(r.Data)))
+		out = append(out, r.Data...)
+	}
+
+	names := make([]string, 0, len(columnNames))
+	for name := range columnNames {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	out = binary.AppendUvarint(out, uint64(len(names)))
+	for _, name := range names {
+		out = binary.AppendUvarint(out, uint64(len(name)))
+		out = append(out, name...)
+	}
+	return out
+}
+
+// unmarshalPrefetchedRanges decodes the output of marshalPrefetchedRanges. The returned ranges alias b.
+func unmarshalPrefetchedRanges(b []byte) (PrefetchedRanges, map[string]struct{}, error) {
+	errTruncated := errors.New("prefetched ranges are truncated")
+	next := func() (uint64, error) {
+		v, n := binary.Uvarint(b)
+		if n <= 0 {
+			return 0, errTruncated
+		}
+		b = b[n:]
+		return v, nil
+	}
+
+	// Each range takes at least two bytes, its offset and its length. A count above half the remaining
+	// bytes is invalid. The check stops a crafted count from forcing a large allocation.
+	count, err := next()
+	if err != nil || count > uint64(len(b))/2 {
+		return nil, nil, errTruncated
+	}
+	ranges := make(PrefetchedRanges, count)
+	for i := range ranges {
+		offset, err := next()
+		if err != nil || offset > math.MaxInt64 {
+			return nil, nil, errTruncated
+		}
+		length, err := next()
+		if err != nil || length > uint64(len(b)) {
+			return nil, nil, errTruncated
+		}
+		ranges[i] = PrefetchedRange{Offset: int64(offset), Data: b[:length:length]}
+		b = b[length:]
+	}
+
+	// Each column name takes at least one byte, its length. The same check applies, with all the
+	// remaining bytes.
+	nameCount, err := next()
+	if err != nil || nameCount > uint64(len(b)) {
+		return nil, nil, errTruncated
+	}
+	columnNames := make(map[string]struct{}, nameCount)
+	for range nameCount {
+		nameLength, err := next()
+		if err != nil || nameLength > uint64(len(b)) {
+			return nil, nil, errTruncated
+		}
+		columnNames[string(b[:nameLength])] = struct{}{}
+		b = b[nameLength:]
+	}
+
+	if len(b) != 0 {
+		return nil, nil, errors.New("prefetched ranges have trailing bytes")
+	}
+	return ranges, columnNames, nil
 }

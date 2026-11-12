@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
@@ -231,6 +232,28 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		plan.metadataNames = slices.Sorted(maps.Keys(metadataNames))
 	}
 	return plan, nil
+}
+
+// MetadataPrefetchSet returns the metadata that a read of the plan uses. It lists every metadata column
+// that the extractor or a pushed predicate names, whether or not a section has it.
+func (p ProjectionPlan) MetadataPrefetchSet() metadata.PrefetchSet {
+	prefetchSet := metadata.PrefetchSet{
+		Message:     p.needReturningLine || p.lineFilter != nil,
+		AllMetadata: p.needAllMetadata,
+	}
+
+	if !p.needAllMetadata {
+		names := make(map[string]struct{}, len(p.metadataNames)+len(p.pushdownCandidates))
+		for _, name := range p.metadataNames {
+			names[name] = struct{}{}
+		}
+		for _, matcher := range p.pushdownCandidates {
+			names[matcher.Name] = struct{}{}
+		}
+		prefetchSet.MetadataNames = slices.Sorted(maps.Keys(names))
+	}
+
+	return prefetchSet
 }
 
 // UnpushedExpr returns the query without the line filter stages that the read applies or that keep

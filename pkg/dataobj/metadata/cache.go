@@ -23,8 +23,7 @@ const keyPrefix = "dataobj-metadata/v1:"
 // stuck backend could strand the load and its goroutine after all callers have left.
 const loadTimeout = 30 * time.Second
 
-// DefaultMaxItemBytes is the size limit NewCache falls back to when the caller does not know the
-// backend's real one.
+// DefaultMaxItemBytes is the size limit NewCache uses when the backend has no limit.
 const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
 // KindLogsCache, KindIndexCache and KindTOCCache label the counters of a Cache by the kind of object
@@ -36,18 +35,18 @@ const (
 	KindTOCCache   = "toc"
 )
 
-// NewBackend builds the cache backend that cfg describes. It also returns the largest region that the
-// backend stores, to pass to NewCache.
+// NewBackend builds the cache backend that cfg describes. It also returns the largest item that the
+// backend stores, or zero when the backend has no limit.
 //
 // The backend ignores a repeated Stop, so several Caches can share it. The limit is the memcached max
-// item size. Other backends, and a zero value, use DefaultMaxItemBytes.
+// item size. Other backends have no limit.
 func NewBackend(cfg cache.Config, reg prometheus.Registerer, logger log.Logger) (cache.Cache, int64, error) {
 	c, err := cache.New(cfg, reg, logger, stats.DataObjMetadataCache, constants.Loki)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	maxItemBytes := int64(DefaultMaxItemBytes)
+	var maxItemBytes int64
 	if cache.IsMemcacheSet(cfg) && cfg.MemcacheClient.MaxItemSize > 0 {
 		maxItemBytes = int64(cfg.MemcacheClient.MaxItemSize)
 	}
