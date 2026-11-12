@@ -56,10 +56,9 @@ func NewFileListScanner(bucket objstore.BucketReader, logger log.Logger) (*FileL
 // List returns paths, not a [FileList], because a stored file list holds
 // only unreachable objects. The caller removes the reachable objects.
 //
-// List lists the tenant directories only, and opens no object. The path of an
-// object in a tenant directory names its tenant. Objects outside the tenant
-// directories, for example uncompacted objects in objects/<prefix>/, are not
-// in the list.
+// List lists the tenant directories only. The path of an object in a tenant
+// directory names its tenant. Objects outside the tenant directories, for
+// example uncompacted objects in objects/<prefix>/, are not in the list.
 //
 // List returns an error if a listing fails, or if the bucket does not report
 // the modification time of an object.

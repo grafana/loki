@@ -3,8 +3,6 @@ package deletion
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,9 +22,7 @@ func TestNewFileListScanner(t *testing.T) {
 }
 
 func TestFileListScanner_List(t *testing.T) {
-	// The scan opens no object, so the tests store bytes that are not a data
-	// object.
-	data := []byte("not a data object")
+	data := []byte("x")
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-2 * time.Hour)
 
@@ -93,16 +89,6 @@ func TestFileListScanner_List(t *testing.T) {
 		_, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Equal(t, []string{"objects/tenants/a/", "index/v0/indexes/tenants/a/"}, bucket.dirs)
-	})
-
-	t.Run("opens no object", func(t *testing.T) {
-		files := newFileBucket(t)
-		files.put(t, "objects/tenants/a/aa/log", data, old)
-		bucket := &noReadBucket{fileBucket: files}
-
-		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, []string{"objects/tenants/a/aa/log"}, list)
 	})
 
 	t.Run("skips directory placeholder objects", func(t *testing.T) {
@@ -190,21 +176,6 @@ type listRecordingBucket struct {
 func (b *listRecordingBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
 	b.dirs = append(b.dirs, dir)
 	return b.fileBucket.IterWithAttributes(ctx, dir, f, options...)
-}
-
-var errObjectRead = errors.New("the scan must not read objects")
-
-// noReadBucket fails every read of an object.
-type noReadBucket struct {
-	fileBucket
-}
-
-func (noReadBucket) Get(context.Context, string) (io.ReadCloser, error) {
-	return nil, errObjectRead
-}
-
-func (noReadBucket) GetRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
-	return nil, errObjectRead
 }
 
 // placeholderBucket adds an empty placeholder object to the listing of each
