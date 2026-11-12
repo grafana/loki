@@ -3,17 +3,17 @@ package metastore
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
@@ -177,24 +177,232 @@ func TestReadWatermarks(t *testing.T) {
 		require.Nil(t, rows)
 	})
 
-	t.Run("reads far fewer bytes than the ToC holds", func(t *testing.T) {
-		inner := objstore.NewInMemBucket()
-		paths := make([]string, 50000)
-		for i := range paths {
-			paths[i] = fmt.Sprintf("indexes/%x", sha256.Sum256([]byte(strconv.Itoa(i))))
+	t.Run("returns the watermarks of the version it read when the ToC changes after the read", func(t *testing.T) {
+		// Many watermarks make the section too large for the first read of a range reader.
+		before := make([]watermarks.Watermark, 20000)
+		after := make([]watermarks.Watermark, len(before))
+		for i := range before {
+			before[i] = wm(int32(i), int64(i))
+			after[i] = wm(int32(i), int64(i)+1)
 		}
-		seedWatermarkToC(t, inner, paths, []watermarks.Watermark{wm(0, 99), wm(1, 98)})
-		attrs, err := inner.Attributes(ctx, wmTocPath())
-		require.NoError(t, err)
-		bucket := &byteCountingBucket{Bucket: inner}
+		bucket := &rewritingBucket{Bucket: objstore.NewInMemBucket()}
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, before)
+		bucket.afterGet = func() {
+			seedWatermarkToC(t, bucket.Bucket, []string{"indexes/a"}, after)
+		}
 
 		rows, err := ReadWatermarks(ctx, bucket, wmTenant, unixTime(0))
 
 		require.NoError(t, err)
-		require.Len(t, rows, 2)
-		require.Less(t, bucket.bytes.Load(), attrs.Size/10)
-		require.Equal(t, int64(1), bucket.gets.Load())
+		require.ElementsMatch(t, before, rows)
 	})
+}
+
+// rewritingBucket calls afterGet once, after the first Get or GetRange returns.
+type rewritingBucket struct {
+	objstore.Bucket
+	afterGet func()
+}
+
+func (b *rewritingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	rc, err := b.Bucket.Get(ctx, name)
+	b.runAfterGet()
+	return rc, err
+}
+
+func (b *rewritingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	rc, err := b.Bucket.GetRange(ctx, name, off, length)
+	b.runAfterGet()
+	return rc, err
+}
+
+func (b *rewritingBucket) runAfterGet() {
+	if b.afterGet != nil {
+		afterGet := b.afterGet
+		b.afterGet = nil
+		afterGet()
+	}
+}
+
+// oversizeBucket serves every Get with a reader that reports a size over maxTableOfContentsSize and fails every read.
+type oversizeBucket struct {
+	objstore.Bucket
+}
+
+func (b *oversizeBucket) Get(context.Context, string) (io.ReadCloser, error) {
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: io.NopCloser(iotest.ErrReader(errors.New("unexpected read"))),
+		Size:       func() (int64, error) { return maxTableOfContentsSize + 1, nil },
+	}, nil
+}
+
+func TestOpenTableOfContents(t *testing.T) {
+	path := TableOfContentsPath("tenant", unixTime(0))
+
+	t.Run("returns the pointers of the version it read when the ToC changes after the open", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		uploadToC(t, bucket, path, "tenant", "index-a")
+
+		toc, err := OpenTableOfContents(t.Context(), bucket, path)
+		require.NoError(t, err)
+
+		uploadToC(t, bucket, path, "tenant", "index-b", "index-c")
+
+		var paths []string
+		require.NoError(t, forEachTocPointer(t.Context(), toc, func(pointer indexpointers.IndexPointer) error {
+			paths = append(paths, pointer.Path)
+			return nil
+		}))
+		require.Equal(t, []string{"index-a"}, paths)
+	})
+
+	t.Run("reads the whole ToC with one request", func(t *testing.T) {
+		inner := objstore.NewInMemBucket()
+		uploadToC(t, inner, path, "tenant", "index-a")
+		attrs, err := inner.Attributes(t.Context(), path)
+		require.NoError(t, err)
+		bucket := &byteCountingBucket{Bucket: inner}
+
+		_, err = OpenTableOfContents(t.Context(), bucket, path)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(1), bucket.gets.Load())
+		require.Equal(t, attrs.Size, bucket.bytes.Load())
+	})
+
+	t.Run("returns an error that the bucket reports as not found when the ToC does not exist", func(t *testing.T) {
+		bucket := &notFoundTestBucket{Bucket: objstore.NewInMemBucket(), err: errFailingNotFound, exactNotFound: true}
+
+		_, err := OpenTableOfContents(t.Context(), bucket, path)
+
+		require.True(t, bucket.IsObjNotFoundErr(err))
+	})
+
+	t.Run("returns an error that is not a not-found error when the ToC is empty", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), path, bytes.NewReader(nil)))
+
+		_, err := OpenTableOfContents(t.Context(), bucket, path)
+
+		require.EqualError(t, err, "metastore object "+path+" is empty")
+		require.False(t, bucket.IsObjNotFoundErr(err))
+	})
+
+	t.Run("returns an error without a read when the bucket reports a ToC over the size limit", func(t *testing.T) {
+		bucket := &oversizeBucket{Bucket: objstore.NewInMemBucket()}
+
+		_, err := OpenTableOfContents(t.Context(), bucket, path)
+
+		require.ErrorContains(t, err, fmt.Sprintf("more than the limit of %d bytes", maxTableOfContentsSize))
+		require.False(t, bucket.IsObjNotFoundErr(err))
+	})
+
+	t.Run("returns an error when the ToC is not a data object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), path, bytes.NewReader([]byte("not a data object"))))
+
+		_, err := OpenTableOfContents(t.Context(), bucket, path)
+
+		require.ErrorContains(t, err, "decoding ToC "+path)
+	})
+}
+
+func TestReadAtMost(t *testing.T) {
+	data := []byte("0123456789")
+
+	t.Run("returns all bytes when the size is unknown", func(t *testing.T) {
+		got, err := readAtMost(bytes.NewReader(data), -1, 100)
+
+		require.NoError(t, err)
+		require.Equal(t, data, got)
+	})
+
+	t.Run("returns all bytes when the size is known", func(t *testing.T) {
+		got, err := readAtMost(iotest.OneByteReader(bytes.NewReader(data)), int64(len(data)), 100)
+
+		require.NoError(t, err)
+		require.Equal(t, data, got)
+	})
+
+	t.Run("allocates the buffer once when the size is known", func(t *testing.T) {
+		large := bytes.Repeat([]byte("x"), 1<<20)
+		reader := bytes.NewReader(large)
+		readAllocs := func(size int64) float64 {
+			return testing.AllocsPerRun(10, func() {
+				reader.Reset(large)
+				_, err := readAtMost(reader, size, int64(len(large)))
+				require.NoError(t, err)
+			})
+		}
+
+		require.Less(t, readAllocs(int64(len(large))), readAllocs(-1))
+		require.LessOrEqual(t, readAllocs(int64(len(large))), 2.0, "the buffer and the probe for extra bytes")
+	})
+
+	t.Run("returns an error when the reader holds more bytes than the known size", func(t *testing.T) {
+		_, err := readAtMost(bytes.NewReader(data), 2, 100)
+
+		require.EqualError(t, err, "the object has more than its reported size of 2 bytes")
+	})
+
+	t.Run("returns an error when the reader holds fewer bytes than the known size", func(t *testing.T) {
+		_, err := readAtMost(bytes.NewReader(data), int64(len(data))+1, 100)
+
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
+
+	t.Run("returns the error of the reader when it fails after the known size", func(t *testing.T) {
+		errRead := errors.New("read failed")
+
+		_, err := readAtMost(io.MultiReader(bytes.NewReader(data), iotest.ErrReader(errRead)), int64(len(data)), 100)
+
+		require.ErrorIs(t, err, errRead)
+	})
+
+	t.Run("returns all bytes when the reader holds exactly the limit", func(t *testing.T) {
+		got, err := readAtMost(bytes.NewReader(data), -1, int64(len(data)))
+
+		require.NoError(t, err)
+		require.Equal(t, data, got)
+	})
+
+	t.Run("returns an error when the reader holds more bytes than the limit", func(t *testing.T) {
+		_, err := readAtMost(bytes.NewReader(data), -1, int64(len(data))-1)
+
+		require.EqualError(t, err, "the object has more than the limit of 9 bytes")
+	})
+
+	t.Run("returns an error without a read when the known size is over the limit", func(t *testing.T) {
+		_, err := readAtMost(iotest.ErrReader(errors.New("unexpected read")), 11, 10)
+
+		require.EqualError(t, err, "the object has 11 bytes, more than the limit of 10 bytes")
+	})
+
+	t.Run("returns the error of the reader", func(t *testing.T) {
+		errRead := errors.New("read failed")
+
+		_, err := readAtMost(iotest.ErrReader(errRead), -1, 10)
+
+		require.ErrorIs(t, err, errRead)
+	})
+}
+
+func TestIsTableOfContentsPath(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "accepts a ToC path relative to the index bucket", path: TableOfContentsPath("tenant", unixTime(0)), want: true},
+		{name: "accepts a ToC path that starts with the index storage prefix", path: IndexStoragePrefix + "/" + TableOfContentsPath("tenant", unixTime(0)), want: true},
+		{name: "rejects an index object path", path: IndexStoragePrefix + "/indexes/ab/cdef", want: false},
+		{name: "rejects a logs object path", path: "objects/ab/cdef", want: false},
+		{name: "rejects a file under the ToC prefix with another name", path: TableOfContentsWindowPrefix(unixTime(0)) + "tenant/other", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, IsTableOfContentsPath(tc.path))
+		})
+	}
 }
 
 func TestReadWatermark(t *testing.T) {

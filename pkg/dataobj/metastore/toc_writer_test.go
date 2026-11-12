@@ -1167,10 +1167,7 @@ type tocRow struct {
 // readRawToC returns the bytes of the ToC object at path.
 func readRawToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []byte {
 	t.Helper()
-	rc, err := bucket.Get(ctx, path)
-	require.NoError(t, err)
-	defer rc.Close()
-	raw, err := io.ReadAll(rc)
+	raw, err := readTableOfContents(ctx, bucket, path)
 	require.NoError(t, err)
 	return raw
 }
@@ -1179,8 +1176,7 @@ func readRawToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path 
 // tenant and sorted by tenant and path.
 func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocRow {
 	t.Helper()
-	raw := readRawToC(ctx, t, bucket, path)
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	obj, err := OpenTableOfContents(ctx, bucket, path)
 	require.NoError(t, err)
 
 	var rows []tocRow
@@ -1315,8 +1311,7 @@ func filterRows(rows []tocRow, tenants ...string) []tocRow {
 // timestamps.
 func readToCPointers(t *testing.T, bucket objstore.Bucket, path string) []indexpointers.IndexPointer {
 	t.Helper()
-	raw := readRawToC(t.Context(), t, bucket, path)
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	obj, err := OpenTableOfContents(t.Context(), bucket, path)
 	require.NoError(t, err)
 
 	var got []indexpointers.IndexPointer
@@ -1378,8 +1373,7 @@ func TestForEachTocPointer(t *testing.T) {
 		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/a", 0, 99, nil))
 		require.NoError(t, writeWatermarkEntry(ctx, writer, "indexes/b", 1, 5, nil))
 
-		raw := readRawToC(ctx, t, bucket, wmTocPath())
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+		obj, err := OpenTableOfContents(ctx, bucket, wmTocPath())
 		require.NoError(t, err)
 		var paths []string
 		require.NoError(t, forEachTocPointer(ctx, obj, func(p indexpointers.IndexPointer) error {

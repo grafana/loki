@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -407,7 +406,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 		return nil, nil
 	}
 
-	object, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+	object, err := decodeTableOfContents(data)
 	if err != nil {
 		return nil, fmt.Errorf("getting object from reader: %w", err)
 	}

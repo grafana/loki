@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -347,24 +346,12 @@ func (r *TOCResolver) readFromBucket(ctx context.Context, path string) (*tocValu
 	// Take the time before the read, so it is never later than the moment object storage served the bytes.
 	readAt := r.now()
 
-	rc, err := r.bucket.Get(ctx, path)
+	data, err := readTableOfContents(ctx, r.bucket, path)
 	if err != nil {
 		if r.bucket.IsObjNotFoundErr(err) {
 			return &tocValue{readAt: readAt}, nil
 		}
 		return nil, err
-	}
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
-	}
-
-	// A ToC that exists is never empty. A store that truncates an object before it writes the new one can serve an
-	// empty read. That read must not count as a missing ToC.
-	if len(data) == 0 {
-		return nil, fmt.Errorf("metastore object %s is empty", path)
 	}
 	return &tocValue{data: data, readAt: readAt}, nil
 }
