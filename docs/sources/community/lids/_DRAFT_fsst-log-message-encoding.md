@@ -101,24 +101,79 @@ Offsets identify the symbol sequence for each string.
 This is the equivalent of the string lengths when strings are encoded with `ENCODING_TYPE_PLAIN` and `COMPRESSION_TYPE_ZSTD`.
 The decoder derives the decoded length from symbols and literal escapes within each range.
 
-// TODO dimitarvdimitrov figure out how we can integrate the allocator into this design
+// TODO dimitarvdimitrov figure out how we can integrate the allocator into this design - iirc right now we may not need to worry about this, but to keep random access
+
+Doing random reads without decoding the whole page would allow the `pageReader` to do proper skipping of values in a column, as opposed to skipping via reading and discarding (`skipUnwantedRows`).
 
 #### Accepted tradeoffs
 
-Fixed-width offsets cost four bytes per boundary (`uint32`).
+##### Offset overhead
+
+Fixed-width symbol offsets cost four bytes per boundary (`<symbol offsets: uint32[N+1]>`).
 Short strings can therefore require more boundary metadata than varint lengths.
-The goal of this is to be able to randomly access a string without decoding all previous offsets (as a varint would need).
+Fixed-width offsets permit direct string access without a prefix scan.
 
-// TODO dimitarvdimitrov add some numbers for how different the size of pages is with varint vs our int32 + how big the offsets are and if we need to use varint
+The `fsst-varint` fixture replaces `uint32[N+1]` offsets with one unsigned varint compressed length per non-NULL string.
+Both layouts use identical symbol tables and payloads.
+All sizes are bytes:
 
-Each page also carries a symbol table.
-Small pages can incur substantial overhead.
-// TODO dimitarvdimitrov how big is this tradeoff? can we compare a tiny symbols table for a page with a single string value `1` and then for one with 10 values from `0` to `9` and compare what the size amplification is
+| Page values | uint32 boundaries | Varint boundaries | uint32 page | Varint page |
+| --- | ---: | ---: | ---: | ---: |
+| `["1"]` | 8 | 1 | 29 | 22 |
+| Ten strings, `"0"`–`"9"` | 44 | 10 | 83 | 49 |
+| 10,000 cyclic digits | 40,004 | 10,000 | 50,035 | 20,031 |
+| 2,048 synthetic log strings | 8,196 | 2,730 | 249,633 | 244,167 |
+
+Page sizes include the header and presence bitmap, but exclude descriptor metadata and the optional decoded size.
+Varints save 5,466 bytes (2.19%) on the log page, versus 41% on the ten-digit page.
+They require a prefix scan or a reconstructed offset array before direct access.
+The existing `DecodeBatch` accepts that reconstructed array.
+Full results reside in `fsst-go/results/loki-pages-varint.json`.
+
+For the log page, access to one uniformly selected non-NULL value has these mean byte costs:
+
+| Layout | One: boundaries | One: boundaries + payload | All: boundaries | All: boundaries + payload |
+| --- | ---: | ---: | ---: | ---: |
+| uint32 offsets | 8 | 125.49 | 8,196 | 248,816 |
+| Varint lengths | 1,365.67 | 1,483.16 | 2,730 | 243,350 |
+
+A single value needs two fixed-width offsets, versus `(N+1)/2` varint lengths on average: 1,024.5 for this page.
+These logical byte counts assume a loaded symbol table and an available non-NULL value index, without a cached cumulative index.
+A cold Loki open still reads the complete page for CRC32C verification.
+Full access results reside in `fsst-go/results/loki-pages-access.json`.
+
+For logs, warm random access reaches 4,447 MB/s with fixed offsets and 183 MB/s with varint lengths (24.3× more time per value).
+Whole-page rates are 4,961 and 4,863 MB/s, respectively: approximately 2% less throughput with varints.
+The timer includes boundary parsing and FSST decode, but excludes table construction, bitmap processing, CRC32C, and I/O.
+Rates use decoded string bytes. Full results reside in `fsst-go/results/loki-boundary-decode-summary.json`.
+
+##### Symbol table and small-page overhead
+
+Each page also carries a symbol table, with a fixed 16-byte header plus symbol bytes.
+Small-page experiments with a fresh table per page show these costs, in bytes:
+
+| Page values | FSST table | FSST payload | FSST offsets | FSST total | Zstd total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `["1"]` | 17 | 1 | 8 | 26 | 15 |
+| Ten strings, `"0"`–`"9"` | 26 | 10 | 44 | 80 | 33 |
+
+FSST totals amplify the original string bytes by 26× and 8×, respectively.
+FSST includes `uint32[N+1]` offsets. Zstd includes varint string lengths and its frame checksum.
+All three Zstd presets produce the same sizes for these cases.
+Both layouts exclude Loki page headers and presence bitmaps. The optional FSST total decoded size adds four bytes.
+
+One-byte strings receive no FSST payload reduction.
+At 10,000 cyclic digit rows, offsets keep FSST amplification near 5×, despite the small table cost per row.
+Full results and reproduction commands reside in `fsst-go/RESEARCH.md`, under “Small-page storage experiment (2026-11-12)”.
+
+##### Training cost per page
+
 Independent pages avoid shared dictionary dependencies but require repeated table training.
 
-FSST can produce larger output than Zstd.
-// TODO dimitarvdimitrov we need numbers. we have numbers in fsst-go
-The experiment accepts that possibility and measures the tradeoff against decode speed.
+##### Compression ratio
+
+FSST can produce larger output than Zstd (~2x larger compressed blobs according to [Preliminary Go benchmark results
+](#preliminary-go-benchmark-results))
 
 ### Proposal 2: Apply FSST to the existing length-prefixed stream
 
@@ -165,7 +220,6 @@ Loki page framing and reader overhead remain unmeasured.
 The Zstd target is 1 MiB before compression, which matches Loki's default target for log-message pages.
 Each corpus fits in one block without padding.
 The log block contains 819,418 original bytes plus 4,096 bytes of row framing.
-The earlier 64 KiB comparison used 13 separate blocks for the same rows.
 
 #### Optimized batch decode
 
