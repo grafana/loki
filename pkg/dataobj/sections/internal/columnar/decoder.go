@@ -82,23 +82,44 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 			region.Record(dataobj.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
 		}()
 
-		ranges := make([]rangeio.Range, 0, len(columns))
-		for _, column := range columns {
+		// blobs[i] holds the metadata of columns[i]. A prefetched blob aliases its prefetched range. The
+		// other blobs are read in one call. rangeio would merge a prefetched blob with the gaps around
+		// it, and the gaps are not prefetched.
+		var (
+			blobs         = make([][]byte, len(columns))
+			ranges        = make([]rangeio.Range, 0, len(columns))
+			rangeColumn   = make([]int, 0, len(columns))
+			prefetched, _ = dec.sr.(prefetchedMetadataRangeReader)
+		)
+
+		for i, column := range columns {
+			if prefetched != nil {
+				if blob, ok := prefetched.PrefetchedMetadataRange(int64(column.ColumnMetadataOffset), int64(column.ColumnMetadataLength)); ok {
+					blobs[i] = blob
+					continue
+				}
+			}
 			ranges = append(ranges, rangeio.Range{
 				Data:   make([]byte, column.ColumnMetadataLength),
 				Offset: int64(column.ColumnMetadataOffset),
 			})
+			rangeColumn = append(rangeColumn, i)
 		}
 
-		reader := metadataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
-		if err != nil {
-			return err
+		// When every blob is prefetched, there is nothing to read, and ReadRanges would only start an empty
+		// span.
+		if len(ranges) > 0 {
+			if err := rangeio.ReadRanges(ctx, metadataRangeReader{Inner: dec.sr}, ranges); err != nil {
+				return err
+			}
+			for i, r := range ranges {
+				blobs[rangeColumn[i]] = r.Data
+			}
 		}
 
-		for _, r := range ranges {
+		for _, blob := range blobs {
 			var md datasetmd.ColumnMetadata
-			if err := protocodec.Decode(bytes.NewReader(r.Data), &md); err != nil {
+			if err := protocodec.Decode(bytes.NewReader(blob), &md); err != nil {
 				return fmt.Errorf("decoding column metadata: %w", err)
 			}
 
@@ -109,6 +130,12 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 
 		return nil
 	})
+}
+
+// prefetchedMetadataRangeReader is a section reader that can return a range of its metadata region
+// from memory.
+type prefetchedMetadataRangeReader interface {
+	PrefetchedMetadataRange(offset, length int64) ([]byte, bool)
 }
 
 type metadataRangeReader struct {

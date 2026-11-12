@@ -566,6 +566,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
+		// The prefetcher serves the metadata of log objects. Index objects and ToCs use their own caches.
+		if t.dataObjMetadataPrefetcher != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataPrefetcher(t.dataObjMetadataPrefetcher))
+		}
+
 		dataObjStore, err = querier.NewDataObjStore(t.Store, t.dataObjBucket, t.dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
@@ -811,8 +816,9 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the metadata caches of the data objects and, when enabled, the metadata prefetcher. They share
+// one backend. The prefetcher serves the log objects when enabled. Otherwise the logs cache does. It returns no service
+// when data objects are disabled or no cache is configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
 		return nil, nil
@@ -825,16 +831,31 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 	}
 
+	if t.Cfg.DataObj.MetadataPrefetcher.Enabled {
+		t.dataObjMetadataPrefetcher, err = metadata.NewCachedPrefetcher(backend, maxItemBytes, t.Cfg.DataObj.MetadataPrefetcher, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			backend.Stop()
+			return nil, err
+		}
+	}
+
 	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
 	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
 	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
+	if t.dataObjMetadataPrefetcher == nil {
+		t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+	}
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
 		t.dataObjIndexCache.Stop()
 		t.dataObjTOCCache.Stop()
+		if t.dataObjLogsCache != nil {
+			t.dataObjLogsCache.Stop()
+		}
+		if t.dataObjMetadataPrefetcher != nil {
+			t.dataObjMetadataPrefetcher.Stop()
+		}
 		return nil
 	}), nil
 }
