@@ -14,31 +14,25 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/grafana/dskit/backoff"
-
-	"github.com/gogo/protobuf/proto"
 )
 
 var tracer = otel.Tracer("pkg/pattern/aggregation")
 
 const (
 	defaultContentType         = "application/x-protobuf"
+	defaultMaxBatchSize        = 8 << 20
 	defaultMaxReponseBufferLen = 1024
-
-	pushEndpoint = "/loki/api/v1/push"
+	pushEndpoint               = "/loki/api/v1/push"
 )
 
 var defaultUserAgent = fmt.Sprintf("pattern-ingester-push/%s", build.GetVersion().Version)
@@ -71,7 +65,8 @@ type Push struct {
 	// push retry and backoff
 	backoff *backoff.Config
 
-	entries entries
+	entries      entries
+	maxBatchSize int
 
 	metrics *Metrics
 }
@@ -170,87 +165,6 @@ func (p *Push) Stop() {
 	p.running.Wait()
 }
 
-// buildPayload creates the snappy compressed protobuf to send to Loki
-func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
-	_, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.buildPayload")
-	defer sp.End()
-
-	entries := p.entries.reset()
-	if len(entries) == 0 {
-		return nil, nil
-	}
-
-	entriesByStream := make(map[string][]logproto.Entry)
-	for _, e := range entries {
-		stream := e.labels.String()
-		entries, ok := entriesByStream[stream]
-		if !ok {
-			entries = make([]logproto.Entry, 0)
-		}
-
-		entries = append(entries, logproto.Entry{
-			Timestamp:          e.ts,
-			Line:               e.entry,
-			StructuredMetadata: e.structuredMetadata,
-		})
-		entriesByStream[stream] = entries
-	}
-
-	streams := make([]logproto.Stream, 0, len(entriesByStream))
-
-	// limit the number of services to log to 1000
-	serviceLimit := len(entriesByStream)
-	if serviceLimit > 1000 {
-		serviceLimit = 1000
-	}
-
-	for s, entries := range entriesByStream {
-		lbls, err := syntax.ParseLabels(s)
-		if err != nil {
-			continue
-		}
-
-		streams = append(streams, logproto.Stream{
-			Labels:  s,
-			Entries: entries,
-			Hash:    labels.StableHash(lbls),
-		})
-	}
-
-	if len(streams) == 0 {
-		return nil, nil
-	}
-
-	req := &logproto.PushRequest{
-		Streams: streams,
-	}
-	payload, err := proto.Marshal(req)
-	if err != nil {
-		return []byte{}, fmt.Errorf("failed to marshal payload to json: %w", err)
-	}
-
-	payload = snappy.Encode(nil, payload)
-
-	p.metrics.streamsPerPush.WithLabelValues(p.tenantID).Observe(float64(len(streams)))
-	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
-	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
-
-	sp.AddEvent("build aggregated metrics payload", trace.WithAttributes(
-		attribute.Int("num_service", len(entriesByStream)),
-		attribute.Int("num_streams", len(streams)),
-		attribute.Int("num_entries", len(entries)),
-	))
-
-	level.Debug(p.logger).Log(
-		"msg", "built aggregation payload",
-		"num_service", len(entriesByStream),
-		"num_streams", len(streams),
-		"num_entries", len(entries),
-	)
-
-	return payload, nil
-}
-
 // run pulls lines out of the channel and sends them to Loki
 func (p *Push) run(pushPeriod time.Duration) {
 	defer p.running.Done()
@@ -270,48 +184,59 @@ func (p *Push) run(pushPeriod time.Duration) {
 			return
 		case <-pushTicker.C:
 			pushTicker.Reset(pushPeriod)
-			payload, err := p.buildPayload(ctx)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
-				continue
-			}
-
-			if len(payload) == 0 {
+			batches := p.buildBatches()
+			if len(batches) == 0 {
 				level.Warn(p.logger).Log("msg", "skipping aggregation push, payload is empty")
 				continue
 			}
 
-			// We will use a timeout within each attempt to send
-			backoff := backoff.New(context.Background(), *p.backoff)
-
-			// send log with retry
-			for {
-				status := 0
-				status, err = p.send(ctx, payload)
-				if err == nil {
-					level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
-					break
+			// Each batch is encoded and sent on its own, so only one encoded batch
+			// is held in memory at a time, and a batch that fails does not stop the
+			// ones after it from being sent.
+			for _, b := range batches {
+				body, err := p.encode(b)
+				if err != nil {
+					level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
+					continue
 				}
-
-				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
-					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
-					break
+				if body == nil {
+					level.Warn(p.logger).Log("msg", "skipping aggregation push, batch has no streams with valid labels")
+					continue
 				}
-
-				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
-					break
-				}
-				level.Warn(p.logger).
-					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
-				backoff.Wait()
+				p.sendWithBackoff(ctx, body)
 			}
 		}
 	}
 }
 
-// send makes one attempt to send the payload to Loki
-func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
+// sendWithBackoff sends the body to Loki and retries it until it succeeds,
+// the server rejects it with a status that is not retried, or the retries are
+// exhausted. In the last two cases the body is dropped.
+func (p *Push) sendWithBackoff(ctx context.Context, body []byte) {
+	backoff := backoff.New(context.Background(), *p.backoff)
+	for {
+		status, err := p.send(ctx, body)
+		if err == nil {
+			level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
+			return
+		}
+
+		if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
+			level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
+			return
+		}
+
+		if !backoff.Ongoing() {
+			level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
+			return
+		}
+		level.Warn(p.logger).Log("msg", "failed to send entry, retrying", "status", status, "error", err)
+		backoff.Wait()
+	}
+}
+
+// send makes one attempt to send the body to Loki
+func (p *Push) send(ctx context.Context, body []byte) (int, error) {
 	var (
 		err  error
 		resp *http.Response
@@ -324,8 +249,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	ctx, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.send")
 	defer sp.End()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
-	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(body))
+	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(body)))
 
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
