@@ -94,8 +94,8 @@ func ReadWatermark(ctx context.Context, bucket objstore.BucketReader, tenant str
 // object sees one version of the ToC. The writer replaces a ToC in place, so the range reads of [dataobj.FromBucket]
 // can each see a different version.
 //
-// When the ToC does not exist, the error is the unwrapped error of bucket, so bucket.IsObjNotFoundErr reports it. An
-// existing ToC with no bytes, or with more than 256 MiB, is an error.
+// When the ToC does not exist, bucket.IsObjNotFoundErr reports the error. An existing ToC with no bytes, or with more
+// than 256 MiB, is an error.
 func OpenTableOfContents(ctx context.Context, bucket objstore.BucketReader, path string) (*dataobj.Object, error) {
 	data, err := readTableOfContents(ctx, bucket, path)
 	if err != nil {
@@ -115,12 +115,11 @@ func IsTableOfContentsPath(path string) bool {
 	return strings.HasPrefix(path, TocPrefix) && strings.HasSuffix(path, "/"+tocFileName)
 }
 
-// readTableOfContents returns the bytes of the ToC at path, read with one Get. When the ToC does not exist, the error is
-// the unwrapped error of bucket. A ToC larger than maxTableOfContentsSize is an error.
+// readTableOfContents returns the bytes of the ToC at path, read with one Get. When the ToC does not exist,
+// bucket.IsObjNotFoundErr reports the error. A ToC larger than maxTableOfContentsSize is an error.
 func readTableOfContents(ctx context.Context, bucket objstore.BucketReader, path string) (data []byte, err error) {
 	rc, err := bucket.Get(ctx, path)
 	if err != nil {
-		// The S3 provider does not see a not-found error through a fmt.Errorf wrapper.
 		return nil, err
 	}
 	defer util.CloseAndHandleError(rc, &err)
