@@ -1,13 +1,11 @@
 package stages
 
 import (
-	"context"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/clients/pkg/util"
 )
@@ -18,16 +16,11 @@ type PipelineStages = []interface{}
 // PipelineStage contains configuration for a single pipeline stage
 type PipelineStage = map[string]interface{}
 
-var rateLimiter *rate.Limiter
-var rateLimiterDrop bool
-var rateLimiterDropReason = "global_rate_limiter_drop"
-
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger    log.Logger
-	stages    []Stage
-	jobName   *string
-	dropCount *prometheus.CounterVec
+	logger  log.Logger
+	stages  []Stage
+	jobName *string
 }
 
 // Cleanup implements Stage.
@@ -58,10 +51,9 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		}
 	}
 	return &Pipeline{
-		logger:    log.With(logger, "component", "pipeline"),
-		stages:    st,
-		jobName:   jobName,
-		dropCount: getDropCountMetric(registerer),
+		logger:  log.With(logger, "component", "pipeline"),
+		stages:  st,
+		jobName: jobName,
 	}, nil
 }
 
@@ -135,7 +127,7 @@ func (p *Pipeline) Name() string {
 	return StageTypePipeline
 }
 
-// Wrap implements EntryMiddleware
+// Wrap returns an EntryHandler that runs entries through the pipeline before forwarding them to next.
 func (p *Pipeline) Wrap(next util.EntryHandler) util.EntryHandler {
 	handlerIn := make(chan util.Entry)
 	nextChan := next.Chan()
@@ -146,16 +138,6 @@ func (p *Pipeline) Wrap(next util.EntryHandler) util.EntryHandler {
 	go func() {
 		defer wg.Done()
 		for e := range pipelineOut {
-			if rateLimiter != nil {
-				if rateLimiterDrop {
-					if !rateLimiter.Allow() {
-						p.dropCount.WithLabelValues(rateLimiterDropReason).Inc()
-						continue
-					}
-				} else {
-					_ = rateLimiter.Wait(context.Background())
-				}
-			}
 			nextChan <- e.Entry
 		}
 	}()
@@ -179,9 +161,4 @@ func (p *Pipeline) Wrap(next util.EntryHandler) util.EntryHandler {
 // Size gets the current number of stages in the pipeline
 func (p *Pipeline) Size() int {
 	return len(p.stages)
-}
-
-func SetReadLineRateLimiter(rateVal float64, burstVal int, drop bool) {
-	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
-	rateLimiterDrop = drop
 }
