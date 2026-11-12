@@ -14,6 +14,11 @@ func (e *LabelReplaceEvaluator) Explain(parent Node) {
 	e.nextEvaluator.Explain(b)
 }
 
+func (e *HistogramFuncEvaluator) Explain(parent Node) {
+	b := parent.Childf("%s HistogramFunc", e.expr.Operation)
+	e.nextEvaluator.Explain(b)
+}
+
 func (e *VectorAggEvaluator) Explain(parent Node) {
 	b := parent.Childf("[%s, %s] VectorAgg", e.expr.Operation, e.expr.Grouping)
 	e.nextEvaluator.Explain(b)
