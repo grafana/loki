@@ -115,6 +115,10 @@ func TestLex(t *testing.T) {
 		{`sum(rate({foo="bar"}[5m])-1 > 30`, []int{SUM, OPEN_PARENTHESIS, RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, SUB, NUMBER, GT, NUMBER}},
 		{`{foo="bar"} | logfmt | bytes  < 0B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
 		{`{foo="bar"} | logfmt | bytes  < 1B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
+		{`{offset="1"}[5m] offset 1m`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, OFFSET, DURATION}},
+		{`count_over_time({foo="bar"}[5m] offset -5m)`, []int{COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, OFFSET, DURATION, CLOSE_PARENTHESIS}},
+		{`max_over_time({pod="block-builder-0"} | logfmt | unwrap offset [1m])`, []int{MAX_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, UNWRAP, IDENTIFIER, RANGE, CLOSE_PARENTHESIS}},
+		{`{foo="bar"} | unwrap duration(offset)[1m]`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, UNWRAP, DURATION_CONV, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS, RANGE}},
 		{`0b01`, []int{NUMBER}},
 		{`0b10`, []int{NUMBER}},
 		{`0x1A`, []int{NUMBER}},
@@ -180,6 +184,36 @@ func Test_isFunction(t *testing.T) {
 			if got := isFunction(sc); got != tt.want {
 				t.Errorf("isFunction() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func Test_isOffset(t *testing.T) {
+	tests := []struct {
+		next string
+		want bool
+	}{
+		{" 5m", true},
+		{"\t1h30m", true},
+		{" -5m", true},
+		{" 0.5h", true},
+		{" # comment\n 5m", true},
+		{"[1m]", false},
+		{" [1m]", false},
+		{`="1"`, false},
+		{")", false},
+		{" | logfmt", false},
+		{" foo", false},
+		{" 5", false},
+		{" - 5m", false},
+		{" --strict", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.next, func(t *testing.T) {
+			sc := Scanner{}
+			sc.Init(strings.NewReader(tt.next))
+			require.Equal(t, tt.want, isOffset(sc))
 		})
 	}
 }

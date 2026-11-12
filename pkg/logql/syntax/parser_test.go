@@ -3879,3 +3879,35 @@ func TestParseExpr_ShouldValidateLabelComparison(t *testing.T) {
 		}
 	})
 }
+
+func TestParse_OffsetAsIdentifier(t *testing.T) {
+	t.Run("accepts offset as label and unwrap identifier alongside duration offsets", func(t *testing.T) {
+		for _, query := range []string{
+			`max_over_time({pod="block-builder-0"} |= "successfully committed offset to kafka" | logfmt | unwrap offset [1m])`,
+			`max_over_time({app="foo"} | logfmt | unwrap duration(offset) [1m] offset 5m)`,
+			`sum_over_time({offset="1"} | unwrap offset [1m] offset -5m)`,
+			`sum by (offset) (count_over_time({app="foo"}[5m]))`,
+			`{app="foo"} | label_format out=offset`,
+			`{app="foo"} | drop offset`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.NoError(t, err)
+			})
+		}
+	})
+
+	t.Run("rejects malformed offset clauses", func(t *testing.T) {
+		for _, query := range []string{
+			`count_over_time({app="foo"}[5m] offset)`,
+			`count_over_time({app="foo"}[5m] offset foo)`,
+			`{app="foo"} offset 5m`,
+		} {
+			t.Run(query, func(t *testing.T) {
+				_, err := ParseExpr(query)
+				require.Error(t, err)
+				require.ErrorIs(t, err, logqlerr.ErrParse)
+			})
+		}
+	})
+}
