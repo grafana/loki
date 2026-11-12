@@ -252,9 +252,6 @@ func TestLabelAggregationExpr_String(t *testing.T) {
 	}
 }
 
-// An empty grouping is not the same as no grouping on a range aggregation: by () reduces the
-// result to one series, and without () keeps every label. Prettify must keep both, or the query
-// changes meaning, or no longer parses, when it is split over several lines.
 func TestFormat_EmptyGrouping(t *testing.T) {
 	old := MaxCharsPerLine
 	MaxCharsPerLine = 20
@@ -711,9 +708,6 @@ func TestFormat_BinOp(t *testing.T) {
 	}
 }
 
-// on () matches on no labels, which is not the same as no clause, and group_left and group_right
-// are only valid after on or ignoring. Prettify must keep them, or the query changes meaning when
-// it is split over several lines.
 func TestFormat_EmptyVectorMatching(t *testing.T) {
 	old := MaxCharsPerLine
 	MaxCharsPerLine = 20
