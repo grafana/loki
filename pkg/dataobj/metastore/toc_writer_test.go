@@ -470,6 +470,40 @@ func TestRebuildToc(t *testing.T) {
 }
 
 func TestReplaceIndexPointers(t *testing.T) {
+	t.Run("returns an error without retrying and leaves the ToC unchanged when the change removes only some index objects of a run", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/run-a", 1), runPointer("idx/run-b", 1), runPointer("idx/other", 0))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/run-a", "idx/other"},
+			[]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}})
+		require.ErrorIs(t, err, errPartialRun)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+		require.Equal(t, 1, bucket.Calls(), "the call must not retry")
+	})
+
+	t.Run("replaces every index object of a run and keeps the other runs", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/run-a", 1), runPointer("idx/run-b", 1), runPointer("idx/kept-a", 2), runPointer("idx/kept-b", 2))
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/run-a", "idx/run-b"},
+			[]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}})
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.ElementsMatch(t, []indexpointers.IndexPointer{
+			runPointer("idx/kept-a", 2),
+			runPointer("idx/kept-b", 2),
+			runPointer("idx/new", 0),
+		}, readToCPointers(t, bucket, tocPath))
+	})
+
 	t.Run("replaces the old paths with the new entry and reports written", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
@@ -1276,6 +1310,12 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	require.NoError(t, err)
 	require.NoError(t, bucket.Upload(t.Context(), path, reader))
 	require.NoError(t, reader.Close())
+}
+
+// runPointer returns a pointer to the index object at path in the run runID,
+// from 10 to 20 seconds after the Unix epoch.
+func runPointer(path string, runID indexpointers.RunID) indexpointers.IndexPointer {
+	return indexpointers.IndexPointer{Path: path, StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: runID}
 }
 
 // uploadToCPointers writes a ToC to path that holds one section of tenant with
