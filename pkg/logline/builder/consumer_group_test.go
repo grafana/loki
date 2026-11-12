@@ -427,14 +427,14 @@ func (l *messageSignalLogger) Log(keyvals ...any) error {
 	return l.Logger.Log(keyvals...)
 }
 
-func (b *blockingUploadBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *blockingUploadBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	b.startedOnce.Do(func() { close(b.uploadStarted) })
 	select {
 	case <-b.unblock:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	return b.Bucket.Upload(ctx, name, r)
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }
 
 // TestRevokeDuringFlushThenShutdown covers the two races the fence must

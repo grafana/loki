@@ -82,3 +82,37 @@ func TestCountFalsePositives(t *testing.T) {
 	fp := CountFalsePositives(ranges, timestamps)
 	require.Equal(t, 1, fp, "second range has no entries")
 }
+
+// shard3Fingerprint is a stream fingerprint in document shard 3 of 32.
+const shard3Fingerprint = uint64(3) << 59
+
+func TestRangeCoversEntry(t *testing.T) {
+	allStreams := hintprovider.HintTimeRange{Start: base, End: base.Add(10 * time.Minute)}
+	shard3 := hintprovider.HintTimeRange{Start: base, End: base.Add(10 * time.Minute), DocumentShard: 3, DocumentShardBits: 5}
+	entry := Entry{Timestamp: base.Add(5 * time.Minute), Fingerprint: shard3Fingerprint}
+
+	require.True(t, RangeCoversEntry(allStreams, entry), "zero shard bits cover every stream")
+	require.True(t, RangeCoversEntry(shard3, entry), "same document shard")
+	require.False(t, RangeCoversEntry(shard3, Entry{Timestamp: entry.Timestamp, Fingerprint: uint64(4) << 59}), "other document shard")
+	require.False(t, RangeCoversEntry(shard3, Entry{Timestamp: base.Add(11 * time.Minute), Fingerprint: shard3Fingerprint}), "after end")
+}
+
+func TestVerifyStreamEntries(t *testing.T) {
+	ranges := []hintprovider.HintTimeRange{
+		{Start: base, End: base.Add(10 * time.Minute), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: base.Add(20 * time.Minute), End: base.Add(30 * time.Minute), DocumentShard: 4, DocumentShardBits: 5},
+	}
+	wrongShard := base.Add(25 * time.Minute)
+	entries := []Entry{
+		{Timestamp: base.Add(5 * time.Minute), Fingerprint: shard3Fingerprint},
+		{Timestamp: wrongShard, Fingerprint: shard3Fingerprint},
+	}
+	r := VerifyStreamEntries(ranges, entries)
+
+	require.Equal(t, 2, r.HintRanges)
+	require.Equal(t, 2, r.TotalEntries)
+	require.Equal(t, 1, r.CoveredEntries)
+	require.Equal(t, 1, r.FalseNegatives)
+	require.Equal(t, []time.Time{wrongShard}, r.FalseNegativeTimestamps)
+	require.Equal(t, 1, CountStreamFalsePositives(ranges, entries), "the shard 4 range covers no entry's stream")
+}

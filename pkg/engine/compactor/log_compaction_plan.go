@@ -6,6 +6,7 @@ import (
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
@@ -18,6 +19,10 @@ type logCompactionPlan struct {
 	window      time.Time
 	sourceIndex indexEntry
 	tasks       []logCompactionTask
+
+	// shardBuckets is the shard layout of the source index. Compaction never
+	// changes the layout of an object, so every artifact has this layout.
+	shardBuckets indexpointers.ShardBuckets
 
 	// singleObjectRuns is the number of log runs in the source index that
 	// hold exactly one object. Plans with no work also set it, so the gauge
@@ -71,6 +76,7 @@ func (p logCompactionPlan) tocEntries() []metastore.TableOfContentsEntry {
 	entries := make([]metastore.TableOfContentsEntry, len(p.tasks))
 	for i, task := range p.tasks {
 		entries[i] = task.tocEntry()
+		entries[i].ShardBuckets = p.shardBuckets
 	}
 	return entries
 }

@@ -81,6 +81,7 @@ func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
 		Runs:                    copyRunRefs(logMerge.Runs),
 		KeyRange:                copyKeyRange(logMerge.KeyRange),
 		InputBytes:              logMerge.InputBytes,
+		OutputLevel:             logMerge.OutputLevel,
 	}
 	return nil
 }

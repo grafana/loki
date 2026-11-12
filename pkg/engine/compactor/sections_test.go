@@ -227,7 +227,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -264,7 +264,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -289,7 +289,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -318,7 +318,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, refs, 1)
 	require.Equal(t, logSortPrefix{}, refs[0].Min)
@@ -365,7 +365,7 @@ func TestIndexLayout(t *testing.T) {
 		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
 
 		uploadObject(ctx, t, bucket, path, obj)
-		_, err = logSectionRefsFor(ctx, bucket, tenant, path)
+		_, _, err = logSectionRefsFor(ctx, bucket, tenant, path)
 		require.ErrorIs(t, err, errCorruptIndex)
 	})
 }

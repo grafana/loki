@@ -22,9 +22,12 @@ const (
 	WireTypeI32        WireType = 5
 )
 
+const RecursionLimit = 100
+
 var (
 	ErrInvalidLength        = errors.New("proto: negative length found during unmarshaling")
 	ErrIntOverflow          = errors.New("proto: integer overflow")
+	ErrRecursionDepth       = errors.New("proto: exceeded max recursion depth")
 	ErrUnexpectedEndOfGroup = errors.New("proto: unexpected end of group")
 )
 

@@ -356,23 +356,25 @@ func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath 
 }
 
 // logSectionRefsFor returns one bounded reference per log section indexed by
-// idxPath. It returns an error that wraps errCorruptIndex if the sections of
-// the index do not share one stream layout.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], error) {
+// idxPath, and the shard buckets of the index. It returns no references and the
+// zero ShardBuckets if the index has no stats section for tenant. It returns an
+// error that wraps errCorruptIndex if the sections of the index do not share
+// one stream layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 	layout, ok, err := indexLayout(ctx, obj, tenant, idxPath)
 	if err != nil {
-		return nil, err
+		return nil, indexpointers.ShardBuckets{}, err
 	}
 	if !ok {
-		return nil, nil
+		return nil, indexpointers.ShardBuckets{}, nil
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -397,18 +399,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -418,7 +420,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			// The decoded strings point into the buffers of the record batch.
@@ -486,7 +488,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, nil
+	return refs, indexpointers.NewShardBuckets(layout.ShardLayout()), nil
 }
 
 // intern returns the copy of s in interned. It adds a copy of s on the

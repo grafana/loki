@@ -425,7 +425,7 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		"hint_duration", hintDuration,
 	)
 
-	vr := verifyHints(hintRanges, protoEntries(resultEntries))
+	vr := verifyHints(hintRanges, resultEntries)
 
 	report.AvgHintRangeSeconds = avgHintRangeSeconds
 	report.CandidateTimeRanges = vr.HintRanges
