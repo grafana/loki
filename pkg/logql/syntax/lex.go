@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -248,6 +249,11 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 
 	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
+	}
+
+	if r != scanner.Ident {
+		l.Error(fmt.Sprintf("unexpected character %q", tokenText))
+		return 0
 	}
 
 	lval.str = tokenText
