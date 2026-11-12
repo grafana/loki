@@ -973,11 +973,19 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
-  # The highest ApiVersions request version the Kafka client sends. The default
-  # keeps franz-go >= 1.22 compatible with backends that close the connection on
-  # ApiVersions v5 (WarpStream). 0 to use the franz-go default.
+  # The highest ApiVersions request version the Kafka client sends, from 1 to 4.
+  # The default of 4 keeps the client compatible with backends that close the
+  # connection on ApiVersions v5, such as WarpStream. 0 removes the cap, so the
+  # client sends v5.
   # CLI flag: -kafka.api-versions-max-version
   [api_versions_max_version: <int> | default = 4]
+
+  # The largest size, in bytes, that one fetched Kafka batch may decompress to.
+  # A bigger batch stops the client from reading its partition. The default of
+  # 2147483647 (2 GiB minus 1 byte) is the highest value allowed. 0 uses the
+  # Kafka client default of 1073741824 (1 GiB).
+  # CLI flag: -kafka.max-decompress-batch-bytes
+  [max_decompress_batch_bytes: <int> | default = 2147483647]
 
 dataobj:
   builder:

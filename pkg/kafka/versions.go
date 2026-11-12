@@ -15,9 +15,9 @@ import (
 // changes nothing there.
 const DefaultAPIVersionsMaxVersion = 4
 
-const apiVersionsMaxVersionUsage = "The highest ApiVersions request version the Kafka client sends. " +
-	"The default keeps franz-go >= 1.22 compatible with backends that close the connection on ApiVersions v5 (WarpStream). " +
-	"0 to use the franz-go default."
+const apiVersionsMaxVersionUsage = "The highest ApiVersions request version the Kafka client sends, from 1 to 4. " +
+	"The default of 4 keeps the client compatible with backends that close the connection on ApiVersions v5, such as WarpStream. " +
+	"0 removes the cap, so the client sends v5."
 
 // APIVersionsMaxVersionOpts returns the client options that cap ApiVersions at
 // maxVersion, or none if maxVersion is 0 or less. Values above
