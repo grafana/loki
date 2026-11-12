@@ -23,6 +23,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPTLSConfig.ClientCAs, "internal-server.http-tls-ca-path", "", "HTTP TLS Client CA path.")
 	f.StringVar(&cfg.CipherSuites, "internal-server.http-tls-cipher-suites", "", "HTTP TLS Cipher Suites.")
 	f.StringVar(&cfg.MinVersion, "internal-server.http-tls-min-version", "", "HTTP TLS Min Version.")
+	f.StringVar(&cfg.CurvePreferences, "internal-server.http-tls-curve-preferences", "", "Comma-separated list of TLS curve/group preferences for key exchange. If blank, the default Go curve preferences are used.")
 	f.IntVar(&cfg.HTTPListenPort, "internal-server.http-listen-port", 3101, "HTTP internal server listen port.")
 	f.IntVar(&cfg.HTTPConnLimit, "internal-server.http-conn-limit", 0, "Maximum number of simultaneous http connections, <=0 to disable")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "internal-server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
