@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.21](https://github.com/grafana/loki/compare/v3.6.20...v3.6.21) (2026-11-12)
+
+
+### Bug Fixes
+
+* **security/UNKNOWN/:** Update module golang.org/x/crypto to v0.59.0 [SECURITY] (release-3.6.x) ([#26423](https://github.com/grafana/loki/issues/26423)) ([af033ff](https://github.com/grafana/loki/commit/af033ff9e624baf8c966089f01d5f34da2123e38))
+
 ## [3.6.20](https://github.com/grafana/loki/compare/v3.6.19...v3.6.20) (2026-11-06)
 
 
