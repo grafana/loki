@@ -27,11 +27,10 @@ var IndexOwnersRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.
 })
 
 // PerIndexOwnershipConfig configures per-index ownership on the index gateway:
-// each (tenant, table) index is owned by ReplicationFactor gateways, which
+// each (tenant, table) index is owned by replication-factor gateways, which
 // preload it before they go ACTIVE in the ring.
 type PerIndexOwnershipConfig struct {
 	Enabled                  bool          `yaml:"enabled" category:"experimental"`
-	ReplicationFactor        int           `yaml:"replication_factor" category:"experimental"`
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration" category:"experimental"`
 	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration" category:"experimental"`
 	PreloadTimeout           time.Duration `yaml:"preload_timeout" category:"experimental"`
@@ -40,9 +39,7 @@ type PerIndexOwnershipConfig struct {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *PerIndexOwnershipConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
-		"Experimental. Give each (tenant, table) index -index-gateway.per-index-ownership.replication-factor owners in the index gateway ring. An index gateway preloads only the indexes it owns, after it joins the ring and before it becomes ACTIVE. Requires -index-gateway.mode=ring.")
-	f.IntVar(&cfg.ReplicationFactor, prefix+"replication-factor", ReplicationFactor,
-		"Experimental. Number of index gateways that own each (tenant, table) index. Index gateways and their clients must use the same value. It must be at least the replication factor of the index gateway ring, and a multiple of it when zone awareness is enabled.")
+		"Experimental. Give each (tenant, table) index -replication-factor owners in the index gateway ring. An index gateway preloads only the indexes it owns, after it joins the ring and before it becomes ACTIVE. Requires -index-gateway.mode=ring.")
 	f.DurationVar(&cfg.WaitStabilityMinDuration, prefix+"wait-stability-min-duration", 0,
 		"Experimental. Minimum time the ring must be stable before the index gateway preloads its owned indexes. Set it when many index gateways join at once, such as when the ring is created or scaled up, so that each one preloads what it owns once every new instance has registered its tokens. 0 disables the wait.")
 	f.DurationVar(&cfg.WaitStabilityMaxDuration, prefix+"wait-stability-max-duration", 5*time.Minute,
@@ -51,22 +48,13 @@ func (cfg *PerIndexOwnershipConfig) RegisterFlagsWithPrefix(prefix string, f *fl
 		"Experimental. Maximum time to preload owned indexes before becoming ACTIVE anyway. Indexes not loaded by then are loaded by the periodic query readiness loop. 0 means no timeout.")
 }
 
-// Validate validates the config against the mode and the ring config of the
-// index gateway.
-func (cfg *PerIndexOwnershipConfig) Validate(mode Mode, ringReplicationFactor int, zoneAwarenessEnabled bool) error {
+// Validate validates the config.
+func (cfg *PerIndexOwnershipConfig) Validate(mode Mode) error {
 	if !cfg.Enabled {
 		return nil
 	}
 	if mode != RingMode {
 		return errors.New("index-gateway.per-index-ownership.enabled requires index-gateway.mode=ring")
-	}
-	// The ring raises a smaller per-call replication factor to its own, and
-	// only spreads a larger one evenly across zones if it is a multiple.
-	if cfg.ReplicationFactor < ringReplicationFactor {
-		return fmt.Errorf("index-gateway.per-index-ownership.replication-factor (%d) must be at least the index gateway ring replication factor (%d); lower the ring replication factor to use fewer owners", cfg.ReplicationFactor, ringReplicationFactor)
-	}
-	if zoneAwarenessEnabled && cfg.ReplicationFactor%ringReplicationFactor != 0 {
-		return fmt.Errorf("index-gateway.per-index-ownership.replication-factor (%d) must be a multiple of the index gateway ring replication factor (%d) when zone awareness is enabled", cfg.ReplicationFactor, ringReplicationFactor)
 	}
 	if cfg.WaitStabilityMinDuration < 0 || cfg.WaitStabilityMaxDuration < 0 || cfg.PreloadTimeout < 0 {
 		return errors.New("index-gateway.per-index-ownership durations must not be negative")
@@ -90,26 +78,22 @@ func IndexOwnershipKey(tenant, table string) uint32 {
 }
 
 // IndexOwnership answers which index gateways own the index of a (tenant,
-// table). Owners are found on the full ring, replicationFactor of them per
-// index. It is used by index gateways and by their clients.
+// table). Owners are found on the full ring, with the ring's replication
+// factor. It is used by index gateways and by their clients.
 type IndexOwnership struct {
-	r                 ring.ReadRing
-	replicationFactor int
+	r ring.ReadRing
 }
 
 // NewIndexOwnership returns an IndexOwnership over r.
-func NewIndexOwnership(r ring.ReadRing, replicationFactor int) *IndexOwnership {
-	return &IndexOwnership{r: r, replicationFactor: replicationFactor}
+func NewIndexOwnership(r ring.ReadRing) *IndexOwnership {
+	return &IndexOwnership{r: r}
 }
 
 // Owners returns the instances that own the index of tenant in table for op:
 // IndexesSync for loading, IndexOwnersRead for routing and dropping.
 func (o *IndexOwnership) Owners(tenant, table string, op ring.Operation) (ring.ReplicationSet, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-	return o.r.GetWithOptions(IndexOwnershipKey(tenant, table), op,
-		ring.WithBuffers(bufDescs, bufHosts, bufZones),
-		ring.WithReplicationFactor(o.replicationFactor),
-	)
+	return o.r.Get(IndexOwnershipKey(tenant, table), op, bufDescs, bufHosts, bufZones)
 }
 
 // Owns reports whether the instance at instanceAddr owns the index of tenant
@@ -131,8 +115,8 @@ type IndexOwnershipFilter struct {
 }
 
 // NewIndexOwnershipFilter returns a filter for the instance at instanceAddr.
-func NewIndexOwnershipFilter(r ring.ReadRing, replicationFactor int, instanceAddr string) *IndexOwnershipFilter {
-	return &IndexOwnershipFilter{ownership: NewIndexOwnership(r, replicationFactor), r: r, instanceAddr: instanceAddr}
+func NewIndexOwnershipFilter(r ring.ReadRing, instanceAddr string) *IndexOwnershipFilter {
+	return &IndexOwnershipFilter{ownership: NewIndexOwnership(r), r: r, instanceAddr: instanceAddr}
 }
 
 // FilterTenants returns the tenants whose index in table this instance owns.
@@ -171,10 +155,9 @@ const (
 	preloadStatusCanceled = "canceled"
 )
 
-
-// NewOwnedIndexPreload returns the function an ingex gateway runs while it is
-// JOINING the ring, before it becomes ACTIVE. This funciton is used to preload
-// data. If the ring does not settle before the preoload timeout, it logs and
+// NewOwnedIndexPreload returns the function an index gateway runs while it is
+// JOINING the ring, before it becomes ACTIVE. This function is used to preload
+// data. If the ring does not settle before the preload timeout, it logs and
 // returns nil so the gateway still becomes ACTIVE. Any other error fails
 // startup.
 func NewOwnedIndexPreload(cfg PerIndexOwnershipConfig, r ring.ReadRing, store index.QueryReadinessEnsurer, logger log.Logger, reg prometheus.Registerer) func(context.Context) error {

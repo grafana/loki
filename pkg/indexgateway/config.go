@@ -91,12 +91,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
-	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
+	// ReplicationFactor defines how many Index Gateway instances own each ring key.
 	//
 	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
 	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
-	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Number of index gateway instances that own each key in the index gateway ring. It is the default for -index-gateway.shard-size, which can also be set per tenant. When -index-gateway.per-index-ownership.enabled is true, it is also the number of index gateways that own each (tenant, table) index, so index gateways and their clients must use the same value.")
 }
 
 func (cfg *Config) Validate() error {
@@ -109,7 +109,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxConcurrentQueueTimeout < 0 {
 		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
 	}
-	if err := cfg.PerIndexOwnership.Validate(cfg.Mode, cfg.Ring.ReplicationFactor, cfg.Ring.ZoneAwarenessEnabled); err != nil {
+	if err := cfg.PerIndexOwnership.Validate(cfg.Mode); err != nil {
 		return err
 	}
 	return nil

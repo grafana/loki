@@ -147,9 +147,9 @@ To enable shuffle sharding for the index gateway:
 1. Set the per-tenant configuration `index_gateway_shard_size` (`-index-gateway.shard-size`) to the number of index gateway instances a tenant's indexes should be sharded across.
 
 Unlike the query path, leaving the shard size at `0` doesn't mean "use all instances".
-If the global `index_gateway_shard_size` is `0`, Loki replaces it at startup with the index gateway ring's replication factor, which is the deprecated `-replication-factor` flag (`index_gateway.ring.replication_factor` in YAML, default `3`).
+If the global `index_gateway_shard_size` is `0`, Loki replaces it at startup with the index gateway ring's replication factor, set with the `-replication-factor` flag (`index_gateway.ring.replication_factor` in YAML, default `3`).
 This means an index gateway running in `ring` mode with otherwise default settings already shuffle shards each tenant's indexes across 3 instances.
-Set `index_gateway_shard_size` explicitly rather than relying on the replication factor, which is deprecated.
+Set `index_gateway_shard_size` explicitly rather than relying on the replication factor.
 
 For example, this configuration enables shuffle sharding for the index gateway and gives every tenant a shard of 5 instances by default:
 

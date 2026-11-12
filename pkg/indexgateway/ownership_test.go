@@ -90,12 +90,7 @@ func testIndexKeys() []indexKey {
 // ownersOf returns the sorted owner addresses of every key.
 func ownersOf(t *testing.T, r ring.ReadRing, keys []indexKey, op ring.Operation) map[indexKey][]string {
 	t.Helper()
-	return ownersOfWithRF(t, r, ReplicationFactor, keys, op)
-}
-
-func ownersOfWithRF(t *testing.T, r ring.ReadRing, rf int, keys []indexKey, op ring.Operation) map[indexKey][]string {
-	t.Helper()
-	o := NewIndexOwnership(r, rf)
+	o := NewIndexOwnership(r)
 	out := make(map[indexKey][]string, len(keys))
 	for _, k := range keys {
 		rs, err := o.Owners(k.tenant, k.table, op)
@@ -132,15 +127,6 @@ func TestIndexOwnership_Spread(t *testing.T) {
 	for _, inst := range instances {
 		got := float64(perInstance[inst.id])
 		require.InDelta(t, expected, got, 0.3*expected, "instance %s", inst.id)
-	}
-}
-
-func TestIndexOwnership_ReplicationFactor(t *testing.T) {
-	r := newTestRing(t, newTestInstances(0, 6))
-	keys := testIndexKeys()
-
-	for k, addrs := range ownersOfWithRF(t, r, ReplicationFactor+2, keys, IndexOwnersRead) {
-		require.Len(t, addrs, ReplicationFactor+2, "key %v", k)
 	}
 }
 
@@ -232,7 +218,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	const table = "index_19510"
 	count := map[string]int{}
 	for _, inst := range instances {
-		got, err := NewIndexOwnershipFilter(r, ReplicationFactor, inst.id).FilterTenants(table, tenants)
+		got, err := NewIndexOwnershipFilter(r, inst.id).FilterTenants(table, tenants)
 		require.NoError(t, err)
 		for _, tenant := range got {
 			require.Contains(t, owners[indexKey{tenant: tenant, table: table}], inst.id)
@@ -245,7 +231,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	}
 
 	t.Run("instance not in the ring", func(t *testing.T) {
-		_, err := NewIndexOwnershipFilter(r, ReplicationFactor, "index-gateway-99").FilterTenants(table, tenants)
+		_, err := NewIndexOwnershipFilter(r, "index-gateway-99").FilterTenants(table, tenants)
 		require.ErrorIs(t, err, errGatewayUnhealthy)
 	})
 }
@@ -334,36 +320,13 @@ func preloadObservations(t *testing.T, reg *prometheus.Registry) map[string]uint
 }
 
 func TestPerIndexOwnershipConfig_Validate(t *testing.T) {
-	cfg := PerIndexOwnershipConfig{Enabled: true, ReplicationFactor: 3, WaitStabilityMinDuration: time.Minute, WaitStabilityMaxDuration: 5 * time.Minute}
-	require.NoError(t, cfg.Validate(RingMode, 3, false))
-	require.Error(t, cfg.Validate(SimpleMode, 3, false))
+	cfg := PerIndexOwnershipConfig{Enabled: true, WaitStabilityMinDuration: time.Minute, WaitStabilityMaxDuration: 5 * time.Minute}
+	require.NoError(t, cfg.Validate(RingMode))
+	require.Error(t, cfg.Validate(SimpleMode))
 
 	bad := cfg
 	bad.WaitStabilityMaxDuration = time.Second
-	require.Error(t, bad.Validate(RingMode, 3, false))
+	require.Error(t, bad.Validate(RingMode))
 
-	t.Run("replication factor", func(t *testing.T) {
-		for _, tc := range []struct {
-			rf, ringRF int
-			zoneAware  bool
-			wantErr    bool
-		}{
-			{rf: 3, ringRF: 3},
-			{rf: 4, ringRF: 3},
-			{rf: 2, ringRF: 3, wantErr: true},
-			{rf: 6, ringRF: 3, zoneAware: true},
-			{rf: 4, ringRF: 3, zoneAware: true, wantErr: true},
-		} {
-			c := cfg
-			c.ReplicationFactor = tc.rf
-			err := c.Validate(RingMode, tc.ringRF, tc.zoneAware)
-			if tc.wantErr {
-				require.Error(t, err, "%+v", tc)
-			} else {
-				require.NoError(t, err, "%+v", tc)
-			}
-		}
-	})
-
-	require.NoError(t, (&PerIndexOwnershipConfig{}).Validate(SimpleMode, 3, false))
+	require.NoError(t, (&PerIndexOwnershipConfig{}).Validate(SimpleMode))
 }
