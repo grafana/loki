@@ -2,6 +2,10 @@ package hintprovider
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -205,5 +209,36 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram)
 			require.False(t, ok)
 		})
+	}
+}
+
+// The adapter sends expr.String() and the querier looks up the needles of the
+// re-parsed expression, so those must be the needles in the key.
+func TestNeedleKey_MatchesQuerierNeedles(t *testing.T) {
+	for _, q := range []string{
+		keyTestVolumeQuery,
+		"{app=\"api\"} |= `say \"hello\"`",
+		`{app="api"} |~ "time\\.out\\d+"`,
+		`{app="api"} |~ "(?i)timeout"`,
+		`{app="api"} |= "a,b:c\"d\\e"`,
+		`{app="api"} |= "\xff\xfetimeout"`,
+		`{app="api"} |= "timeout" |= "failure" or "error"`,
+		`{app="api"} |= "timeout" | (level="critical" or level="warning") and region="us-east"`,
+		`{app="api"} |= "timeout" | json | msg="failure" | line_format "{{.msg}}" | logfmt | other="ignored"`,
+		`{app="api"} | logfmt trace_id="tid" | trace_id="abc123def"`,
+		`sum(sum_over_time({app="api"} |= "timeout" | unwrap latency | region="us-east" [5m]))`,
+	} {
+		expr := mustParseExpr(t, q)
+		for _, n := range []int{3, 6} {
+			key, ok := needleKey(expr, n)
+			require.True(t, ok, q)
+
+			needles := SupportedQuery(mustParseExpr(t, expr.String()), n)
+			sort.Strings(needles)
+			for i := range needles {
+				needles[i] = strconv.Quote(needles[i])
+			}
+			require.Equal(t, key, fmt.Sprintf("n=%d f=%s", n, strings.Join(needles, ",")), q)
+		}
 	}
 }
