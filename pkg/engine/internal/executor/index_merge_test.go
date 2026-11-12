@@ -526,6 +526,47 @@ func TestDoIndexMerge(t *testing.T) {
 		},
 	}
 
+	twoSources := func(pathA, pathB string) *physical.IndexMerge {
+		return &physical.IndexMerge{
+			NodeID: ulid.Make(),
+			Tenant: tenant,
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: pathA, SectionIndex: 0},
+				{ObjectPath: pathB, SectionIndex: 0},
+			}}},
+		}
+	}
+	statRow := func(schema string, labels map[string]string) stats.Stat {
+		return stats.Stat{
+			ObjectPath: "log-X", SortSchema: schema, Labels: labels,
+			MinTimestamp: 100, MaxTimestamp: 200, RowCount: 10, UncompressedSize: 1000,
+		}
+	}
+
+	t.Run("returns an error when the source indexes record different layouts", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service", "label:job"}),
+			[]stats.Stat{statRow("label:service,label:job", map[string]string{"service": "api", "job": "j1"})})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-b.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:job", "label:service"}),
+			[]stats.Stat{statRow("label:job,label:service", map[string]string{"job": "j1", "service": "api"})})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		require.ErrorContains(t, err, "has stream layout")
+	})
+
+	t.Run("returns an error when only some source indexes record a layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{{
+			ObjectPath: "log-Y", ColumnName: "service", LabelValue: "api", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		}})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		require.ErrorContains(t, err, "records no stream layout")
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)
@@ -1141,23 +1182,36 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
-
-	// Build one source with postings only.
-	postingsPath := "source/index-postings.dat"
-	buildSourcePostingsObject(t, bucket, "tenant", postingsPath, []postings.LabelObservation{
-		{
-			ObjectPath:       "log-A",
-			SectionIndex:     0,
-			ColumnName:       "service",
-			LabelValue:       "api",
-			StreamID:         1,
-			Time:             postings.At(time.Unix(0, 100)),
-			UncompressedSize: 100,
-		},
-	})
-
-	// Build one source with stats only.
 	serviceLayout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+
+	// Build one source with the postings of log-A. Every source must record
+	// the layout, so it also holds the stats of log-B.
+	postingsPath := "source/index-postings.dat"
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant("tenant")
+	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		ColumnName:       "service",
+		LabelValue:       "api",
+		StreamID:         1,
+		Time:             postings.At(time.Unix(0, 100)),
+		UncompressedSize: 100,
+	})
+	layoutBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), serviceLayout)
+	layoutBuilder.SetTenant("tenant")
+	layoutBuilder.Append(stats.Stat{
+		ObjectPath:       "log-B",
+		SortSchema:       "label:service",
+		Labels:           map[string]string{"service": "web"},
+		MinTimestamp:     100,
+		MaxTimestamp:     200,
+		RowCount:         1,
+		UncompressedSize: 100,
+	})
+	uploadSections(t, bucket, postingsPath, postingsBuilder, layoutBuilder)
+
+	// Build one source with the stats of log-A only.
 	statsPath := "source/index-stats.dat"
 	buildSourceStatsObject(t, bucket, "tenant", statsPath, serviceLayout, []stats.Stat{
 		{
@@ -1220,7 +1274,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	statRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
 	require.Len(t, postingsRows, 1)
-	require.Len(t, statRows, 1)
+	require.Len(t, statRows, 2)
 }
 
 // TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource verifies
@@ -1376,59 +1430,6 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	// Verify we don't have a truncated label
 	_, hasTruncated := row.Labels["my"]
 	require.False(t, hasTruncated, "label should not be truncated to 'my'")
-}
-
-// TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer tests that merging
-// indexes with different stream layouts fails before any data is written.
-func TestExecuteIndexMerge_FailsWhenSourceLayoutsDiffer(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	// Build two source objects with DIFFERENT SortSchema values
-	sourceAPath := "source/index-a.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service", "label:job"}), []stats.Stat{
-		{
-			ObjectPath:       "log-X",
-			SectionIndex:     0,
-			SortSchema:       "label:service,label:job",
-			Labels:           map[string]string{"service": "api", "job": "j1"},
-			MinTimestamp:     100,
-			MaxTimestamp:     200,
-			RowCount:         10,
-			UncompressedSize: 1000,
-		},
-	})
-
-	sourceBPath := "source/index-b.dat"
-	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, streams.NewLayout(streams.DefaultShardLayout(), []string{"label:job", "label:service"}), []stats.Stat{
-		{
-			ObjectPath:       "log-X",
-			SectionIndex:     0,
-			SortSchema:       "label:job,label:service", // Different SortSchema
-			Labels:           map[string]string{"job": "j1", "service": "api"},
-			MinTimestamp:     100,
-			MaxTimestamp:     200,
-			RowCount:         20,
-			UncompressedSize: 2000,
-		},
-	})
-
-	node := &physical.IndexMerge{
-		NodeID: ulid.Make(),
-		Tenant: "tenant",
-		Runs: []*compactionv2pb.RunRef{
-			{
-				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: sourceAPath, SectionIndex: 0},
-					{ObjectPath: sourceBPath, SectionIndex: 0},
-				},
-			},
-		},
-	}
-
-	execCtx := newTestExecutorContext(t, bucket)
-	_, err := execCtx.doIndexMerge(ctx, node)
-	require.ErrorContains(t, err, "has stream layout", "merge should fail with a stream layout mismatch")
 }
 
 // tenantRows describes how many postings and stats rows to seed for a tenant

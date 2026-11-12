@@ -134,8 +134,9 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 // object. Non-mergable section types (streams, indexPointers) are silently
 // ignored.
 //
-// classifyRuns also returns the stream layout of the source indexes, and an
-// error if they do not share one, because the output records one layout.
+// classifyRuns also returns the stream layout of the source indexes. It
+// returns an error if they record different layouts, or if only some record
+// one.
 func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
@@ -167,10 +168,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	// are skipped silently. openFilterSources also skips streams sections, but
 	// it rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
-	var (
-		layout       streams.Layout
-		layoutSource string
-	)
+	var layout sourceLayout
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
@@ -188,24 +186,61 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				// default: skip silently (streams/indexPointers etc.)
 			}
 		}
-		// Only stats sections record a layout, so an object without them does
-		// not constrain the layout of the output.
-		if len(group.stats) > 0 {
-			objLayout, _, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
-			if err != nil {
-				return nil, streams.Layout{}, fmt.Errorf("reading stream layout of index %q: %w", path, err)
-			}
-			if layoutSource != "" && !objLayout.Equal(layout) {
-				return nil, streams.Layout{}, fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, objLayout, layoutSource, layout)
-			}
-			layout, layoutSource = objLayout, path
+		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
+			return nil, streams.Layout{}, err
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
 		}
 	}
 
-	return grouped, layout, nil
+	merged, err := layout.shared()
+	if err != nil {
+		return nil, streams.Layout{}, err
+	}
+	return grouped, merged, nil
+}
+
+// sourceLayout collects the stream layouts that the source index objects of
+// one task record for a tenant.
+//
+// The output index records one layout for all the log objects it indexes. So
+// all sources must record the same layout, or none must record one. The
+// planner groups index runs that way. A merge that mixes a source without a
+// layout with sources that have one would claim that layout for log objects
+// that were not written in it.
+type sourceLayout struct {
+	layout        streams.Layout
+	withLayout    string
+	withoutLayout string
+}
+
+// add reads the layout that obj, the source index object at path, records
+// for tenant. It returns an error if the layout differs from the layout of an
+// earlier source.
+func (s *sourceLayout) add(ctx context.Context, path string, obj *dataobj.Object, tenant string) error {
+	layout, ok, err := indexobj.TenantLayout(ctx, obj, tenant)
+	if err != nil {
+		return fmt.Errorf("reading stream layout of index %q: %w", path, err)
+	}
+	if !ok {
+		s.withoutLayout = path
+		return nil
+	}
+	if s.withLayout != "" && !layout.Equal(s.layout) {
+		return fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, layout, s.withLayout, s.layout)
+	}
+	s.layout, s.withLayout = layout, path
+	return nil
+}
+
+// shared returns the layout of the sources. It is the zero layout if no source
+// records one. It returns an error if only some sources record a layout.
+func (s *sourceLayout) shared() (streams.Layout, error) {
+	if s.withLayout != "" && s.withoutLayout != "" {
+		return streams.Layout{}, fmt.Errorf("index %q records no stream layout, but index %q records %v", s.withoutLayout, s.withLayout, s.layout)
+	}
+	return s.layout, nil
 }
 
 // objectSections holds one source object's mergable sections, split by type and
