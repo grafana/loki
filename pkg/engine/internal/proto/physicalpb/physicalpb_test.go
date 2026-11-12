@@ -16,7 +16,7 @@ import (
 // [physical.Plan] into a [Plan] and back.
 func Test(t *testing.T) {
 	var (
-		parent = &physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant-a", SourceIndexPath: "index/0", ObjectPaths: []string{"objects/0"}}
+		parent = &physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant-a", SourceIndexPaths: []string{"index/0"}, ObjectPaths: []string{"objects/0"}}
 		child  = &physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant-a", ToCWindowStart: 1_700_000_000_000_000_000}
 	)
 
@@ -104,4 +104,34 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 	require.Equal(t, want.Tenant, got.Tenant)
 	require.Equal(t, want.ToCWindowStart, got.ToCWindowStart)
 	require.Equal(t, want.Runs, got.Runs)
+}
+
+func TestIndexFilter_UnmarshalPhysical(t *testing.T) {
+	t.Run("sets the single source path of an old planner for a source of one index object", func(t *testing.T) {
+		var got physicalpb.IndexFilter
+		require.NoError(t, got.UnmarshalPhysical(&physical.IndexFilter{Tenant: "acme", SourceIndexPaths: []string{"index/a"}}))
+		require.Equal(t, "index/a", got.SourceIndexPath)
+		require.Equal(t, []string{"index/a"}, got.SourceIndexPaths)
+	})
+
+	t.Run("leaves the single source path empty for the index objects of a run, so an old worker rejects the plan", func(t *testing.T) {
+		var got physicalpb.IndexFilter
+		require.NoError(t, got.UnmarshalPhysical(&physical.IndexFilter{Tenant: "acme", SourceIndexPaths: []string{"index/a", "index/b"}}))
+		require.Empty(t, got.SourceIndexPath)
+		require.Equal(t, []string{"index/a", "index/b"}, got.SourceIndexPaths)
+	})
+}
+
+func TestIndexFilter_MarshalPhysical(t *testing.T) {
+	t.Run("reads the single source path of a plan from an old planner", func(t *testing.T) {
+		got, err := (&physicalpb.IndexFilter{Tenant: "acme", SourceIndexPath: "index/a"}).MarshalPhysical(ulid.Make())
+		require.NoError(t, err)
+		require.Equal(t, []string{"index/a"}, got.(*physical.IndexFilter).SourceIndexPaths)
+	})
+
+	t.Run("reads the source paths and ignores the single source path when both are set", func(t *testing.T) {
+		got, err := (&physicalpb.IndexFilter{Tenant: "acme", SourceIndexPath: "index/a", SourceIndexPaths: []string{"index/a", "index/b"}}).MarshalPhysical(ulid.Make())
+		require.NoError(t, err)
+		require.Equal(t, []string{"index/a", "index/b"}, got.(*physical.IndexFilter).SourceIndexPaths)
+	})
 }

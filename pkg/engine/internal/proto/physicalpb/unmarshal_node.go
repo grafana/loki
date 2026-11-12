@@ -102,9 +102,15 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = IndexFilter{
-		Tenant:          indexFilter.Tenant,
-		SourceIndexPath: indexFilter.SourceIndexPath,
-		ObjectPaths:     slices.Clone(indexFilter.ObjectPaths),
+		Tenant:           indexFilter.Tenant,
+		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
+		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
+	}
+	// A worker without source_index_paths reads only source_index_path. Set
+	// it only for a source of one index object, so such a worker can't
+	// filter part of an index run.
+	if len(indexFilter.SourceIndexPaths) == 1 {
+		n.SourceIndexPath = indexFilter.SourceIndexPaths[0]
 	}
 	return nil
 }

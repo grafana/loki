@@ -227,7 +227,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", runOfPath(path))
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -265,7 +265,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", runOfPath(path))
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -290,7 +290,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", runOfPath(path))
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -320,7 +320,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", runOfPath(path))
 	require.NoError(t, err)
 	require.Len(t, refs, 1)
 	require.Equal(t, logSortPrefix{}, refs[0].Min)
@@ -367,7 +367,7 @@ func TestIndexLayout(t *testing.T) {
 		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
 
 		uploadObject(ctx, t, bucket, path, obj)
-		_, _, err = logSectionRefsFor(ctx, bucket, tenant, path)
+		_, _, err = logSectionRefsFor(ctx, bucket, tenant, runOfPath(path))
 		require.ErrorIs(t, err, errCorruptIndex)
 	})
 }
@@ -512,4 +512,47 @@ func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath 
 		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 	return indexLayout(ctx, obj, tenant, idxPath)
+}
+
+func TestLogSectionRefsFor(t *testing.T) {
+	ctx := context.Background()
+	runOf := func(paths ...string) indexRun {
+		var run indexRun
+		for _, path := range paths {
+			run.entries = append(run.entries, indexpointers.IndexPointer{Path: path, RunID: 1})
+		}
+		return run
+	}
+	stat := func(service string, size int64) stats.Stat {
+		return stats.Stat{
+			ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": service}, MinTimestamp: 100, MaxTimestamp: 200,
+			RowCount: 1, UncompressedSize: size,
+		}
+	}
+
+	t.Run("folds the stats rows of one log section from every index object of a run into one reference", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/a", []stats.Stat{stat("auth", 300)})
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/b", []stats.Stat{stat("billing", 200)})
+
+		refs, buckets, err := logSectionRefsFor(ctx, bucket, "acme", runOf("indexes/run/a", "indexes/run/b"))
+		require.NoError(t, err)
+		require.Len(t, refs, 1)
+		require.Equal(t, int64(500), refs[0].Ref.UncompressedSize)
+		require.Equal(t, []string{"auth"}, refs[0].Ref.MinKey)
+		require.Equal(t, []string{"billing"}, refs[0].Ref.MaxKey)
+		layout, ok := buckets.Layout()
+		require.True(t, ok)
+		require.Equal(t, streams.DefaultShardLayout(), layout)
+	})
+
+	t.Run("returns a corrupt index error when an index object of a run records no layout and another does", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/a", []stats.Stat{stat("auth", 300)})
+		buildIndexWithPostings(ctx, t, bucket, "acme", "indexes/run/b", 1<<20, []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/log-0", ColumnName: "app", LabelValue: "api"}})
+
+		_, _, err := logSectionRefsFor(ctx, bucket, "acme", runOf("indexes/run/a", "indexes/run/b"))
+		require.ErrorIs(t, err, errCorruptIndex)
+	})
 }

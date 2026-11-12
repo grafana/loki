@@ -33,9 +33,6 @@ const (
 	failReasonPlan      = "plan"
 	failReasonStalePlan = "stale_plan"
 	failReasonExecute   = "execute"
-	// failReasonIndexRun means the log merge skipped the index objects of a
-	// run, because it can't compact a run yet.
-	failReasonIndexRun = "index_run"
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
@@ -187,7 +184,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant, labelAge}),
 		logMergeFailedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
-			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), execute (any other execution failure), or index_run (the index is a run, which log merge can't compact yet; a run counts once).",
+			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), or execute (any other execution failure).",
 		}, []string{labelTenant, labelReason}),
 		indexMergeFailedGroupsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_index_merge_failed_groups_total",
@@ -207,7 +204,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		singleObjectLogRuns: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_single_object_log_runs",
-			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports, and index runs, which log merge skips. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
+			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
 		}, []string{labelTenant}),
 	}
 }

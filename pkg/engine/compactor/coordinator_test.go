@@ -370,7 +370,7 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexpointers.IndexPointer{Path: convergedPath, StartTs: window.Add(1 * time.Hour), EndTs: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	stats, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 	require.NoError(t, err)
 
 	// A successful log-compaction reports its index/task deltas so the
@@ -433,11 +433,11 @@ func TestPlanLogCompaction(t *testing.T) {
 			stat("logs/log-1", "label:service_name", auth, 15, 30),
 		}, "acme")
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 
 		require.True(t, plan.hasWork())
-		require.Equal(t, indexPath, plan.sourceIndex.Path)
+		require.Equal(t, indexPath, plan.sourceIndex.paths()[0])
 		require.Equal(t, window, plan.window)
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
@@ -455,14 +455,14 @@ func TestPlanLogCompaction(t *testing.T) {
 			stat("logs/log-2", "label:service_name", auth, 12, 25),
 		}, "acme")
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 
 		require.Len(t, plan.tasks, 2)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
 		filter, ok := plan.tasks[1].(indexFilterTask)
 		require.True(t, ok)
-		require.Equal(t, indexPath, filter.sourceIndexPath)
+		require.Equal(t, []string{indexPath}, filter.sourceIndexPaths)
 		require.Len(t, filter.objectPaths, 1)
 		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
@@ -478,7 +478,7 @@ func TestPlanLogCompaction(t *testing.T) {
 			stat("logs/log-1", "label:cluster", cluster, 20, 40),
 		}, "acme")
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 
 		require.Len(t, plan.tasks, 1)
@@ -496,7 +496,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		}, "acme")
 		c.cfg.LogMaxTaskSize = 250
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 
 		require.Len(t, plan.tasks, 2)
@@ -517,7 +517,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		}, "acme")
 		c.cfg.LogMaxKeySize = 150
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		require.False(t, plan.hasWork())
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
@@ -530,7 +530,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		}, "acme")
 		c.cfg.LogMaxKeySize = 200
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
@@ -582,7 +582,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		c, _, _ := newPlanner(t, withLargeObjects(2), "acme")
 		c.cfg.LogMaxKeySize = 1 << 30
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		requireFilterKeepsLargeObjects(t, c, plan, 2, 1)
 	})
@@ -591,7 +591,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		c, _, _ := newPlanner(t, withLargeObjects(4), "acme")
 		c.cfg.LogMaxKeySize = 1 << 30
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		requireFilterKeepsLargeObjects(t, c, plan, 4, 2)
 	})
@@ -600,7 +600,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		c, _, _ := newPlanner(t, withLargeObjects(3), "acme")
 		c.cfg.LogMaxKeySize = 1 << 30
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		requireFilterKeepsLargeObjects(t, c, plan, 3, 1)
 	})
@@ -615,7 +615,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		}, "acme")
 		c.cfg.LogMaxKeySize = 250
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
@@ -628,7 +628,7 @@ func TestPlanLogCompaction(t *testing.T) {
 			stat("logs/log-0", "label:service_name", auth, 10, 20),
 		}, "other")
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		require.False(t, plan.hasWork())
 	})
@@ -640,7 +640,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		}, "acme")
 		c.cfg.LogMinCompactionSize = 1 << 30
 
-		plan, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+		plan, err := c.planLogCompaction(ctx, "acme", window, runOfPath(indexPath))
 		require.NoError(t, err)
 		require.False(t, plan.hasWork())
 	})
@@ -648,7 +648,7 @@ func TestPlanLogCompaction(t *testing.T) {
 	t.Run("returns an error when the index does not exist", func(t *testing.T) {
 		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		_, err := c.planLogCompaction(ctx, "acme", window, indexpointers.IndexPointer{Path: "indexes/missing"})
+		_, err := c.planLogCompaction(ctx, "acme", window, runOfPath("indexes/missing"))
 		require.Error(t, err)
 	})
 }
@@ -657,7 +657,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 	window := imWindow()
 	plan := logCompactionPlan{
 		window:      window,
-		sourceIndex: indexpointers.IndexPointer{Path: "indexes/source"},
+		sourceIndex: runOfPath("indexes/source"),
 		tasks: []logCompactionTask{
 			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
@@ -672,7 +672,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		bucket := objstore.NewInMemBucket()
-		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.Path)
+		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.paths()[0])
 		return newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
 	}
 
@@ -1177,7 +1177,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexpointers.IndexPointer{Path: convergedPath, StartTs: window.Add(1 * time.Hour), EndTs: window.Add(2 * time.Hour)}
-	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	_, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 	require.NoError(t, err)
 	require.Empty(t, runner.snapshot())
 }
@@ -1203,7 +1203,7 @@ func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexpointers.IndexPointer{Path: convergedPath, StartTs: window.Add(1 * time.Hour), EndTs: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	stats, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 
 	require.NoError(t, err)
 	require.Zero(t, stats.added)
@@ -1229,7 +1229,7 @@ func TestCompactTenantLogs_SamePrefixMergesRegardlessOfTimestamp(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	stats, err := c.compactTenantLogs(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+	stats, err := c.compactTenantLogs(ctx, "acme", window, runOfPath(indexPath))
 	require.NoError(t, err)
 	require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 1}, stats)
 	require.Len(t, runner.snapshot(), 1)
@@ -1257,7 +1257,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	c.cfg.LogMinCompactionSize = 1 << 30 // 1GiB floor; 30 bytes is below it
 
 	entry := indexpointers.IndexPointer{Path: convergedPath, StartTs: window.Add(1 * time.Hour), EndTs: window.Add(2 * time.Hour)}
-	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	stats, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 
 	require.NoError(t, err)
 	require.Zero(t, stats.added)
@@ -1325,7 +1325,7 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 				bucket := twoRunConvergedBucket(ctx, t, "acme", path)
 				entry := indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour)}
 				return bucket, func(c *coordinator) (compactionStats, error) {
-					return c.compactTenantLogs(ctx, "acme", window, entry)
+					return c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 				}
 			},
 		},
@@ -1412,9 +1412,9 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		stats, err := c.compactTenantLogs(ctx, "acme", window, indexpointers.IndexPointer{
+		stats, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(indexpointers.IndexPointer{
 			Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour),
-		})
+		}))
 		require.NoError(t, err)
 		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
 		require.Equal(t, 2, stats.added)
@@ -1527,7 +1527,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 			c.logMergePlanningStrategy = newTestLogMergePlanningStrategy(t, test.k)
 
-			got, err := c.compactTenantLogs(ctx, "acme", window, indexpointers.IndexPointer{Path: sourcePath})
+			got, err := c.compactTenantLogs(ctx, "acme", window, runOfPath(sourcePath))
 			require.NoError(t, err)
 
 			var merges [][]string
@@ -1540,7 +1540,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 				case "index-filter":
 					root, err := call.plan.Root()
 					require.NoError(t, err)
-					require.Equal(t, sourcePath, root.(*physical.IndexFilter).SourceIndexPath)
+					require.Equal(t, []string{sourcePath}, root.(*physical.IndexFilter).SourceIndexPaths)
 					filtered = planObjectPaths(t, call.plan)
 				}
 			}
@@ -1620,7 +1620,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
 		return bucket, func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexpointers.IndexPointer{Path: "indexes/source"})
+			return c.compactTenantLogs(ctx, "acme", window, runOfPath("indexes/source"))
 		}
 	}
 
@@ -1674,7 +1674,7 @@ func TestReplaceLogIndex(t *testing.T) {
 	t.Run("fail when there are no replacement entries", func(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, replacer, time.Now, nil)
-		_, err := c.replaceLogIndex(context.Background(), "acme", time.Now(), indexpointers.IndexPointer{Path: "indexes/source"}, nil)
+		_, err := c.replaceLogIndex(context.Background(), "acme", time.Now(), runOfPath("indexes/source"), nil)
 		require.Error(t, err)
 		require.Empty(t, replacer.snapshot())
 	})
@@ -1703,7 +1703,7 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 		defer runner.assertUniqueObjects(t)
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-		_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+		_, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 		require.NoError(t, err)
 		calls := replacer.snapshot()
 		require.Len(t, calls, 1)
@@ -3046,7 +3046,7 @@ func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testin
 
 	// Converged ToC row is unknown (0), i.e. a legacy pre-upgrade index.
 	entry := indexpointers.IndexPointer{Path: convergedPath, StartTs: window.Add(1 * time.Hour), EndTs: window.Add(2 * time.Hour)}
-	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	_, err := c.compactTenantLogs(ctx, "acme", window, runOfEntry(entry))
 	require.NoError(t, err)
 
 	calls := replacer.snapshot()
@@ -3072,7 +3072,7 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenantLogs(ctx, "acme", window, indexpointers.IndexPointer{Path: indexPath})
+	_, err := c.compactTenantLogs(ctx, "acme", window, runOfPath(indexPath))
 	require.NoError(t, err)
 
 	calls := replacer.snapshot()

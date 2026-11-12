@@ -60,12 +60,12 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	defer builder.Reset()
 
 	// Merge postings sections
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 
 	// Merge stats sections
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
@@ -211,9 +211,13 @@ type objectSections struct {
 	stats    []*dataobj.Section
 }
 
+// keepAll keeps the rows of every log object.
+func keepAll(string) bool { return true }
+
 // mergePostingsIntoBuilder merges the postings sections of all source objects
-// with a K-way loser-tree merge and feeds the result into the builder.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+// with a K-way loser-tree merge and feeds the rows of the log objects that keep
+// accepts into the builder.
+func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(objectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
@@ -235,6 +239,9 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
 		// ColumnName, LabelValue) means two source indexes reference the same
@@ -300,9 +307,9 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 }
 
 // mergeStatsIntoBuilder merges the stats sections of all source objects with a
-// K-way loser-tree merge and feeds the result into the builder. Uses D3
-// aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+// K-way loser-tree merge and feeds the rows of the log objects that keep
+// accepts into the builder. Uses D3 aggregation with schema/label validation.
+func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(objectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -336,6 +343,9 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// stats.Compare includes (ObjectPath, SectionIndex) as final
 		// tiebreakers, so an equal-key collision here means two source indexes

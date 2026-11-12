@@ -107,11 +107,16 @@ func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, err
 
 // MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
 func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	sourceIndexPaths := slices.Clone(n.SourceIndexPaths)
+	// A planner without source_index_paths sets only source_index_path.
+	if len(sourceIndexPaths) == 0 && n.SourceIndexPath != "" {
+		sourceIndexPaths = []string{n.SourceIndexPath}
+	}
 	return &physical.IndexFilter{
-		NodeID:          nodeID,
-		Tenant:          n.Tenant,
-		SourceIndexPath: n.SourceIndexPath,
-		ObjectPaths:     slices.Clone(n.ObjectPaths),
+		NodeID:           nodeID,
+		Tenant:           n.Tenant,
+		SourceIndexPaths: sourceIndexPaths,
+		ObjectPaths:      slices.Clone(n.ObjectPaths),
 	}, nil
 }
 

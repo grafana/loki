@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 // executeIndexFilter copies the rows of the node's log objects from the
@@ -38,28 +39,17 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
-	if node.Tenant == "" || node.SourceIndexPath == "" {
-		return nil, fmt.Errorf("IndexFilter: malformed plan: tenant %q, source index %q", node.Tenant, node.SourceIndexPath)
+	if node.Tenant == "" || len(node.SourceIndexPaths) == 0 || slices.Contains(node.SourceIndexPaths, "") {
+		return nil, fmt.Errorf("IndexFilter: malformed plan: tenant %q, source index %q", node.Tenant, node.SourceIndexPaths)
 	}
 	if len(node.ObjectPaths) == 0 {
 		return nil, errors.New("IndexFilter: no object paths to keep")
 	}
+	source := strings.Join(node.SourceIndexPaths, ",")
 
-	keep := make(map[string]struct{}, len(node.ObjectPaths))
-	for _, path := range node.ObjectPaths {
-		keep[path] = struct{}{}
-	}
-
-	source, err := dataobj.FromBucket(ctx, c.bucket, node.SourceIndexPath, 0)
+	sources, layout, err := c.openFilterSources(ctx, node)
 	if err != nil {
-		return nil, fmt.Errorf("opening source index %q: %w", node.SourceIndexPath, err)
-	}
-
-	// A source without stats sections has no layout. The builder then gets
-	// the zero layout, and rejects any stat, so it never records that layout.
-	layout, _, err := indexobj.TenantLayout(ctx, source, node.Tenant)
-	if err != nil {
-		return nil, fmt.Errorf("reading stream layout of source index %q: %w", node.SourceIndexPath, err)
+		return nil, err
 	}
 	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
 	if err != nil {
@@ -67,27 +57,29 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	}
 	defer builder.Reset()
 
-	foundPostings := make(map[string]struct{}, len(keep))
-	foundStats := make(map[string]struct{}, len(keep))
-	for _, sec := range source.Sections() {
-		if sec.Tenant != node.Tenant {
-			continue
+	keepSet := make(map[string]struct{}, len(node.ObjectPaths))
+	for _, path := range node.ObjectPaths {
+		keepSet[path] = struct{}{}
+	}
+	keep := func(found map[string]struct{}) func(string) bool {
+		return func(path string) bool {
+			if _, ok := keepSet[path]; !ok {
+				return false
+			}
+			found[path] = struct{}{}
+			return true
 		}
-		switch {
-		case postings.CheckSection(sec):
-			err = copyRows(ctx, sec, openPostingsReader, keep, foundPostings, func(row postings.Row) string { return row.ObjectPath },
-				func(row postings.Row) error { return c.writePostingsRow(builder, node.Tenant, row) })
-		case stats.CheckSection(sec):
-			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
-				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
-		case streams.CheckSection(sec):
-			continue
-		default:
-			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec.Type)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("filtering source index %q: %w", node.SourceIndexPath, err)
-		}
+	}
+
+	// A K-way merge keeps the rows in key order when they come from several
+	// index objects of one index run, so each output section stays sorted.
+	foundPostings := make(map[string]struct{}, len(keepSet))
+	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, sources, keep(foundPostings), builder); err != nil {
+		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
+	}
+	foundStats := make(map[string]struct{}, len(keepSet))
+	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, sources, keep(foundStats), builder); err != nil {
+		return nil, fmt.Errorf("filtering stats of source index %q: %w", source, err)
 	}
 
 	// A kept object without postings rows or without stats rows means the
@@ -95,44 +87,66 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	// index that cannot find the object, or cannot plan it.
 	for _, path := range node.ObjectPaths {
 		if _, ok := foundPostings[path]; !ok {
-			return nil, fmt.Errorf("source index %q has no postings rows for object %q", node.SourceIndexPath, path)
+			return nil, fmt.Errorf("source index %q has no postings rows for object %q", source, path)
 		}
 		if _, ok := foundStats[path]; !ok {
-			return nil, fmt.Errorf("source index %q has no stats rows for object %q", node.SourceIndexPath, path)
+			return nil, fmt.Errorf("source index %q has no stats rows for object %q", source, path)
 		}
 	}
 
 	artifact, _, _, err := c.uploadIndex(ctx, node.Tenant, builder)
 	if err != nil {
-		return nil, fmt.Errorf("index filter output for source index %q: %w", node.SourceIndexPath, err)
+		return nil, fmt.Errorf("index filter output for source index %q: %w", source, err)
 	}
 	return artifact, nil
 }
 
-// copyRows passes each row of sec whose object path is in keep to write, and
-// records that object path in found.
-func copyRows[R any](
-	ctx context.Context,
-	sec *dataobj.Section,
-	open func(context.Context, *dataobj.Section) (iter.CloseIterator[R], error),
-	keep, found map[string]struct{},
-	objectPath func(R) string,
-	write func(R) error,
-) error {
-	rows, err := open(ctx, sec)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		row := rows.At()
-		path := objectPath(row)
-		if _, ok := keep[path]; !ok {
-			continue
+// openFilterSources opens the source index objects of node and returns their
+// postings and stats sections of the tenant, and their stream layout.
+//
+// It returns an error if a source index object holds a section of another type
+// than postings, stats or streams, or if two source index objects record
+// different layouts. A source without stats sections has no layout, and the
+// builder then gets the zero layout, which rejects any stat.
+func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFilter) ([]objectSections, streams.Layout, error) {
+	var (
+		sources      []objectSections
+		layout       streams.Layout
+		layoutSource string
+	)
+	for _, path := range node.SourceIndexPaths {
+		obj, err := dataobj.FromBucket(ctx, c.bucket, path, 0)
+		if err != nil {
+			return nil, streams.Layout{}, fmt.Errorf("opening source index %q: %w", path, err)
 		}
-		found[path] = struct{}{}
-		if err := write(row); err != nil {
-			return errors.Join(err, rows.Close())
+
+		group := objectSections{path: path}
+		for _, sec := range obj.Sections() {
+			if sec.Tenant != node.Tenant {
+				continue
+			}
+			switch {
+			case postings.CheckSection(sec):
+				group.postings = append(group.postings, sec)
+			case stats.CheckSection(sec):
+				group.stats = append(group.stats, sec)
+			case streams.CheckSection(sec):
+			default:
+				return nil, streams.Layout{}, fmt.Errorf("filtering source index %q: unknown section %q", path, sec.Type)
+			}
 		}
+
+		objLayout, hasLayout, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
+		if err != nil {
+			return nil, streams.Layout{}, fmt.Errorf("reading stream layout of source index %q: %w", path, err)
+		}
+		if hasLayout {
+			if layoutSource != "" && !objLayout.Equal(layout) {
+				return nil, streams.Layout{}, fmt.Errorf("source index %q has stream layout %v, but source index %q has %v", path, objLayout, layoutSource, layout)
+			}
+			layout, layoutSource = objLayout, path
+		}
+		sources = append(sources, group)
 	}
-	return errors.Join(rows.Err(), rows.Close())
+	return sources, layout, nil
 }

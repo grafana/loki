@@ -243,17 +243,66 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by
-// idxPath, and the shard buckets of the index. It returns no references and the
-// zero ShardBuckets if the index has no stats section for tenant. It returns an
-// error that wraps errCorruptIndex if the sections of the index do not share
-// one stream layout.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
-	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+// openRunObjects opens the index objects of run, in the order of run.
+func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]*dataobj.Object, error) {
+	objects := make([]*dataobj.Object, len(run.entries))
+	for i, entry := range run.entries {
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
+		if err != nil {
+			return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, entry.Path, err)
+		}
+		objects[i] = obj
 	}
-	layout, ok, err := indexLayout(ctx, obj, tenant, idxPath)
+	return objects, nil
+}
+
+// layoutOfRun returns the stream layout that objects, the opened index
+// objects of run, record for tenant. hasLayout is false if no index object of
+// run has a stats section of tenant.
+//
+// Every index object of a run records the layout of the run in a stats
+// section, even if the section holds no rows. layoutOfRun returns an error that
+// wraps errCorruptIndex if an index object of run is corrupt, records no
+// layout while another index object of run does, or records another layout.
+func layoutOfRun(ctx context.Context, tenant string, run indexRun, objects []*dataobj.Object) (layout streams.Layout, hasLayout bool, err error) {
+	var (
+		source        string
+		withoutLayout string
+	)
+	for i, entry := range run.entries {
+		entryLayout, entryHasLayout, err := indexLayout(ctx, objects[i], tenant, entry.Path)
+		if err != nil {
+			return streams.Layout{}, false, err
+		}
+		if !entryHasLayout {
+			withoutLayout = entry.Path
+			continue
+		}
+		if hasLayout && !entryLayout.Equal(layout) {
+			return streams.Layout{}, false, fmt.Errorf("%w: index %s has stream layout %v, but index %s of the same run has %v", errCorruptIndex, entry.Path, entryLayout, source, layout)
+		}
+		layout, hasLayout, source = entryLayout, true, entry.Path
+	}
+	if hasLayout && withoutLayout != "" {
+		return streams.Layout{}, false, fmt.Errorf("%w: index %s records no stream layout, but index %s of the same run does", errCorruptIndex, withoutLayout, source)
+	}
+	return layout, hasLayout, nil
+}
+
+// logSectionRefsFor returns one bounded reference per log section that the
+// index objects of run index, and the shard buckets of run. The stats rows of
+// one log section can sit in several index objects of a run, so it folds the
+// stats rows of every index object into one reference per log section.
+//
+// It returns no references and the zero ShardBuckets if run has no stats
+// section for tenant. It returns an error that wraps errCorruptIndex if the
+// index objects of run do not share one stream layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+	objects, err := openRunObjects(ctx, bucket, tenant, run)
+	if err != nil {
+		return nil, indexpointers.ShardBuckets{}, err
+	}
+	layout, ok, err := layoutOfRun(ctx, tenant, run, objects)
 	if err != nil {
 		return nil, indexpointers.ShardBuckets{}, err
 	}
@@ -262,7 +311,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
 	}
 
 	type sectionID struct {
@@ -280,95 +329,98 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 	const batchSize = 1024
 	scratch := make([]stats.Stat, batchSize)
-	for _, section := range obj.Sections().Filter(stats.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-
-		statsSection, err := stats.Open(ctx, section)
-		if err != nil {
-			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-
-		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
-		if err := reader.Open(ctx); err != nil {
-			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
-		}
-
-		for {
-			record, readErr := reader.Read(ctx, batchSize)
-			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
-			}
-			numRows := int(record.NumRows())
-			if numRows == 0 && errors.Is(readErr, io.EOF) {
-				break
+	for i, obj := range objects {
+		idxPath := run.entries[i].Path
+		for _, section := range obj.Sections().Filter(stats.CheckSection) {
+			if section.Tenant != tenant {
+				continue
 			}
 
-			rows := scratch[:numRows]
-			n, err := stats.FromRecordBatch(record, rows)
+			statsSection, err := stats.Open(ctx, section)
 			if err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
-			// The decoded strings point into the buffers of the record batch.
-			// The plans keep the label values and object paths for the whole
-			// LogMerge phase. Without a copy, they keep every batch in memory.
-			// Interning copies each distinct value once.
-			for _, stat := range rows[:n] {
-				var labels []string
-				if len(labelNames) > 0 {
-					labels = make([]string, len(labelNames))
-					for i, name := range labelNames {
-						labels[i] = intern(interned, stat.Labels[name])
-					}
-				}
-				key := newLogSortPrefix(stat.ShardBucket, labels)
-				keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
-
-				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
-				bounded, ok := bySection[id]
-				if !ok {
-					// A log merge rewrites whole logs objects, so each logs
-					// object is a planning unit.
-					bySection[id] = &v2.Section[logSortPrefix]{
-						PlanningUnit: intern(interned, stat.ObjectPath),
-						Ref: &compactionv2pb.SectionRef{
-							ObjectPath:       intern(interned, stat.ObjectPath),
-							SectionIndex:     stat.SectionIndex,
-							MinKey:           key.labels,
-							MaxKey:           key.labels,
-							MinTimestamp:     stat.MinTimestamp,
-							MaxTimestamp:     stat.MaxTimestamp,
-							UncompressedSize: stat.UncompressedSize,
-						},
-						Min:  key,
-						Max:  key,
-						Keys: []v2.KeySize[logSortPrefix]{keySize},
-					}
-					continue
-				}
-				bounded.Keys = append(bounded.Keys, keySize)
-
-				if compareLogSortPrefix(key, bounded.Min) < 0 {
-					bounded.Min = key
-					bounded.Ref.MinKey = key.labels
-				}
-				if compareLogSortPrefix(key, bounded.Max) > 0 {
-					bounded.Max = key
-					bounded.Ref.MaxKey = key.labels
-				}
-				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
-				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
-				bounded.Ref.UncompressedSize += stat.UncompressedSize
+			reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
+			if err := reader.Open(ctx); err != nil {
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
-			if errors.Is(readErr, io.EOF) {
-				break
+			for {
+				record, readErr := reader.Read(ctx, batchSize)
+				if readErr != nil && !errors.Is(readErr, io.EOF) {
+					return nil, indexpointers.ShardBuckets{}, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				}
+				numRows := int(record.NumRows())
+				if numRows == 0 && errors.Is(readErr, io.EOF) {
+					break
+				}
+
+				rows := scratch[:numRows]
+				n, err := stats.FromRecordBatch(record, rows)
+				if err != nil {
+					return nil, indexpointers.ShardBuckets{}, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				}
+
+				// The decoded strings point into the buffers of the record batch.
+				// The plans keep the label values and object paths for the whole
+				// LogMerge phase. Without a copy, they keep every batch in memory.
+				// Interning copies each distinct value once.
+				for _, stat := range rows[:n] {
+					var labels []string
+					if len(labelNames) > 0 {
+						labels = make([]string, len(labelNames))
+						for i, name := range labelNames {
+							labels[i] = intern(interned, stat.Labels[name])
+						}
+					}
+					key := newLogSortPrefix(stat.ShardBucket, labels)
+					keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
+
+					id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+					bounded, ok := bySection[id]
+					if !ok {
+						// A log merge rewrites whole logs objects, so each logs
+						// object is a planning unit.
+						bySection[id] = &v2.Section[logSortPrefix]{
+							PlanningUnit: intern(interned, stat.ObjectPath),
+							Ref: &compactionv2pb.SectionRef{
+								ObjectPath:       intern(interned, stat.ObjectPath),
+								SectionIndex:     stat.SectionIndex,
+								MinKey:           key.labels,
+								MaxKey:           key.labels,
+								MinTimestamp:     stat.MinTimestamp,
+								MaxTimestamp:     stat.MaxTimestamp,
+								UncompressedSize: stat.UncompressedSize,
+							},
+							Min:  key,
+							Max:  key,
+							Keys: []v2.KeySize[logSortPrefix]{keySize},
+						}
+						continue
+					}
+					bounded.Keys = append(bounded.Keys, keySize)
+
+					if compareLogSortPrefix(key, bounded.Min) < 0 {
+						bounded.Min = key
+						bounded.Ref.MinKey = key.labels
+					}
+					if compareLogSortPrefix(key, bounded.Max) > 0 {
+						bounded.Max = key
+						bounded.Ref.MaxKey = key.labels
+					}
+					bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+					bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+					bounded.Ref.UncompressedSize += stat.UncompressedSize
+				}
+
+				if errors.Is(readErr, io.EOF) {
+					break
+				}
 			}
 		}
-	}
 
+	}
 	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
