@@ -22,7 +22,7 @@ import (
 
 const (
 	hintCacheKeyPrefix  = "logline:"
-	hintCacheGeneration = 1
+	hintCacheGeneration = 2
 	hintCacheDayLayout  = "2006-01-02"
 )
 
