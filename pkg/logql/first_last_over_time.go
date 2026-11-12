@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -17,27 +16,7 @@ func newFirstWithTimestampIterator(
 	selRange, step, start, end, offset int64,
 	limits iteratorLimits,
 ) RangeVectorIterator {
-	// forces at least one step.
-	if step == 0 {
-		step = 1
-	}
-	if offset != 0 {
-		start = start - offset
-		end = end - offset
-	}
-
-	inner := &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      nil,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-		limits:   limits,
-	}
+	inner := newBatchRangeVectorIterator(it, selRange, step, start, end, offset, limits)
 	return &firstWithTimestampBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
 	}
@@ -82,27 +61,7 @@ func newLastWithTimestampIterator(
 	selRange, step, start, end, offset int64,
 	limits iteratorLimits,
 ) RangeVectorIterator {
-	// forces at least one step.
-	if step == 0 {
-		step = 1
-	}
-	if offset != 0 {
-		start = start - offset
-		end = end - offset
-	}
-
-	inner := &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      nil,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-		limits:   limits,
-	}
+	inner := newBatchRangeVectorIterator(it, selRange, step, start, end, offset, limits)
 	return &lastWithTimestampBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
 	}
