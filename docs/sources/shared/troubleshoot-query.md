@@ -248,10 +248,6 @@ The `count_over_time` function doesn't use unwrapped values - it just counts log
 
 These errors occur when queries exceed configured resource limits. They return HTTP status code `400 Bad Request` unless otherwise noted.
 
-{{< admonition type="note" >}}
-Some limit settings inherited from Loki's chunk-store era (for example `cardinality_limit` and `max_chunks_per_query`) are no longer enforced on TSDB-based deployments. This guide only documents limits that are actively enforced in current releases.
-{{< /admonition >}}
-
 ### Error: Maximum series reached
 
 **Error message:**
