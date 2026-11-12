@@ -110,8 +110,10 @@ func (s *sweepScheduler) sweep(ctx context.Context, tenant string) {
 	defer func() { <-s.slots }()
 	level.Info(s.logger).Log("msg", "dispatching deletion sweep", "tenant", tenant, "minute", sweepMinute(tenant))
 
-	// A sweep is safe to stop at any time: a stopped scan stores nothing, and
-	// the next sweep starts over. So shutdown stops a running sweep.
+	// A sweep is safe to stop at any time. A sweep stopped during the scan
+	// stores nothing, and the next sweep starts over. A sweep stopped during
+	// the deletes already stored its list, so a later sweep deletes the rest.
+	// So shutdown stops a running sweep.
 	plan := buildDeletionSweepPlan(tenant, s.deleteCandidates)
 	_, err := s.dispatcher.RunCancellable(ctx, tenant, []*physical.Plan{plan})
 	switch {

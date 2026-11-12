@@ -567,12 +567,14 @@ func (m *IndexFilter) GetSourceIndexPathsInKeyOrder() bool {
 	return false
 }
 
-// DeletionSweep finds the objects of one tenant that no ToC can reach.
+// DeletionSweep finds the objects of one tenant that no ToC can reach, and
+// acts on the deletion candidates.
 type DeletionSweep struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// delete makes the sweep delete its deletion candidates. If it is false,
 	// the sweep only logs them. A planner that does not know the field sends
-	// false, so an older planner gets a dry run.
+	// false, so an older planner gets a dry run. An older worker ignores the
+	// field and does a dry run.
 	Delete bool `protobuf:"varint,2,opt,name=delete,proto3" json:"delete,omitempty"`
 }
 

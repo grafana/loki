@@ -4,7 +4,8 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// DeletionSweep finds the objects of one tenant that no ToC can reach.
+// DeletionSweep finds the objects of one tenant that no ToC can reach, and
+// acts on the deletion candidates.
 type DeletionSweep struct {
 	NodeID ulid.ULID
 

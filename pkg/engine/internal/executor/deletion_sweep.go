@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
-	"github.com/thanos-io/objstore"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
@@ -49,7 +48,13 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 
 	// Pass c.logger without a tenant label, because the sweeper adds the
 	// tenant to its log lines.
-	sweeper, err := c.newSweeper(bucket, node)
+	var sweeper *deletion.Sweeper
+	var err error
+	if node.Delete {
+		sweeper, err = deletion.NewDeletingSweeper(bucket, c.deletionSweepMetrics, c.logger)
+	} else {
+		sweeper, err = deletion.NewSweeper(bucket, c.logger)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -60,13 +65,4 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 	}
 	level.Info(c.logger).Log("msg", "deletion sweep finished", "tenant", node.Tenant, "outcome", outcome, "duration", time.Since(start))
 	return &v2.ResultArtifact{Path: deletion.FileList{Tenant: node.Tenant}.Path()}, nil
-}
-
-// newSweeper returns a Sweeper that deletes the deletion candidates if
-// node.Delete is true, and a dry run Sweeper otherwise.
-func (c *Context) newSweeper(bucket objstore.Bucket, node *physical.DeletionSweep) (*deletion.Sweeper, error) {
-	if node.Delete {
-		return deletion.NewDeletingSweeper(bucket, c.deletionSweepMetrics, c.logger)
-	}
-	return deletion.NewSweeper(bucket, c.logger)
 }

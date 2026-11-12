@@ -77,10 +77,9 @@ type Sweeper struct {
 // candidateHandler acts on the deletion candidates of a sweep. The sweep
 // calls it only after it stores list, the new file list.
 type candidateHandler interface {
-	// handle acts on cands. previousCreatedAt is the creation time of the
-	// stored list that the sweep compared with list. An error fails the
-	// sweep.
-	handle(ctx context.Context, logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) error
+	// handle acts on cands, which the sweep found by comparing list with
+	// the stored list. An error fails the sweep.
+	handle(ctx context.Context, logger log.Logger, list FileList, cands candidates) error
 }
 
 // NewSweeper returns a Sweeper for bucket that does a dry run. It logs the
@@ -143,8 +142,8 @@ func newSweeper(bucket objstore.Bucket, handler candidateHandler, logger log.Log
 //
 // Sweep stores the new list before it acts on the candidates, so it acts on
 // candidates only for a list that it stored. The new list holds every
-// candidate. So if a delete fails, the next sweep finds the candidate again
-// and tries again.
+// candidate. So a sweep at least MinSweepInterval later finds a candidate
+// that a delete missed, and acts on it then.
 //
 // Sweep returns SweepSuperseded, and does not act on candidates, if the
 // stored list is not older than the new list when Sweep writes. It also
@@ -154,7 +153,8 @@ func newSweeper(bucket objstore.Bucket, handler candidateHandler, logger log.Log
 // Two overlapping sweeps can still both store a list and both act on
 // candidates. Both find their candidates from the same stored list.
 //
-// A deleting Sweeper logs a failed delete and returns SweepScanned. It
+// A failed delete does not fail the sweep. A deleting Sweeper counts the
+// failure, logs at most the first five, and returns SweepScanned. It
 // returns the context error if ctx ends during the deletes.
 //
 // Sweep returns an error, and does not scan, if it cannot read the header of
@@ -238,7 +238,7 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 		"missing_index_objects", reachability.MissingIndexObjects,
 	)
 	if cands != nil {
-		if err := s.handler.handle(ctx, logger, previous.CreatedAt, list, *cands); err != nil {
+		if err := s.handler.handle(ctx, logger, list, *cands); err != nil {
 			return "", fmt.Errorf("handling deletion candidates of tenant %q: %w", tenant, err)
 		}
 	}
@@ -292,6 +292,7 @@ func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHea
 	if err != nil {
 		return candidates{}, fmt.Errorf("comparing with stored file list of tenant %q: %w", previous.Tenant, err)
 	}
+	cands.previousCreatedAt = previous.CreatedAt
 	return cands, nil
 }
 
@@ -308,10 +309,10 @@ type dryRun struct {
 // If handle cannot pick the examples or read the attributes of an example,
 // it logs the error instead. The list is already stored, so handle returns
 // no error.
-func (d dryRun) handle(ctx context.Context, logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) error {
+func (d dryRun) handle(ctx context.Context, logger log.Logger, list FileList, cands candidates) error {
 	level.Info(logger).Log(
 		"msg", "deletion sweep dry run: would delete objects",
-		"previous_list_created_at", previousCreatedAt.Format(time.RFC3339),
+		"previous_list_created_at", cands.previousCreatedAt.Format(time.RFC3339),
 		"list_created_at", list.CreatedAt.Format(time.RFC3339),
 		"previous_list_paths", cands.previousPaths,
 		"list_paths", len(list.Paths),

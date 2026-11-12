@@ -95,7 +95,7 @@ type Config struct {
 	NewLogMergeObserver executor.NewLogMergeObserverFunc
 
 	// DeletionSweepMetrics is shared by the deletion sweeps of all threads.
-	// Optional. See [executor.Config].
+	// Optional. A DeletionSweep task that deletes fails if it is nil.
 	DeletionSweepMetrics *deletion.SweepMetrics
 }
 

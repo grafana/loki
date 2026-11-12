@@ -102,7 +102,8 @@ type thread struct {
 	// LogMergeObserver is optional; nil disables observation.
 	LogMergeObserver executor.LogMergeObserver
 
-	// DeletionSweepMetrics is optional. See [executor.Config].
+	// DeletionSweepMetrics is optional. A DeletionSweep task that deletes
+	// fails if it is nil.
 	DeletionSweepMetrics *deletion.SweepMetrics
 
 	Metrics    *metrics

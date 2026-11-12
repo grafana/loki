@@ -194,19 +194,11 @@ func TestBuildLogMergePlan(t *testing.T) {
 }
 
 func TestBuildDeletionSweepPlan(t *testing.T) {
-	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
-		root, err := buildDeletionSweepPlan("t1", false).Root()
-		require.NoError(t, err)
-		require.IsType(t, &physical.DeletionSweep{}, root)
-		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
-	})
-
-	t.Run("returns a root that deletes the candidates only when deleteCandidates is true", func(t *testing.T) {
+	t.Run("returns a plan with one DeletionSweep root for the tenant that deletes only when deleteCandidates is true", func(t *testing.T) {
 		for _, deleteCandidates := range []bool{false, true} {
 			root, err := buildDeletionSweepPlan("t1", deleteCandidates).Root()
 			require.NoError(t, err)
-			require.IsType(t, &physical.DeletionSweep{}, root)
-			require.Equal(t, deleteCandidates, root.(*physical.DeletionSweep).Delete)
+			require.Equal(t, &physical.DeletionSweep{NodeID: root.ID(), Tenant: "t1", Delete: deleteCandidates}, root)
 		}
 	})
 

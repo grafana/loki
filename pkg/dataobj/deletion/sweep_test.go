@@ -51,6 +51,14 @@ func TestSweeper_Sweep(t *testing.T) {
 		return sweeper, metrics, &logs
 	}
 	stale := now.Add(-MinSweepInterval)
+	requireExists := func(t *testing.T, bucket objstore.BucketReader, want bool, paths ...string) {
+		t.Helper()
+		for _, p := range paths {
+			exists, err := bucket.Exists(t.Context(), p)
+			require.NoError(t, err)
+			require.Equal(t, want, exists, p)
+		}
+	}
 	// storeAnyReachableIndex stores a reachable index object, so that the scan
 	// finds a reachable object. Sweep fails when no scanned object is
 	// reachable.
@@ -113,11 +121,7 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep dry run: candidate" kind=log path=objects/tenants/a/01/orphan last_modified=`+lastModified+" size=")
 		require.NotContains(t, logs.String(), "path=objects/tenants/a/00/reachable-now last_modified")
 		require.NotContains(t, logs.String(), "path=objects/tenants/a/02/new-orphan last_modified")
-		for _, path := range []string{"index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan", "objects/tenants/a/02/new-orphan"} {
-			exists, err := bucket.Exists(t.Context(), path)
-			require.NoError(t, err)
-			require.True(t, exists, path)
-		}
+		requireExists(t, bucket, true, "index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan", "objects/tenants/a/02/new-orphan")
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{
 			"index/v0/indexes/tenants/a/00/orphan-index",
 			"objects/tenants/a/01/orphan",
@@ -140,14 +144,6 @@ func TestSweeper_Sweep(t *testing.T) {
 			"objects/tenants/a/01/orphan",
 		}})
 		return []string{"index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan"}
-	}
-	requireExists := func(t *testing.T, bucket objstore.BucketReader, want bool, paths ...string) {
-		t.Helper()
-		for _, p := range paths {
-			exists, err := bucket.Exists(t.Context(), p)
-			require.NoError(t, err)
-			require.Equal(t, want, exists, p)
-		}
 	}
 	requireCounts := func(t *testing.T, metrics *SweepMetrics, deletedLog, deletedIndex, failedLog, failedIndex float64) {
 		t.Helper()

@@ -15,7 +15,8 @@ import (
 )
 
 // maxConcurrentDeletes limits the deletes that one sweep runs at the same
-// time. A worker can run several sweeps at once, so the limit is per sweep.
+// time. The limit is per sweep, so a worker that runs several sweeps runs
+// more deletes in total.
 const maxConcurrentDeletes = 64
 
 // maxLoggedDeleteFailures limits the failed deletes that one sweep logs. A
@@ -51,7 +52,7 @@ func NewSweepMetrics(reg prometheus.Registerer) *SweepMetrics {
 		}, []string{"kind"}),
 		failedDeletes: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_deletion_sweep_failed_deletes_total",
-			Help: "Deletion candidates that deletion sweeps could not delete, by kind of object. The next sweep tries them again.",
+			Help: "Deletion candidates that deletion sweeps could not delete, by kind of object. A sweep at least 23 hours later tries them again.",
 		}, []string{"kind"}),
 	}
 
@@ -75,12 +76,12 @@ type deleter struct {
 // It logs a summary, and the first maxLoggedDeleteFailures failed deletes.
 //
 // A failed delete does not stop the other deletes, and does not fail the
-// sweep. The new list holds every candidate, so the next sweep tries a
-// failed candidate again.
+// sweep. The new list holds every candidate. So a sweep at least
+// MinSweepInterval later tries a failed candidate again.
 //
 // handle returns the context error if ctx ends before all deletes finish.
-func (d deleter) handle(ctx context.Context, logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) error {
-	tally := newDeleteTally(d.metrics)
+func (d deleter) handle(ctx context.Context, logger log.Logger, list FileList, cands candidates) error {
+	tally := &deleteTally{metrics: d.metrics, deleted: map[string]int{}, failed: map[string]int{}}
 	var g errgroup.Group
 	g.SetLimit(maxConcurrentDeletes)
 	startDeletes := func(kind string, paths []string) {
@@ -108,7 +109,7 @@ func (d deleter) handle(ctx context.Context, logger log.Logger, previousCreatedA
 	// The deletes return no error. They record their failures in tally.
 	_ = g.Wait()
 
-	tally.log(logger, previousCreatedAt, list, cands)
+	tally.log(logger, list, cands)
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("deleting candidates: %w", err)
 	}
@@ -135,14 +136,6 @@ type deleteTally struct {
 	failures  []deleteFailure
 }
 
-func newDeleteTally(metrics *SweepMetrics) *deleteTally {
-	return &deleteTally{
-		metrics: metrics,
-		deleted: make(map[string]int),
-		failed:  make(map[string]int),
-	}
-}
-
 // record counts the delete of path, of the given kind, that returned err.
 func (t *deleteTally) record(kind, path string, err error) {
 	if err == nil {
@@ -164,7 +157,7 @@ func (t *deleteTally) record(kind, path string, err error) {
 }
 
 // log logs a summary of the deletes, and one line for each kept failure.
-func (t *deleteTally) log(logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) {
+func (t *deleteTally) log(logger log.Logger, list FileList, cands candidates) {
 	t.resultsMu.Lock()
 	defer t.resultsMu.Unlock()
 	// Log the summary at warn level if a delete failed, so that an operator
@@ -175,7 +168,7 @@ func (t *deleteTally) log(logger log.Logger, previousCreatedAt time.Time, list F
 	}
 	logAt(logger).Log(
 		"msg", "deletion sweep deleted candidates",
-		"previous_list_created_at", previousCreatedAt.Format(time.RFC3339),
+		"previous_list_created_at", cands.previousCreatedAt.Format(time.RFC3339),
 		"list_created_at", list.CreatedAt.Format(time.RFC3339),
 		"candidates", cands.count(),
 		"deleted_log_objects", t.deleted[kindLog],

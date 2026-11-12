@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
@@ -53,6 +54,8 @@ func unreachable(scanned, reachable []string) ([]string, error) {
 type candidates struct {
 	// previousPaths is the number of paths in the previous file list.
 	previousPaths int
+	// previousCreatedAt is the creation time of the previous file list.
+	previousCreatedAt time.Time
 
 	logObjects   []string
 	indexObjects []string
