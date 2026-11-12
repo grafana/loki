@@ -199,12 +199,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		countSinks += len(streams)
 	}
 
-	level.Info(logger).Log(
+	startFields := []any{
 		"msg", "starting task",
 		"node_type", root.Type().String(),
+		"tenant", job.Task.TenantID,
 		"external_sources", countSources,
 		"external_sinks", countSinks,
-	)
+	}
+	startFields = append(startFields, physical.LogFields(root)...)
+	level.Info(logger).Log(startFields...)
 
 	cfg := executor.Config{
 		Bucket:         t.Bucket,
