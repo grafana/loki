@@ -929,7 +929,7 @@ func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T,
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
-	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal)
+	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1, DryRun: true}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal)
 	return c
 }
 

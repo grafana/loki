@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -91,12 +92,13 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 			SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 		},
-		AdvertiseAddr:       advertiseAddr,
-		Endpoint:            params.Config.Endpoint,
-		IndexobjCfg:         params.IndexobjCfg,
-		LogsobjCfg:          params.LogsobjCfg,
-		IndexMergeObserver:  wm,
-		NewLogMergeObserver: wm.logMergeObserver,
+		AdvertiseAddr:        advertiseAddr,
+		Endpoint:             params.Config.Endpoint,
+		IndexobjCfg:          params.IndexobjCfg,
+		LogsobjCfg:           params.LogsobjCfg,
+		IndexMergeObserver:   wm,
+		NewLogMergeObserver:  wm.logMergeObserver,
+		DeletionSweepMetrics: deletion.NewSweepMetrics(registerer),
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

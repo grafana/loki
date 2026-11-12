@@ -82,7 +82,7 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 		mixed := []*physical.Plan{
 			buildLogMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
 			buildIndexFilterPlan("acme", []string{"indexes/source"}, []string{"logs/a"}),
-			buildDeletionSweepPlan("acme"),
+			buildDeletionSweepPlan("acme", false),
 		}
 
 		_, err := d.RunToCompletion(t.Context(), "acme", mixed)

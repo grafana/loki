@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -36,6 +37,12 @@ type Config struct {
 	// LogMergeObserver is used by compaction to populate log-merge histograms.
 	// Optional; nil disables observation.
 	LogMergeObserver LogMergeObserver
+
+	// DeletionSweepMetrics counts the deletes of DeletionSweep tasks. Share
+	// it across tasks, so that the metrics are registered once. A
+	// DeletionSweep task that deletes fails if it is nil, so that no delete
+	// goes uncounted. A dry run does not use it.
+	DeletionSweepMetrics *deletion.SweepMetrics
 
 	Bucket objstore.Bucket
 
@@ -91,6 +98,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
+
+		deletionSweepMetrics: cfg.DeletionSweepMetrics,
 	}
 	if c.logMergeObserver == nil {
 		c.logMergeObserver = nopLogMergeObserver{}
@@ -122,6 +131,8 @@ type Context struct {
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver
+
+	deletionSweepMetrics *deletion.SweepMetrics
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {

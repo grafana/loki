@@ -11,6 +11,10 @@ type DeletionSweep struct {
 	// Tenant selects the objects to sweep. It must not be empty. The sweep
 	// does not touch objects of other tenants.
 	Tenant string
+
+	// Delete makes the sweep delete its deletion candidates. If Delete is
+	// false, the sweep only logs them.
+	Delete bool
 }
 
 // ID implements the Node interface.

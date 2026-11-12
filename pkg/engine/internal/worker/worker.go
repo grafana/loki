@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
@@ -92,6 +93,10 @@ type Config struct {
 	// NewLogMergeObserver returns the LogMerge observer for each thread.
 	// Optional; nil disables observation.
 	NewLogMergeObserver executor.NewLogMergeObserverFunc
+
+	// DeletionSweepMetrics is shared by the deletion sweeps of all threads.
+	// Optional. See [executor.Config].
+	DeletionSweepMetrics *deletion.SweepMetrics
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -200,8 +205,9 @@ func (w *Worker) run(ctx context.Context) error {
 			LogsobjCfg:     w.config.LogsobjCfg,
 			BuilderMetrics: w.config.BuilderMetrics,
 
-			IndexMergeObserver: w.config.IndexMergeObserver,
-			LogMergeObserver:   logMergeObserver,
+			IndexMergeObserver:   w.config.IndexMergeObserver,
+			LogMergeObserver:     logMergeObserver,
+			DeletionSweepMetrics: w.config.DeletionSweepMetrics,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

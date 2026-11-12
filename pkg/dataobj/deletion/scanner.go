@@ -1,6 +1,6 @@
 // Package deletion finds the data objects of a tenant that no ToC can reach,
 // and records them. A later sweep compares the records to find deletion
-// candidates.
+// candidates. The sweep logs the candidates in a dry run, or deletes them.
 package deletion
 
 import (

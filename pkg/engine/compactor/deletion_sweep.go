@@ -31,6 +31,8 @@ type sweepScheduler struct {
 	dataBucket objstore.BucketReader
 	limits     Limits
 	dispatcher *planDispatcher
+	// deleteCandidates makes the sweeps delete their deletion candidates.
+	deleteCandidates bool
 	// slots holds one token for each sweep that runs. Its capacity caps the
 	// sweeps that run at the same time, across all tenants.
 	slots chan struct{}
@@ -54,10 +56,11 @@ func newSweepScheduler(
 		limits:     limits,
 		// The next hourly sweep is the retry, so the dispatcher does not
 		// retry.
-		dispatcher: newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, attempts),
-		slots:      make(chan struct{}, cfg.MaxConcurrentSweeps),
-		clock:      time.Now,
-		sleep:      sleepUntil,
+		dispatcher:       newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, attempts),
+		deleteCandidates: !cfg.DryRun,
+		slots:            make(chan struct{}, cfg.MaxConcurrentSweeps),
+		clock:            time.Now,
+		sleep:            sleepUntil,
 	}
 }
 
@@ -109,7 +112,7 @@ func (s *sweepScheduler) sweep(ctx context.Context, tenant string) {
 
 	// A sweep is safe to stop at any time: a stopped scan stores nothing, and
 	// the next sweep starts over. So shutdown stops a running sweep.
-	plan := buildDeletionSweepPlan(tenant)
+	plan := buildDeletionSweepPlan(tenant, s.deleteCandidates)
 	_, err := s.dispatcher.RunCancellable(ctx, tenant, []*physical.Plan{plan})
 	switch {
 	case err == nil:

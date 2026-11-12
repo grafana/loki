@@ -31,7 +31,6 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"task retry min backoff zero", func(c *Config) { c.TaskRetryMinBackoff = 0 }, errInvalidTaskRetryMinBackoff},
 		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 		{"deletion sweep enabled with zero max concurrent sweeps", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.MaxConcurrentSweeps = 0 }, errInvalidMaxConcurrentSweeps},
-		{"deletion sweep enabled without dry run", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.DryRun = false }, errDeletionSweepDryRunRequired},
 		{"planner version zero", func(c *Config) { c.PlannerVersion = 0 }, errInvalidPlannerVersion},
 		{"planner version above the coupled planner", func(c *Config) { c.PlannerVersion = 3 }, errInvalidPlannerVersion},
 		{"coupled planner with zero rescan interval", func(c *Config) { c.PlannerVersion = plannerVersionCoupled; c.RescanInterval = 0 }, errInvalidRescanInterval},
@@ -117,6 +116,25 @@ func TestConfig_LogMaxKeySize(t *testing.T) {
 
 	t.Run("parses zero to disable the check", func(t *testing.T) {
 		require.Zero(t, parse(t, "--dataobj.compaction.logs.max-key-size=0").LogMaxKeySize)
+	})
+}
+
+func TestConfig_DeletionSweepDryRun(t *testing.T) {
+	parse := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		return cfg
+	}
+
+	t.Run("defaults to a dry run", func(t *testing.T) {
+		require.True(t, parse(t).DeletionSweep.DryRun)
+	})
+
+	t.Run("parses false to delete the deletion candidates", func(t *testing.T) {
+		require.False(t, parse(t, "--dataobj.compaction.deletion-sweep.dry-run=false").DeletionSweep.DryRun)
 	})
 }
 
