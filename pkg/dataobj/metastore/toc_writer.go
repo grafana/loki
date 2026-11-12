@@ -474,7 +474,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		runs = make(map[indexpointers.RunID]struct{ total, removed int })
 	)
 	if buf.Len() > 0 {
-		tocObject, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		tocObject, err := decodeTableOfContents(buf.Bytes())
 		if err != nil {
 			return nil, fmt.Errorf("parsing existing ToC: %w", err)
 		}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -817,11 +816,7 @@ func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket,
 // layout is known.
 func requireToCShardBuckets(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, path string) {
 	t.Helper()
-	r, err := bucket.Get(ctx, metastore.TableOfContentsPath(tenant, window))
-	require.NoError(t, err)
-	raw, err := io.ReadAll(r)
-	require.NoError(t, errors.Join(err, r.Close()))
-	toc, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	toc, err := metastore.OpenTableOfContents(ctx, bucket, metastore.TableOfContentsPath(tenant, window))
 	require.NoError(t, err)
 
 	var (

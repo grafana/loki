@@ -116,7 +116,9 @@ func closeFixture(t *testing.T, closer io.Closer) {
 // Indexes returns the persisted ToC pointers belonging to tenant, in ToC order.
 func (s *Scenario) Indexes(ctx context.Context, t *testing.T, tenant string) []indexpointers.IndexPointer {
 	t.Helper()
-	sections := s.tenantSections(ctx, t, metastore.TableOfContentsPath(tenant, s.Window), tenant)
+	toc, err := metastore.OpenTableOfContents(ctx, s.Bucket, metastore.TableOfContentsPath(tenant, s.Window))
+	require.NoError(t, err)
+	sections := tenantSections(toc, tenant)
 	var entries []indexpointers.IndexPointer
 	for _, section := range sections.Filter(indexpointers.CheckSection) {
 		opened, err := indexpointers.Open(ctx, section)
@@ -140,7 +142,7 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 		SortSchemas:         make(map[string]bool),
 	}
 	for _, index := range s.Indexes(ctx, t, tenant) {
-		sections := s.tenantSections(ctx, t, index.Path, tenant)
+		sections := s.objectTenantSections(ctx, t, index.Path, tenant)
 		for _, section := range sections.Filter(stats.CheckSection) {
 			opened, err := stats.Open(ctx, section)
 			require.NoError(t, err)
@@ -166,7 +168,7 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 		}
 	}
 	for path := range contents.StatsObjectPaths {
-		sections := s.tenantSections(ctx, t, path, tenant)
+		sections := s.objectTenantSections(ctx, t, path, tenant)
 		for _, section := range sections.Filter(streams.CheckSection) {
 			opened, err := streams.Open(ctx, section)
 			require.NoError(t, err)
@@ -188,10 +190,16 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 	return contents
 }
 
-func (s *Scenario) tenantSections(ctx context.Context, t *testing.T, path, tenant string) dataobj.Sections {
+// objectTenantSections returns the sections of tenant in the immutable object at path. Open a ToC with
+// [metastore.OpenTableOfContents] instead.
+func (s *Scenario) objectTenantSections(ctx context.Context, t *testing.T, path, tenant string) dataobj.Sections {
 	t.Helper()
 	obj, err := dataobj.FromBucket(ctx, s.Bucket, path, 0)
 	require.NoError(t, err)
+	return tenantSections(obj, tenant)
+}
+
+func tenantSections(obj *dataobj.Object, tenant string) dataobj.Sections {
 	return slices.DeleteFunc(slices.Clone(obj.Sections()), func(section *dataobj.Section) bool {
 		return section.Tenant != tenant
 	})
