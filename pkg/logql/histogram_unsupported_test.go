@@ -24,7 +24,7 @@ const (
 // Histogram queries parse but are not evaluated yet. They must fail with an
 // explicit error, and not with an error from an internal type switch.
 func TestEngine_HistogramQueryIsNotSupportedYet(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, NewMockQuerier(0, nil), NoLimits, log.NewNopLogger())
+	eng := NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, nil), NoLimits, log.NewNopLogger())
 
 	for _, query := range []string{histogramQuantileQuery, histogramLeftQuery, histogramRightQuery} {
 		t.Run(query, func(t *testing.T) {

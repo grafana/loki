@@ -615,3 +615,47 @@ func TestFormat_HistogramFunc(t *testing.T) {
 		})
 	}
 }
+
+func TestUsesHistograms(t *testing.T) {
+	const rng = `{app="api"} | json | unwrap duration [5m]`
+	for _, tc := range []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"a reader", `histogram_quantile(0.9, sum by (a) (histogram_over_time(` + rng + `)))`, true},
+		{"the count", `histogram_count(histogram_over_time(` + rng + `))`, true},
+		{"custom buckets", `histogram_sum(histogram_over_time(buckets(1, 2), ` + rng + `) by (a))`, true},
+		{"in a binary operation", `sum(rate({app="api"}[5m])) + histogram_avg(histogram_over_time(` + rng + `))`, true},
+		// A range aggregation that is visited after the histogram must not take the answer back. Walk does
+		// not stop when a function returns false: it does not descend into that node, but it still visits
+		// the node next to it, and a range aggregation that is the operand of a binary operation is one.
+		{"before a range aggregation", `histogram_avg(histogram_over_time(` + rng + `)) + rate({app="api"}[5m])`, true},
+		{"before range aggregations", `histogram_avg(histogram_over_time(` + rng + `)) + rate({app="api"}[5m]) + count_over_time({app="b"}[5m])`, true},
+		{"in label_replace", `label_replace(histogram_count(histogram_over_time(` + rng + `)), "x", "y", "z", "w")`, true},
+		{"inside another aggregation", `sum by (a) (histogram_count(histogram_over_time(` + rng + `)))`, true},
+
+		{"a range aggregation", `quantile_over_time(0.9, ` + rng + `)`, false},
+		{"a vector aggregation", `sum by (a) (rate({app="api"}[5m]))`, false},
+		{"a literal", `1`, false},
+		{"labels with the names of the functions", `sum by (buckets, histogram_sum) (count_over_time({buckets="x"} | json | histogram_count="1" [5m]))`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, UsesHistograms(MustParseExpr(tc.in)))
+		})
+	}
+
+	// These are not queries that validation accepts, but the evaluator can be given one by a caller that does
+	// not validate. A histogram at the root, and a function that reads something that is not a histogram.
+	for name, in := range map[string]string{
+		"a histogram at the root":         `sum by (a) (histogram_over_time(` + rng + `))`,
+		"a range aggregation at the root": `histogram_over_time(` + rng + `)`,
+		"a reader of a rate":              `histogram_count(rate({app="api"}[5m]))`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := ParseExprWithoutValidation(in)
+			require.NoError(t, err)
+			require.True(t, UsesHistograms(expr))
+		})
+	}
+}
