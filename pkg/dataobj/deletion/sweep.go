@@ -41,8 +41,8 @@ const (
 	SweepSuperseded SweepOutcome = "superseded"
 )
 
-// errStoredListChanged means that the stored file list changed after the
-// sweep read its creation time.
+// errStoredListChanged means that the stored file list changed or was
+// removed after the sweep read its header.
 var errStoredListChanged = errors.New("stored file list changed during the sweep")
 
 // sweepMaxOpenIndexes limits the index objects that one sweep opens at the
@@ -120,20 +120,33 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 //
 // Sweep returns SweepSuperseded, and logs no candidates, if the stored list
 // is not older than the new list when Sweep writes. It also returns
-// SweepSuperseded if the stored list held unreachable objects and changed
-// during the sweep.
+// SweepSuperseded if the stored list held unreachable objects, and changed
+// or was removed during the sweep.
 //
 // Two overlapping sweeps can still both store a list and both log
 // candidates. Both find their candidates from the same stored list.
 //
-// Sweep returns an error, and does not scan, if it cannot read the stored
-// list. That includes a list that wraps ErrMalformedFileList. Sweep does not
-// replace such a list, so an operator must repair or delete it.
+// Sweep returns an error, and does not scan, if it cannot read the header of
+// the stored list. If the header is malformed, the error wraps
+// ErrMalformedFileList.
+//
+// Sweep reads the paths of the stored list only after the scan. So it finds
+// a malformed path only then, and that error also wraps ErrMalformedFileList.
+// In both cases Sweep stores no list. Sweep never replaces a malformed list,
+// so an operator must repair or delete it.
+//
+// Sweep returns an error, and stores no list, if the scan found objects but
+// no ToC reaches any of them. A missing ToC, a wrong bucket root, or ToCs
+// that list only uncompacted or newly written objects give this result.
+// Storing every object as unreachable would then make every object a
+// deletion candidate. No list is stored, so the next hourly sweep scans
+// again.
 func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (SweepOutcome, error) {
 	logger := log.With(s.logger, "tenant", tenant)
 	level.Info(logger).Log("msg", "deletion sweep running")
 	previous, err := s.readStoredHeader(ctx, tenant)
 	if err != nil {
+		logMalformedFileList(logger, tenant, err)
 		return "", err
 	}
 	if previous != nil && now.Sub(previous.CreatedAt) < MinSweepInterval {
@@ -149,7 +162,10 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	if err != nil {
 		return "", fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
 	}
-	list := FileList{Tenant: tenant, CreatedAt: now, Paths: unreachable(scanned.Paths, reachable)}
+	list := FileList{Tenant: tenant, CreatedAt: now, Paths: unreachable(scanned, reachable)}
+	if len(scanned) > 0 && len(list.Paths) == len(scanned) {
+		return "", fmt.Errorf("no ToC of tenant %q reaches any of the %d scanned objects, and none of the %d reachable objects is among them", tenant, len(scanned), len(reachable))
+	}
 
 	// cands is nil if the sweep did not compare with a stored list. A stored
 	// list with no shared objects gives empty candidates, which a dry run
@@ -167,6 +183,7 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 			level.Info(logger).Log("msg", "deletion sweep superseded: stored file list changed during the sweep")
 			return SweepSuperseded, nil
 		case err != nil:
+			logMalformedFileList(logger, tenant, err)
 			return "", err
 		}
 		cands = &found
@@ -182,14 +199,24 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 
 	level.Info(logger).Log(
 		"msg", "deletion sweep stored unreachable objects",
-		"scanned", len(scanned.Paths),
-		"reachable", len(scanned.Paths)-len(list.Paths),
+		"scanned", len(scanned),
+		"reachable", len(scanned)-len(list.Paths),
 		"unreachable", len(list.Paths),
 	)
 	if cands != nil {
 		s.logDryRun(ctx, logger, previous.CreatedAt, list, *cands)
 	}
 	return SweepScanned, nil
+}
+
+// logMalformedFileList logs err at error level if it wraps
+// ErrMalformedFileList. A malformed list fails every later sweep of tenant
+// until an operator repairs or deletes it. So it needs a different signal
+// than a temporary read failure.
+func logMalformedFileList(logger log.Logger, tenant string, err error) {
+	if errors.Is(err, ErrMalformedFileList) {
+		level.Error(logger).Log("msg", "deletion sweep cannot continue: stored file list is malformed, repair or delete it", "path", fileListPath(tenant), "err", err)
+	}
 }
 
 // readStoredHeader returns the header of the stored file list of tenant, or
@@ -211,8 +238,8 @@ func (s *Sweeper) readStoredHeader(ctx context.Context, tenant string) (_ *fileL
 // tenant of previous. It returns errStoredListChanged if the stored list no
 // longer has the header previous.
 //
-// It opens the stored list again instead of keeping it open during the scan.
-// A scan can take many minutes, and a long read can time out.
+// It opens the stored list again instead of keeping it open during the scan
+// and the ToC walk. They can take many minutes, and a long read can time out.
 func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHeader, paths []string) (_ candidates, err error) {
 	r, err := OpenFileList(ctx, s.bucket, previous.Tenant)
 	if err != nil {

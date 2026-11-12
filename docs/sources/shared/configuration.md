@@ -1259,8 +1259,8 @@ dataobj:
       # Experimental: Check each tenant once an hour. Scan the tenant
       # directories of a tenant at most once every 23 hours for objects that no
       # ToC can reach, and store them in the deletion file list of the tenant.
-      # Objects outside the tenant directories are not swept. Only tenants with
-      # the dataobj_deletion_sweep_enabled limit
+      # The sweep ignores objects outside the tenant directories. Only tenants
+      # with the dataobj_deletion_sweep_enabled limit
       # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
       # Requires dataobj compaction to be enabled.
       # CLI flag: -dataobj.compaction.deletion-sweep.enabled

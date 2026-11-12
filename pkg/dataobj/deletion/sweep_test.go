@@ -40,6 +40,13 @@ func TestSweeper_Sweep(t *testing.T) {
 		return sweeper, &logs
 	}
 	stale := now.Add(-MinSweepInterval)
+	// storeAnyReachableIndex stores a reachable index object, so that the scan
+	// finds a reachable object. Sweep fails when no scanned object is
+	// reachable.
+	storeAnyReachableIndex := func(t *testing.T, bucket fileBucket) {
+		t.Helper()
+		storeReachableIndex(t, bucket, "a", "indexes/tenants/a/ff/index", []string{"objects/tenants/a/ff/not-stored"}, old)
+	}
 
 	t.Run("stores only the scanned objects that the ToCs of the tenant cannot reach", func(t *testing.T) {
 		bucket := newFileBucket(t)
@@ -123,6 +130,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("logs five examples of each kind and counts every candidate when there are more", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		storeAnyReachableIndex(t, bucket)
 		var paths []string
 		for i := range 8 {
 			p := fmt.Sprintf("objects/tenants/a/aa/log-%d", i)
@@ -145,6 +153,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("logs every candidate whose attributes cannot be read with the error and stores the list", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		files.put(t, "objects/tenants/a/01/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan", "objects/tenants/a/01/orphan"}})
@@ -161,6 +170,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns the write error and logs no deletion candidates when the list cannot be stored", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		bucket := &malformedOnReplaceBucket{fileBucket: files}
@@ -176,6 +186,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("logs no deletion candidates and says why when no list is stored", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
@@ -188,6 +199,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("logs an empty dry run when the stored list shares no object with the new list", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/09/gone"}})
 		sweeper, logs := newLoggedSweeper(t, bucket)
@@ -200,6 +212,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns SweepSuperseded without a write when a version 1 list with the same creation time replaces the stored list during the scan", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		legacy := gzipText(t, `{"version":1,"tenant":"a","created_at":"`+stale.Format(time.RFC3339)+`"}`+"\n"+`{"path":"objects/tenants/a/00/orphan"}`+"\n")
@@ -215,6 +228,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns ErrMalformedFileList without a write when the stored list is malformed at the second read", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { upload(t, files, fileListPath("a"), []byte("not gzip")) }}
@@ -223,6 +237,31 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.ErrorIs(t, err, ErrMalformedFileList)
 		require.Empty(t, outcome)
 		require.Equal(t, "not gzip", readRaw(t, files, fileListPath("a")))
+	})
+
+	t.Run("returns an error and stores no list when the tenant has objects but no ToC reaches any object", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
+		bucket.put(t, "index/v0/indexes/tenants/a/00/orphan-index", notADataObject, old)
+		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
+		sweeper, logs := newLoggedSweeper(t, bucket)
+
+		_, err := sweeper.Sweep(t.Context(), "a", now)
+		require.ErrorContains(t, err, `no ToC of tenant "a" reaches any of the 2 scanned objects, and none of the 0 reachable objects is among them`)
+		require.NotContains(t, logs.String(), "dry run")
+		require.Equal(t, stale, readFileList(t, bucket, "a").CreatedAt)
+	})
+
+	t.Run("returns an error and stores no list when the ToCs reach only objects outside the tenant directories", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
+		storeReachableIndex(t, bucket, "a", "indexes/00/uncompacted-index", []string{"objects/00/uncompacted"}, old)
+
+		_, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		require.ErrorContains(t, err, `no ToC of tenant "a" reaches any of the 1 scanned objects, and none of the 2 reachable objects is among them`)
+		exists, err := bucket.Exists(t.Context(), fileListPath("a"))
+		require.NoError(t, err)
+		require.False(t, exists)
 	})
 
 	t.Run("returns an error and stores no list when the ToCs cannot be read", func(t *testing.T) {
@@ -239,6 +278,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns SweepSuperseded and logs no deletion candidates when a concurrent sweep stores its list first", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		newer := FileList{Tenant: "a", CreatedAt: now.Add(time.Minute), Paths: []string{"objects/tenants/a/00/newer"}}
@@ -254,6 +294,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns SweepSuperseded without a write when the stored list changes during the scan", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		replacement := FileList{Tenant: "a", CreatedAt: now.Add(-time.Minute), Paths: []string{"objects/tenants/a/00/replacement"}}
@@ -269,6 +310,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("returns SweepSuperseded without a write when the stored list is removed during the scan", func(t *testing.T) {
 		files := newFileBucket(t)
+		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { require.NoError(t, files.Delete(t.Context(), fileListPath("a"))) }}
@@ -283,25 +325,19 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.False(t, exists)
 	})
 
-	t.Run("returns an error without a write when the stored paths are malformed", func(t *testing.T) {
+	t.Run("returns an error, logs an error, and stores no list when the stored paths are malformed", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storedData := gzipText(t, `{"version":2,"tenant":"a","created_at":"`+stale.Format(time.RFC3339)+`"}`+"\n"+`not json`+"\n")
 		upload(t, bucket, fileListPath("a"), storedData)
 
-		_, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		sweeper, logs := newLoggedSweeper(t, bucket)
+
+		_, err := sweeper.Sweep(t.Context(), "a", now)
 		require.ErrorIs(t, err, ErrMalformedFileList)
+		require.Contains(t, logs.String(), `level=error tenant=a msg="deletion sweep cannot continue: stored file list is malformed, repair or delete it"`)
 		require.Equal(t, string(storedData), readRaw(t, bucket, fileListPath("a")))
-	})
-
-	t.Run("scans and stores the list when no list is stored", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		bucket.put(t, "objects/tenants/a/00/single-a", notADataObject, old)
-
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/00/single-a"}}, readFileList(t, bucket, "a"))
 	})
 
 	t.Run("skips the scan and keeps the stored list when it is newer than MinSweepInterval", func(t *testing.T) {
@@ -320,6 +356,7 @@ func TestSweeper_Sweep(t *testing.T) {
 
 	t.Run("scans and replaces a stored list that is MinSweepInterval old", func(t *testing.T) {
 		bucket := newFileBucket(t)
+		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/single-a", notADataObject, old)
 		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: now.Add(-MinSweepInterval)})
 
@@ -329,29 +366,18 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/00/single-a"}}, readFileList(t, bucket, "a"))
 	})
 
-	t.Run("returns SweepSuperseded and keeps a newer list that a concurrent sweep stored", func(t *testing.T) {
-		files := newFileBucket(t)
-		files.put(t, "objects/tenants/a/00/single-a", notADataObject, old)
-		newer := FileList{Tenant: "a", CreatedAt: now.Add(time.Minute), Paths: []string{"objects/tenants/a/00/newer"}}
-		bucket := &conflictBucket{Bucket: files, conflicts: 1, concurrentWrite: func() { storeFileList(t, files, newer) }}
-
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		require.Equal(t, newer, readFileList(t, files, "a"))
-	})
-
-	t.Run("returns ErrMalformedFileList without a scan and keeps a malformed stored list", func(t *testing.T) {
+	t.Run("returns ErrMalformedFileList without a scan, logs an error, and keeps a malformed stored list", func(t *testing.T) {
 		files := newFileBucket(t)
 		upload(t, files, fileListPath("a"), []byte("not gzip"))
 		bucket := &listRecordingBucket{fileBucket: files}
+		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		_, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		_, err := sweeper.Sweep(t.Context(), "a", now)
 		require.ErrorIs(t, err, ErrMalformedFileList)
 		require.Empty(t, bucket.dirs)
+		require.Contains(t, logs.String(), `level=error tenant=a msg="deletion sweep cannot continue: stored file list is malformed, repair or delete it" path=deletion/a/files.jsonl.gz`)
 		require.Equal(t, "not gzip", readRaw(t, files, fileListPath("a")))
 	})
-
 }
 
 func TestListCompactedTenants(t *testing.T) {

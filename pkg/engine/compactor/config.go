@@ -297,7 +297,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 	f.BoolVar(&cfg.DeletionSweep.Enabled, prefix+"deletion-sweep.enabled", false,
-		"Experimental: Check each tenant once an hour. Scan the tenant directories of a tenant at most once every 23 hours for objects that no ToC can reach, and store them in the deletion file list of the tenant. Objects outside the tenant directories are not swept. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
+		"Experimental: Check each tenant once an hour. Scan the tenant directories of a tenant at most once every 23 hours for objects that no ToC can reach, and store them in the deletion file list of the tenant. The sweep ignores objects outside the tenant directories. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
 		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep lists the tenant directories and reads the ToCs and index objects of the tenant.")
 	f.BoolVar(&cfg.DeletionSweep.DryRun, prefix+"deletion-sweep.dry-run", true,

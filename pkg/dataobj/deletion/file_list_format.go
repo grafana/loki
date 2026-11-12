@@ -46,10 +46,10 @@ const (
 // listing. For example:
 //
 //	{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}
-//	{"path":"index/v0/indexes/00/x"}
+//	{"path":"index/v0/indexes/tenants/a/00/x"}
 //	{"path":"objects/tenants/a/aa/y"}
 //
-// Decoding rejects unknown fields and other versions. The writer reads only
+// Decoding rejects unknown fields and unknown versions. The writer reads only
 // the header, so a change to the format must change the version. Then older
 // writers do not replace a list that they cannot read.
 type fileListHeader struct {

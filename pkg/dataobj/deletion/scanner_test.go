@@ -49,13 +49,13 @@ func TestFileListScanner_List(t *testing.T) {
 			"index/v0/indexes/tenants/a/cc/index",
 			"objects/tenants/a/aa/log",
 			"objects/tenants/a/bb/log",
-		}, list.Paths)
+		}, list)
 	})
 
-	t.Run("returns the tenant and the scan time and no paths when the tenant has no objects", func(t *testing.T) {
+	t.Run("returns no paths when the tenant has no objects", func(t *testing.T) {
 		list, err := newTestFileListScanner(t, newFileBucket(t)).List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, FileList{Tenant: "a", CreatedAt: now}, list)
+		require.Empty(t, list)
 	})
 
 	t.Run("excludes objects modified less than MinObjectAge before now", func(t *testing.T) {
@@ -68,7 +68,7 @@ func TestFileListScanner_List(t *testing.T) {
 
 		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, []string{"objects/tenants/a/aa/at-min-age"}, list.Paths)
+		require.Equal(t, []string{"objects/tenants/a/aa/at-min-age"}, list)
 	})
 
 	t.Run("logs the counts of the scan", func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestFileListScanner_List(t *testing.T) {
 
 		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, []string{"objects/tenants/a/aa/log"}, list.Paths)
+		require.Equal(t, []string{"objects/tenants/a/aa/log"}, list)
 	})
 
 	t.Run("skips directory placeholder objects", func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestFileListScanner_List(t *testing.T) {
 
 		list, err := newTestFileListScanner(t, bucket).List(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, []string{"objects/tenants/a/aa/log"}, list.Paths)
+		require.Equal(t, []string{"objects/tenants/a/aa/log"}, list)
 	})
 
 	t.Run("returns an error naming the directory when a listing fails", func(t *testing.T) {

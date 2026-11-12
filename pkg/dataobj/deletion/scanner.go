@@ -47,11 +47,14 @@ func NewFileListScanner(bucket objstore.BucketReader, logger log.Logger) (*FileL
 	return &FileListScanner{bucket: bucket, logger: logger}, nil
 }
 
-// List returns the file list of tenant at now. The list holds the sorted
-// paths of the log objects and index objects in the tenant directories:
-// objects/tenants/<tenant>/ and index/v0/indexes/tenants/<tenant>/. It
-// includes only objects last modified at least [MinObjectAge] before now. The
-// paths are relative to the bucket of the FileListScanner.
+// List returns the sorted paths of the log objects and index objects of
+// tenant in the tenant directories: objects/tenants/<tenant>/ and
+// index/v0/indexes/tenants/<tenant>/. It includes only objects last modified
+// at least [MinObjectAge] before now. The paths are relative to the bucket of
+// the FileListScanner.
+//
+// List returns paths, not a [FileList], because a stored file list holds
+// only unreachable objects. The caller removes the reachable objects.
 //
 // List lists the tenant directories only, and opens no object. The path of an
 // object in a tenant directory names its tenant. Objects outside the tenant
@@ -60,9 +63,9 @@ func NewFileListScanner(bucket objstore.BucketReader, logger log.Logger) (*FileL
 //
 // List returns an error if a listing fails, or if the bucket does not report
 // the modification time of an object.
-func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time) (FileList, error) {
+func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time) ([]string, error) {
 	if err := validateTenant(tenant); err != nil {
-		return FileList{}, err
+		return nil, err
 	}
 
 	start := time.Now()
@@ -70,7 +73,7 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, "indexes")} {
 		dir := tenantDir(root, tenant)
 		if err := sc.listDir(ctx, dir); err != nil {
-			return FileList{}, fmt.Errorf("listing objects in %s: %w", dir, err)
+			return nil, fmt.Errorf("listing objects in %s: %w", dir, err)
 		}
 	}
 
@@ -87,13 +90,7 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 	)
 
 	slices.Sort(sc.paths)
-	list := FileList{Tenant: tenant, CreatedAt: now, Paths: sc.paths}
-	// Write rejects an invalid list, for example a key that is not valid
-	// UTF-8. Checking here reports the error at the scan that caused it.
-	if err := list.validate(); err != nil {
-		return FileList{}, fmt.Errorf("scan produced an invalid file list: %w", err)
-	}
-	return list, nil
+	return sc.paths, nil
 }
 
 // tenantDir returns the directory below root that holds the objects of
