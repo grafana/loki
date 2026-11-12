@@ -38,7 +38,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coder/quartz v0.3.1
 	github.com/containerd/fifo v1.1.0
-	github.com/cristalhq/hedgedhttp v0.9.1
+	github.com/cristalhq/hedgedhttp v0.9.2
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/dennwc/varint v1.0.0
