@@ -1045,6 +1045,221 @@ The AWS STS (Security Token Service) endpoint URL is malformed or invalid.
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
+### Error: S3 endpoint not configured
+
+**Error message:**
+
+```text
+no s3 endpoint in config file
+```
+
+**Cause:**
+
+No S3 endpoint was configured. The underlying object storage client requires an explicit endpoint, even for AWS S3 (for example `s3.amazonaws.com`) or an S3-compatible service.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Set the S3 endpoint** in your configuration:
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        endpoint: s3.amazonaws.com
+        bucket_name: my-bucket
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore S3 client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: S3 credential configuration conflicts
+
+**Error message:**
+
+```text
+aws_sdk_auth and access_key are mutually exclusive configurations
+```
+
+Or:
+
+```text
+no s3 access_key specified while secret_key is present in config file; either both should be present in config or envvars/IAM should be used.
+no s3 secret_key specified while access_key is present in config file; either both should be present in config or envvars/IAM should be used.
+```
+
+**Cause:**
+
+The S3 credential configuration is inconsistent. Either `native_aws_auth_enabled` is set at the same time as `access_key_id`, or only one of `access_key_id`/`secret_access_key` is set instead of both (or neither).
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Provide both credentials together**, or neither (and rely on environment variables or an IAM role):
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        access_key_id: my-access-key
+        secret_access_key: my-secret-key
+  ```
+
+- **Don't combine `native_aws_auth_enabled` with `access_key_id`**. Choose one authentication method:
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        native_aws_auth_enabled: true   # Uses the AWS SDK default credential chain
+        # access_key_id: ""             # Leave unset when using native auth
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore S3 client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: KMS key ID required for SSE-KMS
+
+**Error message:**
+
+```text
+kms_key_id must be set if sse_config.type is set to 'SSE-KMS'
+```
+
+**Cause:**
+
+`sse.type` is set to `SSE-KMS` but `sse.kms_key_id` was left empty. Loki's own configuration validation only checks that the SSE type is supported and that `kms_encryption_context` is valid JSON; it doesn't check that a KMS key ID was actually provided, so this surfaces later from the underlying Thanos objstore S3 client.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Set a KMS key ID** when using SSE-KMS:
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        sse:
+          type: SSE-KMS
+          kms_key_id: alias/my-key
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore S3 client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Unsupported S3 list objects version
+
+**Error message:**
+
+```text
+Initialize s3 client list objects version: Unsupported version "<version>" was provided. Supported values are v1, v2
+```
+
+**Cause:**
+
+`s3.list-objects-version` (`list_objects_version`) was set to a value other than `v1` or `v2`. Loki passes this value through to the underlying Thanos objstore S3 client without validating it itself.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Use a supported value**, or leave it unset to use the client default:
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        list_objects_version: v2
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore S3 client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Unsupported S3 bucket lookup type
+
+**Error message:**
+
+```text
+unsupported bucket lookup type: <value>
+```
+
+**Cause:**
+
+`s3.bucket-lookup-type` (`bucket_lookup_type`) was set to a value other than one of the supported bucket lookup styles. This can happen whether the value is set with a command-line flag or in the YAML configuration, since both paths validate against the same set of values.
+
+**Resolution:**
+
+- **Use a supported value**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      s3:
+        bucket_lookup_type: auto   # Or: virtual-hosted, path
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: S3 client initialization failed
+
+**Error message:**
+
+```text
+initialize s3 client: <details>
+```
+
+**Cause:**
+
+The underlying S3 client failed to initialize. This is typically caused by an invalid endpoint, region, or transport/TLS configuration.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore S3 client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Verify the S3 endpoint and region** are correct and reachable from the Loki instance.
+- **Check the TLS/HTTP configuration** under `storage_config.object_store.s3.http_config`, such as custom CA certificates.
+
+**Properties:**
+
+- Enforced by: Component startup (Thanos objstore S3 client)
+- Retryable: No (startup failure)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
 ### Error: Azure connection string malformed
 
 **Error message:**
@@ -1081,6 +1296,289 @@ This error message originates in the vendored Azure SDK for Go, not in Loki's ow
 **Properties:**
 
 - Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Azure storage authentication conflict
+
+**Error message:**
+
+```text
+storage_account_key and storage_connection_string cannot both be set
+```
+
+**Cause:**
+
+Both `account_key` and `connection_string` were configured for the Azure backend. Only one authentication method can be used at a time.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore Azure client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Use only one authentication method**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      azure:
+        account_name: myaccount
+        account_key: mykey
+        # connection_string: ""   # Leave unset when using account_key
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore Azure client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Azure required configuration missing
+
+**Error message:**
+
+```text
+storage_account_name is required but not configured
+```
+
+Or:
+
+```text
+no container specified
+```
+
+**Cause:**
+
+The Azure backend is missing a required configuration value: the storage account name (`account_name`) or the container name (`container_name`).
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore Azure client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Set both values**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      azure:
+        account_name: myaccount
+        container_name: my-loki-container
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore Azure client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: GCS bucket name not configured
+
+**Error message:**
+
+```text
+missing Google Cloud Storage bucket name for stored blocks
+```
+
+**Cause:**
+
+No GCS bucket name was configured for the backend.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore GCS client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Set the GCS bucket name**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      gcs:
+        bucket_name: my-loki-bucket
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore GCS client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: GCS service account credentials invalid
+
+**Error message:**
+
+```text
+failed to create credentials from JSON: <details>
+```
+
+**Cause:**
+
+The `service_account` value configured for the GCS backend isn't valid JSON, or doesn't contain valid Google Cloud credentials.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore GCS client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Provide valid service account JSON**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      gcs:
+        bucket_name: my-loki-bucket
+        service_account: |
+          {
+            "type": "service_account",
+            "project_id": "...",
+            "private_key_id": "...",
+            "private_key": "...",
+            "client_email": "..."
+          }
+  ```
+
+- **Leave `service_account` unset** to use Application Default Credentials instead (for example, a mounted Workload Identity or GCE metadata credential).
+
+**Properties:**
+
+- Enforced by: Configuration validation (Thanos objstore GCS client)
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Swift authentication failed
+
+**Error message:**
+
+```text
+authentication: <details>
+```
+
+**Cause:**
+
+Loki couldn't authenticate against the configured OpenStack Swift/Keystone endpoint. This is usually caused by invalid credentials, an incorrect `auth_url`, or an unreachable Keystone service.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore Swift client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Verify Swift credentials and endpoint**:
+
+  ```yaml
+  storage_config:
+    object_store:
+      swift:
+        auth_url: https://keystone.example.com/v3
+        username: myuser
+        password: mypassword
+        project_name: myproject
+  ```
+
+- **Check that the Keystone/Swift endpoint is reachable** from the Loki instance.
+
+**Properties:**
+
+- Enforced by: Component startup (Thanos objstore Swift client)
+- Retryable: No (startup failure)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Swift container not found
+
+**Error message:**
+
+```text
+unable to find the expected container <name>
+```
+
+**Cause:**
+
+The Swift container configured in `container_name` doesn't exist. Loki doesn't create the container automatically.
+
+{{< admonition type="note" >}}
+This error message originates in the vendored Thanos objstore Swift client library, not in Loki's own code. The exact wording could change if Loki upgrades its objstore dependency.
+{{< /admonition >}}
+
+**Resolution:**
+
+- **Create the container** in Swift before starting Loki, or **correct the container name** in the configuration:
+
+  ```yaml
+  storage_config:
+    object_store:
+      swift:
+        container_name: my-loki-container
+  ```
+
+**Properties:**
+
+- Enforced by: Component startup (Thanos objstore Swift client)
+- Retryable: No (startup failure)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Could not create object storage bucket client
+
+**Error message:**
+
+```text
+create bucket: <details>
+```
+
+Or, when request hedging is enabled (`hedging.at` is non-zero):
+
+```text
+create hedged bucket: <details>
+create hedged transport: <details>
+```
+
+**Cause:**
+
+Loki wraps any error returned while constructing the underlying object storage client (S3, GCS, Azure, Swift, filesystem, and so on) for a given component. The wrapped `<details>` is one of the backend-specific errors documented elsewhere in this section (for example a missing S3 endpoint, invalid Azure configuration, or a missing GCS bucket name). `create hedged bucket`/`create hedged transport` indicate the failure happened while building the secondary client used for request hedging rather than the primary client.
+
+**Resolution:**
+
+- **Read the wrapped error message** to identify the underlying backend-specific cause, and refer to the matching error entry in this section.
+- **If the error only occurs for the hedged client**, check your hedging configuration for the affected component in addition to the primary backend configuration, since the hedged client is built from the same backend configuration.
+
+**Properties:**
+
+- Enforced by: Component startup
+- Retryable: No (startup failure, though the underlying cause may itself be transient)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Cannot disable retries for backend
+
+**Error message:**
+
+```text
+cannot disable retries for backend: <storeType>
+```
+
+**Cause:**
+
+An internal caller requested that retries be disabled for a storage backend (for example, because another layer already provides retries) for a backend type that doesn't support disabling retries this way. This should only occur as a result of a Loki configuration/code mismatch rather than ordinary user configuration.
+
+**Resolution:**
+
+- **Verify the `object_store` type** configured in your schema or named store matches one of the supported backend types (`s3`, `gcs`, `azure`, `swift`, `filesystem`, `alibabacloud`, `bos`).
+- If you see this error, **open a Loki issue** on GitHub, since it indicates a code path that isn't handling a backend type correctly rather than a typical misconfiguration.
+
+**Properties:**
+
+- Enforced by: Internal configuration wiring
 - Retryable: No
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
@@ -1177,6 +1675,96 @@ A named store's name collides with a built-in storage type name (such as `s3` or
 - Enforced by: Configuration validation (named store registration)
 - Retryable: No
 - HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+## Object storage runtime errors
+
+Unlike the configuration errors above, these errors can occur while Loki is already running, during normal read and write operations against object storage.
+
+### Error: Per-tenant S3 SSE configuration failed
+
+**Error message:**
+
+```text
+unable to customise S3 SSE config for tenant <tenant>: <details>
+```
+
+**Cause:**
+
+A per-tenant S3 server-side encryption (SSE) override (`s3_sse_type`, `s3_sse_kms_key_id`, or `s3_sse_kms_encryption_context` in the tenant's limits/overrides) couldn't be applied, usually because `s3_sse_kms_encryption_context` isn't valid JSON for that tenant.
+
+**Resolution:**
+
+- **Check the per-tenant overrides** for the affected tenant:
+
+  ```yaml
+  overrides:
+    <tenant>:
+      s3_sse_type: SSE-KMS
+      s3_sse_kms_key_id: alias/my-key
+      s3_sse_kms_encryption_context: '{"key": "value"}'   # Must be valid JSON
+  ```
+
+**Properties:**
+
+- Enforced by: Per-tenant SSE override validation
+- Retryable: No
+- HTTP status: 500 Internal Server Error (request fails for that tenant)
+- Configurable per tenant: Yes
+
+### Error: Object listing attribute retrieval failed
+
+**Error message:**
+
+```text
+failed to get lastModified for <objectKey>
+```
+
+Or:
+
+```text
+failed to get attributes for <objectKey>: <details>
+```
+
+**Cause:**
+
+While listing objects in the bucket, Loki couldn't determine when an object was last modified. The first message means the storage provider reported that it supports returning last-modified timestamps during listing but didn't return one for this object. The second message means a follow-up request to fetch the object's attributes directly failed (used for providers that don't support returning last-modified timestamps during listing).
+
+**Resolution:**
+
+- **Check object storage connectivity and health**, since the second variant usually indicates a transient request failure; see "Retryable (transient) object storage errors" below.
+- **If the error persists for a specific object**, verify the object still exists and hasn't been corrupted or partially deleted out-of-band.
+
+**Properties:**
+
+- Enforced by: Object listing (`ObjectClientAdapter.List`)
+- Retryable: Depends on the underlying cause
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Retryable (transient) object storage errors
+
+**Error condition:**
+
+Loki classifies certain S3 and GCS errors as transient/retryable so that calling code (such as the compactor or index/metastore readers) knows it can safely retry the operation. There's no single error message; instead, Loki checks the underlying error against known transient conditions:
+
+- **S3**: HTTP `429 Too Many Requests`, any `5xx` response, connection resets/`EOF`, request timeouts, and error codes `RequestTimeout`, `TooManyRequests`, `TooManyRequestsException`, `InternalError`, `ServiceUnavailable`, and `SlowDown`.
+- **GCS**: HTTP `408 Request Timeout`, `429 Too Many Requests`, any `5xx` response, connection resets/`EOF`, and request timeouts.
+
+**Cause:**
+
+The object storage backend is throttling requests, is temporarily overloaded, or there's a transient network issue between Loki and the storage backend.
+
+**Resolution:**
+
+- **No action is usually required**; Loki's own retry logic (`max_retries`) and calling code retry these requests automatically.
+- **If these errors are frequent or persistent**, check for S3/GCS request rate limiting or quota issues, and consider increasing `max_retries` or reducing request concurrency against the bucket.
+
+**Properties:**
+
+- Enforced by: Object storage client (`s3.IsRetryableErr`, `gcs.IsRetryableErr`)
+- Retryable: Yes
+- HTTP status: Varies (429/5xx from the backend)
 - Configurable per tenant: No
 
 ## Cache errors
@@ -3329,6 +3917,12 @@ You may also see the generic log message `rule evaluation failed: <details>` wra
 
 These errors occur when Loki is configured to use Kafka for ingestion.
 
+{{< admonition type="note" >}}
+Most of the configuration errors below (missing address/topic, SASL mismatch, invalid producer settings, "no write path enabled", the data object builder's "topic is required", and the ingest-limits settings) are caught by Loki's configuration validation and logged at startup with a `CONFIG ERROR: invalid <section> config: ` prefix, for example `CONFIG ERROR: invalid kafka_config config: the Kafka address has not been configured`. When searching logs, match on the bare message shown in each section rather than the full line, since the section name in the prefix varies by which config block failed.
+
+A few other errors in this section ("kafka enabled in distributor but not in ingester", "partition ring is required for kafka writes") are raised during component initialization rather than config validation and do not carry the `CONFIG ERROR:` prefix.
+{{< /admonition >}}
+
 ### Error: Missing Kafka address
 
 **Error message:**
@@ -3451,6 +4045,42 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 
 **Properties:**
 
+- Enforced by: Distributor initialization
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: No write path enabled
+
+**Error message:**
+
+```text
+at least one of kafka and ingester writes must be enabled
+```
+
+**Cause:**
+
+Both `distributor.kafka_writes_enabled` and `distributor.ingester_writes_enabled` are set to `false`, leaving the distributor with no write path at all.
+
+**Default configuration:**
+
+- `distributor.kafka_writes_enabled`: false
+- `distributor.ingester_writes_enabled`: true
+
+**Resolution:**
+
+- **Enable at least one write path**:
+
+  ```yaml
+  distributor:
+    kafka_writes_enabled: false
+    ingester_writes_enabled: true
+  ```
+
+- If you're migrating to Kafka-based ingestion and intentionally disabling gRPC writes, make sure `kafka_writes_enabled` is `true` before setting `ingester_writes_enabled` to `false`. Refer to [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/) for the full, safely ordered sequence.
+
+**Properties:**
+
 - Enforced by: Configuration validation
 - Retryable: No
 - HTTP status: N/A (startup failure)
@@ -3552,11 +4182,19 @@ partition ring is required for kafka writes
 
 **Cause:**
 
-`distributor.kafka_writes_enabled` is `true`, but the distributor wasn't started with a partition ring. This usually means the partition ring key-value store isn't configured consistently across distributors and ingesters.
+`distributor.kafka_writes_enabled` is `true`, but the partition ring was never initialized on this process. Loki only starts the partition ring for a process when `ingester.kafka_ingestion.enabled` or `querier.query_partition_ingesters` is `true` on that same process; a distributor that only has `kafka_writes_enabled` set, with neither of those two settings also set, never gets a partition ring to hand to the distributor's Kafka writer.
 
 **Resolution:**
 
-- **Configure the partition ring key-value store on both distributors and ingesters**:
+- **Set `ingester.kafka_ingestion.enabled: true` on every process that runs the distributor**, even in single-binary or modular deployments where the distributor and ingester are the same process group:
+
+  ```yaml
+  ingester:
+    kafka_ingestion:
+      enabled: true
+  ```
+
+- **Ensure the partition ring key-value store is configured consistently** across every component that participates in Kafka-based ingestion (distributors, ingesters, queriers, and rulers):
 
   ```yaml
   ingester:
@@ -3567,7 +4205,7 @@ partition ring is required for kafka writes
           store: memberlist
   ```
 
-- Ensure every component that participates in Kafka-based ingestion (distributors, ingesters, queriers, and rulers) uses the same key-value store configuration.
+  `memberlist` is already the default store for the partition ring, so this step alone will not fix the error if the ring was never started; it only matters once the ring is started and multiple components need to agree on where to find it.
 
 **Properties:**
 
@@ -3584,9 +4222,15 @@ partition ring is required for kafka writes
 single entry size (%d) exceeds maximum allowed size (%d)
 ```
 
+Or, for OTLP-encoded streams:
+
+```text
+record for stream <stream_labels> holding a single entry exceeds maximum allowed size <size> > <max_size>
+```
+
 **Cause:**
 
-A single log line is larger than the configured `kafka_config.producer_max_record_size_bytes`. Loki splits large write requests into multiple Kafka records, but it can't split a single log line across records.
+A single log line is larger than the configured `kafka_config.producer_max_record_size_bytes`. Loki splits large write requests into multiple Kafka records, but it can't split a single log line across records. Both messages have the same cause; which one you see depends on whether the push request used the regular or the OTLP encoding path.
 
 **Resolution:**
 
@@ -3610,7 +4254,7 @@ A single log line is larger than the configured `kafka_config.producer_max_recor
 
 - Enforced by: Kafka record encoding
 - Retryable: No
-- HTTP status: 400 (Bad Request)
+- HTTP status: 500 (Internal Server Error). This error isn't attached to an HTTP status code when it's raised, so the distributor's push handler falls back to its generic 500 response rather than a 400.
 - Configurable per tenant: No (`limits_config.max_line_size` and `limits_config.max_line_size_truncate` are configurable per tenant)
 
 ### Error: Dataobj builder topic required
@@ -3678,7 +4322,7 @@ The optional ingest-limits service is enabled (`ingest_limits.enabled: true`), b
 {{< admonition type="note" >}}
 The ingest-limits service has additional rate-tracking configuration validation errors in the same family: `active window must be greater than 0`, `rate window must be greater than 0`, `bucket size must be greater than 0`, `rate window must be a multiple of bucket-size`, and `eviction interval must be greater than 0`. Fix these the same way: correct the corresponding duration or size setting under `ingest_limits` to a valid positive value.
 
-The ingest-limits *frontend* (a separate component from the ingest-limits service) has its own cache-related validation error, `assigned partitions cache TTL must be a positive number`, and similar checks for its other cache TTL settings.
+The ingest-limits *frontend* (a separate component from the ingest-limits service) has its own cache-related validation error, `assigned partitions cache TTL must be a positive number, or the cache must be disabled`, and similar checks for its other cache TTL settings.
 {{< /admonition >}}
 
 ### Error: Ingest-limits readiness errors
@@ -4045,9 +4689,12 @@ The ingester could not start its Kafka partition reader. This occurs when Kafka 
 - **Review Kafka configuration**:
 
   ```yaml
-  kafka:
-    address: kafka:9092
+  kafka_config:
     topic: loki-logs
+    reader_config:
+      address: kafka:9092
+    writer_config:
+      address: kafka:9092
   ```
 
 - **Check Kafka broker health**.
