@@ -503,3 +503,13 @@ func TestCompareLogSortPrefix(t *testing.T) {
 		require.Equal(t, streamKey(t, ls).Prefix(), planKey(t, ls).prefix)
 	})
 }
+
+// indexLayoutAt opens the index at idxPath and returns its layout as
+// indexLayout does.
+func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return indexLayout(ctx, obj, tenant, idxPath)
+}

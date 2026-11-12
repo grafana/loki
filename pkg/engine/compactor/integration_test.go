@@ -1140,9 +1140,11 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 	label := func(object, name, value string) postings.Row {
 		return postings.Row{Kind: postings.KindLabel, ObjectPath: object, ColumnName: name, LabelValue: value, MinTimestamp: ts, MaxTimestamp: ts + 10}
 	}
-	stat := func(object, app string) stats.Stat {
+	var statAt func(object, app string, section int64) stats.Stat
+	stat := func(object, app string) stats.Stat { return statAt(object, app, 0) }
+	statAt = func(object, app string, section int64) stats.Stat {
 		return stats.Stat{
-			ObjectPath: object, SortSchema: "label:app", Labels: map[string]string{"app": app},
+			ObjectPath: object, SectionIndex: section, SortSchema: "label:app", Labels: map[string]string{"app": app},
 			MinTimestamp: ts, MaxTimestamp: ts + 10, RowCount: 1, UncompressedSize: 100,
 		}
 	}
@@ -1151,15 +1153,14 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 	}
 
 	// seedRun writes a run of two index objects that hold the postings of logs/run, split by
-	// key. Only the second holds the stats, so only it records the layout of the run. The key
-	// env=a sorts inside the key range of a plain index, so planning without runs would split
-	// the run.
+	// key, and one stats row each. The key env=a sorts inside the key range of a plain index, so
+	// planning without runs would split the run.
 	seedRun := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, shardBuckets uint32) []string {
 		t.Helper()
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: shardBuckets,
-			postings: []postings.Row{label("logs/run", "app", "api")}})
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/env", sectionSize: 1 << 21, shardBuckets: shardBuckets,
-			postings: []postings.Row{label("logs/run", "env", "a")}, stats: []stats.Stat{stat("logs/run", "api")}})
+			postings: []postings.Row{label("logs/run", "env", "a")}, stats: []stats.Stat{statAt("logs/run", "api", 1)}})
 		return []string{"indexes/run/app", "indexes/run/env"}
 	}
 	seedPlain := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, object string, shardBuckets uint32) {
@@ -1205,7 +1206,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		for _, row := range statRows {
 			statObjects = append(statObjects, row.ObjectPath)
 		}
-		require.ElementsMatch(t, []string{"logs/run", "logs/plain"}, statObjects)
+		require.ElementsMatch(t, []string{"logs/run", "logs/run", "logs/plain"}, statObjects)
 	})
 
 	t.Run("merges every index object of a run in one task when the tasks hold one run each", func(t *testing.T) {
@@ -1242,7 +1243,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		}
 		require.Len(t, outputsOfRun, 1, "one task must merge every index object of the run: %v", outputsOfRun)
 		for _, keys := range outputsOfRun {
-			require.ElementsMatch(t, []string{"app=api", "env=a", "stats"}, keys)
+			require.ElementsMatch(t, []string{"app=api", "env=a", "stats", "stats"}, keys)
 		}
 	})
 
@@ -1297,15 +1298,44 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
 	})
 
-	t.Run("skips a run with an index object without postings and keeps the run in the ToC", func(t *testing.T) {
+	t.Run("skips a run with an index object without stats and keeps the run in the ToC", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		bucket := objstore.NewInMemBucket()
 
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: 8,
-			postings: []postings.Row{label("logs/run", "app", "api")}})
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/env", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "env", "prod")}})
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/app", 1), pointer("indexes/run/env", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var runEntries []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/app", "indexes/run/env"}, runEntries)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+
+	t.Run("skips a run with an index object without postings rows and keeps the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/stats", sectionSize: 1 << 21, shardBuckets: 8,
-			stats: []stats.Stat{stat("logs/run", "api")}})
+			stats: []stats.Stat{statAt("logs/run", "api", 1)}})
 		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
 		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
 		writeToCWithPointers(ctx, t, bucket, tenant, window,

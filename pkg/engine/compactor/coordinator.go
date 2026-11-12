@@ -19,7 +19,6 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -529,7 +528,7 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexpointers.IndexPointer) (compactionStats, error) {
 	groups := make(map[layoutKey]*layoutGroup)
 	for _, run := range groupIndexRuns(entries) {
-		layout, ok, err := c.runLayout(ctx, tenant, run)
+		layout, hasLayout, err := c.runLayout(ctx, tenant, run)
 		if errors.Is(err, errCorruptIndex) {
 			c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge, err)
 			continue
@@ -540,12 +539,12 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		// An index run without stats sections for tenant has no layout. Such
 		// runs share the zero key, so they merge only with each other.
 		var key layoutKey
-		if ok {
+		if hasLayout {
 			key = newLayoutKey(layout)
 		}
 		group, found := groups[key]
 		if !found {
-			group = newLayoutGroup(layout, ok)
+			group = newLayoutGroup(layout, hasLayout)
 			groups[key] = group
 		}
 		group.add(run)
@@ -587,39 +586,80 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 }
 
 // runLayout returns the stream layout that the index objects of run record for
-// tenant. It reads the layout from every index object of run that has stats
-// sections. ok is false if no index object of run has one.
+// tenant. hasLayout is false if no index object of run has a stats section of
+// tenant.
 //
-// It returns an error that wraps errCorruptIndex if an index object of run is
-// corrupt, has no postings section of tenant, or records another layout than
-// an index object of the same run.
-func (c *coordinator) runLayout(ctx context.Context, tenant string, run indexRun) (layout streams.Layout, ok bool, err error) {
-	var source string
+// Every index object of a run records the layout of the run in a stats
+// section, even if the section holds no rows. runLayout returns an error that
+// wraps errCorruptIndex if an index object of run is corrupt, records no
+// layout while another index object of run does, or records another layout.
+func (c *coordinator) runLayout(ctx context.Context, tenant string, run indexRun) (layout streams.Layout, hasLayout bool, err error) {
+	var (
+		source        string
+		withoutLayout string
+	)
 	for _, entry := range run.entries {
 		obj, err := dataobj.FromBucket(ctx, c.bucket, entry.Path, prefetchBytes)
 		if err != nil {
 			return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
-		entryLayout, entryOK, err := indexLayout(ctx, obj, tenant, entry.Path)
+		entryLayout, entryHasLayout, err := indexLayout(ctx, obj, tenant, entry.Path)
 		if err != nil {
 			return streams.Layout{}, false, err
 		}
-		// Planning places an index object by its postings. Without them, a
-		// task would leave the index object out of its run.
-		if !slices.ContainsFunc(obj.Sections(), func(section *dataobj.Section) bool {
-			return section.Tenant == tenant && postings.CheckSection(section)
-		}) {
-			return streams.Layout{}, false, fmt.Errorf("%w: index %s has no postings section", errCorruptIndex, entry.Path)
-		}
-		if !entryOK {
+		if !entryHasLayout {
+			withoutLayout = entry.Path
 			continue
 		}
-		if ok && !entryLayout.Equal(layout) {
+		if hasLayout && !entryLayout.Equal(layout) {
 			return streams.Layout{}, false, fmt.Errorf("%w: index %s has stream layout %v, but index %s of the same run has %v", errCorruptIndex, entry.Path, entryLayout, source, layout)
 		}
-		layout, ok, source = entryLayout, true, entry.Path
+		layout, hasLayout, source = entryLayout, true, entry.Path
 	}
-	return layout, ok, nil
+	if hasLayout && withoutLayout != "" {
+		return streams.Layout{}, false, fmt.Errorf("%w: index %s records no stream layout, but index %s of the same run does", errCorruptIndex, withoutLayout, source)
+	}
+	return layout, hasLayout, nil
+}
+
+// dropRunsWithoutPostings returns sections without the sections of each index
+// run of group that has an index object without postings rows of tenant. It
+// skips such a run as corrupt.
+//
+// Planning places an index object by its postings rows. A task would leave out
+// an index object without them, and the ToC writer would refuse the swap that
+// removes only part of the run.
+func (c *coordinator) dropRunsWithoutPostings(tenant string, window time.Time, group *layoutGroup, sections []v2.Section[indexSortKey]) []v2.Section[indexSortKey] {
+	withRows := make(map[string]struct{}, len(sections))
+	for _, section := range sections {
+		withRows[section.Ref.ObjectPath] = struct{}{}
+	}
+
+	dropped := make(map[string]struct{})
+	for _, run := range group.runs {
+		if run.entries[0].RunID == 0 {
+			continue
+		}
+		i := slices.IndexFunc(run.entries, func(entry indexpointers.IndexPointer) bool {
+			_, ok := withRows[entry.Path]
+			return !ok
+		})
+		if i < 0 {
+			continue
+		}
+		c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge,
+			fmt.Errorf("%w: index %s has no postings rows", errCorruptIndex, run.entries[i].Path))
+		for _, entry := range run.entries {
+			dropped[entry.Path] = struct{}{}
+		}
+	}
+	if len(dropped) == 0 {
+		return sections
+	}
+	return slices.DeleteFunc(sections, func(section v2.Section[indexSortKey]) bool {
+		_, ok := dropped[section.Ref.ObjectPath]
+		return ok
+	})
 }
 
 // skipCorruptIndex logs and counts a corrupt index that phase skipped. index
@@ -637,6 +677,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
 	}
+	sections = c.dropRunsWithoutPostings(tenant, window, group, sections)
 
 	// Give each section the unit of its index run, so planning puts every
 	// index object of one index run in one task.
@@ -1051,7 +1092,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 			// only part of an index run, which the ToC writer refuses. Skip the
 			// run before any task runs.
 			if run.entries[0].RunID != 0 {
-				level.Debug(c.logger).Log("msg", "log-merge phase: skipping index run, log merge does not compact index runs",
+				level.Warn(c.logger).Log("msg", "log-merge phase: skipping index run, log merge does not compact index runs",
 					"tenant", tenant, "window", window, "index", run.String())
 				c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, failReasonIndexRun).Inc()
 				continue

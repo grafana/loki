@@ -16,9 +16,10 @@ import (
 // a query reads them as one index. If compaction replaced only some of them,
 // the remaining index objects would miss the postings of the replaced ones.
 //
-// Every index object holds a postings section of its tenant. Planning places an
-// index object by its postings, so it keeps every index object of a run in the
-// unit of the run.
+// Every index object of a run holds postings rows of its tenant, and a stats
+// section that records the layout of the run, even if the section has no
+// rows. Planning places an index object by its postings rows, so it keeps
+// every index object of a run in the unit of the run.
 type indexRun struct {
 	// entries is never empty. Its entries share RunID.
 	entries []indexpointers.IndexPointer

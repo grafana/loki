@@ -254,16 +254,6 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
-// indexLayoutAt opens the index at idxPath and returns its layout as
-// indexLayout does.
-func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
-	if err != nil {
-		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
-	}
-	return indexLayout(ctx, obj, tenant, idxPath)
-}
-
 // logSectionRefsFor returns one bounded reference per log section indexed by
 // idxPath, and the shard buckets of the index. It returns no references and the
 // zero ShardBuckets if the index has no stats section for tenant. It returns an
