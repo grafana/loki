@@ -109,8 +109,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 // records the layout of the run, so it also returns an error if two source
 // index objects record different layouts, or if only some record one.
 //
-// If no source index object records a layout, the layout is the zero layout.
-// The builder then rejects any stat.
+// If no source index object records a layout, the sources hold no stats
+// sections of the tenant, and the layout is the zero layout.
 func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFilter) ([]objectSections, streams.Layout, error) {
 	var (
 		sources       []objectSections

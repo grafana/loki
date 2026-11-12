@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -28,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -1720,4 +1722,42 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 			require.Equal(t, layout, got)
 		})
 	}
+}
+
+// closeErrIter yields rows and then fails to close.
+type closeErrIter struct {
+	rows     []int
+	next     int
+	closeErr error
+}
+
+func (it *closeErrIter) Next() bool {
+	if it.next >= len(it.rows) {
+		return false
+	}
+	it.next++
+	return true
+}
+
+func (it *closeErrIter) At() int      { return it.rows[it.next-1] }
+func (it *closeErrIter) Err() error   { return nil }
+func (it *closeErrIter) Close() error { return it.closeErr }
+
+func TestSectionConcatSeq(t *testing.T) {
+	t.Run("stops with the close error of a drained section reader", func(t *testing.T) {
+		closeErr := errors.New("close failed")
+		seq := &sectionConcatSeq[int]{
+			ctx:        context.Background(),
+			objectPath: "indexes/a",
+			sections:   []*dataobj.Section{nil, nil},
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
+			},
+		}
+
+		require.True(t, seq.Next())
+		require.Equal(t, 1, seq.At())
+		require.False(t, seq.Next())
+		require.ErrorIs(t, seq.Err(), closeErr)
+	})
 }

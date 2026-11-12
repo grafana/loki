@@ -244,13 +244,14 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
-// openedIndex is an opened index object and its path.
+// openedIndex pairs an opened index object with its path, which errors name.
 type openedIndex struct {
 	path string
 	obj  *dataobj.Object
 }
 
-// openRunObjects opens the index objects of run, in the order of run.
+// openRunObjects opens the index objects of run, in the order of run. It
+// holds every object open, each with a prefetchBytes buffer.
 func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
 	opened := make([]openedIndex, 0, len(run.entries))
 	for _, entry := range run.entries {
@@ -300,8 +301,13 @@ func layoutOfRun(ctx context.Context, tenant string, run []openedIndex) (layout 
 // stats rows of run, and the shard buckets of run.
 //
 // It returns no references and the zero ShardBuckets if run has no stats
-// section for tenant. It returns an error that wraps errCorruptIndex if run is
-// corrupt, as layoutOfRun reports it.
+// section for tenant.
+//
+// It returns an error that wraps errCorruptIndex if an index object of run:
+//   - has stats sections that record different layouts,
+//   - has a layout that cannot be read,
+//   - records no layout while another index object of run does,
+//   - records another layout than another index object of run.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
 	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {

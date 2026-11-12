@@ -20,9 +20,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// indexPrefetchBytes is how many bytes the index merge and filter read up
-// front when they open a source index object. If the metadata of the object
-// fits in these bytes, opening the object takes one request.
+// indexPrefetchBytes is how many bytes the index merge and filter read from
+// the start of a source index object when they open it.
+//
+// The decoder keeps these bytes and serves later reads inside them from
+// memory. A window above the 16 KiB minimum of the decoder also holds more
+// section metadata, which saves a request per section.
 const indexPrefetchBytes = 64 * 1024
 
 // executeIndexMerge orchestrates the index merge: classify sections,
@@ -216,8 +219,7 @@ type objectSections struct {
 	stats    []*dataobj.Section
 }
 
-// keepAll is the keep filter of an index merge. It keeps every postings and
-// stats row, whatever log object the row references.
+// keepAll keeps every row, whatever log object the row references.
 func keepAll(string) bool { return true }
 
 // mergePostingsIntoBuilder merges the postings sections of all source index
@@ -250,7 +252,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
-		// ColumnName, LabelValue) means two source indexes reference the same
+		// ColumnName, LabelValue) means two source index objects reference the same
 		// physical section/column/label — this shouldn't happen, so log a
 		// warning. The data is logically equivalent, so keep the first row and
 		// drop the later duplicate.
@@ -354,7 +356,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		// stats.Compare includes (ObjectPath, SectionIndex) as final
-		// tiebreakers, so an equal-key collision here means two source indexes
+		// tiebreakers, so an equal-key collision here means two source index objects
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;

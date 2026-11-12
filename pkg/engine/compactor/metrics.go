@@ -184,7 +184,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant, labelAge}),
 		logMergeFailedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
-			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), or execute (any other execution failure).",
+			Help: "Index runs that failed to plan or execute in a LogMerge phase. An index object of no run counts as a run of its own. reason = plan (planning failed), stale_plan (the ToC no longer lists every index object of the run), or execute (any other execution failure).",
 		}, []string{labelTenant, labelReason}),
 		indexMergeFailedGroupsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_index_merge_failed_groups_total",
