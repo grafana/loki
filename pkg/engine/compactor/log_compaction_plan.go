@@ -134,7 +134,8 @@ func (t logMergeTask) logStats() logTaskStats {
 // from the source index. It keeps log data without rewriting it.
 type indexFilterTask struct {
 	// sourceIndexPaths are the paths of every index object of the source index
-	// run.
+	// run. A run splits postings across its index objects, so a filter over
+	// part of a run loses postings.
 	sourceIndexPaths []string
 	objectPaths      []string
 	entry            metastore.TableOfContentsEntry

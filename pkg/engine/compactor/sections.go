@@ -250,8 +250,10 @@ type openedIndex struct {
 	obj  *dataobj.Object
 }
 
-// openRunObjects opens the index objects of run, in the order of run. It
-// holds every object open, each with a prefetchBytes buffer.
+// openRunObjects opens the index objects of run, in the order of run.
+//
+// Each returned object keeps its prefetch buffer of up to prefetchBytes, so
+// the memory grows with the number of index objects in run.
 func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
 	opened := make([]openedIndex, 0, len(run.entries))
 	for _, entry := range run.entries {
@@ -304,7 +306,7 @@ func layoutOfRun(ctx context.Context, tenant string, run []openedIndex) (layout 
 // section for tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
-//   - has stats sections that record different layouts,
+//   - has stats sections that do not share one layout,
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run.

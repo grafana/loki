@@ -88,7 +88,7 @@ type coordinatorMetrics struct {
 	// phase of a tenant has not rewritten yet, by the age of their oldest data.
 	pendingLogBytes *prometheus.GaugeVec // tenant, age
 
-	// logMergeFailedIndexesTotal counts indexes that failed to plan or
+	// logMergeFailedIndexesTotal counts index runs that failed to plan or
 	// execute in a LogMerge phase.
 	logMergeFailedIndexesTotal *prometheus.CounterVec // tenant, reason
 

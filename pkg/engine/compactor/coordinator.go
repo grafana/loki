@@ -596,7 +596,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 // stats section of tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
-//   - has stats sections that record different layouts,
+//   - has stats sections that do not share one layout,
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run.
