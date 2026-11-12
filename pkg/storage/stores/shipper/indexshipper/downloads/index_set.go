@@ -353,6 +353,9 @@ func (t *indexSet) Sync(ctx context.Context) (err error) {
 		level.Info(t.logger).Log("msg", "skip sync since the index set is not ready")
 		return nil
 	}
+	if t.evicted.Load() {
+		return nil
+	}
 
 	return t.syncWithRetry(ctx, true, false)
 }
@@ -362,7 +365,9 @@ func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool
 	var err error
 	for i := 0; i <= maxSyncRetries; i++ {
 		err = t.sync(ctx, lock, bypassListCache)
-		if err == nil {
+		// An eviction during the sync removes the files it works on, so its
+		// failure is expected and the set is gone anyway.
+		if err == nil || t.evicted.Load() {
 			return nil
 		}
 
@@ -432,6 +437,12 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 			return err
 		}
 		defer t.indexMtx.unlock()
+
+		// Evicted while downloading: the deferred cleanup closes what was
+		// opened instead of adding it to a set nothing will close.
+		if t.evicted.Load() {
+			return nil
+		}
 	}
 
 	for fileName, idx := range openedIndexes {

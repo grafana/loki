@@ -276,8 +276,14 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 				continue
 			}
 
+			// DropNotOwned may have evicted it since findExpiredIndexSets.
+			indexSet, ok := t.indexSets[userID]
+			if !ok {
+				continue
+			}
+
 			level.Info(t.logger).Log("msg", "cleaning up expired index set", "user_id", userID)
-			if err := t.dropIndexSetLocked(userID, t.indexSets[userID].DropAllDBs); err != nil {
+			if err := t.dropIndexSetLocked(userID, indexSet.DropAllDBs); err != nil {
 				return false, err
 			}
 		}

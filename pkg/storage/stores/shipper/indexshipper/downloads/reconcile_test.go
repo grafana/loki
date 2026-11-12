@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -13,9 +14,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 // trackedIndex records whether an index reader was closed.
@@ -230,4 +233,171 @@ func TestTable_PromotionKeepsServing(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	require.True(t, tbl.indexSets["u1"].QueryReady())
+}
+
+// syncPause blocks a sync partway through so that a test can evict the index
+// set at that point.
+type syncPause struct {
+	paused  chan struct{}
+	release chan struct{}
+}
+
+func newSyncPause() *syncPause {
+	return &syncPause{paused: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (p *syncPause) block() {
+	p.paused <- struct{}{}
+	<-p.release
+}
+
+// pausingOpener blocks the first time it opens file, and keeps the reader it
+// opened for it.
+type pausingOpener struct {
+	t      *testing.T
+	file   string
+	pause  *syncPause
+	opened *trackedIndex
+}
+
+func (o *pausingOpener) open(path string) (index.Index, error) {
+	idx := &trackedIndex{mockIndex: openMockIndexFile(o.t, path)}
+	if filepath.Base(path) == o.file && o.opened == nil {
+		o.opened = idx
+		o.pause.block()
+	}
+	return idx, nil
+}
+
+// pausingClient blocks the first listing of a user's files once armed.
+type pausingClient struct {
+	storage.Client
+	armed atomic.Bool
+	pause *syncPause
+}
+
+func (c *pausingClient) ListUserFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]storage.IndexFile, error) {
+	if c.armed.CompareAndSwap(true, false) {
+		c.pause.block()
+	}
+	return c.Client.ListUserFiles(ctx, tableName, userID, bypassCache)
+}
+
+// newEvictRaceTable returns a table with u1 query ready, and adds u1-2 to
+// object storage for the next sync to download.
+func newEvictRaceTable(t *testing.T, tempDir string, client storage.Client, open index.OpenIndexFileFunc) *table {
+	setupReconcileTable(t, tempDir, "u1")
+	tbl := NewTable(tableName, filepath.Join(tempDir, cacheDirName, tableName), client, open, newMetrics(nil), testDownloadTimeout).(*table)
+	t.Cleanup(tbl.Close)
+	require.NoError(t, tbl.EnsureQueryReadiness(context.Background(), []string{"u1"}))
+
+	setupIndexesAtPath(t, "u1", filepath.Join(tempDir, objectsStorageDirName, tableName, "u1"), 2, 3)
+	tbl.storageClient.RefreshIndexTableCache(context.Background(), tableName)
+	return tbl
+}
+
+// syncEvictingU1 syncs tbl, evicts u1 once pause blocks the sync, and returns
+// the sync's error.
+func syncEvictingU1(t *testing.T, tbl *table, pause *syncPause) error {
+	syncErr := make(chan error, 1)
+	go func() { syncErr <- tbl.Sync(context.Background()) }()
+	<-pause.paused
+	require.NoError(t, tbl.DropNotOwned(context.Background(), func(string, []string) ([]string, error) { return []string{"u1"}, nil }))
+	close(pause.release)
+	return <-syncErr
+}
+
+// TestTable_EvictDuringSync_ClosesOpenedFiles evicts u1 after a sync has opened
+// a new file for it but before the sync adds it to the set. Nothing would ever
+// close a file added to the evicted set.
+func TestTable_EvictDuringSync_ClosesOpenedFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	pause := newSyncPause()
+	opener := &pausingOpener{t: t, file: buildIndexFilename("u1", 2), pause: pause}
+	tbl := newEvictRaceTable(t, tempDir, buildTestStorageClient(t, tempDir), opener.open)
+	evicted := tbl.indexSets["u1"].(*indexSet)
+
+	require.NoError(t, syncEvictingU1(t, tbl, pause))
+	require.True(t, opener.opened.closed)
+	require.Empty(t, evicted.index)
+}
+
+// TestTable_EvictDuringSync_DeletedFileDoesNotFailSync evicts u1 at the same
+// point while the sync also has a file deleted from storage to remove, which
+// the eviction already removed. A failed table sync skips the tables after it.
+func TestTable_EvictDuringSync_DeletedFileDoesNotFailSync(t *testing.T) {
+	tempDir := t.TempDir()
+	pause := newSyncPause()
+	opener := &pausingOpener{t: t, file: buildIndexFilename("u1", 2), pause: pause}
+	tbl := newEvictRaceTable(t, tempDir, buildTestStorageClient(t, tempDir), opener.open)
+
+	userPath := filepath.Join(tempDir, objectsStorageDirName, tableName, "u1")
+	require.NoError(t, os.Remove(filepath.Join(userPath, buildIndexFilename("u1", 0))))
+	tbl.storageClient.RefreshIndexTableCache(context.Background(), tableName)
+
+	require.NoError(t, syncEvictingU1(t, tbl, pause))
+}
+
+// TestTable_EvictDuringListing_DoesNotFailSync evicts u1 while a sync lists its
+// files, so the download that follows targets the directory the eviction
+// removed. A failed table sync skips the tables after it.
+func TestTable_EvictDuringListing_DoesNotFailSync(t *testing.T) {
+	tempDir := t.TempDir()
+	pause := newSyncPause()
+	client := &pausingClient{Client: buildTestStorageClient(t, tempDir), pause: pause}
+	tbl := newEvictRaceTable(t, tempDir, client, newOpenRecorder().open(t))
+	client.armed.Store(true)
+
+	require.NoError(t, syncEvictingU1(t, tbl, pause))
+}
+
+// expiryHook is a fake index set that lets a test run code in the middle of
+// DropUnusedIndex. findExpiredIndexSets calls LastUsedAt on every index set
+// while it holds the table's read lock, so hook runs inside that window. The
+// fake itself never expires.
+type expiryHook struct {
+	IndexSet
+	once sync.Once
+	hook func()
+}
+
+func (h *expiryHook) LastUsedAt() time.Time {
+	h.once.Do(h.hook)
+	return time.Now()
+}
+func (h *expiryHook) QueryReady() bool { return false }
+func (h *expiryHook) Close()           {}
+
+// TestTable_DropUnusedIndexRacingEvict evicts an expired index set after the
+// TTL cleanup found it expired but before the cleanup takes the write lock.
+func TestTable_DropUnusedIndexRacingEvict(t *testing.T) {
+	tempDir := t.TempDir()
+	setupReconcileTable(t, tempDir, "u1")
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder())
+	ctx := context.Background()
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+
+	now := time.Now()
+	tbl.indexSets["u1"].(*indexSet).lastUsedAt = now.Add(-2 * time.Hour)
+
+	evictErr := make(chan error, 1)
+	tbl.indexSets["hook"] = &expiryHook{hook: func() {
+		go func() {
+			evictErr <- tbl.DropNotOwned(ctx, func(string, []string) ([]string, error) { return []string{"u1"}, nil })
+		}()
+		// Return once the eviction waits for the write lock, so that it runs
+		// as soon as the TTL cleanup releases its read lock.
+		for tbl.indexSetsMtx.TryRLock() {
+			tbl.indexSetsMtx.RUnlock()
+			runtime.Gosched()
+		}
+	}}
+
+	require.NotPanics(t, func() {
+		dropped, err := tbl.DropUnusedIndex(time.Hour, now)
+		require.NoError(t, err)
+		require.False(t, dropped)
+	})
+	require.NoError(t, <-evictErr)
+	require.NotContains(t, tbl.indexSets, "u1")
 }
