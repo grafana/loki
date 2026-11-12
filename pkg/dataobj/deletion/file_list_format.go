@@ -253,7 +253,8 @@ func OpenFileList(ctx context.Context, bucket objstore.BucketReader, tenant stri
 	}
 	dec, err := newFileListDecoder(rc, tenant)
 	if err != nil {
-		rc.Close()
+		// The decode error is the cause, so a close error would add nothing.
+		_ = rc.Close()
 		return nil, fmt.Errorf("opening file list %s: %w", p, err)
 	}
 	return &FileListReader{rc: rc, dec: dec}, nil

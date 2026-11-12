@@ -1256,18 +1256,19 @@ dataobj:
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
     deletion_sweep:
-      # Experimental: Check each tenant once an hour. Scan a tenant at most once
-      # every 23 hours for objects that no ToC can reach, and store them in the
-      # deletion file list of the tenant. Only tenants with the
-      # dataobj_deletion_sweep_enabled limit
+      # Experimental: Check each tenant once an hour. Scan the tenant
+      # directories of a tenant at most once every 23 hours for objects that no
+      # ToC can reach, and store them in the deletion file list of the tenant.
+      # Objects outside the tenant directories are not swept. Only tenants with
+      # the dataobj_deletion_sweep_enabled limit
       # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
       # Requires dataobj compaction to be enabled.
       # CLI flag: -dataobj.compaction.deletion-sweep.enabled
       [enabled: <boolean> | default = false]
 
       # Experimental: Maximum number of deletion sweeps that run at the same
-      # time, across all tenants. Each sweep scans the uncompacted objects of
-      # the whole bucket.
+      # time, across all tenants. Each sweep lists the tenant directories and
+      # reads the ToCs and index objects of the tenant.
       # CLI flag: -dataobj.compaction.deletion-sweep.max-concurrent-sweeps
       [max_concurrent_sweeps: <int> | default = 4]
 

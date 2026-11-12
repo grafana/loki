@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // MinSweepInterval is the minimum age of a stored file list that makes a
@@ -44,9 +45,10 @@ const (
 // sweep read its creation time.
 var errStoredListChanged = errors.New("stored file list changed during the sweep")
 
-// sweepMaxOpenFiles limits the objects that one sweep opens at the same time.
-// A worker can run several sweeps at once, so the limit is per sweep.
-const sweepMaxOpenFiles = 16
+// sweepMaxOpenIndexes limits the index objects that one sweep opens at the
+// same time to find the reachable objects. A worker can run several sweeps
+// at once, so the limit is per sweep.
+const sweepMaxOpenIndexes = 16
 
 var sweepWriterBackoff = backoff.Config{
 	MinBackoff: 100 * time.Millisecond,
@@ -71,7 +73,7 @@ type Sweeper struct {
 // object storage. It must report modification times and support conditional
 // writes. See [NewFileListScanner] and [NewFileListWriter].
 func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
-	scanner, err := NewFileListScanner(bucket, sweepMaxOpenFiles, logger)
+	scanner, err := NewFileListScanner(bucket, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +145,7 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	if err != nil {
 		return "", fmt.Errorf("scanning objects of tenant %q: %w", tenant, err)
 	}
-	reachable, err := metastore.ReachableObjects(ctx, s.bucket, tenant, sweepMaxOpenFiles)
+	reachable, err := metastore.ReachableObjects(ctx, s.bucket, tenant, sweepMaxOpenIndexes)
 	if err != nil {
 		return "", fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
 	}
@@ -192,7 +194,7 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 
 // readStoredHeader returns the header of the stored file list of tenant, or
 // nil if no list is stored.
-func (s *Sweeper) readStoredHeader(ctx context.Context, tenant string) (*fileListHeader, error) {
+func (s *Sweeper) readStoredHeader(ctx context.Context, tenant string) (_ *fileListHeader, err error) {
 	r, err := OpenFileList(ctx, s.bucket, tenant)
 	if err != nil {
 		if s.bucket.IsObjNotFoundErr(err) {
@@ -200,7 +202,7 @@ func (s *Sweeper) readStoredHeader(ctx context.Context, tenant string) (*fileLis
 		}
 		return nil, fmt.Errorf("reading stored file list of tenant %q: %w", tenant, err)
 	}
-	defer r.Close()
+	defer util.CloseAndHandleError(r, &err)
 	header := r.dec.header
 	return &header, nil
 }
@@ -211,7 +213,7 @@ func (s *Sweeper) readStoredHeader(ctx context.Context, tenant string) (*fileLis
 //
 // It opens the stored list again instead of keeping it open during the scan.
 // A scan can take many minutes, and a long read can time out.
-func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHeader, paths []string) (candidates, error) {
+func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHeader, paths []string) (_ candidates, err error) {
 	r, err := OpenFileList(ctx, s.bucket, previous.Tenant)
 	if err != nil {
 		if s.bucket.IsObjNotFoundErr(err) {
@@ -219,7 +221,7 @@ func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHea
 		}
 		return candidates{}, fmt.Errorf("reading stored file list of tenant %q: %w", previous.Tenant, err)
 	}
-	defer r.Close()
+	defer util.CloseAndHandleError(r, &err)
 	if !r.dec.header.equal(previous) {
 		return candidates{}, errStoredListChanged
 	}

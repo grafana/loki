@@ -159,17 +159,18 @@ type SchedulerConfig struct {
 // DeletionSweepConfig holds the settings of the deletion sweep.
 //
 // When enabled, the planner sweeps each tenant once an hour, at a minute
-// that it derives from the tenant ID. A sweep scans the tenant at most once
-// every 23 hours. It stores the objects that no ToC can reach in the file
-// list of the tenant. Only tenants with the dataobj_deletion_sweep_enabled
-// limit are swept.
+// that it derives from the tenant ID. A sweep scans the tenant directories at
+// most once every 23 hours. It stores the objects that no ToC can reach in
+// the file list of the tenant. Only tenants with the
+// dataobj_deletion_sweep_enabled limit are swept.
 type DeletionSweepConfig struct {
 	// Enabled starts the deletion sweep in the planner.
 	Enabled bool `yaml:"enabled"`
 
 	// MaxConcurrentSweeps caps the sweeps that run at the same time, across
-	// all tenants. Each sweep scans the uncompacted objects of the whole
-	// bucket, so the cap limits the load on object storage.
+	// all tenants. Each sweep lists the tenant directories and reads the ToCs
+	// and index objects of the tenant, so the cap limits the load on object
+	// storage.
 	MaxConcurrentSweeps int `yaml:"max_concurrent_sweeps"`
 
 	// DryRun must be true when the sweep is enabled, so that no operator
@@ -296,9 +297,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 	f.BoolVar(&cfg.DeletionSweep.Enabled, prefix+"deletion-sweep.enabled", false,
-		"Experimental: Check each tenant once an hour. Scan a tenant at most once every 23 hours for objects that no ToC can reach, and store them in the deletion file list of the tenant. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
+		"Experimental: Check each tenant once an hour. Scan the tenant directories of a tenant at most once every 23 hours for objects that no ToC can reach, and store them in the deletion file list of the tenant. Objects outside the tenant directories are not swept. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
-		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep scans the uncompacted objects of the whole bucket.")
+		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep lists the tenant directories and reads the ToCs and index objects of the tenant.")
 	f.BoolVar(&cfg.DeletionSweep.DryRun, prefix+"deletion-sweep.dry-run", true,
 		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. A candidate is an object that no ToC could reach in two sweeps, at least 23 hours apart. Only true is supported.")
 
