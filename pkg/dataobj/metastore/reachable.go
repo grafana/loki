@@ -26,16 +26,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// reachableIndexPrefetchBytes is the size of the first request that
-// ReachableObjects makes for an index object. The request usually holds the
-// whole metadata, so one request opens the object.
-const reachableIndexPrefetchBytes = 64 << 10
-
 // ListTableOfContentsWindows returns the windows that have a ToC directory in
 // bucket, sorted. bucket is the index storage, as [NewIndexBucket] returns it.
 //
-// It skips the legacy shared ToC files at tocs/<window>.toc. No reader uses
-// them, because each tenant has its own ToC for each window.
+// It skips entries that are not directories.
 //
 // It returns an error for a directory name that is not the name of a window,
 // in the form that [TableOfContentsWindowPrefix] writes. A caller looks up the
@@ -120,13 +114,14 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 }
 
 // reachabilityWalk holds the state of one ReachableObjects call. The index
-// goroutines add paths, so mu guards reachable. Call run at most once.
+// goroutines add paths, so reachableMu guards reachable. Call run at most
+// once.
 type reachabilityWalk struct {
 	indexBucket objstore.BucketReader
 	tenant      string
 
-	mu        sync.Mutex
-	reachable map[string]struct{}
+	reachableMu sync.Mutex
+	reachable   map[string]struct{}
 }
 
 // run reads the ToC of the tenant in each window, and the index objects that
@@ -169,8 +164,8 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 }
 
 func (w *reachabilityWalk) add(p string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.reachableMu.Lock()
+	defer w.reachableMu.Unlock()
 	w.reachable[p] = struct{}{}
 }
 
@@ -258,7 +253,7 @@ func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []
 // could reference log objects, and skipping it would make them look
 // unreachable.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
-	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, reachableIndexPrefetchBytes)
+	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, indexPrefetchBytes)
 	if err != nil {
 		return fmt.Errorf("opening index object %s: %w", indexPath, err)
 	}
@@ -352,8 +347,8 @@ func (w *reachabilityWalk) addRecordPaths(rec arrow.RecordBatch) error {
 	// The values point into the buffer of the whole batch. Clone a new path
 	// so that the set does not keep every batch alive. Many rows reference
 	// the same log object, so check the set before the clone.
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.reachableMu.Lock()
+	defer w.reachableMu.Unlock()
 	for i := range column.Len() {
 		if _, ok := w.reachable[column.Value(i)]; !ok {
 			w.reachable[strings.Clone(column.Value(i))] = struct{}{}
