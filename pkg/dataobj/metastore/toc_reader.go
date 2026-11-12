@@ -30,7 +30,8 @@ const maxTableOfContentsSize = 256 << 20
 // real one, and the next conditional write then fails with
 // [ErrWatermarkMismatch].
 //
-// ReadWatermarks reads the whole ToC with [OpenTableOfContents].
+// ReadWatermarks reads the whole ToC, so its cost grows with the number of
+// index pointers.
 //
 // It returns a nil slice and a nil error if the ToC does not exist or holds no
 // watermarks section. It returns an error if the ToC does not hold exactly the
@@ -89,9 +90,9 @@ func ReadWatermark(ctx context.Context, bucket objstore.BucketReader, tenant str
 
 // OpenTableOfContents reads the ToC at path from bucket and returns it as a data object.
 //
-// Always open a ToC with OpenTableOfContents, and never with [dataobj.FromBucket]. The writer replaces a ToC in place.
-// FromBucket reads an object with many range reads, and each range read can see a different version of the ToC.
-// OpenTableOfContents reads the ToC with one Get, and the returned object reads only those bytes.
+// OpenTableOfContents reads the ToC with one Get, and the returned object reads only those bytes. So every read of the
+// object sees one version of the ToC. The writer replaces a ToC in place, so the range reads of [dataobj.FromBucket]
+// can each see a different version.
 //
 // When the ToC does not exist, the error is the unwrapped error of bucket, so bucket.IsObjNotFoundErr reports it. An
 // existing ToC with no bytes, or with more than 256 MiB, is an error.
@@ -124,8 +125,7 @@ func readTableOfContents(ctx context.Context, bucket objstore.BucketReader, path
 	}
 	defer util.CloseAndHandleError(rc, &err)
 
-	// The providers take the size from the response of the Get, so TryToGetSize sends no request. A reader that does not
-	// report a size makes readAtMost grow its buffer during the read.
+	// The object storage providers take the size from the Get response, so TryToGetSize sends no request.
 	size, sizeErr := objstore.TryToGetSize(rc)
 	if sizeErr != nil {
 		size = -1
@@ -146,21 +146,21 @@ func readTableOfContents(ctx context.Context, bucket objstore.BucketReader, path
 
 // readAtMost returns all bytes of r. It returns an error when r holds more than limit bytes.
 //
-// size is the expected number of bytes, or a negative value when it is unknown. With a known size, the read allocates
-// exactly size bytes, and a body of another size is an error. A size above limit is an error before the read.
+// size is the number of bytes in r, or a negative value when it is unknown. A known size makes the read allocate
+// exactly size bytes. Then r must hold exactly size bytes. A size above limit is an error before the read.
 func readAtMost(r io.Reader, size, limit int64) ([]byte, error) {
 	if size > limit {
-		return nil, fmt.Errorf("the object has %d bytes, more than the limit of %d bytes", size, limit)
+		return nil, fmt.Errorf("the reader has %d bytes, more than the limit of %d bytes", size, limit)
 	}
 
 	if size < 0 {
-		// One byte over the limit tells a body at the limit from a larger one.
+		// The extra byte tells a reader with limit bytes apart from a reader with more.
 		data, err := io.ReadAll(io.LimitReader(r, limit+1))
 		if err != nil {
 			return nil, err
 		}
 		if int64(len(data)) > limit {
-			return nil, fmt.Errorf("the object has more than the limit of %d bytes", limit)
+			return nil, fmt.Errorf("the reader has more than the limit of %d bytes", limit)
 		}
 		return data, nil
 	}
@@ -169,13 +169,12 @@ func readAtMost(r io.Reader, size, limit int64) ([]byte, error) {
 	if _, err := io.ReadFull(r, data); err != nil {
 		return nil, fmt.Errorf("reading %d bytes: %w", size, err)
 	}
-	// ReadFull stops at size bytes, so a body longer than its reported size needs its own check.
 	var extra [1]byte
 	switch _, err := io.ReadFull(r, extra[:]); {
 	case err == io.EOF:
 		return data, nil
 	case err == nil:
-		return nil, fmt.Errorf("the object has more than its reported size of %d bytes", size)
+		return nil, fmt.Errorf("the reader has more than its size of %d bytes", size)
 	default:
 		return nil, fmt.Errorf("reading past %d bytes: %w", size, err)
 	}

@@ -178,8 +178,8 @@ func TestReadWatermarks(t *testing.T) {
 	})
 
 	t.Run("returns the watermarks of the version it read when the ToC changes after the read", func(t *testing.T) {
-		// Many watermarks make the section too large for the first read of a range reader.
-		before := make([]watermarks.Watermark, 20000)
+		const watermarksPastFirstRangeRead = 20000
+		before := make([]watermarks.Watermark, watermarksPastFirstRangeRead)
 		after := make([]watermarks.Watermark, len(before))
 		for i := range before {
 			before[i] = wm(int32(i), int64(i))
@@ -324,7 +324,7 @@ func TestReadAtMost(t *testing.T) {
 		require.Equal(t, data, got)
 	})
 
-	t.Run("allocates the buffer once when the size is known", func(t *testing.T) {
+	t.Run("allocates only the buffer and the extra byte when the size is known", func(t *testing.T) {
 		large := bytes.Repeat([]byte("x"), 1<<20)
 		reader := bytes.NewReader(large)
 		readAllocs := func(size int64) float64 {
@@ -336,13 +336,13 @@ func TestReadAtMost(t *testing.T) {
 		}
 
 		require.Less(t, readAllocs(int64(len(large))), readAllocs(-1))
-		require.LessOrEqual(t, readAllocs(int64(len(large))), 2.0, "the buffer and the probe for extra bytes")
+		require.LessOrEqual(t, readAllocs(int64(len(large))), 2.0, "the buffer and the extra byte")
 	})
 
 	t.Run("returns an error when the reader holds more bytes than the known size", func(t *testing.T) {
 		_, err := readAtMost(bytes.NewReader(data), 2, 100)
 
-		require.EqualError(t, err, "the object has more than its reported size of 2 bytes")
+		require.EqualError(t, err, "the reader has more than its size of 2 bytes")
 	})
 
 	t.Run("returns an error when the reader holds fewer bytes than the known size", func(t *testing.T) {
@@ -369,13 +369,13 @@ func TestReadAtMost(t *testing.T) {
 	t.Run("returns an error when the reader holds more bytes than the limit", func(t *testing.T) {
 		_, err := readAtMost(bytes.NewReader(data), -1, int64(len(data))-1)
 
-		require.EqualError(t, err, "the object has more than the limit of 9 bytes")
+		require.EqualError(t, err, "the reader has more than the limit of 9 bytes")
 	})
 
 	t.Run("returns an error without a read when the known size is over the limit", func(t *testing.T) {
 		_, err := readAtMost(iotest.ErrReader(errors.New("unexpected read")), 11, 10)
 
-		require.EqualError(t, err, "the object has 11 bytes, more than the limit of 10 bytes")
+		require.EqualError(t, err, "the reader has 11 bytes, more than the limit of 10 bytes")
 	})
 
 	t.Run("returns the error of the reader", func(t *testing.T) {
