@@ -137,7 +137,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
-		return errors.New("at least one of kafka and ingestor writes must be enabled")
+		return errors.New("at least one of kafka and ingester writes must be enabled")
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
