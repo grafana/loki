@@ -165,7 +165,7 @@ func NewCachedPrefetcher(backend cache.Cache, maxItemBytes int64, cfg Prefetcher
 		}, []string{"outcome"}),
 		lookupKeys: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_metadata_prefetcher_cache_lookup_keys",
-			Help:                            "Number of cache keys that a prefetch request looks up in the cache. It counts one key for each group of ranges, or one key for the whole region.",
+			Help:                            "Number of cache keys that a prefetch request looks up in the cache. It counts the file metadata group, and then one key for each other group of ranges, or one key for the whole region.",
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 8),
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -268,7 +268,7 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 
 // fetchMetadataRangesFromCache asks the cache for the groups that the prefetch set reads. A group
 // that does not decode, or is not valid, counts as missing. It returns the groups it found with the
-// error of the cache, if any. The result is never nil, and it is empty when the cache fails.
+// error of the cache, if any. The result is never nil. It holds the groups that the cache returned, even when the cache also returned an error.
 func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, path string, prefetchSet PrefetchSet) (*fetchResult, error) {
 	var (
 		ids        = prefetchSet.prefetchedRangesIDs()
@@ -404,7 +404,8 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 		}
 	}
 
-	// A lookup for the region alone asks for no group, so nothing may be left to write.
+	// A lookup for all metadata asks for the file metadata group and the region item. When it found the
+	// group, nothing is left to write, because the loader writes the region item.
 	if len(keys) == 0 {
 		return
 	}

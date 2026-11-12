@@ -101,6 +101,10 @@ func TestPrefetchSet_prefetchedRangesFor(t *testing.T) {
 			set:  PrefetchSet{Message: true, MetadataNames: []string{"level", "trace_id"}},
 			want: PrefetchedRanges{fileMetadata, coreFirst, message, traceID, coreLast, level},
 		},
+		"adds the group of a column once when the set names it twice": {
+			set:  PrefetchSet{MetadataNames: []string{"trace_id", "trace_id"}},
+			want: PrefetchedRanges{fileMetadata, coreFirst, traceID, coreLast},
+		},
 		"skips a named column that the object does not have": {
 			set:  PrefetchSet{MetadataNames: []string{"missing"}},
 			want: PrefetchedRanges{fileMetadata, coreFirst, coreLast},

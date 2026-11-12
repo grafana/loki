@@ -58,6 +58,15 @@ func TestConfig_Validate(t *testing.T) {
 
 		require.EqualError(t, cfg.Validate(false), "the metadata prefetcher needs the metadata cache: configure dataobj.metadata_cache")
 	})
+
+	t.Run("rejects an invalid config of the metadata prefetcher", func(t *testing.T) {
+		cfg := enabledConfig()
+		cfg.MetadataPrefetcher.Enabled = true
+		cfg.MetadataPrefetcher.Compression = "gzip"
+		cfg.MetadataCache.Cache = cache.NewMockCache()
+
+		require.EqualError(t, cfg.Validate(false), `unsupported metadata prefetcher compression "gzip"`)
+	})
 }
 
 // enabledConfig returns a config with the default values and data objects enabled.

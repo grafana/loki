@@ -170,6 +170,22 @@ func TestSplitMetadataRegionToGroups(t *testing.T) {
 		require.Equal(t, prefetchedRangesGroups{}, got)
 	})
 
+	for name, logicalType := range map[string]string{
+		"the same group": format.LogsColumnStreamID,
+		"another group":  format.LogsColumnMessage,
+	} {
+		t.Run("rejects a column whose metadata overlaps the section metadata, in "+name, func(t *testing.T) {
+			// The column metadata starts at the start of the section metadata, which is at offset 8.
+			col := &datasetmd.ColumnDesc{Type: &datasetmd.ColumnType{LogicalRef: 1}, ColumnMetadataOffset: 0, ColumnMetadataLength: 4}
+			md, logsRegion := logsSectionWithColumn(t, col, logicalType)
+
+			got, err := splitMetadataRegionToGroups(md, 8, logsRegion)
+
+			require.ErrorIs(t, err, errInvalidRanges)
+			require.Equal(t, prefetchedRangesGroups{}, got)
+		})
+	}
+
 	t.Run("rejects a column whose type reference is out of bounds", func(t *testing.T) {
 		md, logsRegion := logsSectionWithColumn(t, &datasetmd.ColumnDesc{Type: &datasetmd.ColumnType{LogicalRef: 9}}, format.LogsColumnMessage)
 

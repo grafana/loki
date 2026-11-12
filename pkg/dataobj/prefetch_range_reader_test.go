@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 )
