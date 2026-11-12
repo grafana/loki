@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -706,6 +707,49 @@ func TestFormat_BinOp(t *testing.T) {
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+// on () matches on no labels, which is not the same as no clause, and group_left and group_right
+// are only valid after on or ignoring. Prettify must keep them, or the query changes meaning when
+// it is split over several lines.
+func TestFormat_EmptyVectorMatching(t *testing.T) {
+	old := MaxCharsPerLine
+	MaxCharsPerLine = 20
+	defer func() { MaxCharsPerLine = old }()
+
+	lhs := `sum(rate({job="loki"}[5m]))`
+	rhs := `sum(rate({job="loki-prod"}[5m]))`
+
+	cases := []struct {
+		name string
+		op   string
+		exp  string
+	}{
+		{name: "on ()", op: `* on ()`, exp: `* on ()`},
+		{name: "on () bool", op: `> bool on ()`, exp: `> bool on ()`},
+		{name: "on () group_left", op: `* on () group_left`, exp: `* on () group_left`},
+		{name: "on () group_right with labels", op: `* on () group_right (node)`, exp: `* on () group_right (node)`},
+		{name: "on labels", op: `* on (instance)`, exp: `* on (instance)`},
+		{name: "ignoring () group_left with labels", op: `* ignoring () group_left (node)`, exp: `* ignoring () group_left (node)`},
+		{name: "ignoring () group_right", op: `* ignoring () group_right`, exp: `* ignoring () group_right`},
+		// ignoring () and no clause are the same, so neither is printed.
+		{name: "ignoring ()", op: `* ignoring ()`, exp: `*`},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(lhs + " " + c.op + " " + rhs)
+			require.NoError(t, err)
+
+			pretty := Prettify(expr)
+			require.Equal(t, c.exp, strings.Split(pretty, "\n")[5])
+
+			// What matters is that the formatted query is the same query.
+			reparsed, err := ParseExpr(pretty)
+			require.NoError(t, err)
+			require.Equal(t, expr.String(), reparsed.String())
 		})
 	}
 }

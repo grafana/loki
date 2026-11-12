@@ -143,11 +143,6 @@ func TestLex(t *testing.T) {
 	}
 }
 
-// A character that starts no token and no identifier used to be taken for an identifier, so it was
-// accepted as a label name. Some of those names do not print back as they were read: `json ! = "x"`
-// printed as `json !="x"`, which reads as a line filter, and in a matcher or a label filter the name
-// printed in quotes, which the grammar does not accept. A query that is printed and parsed again, as
-// the formatter does, could therefore turn into another query or stop parsing.
 func TestParse_UnexpectedCharacter(t *testing.T) {
 	for _, c := range []string{"!", "$", "@", "?", ";", "~", "&", `\`} {
 		for _, template := range []string{

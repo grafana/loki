@@ -1930,3 +1930,24 @@ func TestCombineFilters(t *testing.T) {
 		}
 	}
 }
+
+// group_left and group_right are only valid after on or ignoring, so String must keep an empty
+// ignoring () for them. The shard mapper sends String() to the queriers, and without group_left the
+// query would be a different one.
+func TestBinOpExpr_String_VectorMatching(t *testing.T) {
+	for _, q := range []string{
+		`(sum(rate({a="b"}[1m])) * on () sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * on () group_left sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * ignoring () group_left sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * ignoring () group_right (x) sum(rate({c="d"}[1m])))`,
+	} {
+		t.Run(q, func(t *testing.T) {
+			expr, err := ParseExpr(q)
+			require.NoError(t, err)
+
+			reparsed, err := ParseExpr(expr.String())
+			require.NoError(t, err)
+			require.Equal(t, expr, reparsed)
+		})
+	}
+}

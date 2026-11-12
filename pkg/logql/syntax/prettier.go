@@ -454,13 +454,18 @@ func formatBinaryOp(op string, opts *BinOpOptions) string {
 			group = fmt.Sprintf("%s (%s)", group, strings.Join(opts.VectorMatching.Include, ", "))
 		}
 
-		if len(opts.VectorMatching.MatchingLabels) > 0 {
+		// on () matches on no labels, which is not the same as no clause. group_left and
+		// group_right are only valid after on or ignoring, so they keep an empty ignoring ().
+		if opts.VectorMatching.On || len(opts.VectorMatching.MatchingLabels) > 0 || opts.VectorMatching.Card != CardOneToOne {
 			on := OpOn
 			if !opts.VectorMatching.On {
 				on = OpIgnoring
 			}
 			// e.g: * on (cluster, namespace) group_left
-			op = fmt.Sprintf("%s %s (%s) %s", op, on, strings.Join(opts.VectorMatching.MatchingLabels, ", "), group)
+			op = fmt.Sprintf("%s %s (%s)", op, on, strings.Join(opts.VectorMatching.MatchingLabels, ", "))
+			if group != "" {
+				op += " " + group
+			}
 		}
 	}
 	return op
