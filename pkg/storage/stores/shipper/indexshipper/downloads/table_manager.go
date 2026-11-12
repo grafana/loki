@@ -312,7 +312,7 @@ func (tm *tableManager) syncTables(ctx context.Context, trigger string) error {
 			continue
 		}
 
-		err := table.Sync(ctx)
+		err = table.Sync(ctx)
 		duration := time.Since(start).Seconds()
 		if err != nil {
 			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure, trigger).Observe(duration)
