@@ -437,7 +437,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.NoError(t, err)
 
 		require.True(t, plan.hasWork())
-		require.Equal(t, indexPath, plan.sourceIndex.paths()[0])
+		require.Equal(t, indexPath, plan.sourceIndexRun.paths()[0])
 		require.Equal(t, window, plan.window)
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
@@ -656,8 +656,8 @@ func TestPlanLogCompaction(t *testing.T) {
 func TestExecuteLogCompaction(t *testing.T) {
 	window := imWindow()
 	plan := logCompactionPlan{
-		window:      window,
-		sourceIndex: runOfPath("indexes/source"),
+		window:         window,
+		sourceIndexRun: runOfPath("indexes/source"),
 		tasks: []logCompactionTask{
 			newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{
 				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/a"}}},
@@ -672,7 +672,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		bucket := objstore.NewInMemBucket()
-		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.paths()[0])
+		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndexRun.paths()[0])
 		return newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
 	}
 

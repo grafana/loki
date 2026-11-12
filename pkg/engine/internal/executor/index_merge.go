@@ -20,6 +20,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// indexPrefetchBytes is how many bytes the index merge and filter read up
+// front when they open a source index object. It matches the prefetch that
+// the metastore uses for index objects.
+const indexPrefetchBytes = 64 * 1024
+
 // executeIndexMerge orchestrates the index merge: classify sections,
 // drive both merges, feed indexobj.Builder, upload the result, and emit a record
 // reporting the content-hash path.
@@ -139,7 +144,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
-			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
+			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, indexPrefetchBytes)
 			if openErr != nil {
 				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
@@ -211,13 +216,14 @@ type objectSections struct {
 	stats    []*dataobj.Section
 }
 
-// keepAll keeps the rows of every log object.
+// keepAll is the keep filter of an index merge. It keeps every postings and
+// stats row, whatever log object the row references.
 func keepAll(string) bool { return true }
 
-// mergePostingsIntoBuilder merges the postings sections of all source objects
-// with a K-way loser-tree merge and feeds the rows of the log objects that keep
-// accepts into the builder.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(objectPath string) bool, builder *indexobj.MergeBuilder) error {
+// mergePostingsIntoBuilder merges the postings sections of all source index
+// objects with a K-way loser-tree merge. It feeds into the builder each row
+// whose referenced log object path keep accepts.
+func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
@@ -306,10 +312,10 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 	}
 }
 
-// mergeStatsIntoBuilder merges the stats sections of all source objects with a
-// K-way loser-tree merge and feeds the rows of the log objects that keep
-// accepts into the builder. Uses D3 aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(objectPath string) bool, builder *indexobj.MergeBuilder) error {
+// mergeStatsIntoBuilder merges the stats sections of all source index objects
+// with a K-way loser-tree merge. It feeds into the builder each row whose
+// referenced log object path keep accepts. Uses D3 aggregation with schema/label validation.
+func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {

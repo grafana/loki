@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const prefetchBytes = 2 * 1024 * 1024
@@ -314,115 +315,119 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
 	}
 
-	type sectionID struct {
-		path  string
-		index int64
-	}
-
-	var (
-		reader stats.Reader
-
-		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
-		interned  = make(map[string]string)
-	)
-	defer reader.Close()
-
-	const batchSize = 1024
-	scratch := make([]stats.Stat, batchSize)
+	folder := newLogSectionFolder(labelNames)
 	for i, obj := range objects {
 		idxPath := run.entries[i].Path
 		for _, section := range obj.Sections().Filter(stats.CheckSection) {
 			if section.Tenant != tenant {
 				continue
 			}
-
-			statsSection, err := stats.Open(ctx, section)
-			if err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
-			}
-
-			reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
-			if err := reader.Open(ctx); err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
-			}
-
-			for {
-				record, readErr := reader.Read(ctx, batchSize)
-				if readErr != nil && !errors.Is(readErr, io.EOF) {
-					return nil, indexpointers.ShardBuckets{}, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
-				}
-				numRows := int(record.NumRows())
-				if numRows == 0 && errors.Is(readErr, io.EOF) {
-					break
-				}
-
-				rows := scratch[:numRows]
-				n, err := stats.FromRecordBatch(record, rows)
-				if err != nil {
-					return nil, indexpointers.ShardBuckets{}, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
-				}
-
-				// The decoded strings point into the buffers of the record batch.
-				// The plans keep the label values and object paths for the whole
-				// LogMerge phase. Without a copy, they keep every batch in memory.
-				// Interning copies each distinct value once.
-				for _, stat := range rows[:n] {
-					var labels []string
-					if len(labelNames) > 0 {
-						labels = make([]string, len(labelNames))
-						for i, name := range labelNames {
-							labels[i] = intern(interned, stat.Labels[name])
-						}
-					}
-					key := newLogSortPrefix(stat.ShardBucket, labels)
-					keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
-
-					id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
-					bounded, ok := bySection[id]
-					if !ok {
-						// A log merge rewrites whole logs objects, so each logs
-						// object is a planning unit.
-						bySection[id] = &v2.Section[logSortPrefix]{
-							PlanningUnit: intern(interned, stat.ObjectPath),
-							Ref: &compactionv2pb.SectionRef{
-								ObjectPath:       intern(interned, stat.ObjectPath),
-								SectionIndex:     stat.SectionIndex,
-								MinKey:           key.labels,
-								MaxKey:           key.labels,
-								MinTimestamp:     stat.MinTimestamp,
-								MaxTimestamp:     stat.MaxTimestamp,
-								UncompressedSize: stat.UncompressedSize,
-							},
-							Min:  key,
-							Max:  key,
-							Keys: []v2.KeySize[logSortPrefix]{keySize},
-						}
-						continue
-					}
-					bounded.Keys = append(bounded.Keys, keySize)
-
-					if compareLogSortPrefix(key, bounded.Min) < 0 {
-						bounded.Min = key
-						bounded.Ref.MinKey = key.labels
-					}
-					if compareLogSortPrefix(key, bounded.Max) > 0 {
-						bounded.Max = key
-						bounded.Ref.MaxKey = key.labels
-					}
-					bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
-					bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
-					bounded.Ref.UncompressedSize += stat.UncompressedSize
-				}
-
-				if errors.Is(readErr, io.EOF) {
-					break
-				}
+			if err := folder.addSection(ctx, section); err != nil {
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 		}
-
 	}
-	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
-	for _, ref := range bySection {
+	return folder.refs(), indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+}
+
+// logSectionID identifies one section of a logs object.
+type logSectionID struct {
+	path  string
+	index int64
+}
+
+// logSectionFolder folds stats rows into one bounded reference per log
+// section. The stats rows of one log section can come from several stats
+// sections and index objects.
+type logSectionFolder struct {
+	// labelNames are the label names of the sort schema, in schema order.
+	labelNames []string
+	bySection  map[logSectionID]*v2.Section[logSortPrefix]
+	interned   map[string]string
+}
+
+func newLogSectionFolder(labelNames []string) *logSectionFolder {
+	return &logSectionFolder{
+		labelNames: labelNames,
+		bySection:  make(map[logSectionID]*v2.Section[logSortPrefix]),
+		interned:   make(map[string]string),
+	}
+}
+
+// addSection folds every row of the stats section.
+func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Section) (err error) {
+	statsSection, err := stats.Open(ctx, section)
+	if err != nil {
+		return fmt.Errorf("open stats section: %w", err)
+	}
+	reader := stats.NewRowReader(ctx, statsSection)
+	defer util.CloseAndHandleError(reader, &err)
+	for reader.Next() {
+		f.add(reader.At())
+	}
+	return reader.Err()
+}
+
+// add folds stat into the reference of its log section.
+//
+// The decoded strings of stat point into the buffers of a record batch. The
+// plans keep the label values and object paths for the whole LogMerge phase.
+// Without a copy, they keep every batch in memory. Interning copies each
+// distinct value once.
+func (f *logSectionFolder) add(stat stats.Stat) {
+	var labels []string
+	if len(f.labelNames) > 0 {
+		labels = make([]string, len(f.labelNames))
+		for i, name := range f.labelNames {
+			labels[i] = intern(f.interned, stat.Labels[name])
+		}
+	}
+	key := newLogSortPrefix(stat.ShardBucket, labels)
+	keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
+
+	id := logSectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+	bounded, ok := f.bySection[id]
+	if !ok {
+		path := intern(f.interned, stat.ObjectPath)
+		// A log merge rewrites whole logs objects, so each logs object is a
+		// planning unit.
+		f.bySection[id] = &v2.Section[logSortPrefix]{
+			PlanningUnit: path,
+			Ref: &compactionv2pb.SectionRef{
+				ObjectPath:       path,
+				SectionIndex:     stat.SectionIndex,
+				MinKey:           key.labels,
+				MaxKey:           key.labels,
+				MinTimestamp:     stat.MinTimestamp,
+				MaxTimestamp:     stat.MaxTimestamp,
+				UncompressedSize: stat.UncompressedSize,
+			},
+			Min:  key,
+			Max:  key,
+			Keys: []v2.KeySize[logSortPrefix]{keySize},
+		}
+		return
+	}
+	bounded.Keys = append(bounded.Keys, keySize)
+
+	if compareLogSortPrefix(key, bounded.Min) < 0 {
+		bounded.Min = key
+		bounded.Ref.MinKey = key.labels
+	}
+	if compareLogSortPrefix(key, bounded.Max) > 0 {
+		bounded.Max = key
+		bounded.Ref.MaxKey = key.labels
+	}
+	bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+	bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+	bounded.Ref.UncompressedSize += stat.UncompressedSize
+}
+
+// refs returns the folded references, sorted by log object path and section
+// index.
+func (f *logSectionFolder) refs() []v2.Section[logSortPrefix] {
+	refs := make([]v2.Section[logSortPrefix], 0, len(f.bySection))
+	for _, ref := range f.bySection {
 		refs = append(refs, *ref)
 	}
 	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {
@@ -431,7 +436,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+	return refs
 }
 
 // intern returns the copy of s in interned. It adds a copy of s on the

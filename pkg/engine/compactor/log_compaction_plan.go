@@ -17,9 +17,9 @@ import (
 //
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
-	window      time.Time
-	sourceIndex indexRun
-	tasks       []logCompactionTask
+	window         time.Time
+	sourceIndexRun indexRun
+	tasks          []logCompactionTask
 
 	// shardBuckets is the shard layout of the source index. Compaction never
 	// changes the layout of an object, so every artifact has this layout.

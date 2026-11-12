@@ -229,24 +229,24 @@ func newLayoutKey(layout streams.Layout) layoutKey {
 	}
 }
 
-// replaceLogIndex swaps sourceIndex for newEntries, which hold one entry per
+// replaceLogIndex swaps sourceIndexRun for newEntries, which hold one entry per
 // dispatched task.
 func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexRun,
+	sourceIndexRun indexRun,
 	newEntries []metastore.TableOfContentsEntry,
 ) (compactionStats, error) {
 	if len(newEntries) == 0 {
-		return compactionStats{}, fmt.Errorf("replace source log index %s: no replacement entries", sourceIndex)
+		return compactionStats{}, fmt.Errorf("replace source log index %s: no replacement entries", sourceIndexRun)
 	}
 
 	// Replace every index object of the run, because the ToC writer refuses a
 	// swap that leaves part of a run.
-	swapped, err := c.publisher.Replace(ctx, tenant, window, sourceIndex.paths(), newEntries)
+	swapped, err := c.publisher.Replace(ctx, tenant, window, sourceIndexRun.paths(), newEntries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("replace source log index %s: %w", sourceIndex, err)
+		return compactionStats{}, fmt.Errorf("replace source log index %s: %w", sourceIndexRun, err)
 	}
 	if !swapped {
 		return compactionStats{}, nil
@@ -264,9 +264,9 @@ func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexRun,
+	sourceIndexRun indexRun,
 ) (compactionStats, error) {
-	plan, err := c.planLogCompaction(ctx, tenant, window, sourceIndex)
+	plan, err := c.planLogCompaction(ctx, tenant, window, sourceIndexRun)
 	if err != nil {
 		return compactionStats{}, err
 	}
@@ -288,16 +288,16 @@ func (c *coordinator) planLogCompaction(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	sourceIndex indexRun,
+	sourceIndexRun indexRun,
 ) (logCompactionPlan, error) {
-	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex)
+	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndexRun)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 	if len(sections) == 0 {
 		return logCompactionPlan{}, nil
 	}
-	return c.planLogMerge(tenant, window, sourceIndex, shardBuckets, sections)
+	return c.planLogMerge(tenant, window, sourceIndexRun, shardBuckets, sections)
 }
 
 // planLogMerge plans the k-way merge of sections, which must share a sort
@@ -305,11 +305,11 @@ func (c *coordinator) planLogCompaction(
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
-	sourceIndex indexRun,
+	sourceIndexRun indexRun,
 	shardBuckets indexpointers.ShardBuckets,
 	sections []v2.Section[logSortPrefix],
 ) (logCompactionPlan, error) {
-	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndex.String())
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndexRun.String())
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	singleRuns := countSingleObjectRuns(runs)
 	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
@@ -320,7 +320,7 @@ func (c *coordinator) planLogMerge(
 
 	merges, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
 	if len(merges) == 0 {
-		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %s: %d runs, %d unmerged", sourceIndex, len(runs), len(unmerged))
+		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %s: %d runs, %d unmerged", sourceIndexRun, len(runs), len(unmerged))
 	}
 
 	keys := newSectionKeySizes(sections)
@@ -347,7 +347,7 @@ func (c *coordinator) planLogMerge(
 
 	plan := logCompactionPlan{
 		window:           window,
-		sourceIndex:      sourceIndex,
+		sourceIndexRun:   sourceIndexRun,
 		shardBuckets:     shardBuckets,
 		tasks:            make([]logCompactionTask, 0, len(specs)+1),
 		singleObjectRuns: singleRuns,
@@ -356,7 +356,7 @@ func (c *coordinator) planLogMerge(
 		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
 	}
 	if len(unmergedRuns) > 0 {
-		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndex, unmergedRuns))
+		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndexRun, unmergedRuns))
 	}
 	return plan, nil
 }
@@ -412,12 +412,12 @@ func (c *coordinator) executeLogCompaction(
 	// A swap leaves the old index object in storage, so only the ToC shows
 	// that the plan is stale. A swap by another writer while the tasks run is
 	// still safe, because our swap then fails and writes nothing.
-	exists, err := c.existsInToC(ctx, tenant, plan.window, plan.sourceIndex)
+	exists, err := c.existsInToC(ctx, tenant, plan.window, plan.sourceIndexRun)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndex, err)
+		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndexRun, err)
 	}
 	if !exists {
-		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex)
+		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndexRun)
 	}
 
 	artifacts, err := c.logDispatcher.RunToCompletion(ctx, tenant, plan.physicalPlans(tenant))
@@ -433,14 +433,14 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
 	}
 
-	stats, err := c.replaceLogIndex(ctx, tenant, plan.window, plan.sourceIndex, entries)
+	stats, err := c.replaceLogIndex(ctx, tenant, plan.window, plan.sourceIndexRun, entries)
 	if err != nil {
 		return compactionStats{}, err
 	}
 	if stats.removed == 0 {
-		level.Debug(c.logger).Log("msg", "log-compaction step for index was a no-op", "tenant", tenant, "entry", plan.sourceIndex.String())
+		level.Debug(c.logger).Log("msg", "log-compaction step for index was a no-op", "tenant", tenant, "entry", plan.sourceIndexRun.String())
 	} else {
-		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndex.String(), "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
+		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndexRun.String(), "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
 }
@@ -483,8 +483,8 @@ func countSingleObjectRuns(runs []v2.Run) int {
 }
 
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
-// unmerged runs from sourceIndex. Its ToC entry spans the unmerged runs.
-func indexFilterForUnmerged(sourceIndex indexRun, unmerged []*compactionv2pb.RunRef) indexFilterTask {
+// unmerged runs from sourceIndexRun. Its ToC entry spans the unmerged runs.
+func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.RunRef) indexFilterTask {
 	var objectPaths []string
 	for _, run := range unmerged {
 		for _, section := range run.Sections {
@@ -494,7 +494,7 @@ func indexFilterForUnmerged(sourceIndex indexRun, unmerged []*compactionv2pb.Run
 	slices.Sort(objectPaths)
 	objectPaths = slices.Compact(objectPaths)
 	return indexFilterTask{
-		sourceIndexPaths: sourceIndex.paths(),
+		sourceIndexPaths: sourceIndexRun.paths(),
 		objectPaths:      objectPaths,
 		entry:            runsToCEntry(unmerged),
 	}
@@ -986,7 +986,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			interrupted = true
 			break
 		}
-		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", plan.window, "index", plan.sourceIndex.String(), "progress", fmt.Sprintf("%d/%d", i+1, len(plans)))
+		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", plan.window, "index", plan.sourceIndexRun.String(), "progress", fmt.Sprintf("%d/%d", i+1, len(plans)))
 		stats, err := c.executeLogCompaction(ctx, tenant, plan)
 		if err != nil {
 			// Stop without a failure only when shutdown cancelled the work.
@@ -998,7 +998,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 				break
 			}
 			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
-				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.String(), "err", err)
+				"tenant", tenant, "window", plan.window, "index", plan.sourceIndexRun.String(), "err", err)
 			reason := failReasonExecute
 			if errors.Is(err, errStalePlan) {
 				reason = failReasonStalePlan

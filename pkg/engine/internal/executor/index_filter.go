@@ -115,7 +115,7 @@ func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFil
 		layoutSource string
 	)
 	for _, path := range node.SourceIndexPaths {
-		obj, err := dataobj.FromBucket(ctx, c.bucket, path, 0)
+		obj, err := dataobj.FromBucket(ctx, c.bucket, path, indexPrefetchBytes)
 		if err != nil {
 			return nil, streams.Layout{}, fmt.Errorf("opening source index %q: %w", path, err)
 		}
