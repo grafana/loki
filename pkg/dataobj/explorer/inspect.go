@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -113,7 +114,7 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 }
 
 func inspectFile(ctx context.Context, logger log.Logger, bucket objstore.BucketReader, path string) FileMetadata {
-	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	obj, err := openFile(ctx, bucket, path)
 	if err != nil {
 		return FileMetadata{
 			Error: fmt.Sprintf("failed to read sections: %v", err),
@@ -173,6 +174,15 @@ func inspectFile(ctx context.Context, logger log.Logger, bucket objstore.BucketR
 	}
 
 	return result
+}
+
+// openFile opens the data object at path. It reads a ToC in full because the writer replaces a ToC in place, and range
+// reads could then see different versions. It reads other objects with range reads because they can be large.
+func openFile(ctx context.Context, bucket objstore.BucketReader, path string) (*dataobj.Object, error) {
+	if metastore.IsTableOfContentsPath(path) {
+		return metastore.OpenTableOfContents(ctx, bucket, path)
+	}
+	return dataobj.FromBucket(ctx, bucket, path, 0)
 }
 
 func inspectIndexPointersSection(ctx context.Context, logger log.Logger, ty dataobj.SectionType, sec *indexpointers.Section) (SectionMetadata, error) {

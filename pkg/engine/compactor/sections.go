@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -80,19 +79,9 @@ func indexKey(row postings.Row) indexSortKey {
 func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexpointers.IndexPointer, error) {
 	tocPath := metastore.TableOfContentsPath(tenant, window.UTC().Truncate(metastore.MetastoreWindowSize))
 
-	r, err := bucket.Get(ctx, tocPath)
+	obj, err := metastore.OpenTableOfContents(ctx, bucket, tocPath)
 	if err != nil {
 		return nil, err // includes IsObjNotFoundErr — caller checks
-	}
-	defer r.Close()
-
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("read ToC %s: %w", tocPath, err)
-	}
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	if err != nil {
-		return nil, fmt.Errorf("decode ToC %s: %w", tocPath, err)
 	}
 
 	var out []indexpointers.IndexPointer
