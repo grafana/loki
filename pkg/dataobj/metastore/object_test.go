@@ -32,7 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -451,7 +451,7 @@ func TestObjectMetastore_Sections_ShardBucketRange(t *testing.T) {
 	observation := func(objectPath string, streamID int64, bucket uint32) postings.LabelObservation {
 		return postings.LabelObservation{
 			ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
-			StreamID: streamID, Timestamp: now, ShardBucket: bucket,
+			StreamID: streamID, Time: postings.At(now), ShardBucket: bucket,
 		}
 	}
 
@@ -558,7 +558,7 @@ func TestObjectMetastore_Sections_StreamHashRange(t *testing.T) {
 	observation := func(objectPath string, bucket uint32) postings.LabelObservation {
 		return postings.LabelObservation{
 			ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
-			StreamID: 1, Timestamp: now, ShardBucket: bucket,
+			StreamID: 1, Time: postings.At(now), ShardBucket: bucket,
 		}
 	}
 
@@ -691,7 +691,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 	}
 
 	observe := func(objectPath string, streamID int64) postings.LabelObservation {
-		return postings.LabelObservation{ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: streamID, Timestamp: now}
+		return postings.LabelObservation{ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: streamID, Time: postings.At(now)}
 	}
 
 	requireDuplicateSections := func(t *testing.T, reg *prometheus.Registry, wantIdentical, wantDiverged int) {
@@ -816,9 +816,9 @@ func TestObjectMetastore_Sections(t *testing.T) {
 	}
 
 	t.Run("returns no section with the error when the sequence fails after a batch", func(t *testing.T) {
-		stream1 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now}
-		stream2 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 2, Timestamp: now}
-		stream3 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 3, Timestamp: now}
+		stream1 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)}
+		stream2 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 2, Time: postings.At(now)}
+		stream3 := postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 3, Time: postings.At(now)}
 		bucket := objstore.NewInMemBucket()
 		createIndexObject(ctx, t, bucket, []postings.LabelObservation{stream1, stream2})
 		createIndexObject(ctx, t, bucket, []postings.LabelObservation{stream1, stream2, stream3})
@@ -1134,7 +1134,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
-	t.Run("yields an error that names the index object and the panic when a read panics", func(t *testing.T) {
+	t.Run("yields an error that names the index object and the panic when opening it panics", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		panickingIndex := addIndexObject(t, inMem, sectionOf("object-a"))
 		bucket := newGatedBucket(inMem)
@@ -1146,8 +1146,8 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		batches, err := collectSectionBatches(t, m.SectionsStream(ctx, request))
 
 		require.Empty(t, batches)
-		require.EqualError(t, err, fmt.Sprintf("reading the sections of index object %q: corrupt index object", panickingIndex))
-		require.Contains(t, logs.String(), "panic reading the sections of an index object")
+		require.ErrorContains(t, err, fmt.Sprintf("opening index object %s: panic: corrupt index object", panickingIndex))
+		require.Contains(t, logs.String(), "panic opening an index object")
 	})
 
 	t.Run("cancels the other index reads when one read fails, even while the caller handles a batch", func(t *testing.T) {
@@ -1262,7 +1262,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		for streams := 1; streams <= 4; streams++ {
 			var observations []postings.LabelObservation
 			for streamID := 1; streamID <= streams; streamID++ {
-				observations = append(observations, postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: int64(streamID), Timestamp: now})
+				observations = append(observations, postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: int64(streamID), Time: postings.At(now)})
 			}
 			createIndexObject(ctx, t, bucket, observations)
 		}
@@ -1495,7 +1495,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-				IndexPath: path,
+				Indexes: []IndexEntry{{Path: path}},
 				SectionsRequest: SectionsRequest{
 					Start:      now.Add(-4 * time.Hour),
 					End:        now.Add(time.Hour),
@@ -1629,7 +1629,7 @@ func observeLabelPostings(builder *indexobj.Builder, path string, section, strea
 			ColumnName:       l.Name,
 			LabelValue:       l.Value,
 			StreamID:         streamID,
-			Timestamp:        ts,
+			Time:             postings.At(ts),
 			UncompressedSize: size,
 			ShardBucket:      shardBucket,
 		})
@@ -1668,13 +1668,13 @@ func uploadIndexObject(t *testing.T, obj *dataobj.Object) (*ObjectMetastore, str
 func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now.Add(-2 * time.Hour)},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now.Add(-2 * time.Hour))},
 	})
 	defer closer()
 	m, path := uploadIndexObject(t, obj)
 
 	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-		IndexPath: path,
+		Indexes: []IndexEntry{{Path: path}},
 		SectionsRequest: SectionsRequest{
 			Start:    now.Add(-4 * time.Hour),
 			End:      now,
@@ -1833,27 +1833,27 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 	t.Run("returns the sections of the index object with its path and the number of rows read", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		indexPath := createIndexObject(ctx, t, bucket, []postings.LabelObservation{
-			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
-			{ObjectPath: "object-b", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
+			{ObjectPath: "object-b", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexPath)
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Len(t, sections, 2)
 		require.ElementsMatch(t, []string{"object-a", "object-b"}, []string{sections[0].ObjectPath, sections[1].ObjectPath})
-		require.Equal(t, indexPath, sections[0].IndexPath)
-		require.Equal(t, indexPath, sections[1].IndexPath)
+		require.Equal(t, indexPath, sections[0].IndexRun)
+		require.Equal(t, indexPath, sections[1].IndexRun)
 		require.Positive(t, readRows)
 	})
 
 	t.Run("returns no section and no rows when the index object lists no section for the request", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		indexPath := createIndexObject(ctx, t, bucket, []postings.LabelObservation{
-			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "bar", StreamID: 1, Timestamp: now},
+			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "bar", StreamID: 1, Time: postings.At(now)},
 		})
 
-		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexPath)
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: indexPath}}})
 
 		require.NoError(t, err)
 		require.Empty(t, sections)
@@ -1861,7 +1861,7 @@ func TestObjectMetastore_readIndexSections(t *testing.T) {
 	})
 
 	t.Run("returns an error that names the index object when the index object does not exist", func(t *testing.T) {
-		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, "missing-index-object")
+		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, indexRun{entries: []IndexEntry{{Path: "missing-index-object"}}})
 
 		require.ErrorContains(t, err, "missing-index-object")
 		require.Empty(t, sections)
@@ -1891,7 +1891,7 @@ func TestNewObjectMetastore(t *testing.T) {
 		request      = GetIndexesRequest{Start: now.Add(-time.Hour), End: now.Add(time.Hour)}
 		observations = []postings.LabelObservation{{
 			ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
-			StreamID: 1, Timestamp: now,
+			StreamID: 1, Time: postings.At(now),
 		}}
 		tocPath = TableOfContentsPath(tenantID, tocTestWindow)
 		data    = newTOCBytes(t, tenantID, indexpointers.IndexPointer{Path: "index/a", StartTs: tocTestWindow, EndTs: tocTestWindow.Add(time.Hour)})
@@ -2231,7 +2231,7 @@ func (g *readGate) open() {
 // backend.
 func newTestMetastoreWithCache(bucket objstore.Bucket) (*ObjectMetastore, cache.MockCache) {
 	memoryCache := cache.NewMockCache()
-	metadataCache := metadatacache.NewCache(memoryCache, 0, metadatacache.KindIndex, metadatacache.NewMetrics(nil), nil)
+	metadataCache := metadata.NewCache(memoryCache, 0, metadata.KindIndexCache, metadata.NewCacheMetrics(nil), nil)
 	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry(), WithIndexMetadataCache(metadataCache)), memoryCache
 }
 

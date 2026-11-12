@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/pkg/errors"
+	"github.com/thanos-io/objstore/providers/s3"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
@@ -25,11 +26,11 @@ type SSEParsedConfig struct {
 // NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
 func NewSSEParsedConfig(cfg bucket_s3.SSEConfig) (*SSEParsedConfig, error) {
 	switch cfg.Type {
-	case bucket_s3.SSES3:
+	case s3.SSES3:
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseS3Type,
 		}, nil
-	case bucket_s3.SSEKMS:
+	case s3.SSEKMS:
 		if cfg.KMSKeyID == "" {
 			return nil, errors.New("KMS key id must be passed when SSE-KMS encryption is selected")
 		}

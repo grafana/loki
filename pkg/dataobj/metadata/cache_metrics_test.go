@@ -1,4 +1,4 @@
-package metadatacache
+package metadata
 
 import (
 	"testing"
@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewMetrics(t *testing.T) {
+func TestNewCacheMetrics(t *testing.T) {
 	t.Run("exposes a zero series for every kind and operation before any cache call", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
 
-		NewMetrics(reg)
+		NewCacheMetrics(reg)
 
 		for name, wantSeries := range map[string]int{
 			"loki_dataobj_metadata_cache_hits_total":   3,

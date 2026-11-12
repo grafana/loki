@@ -72,7 +72,7 @@ func WithV3Defaults() Option {
 }
 
 // WithV4Defaults returns the current V4 default options.
-// These is the default settings when using [Dump] or [Load] without any options.
+// These are the default settings when using [Dump] or [Load] without any options.
 func WithV4Defaults() Option {
 	return Options(
 		WithIndent(2),
@@ -113,7 +113,7 @@ var (
 	//
 	// When enabled, loading will return an error if the YAML input contains
 	// fields that do not correspond to any fields in the target struct.
-	// When called without arguments, defaults to true.
+	// Calling WithKnownFields() enables checking; it is disabled by default.
 	WithKnownFields = libyaml.WithKnownFields
 
 	// WithSingleDocument configures the Loader to only process the first
@@ -122,8 +122,8 @@ var (
 	//
 	// When called without arguments, defaults to true.
 	//
-	// This is useful when you expect exactly one document and want behavior
-	// similar to [Unmarshal].
+	// This ignores later documents, including their syntax errors.
+	// Omit this option with [Load] to require exactly one document.
 	WithSingleDocument = libyaml.WithSingleDocument
 
 	// WithStreamNodes enables returning stream boundary nodes when loading
@@ -164,9 +164,9 @@ var (
 
 	// WithLineWidth sets the preferred line width for YAML output.
 	//
-	// When encoding long strings, the encoder will attempt to wrap them at
-	// this width using literal block style (|). Set to -1 or 0 for unlimited
-	// width.
+	// The emitter attempts to wrap long scalars without changing their value.
+	// Long words may exceed this width.
+	// Set to -1 or 0 for unlimited width.
 	//
 	// The default is 80 characters.
 	WithLineWidth = libyaml.WithLineWidth
@@ -175,7 +175,7 @@ var (
 	// output.
 	//
 	// When true, non-ASCII characters appear as-is (e.g., "café").
-	// When false, non-ASCII characters are escaped (e.g., "caf\u00e9").
+	// When false, non-ASCII characters are escaped (e.g., "caf\xE9").
 	// When called without arguments, defaults to true.
 	//
 	// The default is true.
@@ -192,11 +192,12 @@ var (
 	// The default is true.
 	WithUniqueKeys = libyaml.WithUniqueKeys
 
-	// WithCanonical forces canonical YAML output format.
+	// WithCanonical selects the emitter's canonical YAML layout.
 	//
-	// When enabled, the encoder outputs strictly canonical YAML with explicit
-	// tags for all values. This produces verbose output primarily useful for
-	// debugging and YAML spec compliance testing.
+	// It emits explicit document starts, flow collections, and quoted scalars.
+	// Tags still depend on the node graph and desolver; this option alone does
+	// not force an explicit tag on every value.
+	// Scalar types may change when reloading canonical output.
 	// When called without arguments, defaults to true.
 	//
 	// The default is false.
@@ -302,7 +303,7 @@ type DepthContext = libyaml.DepthContext
 // Example:
 //
 //	import "go.yaml.in/yaml/v4/plugin/loaderlimits"
-//	loader := yaml.NewLoader(data,
+//	loader, err := yaml.NewLoader(reader,
 //	    yaml.WithPlugin(loaderlimits.New(loaderlimits.AliasNone())))
 //
 // Plugins use public types and can be implemented by external packages.
@@ -402,6 +403,8 @@ func WithPlugin(plugins ...any) Option {
 //
 // Only fields specified in the YAML will override other options when
 // combined. Unspecified fields won't affect other options.
+// To clear an earlier single-document setting, apply WithSingleDocument(false)
+// after the parsed configuration.
 //
 // Example:
 //
@@ -415,7 +418,10 @@ func WithPlugin(plugins ...any) Option {
 //	      v4:
 //	        position: long
 //	`)
-//	yaml.Dump(&data, yaml.Options(V4, opts))
+//	if err != nil {
+//	    return err
+//	}
+//	output, err := yaml.Dump(&data, opts)
 func OptsYAML(yamlStr string) (Option, error) {
 	var cfg struct {
 		Indent                *int    `yaml:"indent"`
@@ -444,9 +450,6 @@ func OptsYAML(yamlStr string) (Option, error) {
 		}
 	default:
 		return nil, errors.New("yaml: plugin configuration must be a mapping")
-	}
-	if err := pluginreg.NormalizeConfig(plugins); err != nil {
-		return nil, fmt.Errorf("yaml: %w", err)
 	}
 	// Build options only for fields that were set
 	var optList []Option
@@ -1066,7 +1069,6 @@ func withFromLegacy() Option {
 //	             causing all of its fields or keys to be processed as if
 //	             they were part of the outer struct. For maps, keys must
 //	             not conflict with the yaml keys of other struct fields.
-//	             See doc/inline-tags.md for detailed examples and use cases.
 //
 // In addition, if the key is "-", the field is ignored.
 //
@@ -1077,7 +1079,7 @@ func withFromLegacy() Option {
 //	    B int
 //	}
 //	yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
-//	yaml.Marshal(&T{F: 1}} // Returns "a: 1\nb: 0\n"
+//	yaml.Marshal(&T{F: 1}) // Returns "a: 1\nb: 0\n"
 func Marshal(in any) (out []byte, err error) {
 	// Use WithV3Defaults() with unlimited line width to match legacy DefaultOptions
 	return Dump(in, WithV3Defaults(), WithLineWidth(-1))

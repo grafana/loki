@@ -284,8 +284,8 @@ func TestFanOutHandler_Do(t *testing.T) {
 			primaryBody: bodyWithStats(1000, 1, "result", 1), secondaryBody: bodyWithStats(500, 1, "result", 1),
 			expectedLoad: "both_busy", expectedCache: "both_hit",
 		},
-		"labels the ratios both_hit when the primary found an entry in the instant metric results cache and the secondary in the log results cache": {
-			primaryBody: bodyWithStats(1000, 0, "instantMetricResult", 1), secondaryBody: bodyWithStats(500, 0, "logResult", 1),
+		"labels the ratios both_hit when the primary found an entry in the instant metric results cache and the secondary in the range results cache": {
+			primaryBody: bodyWithStats(1000, 0, "instantMetricResult", 1), secondaryBody: bodyWithStats(500, 0, "result", 1),
 			expectedLoad: "both_idle", expectedCache: "both_hit",
 		},
 	} {

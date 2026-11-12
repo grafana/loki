@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
@@ -112,6 +113,11 @@ func printHeaderToWriter(w io.Writer, reader logline.Reader, version, filePath s
 
 	fmt.Fprintf(w, "Term Count: %s\n", formatNumber(header.TermCount))
 	fmt.Fprintf(w, "Document Count: %s\n", formatNumber(uint64(header.DocumentCount)))
+	if layout, ok := logline.DocumentLayout(reader); ok {
+		fmt.Fprintf(w, "Day Start: %s\n", layout.DayStart.Format(time.RFC3339))
+		fmt.Fprintf(w, "Document Interval: %s\n", layout.Interval)
+		fmt.Fprintf(w, "Document Shard Bits: %d\n", layout.ShardBits)
+	}
 	fmt.Fprintf(w, "Posting Count: %s\n", formatNumber(postingCount))
 	fmt.Fprintf(w, "File Size: %s\n", formatBytes(fileSize))
 }
@@ -172,6 +178,11 @@ func printDocuments(reader logline.Reader, limit int) {
 }
 
 func printDocumentsToWriter(w io.Writer, reader logline.Reader, limit int) {
+	if layout, ok := logline.DocumentLayout(reader); ok {
+		fmt.Fprintf(w, "\nDocuments: no document table; document IDs are cells of %s (%s cells per day, %s per bucket, %d shard bits)\n",
+			layout.DayStart.Format(time.DateOnly), formatNumber(layout.CellsPerDay()), layout.Interval, layout.ShardBits)
+		return
+	}
 	docs := make([]format.DocumentMetadata, len(reader.Documents()))
 	copy(docs, reader.Documents())
 

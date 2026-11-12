@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -21,6 +20,7 @@ type directExecutionStack struct {
 	t          *testing.T
 	stackName  string
 	limits     logql.Limits
+	engineOpts logql.EngineOpts
 	newQuerier newScriptQuerierFunc
 	querier    logql.Querier
 
@@ -32,14 +32,14 @@ type directExecutionStack struct {
 // newDirectTimestampFirstStack returns the direct stack in timestamp-first order, changed by opts.
 func newDirectTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
 	o := newStackOptions(opts...)
-	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: o.maxQuerySeries}, newQuerier: newChunkQuerier}
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
 // newDirectStreamFirstStack returns the direct stack with stream-first execution enabled, changed
 // by opts.
 func newDirectStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
 	o := newStackOptions(opts...)
-	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, newQuerier: newChunkQuerier}
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
 // newDirectDataObjStack returns the direct stack with stream-first execution enabled, changed by
@@ -50,6 +50,7 @@ func newDirectDataObjStack(t *testing.T, stackName string, opts ...stackOption) 
 		t:                 t,
 		stackName:         stackName,
 		limits:            execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries},
+		engineOpts:        newEngineOpts(o),
 		newQuerier:        newDataObjQuerierFunc(epoch),
 		dataObjQueryStart: epoch,
 	}
@@ -76,9 +77,7 @@ func (s *directExecutionStack) setStores(stores *scriptStores) {
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
-	var opts logql.EngineOpts
-	flagext.DefaultValues(&opts)
-	engine := logql.NewEngine(opts, s.querier, s.limits, log.NewNopLogger())
+	engine := logql.NewEngine(s.engineOpts, s.querier, s.limits, log.NewNopLogger())
 
 	start, end, step := cmd.getTimeRange()
 	params, err := logql.NewLiteralParams(

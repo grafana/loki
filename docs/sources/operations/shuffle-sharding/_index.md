@@ -7,12 +7,12 @@ weight:
 # Isolate tenant workflows using shuffle sharding
 
 Shuffle sharding is a resource-management technique used to isolate tenant workloads from other tenant workloads, to give each tenant more of a single-tenant experience when running in a shared cluster.
-This technique is explained by AWS in their article [Workload isolation using shuffle-sharding](https://aws.amazon.com/builders-library/workload-isolation-using-shuffle-sharding/).
+This technique is explained by AWS in their article [Workload isolation using shuffle-sharding](https://builder.aws.com/content/3F06NpJ8YeoIGP8VHTw4n81pFn8/workload-isolation-using-shuffle-sharding).
 A reference implementation has been shown in the [Route53 Infima library](https://github.com/awslabs/route53-infima/blob/master/src/main/java/com/amazonaws/services/route53/infima/SimpleSignatureShuffleSharder.java).
 
 Several Loki components can use shuffle sharding, and each one has its own configuration.
 You can enable shuffle sharding for one component without enabling it for the others.
-This page explains the shared concept using the query path as an example, then documents the configuration for the query path, the ruler, and the index gateway.
+This page explains the shared concept using the query path as an example, then documents the configuration for the query path, the ruler, the index gateway, and Kafka-based ingestion.
 
 ## The issues that shuffle sharding mitigates
 
@@ -32,8 +32,7 @@ one that causes a querier component to hit an out-of-memory error,
 or one that causes a querier component to crash.
 Once the error occurs,
 the tenant or tenants issuing the error-causing query will be reassigned
-to other running queriers(remember all tenants can use all available queriers),
-This, in turn, may affect the queriers that have been reassigned.
+to other running queriers (remember all tenants can use all available queriers). This, in turn, may affect the queriers that have been reassigned.
 
 ## How shuffle sharding works
 
@@ -164,6 +163,21 @@ limits_config:
 
 {{< admonition type="note" >}}
 `-index-gateway.max-capacity` (`index_gateway_max_capacity`) is a separate, experimental setting that limits each tenant to a fraction, from `0.0` to `1.0`, of the available index gateway instances.
+A value of `0.0` has the same effect as `1.0`: both mean all available index gateways, so to actually shrink a tenant's shard you need a value strictly between `0.0` and `1.0`.
 It only applies in `simple` mode, where it selects the subset of instances for a tenant by hashing the tenant ID instead of using the ring.
 It has no effect in `ring` mode, so it is not part of the configuration described in this section.
+
+A related setting, `-tsdb.shipper.index-gateway-client.min-shuffle-shard-size` (`min_shuffle_shard_size`, default `3`), sets a floor on the number of instances in a tenant's shard, regardless of what `max-capacity` would otherwise select. It also only applies in `simple` mode.
 {{< /admonition >}}
+
+## Shuffle sharding for Kafka-based ingestion
+
+{{< admonition type="warning" >}}
+Kafka-based ingestion is an [experimental feature](https://grafana.com/docs/release-life-cycle/). The configuration described in this section may change in a future release.
+{{< /admonition >}}
+
+When Loki ingests logs through Kafka, a tenant's streams can be shuffle sharded across a subset of the Kafka topic's partitions instead of using all of them.
+
+Set the per-tenant configuration `ingestion_partitions_tenant_shard_size` (`-limits.ingestion-partition-tenant-shard-size`) to the number of partitions a tenant's data should be sharded across. The default, `0`, disables shuffle sharding, so a tenant's data spreads across all partitions.
+
+For details on enabling Kafka-based ingestion and configuring partitions, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).

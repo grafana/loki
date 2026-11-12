@@ -4,7 +4,7 @@
 // This file contains the Loader API for reading YAML documents.
 //
 // Primary functions:
-// - Load: Decode YAML document(s) into a value (use WithAll for multi-doc)
+// - Load: Decode YAML document(s) into a value (use WithAllDocuments for multi-doc)
 // - NewLoader: Create a streaming loader from io.Reader
 
 package libyaml

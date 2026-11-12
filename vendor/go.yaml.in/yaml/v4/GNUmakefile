@@ -18,6 +18,7 @@ include $(MAKES)/init.mk
 include $(MAKES)/shellcheck.mk
 include $(MAKES)/perl.mk
 include $(MAKES)/uv.mk
+include $(MAKES)/gh.mk
 
 YAMLLINT-VERSION ?= 1.38.0
 export UV_CACHE_DIR := $(LOCAL-CACHE)/uv
@@ -100,7 +101,7 @@ COVER-TESTS := \
  ./cmd/... \
  ./internal/... \
 
-# v=1 for verbose
+# v=1 for verbose tests; release uses v as its version.
 MAKE := $(MAKE) --no-print-directory
 
 v ?=
@@ -116,8 +117,8 @@ $(if $(fuzz), --fuzz=FuzzEncodeFromJSON --fuzztime=$(time))\
 $(if $(opts), $(opts))\
 
 # Test rules:
-test: test-main test-internal test-cmd test-cli-build test-limit test-v3-hooks \
-  test-yts-all test-shell
+test: test-main test-internal test-cmd test-cli-build test-v3-hooks \
+  test-yts-all test-shell test-release
 	@echo 'ALL TESTS PASS'
 
 check:
@@ -204,6 +205,24 @@ endif
 $(CLI-BINARY): $(GO)
 	go build -o $@ ./cmd/$@
 
+# Create release notes as a draft after the annotated tag is published.
+export GO_YAML_RELEASE_VERSION = $(v)
+
+release: $(GH)
+	@version=$$GO_YAML_RELEASE_VERSION; \
+	part='(0|[1-9][0-9]*)'; \
+	[[ $$version =~ ^$$part\.$$part\.$$part$$ ]] || \
+	  { echo 'Usage: make release v=4.0.0' >&2; exit 1; }; \
+	notes=docs/releases/v$$version.md; \
+	test -s "$$notes" || \
+	  { echo "Missing or empty release notes: $$notes" >&2; exit 1; }; \
+	$(GH) release create "v$$version" \
+	  --repo yaml/go-yaml --verify-tag --draft \
+	  --title "go-yaml v$$version" --notes-file "$$notes"
+
+test-release: $(PERL)
+	$(PERL) util/release.t
+
 # Render the README image with the current CLI and demo sources.
 # Chrome's Unix socket path is too long under the project-local TMPDIR.
 update: cli yamlcast
@@ -283,13 +302,6 @@ test-reference-parser: prepare-reference-parser
 
 test-cli-build: $(GO-DEPS)
 	go test ./util/build-cli$(TEST-OPTS)
-
-test-limit: $(PERL) $(GO-DEPS)
-	cd plugin/limit && GOWORK=off go test ./...$(TEST-OPTS)
-	cd plugin/limit && GOWORK=off go mod edit -json | \
-	  $(PERL) -0777 -ne \
-	  'exit 1 unless /"Deprecated":\s*"use .*loaderlimits instead\."/'
-	@echo 'LIMIT MODULE DEPRECATION PASS'
 
 # Real v3 types are confined to a test-only module under testdata.
 test-v3-hooks: $(GO-DEPS)

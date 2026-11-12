@@ -174,6 +174,10 @@ type fastStreamingSession struct {
 	nextTermID     uint32
 	documentCount  uint32
 	payloadBuf     []byte
+	// rawBuf and encBuf are reused across flushBlock calls for the block
+	// header plus payload and for its zstd output.
+	rawBuf []byte
+	encBuf []byte
 }
 
 func NewFastPostingsEncoder(encoding format.PostingsEncoding, blockTarget int) (*FastPostingsEncoder, error) {
@@ -312,22 +316,18 @@ func (e *FastPostingsEncoder) flushBlock(s *fastStreamingSession) error {
 		return nil
 	}
 
-	var raw bytes.Buffer
-	if err := binary.Write(&raw, binary.LittleEndian, uint32(s.blockTermCount)); err != nil {
-		return fmt.Errorf("write term count: %w", err)
-	}
+	raw := slices.Grow(s.rawBuf[:0], 4+4*len(s.blockOffsets)+s.blockData.Len())
+	raw = binary.LittleEndian.AppendUint32(raw, uint32(s.blockTermCount))
 	for _, off := range s.blockOffsets {
-		if err := binary.Write(&raw, binary.LittleEndian, off); err != nil {
-			return fmt.Errorf("write term offsets: %w", err)
-		}
+		raw = binary.LittleEndian.AppendUint32(raw, off)
 	}
-	if _, err := raw.Write(s.blockData.Bytes()); err != nil {
-		return fmt.Errorf("write block data: %w", err)
-	}
+	raw = append(raw, s.blockData.Bytes()...)
+	s.rawBuf = raw
 
-	stored := raw.Bytes()
+	stored := raw
 	if s.encoder != nil {
-		stored = s.encoder.EncodeAll(stored, nil)
+		s.encBuf = s.encoder.EncodeAll(stored, s.encBuf[:0])
+		stored = s.encBuf
 	} else {
 		stored = binary.LittleEndian.AppendUint64(stored, xxh3.Hash(stored))
 	}

@@ -112,7 +112,7 @@ loki.process "pod_logs" {
 
 ## Kubernetes Monitoring Helm chart configuration example
 
-If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/) to collect Kubernetes logs to send to Loki, the following example shows how to update the `values.yaml` file for your Helm chart to demote `k8s.pod.name` and `service.instance.id` from index labels to structured metadata when gathering Pod logs via the Kubernetes API (the `podLogsViaKubernetesApi` feature).
+If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/) to collect Kubernetes logs to send to Loki, the following example shows how to update the `values.yaml` file for your Helm chart to demote `k8s.pod.name` and `service.instance.id` from index labels to structured metadata when gathering Pod logs via the Kubernetes API (the `podLogsViaKubernetesApi` feature).
 
 ```yaml
 # Enable Pod log collection for the cluster. Collects logs from all Pods in both the meta and loki namespaces.

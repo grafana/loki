@@ -16,6 +16,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -62,6 +64,19 @@ func TestFlushCommitter(t *testing.T) {
 		// The object is released once indexing is done with it.
 		require.Equal(t, 1, flusher.closer.closed)
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
+	})
+
+	t.Run("should record the shard layout of the index in the ToC", func(t *testing.T) {
+		var (
+			reg            = prometheus.NewRegistry()
+			buckets        = indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
+			flusher        = &mockFlusher{obj: &dataobj.Object{}}
+			indexer        = &mockIndexer{shardBuckets: buckets}
+			tocWriter      = &mockTOCWriter{}
+			flushCommitter = newFlushCommitter(flusher, &mockCommitter{}, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
+		)
+		require.NoError(t, flushCommitter.Flush(t.Context(), []builder{newTestFlushBuilder(t, reg)}, "test", 1))
+		require.Equal(t, []indexpointers.ShardBuckets{buckets}, tocWriter.shardBuckets)
 	})
 
 	for _, tc := range []struct {

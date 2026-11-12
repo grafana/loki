@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/metadata"
 )
 
 var errProfilesStringIndexNotInitialized = errors.New("profiles dictionary string index is not initialized")
@@ -111,12 +110,7 @@ func ConvertProfilesAnyValueToReference(getStringIndex func(string) (int32, erro
 		if err != nil {
 			return err
 		}
-		var reference *internal.AnyValue_StringValueStrindex
-		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			reference = internal.ProtoPoolAnyValue_StringValueStrindex.Get().(*internal.AnyValue_StringValueStrindex)
-		} else {
-			reference = &internal.AnyValue_StringValueStrindex{}
-		}
+		reference := internal.NewAnyValue_StringValueStrindex()
 		reference.StringValueStrindex = index
 		value.Value = reference
 	case *internal.AnyValue_KvlistValue:
@@ -163,12 +157,7 @@ func ResolveProfilesAnyValueReference(stringTable []string, value *internal.AnyV
 		if original.StringValueStrindex < 0 || int(original.StringValueStrindex) >= len(stringTable) {
 			return fmt.Errorf("invalid string_value_strindex %d", original.StringValueStrindex)
 		}
-		var resolved *internal.AnyValue_StringValue
-		if metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			resolved = internal.ProtoPoolAnyValue_StringValue.Get().(*internal.AnyValue_StringValue)
-		} else {
-			resolved = &internal.AnyValue_StringValue{}
-		}
+		resolved := internal.NewAnyValue_StringValue()
 		resolved.StringValue = stringTable[original.StringValueStrindex]
 		value.Value = resolved
 	case *internal.AnyValue_KvlistValue:

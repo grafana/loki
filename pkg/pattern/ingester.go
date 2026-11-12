@@ -272,6 +272,7 @@ type Ingester struct {
 	kafkaClient   *kgo.Client
 	kafkaConsumer *kafkav2.GroupConsumer
 	kafkaRecords  chan *kgo.Record
+	lagObserver   *lagObserver
 	kafkaDecoder  *kafka.Decoder
 	kafkaDone     sync.WaitGroup
 	kafkaStopOnce sync.Once

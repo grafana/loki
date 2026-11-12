@@ -412,19 +412,38 @@ func TestParamsToLokiRequestPreservesHintRanges(t *testing.T) {
 		Start: start.Add(5 * time.Minute),
 		End:   start.Add(10 * time.Minute),
 	}}
-	req := &LokiRequest{
-		Query:      `{foo="bar"} |= "error"`,
-		StartTs:    start,
-		EndTs:      start.Add(time.Hour),
-		Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
-		HintRanges: hintRanges,
-	}
 
-	params, err := ParamsFromRequest(req)
-	require.NoError(t, err)
+	t.Run("range", func(t *testing.T) {
+		req := &LokiRequest{
+			Query:      `{foo="bar"} |= "error"`,
+			StartTs:    start,
+			EndTs:      start.Add(time.Hour),
+			Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
+			HintRanges: hintRanges,
+		}
 
-	got := ParamsToLokiRequest(params).(*LokiRequest)
-	require.Equal(t, hintRanges, got.HintRanges)
+		params, err := ParamsFromRequest(req)
+		require.NoError(t, err)
+
+		got := ParamsToLokiRequest(params).(*LokiRequest)
+		require.Equal(t, hintRanges, got.HintRanges)
+	})
+
+	t.Run("instant", func(t *testing.T) {
+		query := `sum(count_over_time({foo="bar"} |= "error" [1h]))`
+		req := &LokiInstantRequest{
+			Query:      query,
+			TimeTs:     start.Add(time.Hour),
+			Plan:       testutil.MustPlan(query),
+			HintRanges: hintRanges,
+		}
+
+		params, err := ParamsFromRequest(req)
+		require.NoError(t, err)
+
+		got := ParamsToLokiRequest(params).(*LokiInstantRequest)
+		require.Equal(t, hintRanges, got.HintRanges)
+	})
 }
 
 func TestInstanceDownstream(t *testing.T) {

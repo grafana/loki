@@ -563,8 +563,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		facade,
 		newChunkStart,
 		newChunkEnd,
+		chks[0].IngestedAt,
 	)
-	newChunk.IngestedAt = chks[0].IngestedAt
 
 	err = newChunk.Encode()
 	if err != nil {

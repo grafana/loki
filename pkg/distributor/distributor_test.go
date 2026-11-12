@@ -99,25 +99,22 @@ func TestDistributor(t *testing.T) {
 			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", ingestionRateLimit, 100, 100*lineSize)},
 		},
 		{
-			lines:            100,
-			streams:          1,
-			maxLineSize:      1,
-			expectedResponse: success,
-			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
+			lines:          100,
+			streams:        1,
+			maxLineSize:    1,
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
 		},
 		{
-			lines:            100,
-			streams:          1,
-			mangleLabels:     1,
-			expectedResponse: success,
-			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")},
+			lines:          100,
+			streams:        1,
+			mangleLabels:   1,
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")},
 		},
 		{
-			lines:            10,
-			streams:          2,
-			mangleLabels:     1,
-			maxLineSize:      1,
-			expectedResponse: success,
+			lines:        10,
+			streams:      2,
+			mangleLabels: 1,
+			maxLineSize:  1,
 			expectedErrors: []error{
 				httpgrpc.Errorf(http.StatusBadRequest, ""),
 				fmt.Errorf("1 errors like: %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
@@ -682,13 +679,9 @@ func Test_DiscardAccounting(t *testing.T) {
 			wantDiscards: map[string]discard{validation.InvalidLabels: wholeStreamDiscard},
 		},
 		{
-			name:   "missing labels",
-			labels: "{}",
-			// Preserve the existing missing-label sample counter alongside invalid-label accounting.
-			wantDiscards: map[string]discard{
-				validation.MissingLabels: {samples: 1},
-				validation.InvalidLabels: wholeStreamDiscard,
-			},
+			name:         "missing labels",
+			labels:       "{}",
+			wantDiscards: map[string]discard{validation.MissingLabels: wholeStreamDiscard},
 		},
 		{
 			name:   "too many labels",
@@ -696,7 +689,6 @@ func Test_DiscardAccounting(t *testing.T) {
 			limits: func(l *validation.Limits) { l.MaxLabelNamesPerSeries = 1 },
 			wantDiscards: map[string]discard{
 				validation.MaxLabelNamesPerSeries: wholeStreamDiscard,
-				validation.InvalidLabels:          wholeStreamDiscard,
 			},
 		},
 		{
@@ -704,7 +696,6 @@ func Test_DiscardAccounting(t *testing.T) {
 			limits: func(l *validation.Limits) { l.MaxLabelNameLength = 2 },
 			wantDiscards: map[string]discard{
 				validation.LabelNameTooLong: wholeStreamDiscard,
-				validation.InvalidLabels:    wholeStreamDiscard,
 			},
 		},
 		{
@@ -712,7 +703,6 @@ func Test_DiscardAccounting(t *testing.T) {
 			limits: func(l *validation.Limits) { l.MaxLabelValueLength = 2 },
 			wantDiscards: map[string]discard{
 				validation.LabelValueTooLong: wholeStreamDiscard,
-				validation.InvalidLabels:     wholeStreamDiscard,
 			},
 		},
 		{
@@ -720,7 +710,6 @@ func Test_DiscardAccounting(t *testing.T) {
 			labels: `{foo="bar", foo="baz"}`,
 			wantDiscards: map[string]discard{
 				validation.DuplicateLabelNames: wholeStreamDiscard,
-				validation.InvalidLabels:       wholeStreamDiscard,
 			},
 		},
 		{
@@ -990,8 +979,82 @@ func Test_DiscardAccounting(t *testing.T) {
 					require.Equal(t, wantBytes, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(reason, "test", "0", tc.policy, constants.Loki)), "%s bytes", reason)
 					require.Equal(t, counts.samples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(reason, "test", "0", tc.policy, constants.Loki)), "%s samples", reason)
 				}
+				// Nothing is discarded under any other reason, so no data is counted twice.
+				for _, vec := range []*prometheus.CounterVec{validation.DiscardedSamples, validation.DiscardedBytes} {
+					ch := make(chan prometheus.Metric, 16)
+					go func() { vec.Collect(ch); close(ch) }()
+					for m := range ch {
+						var pb dto.Metric
+						require.NoError(t, m.Write(&pb))
+						if pb.GetCounter().GetValue() == 0 {
+							continue
+						}
+						for _, lp := range pb.GetLabel() {
+							if lp.GetName() == "reason" {
+								require.Contains(t, tc.wantDiscards, lp.GetValue(), "unexpected discard reason")
+							}
+						}
+					}
+				}
 			})
 		}
+	}
+}
+
+// rejectAllStreamsLimitsClient is an ingest-limits frontend that rejects every stream for the stream
+// limit.
+type rejectAllStreamsLimitsClient struct{}
+
+func (rejectAllStreamsLimitsClient) ExceedsLimits(_ context.Context, r *limitsproto.ExceedsLimitsRequest) (*limitsproto.ExceedsLimitsResponse, error) {
+	resp := &limitsproto.ExceedsLimitsResponse{}
+	for _, s := range r.Streams {
+		resp.Results = append(resp.Results, &limitsproto.ExceedsLimitsResult{StreamHash: s.StreamHash, Reason: uint32(limits.ReasonMaxStreams)})
+	}
+	return resp, nil
+}
+
+func (rejectAllStreamsLimitsClient) CheckLimitsAndShard(context.Context, *limitsproto.CheckLimitsAndShardRequest) (*limitsproto.CheckLimitsAndShardResponse, error) {
+	return &limitsproto.CheckLimitsAndShardResponse{}, nil
+}
+
+// A shard's labels carry one label more than its stream. When the stream limit rejects the shards of
+// a stream at max_label_names_per_series, they must still be reported as discarded for the stream
+// limit, rather than failing validation again, and their labels must stay out of the label cache.
+func TestDistributor_StreamLimitDiscardsShardsAtLabelLimit(t *testing.T) {
+	validation.DiscardedBytes.Reset()
+	validation.DiscardedSamples.Reset()
+	t.Cleanup(validation.DiscardedBytes.Reset)
+	t.Cleanup(validation.DiscardedSamples.Reset)
+
+	lim := &validation.Limits{}
+	flagext.DefaultValues(lim)
+	lim.MaxLabelNamesPerSeries = 2
+	lim.RejectOldSamples = false
+	lim.ShardStreams.Enabled = true
+	lim.ShardStreams.TimeShardingEnabled = true
+	distributors, ingesters := prepare(t, 1, 3, lim, nil)
+	d := distributors[0]
+	d.cfg.IngestLimitsEnabled = true
+	d.ingestLimits = newIngestLimits(rejectAllStreamsLimitsClient{}, prometheus.NewRegistry())
+
+	// Older than time_sharding_ignore_recent, so the stream is time-sharded.
+	ts := time.Now().Add(-2 * time.Hour)
+	_, err := d.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{{
+		Labels:  `{app="a", env="b"}`,
+		Entries: []logproto.Entry{{Timestamp: ts, Line: "one"}, {Timestamp: ts.Add(time.Second), Line: "two"}},
+	}}})
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok)
+	require.Equal(t, int32(http.StatusTooManyRequests), resp.Code)
+
+	require.Equal(t, float64(2), testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, "test", "0", "", constants.Loki)))
+	require.Equal(t, float64(len("one")+len("two")), testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, "test", "0", "", constants.Loki)))
+	require.Zero(t, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, "test", "0", "", constants.Loki)))
+	for _, key := range d.labelCache.Keys() {
+		require.NotContains(t, key, constants.TimeShardLabel)
+	}
+	for i := range ingesters {
+		require.Nil(t, ingesters[i].Peek())
 	}
 }
 
@@ -1012,7 +1075,7 @@ func TestDistributor_PushRateLimitsOnlyValidatedStreams(t *testing.T) {
 		{
 			name:           "too many labels",
 			rejectedLabels: `{app="rejected", extra="label"}`,
-			reason:         validation.InvalidLabels,
+			reason:         validation.MaxLabelNamesPerSeries,
 			limits:         func(l *validation.Limits) { l.MaxLabelNamesPerSeries = 1 },
 		},
 		{
@@ -2103,14 +2166,14 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
+		_, _, err := d.parseAndValidateStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver)
 		if err != nil {
-			panic("parseStreamLabels fail,err:" + err.Error())
+			panic("parseAndValidateStreamLabels fail,err:" + err.Error())
 		}
 	}
 }
 
-func TestParseStreamLabels(t *testing.T) {
+func TestParseAndValidateStreamLabels(t *testing.T) {
 	defaultLimit := &validation.Limits{}
 	flagext.DefaultValues(defaultLimit)
 
@@ -2143,17 +2206,17 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
+			parsed, _, err := d.parseAndValidateStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
-			}), streamResolver, constants.Loki)
+			}), streamResolver)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedLabels.String(), lbsString)
-			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
+			require.Equal(t, tc.expectedLabels.String(), parsed.labelsString)
+			require.Equal(t, tc.expectedLabels, parsed.lbs)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), parsed.hash)
 		})
 	}
 }
@@ -4372,8 +4435,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		// Note: When some streams are rejected, validationErr is set and returned.
-		// The request will succeed (streams are written) but validationErr is returned.
+		// The stream-limit 429 is returned with the response, as the other
+		// streams are still written.
 		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
 		expectedResponse:         success, // Response is returned even when some streams are rejected
 		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
@@ -4918,7 +4981,7 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 		name string
 		// shardStreamsEnabled controls the local rate store's sharding. It has
 		// to be true for candidates to be collected at all, see
-		// maybeShardByRate: there is nothing to compare against otherwise.
+		// streamSharder.shardByRate: there is nothing to compare against otherwise.
 		shardStreamsEnabled            bool
 		checkLimitsAndShardResponse    *limitsproto.CheckLimitsAndShardResponse
 		checkLimitsAndShardResponseErr error

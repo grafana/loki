@@ -247,12 +247,14 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, wra
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var tpt http.RoundTripper
-	tpt, err := exthttp.DefaultTransport(config.HTTPConfig)
-	if err != nil {
-		return nil, err
-	}
 	if config.HTTPConfig.Transport != nil {
 		tpt = config.HTTPConfig.Transport
+	} else {
+		var err error
+		tpt, err = exthttp.DefaultTransport(config.HTTPConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if wrapRoundtripper != nil {
 		tpt = wrapRoundtripper(tpt)
@@ -533,7 +535,14 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 
 // Exists checks if the given object exists.
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
-	_, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{})
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{
+		ServerSideEncryption: sse,
+	})
 	if err != nil {
 		if b.IsObjNotFoundErr(err) {
 			return false, nil
@@ -545,11 +554,10 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.upload(ctx, name, r, "", false)
-}
-
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag string, requireNewObject bool) error {
+func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
+	if err := objstore.ValidateUploadOptions(b.SupportedObjectUploadOptions(), opts...); err != nil {
+		return err
+	}
 	sse, err := b.getServerSideEncryption(ctx)
 	if err != nil {
 		return err
@@ -573,7 +581,9 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 		userMetadata[k] = v
 	}
 
-	putOpts := minio.PutObjectOptions{
+	uploadOpts := objstore.ApplyObjectUploadOptions(opts...)
+
+	putOpts := &minio.PutObjectOptions{
 		DisableMultipart:     b.disableMultipart,
 		PartSize:             partSize,
 		ServerSideEncryption: sse,
@@ -583,14 +593,18 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 		// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 		// ensure we pin this number to four.
 		// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.
-		NumThreads: 4,
+		NumThreads:  4,
+		ContentType: uploadOpts.ContentType,
 	}
-	if etag != "" {
-		if requireNewObject {
-			putOpts.SetMatchETagExcept(etag)
-		} else {
-			putOpts.SetMatchETag(etag)
+
+	if uploadOpts.IfNotExists {
+		putOpts.SetMatchETagExcept("*")
+	} else if uploadOpts.Condition != nil {
+		// If-None-Match with header values other than "*" is not supported by AWS yet.
+		if uploadOpts.IfNotMatch {
+			return fmt.Errorf("%w: IfNotMatch with a specific ETag is not supported by S3", objstore.ErrUploadOptionNotSupported)
 		}
+		putOpts.SetMatchETag(uploadOpts.Condition.Value)
 	}
 
 	if _, err := b.client.PutObject(
@@ -599,7 +613,7 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 		name,
 		r,
 		size,
-		putOpts,
+		*putOpts,
 	); err != nil {
 		return errors.Wrap(err, "upload s3 object")
 	}
@@ -636,19 +650,43 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 		defer newContent.Close()
 	}
 
-	return b.upload(ctx, name, newContent, etag, originalContent == nil)
+	if etag != "" {
+		ver := &objstore.ObjectVersion{Type: objstore.ETag, Value: etag}
+		return b.Upload(ctx, name, newContent, objstore.WithIfMatch(ver))
+	}
+	return b.Upload(ctx, name, newContent, objstore.WithIfNotExists())
+}
+
+func (b *Bucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return []objstore.ObjectUploadOptionType{objstore.ContentType, objstore.IfNotExists, objstore.IfMatch}
 }
 
 // Attributes returns information about the specified object.
 func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	objInfo, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{})
+	sse, err := b.getServerSideEncryption(ctx)
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
+	}
+
+	objInfo, err := b.client.StatObject(ctx, b.name, name, minio.StatObjectOptions{
+		ServerSideEncryption: sse,
+	})
+	if err != nil {
+		return objstore.ObjectAttributes{}, err
+	}
+
+	var ver *objstore.ObjectVersion
+	if objInfo.ETag != "" {
+		ver = &objstore.ObjectVersion{
+			Type:  objstore.ETag,
+			Value: objInfo.ETag,
+		}
 	}
 
 	return objstore.ObjectAttributes{
 		Size:         objInfo.Size,
 		LastModified: objInfo.LastModified,
+		Version:      ver,
 	}, nil
 }
 
@@ -665,6 +703,19 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 // IsAccessDeniedErr returns true if access to object is denied.
 func (b *Bucket) IsAccessDeniedErr(err error) bool {
 	return minio.ToErrorResponse(errors.Cause(err)).Code == "AccessDenied"
+}
+
+// IsConditionNotMetErr returns true if the given conditions (e.g. the given ETag matches) were not met.
+func (b *Bucket) IsConditionNotMetErr(err error) bool {
+	if minio.ToErrorResponse(err).Code == "PreconditionFailed" {
+		return true
+	}
+	cause := errors.Cause(err)
+	if cause != nil && minio.ToErrorResponse(cause).Code == "PreconditionFailed" {
+		return true
+	}
+	return false
+
 }
 
 func (b *Bucket) Close() error { return nil }

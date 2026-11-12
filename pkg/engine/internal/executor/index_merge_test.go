@@ -616,7 +616,6 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 // still holds a legacy streams section.
 func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
-	ctx := context.Background()
 	ts := time.Unix(0, 1_000_000)
 
 	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000, streams.DefaultShardLayout())
@@ -645,21 +644,12 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		ColumnName:       "service",
 		LabelValue:       "api",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 		ShardBuckets:     16,
 	})
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(streamsBuilder))
-	require.NoError(t, objBuilder.Append(statsBuilder))
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err, "failed to flush builder")
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, streamsBuilder, statsBuilder, postingsBuilder)
 }
 
 // buildSourceIndexWithBothKinds builds a dataobj containing one postings section
@@ -667,7 +657,6 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 // then uploads it to the bucket at the given path.
 func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
-	ctx := context.Background()
 
 	// Build postings section with one label entry
 	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
@@ -680,7 +669,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 		ColumnName:       "service",
 		LabelValue:       "api",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -698,17 +687,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 		UncompressedSize: 1000,
 	})
 
-	// Build and flush the combined dataobj
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-	require.NoError(t, objBuilder.Append(statsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Upload to bucket
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
 }
 
 // openObjectFromBucket downloads and opens a dataobj.Object from the bucket.
@@ -719,6 +698,22 @@ func openObjectFromBucket(ctx context.Context, t *testing.T, bucket objstore.Buc
 	require.NoError(t, err, "failed to open object from bucket at %s", path)
 
 	return obj
+}
+
+// uploadSections builds an object from the given section builders, in order,
+// and uploads it to the bucket at path.
+func uploadSections(t testing.TB, bucket objstore.Bucket, path string, sections ...dataobj.SectionBuilder) {
+	t.Helper()
+
+	objBuilder := dataobj.NewBuilder(nil)
+	for _, sec := range sections {
+		require.NoError(t, objBuilder.Append(sec))
+	}
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
 }
 
 // uploadObjectToBucket serializes a *dataobj.Object and uploads it to the bucket.
@@ -777,7 +772,6 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, pat
 // merge readers.
 func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant, path string, targetSectionSize int, observations []postings.LabelObservation) {
 	t.Helper()
-	ctx := context.Background()
 
 	postingsBuilder := postings.NewBuilder(nil, 0, 0, targetSectionSize)
 	postingsBuilder.SetTenant(tenant)
@@ -785,14 +779,7 @@ func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant
 		postingsBuilder.ObserveLabelPosting(obs)
 	}
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+	uploadSections(t, bucket, path, postingsBuilder)
 }
 
 // buildSourceStatsObject builds a dataobj with a single stats section that
@@ -806,14 +793,7 @@ func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path s
 		statsBuilder.Append(row)
 	}
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(statsBuilder))
-
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, obj))
+	uploadSections(t, bucket, path, statsBuilder)
 }
 
 // readPostingsRowsFromBucket downloads an object from the bucket, finds its
@@ -889,13 +869,13 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	ts := time.Unix(0, 100)
 
 	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/a", 1, []postings.LabelObservation{
-		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
-		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Timestamp: ts, UncompressedSize: 20},
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Time: postings.At(ts), UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Time: postings.At(ts), UncompressedSize: 20},
 	})
 	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/b", 1, []postings.LabelObservation{
 		// (log-B, 0, svc, api) duplicates src/a's first row exactly (same ts).
-		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
-		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Timestamp: ts, UncompressedSize: 30},
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Time: postings.At(ts), UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Time: postings.At(ts), UncompressedSize: 30},
 	})
 
 	node := &physical.IndexMerge{
@@ -987,7 +967,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         1,
-			Timestamp:        time.Unix(0, 100),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 100,
 		},
 		{
@@ -996,7 +976,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "auth",
 			StreamID:         2,
-			Timestamp:        time.Unix(0, 200),
+			Time:             postings.At(time.Unix(0, 200)),
 			UncompressedSize: 200,
 		},
 	})
@@ -1010,7 +990,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         99,
-			Timestamp:        time.Unix(0, 150),
+			Time:             postings.At(time.Unix(0, 150)),
 			UncompressedSize: 300,
 		},
 	})
@@ -1169,7 +1149,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         1,
-			Timestamp:        time.Unix(0, 100),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 100,
 		},
 	})
@@ -1486,7 +1466,7 @@ func buildMultiTenantSourceObject(t *testing.T, bucket objstore.Bucket, path str
 				ColumnName:       "service_name",
 				LabelValue:       fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i),
 				StreamID:         int64(i + 1),
-				Timestamp:        ts,
+				Time:             postings.At(ts),
 				UncompressedSize: 100,
 			})
 

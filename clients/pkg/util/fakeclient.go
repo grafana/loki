@@ -58,11 +58,3 @@ func (c *FakeClient) StopNow() {
 func (c *FakeClient) Name() string {
 	return "fake"
 }
-
-// Clear is used to cleanup the buffered received entries, so the same client can be re-used between
-// test cases.
-func (c *FakeClient) Clear() {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	c.received = []Entry{}
-}

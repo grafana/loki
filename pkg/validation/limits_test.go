@@ -62,7 +62,6 @@ max_line_size: 60
 max_line_size_truncate: true
 max_streams_per_user: 70
 max_global_streams_per_user: 80
-max_chunks_per_query: 90
 max_query_series: 100
 max_query_lookback: 110s
 max_query_length: 120s
@@ -105,7 +104,6 @@ volume_max_series: 10001
   "max_line_size_truncate": true,
   "max_streams_per_user": 70,
   "max_global_streams_per_user": 80,
-  "max_chunks_per_query": 90,
   "max_query_series": 100,
   "max_query_lookback": "110s",
   "max_query_length": "120s",
@@ -830,6 +828,25 @@ policy_override_limits:
 	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "ops")
 	require.True(t, ok)
 	require.Equal(t, float64(2*bytesInMB), rateBytes)
+}
+
+func TestLimits_PolicyChunkIdlePeriodYAML(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	setDefaultLimitsForYAML(t, defaults)
+
+	var l Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`
+policy_override_limits:
+  backfill:
+    chunk_idle_period: 5m
+`), &l))
+	require.NoError(t, l.Validate())
+
+	overrides := &Overrides{defaultLimits: &l}
+	idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, idle)
 }
 
 func TestPolicyShardStreams(t *testing.T) {

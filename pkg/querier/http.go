@@ -292,7 +292,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep())*time.Millisecond, strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

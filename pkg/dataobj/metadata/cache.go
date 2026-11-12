@@ -1,4 +1,4 @@
-package metadatacache
+package metadata
 
 import (
 	"context"
@@ -27,12 +27,13 @@ const loadTimeout = 30 * time.Second
 // backend's real one.
 const DefaultMaxItemBytes = 8 << 20 // 8 MiB
 
-// KindLogs, KindIndex and KindTOC label the counters of a Cache by the kind of object it serves. One
-// backend can serve several Caches, and each Cache reports its own hits, misses and errors.
+// KindLogsCache, KindIndexCache and KindTOCCache label the counters of a Cache by the kind of object
+// it serves. One backend can serve several Caches, and each Cache reports its own hits, misses and
+// errors.
 const (
-	KindLogs  = "logs"
-	KindIndex = "index"
-	KindTOC   = "toc"
+	KindLogsCache  = "logs"
+	KindIndexCache = "index"
+	KindTOCCache   = "toc"
 )
 
 // NewBackend builds the cache backend that cfg describes. It also returns the largest region that the
@@ -81,7 +82,7 @@ type Cache struct {
 //
 // maxItemBytes is the largest item c's backend will actually store. A non-positive value falls back to
 // DefaultMaxItemBytes.
-func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *Metrics, logger log.Logger) *Cache {
+func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *CacheMetrics, logger log.Logger) *Cache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
