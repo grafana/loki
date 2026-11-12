@@ -654,7 +654,10 @@ type VectorAggEvaluator struct {
 	lb  *labels.Builder
 
 	limits iteratorLimits
-	err    error
+
+	// err is the error of the aggregation itself, such as the series limit, or a sum of a float and a
+	// histogram. The error of the operand is returned by the operand.
+	err error
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -674,6 +677,13 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 		}
 	}
 	for _, s := range vec {
+		// Only sum adds histograms. The parser does not allow another aggregation of them, so this is for a
+		// query that was not validated. It is a client error, as the query is what is wrong.
+		if s.H != nil && e.expr.Operation != syntax.OpTypeSum {
+			e.err = fmt.Errorf("%w: %s does not support histograms, only sum does", logqlerr.ErrParse, e.expr.Operation)
+			return false, 0, SampleVector{}
+		}
+
 		metric := s.Metric
 
 		var groupingKey uint64
@@ -721,7 +731,8 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			}
 			switch e.expr.Operation {
 			case syntax.OpTypeSum:
-				result[groupingKey].sum.addValue(s.F)
+				// The first sample of a group is a float or a histogram, so this does not fail.
+				_ = result[groupingKey].addToSum(s)
 			case syntax.OpTypeAvg:
 				result[groupingKey].avg.addValue(s.F)
 			case syntax.OpTypeStdvar, syntax.OpTypeStddev:
@@ -755,7 +766,10 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 		}
 		switch e.expr.Operation {
 		case syntax.OpTypeSum:
-			group.sum.addValue(s.F)
+			if err := group.addToSum(s); err != nil {
+				e.err = err
+				return false, 0, SampleVector{}
+			}
 
 		case syntax.OpTypeAvg:
 			group.avg.addValue(s.F)
@@ -818,6 +832,15 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 	for _, aggr := range result {
 		switch e.expr.Operation {
 		case syntax.OpTypeSum:
+			if aggr.histogram != nil {
+				h, err := aggr.histogramSum()
+				if err != nil {
+					e.err = err
+					return false, 0, SampleVector{}
+				}
+				vec = append(vec, promql.Sample{Metric: aggr.labels, T: ts, H: h})
+				continue // Bypass default append.
+			}
 			aggr.value = aggr.sum.result()
 
 		case syntax.OpTypeAvg:
@@ -914,6 +937,20 @@ func newTimestampFirstRangeAggEvaluator(
 		return &AbsentRangeVectorEvaluator{
 			iter:              iter,
 			lbs:               absentLabels,
+			keepsErroredLines: keepsErroredLines,
+		}, nil
+	case syntax.OpRangeTypeHistogram:
+		iter := newHistogramIterator(
+			it,
+			expr.Buckets,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			limits,
+		)
+
+		return &RangeVectorEvaluator{
+			iter:              iter,
 			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeQuantileSketch:
