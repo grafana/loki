@@ -222,7 +222,7 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 		if !strings.HasPrefix(pointer.Path, "indexes/") {
 			return fmt.Errorf("index pointer %q is not in indexes/", pointer.Path)
 		}
-		paths = append(paths, strings.Clone(pointer.Path))
+		paths = append(paths, pointer.Path)
 		return nil
 	})
 	if err != nil {
