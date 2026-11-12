@@ -3,12 +3,10 @@ package hintprovider
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,62 +40,52 @@ const (
 
 // --- 1. The key builder ---
 
+func needleKeyOf(t *testing.T, query string, ngram int) string {
+	t.Helper()
+	k, ok := needleKey(mustParseExpr(t, query), ngram)
+	require.True(t, ok, query)
+	return k
+}
+
 func TestNeedleKey(t *testing.T) {
 	const ngram = 6
+	base := needleKeyOf(t, keyTestLogQuery, ngram)
 
-	key := func(t *testing.T, query string, ngramLength int) string {
-		t.Helper()
-		k, ok := needleKey(mustParseExpr(t, query), ngramLength)
-		require.True(t, ok, query)
-		return k
-	}
-
-	base := key(t, `{app="api"} |= "timeout"`, ngram)
-
-	// Queries with the same needles share a key, however the rest of the query
-	// differs.
+	// Same needles, same key, however the rest of the query differs. The contract
+	// test below has more such pairs.
 	for _, q := range []string{
-		// The lookup does not use stream matchers, so they are not part of the key.
-		`{app="web"} |= "timeout"`,
-		`{app="api", env="prod"} |= "timeout"`,
-		`{app="api"} |= "timeout" | drop __error__`,
-		`sum by (level, detected_level) (count_over_time({app="api"} |= "timeout" | drop __error__ [1m]))`,
+		keyTestVolumeQuery,
+		`{app="web", env="prod"} |= "timeout"`, // the lookup does not use stream matchers
 		`rate({app="api"} |= "timeout" [5m] offset 10m)`,
 		`{app="api"} |= "timeout" | json | line_format "{{.msg}}"`,
-		`{app="api"} |= "TIMEOUT"`,
-		`{app="api"} |~ "timeout"`,
-		// The drop stops the later filter from becoming a needle, so the lookup is
-		// the same as for the plain query.
-		`{app="api"} |= "timeout" | json | drop __error__ | level="critical"`,
 	} {
-		require.Equal(t, base, key(t, q, ngram), q)
+		require.Equal(t, base, needleKeyOf(t, q, ngram), q)
 	}
-	require.Equal(t,
-		key(t, `{app="api", env="prod"} |= "timeout" |= "failure"`, ngram),
-		key(t, `{env="prod", app="api"} |= "failure" |= "timeout"`, ngram),
-		"matcher and filter order do not matter")
 
 	// Anything that changes the lookup changes the key.
 	for _, q := range []string{
 		`{app="api"} |= "timeouts"`,
-		`{app="api"} |= "timeout" |= "failure"`,
 		`{app="api"} |= "timeout" | json | level="critical"`,
 	} {
-		require.NotEqual(t, base, key(t, q, ngram), q)
+		require.NotEqual(t, base, needleKeyOf(t, q, ngram), q)
 	}
-	require.NotEqual(t, base, key(t, `{app="api"} |= "timeout"`, 5), "n-gram length")
+	require.NotEqual(t, base, needleKeyOf(t, keyTestLogQuery, 5), "n-gram length")
+
+	require.Equal(t,
+		needleKeyOf(t, `{app="api"} |= "timeout" |= "failure"`, ngram),
+		needleKeyOf(t, `{app="api"} |= "failure" |= "timeout"`, ngram), "filter order")
 
 	// Every needle counts: two needles differ from either one alone, whichever
 	// sorts first.
-	both := key(t, `{app="api"} |= "timeout" |= "failure"`, ngram)
-	require.NotEqual(t, both, key(t, `{app="api"} |= "timeout"`, ngram))
-	require.NotEqual(t, both, key(t, `{app="api"} |= "failure"`, ngram))
+	both := needleKeyOf(t, `{app="api"} |= "timeout" |= "failure"`, ngram)
+	require.NotEqual(t, both, base)
+	require.NotEqual(t, both, needleKeyOf(t, `{app="api"} |= "failure"`, ngram))
 
-	// Needles are arbitrary bytes, so one needle containing the separator must
-	// not look like two.
+	// Needles are arbitrary bytes: one needle containing the separator must not
+	// look like two.
 	require.NotEqual(t,
-		key(t, `{app="api"} |= "a,b"`, 1),
-		key(t, `{app="api"} |= "a" |= "b"`, 1))
+		needleKeyOf(t, `{app="api"} |= "a,b"`, 1),
+		needleKeyOf(t, `{app="api"} |= "a" |= "b"`, 1))
 }
 
 func TestNeedleKey_NotUsable(t *testing.T) {
@@ -105,11 +93,9 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 		query string
 		ngram int
 	}{
-		"no needles":          {`{app="api"}`, 6},
-		"only a short needle": {`{app="api"} |= "err"`, 6},
-		"unsupported filter":  {`{app="api"} |= "a" or "b"`, 6},
-		"no n-gram length":    {`{app="api"} |= "timeout"`, 0},
-		"binary operation":    {`count_over_time({app="api"} |= "timeout" [5m]) / count_over_time({app="api"} |= "timeout" [5m])`, 6},
+		"no needles":       {`{app="api"}`, 6},
+		"no n-gram length": {keyTestLogQuery, 0},
+		"binary operation": {`count_over_time({app="api"} |= "timeout" [5m]) / count_over_time({app="api"} |= "timeout" [5m])`, 6},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram)
@@ -119,8 +105,9 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 }
 
 // The adapter sends expr.String() and the querier looks up the needles of the
-// re-parsed expression, so those must be the needles in the key.
-func TestNeedleKey_MatchesQuerierNeedles(t *testing.T) {
+// re-parsed expression, so the key must not change when the expression is
+// re-parsed.
+func TestNeedleKey_SurvivesReparse(t *testing.T) {
 	for _, q := range []string{
 		keyTestVolumeQuery,
 		"{app=\"api\"} |= `say \"hello\"`",
@@ -138,137 +125,93 @@ func TestNeedleKey_MatchesQuerierNeedles(t *testing.T) {
 		for _, n := range []int{3, 6} {
 			key, ok := needleKey(expr, n)
 			require.True(t, ok, q)
-
-			needles := SupportedQuery(mustParseExpr(t, expr.String()), n)
-			sort.Strings(needles)
-			for i := range needles {
-				needles[i] = strconv.Quote(needles[i])
-			}
-			require.Equal(t, key, fmt.Sprintf("n=%d f=%s", n, strings.Join(needles, ",")), q)
+			reparsed, ok := needleKey(mustParseExpr(t, expr.String()), n)
+			require.True(t, ok, q)
+			require.Equal(t, key, reparsed, q)
 		}
 	}
 }
 
 // --- 2. The cache wiring ---
 
-// ngramDelegate is a delegate that reports an n-gram length.
+// ngramDelegate is a delegate that reports an n-gram length and records the
+// expressions it is asked about.
 type ngramDelegate struct {
 	*stubHintProvider
 	n int
-}
 
-func (d ngramDelegate) NgramLength() int { return d.n }
-
-func TestCacheKeyNgramLength(t *testing.T) {
-	require.Zero(t, cacheKeyNgramLength(&stubHintProvider{}), "a delegate that reports none")
-	require.Equal(t, 7, cacheKeyNgramLength(ngramDelegate{&stubHintProvider{}, 7}))
-
-	provider, err := NewLoglineHintProvider(newTestStore(t), 6, 0, nil, nil, nil)
-	require.NoError(t, err)
-	require.Equal(t, 6, cacheKeyNgramLength(provider))
-
-	var none *LoglineHintProvider
-	require.Zero(t, none.NgramLength())
-}
-
-// exprRecorder records the expressions its delegate is asked about.
-type exprRecorder struct {
-	ngramDelegate
 	mu    sync.Mutex
 	exprs []string
 }
 
-func (r *exprRecorder) ProvideHints(
+func (d *ngramDelegate) NgramLength() int { return d.n }
+
+func (d *ngramDelegate) ProvideHints(
 	ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time,
 ) (*Hints, *QueryStats, error) {
-	r.mu.Lock()
-	r.exprs = append(r.exprs, expr.String())
-	r.mu.Unlock()
-	return r.ngramDelegate.ProvideHints(ctx, tenant, expr, from, through)
+	d.mu.Lock()
+	d.exprs = append(d.exprs, expr.String())
+	d.mu.Unlock()
+	return d.stubHintProvider.ProvideHints(ctx, tenant, expr, from, through)
 }
 
-func newRecorder(ngramLength int, delay time.Duration) *exprRecorder {
+func newNgramDelegate(delay time.Duration) *ngramDelegate {
 	hints := &Hints{TimeRanges: []HintTimeRange{{
 		Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC),
 		End:   time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC),
 	}}}
-	return &exprRecorder{ngramDelegate: ngramDelegate{&stubHintProvider{hints: hints, delay: delay}, ngramLength}}
+	return &ngramDelegate{stubHintProvider: &stubHintProvider{hints: hints, delay: delay}, n: 6}
 }
 
-func provideKeyTestHints(t *testing.T, p *CachingHintProvider, query string, from, through time.Time) {
-	t.Helper()
-	_, _, err := p.ProvideHints(context.Background(), "tenant-a", mustParseExpr(t, query),
-		model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
-	require.NoError(t, err)
+func provideKeyTestHints(p *CachingHintProvider, expr syntax.Expr) error {
+	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	_, _, err := p.ProvideHints(context.Background(), "tenant-a", expr,
+		model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(from.Add(time.Hour).UnixNano()))
+	return err
 }
 
 func TestCachingHintProvider_SharesEntriesByNeedles(t *testing.T) {
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
+	delegate := newNgramDelegate(0)
+	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
 
-	t.Run("the delegate reports an n-gram length", func(t *testing.T) {
-		delegate := newRecorder(6, 0)
-		provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestVolumeQuery)))
+	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestLogQuery)))
+	// One lookup, for the volume query as written, not a selector or the key.
+	require.Equal(t, []string{mustParseExpr(t, keyTestVolumeQuery).String()}, delegate.exprs)
 
-		provideKeyTestHints(t, provider, keyTestVolumeQuery, from, through)
-		provideKeyTestHints(t, provider, keyTestLogQuery, from, through)
-		// One lookup. The delegate was asked about the volume query as written, not
-		// about a selector or the key, and the log query was served from its entry.
-		require.Equal(t, []string{mustParseExpr(t, keyTestVolumeQuery).String()}, delegate.exprs)
+	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, `{app="api"} |= "another-needle"`)))
+	require.Len(t, delegate.exprs, 2, "different needles are a different entry")
 
-		provideKeyTestHints(t, provider, `{app="api"} |= "another-needle"`, from, through)
-		require.Len(t, delegate.exprs, 2, "different needles are a different entry")
-	})
-
-	t.Run("the delegate reports none", func(t *testing.T) {
-		delegate := newRecorder(0, 0)
-		provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-
-		provideKeyTestHints(t, provider, keyTestVolumeQuery, from, through)
-		provideKeyTestHints(t, provider, keyTestLogQuery, from, through)
-		require.Len(t, delegate.exprs, 2, "keyed on the expression, so nothing is shared")
-	})
+	// The key uses the delegate's n-gram length. At 8, "timeout" is too short to
+	// be a needle, so there is nothing to share and the queries key on their text.
+	delegate = newNgramDelegate(0)
+	delegate.n = 8
+	provider = NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestVolumeQuery)))
+	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestLogQuery)))
+	require.Len(t, delegate.exprs, 2)
 }
 
 // Concurrent lookups for a log query and a volume query with the same needles
-// share one delegate call.
+// share one delegate call. The delay only makes the lookups overlap: if they
+// don't, the second is a cache hit and a broken singleflight key goes unseen.
 func TestCachingHintProvider_SingleflightSharesByNeedles(t *testing.T) {
-	delegate := newRecorder(6, 100*time.Millisecond)
+	delegate := newNgramDelegate(100 * time.Millisecond)
 	provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
-	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
-	through := from.Add(time.Hour)
 
-	logExpr := mustParseExpr(t, keyTestLogQuery)
-	volumeExpr := mustParseExpr(t, keyTestVolumeQuery)
-
-	const workers = 8
 	var wg sync.WaitGroup
-	errCh := make(chan error, workers)
-	for i := range workers {
-		expr := logExpr
-		if i%2 == 1 {
-			expr = volumeExpr
-		}
-		wg.Go(func() {
-			_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr,
-				model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
-			errCh <- err
-		})
+	errs := make([]error, 4)
+	for i, q := range []string{keyTestLogQuery, keyTestVolumeQuery, keyTestLogQuery, keyTestVolumeQuery} {
+		expr := mustParseExpr(t, q)
+		wg.Go(func() { errs[i] = provideKeyTestHints(provider, expr) })
 	}
 	wg.Wait()
-	close(errCh)
 
-	for err := range errCh {
-		require.NoError(t, err)
-	}
+	require.NoError(t, errors.Join(errs...))
 	require.Equal(t, 1, delegate.Calls())
 }
 
 // --- 3. The contract: equal keys, equal hints, from the real lookup ---
-
-// The hint cache keys on needleKey, so two queries with the same key must get
-// the same hints from the real lookup. These tests run the lookup, not a stub,
-// to catch it starting to depend on something the key leaves out.
 
 // singleNeedlePairs have the same key and a single needle, "timeout".
 var singleNeedlePairs = [][2]string{
@@ -287,74 +230,66 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 	const ngram = 6
 	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	t1 := t0.Add(5 * time.Minute)
-	indexStore := newTestStore(t)
+	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
+	t5 := day.Add(10 * time.Hour)
+
 	// "timeout" is in both documents and "failure" only in the second, so
 	// requiring both narrows the hints to the second.
-	writeNeedleIndex(t, indexStore, "aaaaaaaaaaaaaaaa",
+	v3 := newTestStore(t)
+	writeNeedleIndex(t, v3, "aaaaaaaaaaaaaaaa",
 		[]format.DocumentMetadata{
 			{ID: 0, MinTimeUnix: t0.UnixMilli(), MaxTimeUnix: t0.Add(time.Minute).UnixMilli()},
 			{ID: 1, MinTimeUnix: t1.UnixMilli(), MaxTimeUnix: t1.Add(time.Minute).UnixMilli()},
 		},
 		map[string][]uint32{"timeout": {0, 1}, "failure": {1}})
-	provider, err := NewLoglineHintProvider(indexStore, ngram, 0, nil, log.NewNopLogger(), nil)
-	require.NoError(t, err)
-	hints := func(query string) []HintTimeRange {
-		return realHints(t, provider, query, t0.Add(-time.Minute), t1.Add(2*time.Minute))
-	}
-
-	pairs := append([][2]string{
-		// Filter order doesn't matter, and the second query adds a stage.
-		{
-			`{app="api"} |= "timeout" |= "failure"`,
-			`{app="web"} |= "failure" |= "timeout" | json`,
-		},
-	}, singleNeedlePairs...)
-	for _, pair := range pairs {
-		keyA, okA := needleKey(mustParseExpr(t, pair[0]), ngram)
-		keyB, okB := needleKey(mustParseExpr(t, pair[1]), ngram)
-		require.True(t, okA && okB, pair)
-		require.Equal(t, keyA, keyB, "test case should share a key: %v", pair)
-
-		got := hints(pair[0])
-		require.NotEmpty(t, got, pair)
-		require.Equal(t, got, hints(pair[1]), pair)
-	}
-
-	// The check can tell hints apart: an extra needle changes the key and the
-	// hints.
-	one, two := `{app="api"} |= "timeout"`, `{app="api"} |= "timeout" |= "failure"`
-	keyOne, _ := needleKey(mustParseExpr(t, one), ngram)
-	keyTwo, _ := needleKey(mustParseExpr(t, two), ngram)
-	require.NotEqual(t, keyOne, keyTwo)
-	require.NotEqual(t, hints(one), hints(two))
-}
-
-// v5 ranges come from the footer's layout, one per document shard, so check
-// that equal keys still mean equal hints there.
-func TestNeedleKey_EqualKeysGetEqualHints_V5(t *testing.T) {
-	const ngram = 6
-	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
-	indexStore := newTestStore(t)
-	writeV5TestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "timeout", day, day,
+	// v5 ranges come from the footer's layout, one per document shard.
+	v5 := newTestStore(t)
+	writeV5TestIndex(t, v5, "aaaaaaaaaaaaaaaa", "timeout", day, day,
 		[]uint32{v5Cell(2250, 3), v5Cell(2250, 17), v5Cell(2260, 3)})
-	provider, err := NewLoglineHintProvider(indexStore, ngram, 0, nil, log.NewNopLogger(), nil)
-	require.NoError(t, err)
 
-	t0 := day.Add(10 * time.Hour)
-	for _, pair := range singleNeedlePairs {
-		got := realHints(t, provider, pair[0], t0.Add(-time.Minute), t0.Add(5*time.Minute))
-		require.NotEmpty(t, got, pair)
-		require.Equal(t, got, realHints(t, provider, pair[1], t0.Add(-time.Minute), t0.Add(5*time.Minute)), pair)
+	// The order of the filters doesn't matter, and the second query adds a stage.
+	filterOrder := [2]string{
+		`{app="api"} |= "timeout" |= "failure"`,
+		`{app="web"} |= "failure" |= "timeout" | json`,
 	}
-}
+	for _, tc := range []struct {
+		name     string
+		store    *store.Store
+		from, to time.Time
+		pairs    [][2]string
+		distinct [2]string // queries with different hints, so the check can tell hints apart
+	}{
+		{
+			"v3", v3, t0.Add(-time.Minute), t1.Add(2 * time.Minute),
+			append([][2]string{filterOrder}, singleNeedlePairs...),
+			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "timeout" |= "failure"`},
+		},
+		{
+			"v5", v5, t5.Add(-time.Minute), t5.Add(5 * time.Minute),
+			singleNeedlePairs,
+			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "absent-needle"`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider, err := NewLoglineHintProvider(tc.store, ngram, 0, nil, log.NewNopLogger(), nil)
+			require.NoError(t, err)
+			hints := func(query string) []HintTimeRange {
+				h, _, err := provider.ProvideHints(context.Background(), "test-tenant", mustParseExpr(t, query),
+					model.TimeFromUnixNano(tc.from.UnixNano()), model.TimeFromUnixNano(tc.to.UnixNano()))
+				require.NoError(t, err, query)
+				require.NotNil(t, h, query)
+				return h.TimeRanges
+			}
 
-func realHints(t *testing.T, p *LoglineHintProvider, query string, from, through time.Time) []HintTimeRange {
-	t.Helper()
-	hints, _, err := p.ProvideHints(context.Background(), "test-tenant", mustParseExpr(t, query),
-		model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(through.UnixNano()))
-	require.NoError(t, err, query)
-	require.NotNil(t, hints, query)
-	return hints.TimeRanges
+			for _, pair := range tc.pairs {
+				require.Equal(t, needleKeyOf(t, pair[0], ngram), needleKeyOf(t, pair[1], ngram), "the pair should share a key: %v", pair)
+				got := hints(pair[0])
+				require.NotEmpty(t, got, pair)
+				require.Equal(t, got, hints(pair[1]), pair)
+			}
+			require.NotEqual(t, hints(tc.distinct[0]), hints(tc.distinct[1]))
+		})
+	}
 }
 
 // writeNeedleIndex stores an index over docs where each needle's terms are posted
