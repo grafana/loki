@@ -419,14 +419,17 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 // not use. ok is false when expr has no single log selector or no needles, and
 // the caller should key on the expression instead.
 func needleKey(expr syntax.Expr, ngramLength int) (key string, ok bool) {
+	// A binary operation has a selector per side, and SupportedQuery would mix
+	// their needles.
+	selector := expr
 	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
-		expr = inner
+		selector = inner
 	}
-	selector, isLog := expr.(syntax.LogSelectorExpr)
-	if !isLog {
+	if _, isLog := selector.(syntax.LogSelectorExpr); !isLog {
 		return "", false
 	}
-	needles := SupportedQuery(selector, ngramLength)
+	// The same call the lookup makes, so the key holds the needles it uses.
+	needles := SupportedQuery(expr, ngramLength)
 	if len(needles) == 0 {
 		return "", false
 	}
