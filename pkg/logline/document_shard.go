@@ -10,6 +10,14 @@ func VersionHasDocumentShards(version string) bool {
 	return version == "v5"
 }
 
+// VersionHasDocumentTable reports whether an index version stores each
+// document's time bounds in a table (Reader.Documents). v5 does not: its
+// document IDs are cells of the index's day, and DocumentLayout maps them to
+// time.
+func VersionHasDocumentTable(version string) bool {
+	return version != "v5"
+}
+
 // StreamFingerprint returns a stream's fingerprint as the ingester computes it
 // (instance.getHashForLabels, before collision mapping). TSDB stores that
 // fingerprint for the stream's series and shards queries on it, so document

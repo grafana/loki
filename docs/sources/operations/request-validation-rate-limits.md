@@ -116,7 +116,7 @@ When `max_line_size_truncate` is disabled (the default), the offending log line 
 
 ### `invalid_labels`
 
-This error occurs when one or more labels in the submitted streams fail validation.
+This error occurs when the labels of a submitted stream can't be parsed. Labels that parse but fail another check are counted under that check's reason instead, such as [`max_label_names_per_series`](#max_label_names_per_series) or [`duplicate_label_names`](#duplicate_label_names).
 
 Loki uses the [same validation rules as Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels) for validating labels.
 

@@ -8,14 +8,15 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // sectionType identifies stats sections in a data object (unexported, matching existing convention).
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "stats",
+	Namespace: format.SectionNamespace,
+	Kind:      format.StatsSectionKind,
 	Version:   columnar.FormatVersion,
 }
 

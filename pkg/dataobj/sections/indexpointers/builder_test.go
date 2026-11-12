@@ -28,7 +28,7 @@ func TestBuilder(t *testing.T) {
 	ib := indexpointers.NewBuilder(nil, 1024, 0)
 	ib.SetTenant(tenantID)
 	for _, p := range pp {
-		ib.Append(p.path, p.start, p.end)
+		ib.Append(indexpointers.IndexPointer{Path: p.path, StartTs: p.start, EndTs: p.end})
 	}
 
 	b := dataobj.NewBuilder(nil)

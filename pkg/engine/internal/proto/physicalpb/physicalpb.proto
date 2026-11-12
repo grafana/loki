@@ -72,6 +72,8 @@ message LogMerge {
   // across the sections of runs, from the index stats. It is 0 if the size is
   // unknown, and then the merge does not check the size of what it reads.
   int64 input_bytes = 6;
+  // The merge records output_level as the size level of each output object.
+  uint32 output_level = 7;
 }
 
 // IndexFilter copies the postings and stats rows of the listed log objects

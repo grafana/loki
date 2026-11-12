@@ -79,8 +79,8 @@ func newInstanceMetrics(reg prometheus.Registerer) *instanceMetrics {
 		memoryStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_memory_streams",
-			Help:      "The total number of streams in memory per tenant.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams in memory per tenant and policy.",
+		}, []string{"tenant", "policy"}),
 		memoryStreamShards: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_memory_stream_shards",
@@ -123,7 +123,7 @@ type instance struct {
 	// per-tenant ingester metrics that are initialized at construction time
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
-	memoryStreams       prometheus.Gauge
+	memoryStreams       *policyGauges
 	memoryStreamShards  prometheus.Gauge
 
 	tailers   map[uint32]*tailer
@@ -192,7 +192,7 @@ func newInstance(
 		metrics:             metrics,
 		streamsCreatedTotal: metrics.instance.streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: metrics.instance.streamsRemovedTotal.WithLabelValues(instanceID),
-		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
+		memoryStreams:       newPolicyGauges(metrics.instance.memoryStreams, instanceID),
 		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
 		tailers:             map[uint32]*tailer{},
@@ -390,7 +390,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 }
 
 func (i *instance) onStreamCreated(s *stream) {
-	i.memoryStreams.Inc()
+	i.memoryStreams.For(s.policy).Inc()
 	if s.labels.Has(constants.StreamShardLabel) {
 		i.memoryStreamShards.Inc()
 	}
@@ -465,7 +465,7 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
-		i.memoryStreams.Dec()
+		i.memoryStreams.For(s.policy).Dec()
 		if s.labels.Has(constants.StreamShardLabel) {
 			i.memoryStreamShards.Dec()
 		}

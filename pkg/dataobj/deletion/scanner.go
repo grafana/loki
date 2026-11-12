@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // MinObjectAge is the minimum age of an object that List returns. Objects are
@@ -33,21 +34,19 @@ const MinObjectAge = time.Hour
 // FileListScanner is safe for concurrent use.
 type FileListScanner struct {
 	bucket       objstore.BucketReader
-	indexPrefix  string
 	maxOpenFiles int
 	logger       log.Logger
 }
 
 // NewFileListScanner returns a FileListScanner for bucket. bucket is the root
-// of the data object storage, which holds the objects/ directory. indexPrefix
-// is the path of the index storage relative to bucket, for example
-// "index/v0".
+// of the data object storage, which holds the objects/ directory and the
+// index storage at [metastore.IndexStoragePrefix].
 //
 // maxOpenFiles limits the number of objects that List opens at the same time.
 //
 // NewFileListScanner returns an error if maxOpenFiles is less than 1, or if
 // bucket does not report modification times with [objstore.WithUpdatedAt].
-func NewFileListScanner(bucket objstore.BucketReader, indexPrefix string, maxOpenFiles int, logger log.Logger) (*FileListScanner, error) {
+func NewFileListScanner(bucket objstore.BucketReader, maxOpenFiles int, logger log.Logger) (*FileListScanner, error) {
 	if maxOpenFiles < 1 {
 		return nil, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
 	}
@@ -56,7 +55,6 @@ func NewFileListScanner(bucket objstore.BucketReader, indexPrefix string, maxOpe
 	}
 	return &FileListScanner{
 		bucket:       bucket,
-		indexPrefix:  strings.Trim(indexPrefix, objstore.DirDelim),
 		maxOpenFiles: maxOpenFiles,
 		logger:       logger,
 	}, nil
@@ -70,11 +68,11 @@ func NewFileListScanner(bucket objstore.BucketReader, indexPrefix string, maxOpe
 // List finds two kinds of objects:
 //
 //   - Compacted objects. The compactor writes them to
-//     objects/tenants/<tenant>/ and <indexPrefix>/indexes/tenants/<tenant>/.
+//     objects/tenants/<tenant>/ and index/v0/indexes/tenants/<tenant>/.
 //     List includes them without opening them.
 //   - Uncompacted objects. The uploader and the index builder write them to
-//     objects/<prefix>/ and <indexPrefix>/indexes/<prefix>/. The prefix is
-//     the first hex characters of a content hash. Their path holds no tenant,
+//     objects/<prefix>/ and index/v0/indexes/<prefix>/. The prefix is the
+//     first hex characters of a content hash. Their path holds no tenant,
 //     so List opens each of them to read its tenants. List includes an
 //     uncompacted object only if tenant is its only tenant.
 //
@@ -93,7 +91,6 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 	cutoff := now.Add(-MinObjectAge)
 	sc := &scan{
 		bucket:       s.bucket,
-		indexPrefix:  s.indexPrefix,
 		maxOpenFiles: s.maxOpenFiles,
 		tenant:       tenant,
 		cutoff:       cutoff,
@@ -107,8 +104,8 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 		// The log lets an operator find data that the list does not cover.
 		level.Warn(s.logger).Log("msg", "skipped object with more than one tenant", "tenant", tenant, "path", obj.Path, "tenants", strings.Join(obj.Tenants, ","))
 	}
-	// A list with no objects can mean a wrong bucket root or index prefix. A
-	// listed count of zero shows this case.
+	// A list with no objects can mean a wrong bucket root. A listed count of
+	// zero shows this case.
 	level.Info(s.logger).Log(
 		"msg", "listed objects of tenant",
 		"tenant", tenant,
@@ -122,7 +119,8 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 
 	slices.Sort(paths)
 	list := FileList{Tenant: tenant, CreatedAt: now, Paths: paths}
-	// A path can appear twice if the index prefix is inside objects/.
+	// Write rejects an invalid list, for example a key that is not valid
+	// UTF-8. Checking here reports the error at the scan that caused it.
 	if err := list.validate(); err != nil {
 		return FileList{}, fmt.Errorf("scan produced an invalid file list: %w", err)
 	}
@@ -157,7 +155,6 @@ type multiTenantObject struct {
 // second call adds each object again.
 type scan struct {
 	bucket       objstore.BucketReader
-	indexPrefix  string
 	maxOpenFiles int
 	tenant       string
 	cutoff       time.Time
@@ -176,7 +173,7 @@ type scan struct {
 // run returns the unsorted paths of the objects of the tenant, and the stats
 // of the scan.
 //
-// run lists objects/ and <indexPrefix>/indexes/, and skips objects modified
+// run lists objects/ and index/v0/indexes/, and skips objects modified
 // after the cutoff. It adds each compacted object of the tenant. It opens each
 // uncompacted object of any tenant to read its tenants.
 //
@@ -197,7 +194,7 @@ func (sc *scan) run(ctx context.Context) ([]string, scanStats, error) {
 		g.Go(func() error { return sc.checkUncompactedObject(gctx, p) })
 	}
 	var listErr error
-	for _, root := range []string{"objects", path.Join(sc.indexPrefix, "indexes")} {
+	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, "indexes")} {
 		tenantDir := tenantsDir(root) + sc.tenant + objstore.DirDelim
 		if err := sc.iterFiles(gctx, tenantDir, sc.add); err != nil {
 			listErr = fmt.Errorf("listing compacted objects in %s: %w", tenantDir, err)

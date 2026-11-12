@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -23,7 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
@@ -200,7 +199,7 @@ type TOCResolver struct {
 	bucket objstore.BucketReader
 
 	// cache is the shared cache that refreshes read through. It may be nil.
-	cache *metadatacache.Cache
+	cache *metadata.Cache
 
 	// cacheKeyPrefix scopes the keys in cache to the index storage prefix of bucket.
 	cacheKeyPrefix string
@@ -236,7 +235,7 @@ type TOCResolver struct {
 // Resolvers that share a cache but read different buckets need different prefixes. cache and reg may be nil. A second
 // resolver on one registerer panics. A resolver with a disabled cfg reads object storage only, and it still registers
 // its metrics.
-func NewTOCResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, cache *metadatacache.Cache, cacheKeyPrefix string, logger log.Logger, reg prometheus.Registerer) *TOCResolver {
+func NewTOCResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, cache *metadata.Cache, cacheKeyPrefix string, logger log.Logger, reg prometheus.Registerer) *TOCResolver {
 	r := &TOCResolver{
 		bucket:         bucket,
 		cache:          cache,
@@ -347,24 +346,12 @@ func (r *TOCResolver) readFromBucket(ctx context.Context, path string) (*tocValu
 	// Take the time before the read, so it is never later than the moment object storage served the bytes.
 	readAt := r.now()
 
-	rc, err := r.bucket.Get(ctx, path)
+	data, err := readTableOfContents(ctx, r.bucket, path)
 	if err != nil {
 		if r.bucket.IsObjNotFoundErr(err) {
 			return &tocValue{readAt: readAt}, nil
 		}
 		return nil, err
-	}
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
-	}
-
-	// A ToC that exists is never empty. A store that truncates an object before it writes the new one can serve an
-	// empty read. That read must not count as a missing ToC.
-	if len(data) == 0 {
-		return nil, fmt.Errorf("metastore object %s is empty", path)
 	}
 	return &tocValue{data: data, readAt: readAt}, nil
 }

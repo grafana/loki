@@ -215,7 +215,10 @@ const (
 //
 // NewBuilder also returns an error if overrides is nil, so a caller cannot forget to set it. Use
 // [NoTenantOverrides] to give every tenant the default layout.
-func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
+//
+// NewBuilder passes opts to the underlying [dataobj.Builder], after its own
+// options.
+func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides, opts ...dataobj.BuilderOption) (*Builder, error) {
 	if overrides == nil {
 		return nil, errNilOverrides
 	}
@@ -232,7 +235,7 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
-		builder:    dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(streams.SectionType())),
+		builder:    dataobj.NewBuilder(scratchStore, append([]dataobj.BuilderOption{dataobj.WithPrioritySections(streams.SectionType())}, opts...)...),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]streams.Layout),

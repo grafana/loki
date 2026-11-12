@@ -44,15 +44,7 @@ type streamSelector struct {
 }
 
 func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time, bucketRange *postings.ShardBucketRange) *streamSelector {
-	// Only an equality can prune a section, because a bloom filter proves that a value is absent
-	// and nothing else.
-	var equal []*labels.Matcher
-	for _, p := range predicates {
-		if p != nil && p.Type == labels.MatchEqual {
-			equal = append(equal, p)
-		}
-	}
-	return &streamSelector{matchers: matchers, equalPredicates: equal, start: start, end: end, bucketRange: bucketRange}
+	return &streamSelector{matchers: matchers, equalPredicates: equalityPredicates(predicates), start: start, end: end, bucketRange: bucketRange}
 }
 
 func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {

@@ -48,6 +48,7 @@ func buildLogMergePlan(
 		Runs:           task.Runs,
 		KeyRange:       task.KeyRange,
 		InputBytes:     task.InputBytes,
+		OutputLevel:    task.OutputLevel,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)

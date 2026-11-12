@@ -20,6 +20,7 @@ const (
 	directStreamFirstStackName                        = "direct (stream-first)"
 	queryFrontendNoShardTimestampFirstStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first)"
 	queryFrontendShardTimestampFirstStackName         = "query-frontend + query-scheduler (sharding, timestamp-first)"
+	queryFrontendShardLoglineTimestampFirstStackName  = "query-frontend + query-scheduler (sharding, timestamp-first, logline)"
 	queryFrontendShardStreamFirstStackName            = "query-frontend + query-scheduler (sharding, stream-first)"
 	directDataObjStackName                            = "direct (dataobj)"
 	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
@@ -33,6 +34,7 @@ var (
 		directStreamFirstStackName,
 		queryFrontendNoShardTimestampFirstStackName,
 		queryFrontendShardTimestampFirstStackName,
+		queryFrontendShardLoglineTimestampFirstStackName,
 		queryFrontendShardStreamFirstStackName,
 		directDataObjStackName,
 		queryFrontendShardDataObjStackName,
@@ -110,6 +112,9 @@ type stackOptions struct {
 
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
+
+	// loglineEnabled turns on frontend hint lookups over the script's Logline index.
+	loglineEnabled bool
 }
 
 // stackOption changes one aspect of an execution stack from its default.
@@ -129,6 +134,11 @@ func withMaxQuerySeriesCutoff() stackOption {
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
+}
+
+// withLogline returns the stackOption that turns Logline filtering on in the query-frontend.
+func withLogline() stackOption {
+	return func(o *stackOptions) { o.loglineEnabled = true }
 }
 
 // newEngineOpts returns the default engine options, changed by o.

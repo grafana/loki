@@ -548,6 +548,51 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		explicit.ApplyDefaultsFrom(root)
 		require.Equal(t, 2, explicit.APIVersionsMaxVersion)
 	})
+
+	t.Run("max decompress batch bytes is inherited only when unset", func(t *testing.T) {
+		root := kafka.Config{MaxDecompressBatchBytes: 1 << 20}
+
+		unset := KafkaConfig{MaxDecompressBatchBytes: maxDecompressBatchBytesUnset}
+		unset.ApplyDefaultsFrom(root)
+		require.Equal(t, 1<<20, unset.MaxDecompressBatchBytes)
+
+		zero := KafkaConfig{MaxDecompressBatchBytes: 0}
+		zero.ApplyDefaultsFrom(root)
+		require.Equal(t, 0, zero.MaxDecompressBatchBytes, "0 must not be overwritten")
+
+		explicit := KafkaConfig{MaxDecompressBatchBytes: 1 << 10}
+		explicit.ApplyDefaultsFrom(root)
+		require.Equal(t, 1<<10, explicit.MaxDecompressBatchBytes)
+	})
+}
+
+// TestKafkaMaxDecompressBatchBytesMustBeValid checks that the logline builder
+// accepts limits from 0 to the default and rejects everything else.
+func TestKafkaMaxDecompressBatchBytesMustBeValid(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       int
+		expectedErr error
+	}{
+		{name: "the default is valid", value: kafka.DefaultMaxDecompressBatchBytes},
+		{name: "zero is valid, and uses the franz-go default", value: 0},
+		{name: "a custom value is valid", value: 1 << 20}, // 1 MiB
+		{name: "unset is invalid, as ApplyDefaultsFrom must fill it first", value: maxDecompressBatchBytesUnset, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
+		{name: "negative is invalid", value: -2, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
+		{name: "above the default is invalid", value: kafka.DefaultMaxDecompressBatchBytes + 1, expectedErr: kafka.ErrInvalidMaxDecompressBatchBytes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := KafkaConfig{Address: "b:9092", Topic: "t", MaxDecompressBatchBytes: tt.value}
+
+			err := cfg.Validate()
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 // TestKafkaAPIVersionsMaxVersionMustBeValid checks that the logline builder accepts

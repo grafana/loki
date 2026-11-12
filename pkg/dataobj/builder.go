@@ -34,7 +34,7 @@ func NewBuilder(scratchStore scratch.Store, opts ...BuilderOption) *Builder {
 	}
 
 	return &Builder{
-		encoder: newEncoder(scratchStore, cfg.prioritySections),
+		encoder: newEncoder(scratchStore, cfg.prioritySections, cfg.sizeLeveled),
 	}
 }
 
@@ -43,6 +43,7 @@ type BuilderOption func(*builderConfig)
 
 type builderConfig struct {
 	prioritySections []SectionType
+	sizeLeveled      *SizeLeveledCompaction
 }
 
 // WithPrioritySections places sections with the given types before all other
@@ -59,6 +60,23 @@ func WithPrioritySections(types ...SectionType) BuilderOption {
 	return func(cfg *builderConfig) {
 		cfg.prioritySections = append(cfg.prioritySections, types...)
 	}
+}
+
+// SizeLeveledCompaction records where the size-leveled compaction strategy
+// placed an object.
+type SizeLeveledCompaction struct {
+	// Level 1 holds compacted runs below the base of the strategy. Level 0
+	// means uncompacted, so the compactor never writes it.
+	//
+	// The planner computes Level from the base and ratio of the strategy at
+	// plan time. A later planner can compute a different level for the same run.
+	Level uint32
+}
+
+// WithSizeLeveledCompaction writes c into the file metadata of every object
+// that the builder flushes, also after [Builder.Reset].
+func WithSizeLeveledCompaction(c SizeLeveledCompaction) BuilderOption {
+	return func(cfg *builderConfig) { cfg.sizeLeveled = &c }
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.

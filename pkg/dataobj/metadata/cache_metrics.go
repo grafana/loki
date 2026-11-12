@@ -1,4 +1,4 @@
-package metadatacache
+package metadata
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,22 +12,22 @@ const (
 )
 
 var (
-	kinds      = []string{KindLogs, KindIndex, KindTOC}
+	kinds      = []string{KindLogsCache, KindIndexCache, KindTOCCache}
 	operations = []string{operationFetch, operationStore}
 )
 
-// Metrics holds the counters that the Caches on one registry share. Each Cache counts under its own
-// kind.
-type Metrics struct {
+// CacheMetrics holds the counters that the Caches on one registry share. Each Cache counts under
+// its own kind.
+type CacheMetrics struct {
 	hits   *prometheus.CounterVec
 	misses *prometheus.CounterVec
 	errors *prometheus.CounterVec
 }
 
-// NewMetrics registers the counters of the Caches on reg. reg may be nil. Create it once for each
-// registry, because it registers counters.
-func NewMetrics(reg prometheus.Registerer) *Metrics {
-	m := &Metrics{
+// NewCacheMetrics registers the counters of the Caches on reg. reg may be nil. Create it once for
+// each registry, because it registers counters.
+func NewCacheMetrics(reg prometheus.Registerer) *CacheMetrics {
+	m := &CacheMetrics{
 		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_cache_hits_total",
 			Help: "Data-object metadata cache entries served from the cache.",

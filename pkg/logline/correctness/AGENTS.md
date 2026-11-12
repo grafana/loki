@@ -19,8 +19,9 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - For the selected needle, sampled Loki result entries are passed to `verifyHints` (defined in `verify.go`).
    - `verifyHints` calls `QueryHintProvider.ProvideHints` and performs coverage analysis locally.
    - A test is only `correct` when all sampled results are covered by hint ranges and at least one sampled result exists.
-   - False positives are hint ranges with no sampled result timestamp; they are tracked via metrics but do not affect correctness.
-   - Coverage boundaries in `coverTimestamp` are inclusive on both start and end.
+   - Coverage is per stream: a range covers a result only if `verification.RangeCoversEntry` matches its timestamp and its stream's document shard. The stream's fingerprint comes from its categorized stream labels via `logline.StreamFingerprint`.
+   - False positives are hint ranges that cover no sampled result; they are tracked via metrics but do not affect correctness.
+   - Coverage boundaries are inclusive on both start and end.
    - `verificationReport.Correct` requires zero false negatives and at least one result (`FalseNegatives == 0 && TotalResults > 0`).
    - Cycles pick among five hint-query shapes with equal weight: structured
      metadata label filter (`sm_label_filter`), stream label filter
@@ -65,6 +66,6 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
    - Needles must produce at least one n-gram using the same normalization path as indexing (`logline.ExtractFeatures`).
 
 6. **Debug handler consistency**
-   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `rangeCoversTimestamp` for boundary checks, and `verifyHints` for coverage analysis.
+   - The `/correctness/debug` handler must use the same core logic as `runVerificationCycle`: `buildLineFilterHintQuery` / `buildLabelFilterHintQuery` / `buildJSONLabelFilterHintQuery` + `newHintQuery` for query construction (via `query_type`), `verification.RangeCoversEntry` for coverage checks, and `verifyHints` for coverage analysis.
    - Never duplicate or inline these primitives — drift between the debug endpoint and the cycle makes the debug endpoint unreliable for diagnosing correctness failures.
    - `metric_range` cycles are excluded for now: the handler rejects that `query_type`, so a metric failure cannot be replayed through it. Support is planned for a follow-up.

@@ -96,6 +96,7 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Runs:           copyRunRefs(n.Runs),
 		KeyRange:       copyKeyRange(n.KeyRange),
 		InputBytes:     n.InputBytes,
+		OutputLevel:    n.OutputLevel,
 	}, nil
 }
 

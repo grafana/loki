@@ -973,11 +973,19 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
-  # The highest ApiVersions request version the Kafka client sends. The default
-  # keeps franz-go >= 1.22 compatible with backends that close the connection on
-  # ApiVersions v5 (WarpStream). 0 to use the franz-go default.
+  # The highest ApiVersions request version the Kafka client sends, from 1 to 4.
+  # The default of 4 keeps the client compatible with backends that close the
+  # connection on ApiVersions v5, such as WarpStream. 0 removes the cap, so the
+  # client sends v5.
   # CLI flag: -kafka.api-versions-max-version
   [api_versions_max_version: <int> | default = 4]
+
+  # The largest size, in bytes, that one fetched Kafka batch may decompress to.
+  # A bigger batch stops the client from reading its partition. The default of
+  # 2147483647 (2 GiB minus 1 byte) is the highest value allowed. 0 uses the
+  # Kafka client default of 1073741824 (1 GiB).
+  # CLI flag: -kafka.max-decompress-batch-bytes
+  [max_decompress_batch_bytes: <int> | default = 2147483647]
 
 dataobj:
   builder:
@@ -1254,6 +1262,21 @@ dataobj:
       # worker frame traffic.
       # CLI flag: -dataobj.compaction.scheduler.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    deletion_sweep:
+      # Experimental: Sweep each tenant once an hour and record its objects in
+      # its deletion file list. Only tenants with the
+      # dataobj_deletion_sweep_enabled limit
+      # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
+      # Requires dataobj compaction to be enabled.
+      # CLI flag: -dataobj.compaction.deletion-sweep.enabled
+      [enabled: <boolean> | default = false]
+
+      # Experimental: Maximum number of deletion sweeps that run at the same
+      # time, across all tenants. Each sweep scans the uncompacted objects of
+      # the whole bucket.
+      # CLI flag: -dataobj.compaction.deletion-sweep.max-concurrent-sweeps
+      [max_concurrent_sweeps: <int> | default = 4]
 
     worker:
       # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
@@ -4224,10 +4247,6 @@ discover_generic_fields:
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <int> | default = 15MB]
 
-# Maximum number of chunks that can be fetched in a single query.
-# CLI flag: -store.query-chunk-limit
-[max_chunks_per_query: <int> | default = 2000000]
-
 # Limit the maximum of unique series that is returned by a metric query. When
 # the limit is reached an error is returned.
 # CLI flag: -querier.max-query-series
@@ -4610,6 +4629,11 @@ shard_streams:
 # compaction is a configuration error.
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether the dataobj deletion sweep runs for the tenant. The
+# sweep also needs -dataobj.compaction.deletion-sweep.enabled.
+# CLI flag: -dataobj-compaction.deletion-sweep.enable
+[dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -6985,8 +7009,8 @@ gcs:
   # CLI flag: -<prefix>.gcs.service-account
   [service_account: <string> | default = ""]
 
-  # The maximum size of the buffer that GCS client for a single PUT request. 0
-  # to disable buffering.
+  # The maximum size that the GCS client will attempt to send in a single
+  # request. 0 to use a default of 16MB.
   # CLI flag: -<prefix>.gcs.chunk-buffer-size
   [chunk_buffer_size: <int> | default = 0]
 
@@ -7429,10 +7453,8 @@ overrides:
   tenant1:
     ingestion_rate_mb: 10
     max_streams_per_user: 100000
-    max_chunks_per_query: 100000
   tenant2:
     max_streams_per_user: 1000000
-    max_chunks_per_query: 1000000
 
 multi_kv_config:
     mirror-enabled: false

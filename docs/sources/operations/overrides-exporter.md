@@ -24,7 +24,6 @@ overrides:
   "tenant_1":
     ingestion_rate_mb: 10
     max_streams_per_user: 100000
-    max_chunks_per_query: 100000
 ```
 
 Launch an instance of the `overrides-exporter`:
@@ -40,7 +39,6 @@ $ curl -sq localhost:8080/metrics | grep override
 # HELP loki_overrides Resource limit overrides applied to tenants
 # TYPE loki_overrides gauge
 loki_overrides{limit_name="ingestion_rate_mb",user="tenant_1"} 10
-loki_overrides{limit_name="max_chunks_per_query",user="tenant_1"} 100000
 loki_overrides{limit_name="max_streams_per_user",user="tenant_1"} 100000
 # HELP loki_overrides_defaults Default values for resource limit overrides applied to tenants
 # TYPE loki_overrides_defaults gauge
@@ -50,7 +48,6 @@ loki_overrides_defaults{limit_name="creation_grace_period"} 6e+11
 loki_overrides_defaults{limit_name="ingestion_burst_size_mb"} 6
 loki_overrides_defaults{limit_name="ingestion_rate_mb"} 4
 loki_overrides_defaults{limit_name="max_cache_freshness_per_query"} 6e+11
-loki_overrides_defaults{limit_name="max_chunks_per_query"} 2e+06
 loki_overrides_defaults{limit_name="max_concurrent_tail_requests"} 10
 loki_overrides_defaults{limit_name="max_entries_limit_per_query"} 5000
 loki_overrides_defaults{limit_name="max_global_streams_per_user"} 5000

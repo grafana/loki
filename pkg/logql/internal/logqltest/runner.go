@@ -181,6 +181,7 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 		// The engine runs behind a query-frontend and a query-scheduler.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardTimestampFirstStackName)),
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendShardTimestampFirstStackName, withQuerySharding())),
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendShardLoglineTimestampFirstStackName, withQuerySharding(), withLogline())),
 		must(newQueryFrontendStreamFirstStack(t, queryFrontendShardStreamFirstStackName)),
 		must(newQueryFrontendDataObjStack(t, queryFrontendShardDataObjStackName)),
 		must(newQueryFrontendDataObjAndChunkStack(t, queryFrontendShardDataObjAndChunkStackName)),

@@ -38,15 +38,15 @@ The compactor is single-threaded: request a job, execute it, request the next. T
 
 `compact()` implements a three-phase pipeline:
 
-1. **Prepare readers** — parallel `errgroup` fetches meta.json and index size (via `bucket.Attributes`) for each source, then opens an `io.ReaderAt` backed by range reads (`store.GetIndexReadAheadReaderAt`). No full download; source data is read on-demand during the merge.
-2. **Build meta skeleton** — generate a unique `store.NewStorageID()`, extract the partition date from the first SourceID, union time bounds across all source metas, and copy shard config, document interval, and document shard bits from the first source. Hash, SizeBytes, and IndexHeader are populated during phase 3.
+1. **Prepare readers** — parallel `errgroup` fetches meta.json for each source and takes the index size from its `size_bytes` (the store falls back to `bucket.Attributes` when a meta lacks it), then opens an `io.ReaderAt` backed by range reads (`store.GetIndexReadAheadReaderAt`). No full download; source data is read on-demand during the merge.
+2. **Build meta skeleton** — generate a unique `store.NewStorageID()`, take the date from the first source meta, union time bounds across all source metas, and copy shard config, document interval, and document shard bits from the first source. Hash, SizeBytes, and IndexHeader are populated during phase 3.
 3. **Streaming merge + upload** — `store.PutIndexStreaming(ctx, &meta, write)` sets up an `io.Pipe` whose reader side is fed to `bucket.Upload` on a goroutine. The `write` callback runs `Merger.Merge(ctx, readers, sizes, w)` which streams bytes straight into the pipe via an xxh3 + byte-counter tee, and returns the `format.HeaderInfo` describing the merged index. After the upload goroutine finishes, `PutIndexStreaming` populates `meta.Hash` and `meta.SizeBytes` from the tee and `meta.IndexHeader` from the returned `HeaderInfo`, then uploads `meta.json` as the commit marker. Merge duration in `merge_duration_seconds`; upload duration in `upload_duration_seconds`.
 
 The compactor never holds a local copy of the merged output. StorageID must be generated once per job before the upload retry path, so a compactor that restarts mid-upload still addresses the same object path on the next attempt.
 
-**Version support**: compaction uses the streaming-friendly v3 format (footer-at-EOF) via the shim's `Merger.Merge`. The scheduler groups sources by resolved version in the compaction key. It skips v5 indexes with document shard bits, because the v5 merge rejects them; see `internal/v5/AGENTS.md`.
+**Version support**: compaction merges through the shim's `Merger.Merge` for the sources' version. Every version keeps its footer at EOF, so the merge streams. The scheduler groups sources by resolved version in the compaction key. It skips v5 indexes with footer version 4, because the v5 merge refuses them; see `internal/v5/AGENTS.md`. `verifyCompactionJob` also requires one date, and the merge's `WriterConfig.DayStart` is that date: a v5 merge refuses inputs whose footer covers another day.
 
-**Date extraction**: the scheduler guarantees all SourceIDs share the same partition date. The date is extracted from `strings.SplitN(sourceIDs[0], "/", 2)[0]`.
+**Date**: the scheduler groups sources by partition date, and `verifyCompactionJob` requires every source meta to share one `Date`. The merged meta's date and the v5 merge's `DayStart` are both taken from `sourceMetas[0].Date`, so the merged footer's day and its meta.json date cannot disagree.
 
 **Time bounds**: MinLogTs/MaxLogTs/MinRecordTs/MaxRecordTs are the union (min of mins, max of maxes) across all source metas.
 

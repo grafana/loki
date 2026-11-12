@@ -10,8 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
@@ -32,18 +30,21 @@ type debugResponse struct {
 }
 
 type debugEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Line      string    `json:"line"`
-	Covered   bool      `json:"covered"`
-	CoveredBy *int      `json:"covered_by,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
+	Fingerprint uint64    `json:"fingerprint"`
+	Line        string    `json:"line"`
+	Covered     bool      `json:"covered"`
+	CoveredBy   *int      `json:"covered_by,omitempty"`
 }
 
 type debugHintRange struct {
-	Index      int       `json:"index"`
-	Start      time.Time `json:"start"`
-	End        time.Time `json:"end"`
-	Source     string    `json:"source"`
-	EntryCount int       `json:"entry_count"`
+	Index             int       `json:"index"`
+	Start             time.Time `json:"start"`
+	End               time.Time `json:"end"`
+	DocumentShard     uint32    `json:"document_shard,omitempty"`
+	DocumentShardBits uint8     `json:"document_shard_bits,omitempty"`
+	Source            string    `json:"source"`
+	EntryCount        int       `json:"entry_count"`
 }
 
 type debugSummary struct {
@@ -84,7 +85,6 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to query Loki", http.StatusInternalServerError)
 		return
 	}
-	resultEntries := protoEntries(entries)
 
 	hintStart := time.Now()
 	hints, _, err := s.hintProvider.ProvideHints(
@@ -121,11 +121,11 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		Needle:             req.needle,
 		OverlappingIndexes: len(overlapping),
 		HintDuration:       hintDuration.String(),
-		Entries:            buildDebugEntries(resultEntries, hintRanges),
-		HintRanges:         buildDebugHintRanges(resultEntries, hintRanges),
+		Entries:            buildDebugEntries(entries, hintRanges),
+		HintRanges:         buildDebugHintRanges(entries, hintRanges),
 	}
 
-	vr := verifyHints(hintRanges, resultEntries)
+	vr := verifyHints(hintRanges, entries)
 	resp.Summary = debugSummary{
 		TotalResults:   vr.TotalResults,
 		CoveredResults: vr.CoveredResults,
@@ -219,44 +219,47 @@ func buildDebugHintQuery(req debugRequest) (hintQuery, error) {
 	}
 }
 
-func buildDebugEntries(entries []logproto.Entry, hintRanges []hintprovider.HintTimeRange) []debugEntry {
+func buildDebugEntries(entries []queryEntry, hintRanges []hintprovider.HintTimeRange) []debugEntry {
 	respEntries := make([]debugEntry, 0, len(entries))
-	for _, entry := range entries {
-		covered := verification.TimestampCovered(hintRanges, entry.Timestamp)
-		coveredBy := firstCoveringRangeIndex(hintRanges, entry.Timestamp)
+	for i, entry := range verificationEntries(entries) {
+		coveredBy := firstCoveringRangeIndex(hintRanges, entry)
 		respEntries = append(respEntries, debugEntry{
-			Timestamp: entry.Timestamp,
-			Line:      entry.Line,
-			Covered:   covered,
-			CoveredBy: coveredBy,
+			Timestamp:   entry.Timestamp,
+			Fingerprint: entry.Fingerprint,
+			Line:        entries[i].Line,
+			Covered:     coveredBy != nil,
+			CoveredBy:   coveredBy,
 		})
 	}
 	return respEntries
 }
 
-func buildDebugHintRanges(entries []logproto.Entry, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
+func buildDebugHintRanges(entries []queryEntry, hintRanges []hintprovider.HintTimeRange) []debugHintRange {
 	respRanges := make([]debugHintRange, 0, len(hintRanges))
+	verifyEntries := verificationEntries(entries)
 	for i, hintRange := range hintRanges {
 		entryCount := 0
-		for _, entry := range entries {
-			if verification.RangeCoversTimestamp(hintRange, entry.Timestamp) {
+		for _, entry := range verifyEntries {
+			if verification.RangeCoversEntry(hintRange, entry) {
 				entryCount++
 			}
 		}
 		respRanges = append(respRanges, debugHintRange{
-			Index:      i,
-			Start:      hintRange.Start,
-			End:        hintRange.End,
-			Source:     hintRange.Source,
-			EntryCount: entryCount,
+			Index:             i,
+			Start:             hintRange.Start,
+			End:               hintRange.End,
+			DocumentShard:     hintRange.DocumentShard,
+			DocumentShardBits: hintRange.DocumentShardBits,
+			Source:            hintRange.Source,
+			EntryCount:        entryCount,
 		})
 	}
 	return respRanges
 }
 
-func firstCoveringRangeIndex(ranges []hintprovider.HintTimeRange, ts time.Time) *int {
+func firstCoveringRangeIndex(ranges []hintprovider.HintTimeRange, entry verification.Entry) *int {
 	for i, candidate := range ranges {
-		if verification.RangeCoversTimestamp(candidate, ts) {
+		if verification.RangeCoversEntry(candidate, entry) {
 			index := i
 			return &index
 		}
