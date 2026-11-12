@@ -434,7 +434,7 @@ type malformedOnReplaceBucket struct {
 	fileBucket
 }
 
-func (b *malformedOnReplaceBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+func (*malformedOnReplaceBucket) GetAndReplace(_ context.Context, _ string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
 	_, err := fn(io.NopCloser(strings.NewReader("not gzip")))
 	return err
 }
