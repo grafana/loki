@@ -105,7 +105,8 @@ const (
 
 	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the raw bytes of
 	// the ranges of a group: the range headers, the column names and the cache item envelope. The
-	// prefetcher subtracts it from the largest cache item of the cache to get the largest region.
+	// prefetcher adds it to the max region size, and rejects a config where the sum is above the
+	// largest cache item of the cache.
 	cacheItemOverheadBytes = 64 * 1024
 )
 

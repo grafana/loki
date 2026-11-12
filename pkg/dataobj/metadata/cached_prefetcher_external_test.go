@@ -75,6 +75,34 @@ func TestCachedPrefetcher(t *testing.T) {
 		}
 	})
 
+	t.Run("two objects that share one cache keep their own metadata, cold and warm", func(t *testing.T) {
+		other := newTestObjectWithStreams(t, 60)
+		require.NotEqual(t, obj.path, other.path)
+		objs := []*testObject{obj, other}
+		p := newPrefetcher(t, newFakeCache(), nil)
+
+		prefetchBoth := func(t *testing.T) []*testSource {
+			t.Helper()
+
+			srcs := make([]*testSource, len(objs))
+			for i, o := range objs {
+				req := o.request(prefetchSets["message"])
+				res, err := p.Prefetch(t.Context(), req)
+				require.NoError(t, err)
+				o.requireMatches(t, res)
+				srcs[i] = req.Source.(*testSource)
+			}
+			return srcs
+		}
+
+		for _, src := range prefetchBoth(t) {
+			require.NotEmpty(t, src.calls(), "a cold prefetch reads the object")
+		}
+		for _, src := range prefetchBoth(t) {
+			require.Empty(t, src.calls(), "a warm prefetch does not read the object")
+		}
+	})
+
 	t.Run("a column the object does not have is a hit", func(t *testing.T) {
 		backend := newFakeCache()
 		p := newPrefetcher(t, backend, nil)
@@ -387,6 +415,40 @@ func TestCachedPrefetcher(t *testing.T) {
 		})
 	})
 
+	t.Run("concurrent cold prefetches of two objects do not share a load", func(t *testing.T) {
+		other := newTestObjectWithStreams(t, 60)
+		require.NotEqual(t, obj.path, other.path)
+
+		synctest.Test(t, func(t *testing.T) {
+			backend := newFakeCache()
+			p := newPrefetcher(t, backend, nil)
+			gate := make(chan struct{})
+			objs := []*testObject{obj, other}
+			srcs := []*testSource{
+				{bucket: obj.bucket, path: obj.path, gate: gate},
+				{bucket: other.bucket, path: other.path, gate: gate},
+			}
+
+			var wg sync.WaitGroup
+			res := make([]metadata.PrefetchResponse, len(objs))
+			errs := make([]error, len(objs))
+			for i := range objs {
+				wg.Go(func() {
+					res[i], errs[i] = p.Prefetch(t.Context(), metadata.PrefetchRequest{Path: objs[i].path, PrefetchSet: prefetchSets["message"], Source: srcs[i]})
+				})
+			}
+			synctest.Wait()
+			close(gate)
+			wg.Wait()
+
+			for i, o := range objs {
+				require.NoError(t, errs[i])
+				o.requireMatches(t, res[i])
+				require.Len(t, srcs[i].calls(), 2, "one head read and one tail read for each object")
+			}
+		})
+	})
+
 	t.Run("a caller that cancels leaves, and the caller that shares its load still gets the metadata", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			backend := newFakeCache()
@@ -454,6 +516,23 @@ func TestCachedPrefetcher(t *testing.T) {
 		require.Equal(t, map[string]float64{"cache_unavailable": 1}, gatherPrefetcherCounts(t, reg).failures)
 	})
 
+	t.Run("serves the prefetch from the groups the cache returned when the cache also returned an error", func(t *testing.T) {
+		warm := newFakeCache()
+		_, err := newPrefetcher(t, warm, nil).Prefetch(t.Context(), obj.request(prefetchSets["message"]))
+		require.NoError(t, err)
+		warm.resetCounts()
+		p, reg := newPrefetcherWithRegistry(t, partialResultsCache{warm}, nil)
+		req := obj.request(prefetchSets["message"])
+
+		res, err := p.Prefetch(t.Context(), req)
+
+		require.NoError(t, err)
+		obj.requireMatches(t, res)
+		require.Empty(t, req.Source.(*testSource).calls())
+		require.Zero(t, warm.sets())
+		require.Equal(t, 1.0, gatherPrefetcherCounts(t, reg).cacheHits)
+	})
+
 	t.Run("a cache that fails to write does not fail the prefetch", func(t *testing.T) {
 		backend := newFakeCache()
 		backend.failWrites = true
@@ -517,10 +596,17 @@ type testObject struct {
 // first read of a cold open.
 func newTestObject(t *testing.T) *testObject {
 	t.Helper()
+	return newTestObjectWithStreams(t, 40)
+}
+
+// newTestObjectWithStreams builds a test object with the given number of streams. Objects with a
+// different number of streams have different paths and different metadata.
+func newTestObjectWithStreams(t *testing.T, streams int) *testObject {
+	t.Helper()
 
 	builder := objtest.NewBuilder(t, objtest.WithTargetSectionSize(flagext.Bytes(8*1024)))
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
-	for i := range 40 {
+	for i := range streams {
 		entries := make([]push.Entry, 0, 200)
 		for j := range 200 {
 			entries = append(entries, push.Entry{
@@ -818,6 +904,18 @@ func (s *fakeCache) copyEntry(from, to string) {
 	s.values[toName] = bytes.Clone(s.values[fromName])
 }
 
+// partialResultsCache returns the items it found together with an error, like a cache client that
+// loses a part of a multi-key lookup.
+type partialResultsCache struct{ *fakeCache }
+
+func (c partialResultsCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	found, bufs, missing, err := c.fakeCache.Fetch(ctx, keys)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return found, bufs, missing, errors.New("part of the lookup failed")
+}
+
 // itemKey returns the unhashed cache key that a cache item holds, or "" when the item is malformed. A
 // cache item starts with a version byte, a codec byte, the raw size as a uvarint and a 4 byte checksum.
 // The key follows with its length as a uvarint.
@@ -942,10 +1040,4 @@ func (b *recordingBucket) readsBelow(end int64) (n int) {
 		}
 	}
 	return n
-}
-
-func (b *recordingBucket) total() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.reads)
 }

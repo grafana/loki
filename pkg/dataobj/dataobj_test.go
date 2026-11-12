@@ -663,6 +663,27 @@ func TestFromBucket_MetadataPrefetcher(t *testing.T) {
 		require.Equal(t, []byte("streams-meta"), meta)
 	})
 
+	t.Run("asks the prefetcher for the object path and the prefetch set, with a reader of the object", func(t *testing.T) {
+		var got metadata.PrefetchRequest
+		wantSet := metadata.PrefetchSet{Message: true, MetadataNames: []string{"trace_id"}}
+		prefetcher := prefetcherFunc(func(_ context.Context, req metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			got = req
+			return metadata.PrefetchResponse{}, metadata.ErrNotPrefetchable
+		})
+
+		_, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcher, wantSet))
+
+		require.NoError(t, err)
+		require.Equal(t, "obj", got.Path)
+		require.Equal(t, wantSet, got.PrefetchSet)
+		rc, err := got.Source.ReadRange(ctx, 0, 4)
+		require.NoError(t, err)
+		magic, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+		require.Equal(t, "DOBJ", string(magic))
+	})
+
 	t.Run("takes precedence over the metadata cache", func(t *testing.T) {
 		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
 		prefetcher := prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) { return whole, nil })
@@ -684,7 +705,7 @@ func TestFromBucket_MetadataPrefetcher(t *testing.T) {
 	})
 }
 
-// unusedMetadataCache is a metadata cache that fails the test when an open uses it.
+// failingMetadataCache is a metadata cache that fails the test when an open uses it.
 type failingMetadataCache struct{ t *testing.T }
 
 func (c failingMetadataCache) GetOrLoadMetadataRegion(context.Context, string, func(context.Context) ([]byte, error)) ([]byte, error) {

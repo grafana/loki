@@ -128,9 +128,18 @@ func splitMetadataRegionToGroups(md *filemd.Metadata, startOffset int64, region 
 	// The sections are not in offset order in every object, and a logs section adds its section
 	// metadata before the column metadata that lies before it. So the ranges of a group can be out of
 	// order. Sorted ranges that touch each other join into one range.
+	var all PrefetchedRanges
 	for id, ranges := range out.Groups {
 		slices.SortFunc(ranges, func(a, b PrefetchedRange) int { return cmp.Compare(a.Offset, b.Offset) })
 		out.Groups[id] = ranges.mergeAdjacent(region)
+		all = append(all, out.Groups[id]...)
+	}
+
+	// A prefetch set combines groups, and a reader needs sorted ranges that do not overlap. Metadata
+	// that overlaps other metadata is not valid, so the object is not prefetchable.
+	slices.SortFunc(all, func(a, b PrefetchedRange) int { return cmp.Compare(a.Offset, b.Offset) })
+	if !all.Valid() {
+		return prefetchedRangesGroups{}, errInvalidRanges
 	}
 
 	return out, nil

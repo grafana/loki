@@ -51,7 +51,10 @@ func (s PrefetchSet) prefetchedRangesIDs() []prefetchedRangesID {
 		ids = append(ids, prefetchedRangesID{Kind: kindMessage})
 	}
 	for _, name := range s.MetadataNames {
-		ids = append(ids, prefetchedRangesID{Kind: kindColumn, ColumnName: name})
+		id := prefetchedRangesID{Kind: kindColumn, ColumnName: name}
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
 	}
 	return ids
 }
