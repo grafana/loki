@@ -656,8 +656,9 @@ Compressing First 64KB of all `.go` files in `go/src`, Go 1.19.5, 8912 files, 51
 
 ### Creating Dictionaries
 
-There are no tools to create dictionaries in S2. 
-However, there are multiple ways to create a useful dictionary:
+The *experimental* [dictionary builder](https://github.com/klauspost/compress/tree/master/dict) can create S2 dictionaries with `dict.BuildS2Dict` or `builddict -format s2`.
+S2 dictionaries are at most 64KB, so set `-len` or `MaxDictSize` to 65536 (`s2.MaxDictSize`) or less.
+There are also other ways to create a useful dictionary:
 
 #### Using a Sample File
 
