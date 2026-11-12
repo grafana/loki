@@ -20,9 +20,23 @@ import (
 // does not fix it.
 var ErrMalformedFileList = errors.New("malformed file list")
 
-// fileListVersion is the version of the stored format that this package
-// writes and reads.
-const fileListVersion = 1
+// The versions of the stored format. The encoding is the same in both. Only
+// the meaning of the paths differs:
+//
+//   - In version 1, the paths are every object of the tenant. Older
+//     binaries write this version.
+//   - In version 2, the paths are the objects of the tenant that no ToC could
+//     reach.
+//
+// A binary that knows only version 1 rejects a version 2 list as malformed.
+// So it never replaces a version 2 list.
+const (
+	fileListVersionAllObjects  = 1
+	fileListVersionUnreachable = 2
+
+	// fileListVersion is the version that this package writes.
+	fileListVersion = fileListVersionUnreachable
+)
 
 // fileListHeader is the first record of a stored file list.
 //
@@ -31,7 +45,7 @@ const fileListVersion = 1
 // increasing order, so that a reader can merge them with a sorted bucket
 // listing. For example:
 //
-//	{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}
+//	{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}
 //	{"path":"index/v0/indexes/00/x"}
 //	{"path":"objects/tenants/a/aa/y"}
 //
@@ -44,9 +58,20 @@ type fileListHeader struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// holdsUnreachableObjects reports whether the paths of the list are the
+// objects that no ToC could reach.
+func (h fileListHeader) holdsUnreachableObjects() bool {
+	return h.Version == fileListVersionUnreachable
+}
+
+// equal reports whether h and other describe the same stored list.
+func (h fileListHeader) equal(other fileListHeader) bool {
+	return h.Version == other.Version && h.Tenant == other.Tenant && h.CreatedAt.Equal(other.CreatedAt)
+}
+
 func (h fileListHeader) validate() error {
-	if h.Version != fileListVersion {
-		return fmt.Errorf("unsupported version %d, want %d", h.Version, fileListVersion)
+	if h.Version != fileListVersionAllObjects && h.Version != fileListVersionUnreachable {
+		return fmt.Errorf("unsupported version %d, want %d or %d", h.Version, fileListVersionAllObjects, fileListVersionUnreachable)
 	}
 	if err := validateTenant(h.Tenant); err != nil {
 		return err

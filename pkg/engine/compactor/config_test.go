@@ -31,6 +31,7 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"task retry min backoff zero", func(c *Config) { c.TaskRetryMinBackoff = 0 }, errInvalidTaskRetryMinBackoff},
 		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 		{"deletion sweep enabled with zero max concurrent sweeps", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.MaxConcurrentSweeps = 0 }, errInvalidMaxConcurrentSweeps},
+		{"deletion sweep enabled without dry run", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.DryRun = false }, errDeletionSweepDryRunRequired},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

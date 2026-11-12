@@ -41,7 +41,7 @@ func TestEncodeFileList(t *testing.T) {
 		require.NoError(t, err)
 		text, err := io.ReadAll(gz)
 		require.NoError(t, err)
-		require.Equal(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}
+		require.Equal(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}
 {"path":"index/v0/indexes/00/x"}
 {"path":"objects/tenants/a/aa/y"}
 `, string(text))
@@ -49,7 +49,7 @@ func TestEncodeFileList(t *testing.T) {
 }
 
 func TestOpenFileList(t *testing.T) {
-	header := `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}` + "\n"
+	header := `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}` + "\n"
 	path := fileListPath("a")
 
 	t.Run("reads the header and the paths of a stored list", func(t *testing.T) {
@@ -60,6 +60,16 @@ func TestOpenFileList(t *testing.T) {
 		require.Equal(t, "a", r.Tenant())
 		require.Equal(t, time.Date(2026, 11, 4, 12, 0, 0, 500, time.UTC), r.CreatedAt())
 		require.Equal(t, []string{"objects/00/x", "objects/01/y"}, collectPaths(t, r))
+		require.True(t, r.dec.header.holdsUnreachableObjects())
+	})
+
+	t.Run("reads a version 1 list and reports that it does not hold unreachable objects only", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		upload(t, bucket, path, gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n"+`{"path":"objects/00/x"}`+"\n"))
+
+		r := openFileList(t, bucket, "a")
+		require.False(t, r.dec.header.holdsUnreachableObjects())
+		require.Equal(t, []string{"objects/00/x"}, collectPaths(t, r))
 	})
 
 	t.Run("reads no paths from a list with only a header", func(t *testing.T) {
@@ -110,12 +120,12 @@ func TestOpenFileList(t *testing.T) {
 	}{
 		{"returns ErrMalformedFileList for an empty object", []byte{}},
 		{"returns ErrMalformedFileList for an object that is not gzip", []byte(header)},
-		{"returns ErrMalformedFileList for a header with an unknown field", gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z","extra":2}`+"\n")},
-		{"returns ErrMalformedFileList for a header with an unknown version", gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
+		{"returns ErrMalformedFileList for a header with an unknown field", gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z","extra":2}`+"\n")},
+		{"returns ErrMalformedFileList for a header with an unknown version", gzipText(t, `{"version":3,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 		{"returns ErrMalformedFileList for a header without a version", gzipText(t, `{"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 		{"returns ErrMalformedFileList for a path record before the header", gzipText(t, `{"path":"objects/00/x"}`+"\n"+header)},
-		{"returns ErrMalformedFileList for a header without a creation time", gzipText(t, `{"version":1,"tenant":"a"}`+"\n")},
-		{"returns ErrMalformedFileList for a header that holds another tenant", gzipText(t, `{"version":1,"tenant":"b","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
+		{"returns ErrMalformedFileList for a header without a creation time", gzipText(t, `{"version":2,"tenant":"a"}`+"\n")},
+		{"returns ErrMalformedFileList for a header that holds another tenant", gzipText(t, `{"version":2,"tenant":"b","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
@@ -200,6 +210,16 @@ func TestFileListWriter_Write(t *testing.T) {
 		require.Equal(t, list, readFileList(t, bucket, "a"))
 	})
 
+	t.Run("replaces an older version 1 list with a version 2 list", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		upload(t, bucket, list.Path(), gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"+`{"path":"objects/00/old"}`+"\n"))
+
+		require.NoError(t, newTestWriter(bucket).Write(t.Context(), list))
+		r := openFileList(t, bucket, "a")
+		require.True(t, r.dec.header.holdsUnreachableObjects())
+		require.Equal(t, list.Paths, collectPaths(t, r))
+	})
+
 	t.Run("returns ErrSuperseded and keeps a stored list equal to the list", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		storeFileList(t, bucket, list)
@@ -210,7 +230,7 @@ func TestFileListWriter_Write(t *testing.T) {
 
 	t.Run("replaces an older stored list with malformed paths because it reads only the header", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		upload(t, bucket, list.Path(), gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"+`not json`+"\n"))
+		upload(t, bucket, list.Path(), gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"+`not json`+"\n"))
 
 		require.NoError(t, newTestWriter(bucket).Write(t.Context(), list))
 		require.Equal(t, list, readFileList(t, bucket, "a"))
@@ -320,7 +340,7 @@ func TestFileListWriter_Write(t *testing.T) {
 
 	t.Run("returns ErrMalformedFileList without a retry when the stored list has an unknown version", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
-		upload(t, inner, list.Path(), gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"))
+		upload(t, inner, list.Path(), gzipText(t, `{"version":3,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"))
 		bucket := &flakyBucket{Bucket: inner}
 
 		require.ErrorIs(t, newTestWriter(bucket).Write(t.Context(), list), ErrMalformedFileList)

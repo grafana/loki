@@ -1,5 +1,6 @@
-// Package deletion finds and records the data objects that hold data of a
-// tenant, so that a later step can delete the tenant's data.
+// Package deletion finds the data objects of a tenant that no ToC can reach,
+// and records them. A later sweep compares the records to find deletion
+// candidates.
 package deletion
 
 import (
