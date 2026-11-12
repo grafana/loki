@@ -64,6 +64,12 @@ func TestNeedleKey(t *testing.T) {
 	}
 	require.NotEqual(t, base, key(t, `{app="api"} |= "timeout"`, 5), "n-gram length")
 
+	// Every needle counts: two needles differ from either one alone, whichever
+	// sorts first.
+	both := key(t, `{app="api"} |= "timeout" |= "failure"`, ngram)
+	require.NotEqual(t, both, key(t, `{app="api"} |= "timeout"`, ngram))
+	require.NotEqual(t, both, key(t, `{app="api"} |= "failure"`, ngram))
+
 	// Needles are arbitrary bytes, so one needle containing the separator must
 	// not look like two.
 	require.NotEqual(t,
