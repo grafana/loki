@@ -20,11 +20,13 @@ type Unmarshaler interface {
 
 // CursorUnmarshaler is implemented by generated and handwritten decoders that
 // can unmarshal directly from a Cursor. Implementations must consume and
-// validate the complete value and return its proven successor. Direct cursor
-// kind mismatches should be passed to NormalizeUnmarshalError before adding any
-// wrapping context so Reader.Decode retains its documented error categories.
-// When a type implements both CursorUnmarshaler and Unmarshaler, reflection
-// decoding invokes CursorUnmarshaler.
+// validate the complete value and return its successor. Successor checks verify
+// decoder identity and recorded origin. A successor from MapReader.End relies
+// on the implementation having completed that reader's counted traversal.
+// Direct cursor kind mismatches should be passed to NormalizeUnmarshalError
+// before adding any wrapping context so Reader.Decode retains its documented
+// error categories. When a type implements both CursorUnmarshaler and
+// Unmarshaler, reflection decoding invokes CursorUnmarshaler.
 //
 // Implementations control their own traversal and allocation. When decoding an
 // untrusted database, nested calls should share one aggregate per-record work

@@ -2,11 +2,8 @@ package stages
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -32,7 +29,7 @@ func validateLabelStaticConfig(c StaticLabelConfig) error {
 	return nil
 }
 
-func newStaticLabelsStage(logger log.Logger, configs interface{}) (Stage, error) {
+func newStaticLabelsStage(configs interface{}) (Stage, error) {
 	cfgs := &StaticLabelConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -45,14 +42,12 @@ func newStaticLabelsStage(logger log.Logger, configs interface{}) (Stage, error)
 	}
 
 	return toStage(&StaticLabelStage{
-		cfgs:   *cfgs,
-		logger: logger,
+		cfgs: *cfgs,
 	}), nil
 }
 
 type StaticLabelStage struct {
-	cfgs   StaticLabelConfig
-	logger log.Logger
+	cfgs StaticLabelConfig
 }
 
 // Process implements Stage
@@ -64,16 +59,10 @@ func (l *StaticLabelStage) Process(labels model.LabelSet, _ map[string]interface
 		}
 		s, err := getString(*lSrc)
 		if err != nil {
-			if Debug {
-				level.Debug(l.logger).Log("msg", "failed to convert static label value to string", "err", err, "type", reflect.TypeOf(lSrc))
-			}
 			continue
 		}
 		lvalue := model.LabelValue(s)
 		if !lvalue.IsValid() {
-			if Debug {
-				level.Debug(l.logger).Log("msg", "invalid label value parsed", "value", lvalue)
-			}
 			continue
 		}
 		lname := model.LabelName(lName)

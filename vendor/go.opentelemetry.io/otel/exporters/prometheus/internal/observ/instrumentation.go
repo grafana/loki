@@ -76,10 +76,13 @@ func put[T any](p *sync.Pool, s *[]T) {
 	p.Put(s)
 }
 
+// ComponentName returns the component name for the exporter with the
+// provided ID.
 func ComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", ComponentType, id)
 }
 
+// Instrumentation is experimental instrumentation for the exporter.
 type Instrumentation struct {
 	inflightMetric     metric.Int64UpDownCounter
 	exportedMetric     metric.Int64Counter
@@ -90,6 +93,10 @@ type Instrumentation struct {
 	setOpt metric.MeasurementOption
 }
 
+// NewInstrumentation returns instrumentation for the exporter identified by
+// id.
+//
+// If the experimental observability is disabled, nil is returned.
 func NewInstrumentation(id int64) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil

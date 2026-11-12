@@ -7,10 +7,9 @@ import "fmt"
 
 // switchDictionary updates the ResourceProfiles, switching its indices from one
 // dictionary to another.
-func (ms ResourceProfiles) switchDictionary(src, dst ProfilesDictionary) error {
+func (ms ResourceProfiles) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	for i, v := range ms.ScopeProfiles().All() {
-		err := v.switchDictionary(src, dst)
-		if err != nil {
+		if err := v.switchDictionary(src, dst, mi); err != nil {
 			return fmt.Errorf("error switching dictionary for scope profile %d: %w", i, err)
 		}
 	}

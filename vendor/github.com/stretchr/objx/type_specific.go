@@ -1,17 +1,17 @@
 package objx
 
 /*
-   MSI (map[string]interface{} and []map[string]interface{})
+   MSI (map[string]any and []map[string]any)
 */
 
-// MSI gets the value as a map[string]interface{}, returns the optionalDefault
+// MSI gets the value as a map[string]any, returns the optionalDefault
 // value or a system default object if the value is the wrong type.
-func (v *Value) MSI(optionalDefault ...map[string]interface{}) map[string]interface{} {
-	if s, ok := v.data.(map[string]interface{}); ok {
+func (v *Value) MSI(optionalDefault ...map[string]any) map[string]any {
+	if s, ok := v.data.(map[string]any); ok {
 		return s
 	}
 	if s, ok := v.data.(Map); ok {
-		return map[string]interface{}(s)
+		return map[string]any(s)
 	}
 	if len(optionalDefault) == 1 {
 		return optionalDefault[0]
@@ -19,20 +19,20 @@ func (v *Value) MSI(optionalDefault ...map[string]interface{}) map[string]interf
 	return nil
 }
 
-// MustMSI gets the value as a map[string]interface{}.
+// MustMSI gets the value as a map[string]any.
 //
-// Panics if the object is not a map[string]interface{}.
-func (v *Value) MustMSI() map[string]interface{} {
+// Panics if the object is not a map[string]any.
+func (v *Value) MustMSI() map[string]any {
 	if s, ok := v.data.(Map); ok {
-		return map[string]interface{}(s)
+		return map[string]any(s)
 	}
-	return v.data.(map[string]interface{})
+	return v.data.(map[string]any)
 }
 
-// MSISlice gets the value as a []map[string]interface{}, returns the optionalDefault
-// value or nil if the value is not a []map[string]interface{}.
-func (v *Value) MSISlice(optionalDefault ...[]map[string]interface{}) []map[string]interface{} {
-	if s, ok := v.data.([]map[string]interface{}); ok {
+// MSISlice gets the value as a []map[string]any, returns the optionalDefault
+// value or nil if the value is not a []map[string]any.
+func (v *Value) MSISlice(optionalDefault ...[]map[string]any) []map[string]any {
+	if s, ok := v.data.([]map[string]any); ok {
 		return s
 	}
 
@@ -44,45 +44,45 @@ func (v *Value) MSISlice(optionalDefault ...[]map[string]interface{}) []map[stri
 		return nil
 	}
 
-	result := make([]map[string]interface{}, len(s))
+	result := make([]map[string]any, len(s))
 	for i := range s {
 		result[i] = s[i].Value().MSI()
 	}
 	return result
 }
 
-// MustMSISlice gets the value as a []map[string]interface{}.
+// MustMSISlice gets the value as a []map[string]any.
 //
-// Panics if the object is not a []map[string]interface{}.
-func (v *Value) MustMSISlice() []map[string]interface{} {
+// Panics if the object is not a []map[string]any.
+func (v *Value) MustMSISlice() []map[string]any {
 	if s := v.MSISlice(); s != nil {
 		return s
 	}
 
-	return v.data.([]map[string]interface{})
+	return v.data.([]map[string]any)
 }
 
-// IsMSI gets whether the object contained is a map[string]interface{} or not.
+// IsMSI gets whether the object contained is a map[string]any or not.
 func (v *Value) IsMSI() bool {
-	_, ok := v.data.(map[string]interface{})
+	_, ok := v.data.(map[string]any)
 	if !ok {
 		_, ok = v.data.(Map)
 	}
 	return ok
 }
 
-// IsMSISlice gets whether the object contained is a []map[string]interface{} or not.
+// IsMSISlice gets whether the object contained is a []map[string]any or not.
 func (v *Value) IsMSISlice() bool {
-	_, ok := v.data.([]map[string]interface{})
+	_, ok := v.data.([]map[string]any)
 	if !ok {
 		_, ok = v.data.([]Map)
 		if !ok {
-			s, ok := v.data.([]interface{})
+			s, ok := v.data.([]any)
 			if ok {
 				for i := range s {
 					switch s[i].(type) {
 					case Map:
-					case map[string]interface{}:
+					case map[string]any:
 					default:
 						return false
 					}
@@ -95,10 +95,10 @@ func (v *Value) IsMSISlice() bool {
 }
 
 // EachMSI calls the specified callback for each object
-// in the []map[string]interface{}.
+// in the []map[string]any.
 //
 // Panics if the object is the wrong type.
-func (v *Value) EachMSI(callback func(int, map[string]interface{}) bool) *Value {
+func (v *Value) EachMSI(callback func(int, map[string]any) bool) *Value {
 	for index, val := range v.MustMSISlice() {
 		carryon := callback(index, val)
 		if !carryon {
@@ -109,13 +109,12 @@ func (v *Value) EachMSI(callback func(int, map[string]interface{}) bool) *Value 
 }
 
 // WhereMSI uses the specified decider function to select items
-// from the []map[string]interface{}.  The object contained in the result will contain
+// from the []map[string]any.  The object contained in the result will contain
 // only the selected items.
-func (v *Value) WhereMSI(decider func(int, map[string]interface{}) bool) *Value {
-	var selected []map[string]interface{}
-	v.EachMSI(func(index int, val map[string]interface{}) bool {
-		shouldSelect := decider(index, val)
-		if !shouldSelect {
+func (v *Value) WhereMSI(decider func(int, map[string]any) bool) *Value {
+	var selected []map[string]any
+	v.EachMSI(func(index int, val map[string]any) bool {
+		if decider(index, val) {
 			selected = append(selected, val)
 		}
 		return true
@@ -125,13 +124,13 @@ func (v *Value) WhereMSI(decider func(int, map[string]interface{}) bool) *Value 
 
 // GroupMSI uses the specified grouper function to group the items
 // keyed by the return of the grouper.  The object contained in the
-// result will contain a map[string][]map[string]interface{}.
-func (v *Value) GroupMSI(grouper func(int, map[string]interface{}) string) *Value {
-	groups := make(map[string][]map[string]interface{})
-	v.EachMSI(func(index int, val map[string]interface{}) bool {
+// result will contain a map[string][]map[string]any.
+func (v *Value) GroupMSI(grouper func(int, map[string]any) string) *Value {
+	groups := make(map[string][]map[string]any)
+	v.EachMSI(func(index int, val map[string]any) bool {
 		group := grouper(index, val)
 		if _, ok := groups[group]; !ok {
-			groups[group] = make([]map[string]interface{}, 0)
+			groups[group] = make([]map[string]any, 0)
 		}
 		groups[group] = append(groups[group], val)
 		return true
@@ -139,13 +138,13 @@ func (v *Value) GroupMSI(grouper func(int, map[string]interface{}) string) *Valu
 	return &Value{data: groups}
 }
 
-// ReplaceMSI uses the specified function to replace each map[string]interface{}s
+// ReplaceMSI uses the specified function to replace each map[string]anys
 // by iterating each item.  The data in the returned result will be a
-// []map[string]interface{} containing the replaced items.
-func (v *Value) ReplaceMSI(replacer func(int, map[string]interface{}) map[string]interface{}) *Value {
+// []map[string]any containing the replaced items.
+func (v *Value) ReplaceMSI(replacer func(int, map[string]any) map[string]any) *Value {
 	arr := v.MustMSISlice()
-	replaced := make([]map[string]interface{}, len(arr))
-	v.EachMSI(func(index int, val map[string]interface{}) bool {
+	replaced := make([]map[string]any, len(arr))
+	v.EachMSI(func(index int, val map[string]any) bool {
 		replaced[index] = replacer(index, val)
 		return true
 	})
@@ -153,12 +152,12 @@ func (v *Value) ReplaceMSI(replacer func(int, map[string]interface{}) map[string
 }
 
 // CollectMSI uses the specified collector function to collect a value
-// for each of the map[string]interface{}s in the slice.  The data returned will be a
-// []interface{}.
-func (v *Value) CollectMSI(collector func(int, map[string]interface{}) interface{}) *Value {
+// for each of the map[string]anys in the slice.  The data returned will be a
+// []any.
+func (v *Value) CollectMSI(collector func(int, map[string]any) any) *Value {
 	arr := v.MustMSISlice()
-	collected := make([]interface{}, len(arr))
-	v.EachMSI(func(index int, val map[string]interface{}) bool {
+	collected := make([]any, len(arr))
+	v.EachMSI(func(index int, val map[string]any) bool {
 		collected[index] = collector(index, val)
 		return true
 	})
@@ -171,11 +170,11 @@ func (v *Value) CollectMSI(collector func(int, map[string]interface{}) interface
 
 // ObjxMap gets the value as a (Map), returns the optionalDefault
 // value or a system default object if the value is the wrong type.
-func (v *Value) ObjxMap(optionalDefault ...(Map)) Map {
-	if s, ok := v.data.((Map)); ok {
+func (v *Value) ObjxMap(optionalDefault ...Map) Map {
+	if s, ok := v.data.(Map); ok {
 		return s
 	}
-	if s, ok := v.data.(map[string]interface{}); ok {
+	if s, ok := v.data.(map[string]any); ok {
 		return s
 	}
 	if len(optionalDefault) == 1 {
@@ -188,20 +187,20 @@ func (v *Value) ObjxMap(optionalDefault ...(Map)) Map {
 //
 // Panics if the object is not a (Map).
 func (v *Value) MustObjxMap() Map {
-	if s, ok := v.data.(map[string]interface{}); ok {
+	if s, ok := v.data.(map[string]any); ok {
 		return s
 	}
-	return v.data.((Map))
+	return v.data.(Map)
 }
 
 // ObjxMapSlice gets the value as a [](Map), returns the optionalDefault
 // value or nil if the value is not a [](Map).
-func (v *Value) ObjxMapSlice(optionalDefault ...[](Map)) [](Map) {
+func (v *Value) ObjxMapSlice(optionalDefault ...[]Map) []Map {
 	if s, ok := v.data.([]Map); ok {
 		return s
 	}
 
-	if s, ok := v.data.([]map[string]interface{}); ok {
+	if s, ok := v.data.([]map[string]any); ok {
 		result := make([]Map, len(s))
 		for i := range s {
 			result[i] = s[i]
@@ -209,7 +208,7 @@ func (v *Value) ObjxMapSlice(optionalDefault ...[](Map)) [](Map) {
 		return result
 	}
 
-	s, ok := v.data.([]interface{})
+	s, ok := v.data.([]any)
 	if !ok {
 		if len(optionalDefault) == 1 {
 			return optionalDefault[0]
@@ -222,7 +221,7 @@ func (v *Value) ObjxMapSlice(optionalDefault ...[](Map)) [](Map) {
 		switch s[i].(type) {
 		case Map:
 			result[i] = s[i].(Map)
-		case map[string]interface{}:
+		case map[string]any:
 			result[i] = New(s[i])
 		default:
 			return nil
@@ -234,34 +233,34 @@ func (v *Value) ObjxMapSlice(optionalDefault ...[](Map)) [](Map) {
 // MustObjxMapSlice gets the value as a [](Map).
 //
 // Panics if the object is not a [](Map).
-func (v *Value) MustObjxMapSlice() [](Map) {
+func (v *Value) MustObjxMapSlice() []Map {
 	if s := v.ObjxMapSlice(); s != nil {
 		return s
 	}
-	return v.data.([](Map))
+	return v.data.([]Map)
 }
 
 // IsObjxMap gets whether the object contained is a (Map) or not.
 func (v *Value) IsObjxMap() bool {
-	_, ok := v.data.((Map))
+	_, ok := v.data.(Map)
 	if !ok {
-		_, ok = v.data.(map[string]interface{})
+		_, ok = v.data.(map[string]any)
 	}
 	return ok
 }
 
 // IsObjxMapSlice gets whether the object contained is a [](Map) or not.
 func (v *Value) IsObjxMapSlice() bool {
-	_, ok := v.data.([](Map))
+	_, ok := v.data.([]Map)
 	if !ok {
-		_, ok = v.data.([]map[string]interface{})
+		_, ok = v.data.([]map[string]any)
 		if !ok {
-			s, ok := v.data.([]interface{})
+			s, ok := v.data.([]any)
 			if ok {
 				for i := range s {
 					switch s[i].(type) {
 					case Map:
-					case map[string]interface{}:
+					case map[string]any:
 					default:
 						return false
 					}
@@ -292,10 +291,9 @@ func (v *Value) EachObjxMap(callback func(int, Map) bool) *Value {
 // from the [](Map).  The object contained in the result will contain
 // only the selected items.
 func (v *Value) WhereObjxMap(decider func(int, Map) bool) *Value {
-	var selected [](Map)
+	var selected []Map
 	v.EachObjxMap(func(index int, val Map) bool {
-		shouldSelect := decider(index, val)
-		if !shouldSelect {
+		if decider(index, val) {
 			selected = append(selected, val)
 		}
 		return true
@@ -307,11 +305,11 @@ func (v *Value) WhereObjxMap(decider func(int, Map) bool) *Value {
 // keyed by the return of the grouper.  The object contained in the
 // result will contain a map[string][](Map).
 func (v *Value) GroupObjxMap(grouper func(int, Map) string) *Value {
-	groups := make(map[string][](Map))
+	groups := make(map[string][]Map)
 	v.EachObjxMap(func(index int, val Map) bool {
 		group := grouper(index, val)
 		if _, ok := groups[group]; !ok {
-			groups[group] = make([](Map), 0)
+			groups[group] = make([]Map, 0)
 		}
 		groups[group] = append(groups[group], val)
 		return true
@@ -324,7 +322,7 @@ func (v *Value) GroupObjxMap(grouper func(int, Map) string) *Value {
 // [](Map) containing the replaced items.
 func (v *Value) ReplaceObjxMap(replacer func(int, Map) Map) *Value {
 	arr := v.MustObjxMapSlice()
-	replaced := make([](Map), len(arr))
+	replaced := make([]Map, len(arr))
 	v.EachObjxMap(func(index int, val Map) bool {
 		replaced[index] = replacer(index, val)
 		return true
@@ -334,10 +332,10 @@ func (v *Value) ReplaceObjxMap(replacer func(int, Map) Map) *Value {
 
 // CollectObjxMap uses the specified collector function to collect a value
 // for each of the (Map)s in the slice.  The data returned will be a
-// []interface{}.
-func (v *Value) CollectObjxMap(collector func(int, Map) interface{}) *Value {
+// []any.
+func (v *Value) CollectObjxMap(collector func(int, Map) any) *Value {
 	arr := v.MustObjxMapSlice()
-	collected := make([]interface{}, len(arr))
+	collected := make([]any, len(arr))
 	v.EachObjxMap(func(index int, val Map) bool {
 		collected[index] = collector(index, val)
 		return true

@@ -139,11 +139,13 @@ func main() {
 	fmt.Println(l.CardinalPluralRule(1.0, 1))
 	fmt.Println(l.CardinalPluralRule(3, 0))
 
-	// Ordinal Plural Rules
-	fmt.Println(l.OrdinalPluralRule(21, 0)) // 21st
-	fmt.Println(l.OrdinalPluralRule(22, 0)) // 22nd
-	fmt.Println(l.OrdinalPluralRule(33, 0)) // 33rd
-	fmt.Println(l.OrdinalPluralRule(34, 0)) // 34th
+	// Ordinal Plural Rules. The method returns the locales/plurals.Rule
+	// (e.g. One, Two, Few, Other) for the number; converting that rule into
+	// the actual suffix ("st", "nd", "rd", "th") is left to the caller.
+	fmt.Println(l.OrdinalPluralRule(21, 0)) // One   (-> "21st")
+	fmt.Println(l.OrdinalPluralRule(22, 0)) // Two   (-> "22nd")
+	fmt.Println(l.OrdinalPluralRule(33, 0)) // Few   (-> "33rd")
+	fmt.Println(l.OrdinalPluralRule(34, 0)) // Other (-> "34th")
 
 	// Range Plural Rules
 	fmt.Println(l.RangePluralRule(1, 0, 1, 0)) // 1-1

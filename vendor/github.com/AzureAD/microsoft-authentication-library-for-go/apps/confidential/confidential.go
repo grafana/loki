@@ -986,7 +986,7 @@ func WithFMIPath(path string) interface {
 
 // WithAttribute specifies an identity attribute to include in the token request.
 // The attribute is sent as "attributes" in the request body and returned as "xmc_attr"
-// in the access token claims. This is sometimes used withFMIPath
+// in the access token claims. It can be used with or without [WithFMIPath].
 func WithAttribute(attrValue string) interface {
 	AcquireByCredentialOption
 	options.CallOption
@@ -1002,6 +1002,10 @@ func WithAttribute(attrValue string) interface {
 					if t.extraBodyParameters == nil {
 						t.extraBodyParameters = make(map[string]string)
 					}
+					if t.cacheKeyComponents == nil {
+						t.cacheKeyComponents = make(map[string]string)
+					}
+					t.cacheKeyComponents["attributes"] = attrValue
 					t.extraBodyParameters["attributes"] = attrValue
 				default:
 					return fmt.Errorf("unexpected options type %T", a)

@@ -39,6 +39,21 @@ func TestMeta_ShardFieldsZeroValueBackwardCompat(t *testing.T) {
 	require.Equal(t, 0, m.ShardValue)
 }
 
+func TestMeta_DocumentShardBitsRoundTrip(t *testing.T) {
+	data, err := json.Marshal(store.Meta{Date: "2026-03-20", DocumentShardBits: 5})
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"document_shard_bits":5`)
+
+	var got store.Meta
+	require.NoError(t, json.Unmarshal(data, &got))
+	require.Equal(t, 5, got.DocumentShardBits)
+
+	// Time-only indexes omit the field, so v3/v4 meta.json is unchanged.
+	data, err = json.Marshal(store.Meta{Date: "2026-03-20"})
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "document_shard_bits")
+}
+
 func TestMeta_ShardFieldsAlwaysSerialized(t *testing.T) {
 	// Unsharded meta must serialize shard fields as zero (no omitempty).
 	m := store.Meta{ShardCount: 0, ShardAlgorithm: "", ShardValue: 0}

@@ -43,11 +43,9 @@ type balancer struct {
 
 	memberNums map[string]uint16 // member id => index into members
 
-	topicNums   map[string]uint32 // topic name => index into topicInfos
-	topicInfos  []topicInfo
-	topicNames  []string   // topicNum => topic name
-	partOwners  []uint32   // partition => owning topicNum
-	subscribers [][]uint16 // topicNum => members subscribed to it
+	topicNums  map[string]uint32 // topic name => index into topicInfos
+	topicInfos []topicInfo
+	partOwners []uint32 // partition => owning topicNum
 
 	// Stales tracks partNums that are doubly subscribed in this join
 	// where one of the subscribers is on an old generation.
@@ -77,23 +75,16 @@ type balancer struct {
 	// indices are 1-based so that zero-initialized slices naturally
 	// mean "no rack" (noRack == 0). When no rack info is available,
 	// both slices are nil. The nRacks field is the count of distinct
-	// racks.
+	// racks; rackHeaps in assignRackAware is indexed by rack-1.
 	memberRacks []uint16
 	partRacks   []uint16
 	nRacks      int
-
-	// origOwner is who held each partition before this balance, or
-	// unassignedPart for one nobody held. The repair uses this to keep
-	// partitions where they were.
-	origOwner []uint16
 }
 
-// topicInfo holds no topic name: it is indexed in the hottest loops here,
-// and without a pointer the garbage collector never scans it. Names live
-// in the parallel topicNames.
 type topicInfo struct {
 	partNum    int32 // base part num
 	partitions int32 // number of partitions in the topic
+	topic      string
 }
 
 func newBalancer(members []GroupMember, topics map[string]int32, partitionRacks map[string][]string) *balancer {
@@ -101,7 +92,6 @@ func newBalancer(members []GroupMember, topics map[string]int32, partitionRacks 
 		nparts     int
 		topicNums  = make(map[string]uint32, len(topics))
 		topicInfos = make([]topicInfo, len(topics))
-		topicNames = make([]string, len(topics))
 	)
 	for topic, partitions := range topics {
 		topicNum := uint32(len(topicNums))
@@ -109,8 +99,8 @@ func newBalancer(members []GroupMember, topics map[string]int32, partitionRacks 
 		topicInfos[topicNum] = topicInfo{
 			partNum:    int32(nparts),
 			partitions: partitions,
+			topic:      topic,
 		}
-		topicNames[topicNum] = topic
 		nparts += int(partitions)
 	}
 	partOwners := make([]uint32, 0, nparts)
@@ -129,9 +119,9 @@ func newBalancer(members []GroupMember, topics map[string]int32, partitionRacks 
 		memberNums: memberNums,
 		topicNums:  topicNums,
 		topicInfos: topicInfos,
-		topicNames: topicNames,
 
 		partOwners: partOwners,
+		stales:     make(map[int32]uint16),
 		plan:       make(membersPartitions, len(members)),
 	}
 
@@ -219,9 +209,7 @@ func (b *balancer) into() Plan {
 			plan[member] = make(map[string][]int32, 0)
 			continue
 		}
-		// A member cannot have more topics than partitions; with many
-		// topics and few partitions per member, ntopics overallocates.
-		topics := make(map[string][]int32, min(ntopics, len(partNums)))
+		topics := make(map[string][]int32, ntopics)
 		plan[member] = topics
 
 		// partOwners is created by topic, and partNums refers to
@@ -238,7 +226,7 @@ func (b *balancer) into() Plan {
 			topicNum := b.partOwners[partNum]
 
 			if topicNum != lastTopicNum {
-				topics[b.topicNames[lastTopicNum]] = topicParts[:len(topicParts):len(topicParts)]
+				topics[lastTopicInfo.topic] = topicParts[:len(topicParts):len(topicParts)]
 				topicParts = topicParts[len(topicParts):]
 
 				lastTopicNum = topicNum
@@ -248,9 +236,24 @@ func (b *balancer) into() Plan {
 			partition := partNum - lastTopicInfo.partNum
 			topicParts = append(topicParts, partition)
 		}
-		topics[b.topicNames[lastTopicNum]] = topicParts[:len(topicParts):len(topicParts)]
+		topics[lastTopicInfo.topic] = topicParts[:len(topicParts):len(topicParts)]
 	}
 	return plan
+}
+
+func (b *balancer) partNumByTopic(topic string, partition int32) (int32, bool) {
+	topicNum, exists := b.topicNums[topic]
+	if !exists {
+		return 0, false
+	}
+	topicInfo := b.topicInfos[topicNum]
+	// Claimed partitions are arbitrary input from other group members; a
+	// negative partition would index our flat partition state at a
+	// negative offset (or alias into the preceding topic's range).
+	if partition < 0 || partition >= topicInfo.partitions {
+		return 0, false
+	}
+	return topicInfo.partNum + partition, true
 }
 
 // memberPartitions contains partitions for a member.
@@ -353,9 +356,9 @@ func Balance(members []GroupMember, topics map[string]int32) Plan {
 
 // BalanceWithRacks performs sticky partitioning with rack-aware assignment
 // (KIP-881). partitionRacks maps topic => partition index => rack of the
-// partition leader. When non-nil and members also have racks, the plan
-// keeps every member's partitions in its own rack wherever balance allows,
-// ahead of keeping partitions where they were.
+// partition leader. When non-nil and members also have racks, unassigned
+// partitions are preferentially placed on rack-matching members before
+// falling back to normal assignment.
 func BalanceWithRacks(members []GroupMember, topics map[string]int32, partitionRacks map[string][]string) Plan {
 	if len(members) == 0 {
 		return make(Plan)
@@ -368,7 +371,6 @@ func BalanceWithRacks(members []GroupMember, topics map[string]int32, partitionR
 	b.assignUnassignedAndInitGraph()
 	b.initPlanByNumPartitions()
 	b.balance()
-	b.repairAssignment()
 	return b.into()
 }
 
@@ -405,30 +407,11 @@ func (b *balancer) parseMemberMetadata() {
 		}
 		gen |= highBit
 		memberNum := b.memberNums[member.ID]
-		// Owned partitions arrive grouped by topic, so remembering the
-		// last topic saves hashing the name once per partition.
-		var (
-			lastTopic string
-			lastInfo  topicInfo
-			lastOK    bool
-		)
 		for _, topicPartition := range memberPlan {
-			if topicPartition.topic != lastTopic || !lastOK {
-				lastTopic = topicPartition.topic
-				topicNum, exists := b.topicNums[lastTopic]
-				lastOK = exists
-				if exists {
-					lastInfo = b.topicInfos[topicNum]
-				}
-			}
-			// Claimed partitions are arbitrary input from other group
-			// members; a negative partition would index our flat
-			// partition state at a negative offset (or alias into the
-			// preceding topic's range).
-			if !lastOK || topicPartition.partition < 0 || topicPartition.partition >= lastInfo.partitions {
+			partNum, exists := b.partNumByTopic(topicPartition.topic, topicPartition.partition)
+			if !exists {
 				continue
 			}
-			partNum := lastInfo.partNum + topicPartition.partition
 
 			// We keep the highest generation, and at most two generations.
 			// If something is doubly consumed, we skip it.
@@ -448,9 +431,6 @@ func (b *balancer) parseMemberMetadata() {
 		if pcs.genNew&highBit != 0 {
 			b.plan[pcs.memberNew].add(int32(partNum))
 			if pcs.genOld&highBit != 0 {
-				if b.stales == nil { // rare; only doubly claimed partitions land here
-					b.stales = make(map[int32]uint16)
-				}
 				b.stales[int32(partNum)] = pcs.memberOld
 			}
 		}
@@ -505,7 +485,7 @@ func (b *balancer) sortMemberByLiteralPartNum(memberNum int) {
 	slices.SortFunc(partNums, func(lpNum, rpNum int32) int {
 		ltNum, rtNum := b.partOwners[lpNum], b.partOwners[rpNum]
 		li, ri := b.topicInfos[ltNum], b.topicInfos[rtNum]
-		lt, rt := b.topicNames[ltNum], b.topicNames[rtNum]
+		lt, rt := li.topic, ri.topic
 		lp, rp := lpNum-li.partNum, rpNum-ri.partNum
 		if lp < rp {
 			return -1
@@ -518,14 +498,36 @@ func (b *balancer) sortMemberByLiteralPartNum(memberNum int) {
 	})
 }
 
-// assignUnassignedAndInitGraph assigns unassigned partitions to the least
-// loaded members and initializes our steal graph.
+// assignUnassignedAndInitGraph is a long function that assigns unassigned
+// partitions to the least loaded members and initializes our steal graph.
 //
 // Doing so requires a bunch of metadata, and in the process we want to remove
 // partitions from the plan that no longer exist in the client.
 func (b *balancer) assignUnassignedAndInitGraph() {
-	topicPotentials, memberSubs := b.topicPotentials()
-	b.subscribers = topicPotentials
+	// First, over all members in this assignment, map each partition to
+	// the members that can consume it. We will use this for assigning.
+	//
+	// To do this mapping efficiently, we first map each topic to the
+	// memberNums that can consume those topics, and then use the results
+	// below in the partition mapping. Doing this two step process allows
+	// for a 10x speed boost rather than ranging over all partitions many
+	// times.
+	topicPotentialsBuf := make([]uint16, len(b.topicNums)*len(b.members))
+	topicPotentials := make([][]uint16, len(b.topicNums))
+	for memberNum, member := range b.members {
+		for _, topic := range member.Topics {
+			topicNum, exists := b.topicNums[topic]
+			if !exists {
+				continue
+			}
+			memberNums := topicPotentials[topicNum]
+			if cap(memberNums) == 0 {
+				memberNums = topicPotentialsBuf[:0:len(b.members)]
+				topicPotentialsBuf = topicPotentialsBuf[len(b.members):]
+			}
+			topicPotentials[topicNum] = append(memberNums, uint16(memberNum))
+		}
+	}
 
 	for _, topicMembers := range topicPotentials {
 		// If the number of members interested in this topic is not the
@@ -541,21 +543,55 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 		}
 	}
 
-	partitionConsumers := b.dropUnwantedPartitions(memberSubs)
+	// Next, over the prior plan, un-map deleted topics or topics that
+	// members no longer want. This is where we determine what is now
+	// unassigned.
+	partitionConsumers := make([]partitionConsumer, cap(b.partOwners)) // partNum => consuming member
+	for i := range partitionConsumers {
+		partitionConsumers[i] = partitionConsumer{unassignedPart, unassignedPart}
+	}
+	for memberNum := range b.plan {
+		partNums := &b.plan[memberNum]
+		for _, partNum := range *partNums {
+			topicNum := b.partOwners[partNum]
+			if len(topicPotentials[topicNum]) == 0 { // all prior subscriptions stopped wanting this partition
+				partNums.remove(partNum)
+				continue
+			}
+			memberTopics := b.members[memberNum].Topics
+			var memberStillWantsTopic bool
+			if slices.Contains(memberTopics, b.topicInfos[topicNum].topic) {
+				memberStillWantsTopic = true
+			}
+			if !memberStillWantsTopic {
+				partNums.remove(partNum)
+				continue
+			}
+			partitionConsumers[partNum] = partitionConsumer{uint16(memberNum), uint16(memberNum)}
+		}
+	}
 
 	b.tryRestickyStales(topicPotentials, partitionConsumers)
 
-	// After restickying, not before: giving a partition back to an older
-	// generation's claimant changes who counts as having come in with it.
-	b.origOwner = make([]uint16, len(partitionConsumers))
-	for i := range partitionConsumers {
-		b.origOwner[i] = partitionConsumers[i].originalNum
+	// For each member, we now sort their current partitions by partition,
+	// then topic. Sorting the lowest numbers first means that once we
+	// steal from the end (when adding a member), we steal equally across
+	// all topics. This benefits the standard case the most, where all
+	// members consume equally.
+	for memberNum := range b.plan {
+		b.sortMemberByLiteralPartNum(memberNum)
+	}
+
+	// KIP-881: rack-aware pre-assignment for the simple path. For
+	// unassigned partitions with rack info, preferentially assign to
+	// rack-matched members via per-rack heaps. Anything left unassigned
+	// falls through to the normal heap below. The complex path handles
+	// rack preference inline via tie-breaking (see below).
+	if b.partRacks != nil && !b.isComplex {
+		b.assignRackAware(partitionConsumers, topicPotentials)
 	}
 
 	if !b.isComplex && len(topicPotentials) > 0 {
-		if b.partRacks != nil {
-			b.assignRackAware(partitionConsumers, topicPotentials)
-		}
 		potentials := topicPotentials[0]
 		(&membersByPartitions{potentials, b.plan}).init()
 		for partNum, owner := range partitionConsumers {
@@ -568,7 +604,39 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 			partitionConsumers[partNum].memberNum = assigned
 		}
 	} else {
-		b.assignUnassignedComplex(partitionConsumers, topicPotentials)
+		for partNum, owner := range partitionConsumers {
+			if owner.memberNum != unassignedPart {
+				continue
+			}
+			potentials := topicPotentials[b.partOwners[partNum]]
+			if len(potentials) == 0 {
+				continue
+			}
+			// KIP-881: when partition racks are available, break
+			// ties among equally-loaded members by preferring a
+			// rack-matched member. This preserves optimal balance
+			// while improving rack locality without needing a
+			// separate pre-assignment pass.
+			var pRack uint16 // noRack (0) when no rack info
+			if b.partRacks != nil {
+				pRack = b.partRacks[partNum]
+			}
+			leastConsumingPotential := potentials[0]
+			leastConsuming := len(b.plan[leastConsumingPotential])
+			bestRackMatch := pRack != noRack && b.memberRacks[leastConsumingPotential] == pRack
+			for _, potential := range potentials[1:] {
+				potentialConsuming := len(b.plan[potential])
+				rackMatch := pRack != noRack && b.memberRacks[potential] == pRack
+				if potentialConsuming < leastConsuming ||
+					potentialConsuming == leastConsuming && rackMatch && !bestRackMatch {
+					leastConsumingPotential = potential
+					leastConsuming = potentialConsuming
+					bestRackMatch = rackMatch
+				}
+			}
+			b.plan[leastConsumingPotential].add(int32(partNum))
+			partitionConsumers[partNum].memberNum = leastConsumingPotential
+		}
 	}
 
 	// Lastly, with everything assigned, we build our steal graph for
@@ -578,155 +646,6 @@ func (b *balancer) assignUnassignedAndInitGraph() {
 			partitionConsumers,
 			topicPotentials,
 		)
-	}
-}
-
-// topicPotentials maps each topic to the members that can consume it, and
-// also returns a per member bitset of the topics that member subscribes to.
-func (b *balancer) topicPotentials() ([][]uint16, []uint64) {
-	// We reserve the average subscribers per topic and let the few above
-	// average grow by append. Reserving len(members) per topic is exact
-	// only when every member subscribes to everything, and for regex
-	// consumers over a large cluster is orders of magnitude too much.
-	var nsubs int
-	for i := range b.members {
-		nsubs += len(b.members[i].Topics)
-	}
-	perTopic := nsubs/len(b.topicNums) + 1
-	topicPotentialsBuf := make([]uint16, perTopic*len(b.topicNums))
-	topicPotentials := make([][]uint16, len(b.topicNums))
-
-	nsubWords := (len(b.topicNums) + 63) / 64
-	memberSubs := make([]uint64, len(b.members)*nsubWords)
-	for memberNum, member := range b.members {
-		for _, topic := range member.Topics {
-			topicNum, exists := b.topicNums[topic]
-			if !exists {
-				continue
-			}
-			// Subscriptions arrive in other members' join metadata and
-			// can repeat a topic. Counting the repeat would make the
-			// topic look like it has more subscribers than the group
-			// has members, which is the complex balancing test.
-			word, bit := memberNum*nsubWords+int(topicNum)/64, uint64(1)<<(topicNum%64)
-			if memberSubs[word]&bit != 0 {
-				continue
-			}
-			memberSubs[word] |= bit
-			memberNums := topicPotentials[topicNum]
-			if cap(memberNums) == 0 {
-				memberNums = topicPotentialsBuf[:0:perTopic]
-				topicPotentialsBuf = topicPotentialsBuf[perTopic:]
-			}
-			topicPotentials[topicNum] = append(memberNums, uint16(memberNum))
-		}
-	}
-	return topicPotentials, memberSubs
-}
-
-// dropUnwantedPartitions removes from the prior plan any partition whose
-// topic its member no longer subscribes to, which includes deleted topics
-// and topics nobody wants anymore, and returns who consumes what is left.
-func (b *balancer) dropUnwantedPartitions(memberSubs []uint64) []partitionConsumer {
-	partitionConsumers := make([]partitionConsumer, cap(b.partOwners)) // partNum => consuming member
-	for i := range partitionConsumers {
-		partitionConsumers[i] = partitionConsumer{unassignedPart, unassignedPart}
-	}
-	nsubWords := (len(b.topicNums) + 63) / 64
-	for memberNum := range b.plan {
-		partNums := &b.plan[memberNum]
-		subs := memberSubs[memberNum*nsubWords : (memberNum+1)*nsubWords]
-		// We compact rather than swap-remove while ranging: remove is a
-		// linear scan, so a member dropping a large subscription would
-		// be quadratic in its partitions.
-		keep := (*partNums)[:0]
-		for _, partNum := range *partNums {
-			topicNum := b.partOwners[partNum]
-			if subs[topicNum/64]&(1<<(topicNum%64)) == 0 {
-				continue
-			}
-			keep = append(keep, partNum)
-			partitionConsumers[partNum] = partitionConsumer{uint16(memberNum), uint16(memberNum)}
-		}
-		*partNums = keep
-	}
-	return partitionConsumers
-}
-
-// assignUnassignedComplex assigns each unassigned partition to the least
-// loaded member that subscribes to its topic, preferring one in the
-// partition's rack among the least loaded.
-func (b *balancer) assignUnassignedComplex(partitionConsumers []partitionConsumer, topicPotentials [][]uint16) {
-	// partOwners groups partitions by topic, so partNum ascends through
-	// one topic at a time and we build the member heaps once per topic
-	// rather than scanning every eligible member once per partition. With
-	// racks there is a heap per rack, so that the least loaded member in
-	// the partition's rack is one lookup away.
-	var (
-		heapTopic = ^uint32(0)
-		heapBuf   []uint16
-		heaps     []membersByPartitions
-		rackEnd   []int
-	)
-	for partNum, owner := range partitionConsumers {
-		if owner.memberNum != unassignedPart {
-			continue
-		}
-		topicNum := b.partOwners[partNum]
-		potentials := topicPotentials[topicNum]
-		if len(potentials) == 0 {
-			continue
-		}
-		if topicNum != heapTopic {
-			heapTopic = topicNum
-			heapBuf = append(heapBuf[:0], potentials...)
-			heaps = heaps[:0]
-			if b.partRacks == nil {
-				heaps = append(heaps, membersByPartitions{heapBuf, b.plan})
-			} else {
-				// A counting sort by rack, after which rack r's
-				// members are heapBuf[rackEnd[r-1]:rackEnd[r]].
-				rackEnd = slices.Grow(rackEnd[:0], b.nRacks+2)[:b.nRacks+2]
-				clear(rackEnd)
-				for _, m := range potentials {
-					rackEnd[b.memberRacks[m]+1]++
-				}
-				for r := 1; r < len(rackEnd); r++ {
-					rackEnd[r] += rackEnd[r-1]
-				}
-				for _, m := range potentials {
-					heapBuf[rackEnd[b.memberRacks[m]]] = m
-					rackEnd[b.memberRacks[m]]++
-				}
-				start := 0
-				for r := 0; r <= b.nRacks; r++ {
-					heaps = append(heaps, membersByPartitions{heapBuf[start:rackEnd[r]:rackEnd[r]], b.plan})
-					start = rackEnd[r]
-				}
-			}
-			for i := range heaps {
-				heaps[i].init()
-			}
-		}
-
-		best, bestLoad := -1, math.MaxInt
-		for i := range heaps {
-			if len(heaps[i].members) == 0 {
-				continue
-			}
-			if load := len(b.plan[heaps[i].members[0]]); load < bestLoad {
-				best, bestLoad = i, load
-			}
-		}
-		if b.partRacks != nil {
-			if r := int(b.partRacks[partNum]); r != noRack && len(heaps[r].members) > 0 && len(b.plan[heaps[r].members[0]]) == bestLoad {
-				best = r
-			}
-		}
-		assigned := heaps[best].members[0]
-		b.plan[assigned].add(int32(partNum))
-		heaps[best].fix0()
-		partitionConsumers[partNum].memberNum = assigned
 	}
 }
 
@@ -790,40 +709,75 @@ func (b *balancer) tryRestickyStales(
 	}
 }
 
-// assignRackAware pre-assigns unassigned partitions to the least loaded
-// member in the partition's rack, up to an even share each. Only the
-// uniform path uses this; the repair after balancing settles the rest.
+// assignRackAware pre-assigns unassigned partitions to members whose rack
+// matches the partition's leader rack, without exceeding the balanced
+// quota. Uses per-rack min-heaps for O(log M) per assignment. Only called
+// for the simple (uniform subscription) path; the complex path handles
+// rack preference inline via tie-breaking in the main assignment loop.
 func (b *balancer) assignRackAware(
 	partitionConsumers []partitionConsumer,
 	topicPotentials [][]uint16,
 ) {
-	// Capping at the floor of an even share, not the ceiling, means the
-	// fill after this lifts everybody to within one level, so balancing
-	// has nothing to move.
-	maxQuota := cap(b.partOwners) / len(b.members)
+	if len(topicPotentials) == 0 {
+		return
+	}
+	maxQuota := (cap(b.partOwners) + len(b.members) - 1) / len(b.members)
 
-	rackHeaps := make([]membersByPartitions, b.nRacks+1) // by rack; noRack stays empty
+	// Build per-rack heaps indexed by rack index. We track which
+	// indices are populated so setup is O(members) not O(nRacks).
+	type rackHeap struct {
+		mbp membersByPartitions
+	}
+	rackHeaps := make([]rackHeap, b.nRacks)
+	rackCount := make([]int, b.nRacks)
+	var populated []uint16
+	// Count members per rack and track which rack indices are populated.
 	for _, m := range topicPotentials[0] {
-		if rack := b.memberRacks[m]; rack != noRack {
-			rackHeaps[rack].members = append(rackHeaps[rack].members, m)
+		rack := b.memberRacks[m]
+		if rack != noRack {
+			ri := rack - 1
+			if rackCount[ri] == 0 {
+				populated = append(populated, ri)
+			}
+			rackCount[ri]++
 		}
 	}
-	for i := range rackHeaps {
-		rackHeaps[i].plan = b.plan
-		rackHeaps[i].init()
+	// Preallocate each populated rack's member slice.
+	for _, i := range populated {
+		rackHeaps[i].mbp.members = make([]uint16, 0, rackCount[i])
 	}
+	// Place each member into its rack's heap.
+	for _, m := range topicPotentials[0] {
+		rack := b.memberRacks[m]
+		if rack != noRack {
+			rackHeaps[rack-1].mbp.members = append(rackHeaps[rack-1].mbp.members, m)
+		}
+	}
+	// Initialize each rack's min-heap by partition count.
+	for _, i := range populated {
+		rackHeaps[i].mbp.plan = b.plan
+		rackHeaps[i].mbp.init()
+	}
+	// Assign unassigned partitions to rack-matched members under quota.
 	for partNum, owner := range partitionConsumers {
 		if owner.memberNum != unassignedPart {
 			continue
 		}
-		rh := &rackHeaps[b.partRacks[partNum]]
-		if len(rh.members) == 0 || len(b.plan[rh.members[0]]) >= maxQuota {
+		pRack := b.partRacks[partNum]
+		if pRack == noRack {
 			continue
 		}
-		candidate := rh.members[0]
+		rh := &rackHeaps[pRack-1]
+		if len(rh.mbp.members) == 0 {
+			continue
+		}
+		candidate := rh.mbp.members[0]
+		if len(b.plan[candidate]) >= maxQuota {
+			continue
+		}
 		b.plan[candidate].add(int32(partNum))
-		rh.fix0()
-		partitionConsumers[partNum].memberNum = candidate
+		rh.mbp.fix0()
+		partitionConsumers[partNum] = partitionConsumer{candidate, candidate}
 	}
 }
 
@@ -891,25 +845,11 @@ func (b *balancer) balance() {
 	// by over two, take from the top and give to the bottom.
 	min := b.planByNumPartitions.min().item
 	max := b.planByNumPartitions.max().item
-	if max.level <= min.level+1 {
-		return
-	}
-
-	// We sort each member's partitions by partition, then topic. Sorting
-	// the lowest numbers first means that once we steal from the end, we
-	// steal equally across all topics. This benefits the standard case the
-	// most, where all members consume equally.
-	//
-	// Only members above min.level+1 are ever stolen from: min only rises
-	// and max only falls until they meet. Sorting is the most expensive
-	// step of a balance, so we skip everybody else.
-	for memberNum := range b.plan {
-		if len(b.plan[memberNum]) > min.level+1 {
-			b.sortMemberByLiteralPartNum(memberNum)
+	for {
+		if max.level <= min.level+1 {
+			return
 		}
-	}
 
-	for max.level > min.level+1 {
 		minMems := min.members
 		maxMems := max.members
 		for len(minMems) > 0 && len(maxMems) > 0 {
@@ -973,11 +913,6 @@ func (b *balancer) balanceComplex() {
 
 			// If we could not find a steal path, this
 			// member is not static (will never grow).
-			//
-			// We remove through level, not min: deleting from the tree
-			// swaps items between nodes, so min.item may by now be a
-			// different level. The delete re-finds the min for the
-			// same reason.
 			level.removeMember(memberNum)
 			if len(level.members) == 0 {
 				b.planByNumPartitions.delete(b.planByNumPartitions.min())

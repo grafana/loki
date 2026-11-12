@@ -16,6 +16,7 @@ import (
 
 // commandsSortedSet handles all sorted set operations.
 func commandsSortedSet(m *Miniredis) {
+	m.srv.Register("BZMPOP", m.cmdBzmpop)
 	m.srv.Register("BZPOPMAX", m.cmdBzpopmax)
 	m.srv.Register("BZPOPMIN", m.cmdBzpopmin)
 	m.srv.Register("ZADD", m.cmdZadd)
@@ -39,6 +40,7 @@ func commandsSortedSet(m *Miniredis) {
 	m.srv.Register("ZREVRANK", m.makeCmdZrank(true), server.ReadOnlyOption())
 	m.srv.Register("ZSCORE", m.cmdZscore, server.ReadOnlyOption())
 	m.srv.Register("ZMSCORE", m.cmdZMscore, server.ReadOnlyOption())
+	m.srv.Register("ZMPOP", m.cmdZmpop)
 	m.srv.Register("ZUNION", m.cmdZunion, server.ReadOnlyOption())
 	m.srv.Register("ZUNIONSTORE", m.cmdZunionstore)
 	m.srv.Register("ZSCAN", m.cmdZscan, server.ReadOnlyOption())
@@ -1519,6 +1521,143 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 			}
 		})
 	}
+}
+
+// ZMPOP
+func (m *Miniredis) cmdZmpop(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(3)) {
+		return
+	}
+
+	keys, reverse, count, ok := parseZmpop(c, args)
+	if !ok {
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		if !m.zmpop(c, ctx, keys, reverse, count) {
+			c.WriteLen(-1)
+		}
+	})
+}
+
+func parseZmpop(c *server.Peer, args []string) ([]string, bool, int, bool) {
+	numkeys, err := strconv.Atoi(args[0])
+	if err != nil || numkeys < 1 {
+		setDirty(c)
+		c.WriteError("ERR numkeys should be greater than 0")
+		return nil, false, 0, false
+	}
+
+	args = args[1:]
+	if len(args) <= numkeys {
+		setDirty(c)
+		c.WriteError(msgSyntaxError)
+		return nil, false, 0, false
+	}
+	keys := args[:numkeys]
+
+	reverse := false
+	switch strings.ToUpper(args[numkeys]) {
+	case "MIN":
+	case "MAX":
+		reverse = true
+	default:
+		setDirty(c)
+		c.WriteError(msgSyntaxError)
+		return nil, false, 0, false
+	}
+
+	count := 1
+	args = args[numkeys+1:]
+	if len(args) > 0 {
+		if len(args) != 2 || strings.ToUpper(args[0]) != "COUNT" {
+			setDirty(c)
+			c.WriteError(msgSyntaxError)
+			return nil, false, 0, false
+		}
+		count, err = strconv.Atoi(args[1])
+		if err != nil || count < 1 {
+			setDirty(c)
+			c.WriteError("ERR count should be greater than 0")
+			return nil, false, 0, false
+		}
+	}
+	return keys, reverse, count, true
+}
+
+func (m *Miniredis) zmpop(c *server.Peer, ctx *connCtx, keys []string, reverse bool, count int) bool {
+	db := m.db(ctx.selectedDB)
+	for _, key := range keys {
+		if !db.exists(key) {
+			continue
+		}
+		if db.t(key) != keyTypeSortedSet {
+			c.WriteError(msgWrongType)
+			return true
+		}
+
+		members := db.ssetMembers(key)
+		if len(members) == 0 {
+			continue
+		}
+		if reverse {
+			reverseSlice(members)
+		}
+		if count < len(members) {
+			members = members[:count]
+		}
+
+		c.WriteLen(2)
+		c.WriteBulk(key)
+		c.WriteLen(len(members))
+		for _, member := range members {
+			c.WriteLen(2)
+			c.WriteBulk(member)
+			c.WriteFloat(db.ssetScore(key, member))
+			db.ssetRem(key, member)
+		}
+		if db.t(key) == keyTypeSortedSet {
+			db.incr(key)
+		}
+		return true
+	}
+	return false
+}
+
+// BZMPOP
+func (m *Miniredis) cmdBzmpop(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(4)) {
+		return
+	}
+
+	keys, reverse, count, ok := parseZmpop(c, args[1:])
+	if !ok {
+		return
+	}
+	var timeout time.Duration
+	if ok := optDuration(c, args[0], &timeout); !ok {
+		return
+	}
+	ctx := getCtx(c)
+	if ctx.nested {
+		if !m.zmpop(c, ctx, keys, reverse, count) {
+			c.WriteLen(-1)
+		}
+		return
+	}
+
+	blocking(
+		m,
+		c,
+		timeout,
+		func(c *server.Peer, ctx *connCtx) bool {
+			return m.zmpop(c, ctx, keys, reverse, count)
+		},
+		func(c *server.Peer) {
+			c.WriteLen(-1)
+		},
+	)
 }
 
 // BZPOPMAX

@@ -44,11 +44,7 @@ func Xpthread_mutex_init(t *TLS, pMutex, pAttr uintptr) int32 {
 	if pAttr != 0 {
 		typ = int(X__ccgo_pthreadMutexattrGettype(t, pAttr))
 	}
-	mutexesMu.Lock()
-
-	defer mutexesMu.Unlock()
-
-	mutexes[pMutex] = newMutex(typ)
+	setMutex(pMutex, newMutex(typ))
 	return 0
 }
 

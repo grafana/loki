@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -477,20 +476,12 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	defer serverConn.Close()
 
 	expectedPlan := &physical.Plan{}
-	parallelize := expectedPlan.Graph().Add(&physical.Parallelize{NodeID: ulid.Make()})
-	compat := expectedPlan.Graph().Add(&physical.ColumnCompat{NodeID: ulid.Make(), Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
-	scanSet := expectedPlan.Graph().Add(&physical.ScanSet{
-		NodeID: ulid.Make(),
-		Targets: []*physical.ScanTarget{
-			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-		},
-	})
+	indexFilter := expectedPlan.Graph().Add(&physical.IndexFilter{NodeID: ulid.Make(), Tenant: "fake", SourceIndexPath: "index/0", ObjectPaths: []string{"obj1", "obj2"}})
+	indexMerge := expectedPlan.Graph().Add(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "fake", ToCWindowStart: 100})
+	logMerge := expectedPlan.Graph().Add(&physical.LogMerge{NodeID: ulid.Make(), Tenant: "fake", ToCWindowStart: 100})
 
-	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: compat})
-	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: compat, Child: scanSet})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: indexFilter, Child: indexMerge})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: indexMerge, Child: logMerge})
 
 	testCases := []struct {
 		name    string
@@ -505,12 +496,12 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 				TenantID: "fake",
 				Fragment: expectedPlan,
 				Sources: map[physical.Node][]*workflow.Stream{
-					compat: {
+					indexMerge: {
 						{ULID: ulid.Make()},
 					},
 				},
 				Sinks: map[physical.Node][]*workflow.Stream{
-					scanSet: {
+					logMerge: {
 						{ULID: ulid.Make()},
 					},
 				},

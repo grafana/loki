@@ -144,6 +144,9 @@ func ParseReply(rd *bufio.Reader) (interface{}, error) {
 			return nil, ErrProtocol
 		}
 		// l can be -1
+		if l < 0 {
+			return nil, nil
+		}
 		var fields []interface{}
 		for ; l > 0; l-- {
 			s, err := ParseReply(rd)

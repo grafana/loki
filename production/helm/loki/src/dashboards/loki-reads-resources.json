@@ -543,7 +543,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "loki_boltdb_shipper_query_readiness_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
+                        "expr": "loki_tsdb_shipper_query_readiness_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "duration",

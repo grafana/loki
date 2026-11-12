@@ -5,7 +5,9 @@ package runtime
 
 import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/sanitizer"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	azt "github.com/Azure/azure-sdk-for-go/sdk/internal/transport"
 )
 
 // PipelineOptions contains Pipeline options for SDK developers
@@ -74,18 +76,22 @@ func NewPipeline(module, version string, plOpts PipelineOptions, options *policy
 	if !cp.Telemetry.Disabled {
 		policies = append(policies, NewTelemetryPolicy(module, version, &cp.Telemetry))
 	}
+	sanitizer := sanitizer.New(sanitizer.Options{
+		AllowedHeaders:     cp.Logging.AllowedHeaders,
+		AllowedQueryParams: cp.Logging.AllowedQueryParams,
+	})
 	policies = append(policies, plOpts.PerCall...)
 	policies = append(policies, cp.PerCallPolicies...)
-	policies = append(policies, NewRetryPolicy(&cp.Retry))
+	policies = append(policies, newRetryPolicy(&cp.Retry, sanitizer))
 	policies = append(policies, plOpts.PerRetry...)
 	policies = append(policies, cp.PerRetryPolicies...)
 	policies = append(policies, exported.PolicyFunc(httpHeaderPolicy))
-	policies = append(policies, newHTTPTracePolicy(cp.Logging.AllowedQueryParams))
-	policies = append(policies, NewLogPolicy(&cp.Logging))
+	policies = append(policies, newHTTPTracePolicy(sanitizer))
+	policies = append(policies, newLogPolicy(&cp.Logging, sanitizer))
 	policies = append(policies, exported.PolicyFunc(bodyDownloadPolicy))
 	transport := cp.Transport
 	if transport == nil {
-		transport = defaultHTTPClient
+		transport = azt.DefaultHTTPClient
 	}
-	return exported.NewPipeline(transport, policies...)
+	return exported.NewPipeline(sanitizer, transport, policies...)
 }

@@ -287,6 +287,41 @@ func NewAlertPolicyClient(ctx context.Context, opts ...option.ClientOption) (*Al
 		client.CallOptions.DeleteAlertPolicy = append(client.CallOptions.DeleteAlertPolicy, gax.WithClientMetrics(metrics))
 		client.CallOptions.UpdateAlertPolicy = append(client.CallOptions.UpdateAlertPolicy, gax.WithClientMetrics(metrics))
 	}
+	if gax.IsFeatureEnabled("TRACING") {
+		tracing := gax.NewClientTracing(
+			gax.WithTracingAttributes(map[string]string{
+				gax.ClientService:  "monitoring",
+				gax.ClientVersion:  getVersionClient(),
+				gax.ClientArtifact: "cloud.google.com/go/monitoring/apiv3/v2",
+				gax.RPCSystem:      "grpc",
+				gax.URLDomain:      "monitoring.googleapis.com",
+			}),
+		)
+
+		client.CallOptions.ListAlertPolicies = append(client.CallOptions.ListAlertPolicies, gax.WithClientTracing(tracing))
+		client.CallOptions.GetAlertPolicy = append(client.CallOptions.GetAlertPolicy, gax.WithClientTracing(tracing))
+		client.CallOptions.CreateAlertPolicy = append(client.CallOptions.CreateAlertPolicy, gax.WithClientTracing(tracing))
+		client.CallOptions.DeleteAlertPolicy = append(client.CallOptions.DeleteAlertPolicy, gax.WithClientTracing(tracing))
+		client.CallOptions.UpdateAlertPolicy = append(client.CallOptions.UpdateAlertPolicy, gax.WithClientTracing(tracing))
+	}
+	if gax.IsFeatureEnabled("LOGGING") {
+		logging := gax.NewClientLogging(
+			gax.WithLoggerProvider(c.logger),
+			gax.WithLoggingAttributes(map[string]string{
+				gax.ClientService:  "monitoring",
+				gax.ClientVersion:  getVersionClient(),
+				gax.ClientArtifact: "cloud.google.com/go/monitoring/apiv3/v2",
+				gax.RPCSystem:      "grpc",
+				gax.URLDomain:      "monitoring.googleapis.com",
+			}),
+		)
+
+		client.CallOptions.ListAlertPolicies = append(client.CallOptions.ListAlertPolicies, gax.WithClientLogging(logging))
+		client.CallOptions.GetAlertPolicy = append(client.CallOptions.GetAlertPolicy, gax.WithClientLogging(logging))
+		client.CallOptions.CreateAlertPolicy = append(client.CallOptions.CreateAlertPolicy, gax.WithClientLogging(logging))
+		client.CallOptions.DeleteAlertPolicy = append(client.CallOptions.DeleteAlertPolicy, gax.WithClientLogging(logging))
+		client.CallOptions.UpdateAlertPolicy = append(client.CallOptions.UpdateAlertPolicy, gax.WithClientLogging(logging))
+	}
 
 	client.internalClient = c
 
@@ -323,9 +358,6 @@ func (c *alertPolicyGRPCClient) ListAlertPolicies(ctx context.Context, req *moni
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.AlertPolicyService/ListAlertPolicies")
 	}
@@ -375,9 +407,6 @@ func (c *alertPolicyGRPCClient) GetAlertPolicy(ctx context.Context, req *monitor
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.AlertPolicyService/GetAlertPolicy")
 	}
@@ -399,9 +428,6 @@ func (c *alertPolicyGRPCClient) CreateAlertPolicy(ctx context.Context, req *moni
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.AlertPolicyService/CreateAlertPolicy")
 	}
@@ -423,9 +449,6 @@ func (c *alertPolicyGRPCClient) DeleteAlertPolicy(ctx context.Context, req *moni
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
-	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
-		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
-	}
 	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
 		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.AlertPolicyService/DeleteAlertPolicy")
 	}

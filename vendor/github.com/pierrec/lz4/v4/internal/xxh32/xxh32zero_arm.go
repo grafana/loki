@@ -1,4 +1,4 @@
-// +build !noasm
+//go:build !noasm
 
 package xxh32
 

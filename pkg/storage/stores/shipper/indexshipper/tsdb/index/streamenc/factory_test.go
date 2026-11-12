@@ -110,16 +110,12 @@ func TestDecbufFactory_NewDecbufAtChecked_MultipleInstances(t *testing.T) {
 
 	d1 := factory.NewDecbufAtChecked(context.Background(), 0, table)
 	require.NoError(t, d1.Err())
-	fr1, ok := d1.r.(*FileReader)
-	require.True(t, ok, "expected FileReader")
-	fd1 := fr1.file.Fd()
+	fd1 := d1.r.file.Fd()
 	require.NoError(t, d1.Close())
 
 	d2 := factory.NewDecbufAtChecked(context.Background(), 0, table)
 	require.NoError(t, d2.Err())
-	fr2, ok := d2.r.(*FileReader)
-	require.True(t, ok, "expected FileReader")
-	fd2 := fr2.file.Fd()
+	fd2 := d2.r.file.Fd()
 	require.NoError(t, d2.Close())
 
 	require.Equal(t, fd1, fd2, "expected Decbuf instances to use the same file descriptor")

@@ -10,13 +10,13 @@ const F2FS_IOC_ABORT_VOLATILE_WRITE = 536933637
 
 const F2FS_IOC_COMMIT_ATOMIC_WRITE = 536933634
 
-const F2FS_IOC_GET_FEATURES = 1073804556
+const F2FS_IOC_GET_FEATURES = 1074066700
 
 const F2FS_IOC_START_ATOMIC_WRITE = 536933633
 
 const F2FS_IOC_START_VOLATILE_WRITE = 536933635
 
-const FIOQSIZE = 1073768064
+const FIOQSIZE = 1074292352
 
 const O_DIRECT = 131072
 
@@ -26,57 +26,57 @@ const PROT_SAO = 16
 
 const TCFLSH = 536900639
 
-const TCGETA = 1073771543
+const TCGETA = 1075082263
 
-const TCGETS = 1073771539
+const TCGETS = 1076655123
 
 const TCSBRK = 536900637
 
-const TCSETA = 2147513368
+const TCSETA = 2148824088
 
-const TCSETAF = 2147513372
+const TCSETAF = 2148824092
 
-const TCSETAW = 2147513369
+const TCSETAW = 2148824089
 
-const TCSETS = 2147513364
+const TCSETS = 2150396948
 
-const TCSETSF = 2147513366
+const TCSETSF = 2150396950
 
-const TCSETSW = 2147513365
+const TCSETSW = 2150396949
 
 const TCXONC = 536900638
 
-const TIOCGDEV = 1073763378
+const TIOCGDEV = 1074025522
 
-const TIOCGETC = 1073771538
+const TIOCGETC = 1074164754
 
-const TIOCGETP = 1073771528
+const TIOCGETP = 1074164744
 
-const TIOCGEXCL = 1073763392
+const TIOCGEXCL = 1074025536
 
-const TIOCGLTC = 1073771636
+const TIOCGLTC = 1074164852
 
-const TIOCGPKT = 1073763384
+const TIOCGPKT = 1074025528
 
-const TIOCGPTLCK = 1073763385
+const TIOCGPTLCK = 1074025529
 
-const TIOCGPTN = 1073763376
+const TIOCGPTN = 1074025520
 
 const TIOCGPTPEER = 536892481
 
-const TIOCINQ = 1073768063
+const TIOCINQ = 1074030207
 
-const TIOCSETC = 2147513361
+const TIOCSETC = 2147906577
 
-const TIOCSETN = 2147513354
+const TIOCSETN = 2147906570
 
-const TIOCSETP = 2147513353
+const TIOCSETP = 2147906569
 
-const TIOCSIG = 2147505206
+const TIOCSIG = 2147767350
 
-const TIOCSLTC = 2147513461
+const TIOCSLTC = 2147906677
 
-const TIOCSPTLCK = 2147505201
+const TIOCSPTLCK = 2147767345
 
 type Tstat = struct {
 	Fst_dev     Tdev_t
@@ -167,53 +167,53 @@ const __VEC__ = 10206
 
 const __VSX__ = 1
 
-const __builtin_vsx_vperm = 0
+const __builtin_vsx_vperm = "__builtin_vec_perm"
 
-const __builtin_vsx_xvmaddadp = 0
+const __builtin_vsx_xvmaddadp = "__builtin_vsx_xvmadddp"
 
-const __builtin_vsx_xvmaddasp = 0
+const __builtin_vsx_xvmaddasp = "__builtin_vsx_xvmaddsp"
 
-const __builtin_vsx_xvmaddmdp = 0
+const __builtin_vsx_xvmaddmdp = "__builtin_vsx_xvmadddp"
 
-const __builtin_vsx_xvmaddmsp = 0
+const __builtin_vsx_xvmaddmsp = "__builtin_vsx_xvmaddsp"
 
-const __builtin_vsx_xvmsubadp = 0
+const __builtin_vsx_xvmsubadp = "__builtin_vsx_xvmsubdp"
 
-const __builtin_vsx_xvmsubasp = 0
+const __builtin_vsx_xvmsubasp = "__builtin_vsx_xvmsubsp"
 
-const __builtin_vsx_xvmsubmdp = 0
+const __builtin_vsx_xvmsubmdp = "__builtin_vsx_xvmsubdp"
 
-const __builtin_vsx_xvmsubmsp = 0
+const __builtin_vsx_xvmsubmsp = "__builtin_vsx_xvmsubsp"
 
-const __builtin_vsx_xvnmaddadp = 0
+const __builtin_vsx_xvnmaddadp = "__builtin_vsx_xvnmadddp"
 
-const __builtin_vsx_xvnmaddasp = 0
+const __builtin_vsx_xvnmaddasp = "__builtin_vsx_xvnmaddsp"
 
-const __builtin_vsx_xvnmaddmdp = 0
+const __builtin_vsx_xvnmaddmdp = "__builtin_vsx_xvnmadddp"
 
-const __builtin_vsx_xvnmaddmsp = 0
+const __builtin_vsx_xvnmaddmsp = "__builtin_vsx_xvnmaddsp"
 
-const __builtin_vsx_xvnmsubadp = 0
+const __builtin_vsx_xvnmsubadp = "__builtin_vsx_xvnmsubdp"
 
-const __builtin_vsx_xvnmsubasp = 0
+const __builtin_vsx_xvnmsubasp = "__builtin_vsx_xvnmsubsp"
 
-const __builtin_vsx_xvnmsubmdp = 0
+const __builtin_vsx_xvnmsubmdp = "__builtin_vsx_xvnmsubdp"
 
-const __builtin_vsx_xvnmsubmsp = 0
+const __builtin_vsx_xvnmsubmsp = "__builtin_vsx_xvnmsubsp"
 
-const __builtin_vsx_xxland = 0
+const __builtin_vsx_xxland = "__builtin_vec_and"
 
-const __builtin_vsx_xxlandc = 0
+const __builtin_vsx_xxlandc = "__builtin_vec_andc"
 
-const __builtin_vsx_xxlnor = 0
+const __builtin_vsx_xxlnor = "__builtin_vec_nor"
 
-const __builtin_vsx_xxlor = 0
+const __builtin_vsx_xxlor = "__builtin_vec_or"
 
-const __builtin_vsx_xxlxor = 0
+const __builtin_vsx_xxlxor = "__builtin_vec_xor"
 
-const __builtin_vsx_xxsel = 0
+const __builtin_vsx_xxsel = "__builtin_vec_sel"
 
-const __float128 = 0
+const __float128 = "__ieee128"
 
 const __powerpc64__ = 1
 

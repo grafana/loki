@@ -18,28 +18,70 @@ type Builder struct {
 	encoder *encoder
 }
 
-// A Builder accumulates data from a set of in-progress sections. A Builder can
-// be flushed into a data object by calling [Builder.Flush].
+// NewBuilder returns a Builder that buffers completed sections in
+// scratchStore. If scratchStore is nil, NewBuilder uses an in-memory store.
 //
-// If provided, completed sections will be written to sectionScratchPath to
-// reduce the peak memory usage of a builder to the peak memory usage of
-// in-progress sections.
-//
-// NewBuilder returns an error if sectionScratchPath specifies an invalid path
-// on disk.
-func NewBuilder(scratchStore scratch.Store) *Builder {
+// A disk-backed scratchStore limits the memory of a builder to the memory of
+// its in-progress sections.
+func NewBuilder(scratchStore scratch.Store, opts ...BuilderOption) *Builder {
 	if scratchStore == nil {
 		scratchStore = scratch.NewMemory()
 	}
 
+	var cfg builderConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	return &Builder{
-		encoder: newEncoder(scratchStore),
+		encoder: newEncoder(scratchStore, cfg.prioritySections, cfg.sizeLeveled),
 	}
 }
 
+// BuilderOption configures a [Builder] in [NewBuilder].
+type BuilderOption func(*builderConfig)
+
+type builderConfig struct {
+	prioritySections []SectionType
+	sizeLeveled      *SizeLeveledCompaction
+}
+
+// WithPrioritySections places sections with the given types before all other
+// sections. Types match by [SectionType.Equals], and sections are grouped in
+// the order of types. Sections of the same group keep the order of
+// [Builder.Append].
+//
+// The order applies to [Object.Sections], to the metadata regions, and to the
+// data regions. Every metadata region comes before every data region.
+//
+// The index of a section among sections of its own type does not change. Its
+// index in [Object.Sections] can change.
+func WithPrioritySections(types ...SectionType) BuilderOption {
+	return func(cfg *builderConfig) {
+		cfg.prioritySections = append(cfg.prioritySections, types...)
+	}
+}
+
+// SizeLeveledCompaction records where the size-leveled compaction strategy
+// placed an object.
+type SizeLeveledCompaction struct {
+	// Level 1 holds compacted runs below the base of the strategy. Level 0
+	// means uncompacted, so the compactor never writes it.
+	//
+	// The planner computes Level from the base and ratio of the strategy at
+	// plan time. A later planner can compute a different level for the same run.
+	Level uint32
+}
+
+// WithSizeLeveledCompaction writes c into the file metadata of every object
+// that the builder flushes, also after [Builder.Reset].
+func WithSizeLeveledCompaction(c SizeLeveledCompaction) BuilderOption {
+	return func(cfg *builderConfig) { cfg.sizeLeveled = &c }
+}
+
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.
-// Append does not enforce ordering; sections may be flushed to the dataobj in
-// any order.
+// The object lists sections in the order of Append calls, except that
+// [WithPrioritySections] moves sections of the given types first.
 //
 // Append returns an error if the section failed to flush.
 //

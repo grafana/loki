@@ -1,5 +1,25 @@
 # Release History
 
+## 1.15.0 (2026-10-14)
+
+### Features Added
+
+- `ManagedIdentityCredential` and `DefaultAzureCredential` support user-assigned managed identities
+  on Azure Arc when the agent supports them
+- `WorkloadIdentityCredential` supports identity binding mode via `WorkloadIdentityCredentialOptions.EnableAzureProxy`
+
+### Bugs Fixed
+
+- `ManagedIdentityCredential` verifies the Service Fabric endpoint's certificate against
+  `IDENTITY_SERVER_THUMBPRINT` and rejects redirects
+
+### Other Changes
+
+- On Service Fabric, a custom `ClientOptions.Transport` must be an `*http.Client` with a `nil`
+  Transport or a standard `*http.Transport` without custom TLS dialing or verification callbacks.
+  Unsupported transports now cause credential construction to fail
+- Upgraded dependencies
+
 ## 1.14.1 (2026-08-27)
 
 ### Other Changes

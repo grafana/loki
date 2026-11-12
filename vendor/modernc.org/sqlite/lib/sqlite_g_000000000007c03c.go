@@ -4,4 +4,6 @@
 
 package sqlite3
 
+const FP_ILOGBNAN = 2147483647
+
 type itimerspec = Titimerspec

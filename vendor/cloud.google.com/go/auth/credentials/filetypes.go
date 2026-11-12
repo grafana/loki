@@ -109,7 +109,8 @@ func fileCredentials(b []byte, opts *DetectOptions) (*auth.Credentials, error) {
 	}
 	return auth.NewCredentials(&auth.CredentialsOptions{
 		TokenProvider: auth.NewCachedTokenProvider(tp, &auth.CachedTokenProviderOptions{
-			ExpireEarly: opts.EarlyTokenRefresh,
+			ExpireEarly:         opts.EarlyTokenRefresh,
+			DisableAsyncRefresh: opts.DisableAsyncRefresh,
 		}),
 		JSON:              b,
 		ProjectIDProvider: internalauth.StaticCredentialsProperty(projectID),
@@ -172,16 +173,17 @@ func handleServiceAccount(f *credsfile.ServiceAccountFile, opts *DetectOptions) 
 
 func handleUserCredential(f *credsfile.UserCredentialsFile, opts *DetectOptions) (auth.TokenProvider, error) {
 	opts3LO := &auth.Options3LO{
-		ClientID:         f.ClientID,
-		ClientSecret:     f.ClientSecret,
-		Scopes:           opts.scopes(),
-		AuthURL:          googleAuthURL,
-		TokenURL:         opts.tokenURL(),
-		AuthStyle:        auth.StyleInParams,
-		EarlyTokenExpiry: opts.EarlyTokenRefresh,
-		RefreshToken:     f.RefreshToken,
-		Client:           opts.client(),
-		Logger:           opts.logger(),
+		ClientID:            f.ClientID,
+		ClientSecret:        f.ClientSecret,
+		Scopes:              opts.scopes(),
+		AuthURL:             googleAuthURL,
+		TokenURL:            opts.tokenURL(),
+		AuthStyle:           auth.StyleInParams,
+		EarlyTokenExpiry:    opts.EarlyTokenRefresh,
+		DisableAsyncRefresh: opts.DisableAsyncRefresh,
+		RefreshToken:        f.RefreshToken,
+		Client:              opts.client(),
+		Logger:              opts.logger(),
 	}
 	return auth.New3LOTokenProvider(opts3LO)
 }
@@ -199,6 +201,8 @@ func handleExternalAccount(f *credsfile.ExternalAccountFile, opts *DetectOptions
 		QuotaProjectID:                 f.QuotaProjectID,
 		Scopes:                         opts.scopes(),
 		WorkforcePoolUserProject:       f.WorkforcePoolUserProject,
+		EarlyTokenRefresh:              opts.EarlyTokenRefresh,
+		DisableAsyncRefresh:            opts.DisableAsyncRefresh,
 		Client:                         opts.client(),
 		Logger:                         opts.logger(),
 		IsDefaultClient:                opts.Client == nil,
@@ -243,15 +247,17 @@ func handleExternalAccount(f *credsfile.ExternalAccountFile, opts *DetectOptions
 
 func handleExternalAccountAuthorizedUser(f *credsfile.ExternalAccountAuthorizedUserFile, opts *DetectOptions) (auth.TokenProvider, error) {
 	externalOpts := &externalaccountuser.Options{
-		Audience:     f.Audience,
-		RefreshToken: f.RefreshToken,
-		TokenURL:     f.TokenURL,
-		TokenInfoURL: f.TokenInfoURL,
-		ClientID:     f.ClientID,
-		ClientSecret: f.ClientSecret,
-		Scopes:       opts.scopes(),
-		Client:       opts.client(),
-		Logger:       opts.logger(),
+		Audience:            f.Audience,
+		RefreshToken:        f.RefreshToken,
+		TokenURL:            f.TokenURL,
+		TokenInfoURL:        f.TokenInfoURL,
+		ClientID:            f.ClientID,
+		ClientSecret:        f.ClientSecret,
+		Scopes:              opts.scopes(),
+		EarlyTokenRefresh:   opts.EarlyTokenRefresh,
+		DisableAsyncRefresh: opts.DisableAsyncRefresh,
+		Client:              opts.client(),
+		Logger:              opts.logger(),
 	}
 	tp, err := externalaccountuser.NewTokenProvider(externalOpts)
 	if err != nil {

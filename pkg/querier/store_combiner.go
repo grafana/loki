@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -50,58 +51,77 @@ func NewStoreCombiner(stores []StoreConfig) *StoreCombiner {
 	return &StoreCombiner{stores: stores}
 }
 
-// findStoresForTimeRange returns the stores that should handle the given time range
-func (sc *StoreCombiner) findStoresForTimeRange(from, through model.Time) []storeWithRange {
+// findStoresForTimeRange returns the stores that hold data in [start, end), each with the part of
+// that range it covers. The ranges of consecutive stores meet with no gap and no overlap, so no
+// sample on a boundary is lost or read twice.
+//
+// A range starts no earlier than the first store's From.
+func (sc *StoreCombiner) findStoresForTimeRange(start, end time.Time) []storeWithRange {
 	if len(sc.stores) == 0 {
 		return nil
 	}
 
-	// first, find the schema with the highest start _before or at_ from
+	// Find the last store that starts at or before start.
 	i := sort.Search(len(sc.stores), func(i int) bool {
-		return sc.stores[i].From > from
+		return sc.stores[i].From.Time().After(start)
 	})
 	if i > 0 {
 		i--
 	} else {
 		// This could happen if we get passed a sample from before 1970.
-		i = 0
-		from = sc.stores[0].From
+		start = sc.stores[0].From.Time()
 	}
 
-	// next, find the schema with the lowest start _after_ through
+	// Find the first store that starts at or after end. It and the stores after it hold no data
+	// in the range.
 	j := sort.Search(len(sc.stores), func(j int) bool {
-		return sc.stores[j].From > through
+		return !sc.stores[j].From.Time().Before(end)
 	})
 
 	var stores []storeWithRange
-	start := from
 	for ; i < j; i++ {
-		nextSchemaStarts := model.Latest
-		if i+1 < len(sc.stores) {
-			nextSchemaStarts = sc.stores[i+1].From
+		storeEnd := end
+		if i+1 < j {
+			storeEnd = sc.stores[i+1].From.Time()
 		}
 
-		end := min(through, nextSchemaStarts-1)
 		stores = append(stores, storeWithRange{
-			store:   sc.stores[i].Store,
-			from:    start,
-			through: end,
+			store:          sc.stores[i].Store,
+			inclusiveStart: start,
+			exclusiveEnd:   storeEnd,
 		})
 
-		start = nextSchemaStarts
+		start = storeEnd
 	}
 
 	return stores
 }
 
+// storeWithRange is a store with the part of a request's time range that it covers.
 type storeWithRange struct {
-	store         Store
-	from, through model.Time
+	store                        Store
+	inclusiveStart, exclusiveEnd time.Time
+}
+
+// inclusiveFrom returns the start of the range, in milliseconds.
+func (s storeWithRange) inclusiveFrom() model.Time {
+	return model.Time(s.inclusiveStart.UnixMilli())
+}
+
+// inclusiveThrough returns the last millisecond of the range.
+func (s storeWithRange) inclusiveThrough() model.Time {
+	return model.Time(s.exclusiveEnd.UnixMilli()) - 1
+}
+
+// toHalfOpenTimeRange converts the [from, through] range of an index request, inclusive and in
+// milliseconds, to the [start, end) range findStoresForTimeRange takes.
+func toHalfOpenTimeRange(from, through model.Time) (time.Time, time.Time) {
+	return from.Time(), through.Time().Add(time.Millisecond)
 }
 
 // SelectSamples implements Store
 func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
-	stores := sc.findStoresForTimeRange(model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano()))
+	stores := sc.findStoresForTimeRange(req.Start, req.End)
 
 	if len(stores) == 0 {
 		return iter.NoopSampleIterator, nil
@@ -125,7 +145,7 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 	}()
 
 	for _, s := range stores {
-		it, err := s.store.SelectSamples(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
+		it, err := s.store.SelectSamples(ctx, req.WithTimeRange(s.inclusiveStart, s.exclusiveEnd))
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +164,7 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 
 // SelectLogs implements Store
 func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	stores := sc.findStoresForTimeRange(model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano()))
+	stores := sc.findStoresForTimeRange(req.Start, req.End)
 
 	if len(stores) == 0 {
 		return iter.NoopEntryIterator, nil
@@ -156,7 +176,7 @@ func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogPara
 
 	iters := make([]iter.EntryIterator, 0, len(stores))
 	for _, s := range stores {
-		iter, err := s.store.SelectLogs(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
+		iter, err := s.store.SelectLogs(ctx, req.WithTimeRange(s.inclusiveStart, s.exclusiveEnd))
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +188,7 @@ func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogPara
 
 // SelectSeries implements Store
 func (sc *StoreCombiner) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
-	stores := sc.findStoresForTimeRange(model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano()))
+	stores := sc.findStoresForTimeRange(req.Start, req.End)
 
 	if len(stores) == 0 {
 		return nil, nil
@@ -187,7 +207,7 @@ func (sc *StoreCombiner) SelectSeries(ctx context.Context, req logql.SelectLogPa
 	var key uint64
 
 	for _, s := range stores {
-		series, err := s.store.SelectSeries(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
+		series, err := s.store.SelectSeries(ctx, req.WithTimeRange(s.inclusiveStart, s.exclusiveEnd))
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +226,7 @@ func (sc *StoreCombiner) SelectSeries(ctx context.Context, req logql.SelectLogPa
 
 // LabelValuesForMetricName implements Store
 func (sc *StoreCombiner) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	stores := sc.findStoresForTimeRange(from, through)
+	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
 		return nil, nil
@@ -220,7 +240,7 @@ func (sc *StoreCombiner) LabelValuesForMetricName(ctx context.Context, userID st
 	valueSet := make(map[string]struct{})
 
 	for _, s := range stores {
-		values, err := s.store.LabelValuesForMetricName(ctx, userID, s.from, s.through, metricName, labelName, matchers...)
+		values, err := s.store.LabelValuesForMetricName(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), metricName, labelName, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +260,7 @@ func (sc *StoreCombiner) LabelValuesForMetricName(ctx context.Context, userID st
 
 // LabelNamesForMetricName implements Store
 func (sc *StoreCombiner) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
-	stores := sc.findStoresForTimeRange(from, through)
+	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
 		return nil, nil
@@ -254,7 +274,7 @@ func (sc *StoreCombiner) LabelNamesForMetricName(ctx context.Context, userID str
 	nameSet := make(map[string]struct{})
 
 	for _, s := range stores {
-		names, err := s.store.LabelNamesForMetricName(ctx, userID, s.from, s.through, metricName, matchers...)
+		names, err := s.store.LabelNamesForMetricName(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), metricName, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -274,7 +294,7 @@ func (sc *StoreCombiner) LabelNamesForMetricName(ctx context.Context, userID str
 
 // Stats implements Store
 func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	stores := sc.findStoresForTimeRange(from, through)
+	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
 		return &stats.Stats{}, nil
@@ -287,7 +307,7 @@ func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through
 	// Collect stats from all stores
 	statsSlice := make([]*stats.Stats, 0, len(stores))
 	for _, s := range stores {
-		stats, err := s.store.Stats(ctx, userID, s.from, s.through, matchers...)
+		stats, err := s.store.Stats(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +321,7 @@ func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through
 
 // Volume implements Store
 func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	stores := sc.findStoresForTimeRange(from, through)
+	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
 		return &logproto.VolumeResponse{}, nil
@@ -315,7 +335,7 @@ func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, throug
 	volumes := make([]*logproto.VolumeResponse, 0, len(stores))
 
 	for _, s := range stores {
-		vol, err := s.store.Volume(ctx, userID, s.from, s.through, limit, targetLabels, aggregateBy, matchers...)
+		vol, err := s.store.Volume(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), limit, targetLabels, aggregateBy, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -328,7 +348,7 @@ func (sc *StoreCombiner) Volume(ctx context.Context, userID string, from, throug
 
 // GetShards implements Store
 func (sc *StoreCombiner) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
-	stores := sc.findStoresForTimeRange(from, through)
+	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
 		return &logproto.ShardsResponse{}, nil
@@ -342,7 +362,7 @@ func (sc *StoreCombiner) GetShards(ctx context.Context, userID string, from, thr
 	groups := make([]*logproto.ShardsResponse, 0, len(stores))
 
 	for _, s := range stores {
-		shards, err := s.store.GetShards(ctx, userID, s.from, s.through, targetBytesPerShard, predicate)
+		shards, err := s.store.GetShards(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), targetBytesPerShard, predicate)
 		if err != nil {
 			return nil, err
 		}

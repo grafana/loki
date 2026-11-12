@@ -45,6 +45,13 @@ type StickyConnPool struct {
 	// the parent's background drainer.
 	onFirstConn func(*Conn)
 
+	// discardOnClose makes Close remove the claimed connection from the parent
+	// pool instead of returning it. Client.EphemeralConn sets it: the session
+	// state a dedicated connection accumulates (AUTH, SELECT, CLIENT SETNAME,
+	// CLIENT TRACKING, RESET, ...) cannot be undone, and a pooled caller must
+	// never inherit it.
+	discardOnClose bool
+
 	_badConnError atomic.Value
 }
 
@@ -110,6 +117,13 @@ func (p *StickyConnPool) SetOnFirstConn(fn func(*Conn)) {
 	p.onFirstConn = fn
 }
 
+// DiscardOnClose configures the pool to remove the claimed connection from
+// the parent pool on Close instead of returning it. It must be called before
+// the pool is used.
+func (p *StickyConnPool) DiscardOnClose() {
+	p.discardOnClose = true
+}
+
 func (p *StickyConnPool) Put(ctx context.Context, cn *Conn) {
 	defer func() {
 		if recover() != nil {
@@ -130,6 +144,8 @@ func (p *StickyConnPool) Put(ctx context.Context, cn *Conn) {
 func (p *StickyConnPool) freeConn(ctx context.Context, cn *Conn) {
 	if err := p.badConnError(); err != nil {
 		p.pool.Remove(ctx, cn, err)
+	} else if p.discardOnClose {
+		p.pool.Remove(ctx, cn, ErrClosed)
 	} else {
 		p.pool.Put(ctx, cn)
 	}

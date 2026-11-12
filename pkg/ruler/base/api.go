@@ -2,6 +2,7 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
-	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -341,6 +341,8 @@ var (
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
 
+const maxRequestBodySize = 5 * 1024 * 1024
+
 func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
 	d, err := yaml.Marshal(&output)
 	if err != nil {
@@ -588,10 +590,16 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	logger = log.With(logger, "namespace", pr.Namespace, "userID", pr.UserID)
 
+	req.Body = http.MaxBytesReader(w, req.Body, maxRequestBodySize)
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to read rule group payload", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		statusCode := http.StatusBadRequest
+		var mbErr *http.MaxBytesError
+		if errors.As(err, &mbErr) {
+			statusCode = http.StatusRequestEntityTooLarge
+		}
+		http.Error(w, err.Error(), statusCode)
 		return
 	}
 

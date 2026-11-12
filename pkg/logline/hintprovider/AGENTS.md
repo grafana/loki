@@ -25,8 +25,8 @@ Query-shape support and hint lookup for logline index lookups.
      after them stay eligible. Unknown stages fail closed.
 5. **Post-parser extracted-field filters are needles only when verbatim**
    - After `json` / `logfmt` / `regexp` / `pattern` (including expression parsers),
-     equality and line-matcher-equivalent regex values are looked up like line
-     filters. Which stages are eligible is decided in
+     equality values and required regex literals (invariant 13) are looked up
+     like line filters. Which stages are eligible is decided in
      `literalsFromPostParserWindow`.
    - `line_format` and `decolorize` do not drop filters on labels already
      extracted. A parser after either reads the rewritten line, so do not
@@ -35,9 +35,12 @@ Query-shape support and hint lookup for logline index lookups.
      an unrecognized stage. keep/drop do not invent values; the cutoff is
      fail-closed. When in doubt, skip.
    - Needles are matcher values only (never field names); prefixes are not stripped.
+   - `UsableLabelName` skips reserved `__*` names such as `__error__`, before
+     or after the parser. Loki sets those, so their values are not in the line.
    - `IsVerbatimLineLiteral` skips values containing `"`, `\`, or control
-     characters so JSON/logfmt unescape cannot produce false negatives. N-gram
-     extraction uppercases, so `(?i)` literals are the same lookup as equality.
+     characters so JSON/logfmt unescape cannot produce false negatives. The
+     check runs per regex literal, so one non-verbatim run does not drop the
+     others.
    - Bare `| json | field="literal"` can also match stream/SM labels of that
      name; that residual is accepted. We cannot tell parsed-field vs stream
      vs SM, so we do not re-escape needles — only values already in the line.
@@ -60,3 +63,56 @@ Query-shape support and hint lookup for logline index lookups.
 11. **Snapshot drift is an accepted TTL trade-off**
    - Cached day payloads represent the delegate snapshot at fill time.
    - New indexes that appear later in the same day are visible after cache TTL expiry or when bypassing cache.
+12. **Mixed index versions are resolved per version**
+   - The extractor belongs to the index version, so one needle can decompose into
+     different terms per version, and those terms route to different shards.
+   - Shard values are intersected only within one `(version, algorithm, count)`
+     group. Intersecting across versions drops the ranges of a version that has
+     no term on a shard the other version queried.
+   - Filters are ANDed per version. A filter with no terms under a version (v4
+     emits none for a number shorter than 9 digits) drops out for that version.
+     If no filter has terms for some version in the window, `buildTermJobs`
+     returns `ErrUnsupported`. Skipping that version's blocks would leave them
+     without ranges and hide their matches.
+13. **A regex contributes only the literals every match contains**
+    - `|~` and `=~` (line, pre-parser and post-parser filters alike) go through
+      `regexliteral.Required`, never a local AST walk. It owns the rules that
+      keep regex needles free of false negatives, including `(?i)` handling.
+    - Anchoring is irrelevant here. Label regexes are anchored, line regexes are
+      not, and both only need "contains".
+    - Every needle leaves `SupportedQuery` with ASCII letters uppercased by
+      `upperASCII`, matching the extractors. Never use `strings.ToUpper`: it
+      maps U+0131 and U+017F to ASCII, which the extractors treat as
+      separators.
+    - Its literals are unfiltered. `SupportedQuery` drops those shorter than
+      `ngramLength`, and a regex with none left contributes nothing.
+14. **A shared day lookup runs under the context of the caller that started it**
+    - Concurrent lookups of the same tenant, query and day share one delegate
+      call through singleflight.
+    - Each caller stops waiting when its own context ends. The query frontend
+      cancels a lookup when its query returns first, and the shared call keeps
+      running for the callers still waiting on it.
+    - Canceling the caller that started the call ends it for every caller. A
+      caller that only joined it and whose own context is still live retries,
+      up to `maxSharedLookupAttempts` times, and the retry runs under its own
+      context. Retries are counted in
+      `logline_hint_cache_singleflight_retries_total`.
+15. **v5 ranges come from the footer's layout, one per document shard**
+    - v5 indexes have no document table. `rangesForCells` maps each matching
+      cell to its bucket's range and its document shard through
+      `logline.DocumentLayout`. Other ranges (v3/v4 documents, `MatchesAll`,
+      passthrough) have zero shard bits and cover every stream.
+    - `NormalizeRanges` merges ranges only within one document shard.
+      `intersectRanges` intersects two shards' ranges only when one shard holds
+      the other, and keeps the narrower shard.
+    - `logproto.HintTimeRange` has no shard, so `QueryHints` returns the time
+      union, and the query frontend (adapter, hint cache, dry run) sees only
+      times. `ProvideHints` keeps the shards, and correctness checks them per
+      stream.
+    - `checkLayoutDay` requires the footer's day to be the meta's date. A
+      mismatch fails the lookup, so the query runs without hints instead of
+      getting ranges on the wrong day.
+    - The interval and shard bits are not compared with `meta.json`. Metas
+      reach the provider through `logproto.IndexMeta`, which carries only the
+      date (inside the index ID), and ranges take both values from the footer.
+      The v5 merge guard is where `meta.json` must agree with the footer.

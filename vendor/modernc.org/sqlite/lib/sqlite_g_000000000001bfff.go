@@ -14,6 +14,8 @@ const FD_SETSIZE = 1024
 
 const FP_NORMAL = 4
 
+const __GNUC_MINOR__ = 2
+
 // C documentation
 //
 //	/*

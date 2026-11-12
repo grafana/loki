@@ -8,21 +8,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/sanitizer"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/diag"
 )
 
 type logPolicy struct {
-	includeBody    bool
-	allowedHeaders map[string]struct{}
-	allowedQP      map[string]struct{}
+	sanitizer   *sanitizer.Sanitizer
+	includeBody bool
 }
 
 // NewLogPolicy creates a request/response logging policy object configured using the specified options.
@@ -31,57 +30,18 @@ func NewLogPolicy(o *policy.LogOptions) policy.Policy {
 	if o == nil {
 		o = &policy.LogOptions{}
 	}
-	// construct default hash set of allowed headers
-	allowedHeaders := map[string]struct{}{
-		"accept":                        {},
-		"cache-control":                 {},
-		"connection":                    {},
-		"content-length":                {},
-		"content-type":                  {},
-		"date":                          {},
-		"etag":                          {},
-		"expires":                       {},
-		"if-match":                      {},
-		"if-modified-since":             {},
-		"if-none-match":                 {},
-		"if-unmodified-since":           {},
-		"last-modified":                 {},
-		"ms-cv":                         {},
-		"pragma":                        {},
-		"request-id":                    {},
-		"retry-after":                   {},
-		"server":                        {},
-		"traceparent":                   {},
-		"transfer-encoding":             {},
-		"user-agent":                    {},
-		"www-authenticate":              {},
-		"x-ms-request-id":               {},
-		"x-ms-client-request-id":        {},
-		"x-ms-return-client-request-id": {},
-	}
-	// add any caller-specified allowed headers to the set
-	for _, ah := range o.AllowedHeaders {
-		allowedHeaders[strings.ToLower(ah)] = struct{}{}
-	}
-	// now do the same thing for query params
-	allowedQP := getAllowedQueryParams(o.AllowedQueryParams)
-	return &logPolicy{
-		includeBody:    o.IncludeBody,
-		allowedHeaders: allowedHeaders,
-		allowedQP:      allowedQP,
-	}
+
+	return newLogPolicy(o, sanitizer.New(sanitizer.Options{
+		AllowedHeaders:     o.AllowedHeaders,
+		AllowedQueryParams: o.AllowedQueryParams,
+	}))
 }
 
-// getAllowedQueryParams merges the default set of allowed query parameters
-// with a custom set (usually comes from client options).
-func getAllowedQueryParams(customAllowedQP []string) map[string]struct{} {
-	allowedQP := map[string]struct{}{
-		"api-version": {},
+func newLogPolicy(o *policy.LogOptions, s *sanitizer.Sanitizer) policy.Policy {
+	return &logPolicy{
+		sanitizer:   s,
+		includeBody: o.IncludeBody,
 	}
-	for _, qp := range customAllowedQP {
-		allowedQP[strings.ToLower(qp)] = struct{}{}
-	}
-	return allowedQP
 }
 
 // logPolicyOpValues is the struct containing the per-operation values
@@ -136,54 +96,22 @@ func (p *logPolicy) Do(req *policy.Request) (*http.Response, error) {
 			// skip frames runtime.Callers() and runtime.StackTrace()
 			b.WriteString(diag.StackTrace(2, 32))
 		} else if p.includeBody {
-			err = writeRespBody(response, b)
+			if shouldSkipBodyDownload(req, response) {
+				fmt.Fprintln(b, "   Skip logging body for streaming response")
+			} else {
+				err = writeRespBody(response, b)
+			}
 		}
 		log.Write(log.EventResponse, b.String())
 	}
 	return response, err
 }
 
-const redactedValue = "REDACTED"
-
-// getSanitizedURL returns a sanitized string for the provided url.URL
-func getSanitizedURL(u url.URL, allowedQueryParams map[string]struct{}) string {
-	// redact applicable query params
-	qp := u.Query()
-	for k := range qp {
-		if _, ok := allowedQueryParams[strings.ToLower(k)]; !ok {
-			qp.Set(k, redactedValue)
-		}
-	}
-	u.RawQuery = qp.Encode()
-	return u.String()
-}
-
-// getSanitizedURLString returns s with the query params of u redacted.
-// if s doesn't contain u, then s is returned unchanged.
-func getSanitizedURLString(s string, u *url.URL, allowedQueryParams map[string]struct{}) string {
-	if u.RawQuery == "" {
-		// the URL doesn't have any query params, so nothing to redact
-		return s
-	}
-
-	urlIndex := strings.Index(strings.ToLower(s), strings.ToLower(u.String()))
-	if urlIndex < 0 {
-		// the URL isn't in the string, so nothing to redact
-		return s
-	}
-
-	// replace the unsanitized URL in the error message with the sanitized version
-	sanitizedURL := getSanitizedURL(*u, allowedQueryParams)
-	s = s[:urlIndex] + sanitizedURL + s[urlIndex+len(u.String()):]
-
-	return s
-}
-
 // writeRequestWithResponse appends a formatted HTTP request into a Buffer. If request and/or err are
 // not nil, then these are also written into the Buffer.
 func (p *logPolicy) writeRequestWithResponse(b *bytes.Buffer, req *policy.Request, resp *http.Response, err error) {
 	// Write the request into the buffer.
-	fmt.Fprint(b, "   "+req.Raw().Method+" "+getSanitizedURL(*req.Raw().URL, p.allowedQP)+"\n")
+	fmt.Fprint(b, "   "+req.Raw().Method+" "+p.sanitizer.GetSanitizedURL(*req.Raw().URL)+"\n")
 	p.writeHeader(b, req.Raw().Header)
 	if resp != nil {
 		fmt.Fprintln(b, "   --------------------------------------------------------------------------------")
@@ -192,7 +120,7 @@ func (p *logPolicy) writeRequestWithResponse(b *bytes.Buffer, req *policy.Reques
 	}
 	if err != nil {
 		fmt.Fprintln(b, "   --------------------------------------------------------------------------------")
-		fmt.Fprint(b, "   ERROR:\n"+getSanitizedURLString(err.Error(), req.Raw().URL, p.allowedQP)+"\n")
+		fmt.Fprint(b, "   ERROR:\n"+p.sanitizer.GetSanitizedURLString(err.Error(), req.Raw().URL)+"\n")
 	}
 }
 
@@ -209,13 +137,7 @@ func (p *logPolicy) writeHeader(b *bytes.Buffer, header http.Header) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		// don't use Get() as it will canonicalize k which might cause a mismatch
-		value := header[k][0]
-		// redact all header values not in the allow-list
-		if _, ok := p.allowedHeaders[strings.ToLower(k)]; !ok {
-			value = redactedValue
-		}
-		fmt.Fprintf(b, "   %s: %+v\n", k, value)
+		fmt.Fprintf(b, "   %s: %+v\n", k, p.sanitizer.GetSanitizedHeader(k, header))
 	}
 }
 

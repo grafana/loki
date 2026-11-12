@@ -15,11 +15,13 @@ import (
 //	**
 //	** Construct a simple, convex, regular polygon centered at X, Y
 //	** with circumradius R and with N sides.
+//	**
+//	** Maximum N is 1000.  Maximum R is 1.0e+300.
 //	*/
 func _geopolyRegularFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	bp := tls.Alloc(16)
 	defer tls.Free(16)
-	var n int32
+	var n Ti64
 	var p uintptr
 	var r, rAngle, x, y float64
 	var _ /* i at bp+0 */ int32
@@ -27,15 +29,15 @@ func _geopolyRegularFunc(tls *libc.TLS, context uintptr, argc int32, argv uintpt
 	x = Xsqlite3_value_double(tls, **(**uintptr)(__ccgo_up(argv)))
 	y = Xsqlite3_value_double(tls, **(**uintptr)(__ccgo_up(argv + 1*8)))
 	r = Xsqlite3_value_double(tls, **(**uintptr)(__ccgo_up(argv + 2*8)))
-	n = Xsqlite3_value_int(tls, **(**uintptr)(__ccgo_up(argv + 3*8)))
+	n = Xsqlite3_value_int64(tls, **(**uintptr)(__ccgo_up(argv + 3*8)))
 	_ = argc
-	if n < int32(3) || r <= float64(0) {
+	if n < int64(3) || r <= float64(0) || r >= float64(1e+300) {
 		return
 	}
-	if n > int32(1000) {
-		n = int32(1000)
+	if n > int64(1000) {
+		n = int64(1000)
 	}
-	p = Xsqlite3_malloc64(tls, uint64(uint64(40)+libc.Uint64FromInt32((n-int32(1))*int32(2))*uint64(4)))
+	p = Xsqlite3_malloc64(tls, uint64(40)+libc.Uint64FromInt64((n-int64(1))*int64(2))*uint64(4))
 	if p == uintptr(0) {
 		Xsqlite3_result_error_nomem(tls, context)
 		return
@@ -43,11 +45,11 @@ func _geopolyRegularFunc(tls *libc.TLS, context uintptr, argc int32, argv uintpt
 	**(**int32)(__ccgo_up(bp)) = int32(1)
 	**(**uint8)(__ccgo_up(p + 4)) = **(**uint8)(__ccgo_up(bp))
 	**(**uint8)(__ccgo_up(p + 4 + 1)) = uint8(0)
-	**(**uint8)(__ccgo_up(p + 4 + 2)) = libc.Uint8FromInt32(n >> int32(8) & int32(0xff))
-	**(**uint8)(__ccgo_up(p + 4 + 3)) = libc.Uint8FromInt32(n & int32(0xff))
+	**(**uint8)(__ccgo_up(p + 4 + 2)) = libc.Uint8FromInt64(n >> libc.Int32FromInt32(8) & int64(0xff))
+	**(**uint8)(__ccgo_up(p + 4 + 3)) = libc.Uint8FromInt64(n & int64(0xff))
 	**(**int32)(__ccgo_up(bp)) = 0
 	for {
-		if !(**(**int32)(__ccgo_up(bp)) < n) {
+		if !(int64(**(**int32)(__ccgo_up(bp))) < n) {
 			break
 		}
 		rAngle = float64(float64(libc.Float64FromFloat64(2)*libc.Float64FromFloat64(3.141592653589793))*float64(**(**int32)(__ccgo_up(bp)))) / float64(n)
@@ -58,6 +60,6 @@ func _geopolyRegularFunc(tls *libc.TLS, context uintptr, argc int32, argv uintpt
 		;
 		**(**int32)(__ccgo_up(bp)) = **(**int32)(__ccgo_up(bp)) + 1
 	}
-	Xsqlite3_result_blob(tls, context, p+4, int32(4)+int32(8)*n, uintptr(-libc.Int32FromInt32(1)))
+	Xsqlite3_result_blob(tls, context, p+4, int32(int64(4)+int64(8)*n), uintptr(-libc.Int32FromInt32(1)))
 	Xsqlite3_free(tls, p)
 }

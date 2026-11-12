@@ -64,6 +64,14 @@ var (
 	// ErrPoolTimeout timed out waiting to get a connection from the connection pool.
 	ErrPoolTimeout = errors.New("redis: connection pool timeout")
 
+	// ErrPoolTryFull is the result of TryGet (the non-waiting acquire) when the
+	// pool has no free turn now. It is not a timeout, because nothing waited. A
+	// caller with a fallback uses it to spill at once. The pipeline pool spills to
+	// the main pool this way. ErrPoolTryFull is different from ErrPoolTimeout on
+	// purpose. Thus getConn does not record a false pool timeout (Stats.Timeouts or
+	// POOL_TIMEOUT) for a non-wait. A real wait still returns ErrPoolTimeout.
+	ErrPoolTryFull = errors.New("redis: connection pool has no free turn")
+
 	// ErrConnUnusableTimeout is returned when a connection is not usable and we timed out trying to mark it as unusable.
 	ErrConnUnusableTimeout = errors.New("redis: timed out trying to mark connection as unusable")
 
@@ -847,11 +855,23 @@ func (p *ConnPool) getLastDialError() error {
 
 // Get returns existed connection from the pool or creates a new one.
 func (p *ConnPool) Get(ctx context.Context) (*Conn, error) {
-	return p.getConn(ctx)
+	return p.getConn(ctx, true)
 }
 
-// getConn returns a connection from the pool.
-func (p *ConnPool) getConn(ctx context.Context) (cn *Conn, err error) {
+// TryGet returns a connection only if a pool turn is free now. A free turn is an
+// open slot or room to dial a new connection. TryGet never waits out PoolTimeout
+// for a full pool. It returns ErrPoolTryFull at once instead. This lets a caller
+// with a fallback (the pipeline pool) spill without a stall. ErrPoolTryFull is
+// different from ErrPoolTimeout: no wait happened, so getConn does not count the
+// spill as a pool timeout. A hard MaxActiveConns ceiling still returns
+// ErrPoolExhausted. TryGet still dials a new connection under an acquired turn.
+func (p *ConnPool) TryGet(ctx context.Context) (*Conn, error) {
+	return p.getConn(ctx, false)
+}
+
+// getConn returns a connection from the pool. When wait is false it does not block
+// for a turn (see waitTurn / TryGet).
+func (p *ConnPool) getConn(ctx context.Context, wait bool) (cn *Conn, err error) {
 	if p.closed() {
 		return nil, ErrClosed
 	}
@@ -894,7 +914,7 @@ func (p *ConnPool) getConn(ctx context.Context) (cn *Conn, err error) {
 	if waitTimeCallback != nil {
 		waitStart = time.Now()
 	}
-	if err = p.waitTurn(ctx); err != nil {
+	if err = p.waitTurn(ctx, wait); err != nil {
 		return nil, err
 	}
 	if waitTimeCallback != nil {
@@ -985,6 +1005,13 @@ retryIdle:
 	// check. Normal MaxActiveConns exhaustion still proceeds to newConn and
 	// returns ErrPoolExhausted immediately, preserving the existing contract.
 	if done, retry := p.drainerWaitState(drainGeneration); done != nil {
+		if !wait {
+			// TryGet must not wait out the drainer's bounded claim (up to PoolTimeout)
+			// either — spill immediately, like the pool-turn and dial-permit
+			// non-blocking paths, so a pipeline falls back to the main pool at once.
+			p.freeTurn()
+			return nil, ErrPoolTryFull
+		}
 		if err = p.waitForDrainer(ctx, done, poolDeadline); err != nil {
 			p.freeTurn()
 			return nil, err
@@ -997,7 +1024,7 @@ retryIdle:
 	atomic.AddUint32(&p.stats.Misses, 1)
 
 	var newcn *Conn
-	newcn, err = p.queuedNewConn(ctx)
+	newcn, err = p.queuedNewConn(ctx, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,13 +1073,27 @@ retryIdle:
 	return newcn, nil
 }
 
-func (p *ConnPool) queuedNewConn(ctx context.Context) (*Conn, error) {
-	select {
-	case p.dialsInProgress <- struct{}{}:
-		// Got permission, proceed to create connection
-	case <-ctx.Done():
-		p.freeTurn()
-		return nil, ctx.Err()
+func (p *ConnPool) queuedNewConn(ctx context.Context, wait bool) (*Conn, error) {
+	if wait {
+		select {
+		case p.dialsInProgress <- struct{}{}:
+			// Got permission, proceed to create connection
+		case <-ctx.Done():
+			p.freeTurn()
+			return nil, ctx.Err()
+		}
+	} else {
+		// TryGet: MaxConcurrentDials can be below PoolSize, so a pool turn may be
+		// free while every dial permit is held by an in-flight dial. A blocking send
+		// here would make TryGet wait out another caller's whole dial retry sequence,
+		// violating its non-blocking contract. Give up immediately (spill) instead.
+		select {
+		case p.dialsInProgress <- struct{}{}:
+			// Got permission, proceed to create connection
+		default:
+			p.freeTurn()
+			return nil, ErrPoolTryFull
+		}
 	}
 
 	// Don't apply DialTimeout via context here; dialConn applies DialTimeout per attempt.
@@ -1161,7 +1202,7 @@ func (p *ConnPool) putIdleConn(ctx context.Context, cn *Conn) bool {
 	return true
 }
 
-func (p *ConnPool) waitTurn(ctx context.Context) error {
+func (p *ConnPool) waitTurn(ctx context.Context, wait bool) error {
 	// Fast path: check context first
 	select {
 	case <-ctx.Done():
@@ -1172,6 +1213,14 @@ func (p *ConnPool) waitTurn(ctx context.Context) error {
 	// Fast path: try to acquire without blocking
 	if p.semaphore.TryAcquire() {
 		return nil
+	}
+
+	// Non-waiting acquire (TryGet): the pool is full and no turn is free now.
+	// Return at once. Do not wait out PoolTimeout. The caller (the pipeline pool)
+	// then spills to the main pool at once. Return ErrPoolTryFull, not
+	// ErrPoolTimeout, because nothing waited. Thus getConn does not count a timeout.
+	if !wait {
+		return ErrPoolTryFull
 	}
 
 	// Slow path: need to wait
@@ -1420,8 +1469,9 @@ func (p *ConnPool) putConn(ctx context.Context, cn *Conn, freeTurn bool) {
 
 		// unusable conns are expected to become usable at some point (background process is reconnecting them)
 		// put them at the opposite end of the queue
-		// Optimization: if we just transitioned to IDLE, we know it's usable - skip the check
-		if !transitionedToIdle && !cn.IsUsable() {
+		// Check even if Release() succeeded: it notifies waiters, which may have
+		// already moved the conn out of IDLE (e.g. re-auth to UNUSABLE).
+		if !cn.IsUsable() {
 			p.connsMu.Lock()
 			// Check if Close() already removed this connection from p.conns.
 			// If so, skip the append and metrics — Close() already accounted for it.
@@ -1684,6 +1734,63 @@ func (p *ConnPool) Name() string { return p.cfg.Name }
 // ensuring that re-auth operations don't exhaust the connection pool.
 func (p *ConnPool) Size() int {
 	return int(p.cfg.PoolSize)
+}
+
+// HasFreeCapacity reports whether the pool can likely serve another Get without
+// blocking — a best-effort probe for the autopipeline straggler-hold gate (a
+// false positive only costs a spill / short hold, never correctness). Checks,
+// in order: a truly servable idle conn (usableIdleLen — plain IdleLen counts
+// not-usable and handoff-marked entries an OnGet hook would divert); a free
+// pool turn (accounts for in-use conns AND in-flight dials); room under
+// PoolSize and MaxActiveConns (newConn's hard dial gate); a free dial slot
+// (MaxConcurrentDials below PoolSize can saturate slots while a turn is free);
+// and the dial circuit breaker not being open (a saturated dialErrorsNum makes
+// the Get fail fast rather than serve).
+func (p *ConnPool) HasFreeCapacity() bool {
+	// Turn check comes FIRST: Get acquires a turn before popIdle, so with the
+	// semaphore exhausted even a usable idle conn is not immediately servable
+	// (putConnWithoutTurn can re-pool a conn while its turn stays held, so
+	// idle > 0 does not imply a free turn).
+	if p.semaphore.Available() <= 0 {
+		return false
+	}
+	if p.usableIdleLen() > 0 {
+		return true
+	}
+	size := p.poolSize.Load()
+	if size >= p.cfg.PoolSize {
+		return false
+	}
+	if m := p.cfg.MaxActiveConns; m > 0 && size >= m {
+		return false
+	}
+	if c := cap(p.dialsInProgress); c > 0 && len(p.dialsInProgress) >= c {
+		return false
+	}
+	// Dial circuit breaker open (dialConn fails fast until a background probe
+	// succeeds): the Get would need this dial and error immediately, so there is
+	// no capacity to report.
+	if p.dialErrorsNum.Load() >= uint32(p.cfg.PoolSize) {
+		return false
+	}
+	return true
+}
+
+// usableIdleLen counts idle connections a Get would actually serve, unlike
+// IdleLen(): it excludes not-usable conns (mid state transition) and
+// handoff-marked conns (still StateIdle/usable, but the OnGet pool hook diverts
+// them to handoff). Best-effort — a re-auth-marked conn is a rare residual
+// false positive. The idle slice is bounded by PoolSize, so the scan is cheap.
+func (p *ConnPool) usableIdleLen() int {
+	p.connsMu.Lock()
+	n := 0
+	for _, cn := range p.idleConns {
+		if cn.IsUsable() && !cn.ShouldHandoff() {
+			n++
+		}
+	}
+	p.connsMu.Unlock()
+	return n
 }
 
 func (p *ConnPool) Stats() *Stats {
@@ -2005,12 +2112,19 @@ func (p *ConnPool) isHealthyConn(cn *Conn, nowNs int64) bool {
 			// before the OnGet state check rejects it.
 			if replyType, err := cn.PeekReplyTypeForCheck(); err == nil && replyType == proto.RespPush {
 				// For RESP3 connections with push notifications, we allow some buffered data
-				// The client will process these notifications before using the connection
-				internal.Logger.Printf(
-					context.Background(),
-					"push: conn[%d] has buffered data, likely push notifications - will be processed by client",
-					cn.GetID(),
-				)
+				// The client will process these notifications before using the connection.
+				// This is the normal healthy path for any client with server-side
+				// invalidation or maintenance notifications (client-side caching parks
+				// an invalidate frame on idle conns after every tracked write), so it
+				// logs at debug level only — at default level it would flood the log
+				// on every pool Get under a write-heavy tracked workload.
+				if internal.LogLevel.DebugOrAbove() {
+					internal.Logger.Printf(
+						context.Background(),
+						"push: conn[%d] has buffered data, likely push notifications - will be processed by client",
+						cn.GetID(),
+					)
+				}
 
 				// Update timestamp for healthy connection
 				cn.SetUsedAtNs(nowNs)

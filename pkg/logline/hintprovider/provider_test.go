@@ -37,6 +37,14 @@ func TestFormatHintRanges_Passthrough(t *testing.T) {
 	require.Equal(t, "[passthrough,2026-07-09T08:42:59.500Z]", got)
 }
 
+func TestPassthroughForInclusiveThrough(t *testing.T) {
+	through := time.Date(2026, 3, 10, 23, 59, 59, 999*int(time.Millisecond), time.UTC)
+	got := passthroughForInclusiveThrough(through)
+	require.True(t, got.IsPassthrough())
+	require.True(t, through.Before(got.End), "half-open End must include the inclusive through bound")
+	require.Equal(t, through.Add(time.Millisecond), got.End)
+}
+
 func TestFormatHintRanges_Truncates(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	ranges := make([]HintTimeRange, 0, maxLoggedHintRanges+2)

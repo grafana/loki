@@ -389,25 +389,25 @@ var File_google_monitoring_v3_snooze_service_proto protoreflect.FileDescriptor
 
 const file_google_monitoring_v3_snooze_service_proto_rawDesc = "" +
 	"\n" +
-	")google/monitoring/v3/snooze_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/snooze.proto\x1a google/protobuf/field_mask.proto\"\x92\x01\n" +
-	"\x13CreateSnoozeRequest\x12@\n" +
-	"\x06parent\x18\x01 \x01(\tB(\xe0A\x02\xfaA\"\x12 monitoring.googleapis.com/SnoozeR\x06parent\x129\n" +
-	"\x06snooze\x18\x02 \x01(\v2\x1c.google.monitoring.v3.SnoozeB\x03\xe0A\x02R\x06snooze\"\xb9\x01\n" +
-	"\x12ListSnoozesRequest\x12@\n" +
-	"\x06parent\x18\x01 \x01(\tB(\xe0A\x02\xfaA\"\x12 monitoring.googleapis.com/SnoozeR\x06parent\x12\x1b\n" +
-	"\x06filter\x18\x02 \x01(\tB\x03\xe0A\x01R\x06filter\x12 \n" +
-	"\tpage_size\x18\x04 \x01(\x05B\x03\xe0A\x01R\bpageSize\x12\"\n" +
+	")google/monitoring/v3/snooze_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/snooze.proto\x1a google/protobuf/field_mask.proto\"\x94\x01\n" +
+	"\x13CreateSnoozeRequest\x12A\n" +
+	"\x06parent\x18\x01 \x01(\tB)\xe2A\x01\x02\xfaA\"\x12 monitoring.googleapis.com/SnoozeR\x06parent\x12:\n" +
+	"\x06snooze\x18\x02 \x01(\v2\x1c.google.monitoring.v3.SnoozeB\x04\xe2A\x01\x02R\x06snooze\"\xbd\x01\n" +
+	"\x12ListSnoozesRequest\x12A\n" +
+	"\x06parent\x18\x01 \x01(\tB)\xe2A\x01\x02\xfaA\"\x12 monitoring.googleapis.com/SnoozeR\x06parent\x12\x1c\n" +
+	"\x06filter\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\x06filter\x12!\n" +
+	"\tpage_size\x18\x04 \x01(\x05B\x04\xe2A\x01\x01R\bpageSize\x12#\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tB\x03\xe0A\x01R\tpageToken\"u\n" +
+	"page_token\x18\x05 \x01(\tB\x04\xe2A\x01\x01R\tpageToken\"u\n" +
 	"\x13ListSnoozesResponse\x126\n" +
 	"\asnoozes\x18\x01 \x03(\v2\x1c.google.monitoring.v3.SnoozeR\asnoozes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"P\n" +
-	"\x10GetSnoozeRequest\x12<\n" +
-	"\x04name\x18\x01 \x01(\tB(\xe0A\x02\xfaA\"\n" +
-	" monitoring.googleapis.com/SnoozeR\x04name\"\x92\x01\n" +
-	"\x13UpdateSnoozeRequest\x129\n" +
-	"\x06snooze\x18\x01 \x01(\v2\x1c.google.monitoring.v3.SnoozeB\x03\xe0A\x02R\x06snooze\x12@\n" +
-	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskB\x03\xe0A\x02R\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"Q\n" +
+	"\x10GetSnoozeRequest\x12=\n" +
+	"\x04name\x18\x01 \x01(\tB)\xe2A\x01\x02\xfaA\"\n" +
+	" monitoring.googleapis.com/SnoozeR\x04name\"\x94\x01\n" +
+	"\x13UpdateSnoozeRequest\x12:\n" +
+	"\x06snooze\x18\x01 \x01(\v2\x1c.google.monitoring.v3.SnoozeB\x04\xe2A\x01\x02R\x06snooze\x12A\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskB\x04\xe2A\x01\x02R\n" +
 	"updateMask2\x98\x06\n" +
 	"\rSnoozeService\x12\x98\x01\n" +
 	"\fCreateSnooze\x12).google.monitoring.v3.CreateSnoozeRequest\x1a\x1c.google.monitoring.v3.Snooze\"?\xdaA\rparent,snooze\x82\xd3\xe4\x93\x02):\x06snooze\"\x1f/v3/{parent=projects/*}/snoozes\x12\x94\x01\n" +

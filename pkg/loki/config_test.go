@@ -1,10 +1,10 @@
 package loki
 
 import (
-	"flag"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -15,54 +15,71 @@ import (
 
 func TestCrossComponentValidation(t *testing.T) {
 	for _, tc := range []struct {
-		desc string
-		base *Config
-		err  bool
+		desc  string
+		setup func(*Config)
+		err   string
 	}{
 		{
 			desc: "correct shards",
-			base: &Config{
-				Ingester: ingester.Config{
-					IndexShards: 32,
-				},
-				SchemaConfig: config.SchemaConfig{
-					Configs: []config.PeriodConfig{
-						{
-							From: config.DayTime{
-								Time: model.Now(),
-							},
-							IndexType:  types.IndexTypeTSDB,
-							ObjectType: types.StorageTypeS3,
-							Schema:     "v11",
-							IndexTables: config.IndexPeriodicTableConfig{
-								PeriodicTableConfig: config.PeriodicTableConfig{
-									Period: 24 * time.Hour,
-								},
+		},
+		{
+			desc: "storage lag too short for the ToC resolver with data objects disabled",
+			setup: func(c *Config) {
+				c.DataObj.StorageLag = time.Minute
+			},
+		},
+		{
+			desc: "storage lag too short for the ToC resolver with data objects enabled",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.StorageLag = time.Minute
+			},
+			err: "CONFIG ERROR: invalid dataobj metastore config: twice the refresh interval of the ToC resolver (2m0s) must not exceed a tenth of the storage lag (1m0s)",
+		},
+	} {
+		cfg := &Config{
+			Ingester: ingester.Config{
+				IndexShards: 32,
+			},
+			SchemaConfig: config.SchemaConfig{
+				Configs: []config.PeriodConfig{
+					{
+						From: config.DayTime{
+							Time: model.Now(),
+						},
+						IndexType:  types.IndexTypeTSDB,
+						ObjectType: types.StorageTypeS3,
+						Schema:     "v11",
+						IndexTables: config.IndexPeriodicTableConfig{
+							PeriodicTableConfig: config.PeriodicTableConfig{
+								Period: 24 * time.Hour,
 							},
 						},
 					},
 				},
 			},
-			err: false,
-		},
-	} {
-		tc.base.RegisterFlags(flag.NewFlagSet(tc.desc, 0))
+		}
+		flagext.DefaultValues(cfg)
 		// This test predates the newer schema required for structured metadata
-		tc.base.LimitsConfig.AllowStructuredMetadata = false
+		cfg.LimitsConfig.AllowStructuredMetadata = false
 		// Several caches will error if not configured, disabled them for this test
-		tc.base.QueryRange.CacheIndexStatsResults = false
-		tc.base.QueryRange.CacheSeriesResults = false
-		tc.base.QueryRange.CacheLabelResults = false
-		tc.base.QueryRange.CacheVolumeResults = false
+		cfg.QueryRange.CacheIndexStatsResults = false
+		cfg.QueryRange.CacheSeriesResults = false
+		cfg.QueryRange.CacheLabelResults = false
+		cfg.QueryRange.CacheVolumeResults = false
 		// Several other validations are required
-		tc.base.CompactorConfig.WorkingDirectory = "tmp"
-		tc.base.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = "tmp"
-		tc.base.StorageConfig.TSDBShipperConfig.CacheLocation = "tmp"
-		err := tc.base.Validate()
-		if tc.err {
-			require.NotNil(t, err)
+		cfg.CompactorConfig.WorkingDirectory = "tmp"
+		cfg.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = "tmp"
+		cfg.StorageConfig.TSDBShipperConfig.CacheLocation = "tmp"
+		if tc.setup != nil {
+			tc.setup(cfg)
+		}
+
+		err := cfg.Validate()
+		if tc.err != "" {
+			require.EqualError(t, err, tc.err, tc.desc)
 		} else {
-			require.Nil(t, err)
+			require.NoError(t, err, tc.desc)
 		}
 	}
 }

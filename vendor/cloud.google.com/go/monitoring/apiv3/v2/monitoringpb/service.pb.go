@@ -2244,9 +2244,9 @@ var File_google_monitoring_v3_service_proto protoreflect.FileDescriptor
 
 const file_google_monitoring_v3_service_proto_rawDesc = "" +
 	"\n" +
-	"\"google/monitoring/v3/service.proto\x12\x14google.monitoring.v3\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a!google/type/calendar_period.proto\"\xa4\x16\n" +
-	"\aService\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12!\n" +
+	"\"google/monitoring/v3/service.proto\x12\x14google.monitoring.v3\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a!google/type/calendar_period.proto\"\xa8\x16\n" +
+	"\aService\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12>\n" +
 	"\x06custom\x18\x06 \x01(\v2$.google.monitoring.v3.Service.CustomH\x00R\x06custom\x12H\n" +
 	"\n" +
@@ -2286,25 +2286,25 @@ const file_google_monitoring_v3_service_proto_rawDesc = "" +
 	"\x11canonical_service\x18\x04 \x01(\tR\x10canonicalService\x1aI\n" +
 	"\bCloudRun\x12!\n" +
 	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12\x1a\n" +
-	"\blocation\x18\x02 \x01(\tR\blocation\x1a\x98\x01\n" +
-	"\fGkeNamespace\x12\"\n" +
+	"\blocation\x18\x02 \x01(\tR\blocation\x1a\x99\x01\n" +
+	"\fGkeNamespace\x12#\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\x03\xe0A\x03R\tprojectId\x12\x1a\n" +
+	"project_id\x18\x01 \x01(\tB\x04\xe2A\x01\x03R\tprojectId\x12\x1a\n" +
 	"\blocation\x18\x02 \x01(\tR\blocation\x12!\n" +
 	"\fcluster_name\x18\x03 \x01(\tR\vclusterName\x12%\n" +
-	"\x0enamespace_name\x18\x04 \x01(\tR\rnamespaceName\x1a\x8d\x02\n" +
-	"\vGkeWorkload\x12\"\n" +
+	"\x0enamespace_name\x18\x04 \x01(\tR\rnamespaceName\x1a\x8e\x02\n" +
+	"\vGkeWorkload\x12#\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\x03\xe0A\x03R\tprojectId\x12\x1a\n" +
+	"project_id\x18\x01 \x01(\tB\x04\xe2A\x01\x03R\tprojectId\x12\x1a\n" +
 	"\blocation\x18\x02 \x01(\tR\blocation\x12!\n" +
 	"\fcluster_name\x18\x03 \x01(\tR\vclusterName\x12%\n" +
 	"\x0enamespace_name\x18\x04 \x01(\tR\rnamespaceName\x129\n" +
 	"\x19top_level_controller_type\x18\x05 \x01(\tR\x16topLevelControllerType\x129\n" +
-	"\x19top_level_controller_name\x18\x06 \x01(\tR\x16topLevelControllerName\x1a\xb9\x01\n" +
+	"\x19top_level_controller_name\x18\x06 \x01(\tR\x16topLevelControllerName\x1a\xba\x01\n" +
 	"\n" +
-	"GkeService\x12\"\n" +
+	"GkeService\x12#\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\x03\xe0A\x03R\tprojectId\x12\x1a\n" +
+	"project_id\x18\x01 \x01(\tB\x04\xe2A\x01\x03R\tprojectId\x12\x1a\n" +
 	"\blocation\x18\x02 \x01(\tR\blocation\x12!\n" +
 	"\fcluster_name\x18\x03 \x01(\tR\vclusterName\x12%\n" +
 	"\x0enamespace_name\x18\x04 \x01(\tR\rnamespaceName\x12!\n" +
@@ -2322,9 +2322,9 @@ const file_google_monitoring_v3_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xa7\x01\xeaA\xa3\x01\n" +
 	"!monitoring.googleapis.com/Service\x12%projects/{project}/services/{service}\x12/organizations/{organization}/services/{service}\x12#folders/{folder}/services/{service}\x12\x01*B\f\n" +
 	"\n" +
-	"identifier\"\x82\a\n" +
-	"\x15ServiceLevelObjective\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12!\n" +
+	"identifier\"\x83\a\n" +
+	"\x15ServiceLevelObjective\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12!\n" +
 	"\fdisplay_name\x18\v \x01(\tR\vdisplayName\x12c\n" +
 	"\x17service_level_indicator\x18\x03 \x01(\v2+.google.monitoring.v3.ServiceLevelIndicatorR\x15serviceLevelIndicator\x12\x12\n" +
 	"\x04goal\x18\x04 \x01(\x01R\x04goal\x12B\n" +

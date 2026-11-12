@@ -15,30 +15,71 @@ import (
 // Options holds configuration for both loading and dumping YAML.
 type Options struct {
 	// Loading options
-	KnownFields    bool // Enforce known fields in structs
-	SingleDocument bool // Only load first document
-	UniqueKeys     bool // Enforce unique keys in mappings
-	StreamNodes    bool // Enable stream node emission
-	AllDocuments   bool // Load/Dump all documents in multi-document streams
+
+	// KnownFields enforces strict field checking when loading into structs.
+	KnownFields bool
+	// SingleDocument controls whether only the first document is loaded from a stream.
+	SingleDocument bool
+	// UniqueKeys enforces that mapping keys are unique when loading.
+	UniqueKeys bool
+	// StreamNodes enables returning stream boundary nodes when loading YAML.
+	StreamNodes bool
+	// AllDocuments enables multi-document mode for [Load] and [Dump] operations.
+	AllDocuments bool
 
 	// Dumping options
-	Indent                int        // Indentation spaces (2-9)
-	CompactSeqIndent      bool       // Whether '- ' counts as indentation
-	LineWidth             int        // Preferred line width (-1 for unlimited)
-	Unicode               bool       // Allow non-ASCII characters
-	Canonical             bool       // Canonical YAML output
-	LineBreak             LineBreak  // Line ending style
-	ExplicitStart         bool       // Always emit ---
-	ExplicitEnd           bool       // Always emit ...
-	FlowSimpleCollections bool       // Use flow style for simple collections
-	QuotePreference       QuoteStyle // Preferred quote style when quoting is required
+	// Indent sets the number of spaces to use for indentation when dumping YAML content (2-9).
+	Indent int
+	// CompactSeqIndent controls whether the sequence indicator '- ' is considered part of the indentation.
+	CompactSeqIndent bool
+	// LineWidth sets the preferred line width for YAML output (-1 for unlimited).
+	LineWidth int
+	// Unicode controls whether non-ASCII characters are allowed in YAML output.
+	Unicode bool
+	// Canonical forces canonical YAML output format (explicit tags for all values).
+	Canonical bool
+	// LineBreak sets the line ending style for YAML output (LN, CR, CRLF).
+	LineBreak LineBreak
+	// ExplicitStart controls whether document start markers (---) are always emitted.
+	ExplicitStart bool
+	// ExplicitEnd controls whether document end markers (...) are always emitted.
+	ExplicitEnd bool
+	// FlowSimpleCollections controls whether simple collections use flow style.
+	FlowSimpleCollections bool
+	// QuotePreference sets the preferred quote style for strings that require quoting.
+	QuotePreference QuoteStyle
 
-	// Safety limit checks (set by ApplyOptions or WithPlugin(limit.New(...)))
+	// Parser supplies complete events in place of native parsing.
+	Parser ParserPlugin
+
+	// MergeKey selects the mapping merge algorithm.
+	MergeKey MergeKeyPlugin
+
+	// AliasData supplies per-stream anchor policy. Nil selects ordinary
+	// document-scoped anchors, rather than disabling aliases.
+	AliasData AliasDataPlugin
+
+	// IndentConfig enables tab-aware structural indentation.
+	IndentConfig *IndentConfig
+
+	// Error formatting (set by WithPlugin with an error-format plugin).
+	FormatLoadError func(*LoadError) string
+	FormatDumpError func(*DumpError) string
+
+	// Loader limit checks (set by ApplyOptions or a loader-limits plugin).
+	// DepthCheck is called to verify the current nesting depth.
 	DepthCheck func(depth int, ctx *DepthContext) error
+	// AliasCheck is called to verify the number of aliases relative to constructs.
 	AliasCheck func(aliasCount, constructCount int) error
 
-	// Private options (not exported, used internally)
-	FromLegacy bool // Indicates legacy Unmarshal()/Decoder path (check Unmarshaler, allow trailing content)
+	// allowLegacyTrailingContent is an unexported flag used internally
+	// to enable the legacy behavior of allowing trailing content after a document.
+	//
+	// [yaml.NewDecoder] and [yaml.Unmarshal] set this flag to true to enable legacy behavior for backward compatibility.
+	//
+	// [NewDecoder]: https://pkg.go.dev/go.yaml.in/yaml/v4#NewDecoder
+	// [Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
+	allowLegacyTrailingContent bool
 }
 
 // Option allows configuring YAML loading and dumping operations.
@@ -47,9 +88,13 @@ type Option func(*Options) error
 // DepthKind represents the type of nesting (flow or block).
 type DepthKind string
 
-// DepthKindFlow and DepthKindBlock are the possible values of DepthContext.Kind.
+// [DepthKind] constants for nesting depth checks.
+//
+// They are the possible values for [DepthContext.Kind] when checking the nesting depth of YAML nodes.
 const (
-	DepthKindFlow  DepthKind = "flow"
+	// DepthKindFlow represents flow-style nesting (inside [] or {}).
+	DepthKindFlow DepthKind = "flow"
+	// DepthKindBlock represents block-style nesting (inside indentation).
 	DepthKindBlock DepthKind = "block"
 )
 
@@ -131,7 +176,7 @@ func WithCompactSeqIndent(compact ...bool) Option {
 //
 // When enabled, loading will return an error if the YAML input contains fields
 // that do not correspond to any fields in the target struct.
-// When called without arguments, defaults to true.
+// Calling WithKnownFields() enables checking; it is disabled by default.
 func WithKnownFields(knownFields ...bool) Option {
 	if len(knownFields) > 1 {
 		return func(o *Options) error {
@@ -151,8 +196,8 @@ func WithKnownFields(knownFields ...bool) Option {
 //
 // When called without arguments, defaults to true.
 //
-// This is useful when you expect exactly one document and want behavior
-// similar to [Unmarshal].
+// This ignores later documents, including their syntax errors.
+// Omit this option with Load to require exactly one document.
 func WithSingleDocument(singleDocument ...bool) Option {
 	if len(singleDocument) > 1 {
 		return func(o *Options) error {
@@ -224,8 +269,9 @@ func WithAllDocuments(all ...bool) Option {
 
 // WithLineWidth sets the preferred line width for YAML output.
 //
-// When encoding long strings, the encoder will attempt to wrap them at this
-// width using literal block style (|). Set to -1 or 0 for unlimited width.
+// The emitter attempts to wrap long scalars without changing their value.
+// Long words may exceed this width.
+// Set to -1 or 0 for unlimited width.
 //
 // The default is 80 characters.
 func WithLineWidth(width int) Option {
@@ -241,7 +287,7 @@ func WithLineWidth(width int) Option {
 // WithUnicode controls whether non-ASCII characters are allowed in YAML output.
 //
 // When true, non-ASCII characters appear as-is (e.g., "café").
-// When false, non-ASCII characters are escaped (e.g., "caf\u00e9").
+// When false, non-ASCII characters are escaped (e.g., "caf\xE9").
 // When called without arguments, defaults to true.
 //
 // The default is true.
@@ -279,11 +325,12 @@ func WithUniqueKeys(uniqueKeys ...bool) Option {
 	}
 }
 
-// WithCanonical forces canonical YAML output format.
+// WithCanonical selects the emitter's canonical YAML layout.
 //
-// When enabled, the encoder outputs strictly canonical YAML with explicit
-// tags for all values. This produces verbose output primarily useful for
-// debugging and YAML spec compliance testing.
+// It emits explicit document starts, flow collections, and quoted scalars.
+// Tags still depend on the node graph and desolver; this option alone does not
+// force an explicit tag on every value.
+// Scalar types may change when reloading canonical output.
 // When called without arguments, defaults to true.
 //
 // The default is false.
@@ -446,4 +493,20 @@ var DefaultOptions = &Options{
 	Unicode:         true,
 	UniqueKeys:      true,
 	QuotePreference: QuoteLegacy,
+
+	// Default safety limits
+	DepthCheck: DefaultDepthCheck,
+	AliasCheck: DefaultAliasCheck,
+}
+
+// SetLegacyAllowTrailingContent sets the internal allowLegacyTrailingContent flag to true.
+//
+// This function is not exported out of the module and is used in [yaml.NewDecoder] and [yaml.Unmarshal]
+// to indicate that the legacy behavior of allowing trailing content
+// after a document should be enabled for backward compatibility.
+//
+// [NewDecoder]: https://pkg.go.dev/go.yaml.in/yaml/v4#NewDecoder
+// [Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
+func SetLegacyAllowTrailingContent(o *Options) {
+	o.allowLegacyTrailingContent = true
 }

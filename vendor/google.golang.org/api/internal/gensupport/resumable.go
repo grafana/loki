@@ -138,6 +138,17 @@ func (rx *ResumableUpload) reportProgress(old, updated int64) {
 	}
 }
 
+// contextCloser wraps an io.ReadCloser and cancels a context when closed.
+type contextCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *contextCloser) Close() error {
+	defer c.cancel()
+	return c.ReadCloser.Close()
+}
+
 // transferChunk performs a single HTTP request to upload a single chunk.
 // It uses a goroutine to perform the upload and a timer to enforce ChunkTransferTimeout.
 func (rx *ResumableUpload) transferChunk(ctx context.Context, chunk io.Reader, off, size int64, done bool) (*http.Response, error) {
@@ -152,6 +163,7 @@ func (rx *ResumableUpload) transferChunk(ctx context.Context, chunk io.Reader, o
 
 	// Start a timer for the ChunkTransferTimeout duration.
 	timer := time.NewTimer(rx.ChunkTransferTimeout)
+	defer timer.Stop()
 
 	// A struct to hold the result from the goroutine.
 	type uploadResult struct {
@@ -166,8 +178,8 @@ func (rx *ResumableUpload) transferChunk(ctx context.Context, chunk io.Reader, o
 	// abort the request if the timer fires first.
 	rCtx, cancel := context.WithCancel(ctx)
 	// NOTE: We do NOT use `defer cancel()` here. The context must remain valid
-	// for the caller to read the response body of a successful request.
-	// Cancellation is handled manually on timeout paths.
+	// for the caller to read the response body of a successful request, and is
+	// cancelled when the response body is closed.
 
 	// Starting the chunk upload in parallel.
 	go func() {
@@ -183,20 +195,28 @@ func (rx *ResumableUpload) transferChunk(ctx context.Context, chunk io.Reader, o
 		// Context is cancelled for the overall upload.
 		cancel()
 		// Drain resultCh.
-		<-resultCh
+		if result := <-resultCh; result.res != nil && result.res.Body != nil {
+			result.res.Body.Close()
+		}
 		return nil, ctx.Err()
 	case <-timer.C:
 		// Chunk Transfer timer fired before resultCh so we return context.DeadlineExceeded.
 		cancel()
 		// Drain resultCh.
-		<-resultCh
+		if result := <-resultCh; result.res != nil && result.res.Body != nil {
+			result.res.Body.Close()
+		}
 		return nil, context.DeadlineExceeded
 	case result := <-resultCh:
 		// Handle the result from the upload.
-		// Cancel our completed context.
-		cancel()
 		if result.err != nil {
+			cancel()
 			return result.res, result.err
+		}
+		if result.res != nil && result.res.Body != nil {
+			result.res.Body = &contextCloser{ReadCloser: result.res.Body, cancel: cancel}
+		} else {
+			cancel()
 		}
 		return result.res, nil
 	}
@@ -281,6 +301,9 @@ func (rx *ResumableUpload) uploadChunkWithRetries(ctx context.Context, chunk io.
 		// We sent "X-GUploader-No-308: yes" (see comment elsewhere in
 		// this file), so we don't expect to get a 308.
 		if status == 308 {
+			if resp.Body != nil {
+				resp.Body.Close()
+			}
 			return nil, errors.New("unexpected 308 response status code")
 		}
 		// Chunk upload should be retried if the ChunkTransferTimeout is non-zero and err is context deadline exceeded

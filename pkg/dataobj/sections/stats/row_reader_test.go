@@ -15,7 +15,7 @@ import (
 func TestRowReader_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -92,7 +92,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 func TestRowReader_CloseIdempotent(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 	b.Append(stats.Stat{
 		ObjectPath:   "/obj1",
 		SectionIndex: 0,

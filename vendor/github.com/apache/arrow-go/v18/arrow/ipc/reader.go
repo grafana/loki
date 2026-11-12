@@ -60,6 +60,10 @@ type Reader struct {
 func NewReaderFromMessageReader(r MessageReader, opts ...Option) (reader *Reader, err error) {
 	defer func() {
 		if pErr := recover(); pErr != nil {
+			if reader != nil {
+				reader.Release()
+				reader = nil
+			}
 			err = utils.FormatRecoveredError("arrow/ipc: unknown error while reading", pErr)
 		}
 	}()
@@ -68,7 +72,7 @@ func NewReaderFromMessageReader(r MessageReader, opts ...Option) (reader *Reader
 		opt(cfg)
 	}
 
-	rr := &Reader{
+	reader = &Reader{
 		r:        r,
 		refCount: atomic.Int64{},
 		// types:    make(dictTypeMap),
@@ -77,21 +81,26 @@ func NewReaderFromMessageReader(r MessageReader, opts ...Option) (reader *Reader
 		ensureNativeEndian: cfg.ensureNativeEndian,
 		expectedSchema:     cfg.schema,
 	}
-	rr.refCount.Add(1)
+	reader.refCount.Add(1)
 
 	if !cfg.noAutoSchema {
-		if err := rr.readSchema(cfg.schema); err != nil {
+		if err := reader.readSchema(cfg.schema); err != nil {
+			reader.Release()
 			return nil, err
 		}
 	}
 
-	return rr, nil
+	return reader, nil
 }
 
 // NewReader returns a reader that reads records from an input stream.
 func NewReader(r io.Reader, opts ...Option) (rr *Reader, err error) {
 	defer func() {
 		if pErr := recover(); pErr != nil {
+			if rr != nil {
+				rr.Release()
+				rr = nil
+			}
 			err = utils.FormatRecoveredError("arrow/ipc: unknown error while reading", pErr)
 		}
 	}()
@@ -111,6 +120,7 @@ func NewReader(r io.Reader, opts ...Option) (rr *Reader, err error) {
 
 	if !cfg.noAutoSchema {
 		if err := rr.readSchema(cfg.schema); err != nil {
+			rr.Release()
 			return nil, err
 		}
 	}
@@ -224,6 +234,7 @@ func (r *Reader) getInitialDicts() bool {
 
 		if msg.Type() != MessageDictionaryBatch {
 			r.err = fmt.Errorf("arrow/ipc: IPC stream did not have the expected (%d) dictionaries at the start of the stream", numDicts)
+			return false
 		}
 		if _, err := readDictionary(&r.memo, msg.meta, msg.body, r.swapEndianness, r.mem); err != nil {
 			r.done = true
@@ -241,6 +252,9 @@ func (r *Reader) next() bool {
 			r.err = utils.FormatRecoveredError("arrow/ipc: unknown error while reading", pErr)
 		}
 	}()
+	if r.err != nil || r.done {
+		return false
+	}
 	if r.schema == nil {
 		if err := r.readSchema(r.expectedSchema); err != nil {
 			r.err = fmt.Errorf("arrow/ipc: could not read schema from stream: %w", err)

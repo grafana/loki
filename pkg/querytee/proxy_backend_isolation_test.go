@@ -50,9 +50,9 @@ func TestProxyBackend_ContextIsolation(t *testing.T) {
 	u2, err := url.Parse(server2.URL)
 	require.NoError(t, err)
 
-	backend1, err := NewProxyBackend("backend1", u1, 5*time.Second, true)
+	backend1, err := NewProxyBackend("backend1", u1, 5*time.Second, RolePrimary)
 	require.NoError(t, err)
-	backend2, err := NewProxyBackend("backend2", u2, 5*time.Second, false)
+	backend2, err := NewProxyBackend("backend2", u2, 5*time.Second, RoleSecondary)
 	require.NoError(t, err)
 
 	// Create a parent context that we'll use for both requests

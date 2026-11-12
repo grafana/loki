@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func TestBinary_Filter(t *testing.T) {
@@ -224,31 +224,31 @@ func TestErrorFiltering(t *testing.T) {
 		wantLbs labels.Labels
 	}{
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlerr.ErrorLabel, errJSON)),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
 			errJSON,
 			false,
-			labels.FromStrings(logqlmodel.ErrorLabel, errJSON,
+			labels.FromStrings(logqlerr.ErrorLabel, errJSON,
 				"status", "200",
 				"method", "POST",
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlerr.ErrorLabel, ".+")),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
 			"foo",
 			false,
-			labels.FromStrings(logqlmodel.ErrorLabel, "foo",
+			labels.FromStrings(logqlerr.ErrorLabel, "foo",
 				"status", "200",
 				"method", "POST",
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlerr.ErrorLabel, ".+")),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
@@ -259,7 +259,7 @@ func TestErrorFiltering(t *testing.T) {
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlerr.ErrorLabel, errJSON)),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
@@ -274,7 +274,7 @@ func TestErrorFiltering(t *testing.T) {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
-			b.SetErr(tt.err)
+			b.SetErr(tt.err, nil)
 			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
@@ -518,6 +518,40 @@ func TestLineFilterLabelFilter_String(t *testing.T) {
 			}
 			if got := s.String(); got != tt.want {
 				t.Errorf("LineFilterLabelFilter.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewStringLabelFilter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		matcher *labels.Matcher
+		want    LabelFilterer
+	}{
+		{
+			name:    `an always-true comparison on __error__ stays a filter, so it still reports the label it reads`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorLabel, ".*"),
+			want:    &LineFilterLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorLabel, ".*"), Filter: TrueFilter},
+		},
+		{
+			name:    `an always-true comparison on __error_details__ stays a filter`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorDetailsLabel, ".*"),
+			want:    &LineFilterLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorDetailsLabel, ".*"), Filter: TrueFilter},
+		},
+		{
+			name:    `an always-true comparison on any other label reduces to a no-op`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, "pod", ".*"),
+			want:    &NoopLabelFilter{labels.MustNewMatcher(labels.MatchRegexp, "pod", ".*")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NewStringLabelFilter(tc.matcher)
+			require.IsType(t, tc.want, got)
+			require.Equal(t, tc.matcher.String(), got.String())
+			require.Equal(t, tc.want.RequiredLabelNames(), got.RequiredLabelNames())
+			if want, ok := tc.want.(*LineFilterLabelFilter); ok {
+				require.Equal(t, want.Filter, got.(*LineFilterLabelFilter).Filter)
 			}
 		})
 	}

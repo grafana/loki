@@ -111,7 +111,8 @@ type metrics struct {
 	pagesPrunedTotal     prometheus.Counter
 	bytesDownloadedTotal prometheus.Counter
 
-	// Per-operator-type cost; operator_type is bounded (operator/parser names).
+	// Per-operator-type cost. operator_type is a node type name or nodeSource,
+	// so it is bounded.
 	operatorSelfSeconds  *prometheus.HistogramVec
 	operatorRowsInTotal  *prometheus.CounterVec
 	operatorRowsOutTotal *prometheus.CounterVec

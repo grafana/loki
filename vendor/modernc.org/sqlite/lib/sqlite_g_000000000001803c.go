@@ -14,8 +14,6 @@ const FP_SUBNORMAL = 8
 
 const FP_ZERO = 16
 
-const IOC_DIRMASK = 3758096384
-
 const O_DIRECTORY = 131072
 
 const RTLD_TRACE = 512
@@ -32,8 +30,6 @@ const _POSIX_SEMAPHORES = 200112
 
 const _POSIX_TIMEOUTS = 200112
 
-const _POSIX_VDISABLE = 255
-
 const _XOPEN_ENH_I18N = -1
 
 const _XOPEN_UNIX = -1
@@ -41,8 +37,6 @@ const _XOPEN_UNIX = -1
 const __BOOL_WIDTH__ = 8
 
 const __BSD_VISIBLE = 1
-
-const __DBL_MIN__ = 0
 
 const __POSIX_VISIBLE = 202405
 
@@ -52,7 +46,10 @@ const __clang_minor__ = 1
 
 const __clang_patchlevel__ = 7
 
-type dl_info = Tdl_info
+type float_t = Tfloat_t
+
+/* Work around a bug in older Microsoft compilers
+** Forum post 2026-04-10T06:33:11z */
 
 type t__blkcnt_t = int64
 

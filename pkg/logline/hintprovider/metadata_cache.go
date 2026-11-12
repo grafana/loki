@@ -10,7 +10,7 @@ import (
 )
 
 // estimate of the maximum number of index files we expect in a cell
-const defaultMetadataCacheEntries = 5000
+const defaultMetadataCacheEntries = 1000
 
 type cachedMetadata struct {
 	headerInfo format.HeaderInfo // for size estimation and tracking reader

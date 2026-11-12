@@ -90,9 +90,6 @@ func (m *eventLogMessageStage) Run(in chan Entry) chan Entry {
 func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, key string) error {
 	value, ok := extracted[key]
 	if !ok {
-		if Debug {
-			level.Debug(m.logger).Log("msg", "source not in the extracted values", "source", key)
-		}
 		return nil
 	}
 	s, err := getString(value)
@@ -110,9 +107,6 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 		mkey := parts[0]
 		if !model.LegacyValidation.IsValidLabelName(mkey) {
 			if m.cfg.DropInvalidLabels {
-				if Debug {
-					level.Debug(m.logger).Log("msg", "invalid label parsed from message", "key", mkey)
-				}
 				continue
 			}
 			mkey = SanitizeFullLabelName(mkey)
@@ -124,16 +118,9 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 		}
 		mval := strings.TrimSpace(parts[1])
 		if !model.LabelValue(mval).IsValid() {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "invalid value parsed from message", "value", mval)
-			}
 			continue
 		}
 		extracted[mkey] = mval
-	}
-	if Debug {
-		level.Debug(m.logger).Log("msg", "extracted data debug in event_log_message stage",
-			"extracted data", fmt.Sprintf("%v", extracted))
 	}
 	return nil
 }

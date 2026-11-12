@@ -132,13 +132,14 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
 				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				policyStreams:    newPolicyStreamCounts(),
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
-			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, false)
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
 			actual := streamCountLimiter.AssertNewStreamAllowed("test", noPolicy)
 
 			assert.Equal(t, testData.expected, actual)
@@ -147,10 +148,17 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 }
 
 func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{
+	defaults := validation.Limits{
 		MaxLocalStreamsPerUser:  100,
 		MaxGlobalStreamsPerUser: 1000,
-	}, nil)
+		DelegateStreamLimits:    true,
+	}
+	enforcingTenantLimits := defaults
+	enforcingTenantLimits.DelegateStreamLimits = false
+	tenantLimits := fakeLimits{limits: map[string]*validation.Limits{
+		"enforcing-tenant": &enforcingTenantLimits,
+	}}
+	limits, err := validation.NewOverrides(defaults, tenantLimits)
 	require.NoError(t, err)
 
 	strategy := &fixedStrategy{localLimit: 100}
@@ -161,12 +169,14 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 	ownedStreamSvc := &ownedStreamService{
 		fixedLimit:       atomic.NewInt32(0),
 		ownedStreamCount: atomic.NewInt64(0),
+		policyStreams:    newPolicyStreamCounts(),
 	}
 
-	scl := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc, true)
-	err = scl.AssertNewStreamAllowed("test", noPolicy)
+	scl := newStreamCountLimiter("delegating-tenant", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
+	require.NoError(t, scl.AssertNewStreamAllowed("delegating-tenant", noPolicy), "stream count limit should be skipped when delegate_stream_limits_enabled is set")
 
-	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")
+	scl = newStreamCountLimiter("enforcing-tenant", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
+	require.Error(t, scl.AssertNewStreamAllowed("enforcing-tenant", noPolicy), "stream count limit should be enforced when the tenant overrides delegate_stream_limits_enabled to false")
 }
 
 func TestTenantBasedStrategy_PolicyRateLimit(t *testing.T) {
@@ -560,3 +570,30 @@ func (m *mockRingStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) 
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestLimiter_PolicyBucket(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxLocalStreamsPerUser: 10,
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			"local":     {MaxLocalStreamsPerUser: ptr(5)},
+			"global":    {MaxGlobalStreamsPerUser: ptr(50)},
+			"inherit":   {InheritLimits: true},
+			"rate-only": {PerStreamRateLimit: ptr(flagext.ByteSize(1024))},
+		},
+	}, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &fixedStrategy{}, &TenantBasedStrategy{limits: limits})
+
+	for policy, expected := range map[string]string{
+		noPolicy:    noPolicy,
+		"local":     "local",
+		"global":    "global",
+		"inherit":   "inherit",
+		"rate-only": noPolicy, // overrides no stream limit, so it shares the default bucket
+		"unknown":   noPolicy,
+	} {
+		t.Run(policy, func(t *testing.T) {
+			require.Equal(t, expected, limiter.policyBucket("tenant", policy))
+		})
+	}
+}

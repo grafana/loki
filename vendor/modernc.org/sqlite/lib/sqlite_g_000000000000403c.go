@@ -18,6 +18,12 @@ const EIDRM = 82
 
 const ENOMSG = 83
 
+const FIOSEEKDATA = 3221775969
+
+const FIOSEEKHOLE = 3221775970
+
+const MAP_ALIGNMENT_MASK = -16777216
+
 const MAP_ALIGNMENT_SHIFT = 24
 
 const RTLD_NOLOAD = 8192
@@ -52,4 +58,4 @@ type lwpid_t = Tlwpid_t
 
 type mqd_t = Tmqd_t
 
-const st_birthtimespec = 0
+const st_birthtimespec = "st_birthtim"

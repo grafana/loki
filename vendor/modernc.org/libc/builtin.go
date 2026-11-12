@@ -325,6 +325,11 @@ func X__builtin___vsnprintf_chk(t *TLS, str uintptr, maxlen Tsize_t, flag int32,
 	return Xsnprintf(t, str, maxlen, format, args)
 }
 
+// int __builtin___vsprintf_chk(char *s, int flag, size_t os, const char *format, va_list ap);
+func X__builtin___vsprintf_chk(t *TLS, s uintptr, flag int32, os Tsize_t, format, args uintptr) (r int32) {
+	return Xvsprintf(t, s, format, args)
+}
+
 func Xisnan(t *TLS, x float64) int32 {
 	return X__builtin_isnan(t, x)
 }

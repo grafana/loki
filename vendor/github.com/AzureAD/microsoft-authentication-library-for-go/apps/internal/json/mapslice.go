@@ -11,7 +11,7 @@ import (
 
 // unmarshalMap unmarshal's a map.
 func unmarshalMap(dec *json.Decoder, m reflect.Value) error {
-	if m.Kind() != reflect.Ptr || m.Elem().Kind() != reflect.Map {
+	if m.Kind() != reflect.Pointer || m.Elem().Kind() != reflect.Map {
 		panic("unmarshalMap called on non-*map value")
 	}
 	mapValueType := m.Elem().Type().Elem()
@@ -72,7 +72,7 @@ func (m *mapWalk) start() (stateFn, error) {
 			return nil, fmt.Errorf("Unmarshal expected opening {, received %v", delim)
 		}
 		return m.next, nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return nil, fmt.Errorf("do not support maps with values of '**type' or '*reference")
 	}
 
@@ -105,7 +105,7 @@ func (m *mapWalk) storeValue() (stateFn, error) {
 	v := m.valueType
 	for {
 		switch v.Kind() {
-		case reflect.Ptr:
+		case reflect.Pointer:
 			v = v.Elem()
 			continue
 		case reflect.Struct:
@@ -125,7 +125,7 @@ func (m *mapWalk) storeStruct() (stateFn, error) {
 		return nil, err
 	}
 
-	if m.valueType.Kind() == reflect.Ptr {
+	if m.valueType.Kind() == reflect.Pointer {
 		m.m.Elem().SetMapIndex(reflect.ValueOf(m.key), v)
 		return m.next, nil
 	}
@@ -163,7 +163,7 @@ func (m *mapWalk) storeSlice() (stateFn, error) {
 func (m *mapWalk) valueBaseType() (reflect.Type, bool) {
 	ptr := false
 	v := m.valueType
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		ptr = true
 		v = v.Elem()
 	}
@@ -174,7 +174,7 @@ func (m *mapWalk) valueBaseType() (reflect.Type, bool) {
 // ptrSlice, which must be a pointer to a slice. newValue() can be use to
 // create the slice.
 func unmarshalSlice(dec *json.Decoder, ptrSlice reflect.Value) error {
-	if ptrSlice.Kind() != reflect.Ptr || ptrSlice.Elem().Kind() != reflect.Slice {
+	if ptrSlice.Kind() != reflect.Pointer || ptrSlice.Elem().Kind() != reflect.Slice {
 		panic("unmarshalSlice called on non-*[]slice value")
 	}
 	sliceValueType := ptrSlice.Elem().Type().Elem()
@@ -227,7 +227,7 @@ func (s *sliceWalk) start() (stateFn, error) {
 	t := s.valueBaseType()
 
 	switch t.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return nil, fmt.Errorf("cannot unmarshal into a **<type> or *<reference>")
 	case reflect.Struct, reflect.Map, reflect.Slice:
 		delim, err := s.dec.Token()
@@ -262,7 +262,7 @@ func (s *sliceWalk) next() (stateFn, error) {
 func (s *sliceWalk) storeValue() (stateFn, error) {
 	t := s.valueBaseType()
 	switch t.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return nil, fmt.Errorf("do not support 'pointer to pointer' or 'pointer to reference' types")
 	case reflect.Struct:
 		return s.storeStruct, nil
@@ -280,7 +280,7 @@ func (s *sliceWalk) storeStruct() (stateFn, error) {
 		return nil, err
 	}
 
-	if s.valueType.Kind() == reflect.Ptr {
+	if s.valueType.Kind() == reflect.Pointer {
 		s.s.Elem().Set(reflect.Append(s.s.Elem(), v))
 		return s.next, nil
 	}
@@ -318,7 +318,7 @@ func (s *sliceWalk) storeSlice() (stateFn, error) {
 // struct, etc...
 func (s *sliceWalk) valueBaseType() reflect.Type {
 	v := s.valueType
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	return v
@@ -326,7 +326,7 @@ func (s *sliceWalk) valueBaseType() reflect.Type {
 
 // newValue() returns a new *type that represents type passed.
 func newValue(valueType reflect.Type) reflect.Value {
-	if valueType.Kind() == reflect.Ptr {
+	if valueType.Kind() == reflect.Pointer {
 		return reflect.New(valueType.Elem())
 	}
 	return reflect.New(valueType)

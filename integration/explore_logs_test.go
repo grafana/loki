@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type DetectedField struct {
@@ -30,7 +32,7 @@ type DetectedFieldResponse struct {
 
 func Test_ExploreLogsApis(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

@@ -45,7 +45,7 @@ func Marshal(i interface{}) ([]byte, error) {
 	enc.SetIndent("", "")
 
 	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr && v.CanAddr() {
+	if v.Kind() != reflect.Pointer && v.CanAddr() {
 		v = v.Addr()
 	}
 	err := marshalStruct(v, &buff, enc)
@@ -124,7 +124,7 @@ func hasMarshalJSON(v reflect.Value) bool {
 	ok := false
 	if _, ok = v.Interface().(json.Marshaler); !ok {
 		var i any
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			i = v.Elem().Interface()
 		} else if v.CanAddr() {
 			i = v.Addr().Interface()
@@ -141,7 +141,7 @@ func callMarshalJSON(v reflect.Value) ([]byte, error) {
 		return marsh.MarshalJSON()
 	}
 
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if marsh, ok := v.Elem().Interface().(json.Marshaler); ok {
 			return marsh.MarshalJSON()
 		}
@@ -160,7 +160,7 @@ func callMarshalJSON(v reflect.Value) ([]byte, error) {
 // the UnmarshalJSON method.
 func hasUnmarshalJSON(v reflect.Value) bool {
 	// You can't unmarshal on a non-pointer type.
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		if !v.CanAddr() {
 			return false
 		}

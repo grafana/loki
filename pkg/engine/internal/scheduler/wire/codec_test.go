@@ -16,8 +16,50 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
+
+func TestProtobufCodec_TaskStreams(t *testing.T) {
+	t.Run("task sources and sinks keep their nodes after a round trip", func(t *testing.T) {
+		var graph dag.Graph[physical.Node]
+		filter := graph.Add(&physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant"})
+		merge := graph.Add(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant"})
+		require.NoError(t, graph.AddEdge(dag.Edge[physical.Node]{Parent: filter, Child: merge}))
+
+		sourceStream := &workflow.Stream{ULID: ulid.Make()}
+		sinkStream := &workflow.Stream{ULID: ulid.Make()}
+		task := &workflow.Task{
+			ULID:     ulid.Make(),
+			TenantID: "tenant",
+			Fragment: physical.FromGraph(graph),
+			Sources:  map[physical.Node][]*workflow.Stream{merge: {sourceStream}},
+			Sinks:    map[physical.Node][]*workflow.Stream{filter: {sinkStream}},
+		}
+
+		mc := &metricCodec{protobufCodec: DefaultFrameCodec}
+		pbTask, err := mc.taskToPbTask(task)
+		require.NoError(t, err)
+		actual, err := mc.taskFromPbTask(pbTask)
+		require.NoError(t, err)
+
+		streamsByNode := func(streams map[physical.Node][]*workflow.Stream) map[ulid.ULID][]ulid.ULID {
+			out := make(map[ulid.ULID][]ulid.ULID, len(streams))
+			for node, nodeStreams := range streams {
+				for _, s := range nodeStreams {
+					out[node.ID()] = append(out[node.ID()], s.ULID)
+				}
+			}
+			return out
+		}
+		require.Equal(t, map[ulid.ULID][]ulid.ULID{merge.ID(): {sourceStream.ULID}}, streamsByNode(actual.Sources))
+		require.Equal(t, map[ulid.ULID][]ulid.ULID{filter.ID(): {sinkStream.ULID}}, streamsByNode(actual.Sinks))
+
+		root, err := actual.Fragment.Root()
+		require.NoError(t, err)
+		require.Equal(t, filter.ID(), root.ID())
+	})
+}
 
 func TestProtobufCodec_Frames(t *testing.T) {
 	tests := map[string]struct {

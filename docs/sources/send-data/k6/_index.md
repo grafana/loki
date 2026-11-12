@@ -84,12 +84,16 @@ The `Client` class exposes the following instance methods:
 | method | description |
 | ------ | ----------- |
 | `push()` | shortcut for `pushParameterized(5, 800*1024, 1024*1024)` |
-| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) |
-| `instantQuery(query, limit)` | execute instant query  ([GET /loki/api/v1/query](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-logs-at-a-single-point-in-time) |
-| `client.rangeQuery(query, duration, limit)` | execute range query  ([GET /loki/api/v1/query_range](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-logs-within-a-range-of-time) |
-| `client.labelsQuery(duration)` | execute labels query  ([GET /loki/api/v1/labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-labels) |
-| `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-label-values) |
-| `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-streams) |
+| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs)) |
+| `instantQuery(query, limit)` | execute instant query ([GET /loki/api/v1/query](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-logs-at-a-single-point-in-time)) |
+| `rangeQuery(query, duration, limit)` | execute range query ([GET /loki/api/v1/query_range](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-logs-within-a-range-of-time)) |
+| `labelsQuery(duration)` | execute labels query ([GET /loki/api/v1/labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-labels)) |
+| `labelValuesQuery(label, duration)` | execute label values query ([GET /loki/api/v1/label/\<name\>/values](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-label-values)) |
+| `seriesQuery(matchers, duration)` | execute series query ([GET /loki/api/v1/series](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-streams)) |
+
+Each query method also has an `...At(..., instant)` variant, for example `instantQueryAt(query, limit, instant)`
+and `rangeQueryAt(query, duration, limit, instant)`. These variants accept an explicit Unix timestamp
+instead of using the current time, which is useful when a test needs to query a fixed point in time.
 
 **JavaScript load test example:**
 
@@ -97,8 +101,8 @@ The `Client` class exposes the following instance methods:
 import loki from 'k6/x/loki';
 
 const timeout = 5000; // ms
-const conf = loki.Config("http://localhost:3100", timeout);
-const client = loki.Client(conf);
+const conf = new loki.Config("http://localhost:3100", timeout);
+const client = new loki.Client(conf);
 
 export default () => {
    client.pushParameterized(2, 512*1024, 1024*1024);

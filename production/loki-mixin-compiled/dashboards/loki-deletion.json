@@ -473,6 +473,12 @@
                   "span": 4,
                   "targets": [
                      {
+                        "expr": "loki_tsdb_shipper_compact_tables_operation_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
+                        "format": "time_series",
+                        "legendFormat": "{{pod}}",
+                        "legendLink": null
+                     },
+                     {
                         "expr": "loki_boltdb_shipper_compact_tables_operation_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",

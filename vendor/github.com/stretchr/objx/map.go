@@ -4,22 +4,22 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 )
 
 // MSIConvertable is an interface that defines methods for converting your
-// custom types to a map[string]interface{} representation.
+// custom types to a map[string]any representation.
 type MSIConvertable interface {
-	// MSI gets a map[string]interface{} (msi) representing the
+	// MSI gets a map[string]any (msi) representing the
 	// object.
-	MSI() map[string]interface{}
+	MSI() map[string]any
 }
 
 // Map provides extended functionality for working with
 // untyped data, in particular map[string]interface (msi).
-type Map map[string]interface{}
+type Map map[string]any
 
 // Value returns the internal value instance
 func (m Map) Value() *Value {
@@ -29,21 +29,21 @@ func (m Map) Value() *Value {
 // Nil represents a nil Map.
 var Nil = New(nil)
 
-// New creates a new Map containing the map[string]interface{} in the data argument.
+// New creates a new Map containing the map[string]any in the data argument.
 // If the data argument is not a map[string]interface, New attempts to call the
 // MSI() method on the MSIConvertable interface to create one.
-func New(data interface{}) Map {
-	if _, ok := data.(map[string]interface{}); !ok {
+func New(data any) Map {
+	if _, ok := data.(map[string]any); !ok {
 		if converter, ok := data.(MSIConvertable); ok {
 			data = converter.MSI()
 		} else {
 			return nil
 		}
 	}
-	return Map(data.(map[string]interface{}))
+	return Map(data.(map[string]any))
 }
 
-// MSI creates a map[string]interface{} and puts it inside a new Map.
+// MSI creates a map[string]any and puts it inside a new Map.
 //
 // The arguments follow a key, value pattern.
 //
@@ -57,7 +57,7 @@ func New(data interface{}) Map {
 //
 //	// creates an Map equivalent to
 //	m := objx.Map{"name": "Mat", "age": 29, "subobj": objx.Map{"active": true}}
-func MSI(keyAndValuePairs ...interface{}) Map {
+func MSI(keyAndValuePairs ...any) Map {
 	newMap := Map{}
 	keyAndValuePairsLen := len(keyAndValuePairs)
 	if keyAndValuePairsLen%2 != 0 {
@@ -135,7 +135,7 @@ func FromJSONSlice(jsonString string) ([]Map, error) {
 // The string is an encoded JSON string returned by Base64
 func FromBase64(base64String string) (Map, error) {
 	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(base64String))
-	decoded, err := ioutil.ReadAll(decoder)
+	decoded, err := io.ReadAll(decoder)
 	if err != nil {
 		return nil, err
 	}

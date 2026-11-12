@@ -8,13 +8,15 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // sectionType identifies stats sections in a data object (unexported, matching existing convention).
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "stats",
+	Namespace: format.SectionNamespace,
+	Kind:      format.StatsSectionKind,
 	Version:   columnar.FormatVersion,
 }
 
@@ -103,8 +105,9 @@ type Stat struct {
 	UncompressedSize int64
 }
 
-// SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
-type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
+// SectionEncoder encodes a batch of sorted Stat rows of layout into a columnar
+// encoder, and records layout in the section metadata.
+type SectionEncoder func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error
 
 // schemaLabelNames parses a comma-separated fully-qualified sort schema
 // ("label:svc,label:cluster") into its bare label names ("svc", "cluster").

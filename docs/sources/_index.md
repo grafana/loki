@@ -45,6 +45,8 @@ cards:
 Unlike other logging systems, Loki is built around the idea of only indexing metadata about your logs' labels (just like Prometheus labels).
 Log data itself is then compressed and stored in chunks in object stores such as Amazon Simple Storage Service (S3) or Google Cloud Storage (GCS), or even locally on the filesystem.
 
+{{< docs/play title="Logs Drilldown" url="https://play.grafana.org/a/grafana-lokiexplore-app/explore" >}}
+
 ## Explore
 
 {{< card-grid key="cards" type="simple" >}}
@@ -289,4 +291,4 @@ limits_config:
   retention_period: 360h
 ```
 
-To verify the Compactor is running and retention is active, check the Loki logs for lines referencing `compactor` and look for the metrics `loki_boltdb_shipper_compact_tables_operation_total` (compaction runs) and `loki_compactor_apply_retention_operation_total` (retention runs).
+To verify the Compactor is running and retention is active, check the Loki logs for lines referencing `compactor` and look for the metrics `loki_tsdb_shipper_compact_tables_operation_total` (compaction runs) and `loki_compactor_apply_retention_operation_total` (retention runs).

@@ -109,8 +109,8 @@ func (r *Reader) Columns() []*Column { return r.opts.Columns }
 // (via [Reader.Reset]) so it is valid before [Reader.Open] is called.
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
 
-// Reset reuses the Reader with new options. Schema is rebuilt here, matching
-// streams.Reader so Schema() is valid before Open.
+// Reset reuses the Reader with new options. Reset rebuilds Schema so that
+// Schema() is valid before Open.
 func (r *Reader) Reset(opts ReaderOptions) {
 	if r.alloc == nil {
 		r.alloc = memoryv2.NewAllocator(nil)
@@ -203,7 +203,7 @@ func (r *Reader) init(ctx context.Context) error {
 
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           dset.Columns(),
+		ProjectedColumns:  dset.Columns(),
 		Predicates:        preds,
 		PrefetchAllOnOpen: true,
 		StatsTracker:      r.opts.StatsTracker,

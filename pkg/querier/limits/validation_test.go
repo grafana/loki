@@ -102,6 +102,12 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 			expectedError: nil,
 		},
 		{
+			desc:          "time shard query with no source, no error",
+			req:           makeReqAndAST(`{foo="bar", __time_shard__="1700000000_1700003600"}`),
+			queryTags:     "",
+			expectedError: nil,
+		},
+		{
 			desc:          "aggregated metric query from explore, no error",
 			req:           makeReqAndAST(`{__aggregated_metric__="service-name"}`),
 			queryTags:     "source=" + constants.LogsDrilldownAppName,

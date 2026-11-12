@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -31,6 +32,8 @@ type dynamicDelay struct {
 	minDelay       time.Duration
 	maxDelay       time.Duration
 	value          time.Duration
+	baseline       time.Duration
+	warmedUp       bool
 
 	// Guards the value
 	mu *sync.RWMutex
@@ -234,4 +237,145 @@ func (b *bucketDelayManager) update(bucketName string, latency time.Duration) {
 // getValue returns the desired delay to wait before retrying the operation for the given bucket.
 func (b *bucketDelayManager) getValue(bucketName string) time.Duration {
 	return b.getDelay(bucketName).getValue()
+}
+
+// executeWithReadStallTimeout executes openStream with dynamic delay stall retry tracking.
+func executeWithReadStallTimeout(
+	ctx context.Context,
+	dm *bucketDelayManager,
+	bucket string,
+	openStream func(ctx context.Context) error,
+	onStall func(stallTimeout time.Duration),
+) error {
+	if dm == nil {
+		return openStream(ctx)
+	}
+
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if cancel != nil {
+			cancel()
+		}
+	}()
+	var (
+		innerErr error
+		done     = make(chan struct{}, 1)
+	)
+
+	go func() {
+		reqStartTime := time.Now()
+		innerErr = openStream(cancelCtx)
+		if innerErr == nil {
+			reqLatency := time.Since(reqStartTime)
+			dm.update(bucket, reqLatency)
+		} else if ctx.Err() == nil && cancelCtx.Err() != nil {
+			dm.increase(bucket)
+		}
+		done <- struct{}{}
+	}()
+
+	stallTimeout := dm.getValue(bucket)
+	timer := time.NewTimer(stallTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		// If openStream completed at the same time the timer fired, select may
+		// pick either case. Prefer the real result over reporting a stall.
+		select {
+		case <-done:
+		default:
+			cancel()
+			<-done
+			if onStall != nil {
+				onStall(stallTimeout)
+			}
+			return context.DeadlineExceeded
+		}
+	case <-done:
+	}
+	if innerErr == nil {
+		// Keep the stream context alive for the caller; it is released when
+		// the parent context is cancelled.
+		cancel = nil
+	}
+	return innerErr
+}
+
+const (
+	defaultWriteChunkDelayTargetPercentile = 0.99
+	defaultWriteChunkDelayIncreaseRate     = 10.0
+	writeChunkEWMAAlpha                    = 0.2
+	writeChunkTriggerMultiple              = 2.0
+	baseWriteChunkMinDelay                 = 50 * time.Millisecond
+	perMiBWriteChunkMinDelay               = 10 * time.Millisecond
+)
+
+func newWriteChunkDelay(chunkSize int, chunkTransferTimeout time.Duration) *dynamicDelay {
+	if chunkTransferTimeout <= 0 {
+		return nil
+	}
+	chunkMiB := float64(chunkSize) / float64(1024*1024)
+	minDelay := baseWriteChunkMinDelay + time.Duration(chunkMiB*float64(perMiBWriteChunkMinDelay))
+	if halfTimeout := chunkTransferTimeout / 2; minDelay > halfTimeout {
+		minDelay = halfTimeout
+	}
+	if minDelay <= 0 {
+		minDelay = time.Millisecond
+	}
+	maxDelay := chunkTransferTimeout
+	if maxDelay <= minDelay {
+		maxDelay = minDelay + time.Millisecond
+	}
+	return newDynamicDelay(
+		defaultWriteChunkDelayTargetPercentile,
+		defaultWriteChunkDelayIncreaseRate,
+		minDelay,
+		minDelay,
+		maxDelay,
+	)
+}
+
+// resetWarmUp marks the current stream as warming up so the next sample
+// updates the baseline without triggering rotation in exceeds or recordLatency.
+// Safe to call on a nil receiver.
+func (d *dynamicDelay) resetWarmUp() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.warmedUp = false
+}
+
+// recordLatency updates d with latency using an EWMA baseline and reports
+// whether latency exceeded the threshold before the update. The first sample
+// after construction or resetWarmUp updates the baseline without triggering
+// rotation. Safe to call on a nil receiver.
+func (d *dynamicDelay) recordLatency(latency time.Duration) bool {
+	if d == nil {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	exceeded := d.warmedUp && latency > d.value
+	if d.baseline == 0 {
+		d.baseline = latency
+	} else {
+		d.baseline = time.Duration(writeChunkEWMAAlpha*float64(latency) + (1-writeChunkEWMAAlpha)*float64(d.baseline))
+	}
+	d.value = min(max(time.Duration(writeChunkTriggerMultiple*float64(d.baseline)), d.minDelay), d.maxDelay)
+	d.warmedUp = true
+	return exceeded
+}
+
+// exceeds reports whether latency is strictly greater than d's current
+// threshold after warm-up. Safe to call on a nil receiver.
+func (d *dynamicDelay) exceeds(latency time.Duration) bool {
+	if d == nil {
+		return false
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.warmedUp && latency > d.value
 }

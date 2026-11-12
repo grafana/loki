@@ -83,6 +83,7 @@ type profile struct {
 	SourceProfile          string `json:"source_profile"`
 	RoleName               string `json:"ram_role_name"`
 	OIDCTokenFile          string `json:"oidc_token_file"`
+	OIDCToken              string `json:"oidc_token"`
 	OIDCProviderARN        string `json:"oidc_provider_arn"`
 	Policy                 string `json:"policy"`
 	ExternalId             string `json:"external_id"`
@@ -190,6 +191,7 @@ func (provider *CLIProfileCredentialsProvider) getCredentialsProvider(conf *conf
 		credentialsProvider, err = NewECSRAMRoleCredentialsProviderBuilder().WithRoleName(p.RoleName).Build()
 	case "OIDC":
 		credentialsProvider, err = NewOIDCCredentialsProviderBuilder().
+			WithOIDCToken(p.OIDCToken).
 			WithOIDCTokenFilePath(p.OIDCTokenFile).
 			WithOIDCProviderARN(p.OIDCProviderARN).
 			WithRoleArn(p.RoleArn).

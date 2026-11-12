@@ -15,14 +15,14 @@ var NoLimits = &fakeLimits{
 
 // Limits allow the engine to fetch limits for a given users.
 type Limits interface {
-	MaxQuerySeries(context.Context, string) int
+	MaxQuerySeries(userID string) int
 	MaxQueryRange(ctx context.Context, userID string) time.Duration
 	QueryTimeout(context.Context, string) time.Duration
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
 
-	// v2 engine limits
-	DebugEngineTasks(string) bool
-	DebugEngineStreams(string) bool
+	// StreamFirstExecutionEnabled reports whether eligible metric queries of the tenant run in
+	// stream-first sample order.
+	StreamFirstExecutionEnabled(userID string) bool
 }
 
 type fakeLimits struct {
@@ -31,13 +31,9 @@ type fakeLimits struct {
 	blockedQueries []*validation.BlockedQuery
 	rangeLimit     time.Duration
 	requiredLabels []string
-
-	// v2 engine limits
-	debugEngineTasks   bool
-	debugEngineStreams bool
 }
 
-func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
+func (f fakeLimits) MaxQuerySeries(_ string) int {
 	return f.maxSeries
 }
 
@@ -57,10 +53,6 @@ func (f fakeLimits) RequiredLabels(_ context.Context, _ string) []string {
 	return f.requiredLabels
 }
 
-func (f fakeLimits) DebugEngineTasks(_ string) bool {
-	return f.debugEngineTasks
-}
-
-func (f fakeLimits) DebugEngineStreams(_ string) bool {
-	return f.debugEngineStreams
+func (f fakeLimits) StreamFirstExecutionEnabled(_ string) bool {
+	return false
 }

@@ -12,14 +12,17 @@ import (
 
 var _ iter.SampleIterator = (*SampleIterator)(nil)
 
-// SampleIterator turns the decoded log lines of a [LogReader] into samples. It
-// applies the LogQL sample extractor to each line and emits at most one sample per line.
+// SampleIterator turns the decoded log records of a [LogReader] into samples. It
+// applies the LogQL sample extractor to each record and emits at most one sample per record.
 //
 // Sample.Hash is left zero, so nothing deduplicates these samples. That rests on a precondition
 // the caller must uphold and nothing here checks: the data-object tier is disjoint in time from
 // the ingester and chunk tiers. A data object is already deduplicated internally. Leaving the
 // hash zero is what allows the read to skip the message column for a count or a rate, whose
 // samples could not be hashed anyway.
+//
+// The read forwards no line when no stage reads it. The extractor must then come from the query
+// that [ProjectionPlan.UnpushedExpr] returns, or from the whole query when that is nil.
 //
 // It inherits the reader's lack of order (see [LogReader]). A consumer that needs
 // timestamp order must sort.
@@ -57,7 +60,7 @@ func (it *SampleIterator) Next() bool {
 		extractor := it.extractorFor(record.streamHash, record.streamLabels)
 		sample, ok := extractor.Process(record.timestamp, record.line, record.metadata)
 		if !ok {
-			continue // dropped by the pipeline, for instance by a line filter
+			continue // dropped by the pipeline, for instance by a label filter
 		}
 
 		// Sample.Hash stays zero, which turns off the merge's deduplication. See [SampleIterator].

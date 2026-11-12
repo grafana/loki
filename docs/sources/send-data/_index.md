@@ -2,8 +2,11 @@
 title: Send log data to Loki
 menuTitle: Send data
 description: List of clients that can be used to send log data to Loki. 
-aliases: 
+aliases:
 - ./clients/
+- ./promtail/
+- ./logstash/
+- ./clients/promtail/
 weight: 500
 ---
 
@@ -42,8 +45,6 @@ be used as it automatically adds labels appropriate to the running container.
 and you already have configured `Parser` and `Filter` plugins.
 - [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/) - The Fluentd plugin is ideal when you already have Fluentd deployed
 and you already have configured `Parser` and `Filter` plugins. Fluentd also works well for extracting metrics from logs when using itsPrometheus plugin.
-- [Logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/) - If you are already using Logstash and/or Beats, this plugin lets you send logs to Loki, though Grafana Labs discourages its use for new deployments; see the Logstash page for details.
-By adding our output plugin you can quickly try Loki without doing big configuration changes.
 
 These third-party clients also enable sending logs to Loki:
 

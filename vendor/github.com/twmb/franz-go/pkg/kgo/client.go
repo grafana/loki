@@ -68,9 +68,8 @@ type Client struct {
 	prsPool prsPool // for sinks to reuse []promisedNumberedRecord
 
 	controllerIDMu xsync.Mutex
-	rebootstrapMu  xsync.Mutex // serializes rebootstrapMisrouted
 	controllerID   int32
-	clusterID      atomic.Pointer[string] // we piggy back updating clusterID
+	clusterID      *string // we piggy back updating clusterID
 
 	// The following two ensure that we only have one fetchBrokerMetadata
 	// at once. This avoids unnecessary broker metadata requests and
@@ -84,10 +83,6 @@ type Client struct {
 	producer producer
 	consumer consumer
 	id2t     atomic.Value // map[[16]byte]string
-
-	// sawPreferredReplica is set once any broker returns a preferred read
-	// replica, which only a rack aware replica selector does; see BalanceRacks.
-	sawPreferredReplica atomic.Bool
 
 	metrics metrics
 
@@ -182,14 +177,8 @@ func validateCfg(opts ...Opt) (cfg, []hostport, error) {
 			return cfg, nil, err
 		}
 	}
-	// Our own default is bounded at MaxDecompressBatchBytes. A default
-	// decompressor the user built is bounded at math.MaxInt32; rebuild it
-	// with our bound.
-	switch d := cfg.decompressor.(type) {
-	case nil:
-		cfg.decompressor = newDecompressor(cfg.maxDecompressBatchBytes, cfg.pools...)
-	case *decompressor:
-		cfg.decompressor = newDecompressor(cfg.maxDecompressBatchBytes, d.pools...)
+	if cfg.decompressor == nil {
+		cfg.decompressor = DefaultDecompressor(cfg.pools...)
 	}
 
 	return cfg, seeds, nil
@@ -313,8 +302,6 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxBrokerWriteBytes}
 	case namefn(BrokerMaxReadBytes):
 		return []any{cfg.maxBrokerReadBytes}
-	case namefn(MaxDecompressBatchBytes):
-		return []any{cfg.maxDecompressBatchBytes}
 	case namefn(MetadataMaxAge):
 		return []any{cfg.metadataMaxAge}
 	case namefn(MetadataMinAge):
@@ -356,8 +343,6 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.compression}
 	case namefn(WithCompressor):
 		return []any{cfg.compressor}
-	case namefn(StreamingCompression):
-		return []any{cfg.streamCompression}
 	case namefn(ProducerBatchMaxBytes):
 		return []any{cfg.maxRecordBatchBytes("")}
 	case namefn(ProducerBatchMaxBytesFn):
@@ -368,8 +353,6 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxBufferedBytes}
 	case namefn(RecordPartitioner):
 		return []any{cfg.partitioner}
-	case namefn(RackAwarePartitioning):
-		return []any{cfg.rackAwarePartitioning}
 	case namefn(ProduceRequestTimeout):
 		return []any{cfg.produceTimeout}
 	case namefn(RecordRetries):
@@ -428,8 +411,6 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxConcurrentFetches}
 	case namefn(Rack):
 		return []any{cfg.rack}
-	case namefn(BalanceRacks):
-		return []any{cfg.balanceRacks}
 	case namefn(KeepRetryableFetchErrors):
 		return []any{cfg.keepRetryableFetchErrors}
 	case namefn(DisableFetchCRCValidation):
@@ -447,8 +428,6 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.autocommitMarks}
 	case namefn(Balancers):
 		return []any{cfg.balancers}
-	case namefn(ServerSideBalancer):
-		return []any{cfg.serverSideBalancer}
 	case namefn(BlockRebalanceOnPoll):
 		return []any{cfg.blockRebalanceOnPoll}
 	case namefn(ConsumerGroup):
@@ -549,15 +528,10 @@ func NewClient(opts ...Opt) (*Client, error) {
 	}
 
 	if cfg.setResetOffset && !cfg.setStartOffset {
-		if cfg.resetOffset.at != atRewind { // a rewind cannot start a partition
-			cfg.startOffset = cfg.resetOffset
-		}
+		cfg.startOffset = cfg.resetOffset
 	} else if cfg.setStartOffset && !cfg.setResetOffset {
-		// Only the noReset flag carries: AtCommitted documents that it opts
-		// into NoResetOffset. The reset offset itself stays the default, so
-		// a start offset of AtStart does not re-read the log on every loss.
-		cfg.resetOffset.noReset = cfg.startOffset.noReset
-	}
+		cfg.resetOffset = cfg.startOffset
+	} // else they are both set (keep) or both unset (defaults)
 
 	ctx := context.Background()
 
@@ -724,9 +698,6 @@ func (cl *Client) Ping(ctx context.Context) error {
 // still exists on the broker, this function will at most only temporarily
 // remove the topic from the client and the topic will be re-discovered.
 //
-// Purging a topic and adding it back is also how to resume after a topic was
-// deleted and recreated; see the README for more details.
-//
 // For admin requests, this deletes the topic from the cached metadata map for
 // sharded requests. Metadata for sharded admin requests is only cached for
 // MetadataMinAge anyway, but the map is not cleaned up once the metadata
@@ -750,25 +721,28 @@ func (cl *Client) PurgeTopicsFromClient(topics ...string) {
 		wg.Wait()
 
 		cl.metaCache.mu.Lock()
+		var purgedIDs [][16]byte
 		for _, t := range topics {
 			if ct, ok := cl.metaCache.topics[t]; ok {
-				if ct.id != noID {
+				var zeroID [16]byte
+				if ct.id != zeroID {
 					delete(cl.metaCache.byID, ct.id)
+					purgedIDs = append(purgedIDs, ct.id)
 				}
 				delete(cl.metaCache.topics, t)
 			}
 		}
 		cl.metaCache.mu.Unlock()
 
-		// Drop the purged names from id2t.
-		old := cl.id2tMap()
-		merged := make(map[[16]byte]string, len(old))
-		for id, name := range old {
-			if !slices.Contains(topics, name) {
-				merged[id] = name
+		if len(purgedIDs) > 0 {
+			old := cl.id2tMap()
+			merged := make(map[[16]byte]string, len(old))
+			maps.Copy(merged, old)
+			for _, id := range purgedIDs {
+				delete(merged, id)
 			}
+			cl.id2t.Store(merged)
 		}
-		cl.id2t.Store(merged)
 	})
 }
 
@@ -1196,57 +1170,17 @@ func (cl *Client) updateMetadataBrokers(resp *kmsg.MetadataResponse) {
 	if resp.ControllerID >= 0 {
 		cl.controllerID = resp.ControllerID
 	}
-	cl.controllerIDMu.Unlock()
 	// Clone ClusterID so cl.clusterID owns its own *string, independent
 	// of the broker response. Readers (dups in RequestCachedMetadata)
 	// would otherwise race a user mutating *resp.ClusterID on a
 	// previously-returned cl.Request(MetadataRequest) response.
-	var clusterID *string
+	cl.clusterID = nil
 	if resp.ClusterID != nil {
 		s := *resp.ClusterID
-		clusterID = &s
+		cl.clusterID = &s
 	}
-	cl.clusterID.Store(clusterID)
+	cl.controllerIDMu.Unlock()
 	cl.updateBrokers(resp.Brokers)
-}
-
-// rebootstrapMisrouted is called when broker b answered REBOOTSTRAP_REQUIRED
-// to an ApiVersions request that named the cluster and node we expected
-// (KIP-1242): the address our metadata has for b belongs to a different
-// broker or cluster, so every discovered broker is suspect. We drop them all
-// so that the next metadata request goes to a seed, after giving
-// OnRebootstrapRequired a chance to replace the seeds, and refresh metadata
-// now. Requests in flight to discovered brokers fail with errChosenBrokerDead
-// and retry once metadata rediscovers the cluster.
-//
-// Unlike a REBOOTSTRAP_REQUIRED metadata response, this rebootstraps even
-// without OnRebootstrapRequired: the mapping we hold is actively wrong, and
-// going back to the seeds is the only way to repair it.
-func (cl *Client) rebootstrapMisrouted(b *broker, clusterID string) {
-	cl.rebootstrapMu.Lock()
-	defer cl.rebootstrapMu.Unlock()
-
-	// Every connection that was mid-init when the first one rebootstrapped
-	// is answered the same way; once the first wipe finishes, its broker
-	// is already dead.
-	if b.dead.Load() {
-		return
-	}
-	cl.cfg.logger.Log(LogLevelWarn, "broker rejected our connection with REBOOTSTRAP_REQUIRED: the address we have for this node belongs to a different broker or cluster; dropping all discovered brokers and rebootstrapping from the seeds",
-		"broker", logID(b.meta.NodeID),
-		"addr", b.addr,
-		"cluster_id", clusterID,
-	)
-	if fn := cl.cfg.onRebootstrapRequired; fn != nil {
-		seeds, err := fn()
-		if err != nil || len(seeds) == 0 {
-			cl.cfg.logger.Log(LogLevelError, "OnRebootstrapRequired returned an error or no seeds, keeping the current seeds", "err", err)
-		} else if err := cl.UpdateSeedBrokers(seeds...); err != nil {
-			cl.cfg.logger.Log(LogLevelError, "unable to use the seeds from OnRebootstrapRequired, keeping the current seeds", "err", err)
-		}
-	}
-	cl.updateBrokers(nil)
-	cl.triggerUpdateMetadataNow("rebootstrap required after a misrouted connection")
 }
 
 // updateBrokers is called with the broker portion of every metadata response.
@@ -1593,6 +1527,7 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 	// Resolve IDs from the cache and the main metadata loop's id2t
 	// map under one lock, then fall back to a broker fetch for any
 	// truly unresolved IDs.
+	var zeroID [16]byte
 	var unresolvedIDs [][16]byte
 	if len(req.Topics) > 0 {
 		id2t := cl.id2tMap()
@@ -1602,7 +1537,7 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 				topics = append(topics, *t.Topic)
 				continue
 			}
-			if t.TopicID == noID {
+			if t.TopicID == zeroID {
 				cl.metaCache.mu.Unlock()
 				return nil, errors.New("unable to request cached metadata with a missing topic name and zero topic ID")
 			}
@@ -1694,8 +1629,8 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 	}
 	cl.brokersMu.RUnlock()
 
-	resp.ClusterID = dups(cl.clusterID.Load())
 	cl.controllerIDMu.Lock()
+	resp.ClusterID = dups(cl.clusterID)
 	resp.ControllerID = cl.controllerID
 	cl.controllerIDMu.Unlock()
 
@@ -1957,22 +1892,12 @@ func (cl *Client) shardedRequest(ctx context.Context, req kmsg.Request) ([]Respo
 		return shards(cl.handleCoordinatorReq(ctx, t)), nil
 
 	case *kmsg.ApiVersionsRequest:
-		// As of v3, software name and version are required. If they are
-		// missing, we use the config options. As of v5, NodeID pairs
-		// with ClusterID and defaults to -1; a zero value literal has 0,
-		// which a broker rejects as a node named without a cluster. We
-		// unset NodeID whenever ClusterID is unset.
-		noSoftware := t.ClientSoftwareName == "" && t.ClientSoftwareVersion == ""
-		noCluster := t.ClusterID == nil && t.NodeID != -1
-		if noSoftware || noCluster {
+		// As of v3, software name and version are required.
+		// If they are missing, we use the config options.
+		if t.ClientSoftwareName == "" && t.ClientSoftwareVersion == "" {
 			dup := *t
-			if noSoftware {
-				dup.ClientSoftwareName = cl.cfg.softwareName
-				dup.ClientSoftwareVersion = cl.cfg.softwareVersion
-			}
-			if noCluster {
-				dup.NodeID = -1
-			}
+			dup.ClientSoftwareName = cl.cfg.softwareName
+			dup.ClientSoftwareVersion = cl.cfg.softwareVersion
 			req = &dup
 		}
 	}
@@ -2061,7 +1986,7 @@ func (cl *Client) controller(ctx context.Context) (b *broker, err error) {
 	}
 
 	defer func() {
-		if ec, ok := errors.AsType[*errUnknownController](err); ok {
+		if ec := (*errUnknownController)(nil); errors.As(err, &ec) {
 			cl.forgetControllerID(ec.id)
 		}
 	}()
@@ -2987,7 +2912,7 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 				var errIsFromResp bool
 				if err == nil {
 					err = sharder.onResp(myIssue.req, resp) // perform some potential cleanup, and potentially receive an error to retry
-					if _, ok := errors.AsType[*kerr.Error](err); ok {
+					if ke := (*kerr.Error)(nil); errors.As(err, &ke) {
 						errIsFromResp = true
 					}
 				}
@@ -3152,12 +3077,13 @@ func (cl *Client) maybeDeleteCachedMeta(unknownTopic bool, ts ...string) (should
 	now := time.Now()
 	cl.metaCache.mu.Lock()
 	defer cl.metaCache.mu.Unlock()
+	var zeroID [16]byte
 	for _, t := range ts {
 		ct, exists := cl.metaCache.topics[t]
 		if exists && (min == 0 || now.Sub(ct.when) > min) {
 			shouldRetry = true
 			delete(cl.metaCache.topics, t)
-			if ct.id != noID {
+			if ct.id != zeroID {
 				delete(cl.metaCache.byID, ct.id)
 			}
 		}
@@ -3270,6 +3196,7 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 		cl.metaCache.byID = make(map[[16]byte]string)
 	}
 	when := time.Now()
+	var zeroID [16]byte
 	var stored int
 	for _, topic := range meta.Topics {
 		if topic.Topic == nil {
@@ -3308,14 +3235,14 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 		// A recreated topic comes back under a new ID. Delete the old
 		// ID's mapping when overwriting the entry, else byID accumulates
 		// stale IDs forever and resolves IDs that no longer exist.
-		if old, ok := cl.metaCache.topics[topicName]; ok && old.id != topic.TopicID && old.id != noID {
+		if old, ok := cl.metaCache.topics[topicName]; ok && old.id != topic.TopicID && old.id != zeroID {
 			delete(cl.metaCache.byID, old.id)
 		}
 		cl.metaCache.topics[topicName] = t
 		for _, partition := range topic.Partitions {
 			t.ps[partition.Partition] = partition
 		}
-		if topic.TopicID != noID {
+		if topic.TopicID != zeroID {
 			cl.metaCache.byID[topic.TopicID] = topicName
 		}
 
@@ -3338,7 +3265,7 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 			}
 			if when.Sub(ct.when) > cl.cfg.metadataMinAge {
 				delete(cl.metaCache.topics, topic)
-				if ct.id != noID {
+				if ct.id != zeroID {
 					delete(cl.metaCache.byID, ct.id)
 				}
 			}
@@ -3670,11 +3597,11 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 	var resolving bool
 	for _, g := range req.Groups {
 		for _, t := range g.Topics {
-			if t.Topic == "" && t.TopicID != noID {
+			if t.Topic == "" && t.TopicID != ([16]byte{}) {
 				unresolvedIDs = append(unresolvedIDs, t.TopicID)
 				resolving = true
 			}
-			if t.Topic != "" && t.TopicID == noID {
+			if t.Topic != "" && t.TopicID == ([16]byte{}) {
 				unresolvedNames = append(unresolvedNames, t.Topic)
 				resolving = true
 			}
@@ -3705,13 +3632,13 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 			g := &req.Groups[i]
 			for j := range g.Topics {
 				t := &g.Topics[j]
-				if t.Topic == "" && t.TopicID != noID {
+				if t.Topic == "" && t.TopicID != ([16]byte{}) {
 					t.Topic = cl.metaCache.byID[t.TopicID]
 					if t.Topic == "" {
 						t.Topic = id2t[t.TopicID]
 					}
 				}
-				if t.TopicID == noID && t.Topic != "" {
+				if t.TopicID == ([16]byte{}) && t.Topic != "" {
 					if ct, ok := cl.metaCache.topics[t.Topic]; ok {
 						t.TopicID = ct.id
 					} else if ct, ok := nameMeta[t.Topic]; ok {
@@ -3752,7 +3679,7 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 
 	for _, group := range req.Groups {
 		berr := coordinators[group.Group]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -3761,7 +3688,7 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -3833,10 +3760,10 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 	for i := range resp.Groups {
 		for j := range resp.Groups[i].Topics {
 			t := &resp.Groups[i].Topics[j]
-			if t.Topic == "" && t.TopicID != noID {
+			if t.Topic == "" && t.TopicID != ([16]byte{}) {
 				unresolvedIDs = append(unresolvedIDs, t.TopicID)
 			}
-			if t.TopicID == noID && t.Topic != "" {
+			if t.TopicID == ([16]byte{}) && t.Topic != "" {
 				unresolvedNames = append(unresolvedNames, t.Topic)
 			}
 		}
@@ -3859,7 +3786,7 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 		for i := range resp.Groups {
 			for j := range resp.Groups[i].Topics {
 				t := &resp.Groups[i].Topics[j]
-				if t.Topic == "" && t.TopicID != noID {
+				if t.Topic == "" && t.TopicID != ([16]byte{}) {
 					t.Topic = cl.metaCache.byID[t.TopicID]
 					if t.Topic == "" && resp.Version >= 10 {
 						for k := range t.Partitions {
@@ -3869,11 +3796,11 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 						}
 					}
 				}
-				if t.TopicID == noID && t.Topic != "" {
+				if t.TopicID == ([16]byte{}) && t.Topic != "" {
 					if ct, ok := cl.metaCache.topics[t.Topic]; ok {
 						t.TopicID = ct.id
 					}
-					if t.TopicID == noID && resp.Version >= 10 {
+					if t.TopicID == ([16]byte{}) && resp.Version >= 10 {
 						for k := range t.Partitions {
 							if t.Partitions[k].ErrorCode == 0 {
 								t.Partitions[k].ErrorCode = kerr.UnknownTopicOrPartition.Code
@@ -4066,7 +3993,7 @@ func (cl *describeGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _
 
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -4075,7 +4002,7 @@ func (cl *describeGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -4492,7 +4419,7 @@ func (cl *addPartitionsToTxnSharder) shard(ctx context.Context, kreq kmsg.Reques
 
 	for _, txn := range req.Transactions {
 		berr := coordinators[txn.TransactionalID]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -4502,7 +4429,7 @@ func (cl *addPartitionsToTxnSharder) shard(ctx context.Context, kreq kmsg.Reques
 			} else {
 				brokerReq.Transactions = append(brokerReq.Transactions, txn)
 			}
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], txn)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, txn})
@@ -5228,7 +5155,7 @@ func (cl *deleteGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _ e
 
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5237,7 +5164,7 @@ func (cl *deleteGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _ e
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -5489,7 +5416,7 @@ func (cl *describeTransactionsSharder) shard(ctx context.Context, kreq kmsg.Requ
 
 	for _, txnID := range req.TransactionalIDs {
 		berr := coordinators[txnID]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5498,7 +5425,7 @@ func (cl *describeTransactionsSharder) shard(ctx context.Context, kreq kmsg.Requ
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.TransactionalIDs = append(brokerReq.TransactionalIDs, txnID)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], txnID)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, txnID})
@@ -5624,7 +5551,7 @@ func (cl *consumerGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Req
 	}
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5633,7 +5560,7 @@ func (cl *consumerGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Req
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -5706,7 +5633,7 @@ func (cl *shareGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Reques
 	}
 	for _, groupID := range req.GroupIDs {
 		berr := coordinators[groupID]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5715,7 +5642,7 @@ func (cl *shareGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Reques
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.GroupIDs = append(brokerReq.GroupIDs, groupID)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], groupID)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, groupID})
@@ -5791,7 +5718,7 @@ func (cl *describeShareGroupOffsetsSharder) shard(ctx context.Context, kreq kmsg
 	}
 	for _, g := range req.Groups {
 		berr := coordinators[g.GroupID]
-		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
+		var ke *kerr.Error
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5800,7 +5727,7 @@ func (cl *describeShareGroupOffsetsSharder) shard(ctx context.Context, kreq kmsg
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, g)
-		case isKerr:
+		case errors.As(berr.err, &ke):
 			kerrs[ke] = append(kerrs[ke], g)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, g.GroupID})

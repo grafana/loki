@@ -4,4 +4,4 @@
 package autoexport
 
 // Version is the current release version of the autoexport module.
-const Version = "0.71.0"
+const Version = "0.72.0"

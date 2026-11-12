@@ -414,10 +414,10 @@ const file_google_monitoring_v3_notification_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2\x1b.google.api.LabelDescriptorR\x06labels\x12N\n" +
 	"\x0fsupported_tiers\x18\x05 \x03(\x0e2!.google.monitoring.v3.ServiceTierB\x02\x18\x01R\x0esupportedTiers\x12:\n" +
 	"\flaunch_stage\x18\a \x01(\x0e2\x17.google.api.LaunchStageR\vlaunchStage:\xa0\x02\xeaA\x9c\x02\n" +
-	"7monitoring.googleapis.com/NotificationChannelDescriptor\x12Fprojects/{project}/notificationChannelDescriptors/{channel_descriptor}\x12Porganizations/{organization}/notificationChannelDescriptors/{channel_descriptor}\x12Dfolders/{folder}/notificationChannelDescriptors/{channel_descriptor}\x12\x01*\"\xcb\b\n" +
+	"7monitoring.googleapis.com/NotificationChannelDescriptor\x12Fprojects/{project}/notificationChannelDescriptors/{channel_descriptor}\x12Porganizations/{organization}/notificationChannelDescriptors/{channel_descriptor}\x12Dfolders/{folder}/notificationChannelDescriptors/{channel_descriptor}\x12\x01*\"\xcc\b\n" +
 	"\x13NotificationChannel\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12\x17\n" +
-	"\x04name\x18\x06 \x01(\tB\x03\xe0A\bR\x04name\x12!\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x18\n" +
+	"\x04name\x18\x06 \x01(\tB\x04\xe2A\x01\bR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12M\n" +
 	"\x06labels\x18\x05 \x03(\v25.google.monitoring.v3.NotificationChannel.LabelsEntryR\x06labels\x12Z\n" +

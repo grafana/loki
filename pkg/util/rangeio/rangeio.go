@@ -101,7 +101,11 @@ type Config struct {
 	MinRangeSize int `yaml:"min_range_size" category:"experimental"`
 }
 
-func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", fs)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxParallelism, prefix+"max-parallelism", DefaultConfig.MaxParallelism, "Experimental: maximum number of parallel reads")
 	fs.IntVar(&cfg.CoalesceSize, prefix+"coalesce-size", DefaultConfig.CoalesceSize, "Experimental: maximum distance (in bytes) between ranges that causes them to be coalesced into a single range")
 	fs.IntVar(&cfg.MaxRangeSize, prefix+"max-range-size", DefaultConfig.MaxRangeSize, "Experimental: maximum size of a byte range")

@@ -4,6 +4,10 @@
 
 package sqlite3
 
+import (
+	"modernc.org/libc"
+)
+
 const __INT_FAST64_FMTd__ = "lld"
 
 const __INT_FAST64_FMTi__ = "lli"
@@ -27,3 +31,62 @@ const __UINT_LEAST64_FMTo__ = "llo"
 const __UINT_LEAST64_FMTu__ = "llu"
 
 const __UINT_LEAST64_FMTx__ = "llx"
+
+var _aBase = [27]Tu64{
+	0:  libc.Uint64FromUint64(0x8000000000000000),
+	1:  libc.Uint64FromUint64(0xa000000000000000),
+	2:  libc.Uint64FromUint64(0xc800000000000000),
+	3:  libc.Uint64FromUint64(0xfa00000000000000),
+	4:  libc.Uint64FromUint64(0x9c40000000000000),
+	5:  libc.Uint64FromUint64(0xc350000000000000),
+	6:  libc.Uint64FromUint64(0xf424000000000000),
+	7:  libc.Uint64FromUint64(0x9896800000000000),
+	8:  libc.Uint64FromUint64(0xbebc200000000000),
+	9:  libc.Uint64FromUint64(0xee6b280000000000),
+	10: libc.Uint64FromUint64(0x9502f90000000000),
+	11: libc.Uint64FromUint64(0xba43b74000000000),
+	12: libc.Uint64FromUint64(0xe8d4a51000000000),
+	13: libc.Uint64FromUint64(0x9184e72a00000000),
+	14: libc.Uint64FromUint64(0xb5e620f480000000),
+	15: libc.Uint64FromUint64(0xe35fa931a0000000),
+	16: libc.Uint64FromUint64(0x8e1bc9bf04000000),
+	17: libc.Uint64FromUint64(0xb1a2bc2ec5000000),
+	18: libc.Uint64FromUint64(0xde0b6b3a76400000),
+	19: libc.Uint64FromUint64(0x8ac7230489e80000),
+	20: libc.Uint64FromUint64(0xad78ebc5ac620000),
+	21: libc.Uint64FromUint64(0xd8d726b7177a8000),
+	22: libc.Uint64FromUint64(0x878678326eac9000),
+	23: libc.Uint64FromUint64(0xa968163f0a57b400),
+	24: libc.Uint64FromUint64(0xd3c21bcecceda100),
+	25: libc.Uint64FromUint64(0x84595161401484a0),
+	26: libc.Uint64FromUint64(0xa56fa5b99019a5c8),
+}
+
+var _aScale = [26]Tu64{
+	0:  libc.Uint64FromUint64(0x8049a4ac0c5811ae),
+	1:  libc.Uint64FromUint64(0xcf42894a5dce35ea),
+	2:  libc.Uint64FromUint64(0xa76c582338ed2621),
+	3:  libc.Uint64FromUint64(0x873e4f75e2224e68),
+	4:  libc.Uint64FromUint64(0xda7f5bf590966848),
+	5:  libc.Uint64FromUint64(0xb080392cc4349dec),
+	6:  libc.Uint64FromUint64(0x8e938662882af53e),
+	7:  libc.Uint64FromUint64(0xe65829b3046b0afa),
+	8:  libc.Uint64FromUint64(0xba121a4650e4ddeb),
+	9:  libc.Uint64FromUint64(0x964e858c91ba2655),
+	10: libc.Uint64FromUint64(0xf2d56790ab41c2a2),
+	11: libc.Uint64FromUint64(0xc428d05aa4751e4c),
+	12: libc.Uint64FromUint64(0x9e74d1b791e07e48),
+	13: libc.Uint64FromUint64(0xcccccccccccccccc),
+	14: libc.Uint64FromUint64(0xcecb8f27f4200f3a),
+	15: libc.Uint64FromUint64(0xa70c3c40a64e6c51),
+	16: libc.Uint64FromUint64(0x86f0ac99b4e8dafd),
+	17: libc.Uint64FromUint64(0xda01ee641a708de9),
+	18: libc.Uint64FromUint64(0xb01ae745b101e9e4),
+	19: libc.Uint64FromUint64(0x8e41ade9fbebc27d),
+	20: libc.Uint64FromUint64(0xe5d3ef282a242e81),
+	21: libc.Uint64FromUint64(0xb9a74a0637ce2ee1),
+	22: libc.Uint64FromUint64(0x95f83d0a1fb69cd9),
+	23: libc.Uint64FromUint64(0xf24a01a73cf2dccf),
+	24: libc.Uint64FromUint64(0xc3b8358109e84f07),
+	25: libc.Uint64FromUint64(0x9e19db92b4e31ba9),
+}

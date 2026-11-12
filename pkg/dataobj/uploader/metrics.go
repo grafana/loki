@@ -21,25 +21,25 @@ type metrics struct {
 func newMetrics(shaPrefixSize int) *metrics {
 	metrics := &metrics{
 		uploadFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_upload_failures_total",
+			Name: "loki_dataobj_upload_failures_total",
 			Help: "Total number of failed uploads to object storage.",
 		}),
 		uploadTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_upload_total",
+			Name: "loki_dataobj_upload_total",
 			Help: "Total number of uploads to object storage.",
 		}),
 		uploadTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_consumer_upload_time_seconds",
+			Name:    "loki_dataobj_upload_time_seconds",
 			Help:    "Time taken writing data objects to object storage.",
 			Buckets: prometheus.ExponentialBuckets(1.0, 1.5, 10), // 1s, 1.5s, 2.25s, ... -> 57.67s
 		}),
 		uploadSize: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_consumer_upload_size_bytes",
+			Name:    "loki_dataobj_upload_size_bytes",
 			Help:    "Size of data objects uploaded to object storage in bytes grouped by status.",
 			Buckets: prometheus.LinearBuckets(128<<20, 128<<20, 10), // 128MB, 256MB, ... -> 1280MB
 		}, []string{labelStatus}),
 		shaPrefixSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_consumer_sha_prefix_size",
+			Name: "loki_dataobj_upload_sha_prefix_size",
 			Help: "The size of the SHA prefix used for object storage keys.",
 		}),
 	}

@@ -1,15 +1,16 @@
 package kafkav2
 
 import (
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 // This test asserts that the correct offset is committed for the intended
@@ -97,70 +98,274 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 		testTopic         = "test-topic"
 		testConsumerGroup = "test-consumer-group"
 	)
-	ctx := t.Context()
-	// Create a fake cluster for the test.
-	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(1, testTopic))
-	require.NoError(t, err)
-	t.Cleanup(cluster.Close)
-	client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-	adm := kadm.NewClient(client)
-	m := NewOffsetReader(client, testTopic, testConsumerGroup, log.NewNopLogger())
 
-	// There should be no committed offsets.
-	offset, err := m.LastCommittedOffset(ctx, 0)
-	require.NoError(t, err)
-	// -2 is a special offset which means start offset.
-	require.Equal(t, int64(-2), offset)
+	t.Run("returns -1 when the group does not exist", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		require.NoError(t, err)
+		require.Equal(t, noCommittedOffset, offset)
+	})
 
-	// Commit an offset, it should be returned in the next call.
-	toCommit := kadm.Offsets{}
-	toCommit.AddOffset(testTopic, 0, 100, -1)
-	_, err = adm.CommitOffsets(ctx, testConsumerGroup, toCommit)
-	require.NoError(t, err)
-	offset, err = m.LastCommittedOffset(ctx, 0)
-	require.NoError(t, err)
-	require.Equal(t, int64(100), offset)
+	t.Run("returns -1 when the group committed only another partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 2)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 1)
+		require.NoError(t, err)
+		require.Equal(t, noCommittedOffset, offset)
+	})
+
+	t.Run("returns the committed offset", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), offset)
+	})
+
+	t.Run("requests only the given partition of the group", func(t *testing.T) {
+		cluster, client := newTestCluster(t, testTopic, 2)
+		requested := recordOffsetFetches(cluster)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 1)
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int32{testConsumerGroup: {1}}, requested())
+	})
+
+	t.Run("returns an error when the broker denies access to the group", func(t *testing.T) {
+		cluster, client := newTestCluster(t, testTopic, 1)
+		denyNextOffsetFetch(cluster)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
+	})
 }
 
-func TestOffsetReader_EndOffset(t *testing.T) {
+func TestOffsetReader_ResumeOffset(t *testing.T) {
 	const (
 		testTopic         = "test-topic"
 		testConsumerGroup = "test-consumer-group"
 	)
-	ctx := t.Context()
-	// Create a fake cluster for the test.
-	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(1, testTopic))
+
+	t.Run("returns the start offset when the group does not exist", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		require.NoError(t, err)
+		require.Equal(t, OffsetStart, offset)
+	})
+
+	t.Run("returns the start offset when the group committed only another partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 2)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 1)
+		require.NoError(t, err)
+		require.Equal(t, OffsetStart, offset)
+	})
+
+	t.Run("returns the offset after the committed offset", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(101), offset)
+	})
+
+	t.Run("returns an error when the broker denies access to the group", func(t *testing.T) {
+		cluster, client := newTestCluster(t, testTopic, 1)
+		denyNextOffsetFetch(cluster)
+		_, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
+	})
+}
+
+func TestOffsetReader_StartOffsets(t *testing.T) {
+	const testTopic = "test-topic"
+
+	t.Run("returns zero for each partition when no records were deleted", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 3)
+		produceTo(t, client, testTopic, 1, 3)
+		offsets, err := NewOffsetReader(client, testTopic).StartOffsets(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: 0, 1: 0, 2: 0}, offsets)
+	})
+
+	t.Run("returns the offset after the deleted records of each partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 3)
+		produceTo(t, client, testTopic, 1, 3)
+		produceTo(t, client, testTopic, 2, 5)
+		deleteRecords(t, client, testTopic, 1, 2)
+		deleteRecords(t, client, testTopic, 2, 5)
+		offsets, err := NewOffsetReader(client, testTopic).StartOffsets(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: 0, 1: 2, 2: 5}, offsets)
+	})
+
+	t.Run("returns an error when the topic does not exist", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		_, err := NewOffsetReader(client, "other-topic").StartOffsets(t.Context())
+		require.ErrorIs(t, err, kerr.UnknownTopicOrPartition)
+	})
+}
+
+func TestOffsetReader_EndOffsets(t *testing.T) {
+	const testTopic = "test-topic"
+
+	t.Run("returns zero for each partition when no records were produced", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 3)
+		offsets, err := NewOffsetReader(client, testTopic).EndOffsets(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: 0, 1: 0, 2: 0}, offsets)
+	})
+
+	t.Run("returns the offset after the last record of each partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 3)
+		produceTo(t, client, testTopic, 0, 1)
+		produceTo(t, client, testTopic, 2, 4)
+		offsets, err := NewOffsetReader(client, testTopic).EndOffsets(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: 1, 1: 0, 2: 4}, offsets)
+	})
+
+	t.Run("returns an error when the topic does not exist", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		_, err := NewOffsetReader(client, "other-topic").EndOffsets(t.Context())
+		require.ErrorIs(t, err, kerr.UnknownTopicOrPartition)
+	})
+}
+
+func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
+	const testTopic = "test-topic"
+
+	commit := func(t *testing.T, client *kgo.Client, group string, partition int32, offset int64) {
+		t.Helper()
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, partition, group, offset))
+	}
+
+	t.Run("returns an empty result when no groups are given", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), nil)
+		require.NoError(t, err)
+		require.Empty(t, offsets)
+	})
+
+	t.Run("returns the committed offset of each group", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 3)
+		commit(t, client, "group-0", 0, 4)
+		commit(t, client, "group-2", 2, 0)
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{
+			0: "group-0",
+			2: "group-2",
+		})
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: 4, 2: 0}, offsets)
+	})
+
+	t.Run("returns -1 when the group does not exist", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 1)
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: noCommittedOffset}, offsets)
+	})
+
+	t.Run("returns -1 when the group committed only another partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 2)
+		commit(t, client, "group-0", 1, 4)
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		require.NoError(t, err)
+		require.Equal(t, map[int32]int64{0: noCommittedOffset}, offsets)
+	})
+
+	t.Run("requests only the partition of each group", func(t *testing.T) {
+		cluster, client := newTestCluster(t, testTopic, 3)
+		requested := recordOffsetFetches(cluster)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{
+			0: "group-0",
+			2: "group-2",
+		})
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int32{"group-0": {0}, "group-2": {2}}, requested())
+	})
+
+	t.Run("returns an error when the broker denies access to a group", func(t *testing.T) {
+		cluster, client := newTestCluster(t, testTopic, 1)
+		denyNextOffsetFetch(cluster)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
+	})
+}
+
+// newTestCluster returns a fake cluster with one topic of the given number of
+// partitions, and a client for it.
+func newTestCluster(t *testing.T, topic string, partitions int32) (*kfake.Cluster, *kgo.Client) {
+	t.Helper()
+	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(partitions, topic))
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
-	client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-	m := NewOffsetReader(client, testTopic, testConsumerGroup, log.NewNopLogger())
+	return cluster, mustKafkaClient(t, cluster.ListenAddrs()[0])
+}
 
-	// The offset should be 0 as no records have been produced.
-	offset, err := m.EndOffset(ctx, 0)
+func produceTo(t *testing.T, client *kgo.Client, topic string, partition int32, n int) {
+	t.Helper()
+	for range n {
+		res := client.ProduceSync(t.Context(), &kgo.Record{
+			Topic:     topic,
+			Partition: partition,
+			Value:     []byte("foo"),
+			Timestamp: time.Now(),
+		})
+		require.NoError(t, res.FirstErr())
+	}
+}
+
+// deleteRecords moves the start offset of the partition to offset, as
+// retention does.
+func deleteRecords(t *testing.T, client *kgo.Client, topic string, partition int32, offset int64) {
+	t.Helper()
+	offsets := kadm.Offsets{}
+	offsets.AddOffset(topic, partition, offset, -1)
+	res, err := kadm.NewClient(client).DeleteRecords(t.Context(), offsets)
 	require.NoError(t, err)
-	require.Equal(t, int64(0), offset)
+	require.NoError(t, res.Error())
+}
 
-	// Produce a record, the end offset should be 1.
-	res := client.ProduceSync(ctx, &kgo.Record{
-		Topic:     testTopic,
-		Key:       []byte("foo"),
-		Value:     []byte("bar"),
-		Timestamp: time.Now(),
+// denyNextOffsetFetch makes the cluster answer the next OffsetFetch request
+// with GROUP_AUTHORIZATION_FAILED for every group in it.
+func denyNextOffsetFetch(cluster *kfake.Cluster) {
+	cluster.ControlKey(kmsg.OffsetFetch.Int16(), func(kreq kmsg.Request) (kmsg.Response, error, bool) {
+		req := kreq.(*kmsg.OffsetFetchRequest)
+		resp := req.ResponseKind().(*kmsg.OffsetFetchResponse)
+		for _, g := range req.Groups {
+			rg := kmsg.NewOffsetFetchResponseGroup()
+			rg.Group = g.Group
+			rg.ErrorCode = kerr.GroupAuthorizationFailed.Code
+			resp.Groups = append(resp.Groups, rg)
+		}
+		return resp, nil, true
 	})
-	require.NoError(t, res.FirstErr())
-	offset, err = m.EndOffset(ctx, 0)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), offset)
+}
 
-	// Produce another record, the end offset should be 2.
-	res = client.ProduceSync(ctx, &kgo.Record{
-		Topic:     testTopic,
-		Key:       []byte("baz"),
-		Value:     []byte("qux"),
-		Timestamp: time.Now(),
+// recordOffsetFetches records the partitions that OffsetFetch requests name,
+// keyed by group. A group that asks for all of its committed offsets, with
+// null topics, maps to nil. The cluster still handles every request.
+func recordOffsetFetches(cluster *kfake.Cluster) func() map[string][]int32 {
+	var (
+		mu        sync.Mutex
+		requested = map[string][]int32{}
+	)
+	cluster.ControlKey(kmsg.OffsetFetch.Int16(), func(kreq kmsg.Request) (kmsg.Response, error, bool) {
+		cluster.KeepControl()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, g := range kreq.(*kmsg.OffsetFetchRequest).Groups {
+			if g.Topics == nil {
+				requested[g.Group] = nil
+			}
+			for _, topic := range g.Topics {
+				requested[g.Group] = append(requested[g.Group], topic.Partitions...)
+			}
+		}
+		return nil, nil, false
 	})
-	require.NoError(t, res.FirstErr())
-	offset, err = m.EndOffset(ctx, 0)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), offset)
+	return func() map[string][]int32 {
+		mu.Lock()
+		defer mu.Unlock()
+		return requested
+	}
 }

@@ -9,6 +9,9 @@ import (
 	"github.com/redis/go-redis/v9/internal/pool"
 )
 
+// ErrorTypeNil is the error type reported to OTelRecorder.RecordError for a Nil reply.
+const ErrorTypeNil = "NIL"
+
 // ConnInfo provides information about a Redis connection for metrics.
 type ConnInfo interface {
 	RemoteAddr() net.Addr

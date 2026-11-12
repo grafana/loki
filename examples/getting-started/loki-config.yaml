@@ -21,25 +21,34 @@ schema_config:
       index:
         prefix: index_
         period: 24h
+storage_config:
+  use_thanos_objstore: true
+
 common:
   path_prefix: /loki
   replication_factor: 1
   compactor_address: http://backend:3100
   storage:
-    s3:
-      endpoint: minio:9000
-      insecure: true
-      bucketnames: loki-data
-      access_key_id: loki
-      secret_access_key: supersecret
-      s3forcepathstyle: true
+    object_store:
+      s3:
+        endpoint: silo:9000
+        insecure: true
+        bucket_name: loki-data
+        access_key_id: loki
+        secret_access_key: supersecret
+        bucket_lookup_type: path
   ring:
     kvstore:
       store: memberlist
-ruler:
-  storage:
-    s3:
-      bucketnames: loki-ruler
+ruler_storage:
+  backend: s3
+  s3:
+    endpoint: silo:9000
+    insecure: true
+    bucket_name: loki-ruler
+    access_key_id: loki
+    secret_access_key: supersecret
+    bucket_lookup_type: path
 
 compactor:
   working_directory: /tmp/compactor

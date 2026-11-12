@@ -72,17 +72,18 @@ func parseMountInfo(info []byte) ([]*MountInfo, error) {
 // Parses a mountinfo file line, and converts it to a MountInfo struct.
 // An important check here is to see if the hyphen separator, as if it does not exist,
 // it means that the line is malformed.
+// See: https://man7.org/linux/man-pages/man5/proc_pid_mountinfo.5.html
 func parseMountInfoString(mountString string) (*MountInfo, error) {
 	var err error
 
-	mountInfo := strings.Split(mountString, " ")
-	mountInfoLength := len(mountInfo)
-	if mountInfoLength < 10 {
-		return nil, fmt.Errorf("%w: Too few fields in mount string: %s", ErrFileParse, mountString)
+	fields := strings.Split(mountString, " - ")
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("%w: Could not split hyphen separator: %s", ErrFileParse, mountString)
 	}
 
-	if mountInfo[mountInfoLength-4] != "-" {
-		return nil, fmt.Errorf("%w: couldn't find separator in expected field: %s", ErrFileParse, mountInfo[mountInfoLength-4])
+	mountInfo := strings.Split(fields[0], " ")
+	if len(mountInfo) < 6 {
+		return nil, fmt.Errorf("%w: Too few fields in mount string: %s", ErrFileParse, mountString)
 	}
 
 	mount := &MountInfo{
@@ -90,10 +91,7 @@ func parseMountInfoString(mountString string) (*MountInfo, error) {
 		Root:           mountInfo[3],
 		MountPoint:     mountInfo[4],
 		Options:        mountOptionsParser(mountInfo[5]),
-		OptionalFields: nil,
-		FSType:         mountInfo[mountInfoLength-3],
-		Source:         mountInfo[mountInfoLength-2],
-		SuperOptions:   mountOptionsParser(mountInfo[mountInfoLength-1]),
+		OptionalFields: map[string]string{},
 	}
 
 	mount.MountID, err = strconv.Atoi(mountInfo[0])
@@ -104,14 +102,25 @@ func parseMountInfoString(mountString string) (*MountInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: parent ID: %q", ErrFileParse, mountInfo[1])
 	}
+
 	// Has optional fields, which is a space separated list of values.
 	// Example: shared:2 master:7
-	if mountInfo[6] != "" {
-		mount.OptionalFields, err = mountOptionsParseOptionalFields(mountInfo[6 : mountInfoLength-4])
+	if len(mountInfo) > 6 {
+		mount.OptionalFields, err = mountOptionsParseOptionalFields(mountInfo[6:])
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrFileParse, err)
 		}
 	}
+
+	mountInfo = strings.SplitN(fields[1], " ", 3)
+	if len(mountInfo) != 3 {
+		return nil, fmt.Errorf("%w: Too few fields after separator: %s", ErrFileParse, mountString)
+	}
+
+	mount.FSType = mountInfo[0]
+	mount.Source = mountInfo[1]
+	mount.SuperOptions = mountOptionsParser(mountInfo[2])
+
 	return mount, nil
 }
 
@@ -148,13 +157,11 @@ func mountOptionsParseOptionalFields(o []string) (map[string]string, error) {
 func mountOptionsParser(mountOptions string) map[string]string {
 	opts := make(map[string]string)
 	for opt := range strings.SplitSeq(mountOptions, ",") {
-		splitOption := strings.Split(opt, "=")
+		splitOption := strings.SplitN(opt, "=", 2)
 		if len(splitOption) < 2 {
-			key := splitOption[0]
-			opts[key] = ""
+			opts[splitOption[0]] = ""
 		} else {
-			key, value := splitOption[0], splitOption[1]
-			opts[key] = value
+			opts[splitOption[0]] = splitOption[1]
 		}
 	}
 	return opts

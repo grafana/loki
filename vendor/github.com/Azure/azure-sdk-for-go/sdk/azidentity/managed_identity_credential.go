@@ -32,7 +32,6 @@ type ManagedIDKind interface {
 // ClientID is the client ID of a user-assigned managed identity. [NewManagedIdentityCredential]
 // returns an error when a ClientID is specified on the following platforms:
 //
-//   - Azure Arc
 //   - Cloud Shell
 //   - Service Fabric
 type ClientID string
@@ -49,7 +48,6 @@ func (c ClientID) String() string {
 // ObjectID is the object ID of a user-assigned managed identity. [NewManagedIdentityCredential]
 // returns an error when an ObjectID is specified on the following platforms:
 //
-//   - Azure Arc
 //   - Azure ML
 //   - Cloud Shell
 //   - Service Fabric
@@ -67,7 +65,6 @@ func (o ObjectID) String() string {
 // ResourceID is the resource ID of a user-assigned managed identity. [NewManagedIdentityCredential]
 // returns an error when a ResourceID is specified on the following platforms:
 //
-//   - Azure Arc
 //   - Azure ML
 //   - Cloud Shell
 //   - Service Fabric
@@ -84,12 +81,18 @@ func (r ResourceID) String() string {
 
 // ManagedIdentityCredentialOptions contains optional parameters for ManagedIdentityCredential.
 type ManagedIdentityCredentialOptions struct {
+	// ClientOptions configures the credential's HTTP pipeline. On Service Fabric, Transport must be nil
+	// or an *http.Client whose Transport is nil or an *http.Transport. Custom TLS dialing and verification
+	// callbacks aren't supported. The credential derives a client that pins the endpoint certificate
+	// and rejects redirects without modifying the caller's client.
 	azcore.ClientOptions
 
 	// ID of a managed identity the credential should authenticate. Set this field to use a specific identity instead of
 	// the hosting environment's default. The value may be the identity's client, object, or resource ID.
 	// NewManagedIdentityCredential returns an error when the hosting environment doesn't support user-assigned managed
 	// identities, or the specified kind of ID.
+	// On Azure Arc, user-assigned identities require an agent that supports them. GetToken returns an error if the
+	// agent doesn't confirm the requested identity in its response.
 	ID ManagedIDKind
 
 	// dac indicates whether the credential is part of DefaultAzureCredential. When true, and the environment doesn't have

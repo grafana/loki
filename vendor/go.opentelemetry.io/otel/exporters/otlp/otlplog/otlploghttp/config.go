@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -23,12 +24,13 @@ import (
 
 // Default values.
 var (
-	defaultEndpoint                              = "localhost:4318"
-	defaultPath                                  = "/v1/logs"
-	defaultTimeout                               = 10 * time.Second
-	defaultMaxRequestSize                        = 64 * 1024 * 1024
-	defaultProxy          HTTPTransportProxyFunc = http.ProxyFromEnvironment
-	defaultRetryCfg                              = retry.DefaultConfig
+	defaultEndpoint                               = "localhost:4318"
+	defaultPath                                   = "/v1/logs"
+	defaultTimeout                                = 10 * time.Second
+	defaultMaxRequestSize                         = 64 * 1024 * 1024
+	defaultMaxResponseSize                        = int64(4 * 1024 * 1024)
+	defaultProxy           HTTPTransportProxyFunc = http.ProxyFromEnvironment
+	defaultRetryCfg                               = retry.DefaultConfig
 )
 
 // Environment variable keys.
@@ -90,17 +92,18 @@ type fnOpt func(config) config
 func (f fnOpt) applyHTTPOption(c config) config { return f(c) }
 
 type config struct {
-	endpoint       setting[string]
-	path           setting[string]
-	insecure       setting[bool]
-	tlsCfg         setting[*tls.Config]
-	headers        setting[map[string]string]
-	compression    setting[Compression]
-	maxRequestSize setting[int]
-	timeout        setting[time.Duration]
-	proxy          setting[HTTPTransportProxyFunc]
-	retryCfg       setting[retry.Config]
-	httpClient     *http.Client
+	endpoint        setting[string]
+	path            setting[string]
+	insecure        setting[bool]
+	tlsCfg          setting[*tls.Config]
+	headers         setting[map[string]string]
+	compression     setting[Compression]
+	maxRequestSize  setting[int]
+	maxResponseSize setting[int64]
+	timeout         setting[time.Duration]
+	proxy           setting[HTTPTransportProxyFunc]
+	retryCfg        setting[retry.Config]
+	httpClient      *http.Client
 }
 
 func newConfig(options []Option) config {
@@ -137,6 +140,9 @@ func newConfig(options []Option) config {
 	)
 	c.maxRequestSize = c.maxRequestSize.Resolve(
 		fallback[int](defaultMaxRequestSize),
+	)
+	c.maxResponseSize = c.maxResponseSize.Resolve(
+		fallback[int64](defaultMaxResponseSize),
 	)
 	c.proxy = c.proxy.Resolve(
 		fallback[HTTPTransportProxyFunc](defaultProxy),
@@ -332,6 +338,20 @@ func WithMaxRequestSize(size int) Option {
 	})
 }
 
+// WithMaxResponseSize sets the maximum size, in bytes, of an OTLP/HTTP
+// response body, after decompression, that the exporter will read.
+//
+// By default, a limit of 4 MiB is used. Values less than or equal to zero are
+// ignored. The response-size limit cannot be disabled.
+func WithMaxResponseSize(size int64) Option {
+	return fnOpt(func(c config) config {
+		if size > 0 {
+			c.maxResponseSize = newSetting(size)
+		}
+		return c
+	})
+}
+
 // RetryConfig defines configuration for retrying failed exports of log data.
 type RetryConfig retry.Config
 
@@ -467,8 +487,8 @@ var readFile = os.ReadFile
 
 // loadCertPool loads and returns the *x509.CertPool found at path if it exists
 // and is valid. Otherwise, nil and an error are returned.
-func loadCertPool(path string) (*x509.CertPool, error) {
-	b, err := readFile(path)
+func loadCertPool(filePath string) (*x509.CertPool, error) {
+	b, err := readFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +580,7 @@ func convPath(s string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return u.Path + "/v1/logs", nil
+	return path.Join(u.Path, defaultPath), nil
 }
 
 // convInsecure converts s from a string to a bool without case sensitivity.

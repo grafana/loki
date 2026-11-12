@@ -23,24 +23,24 @@ import (
 func TestObserveOperatorCost(t *testing.T) {
 	m := newMetrics()
 	m.observeOperatorCost([]pipelineNode{
-		{OpType: "DataObjScan", SelfDuration: 20 * time.Millisecond, RowsOut: 300},
-		{OpType: "Projection/PARSE_LOGFMT", SelfDuration: 30 * time.Millisecond, RowsIn: 400, RowsOut: 250},
-		{OpType: "DataObjScan", SelfDuration: 10 * time.Millisecond, RowsOut: 100},
+		{OpType: "LogMerge", SelfDuration: 20 * time.Millisecond, RowsOut: 300},
+		{OpType: "IndexMerge", SelfDuration: 30 * time.Millisecond, RowsIn: 400, RowsOut: 250},
+		{OpType: "LogMerge", SelfDuration: 10 * time.Millisecond, RowsOut: 100},
 	})
 
-	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("DataObjScan")))
-	require.Equal(t, float64(250), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("Projection/PARSE_LOGFMT")))
-	// Leaves have no operator input; the parser consumed its child's rows.
-	require.Equal(t, float64(0), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("DataObjScan")))
-	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("Projection/PARSE_LOGFMT")))
+	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("LogMerge")))
+	require.Equal(t, float64(250), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("IndexMerge")))
+	// Leaves have no operator input; IndexMerge consumed its child's rows.
+	require.Equal(t, float64(0), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("LogMerge")))
+	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("IndexMerge")))
 
-	// Self-time is grouped by operator type and recorded in seconds: DataObjScan
-	// gets 0.02 + 0.01 over two samples, the parser gets 0.03 over one.
-	scanCount, scanSum := histogramCountSum(t, m.operatorSelfSeconds, "DataObjScan")
+	// Self-time is grouped by operator type and recorded in seconds: LogMerge
+	// gets 0.02 + 0.01 over two samples, IndexMerge gets 0.03 over one.
+	scanCount, scanSum := histogramCountSum(t, m.operatorSelfSeconds, "LogMerge")
 	require.Equal(t, uint64(2), scanCount)
 	require.InDelta(t, 0.03, scanSum, 1e-9)
 
-	parseCount, parseSum := histogramCountSum(t, m.operatorSelfSeconds, "Projection/PARSE_LOGFMT")
+	parseCount, parseSum := histogramCountSum(t, m.operatorSelfSeconds, "IndexMerge")
 	require.Equal(t, uint64(1), parseCount)
 	require.InDelta(t, 0.03, parseSum, 1e-9)
 }
@@ -55,7 +55,7 @@ func histogramCountSum(t *testing.T, vec *prometheus.HistogramVec, lvs ...string
 }
 
 func TestTaskTypeLabel(t *testing.T) {
-	node := &physical.Limit{NodeID: ulid.Make()}
+	node := &physical.IndexMerge{NodeID: ulid.Make()}
 
 	tests := []struct {
 		name string

@@ -18,6 +18,75 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
+func newTestTask() (*Task, physical.Node) {
+	node := &physical.IndexMerge{NodeID: ulid.Make()}
+
+	var fragment dag.Graph[physical.Node]
+	fragment.Add(node)
+
+	return &Task{
+		ULID:     ulid.Make(),
+		Fragment: physical.FromGraph(fragment),
+		Sources:  make(map[physical.Node][]*Stream),
+		Sinks:    make(map[physical.Node][]*Stream),
+	}, node
+}
+
+// newTestTaskGraph returns a graph where a root task reads from numChildren
+// child tasks, each over its own stream.
+func newTestTaskGraph(numChildren int) dag.Graph[*Task] {
+	var graph dag.Graph[*Task]
+
+	root, rootNode := newTestTask()
+	graph.Add(root)
+
+	for range numChildren {
+		child, childNode := newTestTask()
+		stream := &Stream{ULID: ulid.Make()}
+		child.Sinks[childNode] = []*Stream{stream}
+		root.Sources[rootNode] = append(root.Sources[rootNode], stream)
+
+		graph.Add(child)
+		_ = graph.AddEdge(dag.Edge[*Task]{Parent: root, Child: child})
+	}
+
+	return graph
+}
+
+func TestPlanWorkflow(t *testing.T) {
+	t.Run("plans a single root node into one task", func(t *testing.T) {
+		node := &physical.IndexMerge{NodeID: ulid.Make()}
+		var g dag.Graph[physical.Node]
+		g.Add(node)
+		plan := physical.FromGraph(g)
+
+		graph, err := planWorkflow("tenant", plan)
+		require.NoError(t, err)
+		require.Equal(t, 1, graph.Len())
+
+		task, err := graph.Root()
+		require.NoError(t, err)
+		require.Equal(t, "tenant", task.TenantID)
+		require.Same(t, plan, task.Fragment)
+		require.Empty(t, task.Sources)
+		require.Empty(t, task.Sinks)
+	})
+
+	t.Run("fails when the plan has no root node", func(t *testing.T) {
+		_, err := planWorkflow("tenant", &physical.Plan{})
+		require.EqualError(t, err, "plan has no root node")
+	})
+
+	t.Run("fails when the plan has multiple root nodes", func(t *testing.T) {
+		var g dag.Graph[physical.Node]
+		g.Add(&physical.IndexMerge{NodeID: ulid.Make()})
+		g.Add(&physical.LogMerge{NodeID: ulid.Make()})
+
+		_, err := planWorkflow("tenant", physical.FromGraph(g))
+		require.EqualError(t, err, "plan has multiple root nodes")
+	})
+}
+
 // Test performs an end-to-end test of a workflow, asserting that:
 //
 //  1. All streams get registered before running tasks.
@@ -29,22 +98,9 @@ import (
 // when used improperly.
 func Test(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var physicalGraph dag.Graph[physical.Node]
-
-		var (
-			scan      = physicalGraph.Add(&physical.DataObjScan{})
-			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
-			vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
-		)
-
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
-
-		physicalPlan := physical.FromGraph(physicalGraph)
-
 		fr := newFakeRunner()
 
-		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := newWorkflow(t.Context(), Options{}, log.NewNopLogger(), fr, newTestTaskGraph(1))
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -54,15 +110,6 @@ func Test(t *testing.T) {
 			// Closing the workflow should remove all remaining streams and tasks.
 			require.Len(t, fr.streams, 0, "all streams should be removed after closing the workflow")
 			require.Len(t, fr.tasks, 0, "all tasks should be removed after closing the workflow")
-		}()
-
-		defer func() {
-			if !t.Failed() {
-				return
-			}
-
-			t.Log("Failing workflow:")
-			t.Log(Sprint(wf))
 		}()
 
 		// Run returns an error if any of the methods in our fake runner failed.
@@ -89,38 +136,14 @@ func Test(t *testing.T) {
 
 // TestCancellation tests that a task result cancels all downstream tasks.
 func TestCancellation(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
-
-	var (
-		scan        = physicalGraph.Add(&physical.DataObjScan{})
-		parallelize = physicalGraph.Add(&physical.Parallelize{})
-		rangeAgg    = physicalGraph.Add(&physical.RangeAggregation{})
-		vectorAgg   = physicalGraph.Add(&physical.VectorAggregation{})
-	)
-
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
-
-	physicalPlan := physical.FromGraph(physicalGraph)
-
 	outcomes := []TaskOutcome{TaskOutcomeCancelled, TaskOutcomeCompleted, TaskOutcomeFailed}
 	for _, outcome := range outcomes {
 		t.Run(outcome.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				fr := newFakeRunner()
-				wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
+				wf, err := newWorkflow(t.Context(), Options{}, log.NewNopLogger(), fr, newTestTaskGraph(3))
 				require.NoError(t, err, "workflow should construct properly")
 				require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
-
-				defer func() {
-					if !t.Failed() {
-						return
-					}
-
-					t.Log("Failing workflow:")
-					t.Log(Sprint(wf))
-				}()
 
 				// Run returns an error if any of the methods in our fake runner failed.
 				p, err := wf.Run(t.Context())
@@ -158,9 +181,9 @@ func TestCancellation(t *testing.T) {
 // TestFailedTaskSurfacesErrorBeforeEOF reproduces a race where a failed task's
 // error is lost because the worker closes the results-stream sink (signaling
 // EOF) before the workflow learns the task failed and calls
-// resultsPipeline.SetError. A sink-only task (the root task emits no records
-// and is its own root) maximizes the window: the worker closes the results
-// sink immediately, then reports TaskOutcomeFailed.
+// resultsPipeline.SetError. A root task that fails before it emits a record
+// maximizes the window: the worker closes the results sink immediately, then
+// reports TaskOutcomeFailed.
 //
 // The consumer (e.g. the dataobj compactor's runPlan) reads the results
 // pipeline to io.EOF and treats EOF as success. If the error is lost, a failed
@@ -175,7 +198,7 @@ func TestCancellation(t *testing.T) {
 func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var physicalGraph dag.Graph[physical.Node]
-		_ = physicalGraph.Add(&physical.DataObjScan{})
+		_ = physicalGraph.Add(&physical.IndexMerge{})
 		physicalPlan := physical.FromGraph(physicalGraph)
 
 		fr := newFakeRunner()
@@ -234,43 +257,13 @@ func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
 
 func TestWorkflowDispatchesAllTasks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		const numScanTasks = 100
-
-		var physicalGraph dag.Graph[physical.Node]
-
-		scanSet := &physical.ScanSet{}
-		for i := range numScanTasks {
-			scanSet.Targets = append(scanSet.Targets, &physical.ScanTarget{
-				Type: physical.ScanTypeDataObject,
-				DataObject: &physical.DataObjScan{
-					Section: i,
-				},
-			})
-		}
-
-		var (
-			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
-			parallel = physicalGraph.Add(&physical.Parallelize{})
-			_        = physicalGraph.Add(scanSet)
-		)
-
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
+		const numChildTasks = 100
 
 		fr := newFakeRunner()
 		opts := Options{Tenant: "tenant"}
-		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physical.FromGraph(physicalGraph))
+		wf, err := newWorkflow(t.Context(), opts, log.NewNopLogger(), fr, newTestTaskGraph(numChildTasks))
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
-
-		defer func() {
-			if !t.Failed() {
-				return
-			}
-
-			t.Log("Failing workflow:")
-			t.Log(Sprint(wf))
-		}()
 
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		t.Cleanup(cancel)

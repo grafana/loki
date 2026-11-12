@@ -67,9 +67,9 @@ func TestCollector_Fold(t *testing.T) {
 	// app=api from one. postingEntries counts rows (= logs-section refs), so
 	// env=prod yields two rows here.
 	sec, closer := buildPostingsSection(t, []postings.LabelObservation{
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 100},
-		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "env", LabelValue: "prod", StreamID: 2, Timestamp: ts, UncompressedSize: 100},
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "app", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 50},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Time: postings.At(ts), UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "env", LabelValue: "prod", StreamID: 2, Time: postings.At(ts), UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "app", LabelValue: "api", StreamID: 1, Time: postings.At(ts), UncompressedSize: 50},
 	})
 	defer closer()
 
@@ -109,7 +109,7 @@ func TestCollector_ObjectSpreadContiguous(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 
 	sec, closer := buildPostingsSection(t, []postings.LabelObservation{
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Time: postings.At(ts), UncompressedSize: 100},
 	})
 	defer closer()
 
@@ -140,11 +140,11 @@ func TestCollector_LogsLocality(t *testing.T) {
 	// objects; bar lives in a single section. env=prod is present too and must
 	// be ignored because it is not the sort key.
 	sec, closer := buildPostingsSection(t, []postings.LabelObservation{
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 1, Timestamp: ts, UncompressedSize: 100},
-		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "service_name", LabelValue: "foo", StreamID: 2, Timestamp: ts, UncompressedSize: 200},
-		{ObjectPath: "/logs/b", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 3, Timestamp: ts, UncompressedSize: 300},
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "bar", StreamID: 4, Timestamp: ts, UncompressedSize: 50},
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 999},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 1, Time: postings.At(ts), UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "service_name", LabelValue: "foo", StreamID: 2, Time: postings.At(ts), UncompressedSize: 200},
+		{ObjectPath: "/logs/b", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 3, Time: postings.At(ts), UncompressedSize: 300},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "bar", StreamID: 4, Time: postings.At(ts), UncompressedSize: 50},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Time: postings.At(ts), UncompressedSize: 999},
 	})
 	defer closer()
 
@@ -177,8 +177,8 @@ func TestCollector_LogsLocalityDedup(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 
 	sec, closer := buildPostingsSection(t, []postings.LabelObservation{
-		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 1, Timestamp: ts, UncompressedSize: 100},
-		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "service_name", LabelValue: "foo", StreamID: 2, Timestamp: ts, UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 0, ColumnName: "service_name", LabelValue: "foo", StreamID: 1, Time: postings.At(ts), UncompressedSize: 100},
+		{ObjectPath: "/logs/a", SectionIndex: 1, ColumnName: "service_name", LabelValue: "foo", StreamID: 2, Time: postings.At(ts), UncompressedSize: 100},
 	})
 	defer closer()
 

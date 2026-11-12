@@ -70,9 +70,11 @@ loki:
 
 The **overrides exporter** (`overridesExporter`) is an optional component that exposes per-tenant configuration overrides as Prometheus metrics. It is disabled by default (`overridesExporter.enabled: false`). Enable it when you need visibility into tenancy-level limit settings.
 
-## Bloom filters (experimental)
+## Bloom filters (deprecated)
 
-The chart includes experimental support for **bloom filters** through three components:
+Bloom filters are deprecated and will be removed in a future release.
+
+The chart includes support for **bloom filters** through three components:
 
 - `bloomGateway`: Serves bloom filter queries
 - `bloomPlanner`: Plans bloom filter build jobs

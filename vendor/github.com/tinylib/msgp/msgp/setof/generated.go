@@ -5,6 +5,7 @@ package setof
 import (
 	"slices"
 	"sort"
+	"strconv"
 
 	"github.com/tinylib/msgp/msgp"
 )
@@ -57,6 +58,25 @@ func (s String) AsSlice() []string {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s String) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = jsonAppendQuote(dst, k)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -126,6 +146,33 @@ func (s String) Msgsize() int {
 		size += msgp.StringPrefixSize + len(key)
 	}
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *String) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(String)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseQuoted(raw)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // StringFromSlice creates a String from a slice.
@@ -202,6 +249,24 @@ func (s StringSorted) AsSlice() []string {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s StringSorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = jsonAppendQuote(dst, k)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *StringSorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -271,6 +336,33 @@ func (s StringSorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *StringSorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(StringSorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseQuoted(raw)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // StringSortedFromSlice creates a StringSorted from a slice.
 func StringSortedFromSlice(s []string) StringSorted {
 	if s == nil {
@@ -331,6 +423,25 @@ func (s Int) AsSlice() []int {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Int) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -398,6 +509,33 @@ func (s Int) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.IntSize
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int](raw, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // IntFromSlice creates a Int from a slice.
@@ -489,6 +627,24 @@ func (s IntSorted) AsSlice() []int {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s IntSorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *IntSorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -556,6 +712,33 @@ func (s IntSorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *IntSorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(IntSorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int](raw, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // IntSortedFromSlice creates a IntSorted from a slice.
 func IntSortedFromSlice(s []int) IntSorted {
 	if s == nil {
@@ -616,6 +799,25 @@ func (s Uint) AsSlice() []uint {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Uint) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -683,6 +885,33 @@ func (s Uint) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.UintSize
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint](raw, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // UintFromSlice creates a Uint from a slice.
@@ -774,6 +1003,24 @@ func (s UintSorted) AsSlice() []uint {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s UintSorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *UintSorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -841,6 +1088,33 @@ func (s UintSorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *UintSorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(UintSorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint](raw, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // UintSortedFromSlice creates a UintSorted from a slice.
 func UintSortedFromSlice(s []uint) UintSorted {
 	if s == nil {
@@ -901,6 +1175,25 @@ func (s Byte) AsSlice() []byte {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Byte) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -968,6 +1261,33 @@ func (s Byte) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.ByteSize
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Byte) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Byte)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[byte](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // ByteFromSlice creates a Byte from a slice.
@@ -1059,6 +1379,24 @@ func (s ByteSorted) AsSlice() []byte {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s ByteSorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *ByteSorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -1126,6 +1464,33 @@ func (s ByteSorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *ByteSorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(ByteSorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[byte](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // ByteSortedFromSlice creates a ByteSorted from a slice.
 func ByteSortedFromSlice(s []byte) ByteSorted {
 	if s == nil {
@@ -1186,6 +1551,25 @@ func (s Int8) AsSlice() []int8 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Int8) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -1253,6 +1637,33 @@ func (s Int8) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Int8Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int8) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int8)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int8](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Int8FromSlice creates a Int8 from a slice.
@@ -1344,6 +1755,24 @@ func (s Int8Sorted) AsSlice() []int8 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Int8Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Int8Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -1411,6 +1840,33 @@ func (s Int8Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int8Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int8Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int8](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Int8SortedFromSlice creates a Int8Sorted from a slice.
 func Int8SortedFromSlice(s []int8) Int8Sorted {
 	if s == nil {
@@ -1471,6 +1927,25 @@ func (s Uint8) AsSlice() []uint8 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Uint8) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -1538,6 +2013,33 @@ func (s Uint8) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Uint8Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint8) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint8)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint8](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Uint8FromSlice creates a Uint8 from a slice.
@@ -1629,6 +2131,24 @@ func (s Uint8Sorted) AsSlice() []uint8 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Uint8Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Uint8Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -1696,6 +2216,33 @@ func (s Uint8Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint8Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint8Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint8](raw, 8)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Uint8SortedFromSlice creates a Uint8Sorted from a slice.
 func Uint8SortedFromSlice(s []uint8) Uint8Sorted {
 	if s == nil {
@@ -1756,6 +2303,25 @@ func (s Int16) AsSlice() []int16 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Int16) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -1823,6 +2389,33 @@ func (s Int16) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Int16Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int16) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int16)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int16](raw, 16)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Int16FromSlice creates a Int16 from a slice.
@@ -1914,6 +2507,24 @@ func (s Int16Sorted) AsSlice() []int16 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Int16Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Int16Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -1981,6 +2592,33 @@ func (s Int16Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int16Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int16Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int16](raw, 16)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Int16SortedFromSlice creates a Int16Sorted from a slice.
 func Int16SortedFromSlice(s []int16) Int16Sorted {
 	if s == nil {
@@ -2041,6 +2679,25 @@ func (s Uint16) AsSlice() []uint16 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Uint16) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -2108,6 +2765,33 @@ func (s Uint16) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Uint16Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint16) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint16)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint16](raw, 16)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Uint16FromSlice creates a Uint16 from a slice.
@@ -2199,6 +2883,24 @@ func (s Uint16Sorted) AsSlice() []uint16 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Uint16Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Uint16Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -2266,6 +2968,33 @@ func (s Uint16Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint16Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint16Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint16](raw, 16)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Uint16SortedFromSlice creates a Uint16Sorted from a slice.
 func Uint16SortedFromSlice(s []uint16) Uint16Sorted {
 	if s == nil {
@@ -2326,6 +3055,25 @@ func (s Int32) AsSlice() []int32 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Int32) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -2393,6 +3141,33 @@ func (s Int32) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Int32Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int32) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int32)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Int32FromSlice creates a Int32 from a slice.
@@ -2484,6 +3259,24 @@ func (s Int32Sorted) AsSlice() []int32 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Int32Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Int32Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -2551,6 +3344,33 @@ func (s Int32Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int32Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int32Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Int32SortedFromSlice creates a Int32Sorted from a slice.
 func Int32SortedFromSlice(s []int32) Int32Sorted {
 	if s == nil {
@@ -2611,6 +3431,25 @@ func (s Uint32) AsSlice() []uint32 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Uint32) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -2678,6 +3517,33 @@ func (s Uint32) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Uint32Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint32) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint32)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Uint32FromSlice creates a Uint32 from a slice.
@@ -2769,6 +3635,24 @@ func (s Uint32Sorted) AsSlice() []uint32 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Uint32Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Uint32Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -2836,6 +3720,33 @@ func (s Uint32Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint32Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint32Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Uint32SortedFromSlice creates a Uint32Sorted from a slice.
 func Uint32SortedFromSlice(s []uint32) Uint32Sorted {
 	if s == nil {
@@ -2896,6 +3807,25 @@ func (s Int64) AsSlice() []int64 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Int64) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -2963,6 +3893,33 @@ func (s Int64) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Int64Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int64) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int64)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Int64FromSlice creates a Int64 from a slice.
@@ -3054,6 +4011,24 @@ func (s Int64Sorted) AsSlice() []int64 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Int64Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendInt(dst, int64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Int64Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -3121,6 +4096,33 @@ func (s Int64Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Int64Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Int64Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseSigned[int64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Int64SortedFromSlice creates a Int64Sorted from a slice.
 func Int64SortedFromSlice(s []int64) Int64Sorted {
 	if s == nil {
@@ -3181,6 +4183,25 @@ func (s Uint64) AsSlice() []uint64 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Uint64) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -3248,6 +4269,33 @@ func (s Uint64) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Uint64Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint64) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint64)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Uint64FromSlice creates a Uint64 from a slice.
@@ -3339,6 +4387,24 @@ func (s Uint64Sorted) AsSlice() []uint64 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Uint64Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendUint(dst, uint64(k), 10)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Uint64Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -3406,6 +4472,33 @@ func (s Uint64Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Uint64Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Uint64Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseUnsigned[uint64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Uint64SortedFromSlice creates a Uint64Sorted from a slice.
 func Uint64SortedFromSlice(s []uint64) Uint64Sorted {
 	if s == nil {
@@ -3466,6 +4559,25 @@ func (s Float64) AsSlice() []float64 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Float64) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendFloat(dst, float64(k), 'f', -1, 64)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -3533,6 +4645,33 @@ func (s Float64) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Float64Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Float64) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Float64)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseFloat[float64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Float64FromSlice creates a Float64 from a slice.
@@ -3624,6 +4763,24 @@ func (s Float64Sorted) AsSlice() []float64 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Float64Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendFloat(dst, float64(k), 'f', -1, 64)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Float64Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -3691,6 +4848,33 @@ func (s Float64Sorted) Msgsize() int {
 	return size
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Float64Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Float64Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseFloat[float64](raw, 64)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
+}
+
 // Float64SortedFromSlice creates a Float64Sorted from a slice.
 func Float64SortedFromSlice(s []float64) Float64Sorted {
 	if s == nil {
@@ -3751,6 +4935,25 @@ func (s Float32) AsSlice() []float32 {
 		dst = append(dst, k)
 	}
 	return dst
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Float32) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	dst := make([]byte, 0, 2+len(s)*10)
+	dst = append(dst, '[')
+	first := true
+	for k := range s {
+		if !first {
+			dst = append(dst, ',')
+		}
+		first = false
+		dst = strconv.AppendFloat(dst, float64(k), 'f', -1, 32)
+	}
+	dst = append(dst, ']')
+	return dst, nil
 }
 
 // DecodeMsg decodes the message from the reader.
@@ -3818,6 +5021,33 @@ func (s Float32) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Float32Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Float32) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Float32)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseFloat[float32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Float32FromSlice creates a Float32 from a slice.
@@ -3909,6 +5139,24 @@ func (s Float32Sorted) AsSlice() []float32 {
 	return keys
 }
 
+// MarshalJSON implements json.Marshaler.
+func (s Float32Sorted) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("null"), nil
+	}
+	keys := s.AsSlice()
+	dst := make([]byte, 0, 2+len(keys)*10)
+	dst = append(dst, '[')
+	for i, k := range keys {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = strconv.AppendFloat(dst, float64(k), 'f', -1, 32)
+	}
+	dst = append(dst, ']')
+	return dst, nil
+}
+
 // DecodeMsg decodes the message from the reader.
 func (s *Float32Sorted) DecodeMsg(reader *msgp.Reader) error {
 	if reader.IsNil() {
@@ -3974,6 +5222,33 @@ func (s Float32Sorted) Msgsize() int {
 	size := msgp.ArrayHeaderSize
 	size += len(s) * msgp.Float32Size
 	return size
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Float32Sorted) UnmarshalJSON(data []byte) error {
+	if isJSONNull(data) {
+		*s = nil
+		return nil
+	}
+	dst := *s
+	if dst != nil {
+		clear(dst)
+	} else {
+		dst = make(Float32Sorted)
+	}
+	err := jsonArrayIter(data, func(raw []byte) error {
+		k, parseErr := jsonParseFloat[float32](raw, 32)
+		if parseErr != nil {
+			return parseErr
+		}
+		dst[k] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*s = dst
+	return nil
 }
 
 // Float32SortedFromSlice creates a Float32Sorted from a slice.

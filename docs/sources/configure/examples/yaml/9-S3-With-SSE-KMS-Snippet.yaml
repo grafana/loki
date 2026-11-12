@@ -2,6 +2,7 @@
 # This partial configuration uses S3 for chunk storage and a KMS CMK for encryption.
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
     sse:

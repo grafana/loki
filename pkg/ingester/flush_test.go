@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -37,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -64,9 +67,120 @@ func TestChunkFlushingIdle(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
-	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	// wait until all idle chunks are flushed
+	require.Eventually(t, func() bool {
+		for userID, streams := range testData {
+			if len(store.getChunksForUser(userID)) < len(streams) {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 10*time.Millisecond)
 	store.checkData(t, testData)
+}
+
+func TestChunkFlushingPolicyIdle(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+
+	const policyIdle = 100 * time.Millisecond
+	limitsCfg := defaultLimitsTestConfig()
+	limitsCfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"backfill": {{Selector: `{__backfill__="true"}`, Priority: 1}},
+	}
+	require.NoError(t, limitsCfg.PolicyStreamMapping.Validate())
+	limitsCfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"backfill": {ChunkIdlePeriod: ptr(model.Duration(policyIdle))},
+	}
+
+	store, ing := newTestStoreWithLimits(t, cfg, limitsCfg, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	const userID = "1"
+	backfillLabels := `{__backfill__="true", job="testjob"}`
+	liveLabels := `{job="testjob"}`
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err := ing.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: backfillLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "backfill"}}},
+		{Labels: liveLabels, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "live"}}},
+	}})
+	require.NoError(t, err)
+
+	instance, ok := ing.getInstanceByID(userID)
+	require.True(t, ok)
+
+	// The backfill stream is flushed and removed once idle for its policy's
+	// period. The live stream uses the global period, which tests set to
+	// many hours.
+	require.Eventually(t, func() bool {
+		return instance.streams.Len() == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// The live stream must remain in memory.
+	var remaining []string
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		remaining = append(remaining, s.labels.String())
+		return true, nil
+	})
+	require.Equal(t, []string{liveLabels}, remaining)
+
+	chunks := store.getChunksForUser(userID)
+	require.Len(t, chunks, 1)
+	require.Equal(t, "true", chunks[0].Metric.Get("__backfill__"))
+}
+
+func TestShouldFlushChunk(t *testing.T) {
+	ing := &Ingester{cfg: Config{MaxChunkAge: time.Hour}}
+	newChunk := func(t *testing.T, lastUpdated time.Time, entries ...time.Time) *chunkDesc {
+		c := &chunkDesc{chunk: chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024), lastUpdated: lastUpdated}
+		for _, ts := range entries {
+			_, err := c.chunk.Append(&logproto.Entry{Timestamp: ts, Line: "line"})
+			require.NoError(t, err)
+		}
+		return c
+	}
+
+	now := time.Now()
+	for _, tc := range []struct {
+		name           string
+		chunk          *chunkDesc
+		maxIdle        time.Duration
+		expectedFlush  bool
+		expectedReason string
+	}{
+		{
+			name:    "not idle",
+			chunk:   newChunk(t, now.Add(-time.Minute), now),
+			maxIdle: 5 * time.Minute,
+		},
+		{
+			name:           "idle",
+			chunk:          newChunk(t, now.Add(-10*time.Minute), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonIdle,
+		},
+		{
+			name:           "max age",
+			chunk:          newChunk(t, now, now.Add(-2*time.Hour), now),
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonMaxAge,
+		},
+		{
+			name:           "closed",
+			chunk:          &chunkDesc{closed: true, lastUpdated: now},
+			maxIdle:        5 * time.Minute,
+			expectedFlush:  true,
+			expectedReason: flushReasonFull,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shouldFlush, reason := ing.shouldFlushChunk(tc.chunk, tc.maxIdle)
+			require.Equal(t, tc.expectedFlush, shouldFlush)
+			require.Equal(t, tc.expectedReason, reason)
+		})
+	}
 }
 
 func TestChunkFlushingShutdown(t *testing.T) {
@@ -136,6 +250,7 @@ func Benchmark_EncodeChunk(b *testing.B) {
 			chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			0,
 		)
 		require.NoError(b, ing.encodeChunk(ctx, &ch, desc))
 	}
@@ -205,6 +320,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 				chunkenc.NewFacade(desc.chunk, ing.cfg.BlockSize, ing.cfg.TargetChunkSize),
 				firstTime,
 				lastTime,
+				0,
 			)
 
 			if lockDuringEncode {
@@ -233,7 +349,7 @@ func benchmarkPushDuringEncode(b *testing.B, lockDuringEncode bool) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(pushCtx, e, rec, 0, true, false, nil, "loki")
+		_, err := lockThenPush(pushCtx, s, e, rec, false, nil, "loki", time.Time{})
 		recordPool.PutRecord(rec)
 		if err != nil {
 			b.Fatal(err)
@@ -273,7 +389,7 @@ func Test_FlushOp(t *testing.T) {
 		require.NoError(t, ins.Push(ctx, req))
 
 		time.Sleep(cfg.FlushCheckPeriod)
-		require.NoError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+		require.NoError(t, ing.doFlushOp(gokitlog.NewNopLogger(), &flushOp{
 			immediate: true,
 			userID:    "foo",
 			fp:        ins.getHashForLabels(lbs),
@@ -304,7 +420,7 @@ func Test_FlushOp(t *testing.T) {
 		require.NoError(t, ins.Push(ctx, req))
 
 		time.Sleep(cfg.FlushCheckPeriod)
-		require.EqualError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+		require.EqualError(t, ing.doFlushOp(gokitlog.NewNopLogger(), &flushOp{
 			immediate: true,
 			userID:    "foo",
 			fp:        ins.getHashForLabels(lbs),
@@ -350,53 +466,35 @@ func buildChunkDesc(t testing.TB) *chunkDesc {
 	return desc
 }
 
-func TestMaybeSetIngestedAt(t *testing.T) {
+func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
+	// Only schema v14 persists IngestedAt in the index.
 	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
 	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
 
 	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
-	live := labels.FromStrings("app", "foo")
+	nonBackfill := labels.FromStrings("app", "foo")
+
+	recordTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	for _, tc := range []struct {
-		name    string
-		periods []config.PeriodConfig
-		metric  labels.Labels
-		wantSet bool
+		name       string
+		periods    []config.PeriodConfig
+		labels     labels.Labels
+		recordTime time.Time
+		want       model.Time
 	}{
-		{"backfill stream under v14 records ingestion time", v14, backfill, true},
-		{"live stream under v14 stays zero", v14, live, false},
-		{"backfill stream under v13 stays zero", v13, backfill, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			i := &Ingester{periodicConfigs: tc.periods}
-			ch := chunk.Chunk{Metric: tc.metric}
-
-			before := model.Now()
-			i.maybeSetIngestedAt(&ch, model.Now())
-
-			if tc.wantSet {
-				require.NotEqual(t, model.Time(0), ch.IngestedAt)
-				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
-			} else {
-				require.Equal(t, model.Time(0), ch.IngestedAt)
-			}
-		})
-	}
-}
-
-func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		labels  labels.Labels
-		wantSet bool
-	}{
-		{"backfill stream", labels.FromStrings("app", "foo", constants.BackfillLabel, "true"), true},
-		{"live stream", labels.FromStrings("app", "foo"), false},
+		{"backfill stream on v14 without a record timestamp stays unset", v14, backfill, time.Time{}, 0},
+		{"non-backfill stream on v14 stays unset", v14, nonBackfill, time.Time{}, 0},
+		{"backfill stream on v13 stays unset", v13, backfill, time.Time{}, 0},
+		{"non-backfill stream with a record timestamp stays unset", v14, nonBackfill, recordTime, 0},
+		{"backfill stream on v13 with a record timestamp stays unset", v13, backfill, recordTime, 0},
+		{"backfill stream on v14 uses the record timestamp", v14, backfill, recordTime, model.Time(recordTime.UnixMilli())},
+		{"epoch record timestamp is not used", v14, backfill, time.UnixMilli(0), 0},
+		{"Kafka NoTimestamp is not used", v14, backfill, time.UnixMilli(-1), 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
-			// Use a v14 period so the chunk's index would persist IngestedAt.
-			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+			ing.periodicConfigs = tc.periods
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			var captured []chunk.Chunk
@@ -405,17 +503,16 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 				return nil
 			}
 
-			before := model.Now()
-			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, buildChunkDecs(t), &sync.RWMutex{}))
+			descs := buildChunkDecs(t)
+			for _, d := range descs {
+				d.ingestedAt = tc.recordTime
+			}
+
+			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, descs, &sync.RWMutex{}))
 
 			require.NotEmpty(t, captured)
 			for _, c := range captured {
-				if tc.wantSet {
-					require.NotEqual(t, model.Time(0), c.IngestedAt)
-					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
-				} else {
-					require.Equal(t, model.Time(0), c.IngestedAt)
-				}
+				require.Equal(t, tc.want, c.IngestedAt)
 			}
 		})
 	}
@@ -597,6 +694,50 @@ func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
 	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
 }
 
+func TestParseFlushTenantParams(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		query              string
+		expectedErr        string
+		expectedTenant     string
+		expectedMatchers   string
+		expectedFlushIndex bool
+	}{
+		{name: "tenant only", query: "tenant=foo", expectedTenant: "foo"},
+		{name: "tenant and matchers", query: `tenant=foo&matchers={app="a"}`, expectedTenant: "foo", expectedMatchers: `{app="a"}`},
+		{name: "bare flush_index", query: "tenant=foo&flush_index", expectedTenant: "foo", expectedFlushIndex: true},
+		{name: "flush_index true", query: "tenant=foo&flush_index=true", expectedTenant: "foo", expectedFlushIndex: true},
+		{name: "flush_index false", query: "tenant=foo&flush_index=false", expectedTenant: "foo"},
+		{name: "all params", query: `tenant=foo&matchers={app="a"}&flush_index`, expectedTenant: "foo", expectedMatchers: `{app="a"}`, expectedFlushIndex: true},
+		{name: "no params", expectedErr: "the tenant param is required"},
+		{name: "empty tenant", query: "tenant=", expectedErr: "the tenant param is required"},
+		{name: "matchers without tenant", query: `matchers={app="a"}`, expectedErr: "the tenant param is required"},
+		{name: "invalid matchers", query: "tenant=foo&matchers=not-a-matcher", expectedErr: "invalid matchers param"},
+		{name: "invalid flush_index", query: "tenant=foo&flush_index=maybe", expectedErr: "invalid flush_index param"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := url.ParseQuery(tc.query)
+			require.NoError(t, err)
+
+			tenantID, matchers, flushIndex, err := parseFlushTenantParams(q)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedTenant, tenantID)
+			require.Equal(t, tc.expectedFlushIndex, flushIndex)
+			if tc.expectedMatchers == "" {
+				require.Empty(t, matchers)
+				return
+			}
+			expected, err := syntax.ParseMatchers(tc.expectedMatchers, true)
+			require.NoError(t, err)
+			require.Equal(t, expected, matchers)
+		})
+	}
+}
+
 func TestFlushTenantHandler(t *testing.T) {
 	const userID = "testUser"
 
@@ -604,49 +745,76 @@ func TestFlushTenantHandler(t *testing.T) {
 		name string
 		// pushStreams are pushed for userID before the request (built with makeStream).
 		pushStreams []logproto.Stream
-		// orgID is injected into the request context; an empty value means no tenant is set.
-		orgID string
-		// flushStreamsSelector is the LogQL selector sent as the "streams" param;
-		// an empty value means no selector (flush the whole tenant).
-		flushStreamsSelector string
+		// query is the raw query string of the request.
+		query string
 
 		expectedFlushStatusCode int
 		// expectedStreams are the label sets expected to have been flushed to the store.
 		expectedStreams []string
 		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
 		expectedFlushes int32
+		// indexFlushInProgress holds the index flush lock during the request, as a
+		// concurrent flush_index request would.
+		indexFlushInProgress bool
 	}{
 		{
-			name:                    "matcher scopes flush to matching streams",
+			name:                    "matchers scope flush to matching streams",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
-			orgID:                   userID,
-			flushStreamsSelector:    `{app="a"}`,
+			query:                   "tenant=" + userID + "&matchers=" + url.QueryEscape(`{app="a"}`) + "&flush_index",
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`},
 			expectedFlushes:         1,
 		},
 		{
-			name:                    "empty selector flushes the whole tenant",
+			name:                    "no matchers flushes the whole tenant",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
-			orgID:                   userID,
+			query:                   "tenant=" + userID + "&flush_index=true",
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
 			expectedFlushes:         1,
 		},
 		{
-			name:                    "missing tenant is a bad request",
-			expectedFlushStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:                    "invalid matcher is a bad request",
-			orgID:                   userID,
-			flushStreamsSelector:    "not-a-matcher",
-			expectedFlushStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:                    "unknown tenant is a no-op",
-			orgID:                   "no-such-tenant",
+			name:                    "the index is not flushed by default",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=" + userID,
 			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
+		},
+		{
+			name:                    "other tenants are not flushed",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=other-tenant",
+			expectedFlushStatusCode: http.StatusNoContent,
+		},
+		{
+			name:                    "missing id is a bad request",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "invalid matchers is a bad request",
+			query:                   "tenant=" + userID + "&matchers=not-a-matcher",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "invalid flush_index is a bad request",
+			query:                   "tenant=" + userID + "&flush_index=maybe",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "concurrent index flush is rejected",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=" + userID + "&flush_index",
+			indexFlushInProgress:    true,
+			expectedFlushStatusCode: http.StatusTooManyRequests,
+		},
+		{
+			name:                    "chunk-only flush is not blocked by an index flush",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			query:                   "tenant=" + userID,
+			indexFlushInProgress:    true,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -658,29 +826,356 @@ func TestFlushTenantHandler(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			target := "/flush/tenant"
-			if tc.flushStreamsSelector != "" {
-				target += "?streams=" + url.QueryEscape(tc.flushStreamsSelector)
-			}
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest(http.MethodPost, target, nil)
-			if tc.orgID != "" {
-				r = r.WithContext(user.InjectOrgID(r.Context(), tc.orgID))
+			r := httptest.NewRequest(http.MethodPost, "/flush/tenant?"+tc.query, nil)
+
+			if tc.indexFlushInProgress {
+				ing.indexFlushMtx.Lock()
+				defer ing.indexFlushMtx.Unlock()
 			}
 
 			ing.FlushTenantHandler(w, r)
 
 			require.Equal(t, tc.expectedFlushStatusCode, w.Code)
 
-			var flushedStreams []string
-			for _, c := range store.getChunksForUser(userID) {
-				flushedStreams = append(flushedStreams, c.Metric.String())
+			// The flush is only synchronous with flush_index; otherwise it is enqueued
+			// and the workers finish it after the handler returns.
+			if !strings.Contains(tc.query, "flush_index") {
+				require.Eventually(t, func() bool {
+					return len(flushedStreams(store, userID)) == len(tc.expectedStreams)
+				}, 5*time.Second, 10*time.Millisecond)
 			}
-			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
-
+			require.ElementsMatch(t, tc.expectedStreams, flushedStreams(store, userID))
 			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
 		})
 	}
+}
+
+func TestFlushHandler(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+
+		expectedStatusCode int
+		// expectedFlushed is whether the chunks of every tenant are flushed.
+		expectedFlushed bool
+		// expectedIndexFlushes is the number of forced index ships (FlushIndexes calls).
+		expectedIndexFlushes int32
+		// indexFlushInProgress holds the index flush lock during the request, as a
+		// concurrent flush_index request would.
+		indexFlushInProgress bool
+	}{
+		{
+			name:               "the index is not flushed by default",
+			expectedStatusCode: http.StatusNoContent,
+			expectedFlushed:    true,
+		},
+		{
+			name:                 "bare flush_index flushes the index",
+			query:                "flush_index",
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+			expectedIndexFlushes: 1,
+		},
+		{
+			name:                 "flush_index=true flushes the index",
+			query:                "flush_index=true",
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+			expectedIndexFlushes: 1,
+		},
+		{
+			name:               "flush_index=false does not flush the index",
+			query:              "flush_index=false",
+			expectedStatusCode: http.StatusNoContent,
+			expectedFlushed:    true,
+		},
+		{
+			name:               "invalid flush_index is a bad request",
+			query:              "flush_index=maybe",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                 "concurrent index flush is rejected",
+			query:                "flush_index",
+			indexFlushInProgress: true,
+			expectedStatusCode:   http.StatusTooManyRequests,
+		},
+		{
+			name:                 "chunk-only flush is not blocked by an index flush",
+			indexFlushInProgress: true,
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			tenants := []string{"tenant-a", "tenant-b"}
+			for _, userID := range tenants {
+				_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{
+					Streams: []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+				})
+				require.NoError(t, err)
+			}
+
+			if tc.indexFlushInProgress {
+				ing.indexFlushMtx.Lock()
+				defer ing.indexFlushMtx.Unlock()
+			}
+
+			w := httptest.NewRecorder()
+			ing.FlushHandler(w, httptest.NewRequest(http.MethodPost, "/flush?"+tc.query, nil))
+			require.Equal(t, tc.expectedStatusCode, w.Code)
+
+			// Without flush_index the flush is only enqueued, so wait for the flush
+			// workers to drain it. With flush_index it is complete on return, which
+			// the exact assertion below also checks.
+			for _, userID := range tenants {
+				if tc.expectedFlushed && tc.expectedIndexFlushes == 0 {
+					require.Eventually(t, func() bool {
+						return len(flushedStreams(store, userID)) == 2
+					}, 5*time.Second, 10*time.Millisecond)
+				}
+				if tc.expectedFlushed {
+					require.ElementsMatch(t, []string{`{app="a"}`, `{app="b"}`}, flushedStreams(store, userID))
+				} else {
+					require.Empty(t, flushedStreams(store, userID))
+				}
+			}
+			require.Equal(t, tc.expectedIndexFlushes, store.flushIndexCalls.Load())
+		})
+	}
+}
+
+func TestFlushStreams(t *testing.T) {
+	const userID = "testUser"
+
+	t.Run("synchronous flush covers every stream of every queue", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.ConcurrentFlushes = 2
+		store, ing := newTestStore(t, cfg, nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		numStreams := 300
+		streams := make([]logproto.Stream, 0, numStreams)
+		for n := 0; n < numStreams; n++ {
+			streams = append(streams, makeStream(fmt.Sprintf(`{app="app-%d"}`, n), 1))
+		}
+		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: streams})
+		require.NoError(t, err)
+
+		require.NoError(t, ing.flushStreams(context.Background(), userID, nil, true))
+		require.Len(t, flushedStreams(store, userID), numStreams)
+	})
+
+	t.Run("an empty tenant flushes all tenants", func(t *testing.T) {
+		store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		for _, id := range []string{"tenant-a", "tenant-b"} {
+			_, err := ing.Push(user.InjectOrgID(context.Background(), id), &logproto.PushRequest{Streams: []logproto.Stream{makeStream(`{app="a"}`, 1)}})
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, ing.flushStreams(context.Background(), "", nil, true))
+		require.Len(t, flushedStreams(store, "tenant-a"), 1)
+		require.Len(t, flushedStreams(store, "tenant-b"), 1)
+	})
+
+	t.Run("an unknown tenant is a no-op", func(t *testing.T) {
+		_, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		require.NoError(t, ing.flushStreams(context.Background(), "no-such-tenant", nil, true))
+	})
+
+	t.Run("a flush failure is returned", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.FlushOpBackoff.MinBackoff = time.Millisecond
+		cfg.FlushOpBackoff.MaxBackoff = time.Millisecond
+		cfg.FlushOpBackoff.MaxRetries = 1
+		store, ing := newTestStore(t, cfg, nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: []logproto.Stream{makeStream(`{app="a"}`, 1)}})
+		require.NoError(t, err)
+
+		// The shutdown flush retries failed immediate flushes until they succeed, so
+		// the store must recover before the ingester is stopped, even if this test fails.
+		defer func() { store.onPut = nil }()
+		store.onPut = func(context.Context, []chunk.Chunk) error { return errors.New("store down") }
+
+		require.Error(t, ing.flushStreams(context.Background(), userID, nil, true))
+
+		// The failure was reported to the caller, so the op must not be retried in
+		// the background even once the store has recovered.
+		store.onPut = nil
+		require.Never(t, func() bool {
+			return len(flushedStreams(store, userID)) > 0
+		}, 300*time.Millisecond, 20*time.Millisecond, "a failed op that belongs to a job must not be requeued")
+	})
+
+	t.Run("a job merges into an op that is already queued", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.ConcurrentFlushes = 1
+		store, ing := newTestStore(t, cfg, nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{
+			Streams: []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+		})
+		require.NoError(t, err)
+
+		// Hold the only worker inside the first Put, so one stream's op is in flight
+		// and the other's is queued.
+		putStarted, release := make(chan struct{}), make(chan struct{})
+		var once sync.Once
+		var completedPuts atomic.Int32
+		store.onPut = func(context.Context, []chunk.Chunk) error {
+			once.Do(func() { close(putStarted) })
+			<-release
+			completedPuts.Add(1)
+			return nil
+		}
+
+		errCh := make(chan error, 2)
+		go func() { errCh <- ing.flushStreams(context.Background(), userID, nil, true) }()
+		<-putStarted
+		require.Eventually(t, func() bool { return ing.flushQueues[0].Length() == 1 }, 5*time.Second, 5*time.Millisecond)
+
+		// The second job finds the queued op and attaches to it, but can't merge into
+		// the one already running, so the queue holds two ops, not three.
+		go func() { errCh <- ing.flushStreams(context.Background(), userID, nil, true) }()
+		require.Eventually(t, func() bool { return ing.flushQueues[0].Length() == 2 }, 5*time.Second, 5*time.Millisecond)
+
+		close(release)
+		require.NoError(t, <-errCh)
+		require.NoError(t, <-errCh)
+		require.Equal(t, int32(2), completedPuts.Load(), "each stream is flushed once, the second op for the running stream finds nothing to flush")
+	})
+
+	t.Run("concurrent jobs flush each stream exactly once", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.ConcurrentFlushes = 4
+		store, ing := newTestStore(t, cfg, nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		const numStreams = 50
+		streams := make([]logproto.Stream, 0, numStreams)
+		for n := 0; n < numStreams; n++ {
+			streams = append(streams, makeStream(fmt.Sprintf(`{app="app-%d"}`, n), 1))
+		}
+		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: streams})
+		require.NoError(t, err)
+
+		var g errgroup.Group
+		for n := 0; n < 8; n++ {
+			g.Go(func() error { return ing.flushStreams(context.Background(), userID, nil, true) })
+		}
+		require.NoError(t, g.Wait())
+		require.Len(t, flushedStreams(store, userID), numStreams)
+	})
+
+	t.Run("a cancelled context stops the wait but not the flush", func(t *testing.T) {
+		store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: []logproto.Stream{makeStream(`{app="a"}`, 1)}})
+		require.NoError(t, err)
+
+		putStarted, release := make(chan struct{}), make(chan struct{})
+		var once sync.Once
+		var completedPuts atomic.Int32
+		store.onPut = func(_ context.Context, _ []chunk.Chunk) error {
+			once.Do(func() { close(putStarted) })
+			<-release
+			completedPuts.Add(1)
+			return nil
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() { errCh <- ing.flushStreams(ctx, userID, nil, true) }()
+
+		<-putStarted
+		cancel()
+		require.ErrorIs(t, <-errCh, context.Canceled)
+
+		// The op was already enqueued, so it still completes once unblocked.
+		close(release)
+		require.Eventually(t, func() bool {
+			return completedPuts.Load() == 1
+		}, 5*time.Second, 10*time.Millisecond)
+	})
+}
+
+func TestFlushRejectedWhenNotRunning(t *testing.T) {
+	const userID = "testUser"
+
+	for _, tc := range []struct {
+		name string
+		// stop moves the ingester into the state under test.
+		stop func(t *testing.T, ing *Ingester)
+	}{
+		{
+			name: "shutdown has marked the ingester read-only",
+			stop: func(_ *testing.T, ing *Ingester) { ing.stopIncomingRequests() },
+		},
+		{
+			name: "ingester is stopped and its flush queues are closed",
+			stop: func(t *testing.T, ing *Ingester) {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{
+				Streams: []logproto.Stream{makeStream(`{app="a"}`, 1)},
+			})
+			require.NoError(t, err)
+
+			tc.stop(t, ing)
+			putsBefore := len(flushedStreams(store, userID))
+
+			w := httptest.NewRecorder()
+			ing.FlushHandler(w, httptest.NewRequest(http.MethodPost, "/flush", nil))
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+			w = httptest.NewRecorder()
+			ing.FlushTenantHandler(w, httptest.NewRequest(http.MethodPost, "/flush/tenant?tenant="+userID+"&flush_index", nil))
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+			require.Len(t, flushedStreams(store, userID), putsBefore, "a rejected flush must not flush anything")
+			require.Zero(t, store.flushIndexCalls.Load(), "a rejected flush must not flush the index")
+		})
+	}
+
+	t.Run("ingester has not started", func(t *testing.T) {
+		store := &testStore{chunks: map[string][]chunk.Chunk{}}
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+		ing, err := New(defaultIngesterTestConfig(t), client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+		require.NoError(t, err)
+
+		// The flush queues don't exist yet, so enqueueing would panic.
+		w := httptest.NewRecorder()
+		ing.FlushHandler(w, httptest.NewRequest(http.MethodPost, "/flush", nil))
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	})
+}
+
+// flushedStreams returns the label sets of the chunks the store received for a tenant.
+func flushedStreams(store *testStore, userID string) []string {
+	var out []string
+	for _, c := range store.getChunksForUser(userID) {
+		out = append(out, c.Metric.String())
+	}
+	return out
 }
 
 // makeStream builds a stream with the given labels and numLogs log lines.
@@ -713,13 +1208,17 @@ func (s *testStore) FlushIndexes(_ context.Context) error {
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(
 func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
+	return newTestStoreWithLimits(t, cfg, defaultLimitsTestConfig(), walOverride)
+}
+
+func newTestStoreWithLimits(t require.TestingT, cfg Config, limitsCfg validation.Limits, walOverride WAL) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := validation.NewOverrides(limitsCfg, nil)
 	require.NoError(t, err)
 
 	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock, nil)
@@ -954,4 +1453,98 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 	}
 	require.NoError(t, it.Err())
 	return stream
+}
+
+// storedEntries returns the number of entries the store holds per tenant and app.
+func storedEntries(store *testStore) map[string]int {
+	store.mtx.Lock()
+	defer store.mtx.Unlock()
+
+	out := map[string]int{}
+	for userID, chunks := range store.chunks {
+		for _, c := range chunks {
+			out[userID+"/"+c.Metric.Get("app")] += c.Data.(*chunkenc.Facade).LokiChunk().Size()
+		}
+	}
+	return out
+}
+
+// FuzzFlushStreams interleaves pushes with concurrent flushes of random tenants
+// and streams, some asynchronous and some with an already cancelled context. Each
+// input byte is one step. It checks that nothing hangs, panics or fails, and that
+// once all flushes have settled every pushed entry is stored exactly once.
+func FuzzFlushStreams(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{0, 1, 2, 3, 4, 0, 7, 2, 12, 3})
+	f.Add([]byte{0, 5, 10, 2, 2, 3, 4, 1, 6, 2, 90, 3, 4, 0, 2})
+
+	f.Fuzz(func(t *testing.T, steps []byte) {
+		tenants := []string{"t0", "t1"}
+		apps := []string{"a0", "a1", "a2"}
+
+		cfg := defaultIngesterTestConfig(t)
+		cfg.ConcurrentFlushes = 1 + len(steps)%3
+		store, ing := newTestStore(t, cfg, nil)
+		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+		pushed := map[string]int{}
+		var wg sync.WaitGroup
+
+		// settle waits for the running flushes, then flushes everything and checks
+		// that every pushed entry has been stored once. Pushing while a flush is
+		// running can flush a chunk twice, an existing bug unrelated to flush jobs,
+		// so pushes only happen on a settled ingester.
+		settle := func() {
+			wg.Wait()
+			require.NoError(t, ing.flushStreams(context.Background(), "", nil, true))
+			require.Equal(t, pushed, storedEntries(store))
+		}
+
+		for i, b := range steps {
+			kind := int(b) % 5
+			tenant := tenants[int(b/5)%len(tenants)]
+			app := apps[int(b/10)%len(apps)]
+
+			if kind < 2 {
+				if i > 0 && int(steps[i-1])%5 >= 2 {
+					settle()
+				}
+				_, err := ing.Push(user.InjectOrgID(context.Background(), tenant), &logproto.PushRequest{
+					Streams: []logproto.Stream{{
+						Labels:  fmt.Sprintf(`{app="%s"}`, app),
+						Entries: []logproto.Entry{{Timestamp: time.Unix(0, int64(i+1)), Line: fmt.Sprintf("line-%d", i)}},
+					}},
+				})
+				require.NoError(t, err)
+				pushed[tenant+"/"+app]++
+				continue
+			}
+
+			// kind 2 is a synchronous flush, 3 an asynchronous one and 4 a
+			// synchronous one whose context is already cancelled. An odd byte
+			// restricts the flush to one app of the tenant, an even one flushes
+			// all tenants.
+			var flushTenant string
+			var matchers []*labels.Matcher
+			if b%2 == 1 {
+				flushTenant = tenant
+				matchers = []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", app)}
+			}
+			ctx := context.Background()
+			if kind == 4 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := ing.flushStreams(ctx, flushTenant, matchers, kind != 3); err != nil && !errors.Is(err, context.Canceled) {
+					t.Errorf("flushStreams: %v", err)
+				}
+			}()
+		}
+
+		settle()
+	})
 }

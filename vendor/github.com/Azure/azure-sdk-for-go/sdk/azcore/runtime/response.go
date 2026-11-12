@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 
 	azexported "github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
@@ -104,4 +106,51 @@ func removeBOM(resp *http.Response) error {
 // DecodeByteArray will base-64 decode the provided string into v.
 func DecodeByteArray(s string, v *[]byte, format Base64Encoding) error {
 	return azexported.DecodeByteArray(s, v, format)
+}
+
+// SSEResponse validates a pipeline response for use by a streaming.SSEConnector.
+// The request must use SkipBodyDownload to preserve the streaming response body.
+// When err is nil, resp and resp.Body must be non-nil.
+// HTTP 204 closes the body and returns io.EOF to signal completion, regardless of statusCodes.
+// Other responses must match one of statusCodes and have a text/event-stream Content-Type.
+// On success, the caller owns the returned body. Rejected response bodies are closed.
+// Rejected responses below HTTP 400 discard unbuffered bodies without reading them.
+// If err is non-nil, resp is ignored. Failure errors matching io.EOF are converted to
+// io.ErrUnexpectedEOF so they aren't mistaken for completion.
+func SSEResponse(resp *http.Response, err error, statusCodes ...int) (io.ReadCloser, error) {
+	if err != nil {
+		return nil, sseResponseError(err)
+	}
+	if HasStatusCode(resp, http.StatusNoContent) {
+		_ = resp.Body.Close()
+		return nil, io.EOF
+	}
+	if !HasStatusCode(resp, statusCodes...) {
+		// Avoid draining a live stream, but preserve HTTP error bodies and any
+		// already-downloaded payload for normal response error parsing.
+		if resp.StatusCode < http.StatusBadRequest && !exported.PayloadDownloaded(resp) {
+			_ = resp.Body.Close()
+			resp.Body = http.NoBody
+		}
+		return nil, sseResponseError(NewResponseError(resp))
+	}
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		err = fmt.Errorf("invalid SSE Content-Type %q: %s", contentType, err.Error())
+	} else if mediaType != "text/event-stream" {
+		err = fmt.Errorf("unexpected SSE Content-Type %q", contentType)
+	}
+	if err != nil {
+		_ = resp.Body.Close()
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
+func sseResponseError(err error) error {
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("SSE connection failed: %s: %w", err.Error(), io.ErrUnexpectedEOF)
+	}
+	return err
 }

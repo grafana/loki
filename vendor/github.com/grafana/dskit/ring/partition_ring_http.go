@@ -60,11 +60,16 @@ func (h *PartitionRingPageHandler) handleGetRequest(w http.ResponseWriter, req *
 		ring     = h.reader.PartitionRing()
 		ringDesc = ring.desc
 	)
-	ownedTokens := ringDesc.countTokens()
+	ownedTokens := ring.countTokens()
 
 	// Prepare the data to render partitions in the page.
 	partitionsByID := make(map[int32]partitionPageData, len(ringDesc.Partitions))
 	for id, partition := range ringDesc.Partitions {
+		tokens, err := ring.partitionTokens(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		owners := ring.PartitionOwnerIDsCopy(id)
 		slices.Sort(owners)
 
@@ -75,8 +80,9 @@ func (h *PartitionRingPageHandler) handleGetRequest(w http.ResponseWriter, req *
 			StateTimestamp:    partition.GetStateTime(),
 			StateChangeLocked: partition.StateChangeLocked,
 			OwnerIDs:          owners,
-			Tokens:            partition.Tokens,
-			NumTokens:         len(partition.Tokens),
+			TokenScheme:       partition.TokenScheme,
+			Tokens:            tokens,
+			NumTokens:         len(tokens),
 			Ownership:         distancePercentage(ownedTokens[id]),
 		}
 	}
@@ -93,8 +99,6 @@ func (h *PartitionRingPageHandler) handleGetRequest(w http.ResponseWriter, req *
 				State:          PartitionUnknown,
 				StateTimestamp: time.Time{},
 				OwnerIDs:       []string{ownerID},
-				Tokens:         partition.Tokens,
-				NumTokens:      len(partition.Tokens),
 				Ownership:      distancePercentage(ownedTokens[owner.OwnedPartition]),
 			}
 
@@ -210,15 +214,16 @@ type partitionRingPageData struct {
 }
 
 type partitionPageData struct {
-	ID                int32          `json:"id"`
-	Corrupted         bool           `json:"corrupted"`
-	State             PartitionState `json:"state"`
-	StateTimestamp    time.Time      `json:"state_timestamp"`
-	StateChangeLocked bool           `json:"state_change_locked"`
-	OwnerIDs          []string       `json:"owner_ids"`
-	Tokens            []uint32       `json:"tokens"`
-	NumTokens         int            `json:"-"`
-	Ownership         float64        `json:"-"`
+	ID                int32                `json:"id"`
+	Corrupted         bool                 `json:"corrupted"`
+	State             PartitionState       `json:"state"`
+	StateTimestamp    time.Time            `json:"state_timestamp"`
+	StateChangeLocked bool                 `json:"state_change_locked"`
+	OwnerIDs          []string             `json:"owner_ids"`
+	TokenScheme       PartitionTokenScheme `json:"token_scheme"`
+	Tokens            []uint32             `json:"tokens"`
+	NumTokens         int                  `json:"-"`
+	Ownership         float64              `json:"-"`
 }
 
 // distancePercentage renders a given token distance as the percentage of all possible token values covered by that distance.

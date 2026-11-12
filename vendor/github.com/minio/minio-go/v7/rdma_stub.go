@@ -12,6 +12,7 @@ package minio
 import (
 	"context"
 	"errors"
+	"io"
 	"unsafe"
 )
 
@@ -25,6 +26,12 @@ var ErrRDMANotCompiled = errors.New("RDMA support not compiled in (build with -t
 type rdmaClientHandle struct{} //nolint:unused
 
 func (c *Client) putObjectRDMA(_ context.Context, _, _ string, _ PutObjectOptions) (UploadInfo, error) {
+	return UploadInfo{}, ErrRDMANotCompiled
+}
+
+func (c *Client) putObjectRDMAStream(_ context.Context, _, _ string, _ io.Reader, _ int64,
+	_ PutObjectOptions,
+) (UploadInfo, error) {
 	return UploadInfo{}, ErrRDMANotCompiled
 }
 

@@ -33,6 +33,14 @@ const (
 	// query sharding dynamically and ignores it.
 	DefaultRowShards = 16
 
+	// LatestSchemaVersion is the newest schema version Loki supports. validate
+	// rejects any period config with a newer version, so this is the only edit
+	// needed to allow one.
+	LatestSchemaVersion = 14
+
+	// minSchemaVersion is the oldest schema version Loki still supports.
+	minSchemaVersion = 9
+
 	pathPrefixDelimiter = "/"
 )
 
@@ -421,12 +429,10 @@ func (cfg PeriodConfig) validate() error {
 		return err
 	}
 
-	switch v {
-	case 9, 10, 11, 12, 13, 14:
-		return nil
-	default:
+	if v < minSchemaVersion || v > LatestSchemaVersion {
 		return errInvalidSchemaVersion
 	}
+	return nil
 }
 
 // Load the yaml file, or build the config from legacy command-line flags

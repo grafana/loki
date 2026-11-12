@@ -65,7 +65,8 @@ func New(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Planner, error) {
-	utillog.WarnExperimentalUse("Bloom Planner", logger)
+	utillog.WarnExperimentalUse("Bloom Planner", logger) // still increase experimental features counter despite being deprecated
+	level.Warn(logger).Log("msg", "bloom planner is deprecated and will be removed in a future release")
 
 	tsdbStore, err := common.NewTSDBStores("bloom-planner", schemaCfg, storeCfg, storageMetrics, logger)
 	if err != nil {

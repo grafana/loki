@@ -3,14 +3,14 @@ Package objx provides utilities for dealing with maps, slices, JSON and other da
 
 # Overview
 
-Objx provides the `objx.Map` type, which is a `map[string]interface{}` that exposes
+Objx provides the `objx.Map` type, which is a `map[string]any` that exposes
 a powerful `Get` method (among others) that allows you to easily and quickly get
 access to data within the map, without having to worry too much about type assertions,
 missing data, default values etc.
 
 # Pattern
 
-Objx uses a predictable pattern to make access data from within `map[string]interface{}` easy.
+Objx uses a predictable pattern to make access data from within `map[string]any` easy.
 Call one of the `objx.` functions to create your `objx.Map` to get going:
 
 	m, err := objx.FromJSON(json)
@@ -55,7 +55,7 @@ A simple example of how to use Objx:
 
 # Ranging
 
-Since `objx.Map` is a `map[string]interface{}` you can treat it as such.
+Since `objx.Map` is a `map[string]any` you can treat it as such.
 For example, to `range` the data, do what you would expect:
 
 	m := objx.MustFromJSON(json)
@@ -64,3 +64,5 @@ For example, to `range` the data, do what you would expect:
 	}
 */
 package objx
+
+//go:generate go run ./codegen

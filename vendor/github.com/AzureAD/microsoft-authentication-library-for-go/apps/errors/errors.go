@@ -36,10 +36,7 @@ type verboser interface {
 // Verbose prints the most verbose error that the error message has.
 func Verbose(err error) string {
 	build := strings.Builder{}
-	for {
-		if err == nil {
-			break
-		}
+	for err != nil {
 		if v, ok := err.(verboser); ok {
 			build.WriteString(v.Verbose())
 		} else {

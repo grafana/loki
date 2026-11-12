@@ -13,18 +13,18 @@ type crState int
 
 const (
 	crStateInitial crState = iota
-	crStateReading 
+	crStateReading
 	crStateFlushing
 	crStateDone
 )
 
 type CompressingReader struct {
-	state crState
-	src io.ReadCloser // source reader
-	level lz4block.CompressionLevel // how hard to try
-	frame *lz4stream.Frame // frame being built
-	in []byte
-	out ovWriter
+	state   crState
+	src     io.ReadCloser             // source reader
+	level   lz4block.CompressionLevel // how hard to try
+	frame   *lz4stream.Frame          // frame being built
+	in      []byte
+	out     ovWriter
 	handler func(int)
 }
 
@@ -33,7 +33,7 @@ type CompressingReader struct {
 // We require an io.ReadCloser as an underlying source for compatibility
 // with Go's http.Request.
 func NewCompressingReader(src io.ReadCloser) *CompressingReader {
-	zrd := &CompressingReader {
+	zrd := &CompressingReader{
 		frame: lz4stream.NewFrame(),
 	}
 
@@ -107,10 +107,9 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 			zrd.out.data = nil
 			zrd.out.dataPos = 0
 			return
-		} else {
-			zrd.state = crStateDone
-			return 0, io.EOF
 		}
+		zrd.state = crStateDone
+		return 0, io.EOF
 	}
 
 	for zrd.state == crStateReading {
@@ -121,7 +120,7 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 		switch err {
 		case nil:
 			err = block.Compress(
-				zrd.frame, zrd.in[ : rCount], zrd.level,
+				zrd.frame, zrd.in[:rCount], zrd.level,
 			).Write(zrd.frame, &zrd.out)
 			zrd.handler(len(block.Data))
 			if err != nil {
@@ -137,7 +136,7 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 		case io.EOF, io.ErrUnexpectedEOF: // read may be partial
 			if rCount > 0 {
 				err = block.Compress(
-					zrd.frame, zrd.in[ : rCount], zrd.level,
+					zrd.frame, zrd.in[:rCount], zrd.level,
 				).Write(zrd.frame, &zrd.out)
 				zrd.handler(len(block.Data))
 				if err != nil {
@@ -174,18 +173,18 @@ func (zrd *CompressingReader) Reset(src io.ReadCloser) {
 }
 
 type ovWriter struct {
-	data []byte
-	ov []byte
+	data    []byte
+	ov      []byte
 	dataPos int
-	ovPos int
+	ovPos   int
 }
 
 func (wr *ovWriter) Write(p []byte) (n int, err error) {
-	count := copy(wr.data[wr.dataPos : ], p)
+	count := copy(wr.data[wr.dataPos:], p)
 	wr.dataPos += count
 
 	if count < len(p) {
-		wr.ov = append(wr.ov, p[count : ]...)
+		wr.ov = append(wr.ov, p[count:]...)
 	}
 
 	return len(p), nil
@@ -195,17 +194,17 @@ func (wr *ovWriter) reset(out []byte) bool {
 	ovRem := len(wr.ov) - wr.ovPos
 
 	if ovRem >= len(out) {
-		wr.ovPos += copy(out, wr.ov[wr.ovPos : ])
+		wr.ovPos += copy(out, wr.ov[wr.ovPos:])
 		return false
 	}
 
 	if ovRem > 0 {
-		copy(out, wr.ov[wr.ovPos : ])
-		wr.ov = wr.ov[ : 0]
+		copy(out, wr.ov[wr.ovPos:])
+		wr.ov = wr.ov[:0]
 		wr.ovPos = 0
 		wr.dataPos = ovRem
 	} else if wr.ovPos > 0 {
-		wr.ov = wr.ov[ : 0]
+		wr.ov = wr.ov[:0]
 		wr.ovPos = 0
 		wr.dataPos = 0
 	}
@@ -217,6 +216,6 @@ func (wr *ovWriter) reset(out []byte) bool {
 func (wr *ovWriter) clear() {
 	wr.data = nil
 	wr.dataPos = 0
-	wr.ov = wr.ov[ : 0]
+	wr.ov = wr.ov[:0]
 	wr.ovPos = 0
 }

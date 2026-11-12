@@ -604,6 +604,12 @@ func (m *Miniredis) cmdHrandfield(c *server.Peer, cmd string, args []string) {
 
 	withTx(m, c, func(peer *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
+
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeHash {
+			peer.WriteError(msgWrongType)
+			return
+		}
+
 		members := db.hashFields(opts.key)
 		m.shuffle(members)
 

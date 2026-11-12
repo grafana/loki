@@ -1,200 +1,68 @@
 package executor
 
 import (
+	"context"
 	"testing"
-	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
-func TestOperatorRegionName(t *testing.T) {
-	tests := []struct {
-		name string
-		node physical.Node
-		want string
-	}{
-		{"non-projection node uses its type", &physical.Limit{}, "Limit"},
-		{"column projection is not a parser", &physical.Projection{Expressions: []physical.Expression{&physical.ColumnExpr{}}}, "Projection"},
-		{"logfmt projection names the parser", &physical.Projection{Expressions: []physical.Expression{&physical.VariadicExpr{Op: types.VariadicOpParseLogfmt}}}, "Projection/PARSE_LOGFMT"},
-		{"json projection names the parser", &physical.Projection{Expressions: []physical.Expression{&physical.VariadicExpr{Op: types.VariadicOpParseJSON}}}, "Projection/PARSE_JSON"},
-		{"parser is found among multiple expressions", &physical.Projection{Expressions: []physical.Expression{&physical.ColumnExpr{}, &physical.VariadicExpr{Op: types.VariadicOpParseRegexp}}}, "Projection/PARSE_REGEXP"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, operatorRegionName(tt.node))
-		})
-	}
+// closeSpyPipeline counts the calls to Close.
+type closeSpyPipeline struct {
+	closed int
 }
+
+func (p *closeSpyPipeline) Open(context.Context) error { return nil }
+
+func (p *closeSpyPipeline) Read(context.Context) (arrow.RecordBatch, error) { return nil, EOF }
+
+func (p *closeSpyPipeline) Close() { p.closed++ }
 
 func TestExecutor(t *testing.T) {
 	t.Run("pipeline fails if plan is nil", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := Run(ctx, Config{}, nil, log.NewNopLogger())
 		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "failed to execute pipeline: plan is nil")
+		require.EqualError(t, err, "failed to execute pipeline: plan is nil")
 	})
 
 	t.Run("pipeline fails if plan has no root node", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := Run(ctx, Config{}, &physical.Plan{}, log.NewNopLogger())
 		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "failed to execute pipeline: plan has no root node")
+		require.EqualError(t, err, "failed to execute pipeline: plan has no root node")
 	})
-}
 
-func TestExecutor_Limit(t *testing.T) {
-	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
+	t.Run("pipeline fails if a compaction node has child nodes", func(t *testing.T) {
+		var graph dag.Graph[physical.Node]
+		parent := graph.Add(&physical.IndexFilter{})
+		child := graph.Add(&physical.IndexMerge{})
+		require.NoError(t, graph.AddEdge(dag.Edge[physical.Node]{Parent: parent, Child: child}))
+
 		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
+		pipeline := Run(ctx, Config{}, physical.FromGraph(graph), log.NewNopLogger())
 		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, EOF.Error())
+		require.EqualError(t, err, "failed to execute pipeline: IndexFilter does not accept inputs, got 1")
 	})
 
-	t.Run("multiple inputs result in error", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "limit expects exactly one input, got 2")
-	})
-}
+	t.Run("pipeline fails and closes the input if a compaction node has an external input", func(t *testing.T) {
+		var graph dag.Graph[physical.Node]
+		graph.Add(&physical.LogMerge{})
 
-func TestExecutor_Filter(t *testing.T) {
-	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeFilter(ctx, &physical.Filter{}, nil)
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("multiple inputs result in error", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeFilter(ctx, &physical.Filter{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "filter expects exactly one input, got 2")
-	})
-}
-
-func TestExecutor_Projection(t *testing.T) {
-	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{}, nil)
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("missing column expression results in error", func(t *testing.T) {
-		ctx := t.Context()
-		cols := []physical.Expression{}
-		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{Expressions: cols}, []Pipeline{emptyPipeline()})
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "projection expects at least one expression, got 0")
-	})
-
-	t.Run("multiple inputs result in error", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "projection expects exactly one input, got 2")
-	})
-}
-
-func Test_filterStreamsByLabels(t *testing.T) {
-	// Build data object with two streams: one allowed, one filtered
-	obj := buildDataobj(t, []logproto.Stream{
-		{
-			Labels: `{service="loki", env="prod"}`,
-			Entries: []logproto.Entry{
-				{Timestamp: time.Unix(5, 0), Line: "allowed"},
-			},
-		},
-		{
-			Labels: `{service="blocked", env="staging"}`,
-			Entries: []logproto.Entry{
-				{Timestamp: time.Unix(2, 0), Line: "blocked"},
-			},
-		},
-	})
-
-	// Open streams section
-	var streamsSection *streams.Section
-	for _, sec := range obj.Sections() {
-		if streams.CheckSection(sec) {
-			var err error
-			streamsSection, err = streams.Open(t.Context(), sec)
-			require.NoError(t, err)
-			break
+		input := &closeSpyPipeline{}
+		cfg := Config{
+			GetExternalInputs: func(context.Context, physical.Node) []Pipeline { return []Pipeline{input} },
 		}
-	}
 
-	tests := []struct {
-		name          string
-		filterFunc    func(labels.Labels) bool
-		inputIDs      []int64
-		expectedCount int
-	}{
-		{
-			name: "filter blocks staging env",
-			filterFunc: func(lbls labels.Labels) bool {
-				return lbls.Get("env") == "staging"
-			},
-			inputIDs:      []int64{1, 2},
-			expectedCount: 1,
-		},
-		{
-			name: "no filter allows all",
-			filterFunc: func(_ labels.Labels) bool {
-				return false // never filter
-			},
-			inputIDs:      []int64{1, 2},
-			expectedCount: 2,
-		},
-		{
-			name: "filter blocks all",
-			filterFunc: func(_ labels.Labels) bool {
-				return true // always filter
-			},
-			inputIDs:      []int64{1, 2},
-			expectedCount: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := &Context{
-				batchSize: 512,
-				logger:    log.NewNopLogger(),
-			}
-
-			filterer := &mockStreamFilterer{shouldFilter: tt.filterFunc}
-			filtered := ctx.filterStreamsByLabels(t.Context(), tt.inputIDs, streamsSection, filterer)
-
-			require.Len(t, filtered, tt.expectedCount)
-		})
-	}
-}
-
-// mockStreamFilterer for testing
-type mockStreamFilterer struct {
-	shouldFilter func(labels.Labels) bool
-}
-
-func (m *mockStreamFilterer) ShouldFilter(lbls labels.Labels) bool {
-	if m.shouldFilter != nil {
-		return m.shouldFilter(lbls)
-	}
-	return false
+		ctx := t.Context()
+		pipeline := Run(ctx, cfg, physical.FromGraph(graph), log.NewNopLogger())
+		_, err := pipeline.Read(ctx)
+		require.EqualError(t, err, "failed to execute pipeline: LogMerge does not accept inputs, got 1")
+		require.Equal(t, 1, input.closed)
+	})
 }

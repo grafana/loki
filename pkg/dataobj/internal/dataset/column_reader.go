@@ -61,65 +61,111 @@ func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count
 
 	var totalRead int
 	for totalRead < count {
-		// Make sure our reader is initialized to the right page for the row we
-		// wish to read.
-		//
-		// If the next row is out of range of all pages, we return io.EOF here.
-		if cr.pageIndex == -1 || !cr.ranges[cr.pageIndex].Contains(uint64(cr.nextRow)) {
-			page, pageIndex, err := cr.nextPage()
-			if err != nil {
-				res, _ := buildResult()
-				return res, err
-			}
-
-			switch cr.reader {
-			case nil:
-				cr.reader = newPageReader(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
-			default:
-				cr.reader.Reset(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
-			}
-
-			cr.pageIndex = pageIndex
-		}
-
-		// Ensure that our page reader is set to the correct row within the page.
-		//
-		// This seek is likely a no-op after the first iteration of the loop, but
-		// we call it each time anyway for safety.
-		pageRow := cr.nextRow - int64(cr.ranges[cr.pageIndex].Start)
-		if _, err := cr.reader.Seek(pageRow, io.SeekStart); err != nil {
-			// This should only return an error if pageRow < 0, shouldn't happen:
-			// cr.nextRow will always be >= cr.ranges[cr.pageIndex].Start.
-			res, _ := buildResult()
-			return res, err
-		}
-
-		// TODO(rfratto): read new pages to completion.
-		//
-		// Because rem shrinks with every iteration of our loop (one loop
-		// per page), we end up only partially reading into the final page on
-		// the final iteration.
-		//
-		// This is less efficient than reading the entire page due to
-		// re-entering the page reader + decoder, especially since we typically
-		// end up reading the rest of the page later on anyway.
-		rem := count - totalRead
-		arr, err := cr.reader.Read(ctx, tempAlloc, rem)
+		arr, err := cr.readPage(ctx, tempAlloc, count-totalRead)
 		if arr != nil {
 			arrs = append(arrs, arr)
-			cr.nextRow += int64(arr.Len())
 			totalRead += arr.Len()
 		}
-
-		// We ignore io.EOF errors from the page; the next loop will detect and
-		// report EOF on the call to [columnReader.nextPage].
-		if err != nil && !errors.Is(err, io.EOF) {
+		if err != nil {
 			res, _ := buildResult()
 			return res, err
 		}
 	}
 
 	return buildResult()
+}
+
+// ReadEach is like [columnReader.Read], but it passes the values to visit instead of returning
+// them. It reads up to the next count values from the column, without joining the pages it
+// touches. It calls visit once for each page, in order, with the values that it read from that
+// page. It returns the first error of visit and stops.
+//
+// The values that visit receives come from alloc and stay valid until the caller reclaims
+// alloc.
+//
+// If the column ends before count values, ReadEach visits the values that remain and returns
+// [io.EOF].
+func (cr *columnReader) ReadEach(ctx context.Context, alloc *memory.Allocator, count int, visit func(columnar.Array) error) error {
+	if !cr.initialized {
+		err := cr.init(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	var totalRead int
+	for totalRead < count {
+		arr, err := cr.readPage(ctx, alloc, count-totalRead)
+		if arr != nil {
+			totalRead += arr.Len()
+			if visitErr := visit(arr); visitErr != nil {
+				return visitErr
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// readPage reads up to the next count values from the page that holds the next row, and moves the
+// column past them. It returns the array, which can be nil, and any error.
+//
+// readPage returns [io.EOF] when the next row is past the last page. It hides the [io.EOF] of a
+// page with no rows left: the next call finds the next page.
+func (cr *columnReader) readPage(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
+	// Make sure our reader is initialized to the right page for the row we
+	// wish to read.
+	//
+	// If the next row is out of range of all pages, we return io.EOF here.
+	if cr.pageIndex == -1 || !cr.ranges[cr.pageIndex].Contains(uint64(cr.nextRow)) {
+		page, pageIndex, err := cr.nextPage()
+		if err != nil {
+			return nil, err
+		}
+
+		switch cr.reader {
+		case nil:
+			cr.reader = newPageReader(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
+		default:
+			cr.reader.Reset(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
+		}
+
+		cr.pageIndex = pageIndex
+	}
+
+	// Ensure that our page reader is set to the correct row within the page.
+	//
+	// This seek is likely a no-op when the previous call read the same page, but
+	// we call it each time anyway for safety.
+	pageRow := cr.nextRow - int64(cr.ranges[cr.pageIndex].Start)
+	if _, err := cr.reader.Seek(pageRow, io.SeekStart); err != nil {
+		// This should only return an error if pageRow < 0, shouldn't happen:
+		// cr.nextRow will always be >= cr.ranges[cr.pageIndex].Start.
+		return nil, err
+	}
+
+	// TODO(rfratto): read new pages to completion.
+	//
+	// Because count shrinks with every iteration of the caller's loop (one
+	// iteration per page), we end up only partially reading into the final
+	// page on the final iteration.
+	//
+	// This is less efficient than reading the entire page due to
+	// re-entering the page reader + decoder, especially since we typically
+	// end up reading the rest of the page later on anyway.
+	arr, err := cr.reader.Read(ctx, alloc, count)
+	if arr != nil {
+		cr.nextRow += int64(arr.Len())
+	}
+
+	// We ignore io.EOF errors from the page. The next call finds that the next
+	// row is past the page, and [columnReader.nextPage] reports io.EOF there.
+	if err != nil && !errors.Is(err, io.EOF) {
+		return arr, err
+	}
+	return arr, nil
 }
 
 // nextPage returns the page where cr.nextRow is contained. If cr.nextRow is

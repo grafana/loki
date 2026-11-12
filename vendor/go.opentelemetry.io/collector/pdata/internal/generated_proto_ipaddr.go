@@ -16,8 +16,8 @@ import (
 )
 
 type IPAddr struct {
-	IP   []byte
 	Zone string
+	IP   []byte
 }
 
 var (

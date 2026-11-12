@@ -44,6 +44,31 @@ func TestDecodeRow(t *testing.T) {
 			},
 		},
 		{
+			name: "metadata columns out of name order come back as sorted labels",
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMetadata, Name: "env"},
+				{Type: ColumnTypeMetadata, Name: "app"},
+				{Type: ColumnTypeMessage},
+			},
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.Int64Value(123),
+					dataset.Int64Value(1234567890000000000),
+					dataset.BinaryValue([]byte("prod")),
+					dataset.BinaryValue([]byte("test-app")),
+					dataset.BinaryValue([]byte("test message")),
+				},
+			},
+			expected: Record{
+				StreamID:  123,
+				Timestamp: time.Unix(0, 1234567890000000000).UTC(),
+				Metadata:  labels.New(labels.Label{Name: "app", Value: "test-app"}, labels.Label{Name: "env", Value: "prod"}),
+				Line:      []byte("test message"),
+			},
+		},
+		{
 			name: "nil metadata columns are skipped",
 			columns: []*Column{
 				{Type: ColumnTypeStreamID},
@@ -192,7 +217,7 @@ func TestDecodeRow(t *testing.T) {
 	record := Record{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := DecodeRow(tt.columns, tt.row, &record, nil)
+			err := DecodeRow(tt.columns, tt.row, &record)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -219,7 +244,6 @@ func TestDecodeRow_ResetsFieldsWithoutColumn(t *testing.T) {
 		[]*Column{{Type: ColumnTypeStreamID}},
 		dataset.Row{Values: []dataset.Value{dataset.Int64Value(123)}},
 		&record,
-		nil,
 	)
 	require.NoError(t, err)
 

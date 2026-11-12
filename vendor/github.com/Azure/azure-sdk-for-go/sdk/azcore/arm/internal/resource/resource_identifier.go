@@ -5,6 +5,7 @@ package resource
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -26,6 +27,9 @@ var RootResourceID = &ResourceID{
 // ResourceID represents a resource ID such as `/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRg`.
 // Don't create this type directly, use [ParseResourceID] instead. Fields are considered immutable and shouldn't be
 // modified after creation.
+// Name and ResourceType describe the final resource; Parent preserves its ancestry.
+// Checking only ResourceType or whether Parent is non-nil does not establish the expected shape:
+// both an ordinary resource-group-scoped resource and an extension resource have a parent.
 type ResourceID struct {
 	// Parent is the parent ResourceID of this instance.
 	// Can be nil if there is no parent.
@@ -58,7 +62,13 @@ type ResourceID struct {
 	stringValue string
 }
 
-// ParseResourceID parses a string to an instance of ResourceID
+// ParseResourceID parses a string to an instance of ResourceID.
+// Parsing does not validate resource existence, authorization, or the shape expected by an operation.
+// Use [ResourceID.ValidateResourceTypeChain] to check the complete resource-type ancestry before
+// passing extracted fields to an operation that assumes a particular resource-ID shape.
+// Extracting only SubscriptionID, ResourceGroupName, and Name can discard parent information,
+// causing an operation to address a different resource. Authorization for the original ID
+// does not establish authorization for that different resource.
 func ParseResourceID(id string) (*ResourceID, error) {
 	if len(id) == 0 {
 		return nil, fmt.Errorf("invalid resource ID: id cannot be empty")
@@ -79,6 +89,46 @@ func ParseResourceID(id string) (*ResourceID, error) {
 	}
 
 	return appendNext(RootResourceID, parts, id)
+}
+
+// ValidateResourceTypeChain checks that the resource ID's complete resource-type ancestry
+// matches expected, comparing namespaces and types case-insensitively. Specify every
+// resource type in order from the tenant root to the resource itself. Missing or extra
+// ancestors cause an error. Create resource types with NewResourceType or ParseResourceType,
+// or use predefined resource types such as TenantResourceType.
+// For child resources, specify the full type at each level, such as
+// Microsoft.Network/virtualNetworks followed by Microsoft.Network/virtualNetworks/subnets.
+// Checking the complete chain distinguishes resources with the same final type but
+// different ancestry, such as a resource-group-scoped identity and an identity attached
+// as an extension resource to another identity.
+// This method does not check resource names, existence, or authorization.
+// It returns an error if id is nil, expected is empty, or an expected type has an
+// empty namespace or type.
+func (id *ResourceID) ValidateResourceTypeChain(expected []ResourceType) error {
+	if len(expected) == 0 {
+		return fmt.Errorf("invalid resource-type chain: resource types cannot be empty")
+	}
+	for i, resourceType := range expected {
+		if resourceType.Namespace == "" || resourceType.Type == "" {
+			return fmt.Errorf("invalid resource-type chain: resource type at ancestry index %d must have a namespace and type", i)
+		}
+	}
+
+	current := id
+	for i, resourceType := range slices.Backward(expected) {
+		if current == nil {
+			return fmt.Errorf("resource ID does not match expected resource-type chain: missing resource type %q at ancestry index %d", resourceType.String(), i)
+		}
+		if !strings.EqualFold(current.ResourceType.Namespace, resourceType.Namespace) ||
+			!strings.EqualFold(current.ResourceType.Type, resourceType.Type) {
+			return fmt.Errorf("resource ID does not match expected resource-type chain: expected resource type %q at ancestry index %d, got %q", resourceType.String(), i, current.ResourceType.String())
+		}
+		current = current.Parent
+	}
+	if current != nil {
+		return fmt.Errorf("resource ID does not match expected resource-type chain: unexpected ancestor of resource type %q", current.ResourceType.String())
+	}
+	return nil
 }
 
 // String returns the string of the ResourceID
@@ -141,7 +191,7 @@ func (id *ResourceID) init(parent *ResourceID, resourceType ResourceType, name s
 		id.SubscriptionID = name
 	}
 
-	if resourceType.lastType() == locationsKey {
+	if strings.EqualFold(resourceType.lastType(), locationsKey) {
 		id.Location = name
 	}
 

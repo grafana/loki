@@ -13,7 +13,7 @@ services:
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
     depends_on:
-      - minio
+      - silo
     healthcheck:
       test: [ "CMD", "/usr/bin/loki", "-health" ]
       start_period: 30s
@@ -41,7 +41,7 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      - minio
+      - silo
     networks:
       <<: *loki-dns
 
@@ -58,15 +58,15 @@ services:
     networks:
       - loki
 
-  minio:
-    image: minio/minio
+  silo:
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     entrypoint:
       - sh
       - -euc
       - |
         mkdir -p /data/loki-data && \
         mkdir -p /data/loki-ruler && \
-        minio server /data --console-address ":9001"
+        exec /usr/bin/silo server /data --console-address ":9001"
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret

@@ -247,7 +247,7 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts
 		}
 	case proto.Message:
 		// Generic proto.
-		*buf, err = (proto.MarshalOptions{}).MarshalAppend(*buf, m)
+		*buf, err = (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], m)
 		if err != nil {
 			return WriteResponseStats{}, fmt.Errorf("encoding request %w", err)
 		}
@@ -602,7 +602,10 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeResponse.writeHeaders(msgType, w)
 
 	if storeErr != nil {
-		if writeResponse.statusCode == 0 {
+		// A storage error must never be reported as success, otherwise the
+		// sender drops the data. NewWriteResponse defaults to 204, so any
+		// non-error status is replaced.
+		if writeResponse.statusCode < 400 {
 			writeResponse.SetStatusCode(http.StatusInternalServerError)
 		}
 		if writeResponse.statusCode/100 == 5 { // 5xx
@@ -610,6 +613,9 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, storeErr.Error(), writeResponse.statusCode)
 		return
+	}
+	if writeResponse.statusCode == 0 {
+		writeResponse.SetStatusCode(http.StatusNoContent)
 	}
 	w.WriteHeader(writeResponse.statusCode)
 }

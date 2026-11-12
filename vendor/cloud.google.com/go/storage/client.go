@@ -241,7 +241,9 @@ type openWriterParams struct {
 	chunkSize int
 	// chunkRetryDeadline - see `Writer.ChunkRetryDeadline`.
 	// Optional.
-	chunkRetryDeadline   time.Duration
+	chunkRetryDeadline time.Duration
+	// chunkTransferTimeout - see `Writer.ChunkTransferTimeout`.
+	// Optional.
 	chunkTransferTimeout time.Duration
 
 	// Object/request properties

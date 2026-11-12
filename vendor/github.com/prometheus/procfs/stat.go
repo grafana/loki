@@ -135,7 +135,6 @@ func parseSoftIRQStat(line string) (SoftIRQStat, uint64, error) {
 		&softIRQStat.Block, &softIRQStat.BlockIoPoll,
 		&softIRQStat.Tasklet, &softIRQStat.Sched,
 		&softIRQStat.Hrtimer, &softIRQStat.Rcu)
-
 	if err != nil {
 		return SoftIRQStat{}, 0, fmt.Errorf("%w: couldn't parse %q (softirq): %w", ErrFileParse, line, err)
 	}
@@ -178,7 +177,7 @@ func (fs FS) Stat() (Stat, error) {
 	return procStat, nil
 }
 
-// parseStat parses the metrics from /proc/[pid]/stat.
+// parseStat parses the metrics from /proc/stat.
 func parseStat(r io.Reader, fileName string) (Stat, error) {
 	var (
 		scanner = bufio.NewScanner(r)
@@ -194,7 +193,7 @@ func parseStat(r io.Reader, fileName string) (Stat, error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Fields(scanner.Text())
+		parts := strings.Fields(line)
 		// require at least <key> <value>
 		if len(parts) < 2 {
 			continue

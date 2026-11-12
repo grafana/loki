@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type simpleItem int64
@@ -74,4 +75,39 @@ func TestPriorityQueueWait(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Close didn't unblock Dequeue.")
 	}
+}
+
+type mergeItem struct {
+	key    string
+	merged []int
+}
+
+func (m *mergeItem) Key() string     { return m.key }
+func (m *mergeItem) Priority() int64 { return 0 }
+
+func TestPriorityQueueEnqueueOrMerge(t *testing.T) {
+	queue := NewPriorityQueue(nil)
+
+	first := &mergeItem{key: "a"}
+	require.True(t, queue.EnqueueOrMerge(first, func(Op) { t.Fatal("onDup must not be called for a new op") }))
+
+	// A duplicate is dropped and handed the queued op to merge into.
+	dup := &mergeItem{key: "a"}
+	require.False(t, queue.EnqueueOrMerge(dup, func(existing Op) {
+		existing.(*mergeItem).merged = append(existing.(*mergeItem).merged, 1)
+	}))
+	require.False(t, queue.EnqueueOrMerge(dup, func(existing Op) {
+		existing.(*mergeItem).merged = append(existing.(*mergeItem).merged, 2)
+	}))
+	// A nil onDup behaves like Enqueue.
+	require.False(t, queue.EnqueueOrMerge(dup, nil))
+	require.False(t, queue.Enqueue(dup))
+	require.Equal(t, 1, queue.Length())
+
+	got := queue.Dequeue().(*mergeItem)
+	require.Same(t, first, got)
+	require.Equal(t, []int{1, 2}, got.merged)
+
+	// Once dequeued the key is free again, so nothing can merge into a running op.
+	require.True(t, queue.EnqueueOrMerge(&mergeItem{key: "a"}, func(Op) { t.Fatal("onDup must not be called after dequeue") }))
 }

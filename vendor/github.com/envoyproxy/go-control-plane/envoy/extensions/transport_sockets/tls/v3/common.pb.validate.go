@@ -589,6 +589,35 @@ func (m *TlsCertificate) validate(all bool) error {
 
 	}
 
+	if all {
+		switch v := interface{}(m.GetTlsParams()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, TlsCertificateValidationError{
+					field:  "TlsParams",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, TlsCertificateValidationError{
+					field:  "TlsParams",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetTlsParams()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return TlsCertificateValidationError{
+				field:  "TlsParams",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return TlsCertificateMultiError(errors)
 	}

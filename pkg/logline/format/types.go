@@ -1,6 +1,6 @@
 // Package format defines the shared vocabulary of the on-disk index format:
-// the term iterator contract, postings bitmaps, per-document metadata, the
-// postings encodings, and the JSON-friendly header summary.
+// the term iterator contract, postings bitmaps, per-document metadata, and
+// the postings encodings.
 //
 // Both the version shim and the versioned format implementations import this
 // package, which keeps them free of import cycles.
@@ -113,6 +113,10 @@ const (
 	PostingsEncodingBIDXPacked
 	// PostingsEncodingFastDeltaVarIntBlocked stores delta+varint encoded docIDs in blocks.
 	PostingsEncodingFastDeltaVarIntBlocked
+	// PostingsEncodingFastEliasFanoBlocked stores Elias-Fano encoded docIDs in
+	// blocks. Blocks are written uncompressed, each followed by an xxh3-64
+	// checksum.
+	PostingsEncodingFastEliasFanoBlocked
 )
 
 // MaxQueryRequestBytes enforces the object-storage request contract.
@@ -156,18 +160,62 @@ type WriterConfig struct {
 	// 0 uses the format default; positive values enable at that threshold;
 	// negative values disable filtering.
 	// The threshold is applied against the total documents in a full day
-	// (24h / DocumentInterval), not the current index's document count.
+	// (24h / DocumentInterval × 2^DocumentShardBits), not the current index's
+	// document count.
 	DensityThreshold float32
 
 	// DocumentInterval is the time range each document ID covers. Used with
 	// DensityThreshold to compute the day-based sentinel cutoff:
-	// sentinelCutoff = (24h / DocumentInterval) * DensityThreshold.
+	// sentinelCutoff = (24h / DocumentInterval) * 2^DocumentShardBits * DensityThreshold.
 	// Zero disables the density filter.
 	DocumentInterval time.Duration
+
+	// DocumentShardBits is log2 of the number of stream shards per document
+	// interval; 0 is one shard. Only v5 reads it. A v5 merge checks it against
+	// its inputs whenever DocumentInterval is set, so 0 then means one shard,
+	// not "take the inputs'".
+	DocumentShardBits int
+
+	// DayStart is the UTC midnight of the day a v5 index covers. Its postings
+	// hold cells relative to this day. A v5 writer requires it, and a v5
+	// merge checks it against its inputs. v3 ignores it.
+	DayStart time.Time
 }
 
-// HeaderInfo is a JSON-friendly summary of a binary index header.
-// Stored in meta.json alongside each index file.
+// DocumentLayout describes how a v5 index numbers its documents. Document ID c
+// is a cell of the index's day: bucket c >> ShardBits covers
+// [DayStart + bucket×Interval, DayStart + (bucket+1)×Interval), and
+// c & (2^ShardBits - 1) is the stream's document shard.
+type DocumentLayout struct {
+	Interval  time.Duration
+	ShardBits uint8
+	DayStart  time.Time
+}
+
+// CellsPerDay returns the number of cells in a day: (24h / Interval) ×
+// 2^ShardBits. Document IDs are below it.
+func (l DocumentLayout) CellsPerDay() uint64 {
+	if l.Interval <= 0 {
+		return 0
+	}
+	return uint64(24*time.Hour/l.Interval) << l.ShardBits
+}
+
+// TimeRange returns the half-open time range [start, end) of cell's bucket.
+// Cells of one bucket in different document shards share it.
+func (l DocumentLayout) TimeRange(cell uint32) (start, end time.Time) {
+	bucket := cell >> l.ShardBits
+	start = l.DayStart.Add(time.Duration(bucket) * l.Interval)
+	return start, start.Add(l.Interval)
+}
+
+// Shard returns cell's document shard: its low ShardBits bits.
+func (l DocumentLayout) Shard(cell uint32) uint32 {
+	return cell & (1<<l.ShardBits - 1)
+}
+
+// HeaderInfo is the meta.json index_header schema: a summary of the on-disk
+// index file header. It is not the wire type; convert at the IndexMeta boundary.
 type HeaderInfo struct {
 	Version              uint32 `json:"version"`
 	Flags                uint32 `json:"flags"`

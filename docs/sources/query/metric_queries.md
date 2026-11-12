@@ -72,7 +72,7 @@ count_over_time({job="mysql"}[5m]) offset 5m // INVALID
 
 ### Unwrapped range aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](./#pipeline-errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -98,7 +98,7 @@ Supported function for operating over unwrapped ranges are:
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
 - `absent_over_time(unwrapped-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
-Except for `sum_over_time`,`absent_over_time`, `rate` and `rate_counter`, unwrapped range aggregations support grouping.
+Except for `sum_over_time`,`absent_over_time`, `rate` and `rate_counter`, unwrapped range aggregations support grouping. When a pipeline stage fails on a line, the resulting sample keeps the same labels a successful line would report for that grouping, plus the `__error__` and `__error_details__` labels, rather than the full label set. For the full set of rules, see [Pipeline Errors in Metric Queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_reference/#pipeline-errors-in-metric-queries).
 
 ```logql
 <aggr-op>([parameter,] <unwrapped-range>) [without|by (<label list>)]
@@ -108,7 +108,7 @@ Which can be used to aggregate over distinct labels dimensions by including a `w
 
 `without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
 
-See [Unwrap examples](../query_examples/#unwrap-examples) for query examples that use the unwrap expression.
+See [Unwrap examples](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/#unwrap-examples) for query examples that use the unwrap expression.
 
 ## Built-in aggregation operators
 
@@ -139,7 +139,7 @@ The aggregation operators can either be used to aggregate over all label values 
 The `without` clause removes the listed labels from the resulting vector, keeping all others.
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
-See [vector aggregation examples](../query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
+See [vector aggregation examples](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
 
 ## Functions
 

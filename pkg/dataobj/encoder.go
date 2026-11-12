@@ -2,21 +2,19 @@ package dataobj
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"slices"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var magic = []byte("DOBJ")
-
-const (
-	fileFormatVersion = 0x1
-)
+var magic = []byte(format.FileMagic)
 
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
@@ -25,6 +23,12 @@ type encoder struct {
 
 	store    scratch.Store
 	sections []sectionInfo // Sections buffered in store.
+
+	// prioritySections lists the section types that come first in the
+	// object, in this order. Types match by [SectionType.Equals].
+	prioritySections []SectionType
+
+	sizeLeveled *SizeLeveledCompaction
 
 	typesReady       bool
 	dictionary       []string
@@ -46,11 +50,14 @@ type sectionInfo struct {
 	ExtensionData []byte
 }
 
-// newEncoder creates a new Encoder which writes a data object to the provided
-// writer.
-func newEncoder(store scratch.Store) *encoder {
+// newEncoder returns an encoder that buffers sections in store and puts
+// sections with a type in prioritySections first. If sizeLeveled is not nil,
+// the encoder writes it into the file metadata of every object.
+func newEncoder(store scratch.Store, prioritySections []SectionType, sizeLeveled *SizeLeveledCompaction) *encoder {
 	return &encoder{
-		store: store,
+		store:            store,
+		prioritySections: slices.Clone(prioritySections),
+		sizeLeveled:      sizeLeveled,
 	}
 }
 
@@ -140,7 +147,31 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 	return key
 }
 
-func (enc *encoder) Metadata() (*filemd.Metadata, error) {
+// sortSections orders enc.sections for writing. The section table, the
+// metadata regions, and the data regions all use this order.
+//
+// Sections with a type in enc.prioritySections come first, grouped in the
+// order of enc.prioritySections. All other sections follow.
+//
+// The sort is stable, so sections of one type keep their append order.
+// Readers refer to a section by its index among sections of its type, such as
+// the index of a logs section.
+func (enc *encoder) sortSections() {
+	rank := func(typ SectionType) int {
+		if i := slices.IndexFunc(enc.prioritySections, typ.Equals); i >= 0 {
+			return i
+		}
+		return len(enc.prioritySections)
+	}
+
+	slices.SortStableFunc(enc.sections, func(a, b sectionInfo) int {
+		return cmp.Compare(rank(a.Type), rank(b.Type))
+	})
+}
+
+// metadata returns the file metadata for the buffered sections, in the order
+// of enc.sections. Call sortSections first.
+func (enc *encoder) metadata() (*filemd.Metadata, error) {
 	enc.initDictionary()
 
 	// relativeOffset is the offset where regions are written relative to the
@@ -150,9 +181,9 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 	// absolute offset.
 	relativeOffset := 0
 
-	// The metadata regions and data regions of all sections are encoded
-	// contiguously. To represent this in the SectionInfo headers, we update
-	// them in two passes, once for the data and once for the metadata.
+	// The metadata regions of all sections come first and are contiguous. The
+	// data regions follow and are also contiguous. The first loop places the
+	// metadata regions, and the second loop places the data regions.
 	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
 	// Determine metadata region location.
@@ -189,6 +220,11 @@ func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 		Sections:   sections,
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
+	}
+	if enc.sizeLeveled != nil {
+		md.Compaction = &filemd.CompactionInfo{
+			SizeLeveled: &filemd.SizeLeveledCompaction{Level: enc.sizeLeveled.Level},
+		}
 	}
 	return md, nil
 }
@@ -227,18 +263,19 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	var headerBuffer bytes.Buffer
 
-	metadata, err := enc.Metadata()
+	enc.sortSections()
+	metadata, err := enc.metadata()
 	if err != nil {
 		return nil, fmt.Errorf("building metadata: %w", err)
 	} else if _, err := headerBuffer.Write(magic); err != nil {
 		return nil, fmt.Errorf("writing magic header: %w", err)
 	}
 
-	metadataSize := streamio.UvarintSize(fileFormatVersion) + protocodec.Size(metadata)
+	metadataSize := streamio.UvarintSize(format.FileFormatVersion) + protocodec.Size(metadata)
 
 	if err := binary.Write(&headerBuffer, binary.LittleEndian, uint32(metadataSize)); err != nil {
 		return nil, fmt.Errorf("writing metadata size: %w", err)
-	} else if err := streamio.WriteUvarint(&headerBuffer, fileFormatVersion); err != nil {
+	} else if err := streamio.WriteUvarint(&headerBuffer, format.FileFormatVersion); err != nil {
 		return nil, err
 	} else if err := protocodec.Encode(&headerBuffer, metadata); err != nil {
 		return nil, err
@@ -246,7 +283,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	// Convert our sections into regions for the snapshot to use. The order of
 	// regions *must* match the order of offset+length written in
-	// [encoder.Metadata]: all the metadata regions, followed by all the data
+	// [encoder.metadata]: all the metadata regions, followed by all the data
 	// regions.
 	//
 	// We encode metadata regions first to allow a single prefetch of the start
@@ -274,7 +311,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 }
 
 // Reset resets the Encoder to a fresh state, removing any sections it still
-// holds from the scratch store.
+// holds from the scratch store. Reset keeps the size-leveled compaction info.
 func (enc *encoder) Reset() {
 	for _, section := range enc.sections {
 		// A failed removal is not actionable: the handle is unreachable either

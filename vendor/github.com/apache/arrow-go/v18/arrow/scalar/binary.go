@@ -73,7 +73,7 @@ func (b *Binary) CastTo(to arrow.DataType) (Scalar, error) {
 
 	switch to.ID() {
 	case arrow.BINARY:
-		return NewBinaryScalar(b.Value, b.Type), nil
+		return NewBinaryScalar(b.Value, to), nil
 	case arrow.LARGE_BINARY:
 		return NewLargeBinaryScalar(b.Value), nil
 	case arrow.STRING:

@@ -58,7 +58,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 
 	builder := NewBuilder(desiredVer)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-		builder.AddSeries(lbls.Copy(), fp, chks)
+		builder.AddSeries(lbls, fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -215,8 +215,9 @@ func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
 	return f
 }
 
-// fn must NOT capture it's arguments. They're reused across series iterations and returned to
-// a pool after completion.
+// fn must NOT capture the chunks. They're reused across series iterations and returned to
+// a pool after completion. The labels may be retained, even after the index is closed (see
+// index.SeriesScan.Series); the compactor relies on this to avoid copying them.
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
@@ -298,16 +299,18 @@ func (i *TSDBIndex) forPostings(
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	compute := func() (index.Postings, error) {
-		return PostingsForMatchers(i.reader, fpFilter, matchers...)
-	}
 	var p index.Postings
 	var err error
 	postingsCache, postingsID := i.postingsCache, i.postingsID
 	if postingsCache != nil {
-		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, fpFilter, matchers), compute)
+		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, matchers), func() (index.Postings, error) {
+			return PostingsForMatchers(i.reader, nil, matchers...)
+		})
+		if err == nil {
+			p = i.reader.ShardPostings(p, fpFilter)
+		}
 	} else {
-		p, err = compute()
+		p, err = PostingsForMatchers(i.reader, fpFilter, matchers...)
 	}
 	if err != nil {
 		return err

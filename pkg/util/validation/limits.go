@@ -7,8 +7,8 @@ import (
 
 // SmallestPositiveIntPerTenant is returning the minimal positive value of the
 // supplied limit function for all given tenants.
-func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
-	var result *int
+func SmallestPositiveIntPerTenant[T ~int | ~uint64](tenantIDs []string, f func(string) T) T {
+	var result *T
 	for _, tenantID := range tenantIDs {
 		v := f(tenantID)
 		if result == nil || v < *result {

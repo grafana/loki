@@ -18,6 +18,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 
 	"github.com/munnerz/goautoneg"
 	dto "github.com/prometheus/client_model/go"
@@ -36,13 +37,45 @@ func init() {
 		FmtProtoText,
 		FmtProtoCompact,
 		FmtOpenMetrics_1_0_0,
-		fmtOpenMetrics_2_0_0,
+		FmtOpenMetrics_2_0_0_rc,
+		FmtOpenMetrics_2_0_0,
 		FmtOpenMetrics_0_0_1,
 	} {
 		if parsed := goautoneg.ParseAccept(string(f)); len(parsed) > 0 {
 			formatToAccept[f] = parsed[0]
 		}
 	}
+}
+
+var (
+	defaultAcceptedFormats = []Format{
+		FmtProtoDelim,
+		FmtProtoText,
+		FmtProtoCompact,
+		FmtText,
+	}
+
+	defaultOpenMetricsAcceptedFormats = []Format{
+		FmtOpenMetrics_1_0_0,
+		FmtOpenMetrics_0_0_1,
+		FmtProtoDelim,
+		FmtProtoText,
+		FmtProtoCompact,
+		FmtText,
+	}
+)
+
+// DefaultAcceptedFormats returns a copy of standard accepted formats for Negotiate,
+// ordered by preference (delimited protobuf, protobuf text, compact protobuf text,
+// and Prometheus text format).
+func DefaultAcceptedFormats() []Format {
+	return slices.Clone(defaultAcceptedFormats)
+}
+
+// DefaultOpenMetricsAcceptedFormats returns a copy of standard accepted formats including
+// stable OpenMetrics formats, ordered by preference.
+func DefaultOpenMetricsAcceptedFormats() []Format {
+	return slices.Clone(defaultOpenMetricsAcceptedFormats)
 }
 
 // Encoder types encode metric families into an underlying wire protocol.
@@ -78,19 +111,19 @@ func (ec encoderCloser) Close() error {
 // appropriate accepted type is found, FmtText is returned (which is the
 // Prometheus text format).
 //
-// Deprecated: Use NegotiateAccept(h, FmtProtoDelim, FmtProtoText, FmtProtoCompact, FmtText)
+// Deprecated: Use NegotiateAccept(h, DefaultAcceptedFormats()...)
 // or specify only the formats supported by your server.
 func Negotiate(h http.Header) Format {
-	return NegotiateAccept(h, FmtProtoDelim, FmtProtoText, FmtProtoCompact, FmtText)
+	return NegotiateAccept(h, defaultAcceptedFormats...)
 }
 
-// NegotiateIncludingOpenMetrics works like Negotiate but includes
-// FmtOpenMetrics as an option for the result.
+// NegotiateIncludingOpenMetrics works like Negotiate but includes all stable
+// FmtOpenMetrics formats as an option for the result.
 //
-// Deprecated: Use NegotiateAccept(h, FmtOpenMetrics_1_0_0, FmtOpenMetrics_0_0_1, FmtProtoDelim, FmtProtoText, FmtProtoCompact, FmtText)
+// Deprecated: Use NegotiateAccept(h, DefaultOpenMetricsAcceptedFormats()...)
 // or specify only the formats supported by your server.
 func NegotiateIncludingOpenMetrics(h http.Header) Format {
-	return NegotiateAccept(h, FmtOpenMetrics_1_0_0, FmtOpenMetrics_0_0_1, FmtProtoDelim, FmtProtoText, FmtProtoCompact, FmtText)
+	return NegotiateAccept(h, defaultOpenMetricsAcceptedFormats...)
 }
 
 // NegotiateAccept returns the Content-Type based on the given Accept header
@@ -98,21 +131,14 @@ func NegotiateIncludingOpenMetrics(h http.Header) Format {
 // If no accepted format matches the Accept header, it falls back to the text
 // format if present in the accepted list, or the first accepted format (or FmtText
 // if accepted is empty).
+// The escaping scheme is taken from the matching Accept clause. Without one,
+// OpenMetrics 2.0 gets allow-utf-8 and all other formats model.NameEscapingScheme.
 func NegotiateAccept(h http.Header, accepted ...Format) Format {
 	escapingScheme := Format("; escaping=" + model.NameEscapingScheme.String())
 	for _, ac := range goautoneg.ParseAccept(h.Get(hdrAccept)) {
-		if escapeParam := ac.Params[model.EscapingKey]; escapeParam != "" {
-			switch Format(escapeParam) {
-			case model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
-				escapingScheme = Format("; escaping=" + escapeParam)
-			default:
-				// If the escaping parameter is unknown, ignore it.
-			}
-		}
-
 		for _, f := range accepted {
 			if matchFormat(ac, f) {
-				return f + escapingScheme
+				return f + escapingFor(ac, f)
 			}
 		}
 	}
@@ -125,6 +151,20 @@ func NegotiateAccept(h http.Header, accepted ...Format) Format {
 		return accepted[0] + escapingScheme
 	}
 	return FmtText + escapingScheme
+}
+
+// escapingFor returns the escaping term for the Accept clause that matched f.
+func escapingFor(ac goautoneg.Accept, f Format) Format {
+	switch p := ac.Params[model.EscapingKey]; p {
+	case model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
+		// An explicit request always wins, also for OpenMetrics 2.0.
+		return Format("; escaping=" + p)
+	}
+	if f.FormatType() == TypeOpenMetrics && isOpenMetrics20Version(f.Version()) {
+		// OpenMetrics 2.0 is UTF-8 native, so asking for it implies UTF-8 name support.
+		return Format("; escaping=" + model.AllowUTF8)
+	}
+	return Format("; escaping=" + model.NameEscapingScheme.String())
 }
 
 // matchFormat checks if a parsed accept clause matches a given Format.
@@ -223,7 +263,7 @@ func NewEncoder(w io.Writer, format Format, options ...EncoderOption) Encoder {
 		}
 	case TypeOpenMetrics:
 		_, params, err := mime.ParseMediaType(string(format))
-		if err == nil && params["version"] == OpenMetricsVersion_2_0_0 {
+		if err == nil && isOpenMetrics20Version(params["version"]) {
 			return encoderCloser{
 				encode: func(v *dto.MetricFamily) error {
 					_, err := MetricFamilyToOpenMetrics20(w, model.EscapeMetricFamily(v, escapingScheme), options...)

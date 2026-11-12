@@ -317,6 +317,55 @@ func (c ChecksumType) String() string {
 	return "<invalid>"
 }
 
+// Checksum returns the checksum for the given type.
+// Will return the empty string if not set.
+func (o ObjectInfo) Checksum(t ChecksumType) string {
+	switch {
+	case t.Is(ChecksumCRC32C):
+		return o.ChecksumCRC32C
+	case t.Is(ChecksumCRC32):
+		return o.ChecksumCRC32
+	case t.Is(ChecksumSHA1):
+		return o.ChecksumSHA1
+	case t.Is(ChecksumSHA256):
+		return o.ChecksumSHA256
+	case t.Is(ChecksumCRC64NVME):
+		return o.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return o.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return o.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return o.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return o.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return o.ChecksumXXHash128
+	}
+	return ""
+}
+
+// setChecksumAlgorithm fills in ChecksumAlgorithm from the checksum value the
+// object carries, when the server did not name the algorithm itself.
+// AWS never sends x-amz-checksum-algorithm on HEAD/GET and only reports
+// <ChecksumAlgorithm>/<ChecksumType> - never a value - when listing, while
+// AiStor reports the values as well, but only when listing with WithMetadata.
+// Deriving the name keeps ChecksumAlgorithm populated on every path.
+func (o *ObjectInfo) setChecksumAlgorithm() {
+	if o.ChecksumAlgorithm != "" {
+		return
+	}
+	for _, t := range [...]ChecksumType{
+		ChecksumCRC32, ChecksumCRC32C, ChecksumSHA1, ChecksumSHA256, ChecksumCRC64NVME,
+		ChecksumMD5, ChecksumSHA512, ChecksumXXHash64, ChecksumXXHash3, ChecksumXXHash128,
+	} {
+		if o.Checksum(t) != "" {
+			o.ChecksumAlgorithm = t.String()
+			return
+		}
+	}
+}
+
 // checksumVerifyingReader verifies the checksum of data as it is read.
 type checksumVerifyingReader struct {
 	io.ReadCloser

@@ -149,6 +149,7 @@ func Test_IPLabelFilterTy(t *testing.T) {
 		label         string
 		val           []byte
 		expectedMatch bool
+		withErr       bool
 
 		fail bool
 		err  string // label filter errors are just treated as strings :(
@@ -170,6 +171,33 @@ func Test_IPLabelFilterTy(t *testing.T) {
 			expectedMatch: true,
 		},
 		{
+			name:          "equal operator matches an address in the pattern on a line with an error",
+			pat:           "192.168.0.1",
+			ty:            LabelFilterEqual,
+			label:         "addr",
+			val:           []byte("192.168.0.1"),
+			withErr:       true,
+			expectedMatch: true,
+		},
+		{
+			name:          "equal operator does not match an address outside the pattern on a line with an error",
+			pat:           "192.168.0.1",
+			ty:            LabelFilterEqual,
+			label:         "addr",
+			val:           []byte("10.0.0.1"),
+			withErr:       true,
+			expectedMatch: false,
+		},
+		{
+			name:          "not equal operator does not match an address in the pattern on a line with an error",
+			pat:           "192.168.0.2",
+			ty:            LabelFilterNotEqual,
+			label:         "addr",
+			val:           []byte("192.168.0.2"),
+			withErr:       true,
+			expectedMatch: false,
+		},
+		{
 			name:  "pattern-invalid",
 			pat:   "192.168.0.2-1.0.0.0",
 			ty:    LabelFilterEqual, // not supported
@@ -186,12 +214,17 @@ func Test_IPLabelFilterTy(t *testing.T) {
 
 			lbs := labels.FromStrings(c.label, string(c.val))
 			lbb := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+			wantErr := ""
+			if c.withErr {
+				wantErr = errJSON
+				lbb.SetErr(wantErr, nil)
+			}
 			_, ok := lf.Process(0, []byte("x"), lbb)
 			if c.fail {
 				assert.Error(t, lf.patError)
 				return
 			}
-			require.Empty(t, lbb.GetErr())
+			require.Equal(t, wantErr, lbb.GetErr())
 			assert.Equal(t, c.expectedMatch, ok)
 		})
 	}

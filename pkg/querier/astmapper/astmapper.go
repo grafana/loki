@@ -58,6 +58,7 @@ func NewMultiMapper(xs ...ASTMapper) *MultiMapper {
 
 // CloneNode is a helper function to clone a node.
 func CloneNode(node parser.Node) (parser.Node, error) {
+	//nolint:forbidigo // parses a PromQL expression, not LogQL labels
 	return parser.NewParser(parser.Options{}).ParseExpr(node.String())
 }
 

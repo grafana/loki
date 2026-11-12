@@ -15,13 +15,13 @@ func (ms KeyValueAndUnit) Equal(val KeyValueAndUnit) bool {
 
 // switchDictionary updates the KeyValueAndUnit, switching its indices from one
 // dictionary to another.
-func (ms KeyValueAndUnit) switchDictionary(src, dst ProfilesDictionary) error {
+func (ms KeyValueAndUnit) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	if ms.KeyStrindex() > 0 {
 		if src.StringTable().Len() <= int(ms.KeyStrindex()) {
 			return fmt.Errorf("invalid key index %d", ms.KeyStrindex())
 		}
 
-		idx, err := SetString(dst.StringTable(), src.StringTable().At(int(ms.KeyStrindex())))
+		idx, err := mi.setString(dst.StringTable(), src.StringTable().At(int(ms.KeyStrindex())))
 		if err != nil {
 			return fmt.Errorf("couldn't set key: %w", err)
 		}
@@ -33,7 +33,7 @@ func (ms KeyValueAndUnit) switchDictionary(src, dst ProfilesDictionary) error {
 			return fmt.Errorf("invalid unit index %d", ms.UnitStrindex())
 		}
 
-		idx, err := SetString(dst.StringTable(), src.StringTable().At(int(ms.UnitStrindex())))
+		idx, err := mi.setString(dst.StringTable(), src.StringTable().At(int(ms.UnitStrindex())))
 		if err != nil {
 			return fmt.Errorf("couldn't set unit: %w", err)
 		}

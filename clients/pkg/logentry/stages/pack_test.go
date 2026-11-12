@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -107,7 +107,6 @@ func Test_packStage_Run(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	tests := []struct {
 		name          string
@@ -142,7 +141,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -173,7 +172,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -202,7 +201,7 @@ func Test_packStage_Run(t *testing.T) {
 					Labels: model.LabelSet{},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -236,7 +235,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -270,7 +269,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -304,7 +303,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -336,7 +335,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0), // Ignored in test execution below
-						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logqlerr.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -348,7 +347,7 @@ func Test_packStage_Run(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newPackStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newPackStage(tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			// Normal pipeline operation will put all the labels into the extracted map
 			// replicate that here.

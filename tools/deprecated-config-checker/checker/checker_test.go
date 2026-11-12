@@ -42,6 +42,7 @@ var (
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.allow_deletes",
+		"limits_config.max_chunks_per_query",
 		"limits_config.ruler_enable_wal_replay",
 		"limits_config.per_tenant_override_config",
 		"limits_config.per_tenant_override_period",
@@ -89,6 +90,21 @@ var (
 
 	expectedConfigDeprecates = []string{
 		"index_gateway.ring.replication_factor",
+		"bloom_build",
+		"bloom_gateway",
+		"storage_config.bloom_shipper",
+		"limits_config.bloom_gateway_enable_filtering",
+		"limits_config.bloom_build_max_builders",
+		"limits_config.bloom_build_task_max_retries",
+		"limits_config.bloom_build_builder_response_timeout",
+		"limits_config.bloom_creation_enabled",
+		"limits_config.bloom_planning_strategy",
+		"limits_config.bloom_split_series_keyspace_by",
+		"limits_config.bloom_task_target_series_chunk_size",
+		"limits_config.bloom_block_encoding",
+		"limits_config.bloom_prefetch_blocks",
+		"limits_config.bloom_max_block_size",
+		"limits_config.bloom_max_bloom_size",
 	}
 
 	expectedRuntimeConfigDeletes = []string{
@@ -96,6 +112,7 @@ var (
 		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.enforce_metric_name",
 		"overrides.foo.allow_deletes",
+		"overrides.foo.max_chunks_per_query",
 		"overrides.foo.ruler_enable_wal_replay",
 		"overrides.foo.per_tenant_override_config",
 		"overrides.foo.per_tenant_override_period",
@@ -103,6 +120,7 @@ var (
 		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.enforce_metric_name",
 		"overrides.bar.allow_deletes",
+		"overrides.bar.max_chunks_per_query",
 		"overrides.bar.ruler_enable_wal_replay",
 		"overrides.bar.per_tenant_override_config",
 		"overrides.bar.per_tenant_override_period",
@@ -134,7 +152,32 @@ var (
 		"overrides.bar.ruler_remote_write_sigv4_config",
 	}
 
-	expectedRuntimeConfigDeprecates = []string{}
+	expectedRuntimeConfigDeprecates = []string{
+		"overrides.foo.bloom_gateway_enable_filtering",
+		"overrides.foo.bloom_build_max_builders",
+		"overrides.foo.bloom_build_task_max_retries",
+		"overrides.foo.bloom_build_builder_response_timeout",
+		"overrides.foo.bloom_creation_enabled",
+		"overrides.foo.bloom_planning_strategy",
+		"overrides.foo.bloom_split_series_keyspace_by",
+		"overrides.foo.bloom_task_target_series_chunk_size",
+		"overrides.foo.bloom_block_encoding",
+		"overrides.foo.bloom_prefetch_blocks",
+		"overrides.foo.bloom_max_block_size",
+		"overrides.foo.bloom_max_bloom_size",
+		"overrides.bar.bloom_gateway_enable_filtering",
+		"overrides.bar.bloom_build_max_builders",
+		"overrides.bar.bloom_build_task_max_retries",
+		"overrides.bar.bloom_build_builder_response_timeout",
+		"overrides.bar.bloom_creation_enabled",
+		"overrides.bar.bloom_planning_strategy",
+		"overrides.bar.bloom_split_series_keyspace_by",
+		"overrides.bar.bloom_task_target_series_chunk_size",
+		"overrides.bar.bloom_block_encoding",
+		"overrides.bar.bloom_prefetch_blocks",
+		"overrides.bar.bloom_max_block_size",
+		"overrides.bar.bloom_max_bloom_size",
+	}
 )
 
 func TestConfigDeprecatesAndDeletes(t *testing.T) {

@@ -72,7 +72,7 @@ type clientOptions struct {
 func (p *clientOptions) validate() error {
 	u, err := url.Parse(p.authority)
 	if err != nil {
-		return fmt.Errorf("Authority options cannot be URL parsed: %w", err)
+		return fmt.Errorf("authority options cannot be URL parsed: %w", err)
 	}
 	if u.Scheme != "https" {
 		return fmt.Errorf("Authority(%s) did not start with https://", u.String())

@@ -737,6 +737,36 @@ func (m *PathConfigSource) validate(all bool) error {
 		}
 	}
 
+	if d := m.GetPollInterval(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = PathConfigSourceValidationError{
+				field:  "PollInterval",
+				reason: "value is not a valid duration",
+				cause:  err,
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(0*time.Second + 1000000*time.Nanosecond)
+
+			if dur < gte {
+				err := PathConfigSourceValidationError{
+					field:  "PollInterval",
+					reason: "value must be greater than or equal to 1ms",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
+		}
+	}
+
 	if len(errors) > 0 {
 		return PathConfigSourceMultiError(errors)
 	}

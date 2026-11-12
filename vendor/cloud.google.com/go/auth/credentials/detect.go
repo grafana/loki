@@ -458,16 +458,17 @@ func clientCredConfigFromJSON(b []byte, opts *DetectOptions) *auth.Options3LO {
 		}
 	}
 	return &auth.Options3LO{
-		ClientID:         c.ClientID,
-		ClientSecret:     c.ClientSecret,
-		RedirectURL:      c.RedirectURIs[0],
-		Scopes:           opts.scopes(),
-		AuthURL:          c.AuthURI,
-		TokenURL:         c.TokenURI,
-		Client:           opts.client(),
-		Logger:           opts.logger(),
-		EarlyTokenExpiry: opts.EarlyTokenRefresh,
-		AuthHandlerOpts:  handleOpts,
+		ClientID:            c.ClientID,
+		ClientSecret:        c.ClientSecret,
+		RedirectURL:         c.RedirectURIs[0],
+		Scopes:              opts.scopes(),
+		AuthURL:             c.AuthURI,
+		TokenURL:            c.TokenURI,
+		Client:              opts.client(),
+		Logger:              opts.logger(),
+		EarlyTokenExpiry:    opts.EarlyTokenRefresh,
+		DisableAsyncRefresh: opts.DisableAsyncRefresh,
+		AuthHandlerOpts:     handleOpts,
 		// TODO(codyoss): refactor this out. We need to add in auto-detection
 		// for this use case.
 		AuthStyle: auth.StyleInParams,

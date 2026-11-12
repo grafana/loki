@@ -1,0 +1,23 @@
+# The coverage of the tests ( make cover ), reported by octocov on the pull requests and compared with the base
+# branch, whose report is kept as an artifact of the runs of this repository.
+coverage:
+  paths:
+    - cover.out
+  # the VMs of colored output, generated from the template of the VM ( internal/cmd/generator ), which Codecov
+  # left out as well.
+  exclude:
+    - "internal/encoder/vm_color/**"
+    - "internal/encoder/vm_color_indent/**"
+  acceptable: current >= 80%
+# a pull request from a fork can't be commented on with its token: the job summary has the report for every run.
+comment:
+  if: github.event_name == "pull_request" && github.event.pull_request.head.repo.full_name == env.GITHUB_REPOSITORY
+  updatePrevious: true
+summary:
+report:
+  if: github.event_name != "pull_request" || github.event.pull_request.head.repo.full_name == env.GITHUB_REPOSITORY
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}

@@ -1,13 +1,9 @@
 package stages
 
 import (
-	"bytes"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,43 +11,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	lokiutil "github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
-
-var testTenantYamlExtractedData = `
-pipeline_stages:
-- json:
-    expressions:
-      customer_id:
-- tenant:
-    source: customer_id
-`
-
-var testTenantLogLineWithMissingKey = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
-func TestPipelineWithMissingKey_Tenant(t *testing.T) {
-	var buf bytes.Buffer
-	w := log.NewSyncWriter(&buf)
-	logger := log.NewLogfmtLogger(w)
-	pl, err := NewPipeline(logger, loadConfig(testTenantYamlExtractedData), nil, prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	Debug = true
-
-	_ = processEntries(pl, newEntry(nil, nil, testTenantLogLineWithMissingKey, time.Now()))
-	expectedLog := "level=debug msg=\"failed to convert value to string\" err=\"can't convert <nil> to string\" type=null"
-	if !(strings.Contains(buf.String(), expectedLog)) {
-		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
-	}
-}
 
 func TestTenantStage_Validation(t *testing.T) {
 	t.Parallel()
@@ -127,7 +87,7 @@ func TestTenantStage_Validation(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			stage, err := newTenantStage(util_log.Logger, testData.config)
+			stage, err := newTenantStage(testData.config)
 
 			if testData.expectedErr != nil {
 				assert.EqualError(t, err, *testData.expectedErr)
@@ -201,7 +161,7 @@ func TestTenantStage_Process(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			stage, err := newTenantStage(util_log.Logger, testData.config)
+			stage, err := newTenantStage(testData.config)
 			require.NoError(t, err)
 
 			// Process and dummy line and ensure nothing has changed except

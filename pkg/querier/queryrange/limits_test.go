@@ -20,8 +20,11 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -152,7 +155,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -434,7 +437,7 @@ func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
 	).Do(ctx, &LokiRequest{Query: query, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
 	require.Error(t, err)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
 		server.FailureThrottled, "max_query_parallelism",
 		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
 
@@ -474,7 +477,7 @@ func Test_MaxQueryParallelismNoUsageLineForMetadataQuery(t *testing.T) {
 		}),
 	).Do(ctx, &LokiSeriesRequest{Match: []string{`{app="foo"}`}, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryParallelism,
 		server.FailureThrottled, "max_query_parallelism",
 		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
 	require.Empty(t, lines.all())
@@ -500,13 +503,13 @@ func Test_MaxQueryLengthClassification(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, called)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryLength,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxQueryLength,
 		server.FailureLimit, "max_query_length",
 		http.StatusBadRequest, "the query time range exceeds the limit (query length: 48h0m0s, limit: 1d)")
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -869,6 +872,260 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
 		})
 	}
+
+	const bytesPerHour = 1000
+
+	// bytesIn returns the bytes stored in a time range at a constant rate of bytesPerHour.
+	bytesIn := func(from, through time.Time) uint64 {
+		return uint64(through.Sub(from) * bytesPerHour / time.Hour)
+	}
+
+	// splitQuery is a metric range query with a 14s step that the size limiter checks
+	// before the split middleware splits it. It is 1h long unless length is set. The
+	// configured split interval is 30m, and a longer range vector makes the split interval
+	// as long as the range vector.
+	type splitQuery struct {
+		query            string
+		start            time.Time
+		length           time.Duration
+		limit            int
+		iqo              util.IngesterQueryOptions
+		ingesterSplit    time.Duration
+		limitsContext    *querylimits.Context
+		maxQueryLookback time.Duration
+	}
+
+	// runSplitQuery runs q through the size limiter and the split middleware. It returns the
+	// bytes that the splits read. The index stats go through limitsMiddleware, so they do not
+	// cover data before the lookback start. Each split reads its own time range, shifted back
+	// by the offset of each matcher group, plus the range vector interval before it. Like a
+	// querier, a split does not read data before the lookback start.
+	runSplitQuery := func(q splitQuery) (uint64, error) {
+		limits := fakeLimits{
+			maxQueryBytesRead:     q.limit,
+			maxQueryParallelism:   1,
+			maxQueryLength:        30 * 24 * time.Hour,
+			maxQueryLookback:      q.maxQueryLookback,
+			splitDuration:         map[string]time.Duration{"foo": 30 * time.Minute},
+			ingesterSplitDuration: map[string]time.Duration{"foo": q.ingesterSplit},
+		}
+
+		statsHandler := NewLimitsMiddleware(limits).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{
+				Bytes: bytesIn(req.GetStart(), req.GetEnd()),
+			}}, nil
+		}))
+
+		bytesRead := atomic.NewUint64(0)
+		splitHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			groups, err := syntax.MatcherGroups(syntax.MustParseExpr(req.GetQuery()))
+			if err != nil {
+				return nil, err
+			}
+			for _, grp := range groups {
+				windowStart := req.GetStart().Add(-grp.Interval - grp.Offset)
+				if q.maxQueryLookback > 0 {
+					if lookbackStart := time.Now().Add(-q.maxQueryLookback); windowStart.Before(lookbackStart) {
+						windowStart = lookbackStart
+					}
+				}
+				bytesRead.Add(bytesIn(windowStart, req.GetEnd().Add(-grp.Offset)))
+			}
+
+			params, err := ParamsFromRequest(req)
+			if err != nil {
+				return nil, err
+			}
+			return ResultToResponse(logqlmodel.Result{Data: promql.Matrix{}}, params)
+		})
+
+		splitter := newMetricQuerySplitter(Config{}, limits, q.iqo)
+		handler := queryrangebase.MergeMiddlewares(
+			newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler),
+			SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, splitter, nilMetrics),
+		).Wrap(splitHandler)
+
+		length := q.length
+		if length == 0 {
+			length = time.Hour
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		if q.limitsContext != nil {
+			ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, *q.limitsContext)
+		}
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     q.query,
+			StartTs:   q.start,
+			EndTs:     q.start.Add(length),
+			Step:      (14 * time.Second).Milliseconds(),
+			Direction: logproto.BACKWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(q.query),
+		})
+		return bytesRead.Load(), err
+	}
+
+	// requireLimitAtBytesRead checks that the size limiter rejects q with a limit 1% below the
+	// bytes that the splits of q read, and accepts q with a limit 1% above them. It returns
+	// the bytes that the splits read.
+	requireLimitAtBytesRead := func(t *testing.T, q splitQuery) uint64 {
+		q.limit = 0
+		bytesRead, err := runSplitQuery(q)
+		require.NoError(t, err)
+
+		q.limit = int(bytesRead * 99 / 100)
+		_, err = runSplitQuery(q)
+		require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
+
+		q.limit = int(bytesRead * 101 / 100)
+		_, err = runSplitQuery(q)
+		require.NoError(t, err)
+
+		return bytesRead
+	}
+
+	storeStart := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
+
+	t.Run("rejects a split metric query below the bytes that its splits read again", func(t *testing.T) {
+		bytesRead := requireLimitAtBytesRead(t, splitQuery{
+			query: `sum by (env) (count_over_time({dataset="production"} |= "needle" [1h]))`,
+			start: storeStart,
+		})
+		require.Greater(t, bytesRead, uint64(2*bytesPerHour))
+	})
+
+	t.Run("counts the re-reads of each matcher group with its own range interval and offset", func(t *testing.T) {
+		requireLimitAtBytesRead(t, splitQuery{
+			query: `sum(count_over_time({app="foo"} |= "needle" [1h])) / sum(count_over_time({app="bar"} |= "needle" [5m] offset 30m))`,
+			start: storeStart,
+		})
+	})
+
+	t.Run("counts the re-reads of ingester splits that the range interval does not widen", func(t *testing.T) {
+		bytesRead := requireLimitAtBytesRead(t, splitQuery{
+			query:         `sum by (env) (count_over_time({dataset="production"} |= "needle" [1h]))`,
+			start:         time.Now().UTC().Truncate(time.Minute).Add(-time.Hour),
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
+			ingesterSplit: 15 * time.Minute,
+		})
+		require.Greater(t, bytesRead, uint64(4*bytesPerHour))
+	})
+
+	t.Run("counts the reads of a split metric query whose range vector reaches before the lookback start", func(t *testing.T) {
+		start := time.Now().UTC().Truncate(6 * time.Hour).Add(-24 * time.Hour)
+		requireLimitAtBytesRead(t, splitQuery{
+			query:            `sum by (env) (count_over_time({dataset="production"} |= "needle" [6h]))`,
+			start:            start,
+			length:           24 * time.Hour,
+			maxQueryLookback: time.Since(start) + 3*time.Hour,
+		})
+	})
+
+	t.Run("checks the query limits context with the data that its splits read again", func(t *testing.T) {
+		const query = `sum by (env) (count_over_time({dataset="production"} |= "needle" [6h]))`
+		day := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+		piece := splitQuery{
+			query:  query,
+			start:  day,
+			length: 24 * time.Hour,
+			limitsContext: &querylimits.Context{
+				Expr: query,
+				From: day,
+				To:   day.Add(48 * time.Hour),
+			},
+		}
+
+		piece.limit = 70 * bytesPerHour
+		_, err := runSplitQuery(piece)
+		require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
+
+		piece.limit = 110 * bytesPerHour
+		_, err = runSplitQuery(piece)
+		require.NoError(t, err)
+	})
+
+	t.Run("does not split a query limits context whose index stats lookup fails", func(t *testing.T) {
+		const query = `sum(count_over_time({app="foo"} |= "needle" [5m]))`
+		limits := fakeLimits{maxQueryBytesRead: 1000, maxQueryLength: time.Hour}
+		_, statsResult := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+		statsHandler := NewLimitsMiddleware(limits).Wrap(statsResult)
+		splitter := newRecordingSplitter()
+		_, promHandler := promqlResult(matrix)
+
+		handler := newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler).Wrap(promHandler)
+
+		ctx := querylimits.InjectQueryLimitsContextIntoContext(user.InjectOrgID(context.Background(), "foo"), querylimits.Context{
+			Expr: query,
+			From: testTime.Add(-25 * 365 * 24 * time.Hour),
+			To:   testTime,
+		})
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			StartTs:   testTime.Add(-30 * time.Minute),
+			EndTs:     testTime,
+			Step:      (time.Minute).Milliseconds(),
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.NoError(t, err)
+		require.Empty(t, *splitter.requests)
+	})
+
+	// runWithLimitsContext runs a 30m metric query that ends now through the split size
+	// limiter, with a query limits context. The index stats go through limitsMiddleware, so
+	// they apply max_query_lookback and max_query_length. It returns the requests that the
+	// splitter got.
+	runWithLimitsContext := func(t *testing.T, limits fakeLimits, limitsCtx querylimits.Context) []queryrangebase.Request {
+		const query = `sum(count_over_time({app="foo"} |= "needle" [5m]))`
+		_, statsResult := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+		statsHandler := NewLimitsMiddleware(limits).Wrap(statsResult)
+		splitter := newRecordingSplitter()
+		_, promHandler := promqlResult(matrix)
+
+		handler := newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler).Wrap(promHandler)
+
+		limitsCtx.Expr = query
+		now := time.Now().UTC()
+		ctx := querylimits.InjectQueryLimitsContextIntoContext(user.InjectOrgID(context.Background(), "foo"), limitsCtx)
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			StartTs:   now.Add(-30 * time.Minute),
+			EndTs:     now,
+			Step:      (time.Minute).Milliseconds(),
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.NoError(t, err)
+		return *splitter.requests
+	}
+
+	t.Run("splits the query limits context only inside the max query lookback", func(t *testing.T) {
+		limits := fakeLimits{maxQueryBytesRead: 1 << 30, maxQueryLookback: 24 * time.Hour, maxQueryLength: 48 * time.Hour}
+		now := time.Now().UTC()
+
+		requests := runWithLimitsContext(t, limits, querylimits.Context{
+			From: now.Add(-25 * 365 * 24 * time.Hour),
+			To:   now,
+		})
+		require.Len(t, requests, 2)
+		require.False(t, requests[0].GetStart().Before(now.Add(-24*time.Hour)))
+	})
+
+	t.Run("does not count a query limits context that ends before the max query lookback", func(t *testing.T) {
+		limits := fakeLimits{maxQueryBytesRead: 1 << 30, maxQueryLookback: 24 * time.Hour, maxQueryLength: 48 * time.Hour}
+		now := time.Now().UTC()
+
+		requests := runWithLimitsContext(t, limits, querylimits.Context{
+			From: now.Add(-72 * time.Hour),
+			To:   now.Add(-48 * time.Hour),
+		})
+		require.Len(t, requests, 1)
+		require.Equal(t, `sum(count_over_time({app="foo"} |= "needle" [5m]))`, requests[0].GetQuery())
+		require.False(t, requests[0].GetStart().Before(now.Add(-time.Hour)))
+	})
 }
 
 func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
@@ -1057,6 +1314,63 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}
 }
 
+func TestSplitBytesRead(t *testing.T) {
+	from := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	twoSplits := []queryrangebase.Request{
+		&LokiRequest{StartTs: from, EndTs: from.Add(20 * time.Minute)},
+		&LokiRequest{StartTs: from.Add(20 * time.Minute), EndTs: to},
+	}
+
+	t.Run("returns the bytes unchanged when the request has one split", func(t *testing.T) {
+		oneSplit := []queryrangebase.Request{&LokiRequest{StartTs: from, EndTs: to}}
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, oneSplit))
+	})
+
+	t.Run("returns the bytes unchanged when the matcher group has no range vector interval", func(t *testing.T) {
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{}, from, to, time.Time{}, twoSplits))
+	})
+
+	t.Run("returns the bytes unchanged when the request is not split", func(t *testing.T) {
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, nil))
+	})
+
+	t.Run("returns the bytes unchanged when the split windows do not overlap", func(t *testing.T) {
+		gappedSplits := []queryrangebase.Request{
+			&LokiRequest{StartTs: from, EndTs: from.Add(time.Minute)},
+			&LokiRequest{StartTs: to.Add(-time.Minute), EndTs: to},
+		}
+		require.Equal(t, uint64(1000), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Minute}, from, to, time.Time{}, gappedSplits))
+	})
+
+	t.Run("scales the bytes by the time that the overlapping split windows read", func(t *testing.T) {
+		require.Equal(t, uint64(1500), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, time.Time{}, twoSplits))
+	})
+
+	t.Run("clips the stats and the split windows at the lookback start", func(t *testing.T) {
+		lookbackStart := from.Add(-40 * time.Minute)
+		require.Equal(t, uint64(1600), splitBytesRead(1000, syntax.MatcherRange{Interval: time.Hour}, from, to, lookbackStart, twoSplits))
+	})
+
+	t.Run("applies the lookback start to the windows that the offset shifts back", func(t *testing.T) {
+		lookbackStart := from.Add(-40 * time.Minute)
+		grp := syntax.MatcherRange{Interval: time.Hour, Offset: 20 * time.Minute}
+		require.Equal(t, uint64(1600), splitBytesRead(1000, grp, from.Add(20*time.Minute), to.Add(20*time.Minute), lookbackStart, []queryrangebase.Request{
+			&LokiRequest{StartTs: from.Add(20 * time.Minute), EndTs: from.Add(40 * time.Minute)},
+			&LokiRequest{StartTs: from.Add(40 * time.Minute), EndTs: to.Add(20 * time.Minute)},
+		}))
+	})
+
+	t.Run("scales the bytes by the read time when 1h splits each read a 24h range interval", func(t *testing.T) {
+		dayTo := from.Add(24 * time.Hour)
+		hourlySplits := make([]queryrangebase.Request, 0, 24)
+		for start := from; start.Before(dayTo); start = start.Add(time.Hour) {
+			hourlySplits = append(hourlySplits, &LokiRequest{StartTs: start, EndTs: start.Add(time.Hour)})
+		}
+		require.Equal(t, uint64(12500), splitBytesRead(1000, syntax.MatcherRange{Interval: 24 * time.Hour}, from, dayTo, time.Time{}, hourlySplits))
+	})
+}
+
 func TestAcquireWithTiming(t *testing.T) {
 	ctx := context.Background()
 	sem := NewSemaphoreWithTiming(2)
@@ -1110,4 +1424,77 @@ func TestAcquireWithTiming(t *testing.T) {
 	// Check that the waiting time for the third request is larger than 0 milliseconds and less than 10 milliseconds
 	require.Greater(t, waiting3, 0*time.Nanosecond)
 	require.Less(t, waiting3, 10*time.Millisecond)
+}
+
+func metricResponseWithScanUsage(bytesScanned int64, series ...string) *LokiPromResponse {
+	response := &LokiPromResponse{
+		Statistics: stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: bytesScanned}}}},
+		Response:   &queryrangebase.PrometheusResponse{Status: "success", Data: queryrangebase.PrometheusData{ResultType: "matrix"}},
+	}
+	response.Statistics.ComputeSummary(time.Second, 0, 0)
+	for _, name := range series {
+		response.Response.Data.Result = append(response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels: []logproto.LabelAdapter{{Name: "series", Value: name}},
+		})
+	}
+	return response
+}
+
+func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
+	for _, drilldown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("drilldown=%t", drilldown), func(t *testing.T) {
+			ctx := context.Background()
+			if drilldown {
+				ctx = httpreq.InjectQueryTags(ctx, "Source="+constants.LogsDrilldownAppName)
+			}
+			_, ctx = metadata.NewContext(ctx)
+			discardedWork, ctx := stats.NewDiscardedWorkContext(ctx)
+			calls := 0
+			limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				calls++
+				return metricResponseWithScanUsage(50, "a", "b"), nil
+			}))
+			response, err := limiter.Do(ctx, &LokiRequest{})
+			if drilldown {
+				// Drilldown returns a response with a warning instead of failing;
+				// its usage must stay on that response to avoid counting it twice.
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed, "successful response owns its usage")
+			} else {
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+				// Once rejected, further requests are rejected before execution.
+				response, err = limiter.Do(ctx, &LokiRequest{})
+				require.ErrorContains(t, err, "maximum number of series")
+				require.Nil(t, response)
+				require.Equal(t, 1, calls)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
+			}
+		})
+	}
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
+	limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		return metricResponseWithScanUsage(100, "a"), nil
+	}))
+	response, err := limiter.Do(ctx, &LokiRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
+}
+
+// recordingSplitter records the requests it gets and never splits. It is not safe for
+// concurrent use.
+type recordingSplitter struct {
+	requests *[]queryrangebase.Request
+}
+
+func newRecordingSplitter() recordingSplitter {
+	return recordingSplitter{requests: &[]queryrangebase.Request{}}
+}
+
+func (s recordingSplitter) split(_ time.Time, _ []string, r queryrangebase.Request) ([]queryrangebase.Request, bool) {
+	*s.requests = append(*s.requests, r)
+	return nil, false
 }

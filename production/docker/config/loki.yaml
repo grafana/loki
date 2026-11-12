@@ -18,13 +18,15 @@ common:
       store: memberlist
 
 storage_config:
-  aws:
-    endpoint: minio:9000
-    insecure: true
-    bucketnames: loki-data
-    access_key_id: loki
-    secret_access_key: supersecret
-    s3forcepathstyle: true
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      endpoint: silo:9000
+      insecure: true
+      bucket_name: loki-data
+      access_key_id: loki
+      secret_access_key: supersecret
+      bucket_lookup_type: path
 
 memberlist:
   join_members:
@@ -58,10 +60,6 @@ ruler:
     mode: remote
     query_frontend:
       address: dns:///loki:9095
-  storage:
-    type: local
-    local:
-      directory: /loki/rules
   rule_path: /loki/prom-rules
   remote_write:
     enabled: true
@@ -72,6 +70,11 @@ ruler:
           # send immediately as soon as a sample is generated
           capacity: 1
           batch_send_deadline: 0s
+
+ruler_storage:
+  backend: local
+  local:
+    directory: /loki/rules
 
 schema_config:
   configs:

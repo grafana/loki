@@ -25,6 +25,8 @@ const (
 //
 // The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
 // `MetricsPrefix`
+//
+// Passing kgo.MaxVersions in opts replaces the ApiVersions cap.
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 

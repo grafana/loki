@@ -7,9 +7,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestDecodeRow(t *testing.T) {
+	optionalColumns := []*Column{
+		{Name: "path", Type: ColumnTypePath},
+		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
+		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
+		{Name: "run_id", Type: ColumnTypeRunID},
+		{Name: "min_posting_key", Type: ColumnTypeMinPostingKey},
+		{Name: "max_posting_key", Type: ColumnTypeMaxPostingKey},
+		{Name: "shard_buckets", Type: ColumnTypeShardBuckets},
+	}
+	lowKey := postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}
+	highKey := postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"}
+	keyRange, err := postings.NewKeyRange(lowKey, highKey)
+	require.NoError(t, err)
+	minEncoded, maxEncoded := keyRange.Encode()
+	shardBuckets := NewShardBuckets(streams.MustShardLayoutFromBuckets(64))
+
 	tests := []struct {
 		name     string
 		columns  []*Column
@@ -133,11 +151,86 @@ func TestDecodeRow(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name:    "decodes the run ID, posting keys and shard layout when all are present",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(7),
+					dataset.BinaryValue(minEncoded),
+					dataset.BinaryValue(maxEncoded),
+					dataset.Int64Value(64),
+				},
+			},
+			expected: IndexPointer{
+				Path:         "test-path",
+				StartTs:      time.Unix(0, 1234567890000000000),
+				EndTs:        time.Unix(0, 1234567890000000000),
+				RunID:        7,
+				PostingKeys:  keyRange,
+				ShardBuckets: shardBuckets,
+			},
+		},
+		{
+			name:    "leaves the optional fields unset when their values are null",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					{},
+					{},
+					{},
+				},
+			},
+			expected: IndexPointer{
+				Path:    "test-path",
+				StartTs: time.Unix(0, 1234567890000000000),
+				EndTs:   time.Unix(0, 1234567890000000000),
+			},
+		},
+		{
+			name:    "returns an error when only one posting key bound is present",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					dataset.BinaryValue(minEncoded),
+					{},
+					{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "returns an error when the shard bucket count is not a power of two",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					{},
+					{},
+					dataset.Int64Value(3),
+				},
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			indexPointer := IndexPointer{}
-			err := decodeRow(tt.columns, tt.row, &indexPointer, nil)
+			err := decodeRow(tt.columns, tt.row, &indexPointer)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -146,55 +239,4 @@ func TestDecodeRow(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDecodeRow_NoLeakWhenSizeColumnsAbsent(t *testing.T) {
-	// Test that decoding a row without size columns does not leak previous values.
-	// Regression test for stale-row leak when RowReader reuses buffer across sections.
-
-	// First decode: row WITH size columns (FileSize and UncompressedLogsSize present)
-	firstRow := dataset.Row{
-		Values: []dataset.Value{
-			dataset.BinaryValue([]byte("path1")),
-			dataset.Int64Value(1000),
-			dataset.Int64Value(2000),
-			dataset.Int64Value(5000),  // FileSize
-			dataset.Int64Value(10000), // UncompressedLogsSize
-		},
-	}
-	firstColumns := []*Column{
-		{Name: "path", Type: ColumnTypePath},
-		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
-		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
-		{Name: "file_size", Type: ColumnTypeFileSize},
-		{Name: "uncompressed_logs_size", Type: ColumnTypeUncompressedLogsSize},
-	}
-
-	pointer := IndexPointer{}
-	err := decodeRow(firstColumns, firstRow, &pointer, nil)
-	require.NoError(t, err)
-	require.Equal(t, uint64(5000), pointer.FileSize)
-	require.Equal(t, uint64(10000), pointer.UncompressedLogsSize)
-
-	// Second decode: row WITHOUT size columns (only path/min/max, legacy section)
-	secondRow := dataset.Row{
-		Values: []dataset.Value{
-			dataset.BinaryValue([]byte("path2")),
-			dataset.Int64Value(3000),
-			dataset.Int64Value(4000),
-		},
-	}
-	secondColumns := []*Column{
-		{Name: "path", Type: ColumnTypePath},
-		{Name: "min_timestamp", Type: ColumnTypeMinTimestamp},
-		{Name: "max_timestamp", Type: ColumnTypeMaxTimestamp},
-	}
-
-	// Reuse same pointer buffer (as RowReader.Read does across sections)
-	err = decodeRow(secondColumns, secondRow, &pointer, nil)
-	require.NoError(t, err)
-
-	// MUST be zero; without fix, would retain first row's values
-	require.Equal(t, uint64(0), pointer.FileSize, "FileSize should be reset to 0")
-	require.Equal(t, uint64(0), pointer.UncompressedLogsSize, "UncompressedLogsSize should be reset to 0")
 }

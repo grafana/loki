@@ -15,17 +15,29 @@ import (
 //	/*
 //	** Initialize SQLite.
 //	**
-//	** This routine must be called to initialize the memory allocation,
-//	** VFS, and mutex subsystems prior to doing any serious work with
-//	** SQLite.  But as long as you do not compile with SQLITE_OMIT_AUTOINIT
+//	** The sqlite3_initialize() routine must be called to initialize the
+//	** memory allocation, VFS, and mutex subsystems prior to doing any
+//	** serious work.  As long as you do not compile with SQLITE_OMIT_AUTOINIT
 //	** this routine will be called automatically by key routines such as
 //	** sqlite3_open().
 //	**
 //	** This routine is a no-op except on its very first call for the process,
-//	** or for the first call after a call to sqlite3_shutdown.
+//	** or for the first call after a call to sqlite3_shutdown.  Most calls
+//	** to sqlite3_initialize() are, in fact, no-ops.  For that reason, the
+//	** routine is broken into two pieces:
 //	**
-//	** The first thread to call this routine runs the initialization to
-//	** completion.  If subsequent threads call this routine before the first
+//	**     sqlite3Initialize()     Does the actual work of initialization
+//	**
+//	**     sqlite3_initialize()    Checks to see if initialization is needed
+//	**                             and invokes sqlite3Initialize() if it is.
+//	**
+//	** The sqlite3_initialize() interface is called frequently, but
+//	** sqlite3Initialize() runs rarely.  The function is broken up this way
+//	** to avoid wasting CPU cycles with unnecessary stack setup for local
+//	** variables in cases where it is not needed.
+//	**
+//	** The first thread to call sqlite3_initialize() runs the initialization to
+//	** completion. If subsequent threads call sqlite3_initialize() before the first
 //	** thread has finished the initialization process, then the subsequent
 //	** threads must block until the first thread finishes with the initialization.
 //	**
@@ -33,31 +45,25 @@ import (
 //	** calls to this routine should not block, of course.  Otherwise the
 //	** initialization process would never complete.
 //	**
-//	** Let X be the first thread to enter this routine.  Let Y be some other
-//	** thread.  Then while the initial invocation of this routine by X is
-//	** incomplete, it is required that:
+//	** Let X be the first thread to enter sqlite3_initialize().  Let Y be some
+//	** other thread.  While the initial invocation of sqlite3_initialize() by X
+//	** is incomplete, it is required that:
 //	**
-//	**    *  Calls to this routine from Y must block until the outer-most
+//	**    *  Calls to sqlite3_initialize() from Y must block until the outer-most
 //	**       call by X completes.
 //	**
-//	**    *  Recursive calls to this routine from thread X return immediately
-//	**       without blocking.
+//	**    *  Recursive calls to sqlite3_initialize() from thread X return
+//	**       immediately without blocking.
 //	*/
-func Xsqlite3_initialize(tls *libc.TLS) (r int32) {
+func _sqlite3Initialize(tls *libc.TLS) (r int32) {
 	var pMainMtx uintptr
 	var rc int32
 	_, _ = pMainMtx, rc /* Result code */
 	/* If the following assert() fails on some obscure processor/compiler
-	 ** combination, the work-around is to set the correct pointer
-	 ** size at compile-time using -DSQLITE_PTRSIZE=n compile-time option */
-	/* If SQLite is already completely initialized, then this call
-	 ** to sqlite3_initialize() should be a no-op.  But the initialization
-	 ** must be complete.  So isInit must not be set until the very end
-	 ** of this routine.
+	 ** combination to warn that SQLite has been mis-compiled.  If you hit
+	 ** this assert(), that means you need to recompile with the
+	 ** -DSQLITE_PTRSIZE=n compile-time option to set the correct pointer size.
 	 */
-	if libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_sqlite3Config))+340) != 0 {
-		return SQLITE_OK
-	}
 	/* Make sure the mutex subsystem is initialized.  If unable to
 	 ** initialize the mutex subsystem, return early with the error.
 	 ** If the system is so sick that we are unable to allocate a mutex,

@@ -26,10 +26,8 @@ import (
 	"github.com/prometheus/procfs/internal/parsers"
 )
 
-var (
-	// Match the header line before each mapped zone in `/proc/pid/smaps`.
-	procSMapsHeaderLine = regexp.MustCompile(`^[a-f0-9].*$`)
-)
+// Match the header line before each mapped zone in `/proc/pid/smaps`.
+var procSMapsHeaderLine = regexp.MustCompile(`^[a-f0-9].*$`)
 
 type ProcSMapsRollup struct {
 	// Amount of the mapping that is currently resident in RAM.

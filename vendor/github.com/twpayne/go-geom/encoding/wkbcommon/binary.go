@@ -1,4 +1,3 @@
-// Package wkbcommon contains code common to WKB and EWKB encoding.
 package wkbcommon
 
 import (

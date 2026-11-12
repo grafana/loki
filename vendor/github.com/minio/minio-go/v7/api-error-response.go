@@ -216,6 +216,7 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 	if errResp.HostID == "" {
 		errResp.HostID = resp.Header.Get("x-amz-id-2")
 	}
+	errResp.Region = strings.TrimSpace(errResp.Region)
 	if errResp.Region == "" {
 		errResp.Region = resp.Header.Get("x-amz-bucket-region")
 	}
@@ -240,6 +241,33 @@ func errTransferAccelerationBucket(bucketName string) error {
 // errEntityTooLarge - Input size is larger than supported maximum.
 func errEntityTooLarge(totalSize, maxObjectSize int64, bucketName, objectName string) error {
 	msg := fmt.Sprintf("Your proposed upload size ‘%d’ exceeds the maximum allowed object size ‘%d’ for single PUT operation.", totalSize, maxObjectSize)
+	return ErrorResponse{
+		StatusCode: http.StatusBadRequest,
+		Code:       EntityTooLarge,
+		Message:    msg,
+		BucketName: bucketName,
+		Key:        objectName,
+	}
+}
+
+// errPartTooLarge - Input part size is larger than the maximum allowed part
+// size, which is configurable via Options.UploadLimits.
+func errPartTooLarge(partSize, maxPartSize int64, bucketName, objectName string) error {
+	msg := fmt.Sprintf("Your proposed part size ‘%d’ exceeds the maximum allowed part size ‘%d’.", partSize, maxPartSize)
+	return ErrorResponse{
+		StatusCode: http.StatusBadRequest,
+		Code:       EntityTooLarge,
+		Message:    msg,
+		BucketName: bucketName,
+		Key:        objectName,
+	}
+}
+
+// errUploadTooLarge - An unknown length reader outlasted the parts the upload
+// was laid out for. The object's real size is not known, so only the number of
+// bytes that fit is reported; it is not an allowed maximum.
+func errUploadTooLarge(uploadedSize, totalPartsCount int64, bucketName, objectName string) error {
+	msg := fmt.Sprintf("Input stream exceeds the ‘%d’ parts this upload allows; ‘%d’ bytes were uploaded before the limit was reached. Set PutObjectOptions.PartSize to upload a larger object.", totalPartsCount, uploadedSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
 		Code:       EntityTooLarge,

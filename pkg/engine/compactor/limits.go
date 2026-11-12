@@ -9,6 +9,7 @@ type Limits interface {
 	// (log without index) is rejected at config validation.
 	CompactionPhases(userID string) (runIndex, runLog bool)
 
-	// SortSchemaLabels returns the target physical sort schema for a tenant.
-	SortSchemaLabels(userID string) []string
+	// DeletionSweepEnabled reports whether the deletion sweep runs for the
+	// tenant.
+	DeletionSweepEnabled(userID string) bool
 }

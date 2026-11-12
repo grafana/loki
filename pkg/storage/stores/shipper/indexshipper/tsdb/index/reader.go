@@ -42,6 +42,9 @@ type Reader interface {
 	// (name, value) pairs.
 	Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error)
 
+	// ShardPostings restricts an existing postings list to a shard candidate range.
+	ShardPostings(Postings, FingerprintFilter) Postings
+
 	// NewSeriesScan returns a scan over the series records of one pass over a
 	// postings list.
 	// The caller owns the returned scan and must Close it.
@@ -66,10 +69,13 @@ type Reader interface {
 // arrive out of order then a performance cost may be paid.
 type SeriesScan interface {
 	// Series populates lbls and chks for the series identified by id.
+	// The caller owns the labels written to lbls: they must not alias memory the
+	// implementation later modifies or frees (such as a reused buffer or the index
+	// file), so they stay valid after later calls and after the index is closed.
 	Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error)
 
 	// ChunkStats returns aggregated chunk statistics for the series
-	// identified by id.
+	// identified by id. lbls follows the same ownership rule as Series.
 	ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error)
 
 	// LabelValueFor returns the value of the given label name for the series

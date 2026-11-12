@@ -89,9 +89,20 @@ func maybeHasData(conn net.Conn) bool {
 }
 
 func checkForData(conn net.Conn) (bool, error) {
-	// Unlike the general health check, CSC only uses this as a readiness hint
-	// before a bounded read, so unwrapping TLS is safe and avoids blocking.
-	_ = conn.SetDeadline(time.Time{})
+	// Clear any residual READ deadline first: a prior command read (WithReader)
+	// leaves its deadline armed, and once it expires rawConn.Read fails fast
+	// with "raw-read ... i/o timeout" BEFORE the non-blocking peek runs — the
+	// caller would misread an idle-but-healthy conn as dead (the CSC drainer
+	// then removes it and evicts its cache coverage; with the full-duplex
+	// coalescer concentrating a cache's coverage on one held conn, that one
+	// spurious removal wipes the whole cache). Read-only on purpose, unlike the
+	// SetDeadline reset this replaced: checkForData runs CONCURRENTLY with
+	// command WRITES on a held full-duplex connection, and a full SetDeadline
+	// would strip an armed write deadline mid-write. No concurrent READ can
+	// race this: every caller either owns the conn's read side (FD session
+	// reader between reads) or holds the conn exclusively (drainer borrow,
+	// pool health check).
+	_ = conn.SetReadDeadline(time.Time{})
 	sysConn, ok := underlyingSyscallConn(conn)
 	if !ok {
 		return false, nil

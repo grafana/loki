@@ -9,12 +9,19 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // ErrUnsupported is returned when the query shape cannot be handled by the
-// logline index hint provider.
-var ErrUnsupported = errors.New("query not supported by logline index")
+// logline index hint provider. ErrUnconstrained is returned when the query
+// cannot be narrowed by logline.
+var (
+	ErrUnsupported   = errors.New("query not supported by logline index")
+	ErrUnconstrained = errors.New("logline index cannot narrow this query")
+)
 
 const maxLoggedHintRanges = 10
 
@@ -31,6 +38,15 @@ type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
 }
 
+type HintPlan struct {
+	Filters     []string
+	Ranges      []HintTimeRange // pre-min-date passthrough, if any
+	Indexes     []store.Meta
+	Stats       *QueryStats
+	NgramLength int32
+	MaxParallel int32
+}
+
 // HintTimeRange is a half-open time window [Start, End) that may contain
 // matching logs. Start is inclusive, End is exclusive. This matches the
 // document bounds written by index builders (MinTimeUnix inclusive,
@@ -38,8 +54,25 @@ type QueryHintProvider interface {
 type HintTimeRange struct {
 	Start time.Time
 	End   time.Time
+	// DocumentShard and DocumentShardBits limit the range to the streams of
+	// one document shard (logline.DocumentShard). Zero bits is one shard, so
+	// the range covers every stream.
+	DocumentShard     uint32
+	DocumentShardBits uint8
 	// Source is optional provider-specific provenance for diagnostics.
 	Source string
+}
+
+// MatchesFingerprint reports whether h covers the stream with fingerprint fp
+// (logline.StreamFingerprint).
+func (h HintTimeRange) MatchesFingerprint(fp uint64) bool {
+	return logline.DocumentShard(fp, uint(h.DocumentShardBits)) == h.DocumentShard
+}
+
+// documentShardKey identifies h's document shard. Ranges merge and intersect
+// only within one.
+func (h HintTimeRange) documentShardKey() uint64 {
+	return uint64(h.DocumentShardBits)<<32 | uint64(h.DocumentShard)
 }
 
 // IsPassthrough returns true for synthetic hint ranges that represent time
@@ -51,9 +84,32 @@ func (h HintTimeRange) IsPassthrough() bool {
 	return h.Start.IsZero()
 }
 
+// passthroughForInclusiveThrough covers an inclusive ProvideHints/LoglineIndex
+// through bound as a half-open hint. Zero Start is the passthrough sentinel;
+// End is the next millisecond so a log at through stays inside [Start, End).
+func passthroughForInclusiveThrough(through time.Time) HintTimeRange {
+	return HintTimeRange{End: through.UTC().Add(time.Millisecond)}
+}
+
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
 	TimeRanges []HintTimeRange
+}
+
+func ToProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
+	out := make([]logproto.HintTimeRange, len(in))
+	for i, r := range in {
+		out[i] = logproto.HintTimeRange{Start: r.Start, End: r.End}
+	}
+	return out
+}
+
+func FromProtoRanges(in []logproto.HintTimeRange) []HintTimeRange {
+	out := make([]HintTimeRange, len(in))
+	for i, r := range in {
+		out[i] = HintTimeRange{Start: r.Start, End: r.End}
+	}
+	return out
 }
 
 // String returns a compact, log-friendly representation of hint ranges.

@@ -9,21 +9,24 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
 // enables index-only compaction for the listed tenants (log stays off). Use
-// setLog / setIndex to adjust a tenant at runtime. The zero value enables
+// setLog and setSweep to adjust a tenant at runtime. The zero value enables
 // nothing.
 type fakeLimits struct {
 	mu    sync.Mutex
 	index map[string]bool
 	log   map[string]bool
+	sweep map[string]bool
 }
 
 func newFakeLimits(indexTenants ...string) *fakeLimits {
@@ -31,23 +34,25 @@ func newFakeLimits(indexTenants ...string) *fakeLimits {
 	for _, t := range indexTenants {
 		idx[t] = true
 	}
-	return &fakeLimits{index: idx, log: map[string]bool{}}
+	return &fakeLimits{index: idx, log: map[string]bool{}, sweep: map[string]bool{}}
+}
+
+func (f *fakeLimits) DeletionSweepEnabled(userID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sweep[userID]
+}
+
+func (f *fakeLimits) setSweep(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sweep[userID] = on
 }
 
 func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.index[userID] || f.log[userID], f.log[userID]
-}
-
-func (*fakeLimits) SortSchemaLabels(string) []string {
-	return []string{"label:service_name"}
-}
-
-func (f *fakeLimits) setIndex(userID string, on bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.index[userID] = on
 }
 
 func (f *fakeLimits) setLog(userID string, on bool) {
@@ -68,13 +73,14 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		},
 		PollingInterval:           defaultPollingInterval,
 		MaxRunsPerTask:            defaultMaxRunsPerTask,
+		LogMaxRunsPerTask:         defaultLogMaxRunsPerTask,
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
 		PlanVersion:               defaultPlanVersion,
 	}
 
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	c, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -104,6 +110,21 @@ func TestConfig_Validate_DisabledIsNoop(t *testing.T) {
 		MaxRunningCompactionTasks: -1, // would fail when enabled
 	}
 	require.NoError(t, cfg.Validate())
+}
+
+func TestConfig_Validate_DisabledCompaction(t *testing.T) {
+	t.Run("returns an error when the deletion sweep is enabled while compaction is disabled", func(t *testing.T) {
+		cfg := Config{Enabled: false, DeletionSweep: DeletionSweepConfig{Enabled: true, MaxConcurrentSweeps: 1}}
+		require.ErrorIs(t, cfg.Validate(), errDeletionSweepRequiresCompaction)
+	})
+
+	t.Run("accepts the deletion sweep when compaction is enabled", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 // TestConfig_Validate_EnabledRejectsBadValues captures the validation
@@ -151,7 +172,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 		},
 	}
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -166,7 +187,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 // TestNew_NilLimitsErrors verifies that New returns an error when Limits is nil.
 func TestNew_NilLimitsErrors(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
 		Bucket:          bucket,
@@ -175,4 +196,38 @@ func TestNew_NilLimitsErrors(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "limits is required")
+}
+
+func TestNew_DeletionSweep(t *testing.T) {
+	newParams := func(dataBucket objstore.BucketReader) PlannerParams {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		bucket := objstore.NewInMemBucket()
+		return PlannerParams{
+			Config:          cfg,
+			Bucket:          bucket,
+			DataBucket:      dataBucket,
+			MetastoreWriter: metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
+			Limits:          newFakeLimits(),
+			Logger:          log.NewNopLogger(),
+		}
+	}
+
+	t.Run("returns an error when the deletion sweep is enabled without a data bucket", func(t *testing.T) {
+		_, err := New(newParams(nil))
+		require.ErrorContains(t, err, "data bucket is required")
+	})
+
+	t.Run("starts and stops cleanly with the deletion sweep enabled", func(t *testing.T) {
+		c, err := New(newParams(objstore.NewInMemBucket()))
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, c))
+		require.Equal(t, services.Terminated, c.State())
+	})
 }

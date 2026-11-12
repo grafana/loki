@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -510,6 +510,16 @@ func TestMappingStrings(t *testing.T) {
 					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
+		},
+		{
+			// The count leg drops the unwrap, so it cannot reproduce a post filter that reads an
+			// error label. The mapper leaves the whole query alone rather than decompose it.
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error__="" [5m]) by (cluster)`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error__="" [5m]) by (cluster)`,
+		},
+		{
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error_details__="" [5m]) by (cluster)`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error_details__="" [5m]) by (cluster)`,
 		},
 		{
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
@@ -2054,7 +2064,7 @@ func TestMapping(t *testing.T) {
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
+		panic(logqlerr.NewParseError(err.Error(), 0, 0))
 	}
 	return m
 }

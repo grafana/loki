@@ -23,6 +23,10 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 		twelve   = time.Date(1970, 1, 1, 12, 00, 0, 0, time.UTC) // 1970 12:00:00 UTC
 		eleven   = twelve.Add(-1 * time.Hour)                    // 1970 11:00:00 UTC
 		ten      = eleven.Add(-1 * time.Hour)                    // 1970 10:00:00 UTC
+
+		sixAM      = time.Date(2026, 10, 9, 6, 0, 0, 0, time.UTC) // inside the data-object range
+		midnight   = sixAM.Add(-6 * time.Hour)
+		noonBefore = midnight.Add(-12 * time.Hour)
 	)
 
 	for _, tc := range []struct {
@@ -31,9 +35,10 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 		subQueries      []queryrangebase.RequestResponse
 		expected        queryrangebase.Response
 		splitByInterval time.Duration
+		dataObjEnabled  bool
 	}{
 		{
-			name:            "sum_splitBy_aligned_with_query_time",
+			name:            "splits a sum of bytes_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum(bytes_over_time({app="foo"}[3m]))`,
@@ -49,7 +54,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3, time.Unix(180, 0)), // original `TimeTs` of the query.
 		},
 		{
-			name:            "sum_splitBy_not_aligned_query_time",
+			name:            "splits a sum of bytes_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum(bytes_over_time({app="foo"}[3h]))`,
@@ -66,7 +71,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3+4, twelve34), // original `TimeTs` of the query.
 		},
 		{
-			name:            "sum_aggregation_splitBy_aligned_with_query_time",
+			name:            "splits a sum by label of bytes_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3m]))`,
@@ -82,7 +87,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(10+20+30, time.Unix(180, 0)),
 		},
 		{
-			name:            "sum_aggregation_splitBy_not_aligned_with_query_time",
+			name:            "splits a sum by label of bytes_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3h]))`,
@@ -99,7 +104,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(10+20+30+40, twelve34),
 		},
 		{
-			name:            "count_over_time_aligned_with_query_time",
+			name:            "splits a sum of count_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum(count_over_time({app="foo"}[3m]))`,
@@ -115,7 +120,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+1+1, time.Unix(180, 0)),
 		},
 		{
-			name:            "count_over_time_not_aligned_with_query_time",
+			name:            "splits a sum of count_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum(count_over_time({app="foo"}[3h]))`,
@@ -132,7 +137,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+1+1+1, twelve34),
 		},
 		{
-			name:            "sum_agg_count_over_time_align_with_query_time",
+			name:            "splits a sum by label of count_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3m]))`,
@@ -148,7 +153,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(0+0+0, time.Unix(180, 0)),
 		},
 		{
-			name:            "sum_agg_count_over_time_not_align_with_query_time",
+			name:            "splits a sum by label of count_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3h]))`,
@@ -165,7 +170,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(0+0+0+0, twelve34),
 		},
 		{
-			name:            "sum_over_time_aligned_with_query_time",
+			name:            "splits a sum of sum_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -181,7 +186,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3, time.Unix(180, 0)),
 		},
 		{
-			name:            "sum_over_time_not_aligned_with_query_time",
+			name:            "splits a sum of sum_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3h]))`,
@@ -198,7 +203,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3+4, twelve34),
 		},
 		{
-			name:            "sum_agg_sum_over_time_aligned_with_query_time",
+			name:            "splits a sum by label of sum_over_time into whole pieces when the query time is a multiple of the split interval",
 			splitByInterval: 1 * time.Minute,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
@@ -214,7 +219,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3, time.Unix(180, 0)),
 		},
 		{
-			name:            "sum_agg_sum_over_time_not_aligned_with_query_time",
+			name:            "splits a sum by label of sum_over_time into partial first and last pieces when the query time is not a multiple of the split interval",
 			splitByInterval: 1 * time.Hour,
 			in: &LokiInstantRequest{
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3h]))`,
@@ -230,15 +235,46 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			},
 			expected: expectedMergedResponseWithTime(1+2+3+4, twelve34),
 		},
+		{
+			name:            "splits a sum of count_over_time over the data-object range at the metastore window boundaries",
+			splitByInterval: 1 * time.Hour,
+			dataObjEnabled:  true,
+			in: &LokiInstantRequest{
+				Query:  `sum(count_over_time({app="foo"}[24h]))`,
+				TimeTs: sixAM,
+				Path:   "/loki/api/v1/query",
+				Plan:   testutil.MustPlan(`sum(count_over_time({app="foo"}[24h]))`),
+			},
+			subQueries: []queryrangebase.RequestResponse{
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[6h]))`, 1, sixAM),
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[12h]))`, 1, midnight),
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[6h]))`, 1, noonBefore),
+			},
+			expected: expectedMergedResponseWithTime(1+1+1, sixAM),
+		},
+		{
+			name:            "splits a sum of rate over the data-object range into count_over_time pieces at the metastore window boundaries and divides the total by the range in seconds",
+			splitByInterval: 1 * time.Hour,
+			dataObjEnabled:  true,
+			in: &LokiInstantRequest{
+				Query:  `sum(rate({app="foo"}[24h]))`,
+				TimeTs: sixAM,
+				Path:   "/loki/api/v1/query",
+				Plan:   testutil.MustPlan(`sum(rate({app="foo"}[24h]))`),
+			},
+			subQueries: []queryrangebase.RequestResponse{
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[6h]))`, 1, sixAM),
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[12h]))`, 1, midnight),
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[6h]))`, 1, noonBefore),
+			},
+			expected: expectedMergedResponseWithTime((1+1+1)/float64(24*60*60), sixAM),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
-				maxSeries:    10000,
-				queryTimeout: time.Second,
-				instantMetricSplitDuration: map[string]time.Duration{
-					"tenant": tc.splitByInterval,
-				},
-			}, true, nilShardingMetrics) // enable splitAlign
+			limits := dataObjTenantLimits("tenant")
+			limits.maxSeries = 10000
+			limits.queryTimeout = time.Second
+			limits.instantMetricSplitDuration = map[string]time.Duration{"tenant": tc.splitByInterval}
 
 			ctx := user.InjectOrgID(context.TODO(), "tenant")
 
@@ -247,6 +283,9 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				key := v.Request.(*LokiInstantRequest).TimeTs.UnixNano()
 				byTimeTs[key] = v
 			}
+
+			cfg := Config{DataObjEnabled: tc.dataObjEnabled, DataObjStorageLag: dataObjRoutingLag, now: func() time.Time { return dataObjRoutingNow }}
+			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), cfg, testEngineOpts, limits, true, nilShardingMetrics) // enable splitAlign
 
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
 				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -270,20 +309,19 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 }
 
 func Test_RangeVectorSplit(t *testing.T) {
-	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
-		maxSeries:    10000,
-		queryTimeout: time.Second,
-		instantMetricSplitDuration: map[string]time.Duration{
-			"tenant": time.Minute,
-		},
-	}, false, nilShardingMetrics)
+	limits := dataObjTenantLimits("tenant")
+	limits.maxSeries = 10000
+	limits.queryTimeout = time.Second
+	limits.instantMetricSplitDuration = map[string]time.Duration{"tenant": time.Minute}
 
 	ctx := user.InjectOrgID(context.TODO(), "tenant")
+	sixAM := time.Date(2026, 10, 9, 6, 0, 0, 0, time.UTC) // inside the data-object range
 
 	for _, tc := range []struct {
-		in         queryrangebase.Request
-		subQueries []queryrangebase.RequestResponse
-		expected   queryrangebase.Response
+		in             queryrangebase.Request
+		subQueries     []queryrangebase.RequestResponse
+		expected       queryrangebase.Response
+		dataObjEnabled bool
 	}{
 		{
 			in: &LokiInstantRequest{
@@ -369,8 +407,25 @@ func Test_RangeVectorSplit(t *testing.T) {
 			},
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
+		{
+			in: &LokiInstantRequest{
+				Query:  `sum(count_over_time({app="foo"}[24h]))`,
+				TimeTs: sixAM,
+				Path:   "/loki/api/v1/query",
+				Plan:   testutil.MustPlan(`sum(count_over_time({app="foo"}[24h]))`),
+			},
+			subQueries: []queryrangebase.RequestResponse{
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[12h]))`, 1, sixAM),
+				subQueryRequestResponseWithQueryTime(`sum(count_over_time({app="foo"}[12h] offset 12h0m0s))`, 2, sixAM),
+			},
+			expected:       expectedMergedResponseWithTime(1+2, sixAM),
+			dataObjEnabled: true,
+		},
 	} {
 		t.Run(tc.in.GetQuery(), func(t *testing.T) {
+			cfg := Config{DataObjEnabled: tc.dataObjEnabled, DataObjStorageLag: dataObjRoutingLag, now: func() time.Time { return dataObjRoutingNow }}
+			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), cfg, testEngineOpts, limits, false, nilShardingMetrics)
+
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
 				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 					// Assert subquery request

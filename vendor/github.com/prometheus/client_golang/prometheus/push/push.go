@@ -290,7 +290,8 @@ func (p *Pusher) push(ctx context.Context, method string) error {
 		if err := enc.Encode(mf); err != nil {
 			return fmt.Errorf(
 				"failed to encode metric family %s, error is %w",
-				mf.GetName(), err)
+				mf.GetName(), err,
+			)
 		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, p.fullURL(), buf)

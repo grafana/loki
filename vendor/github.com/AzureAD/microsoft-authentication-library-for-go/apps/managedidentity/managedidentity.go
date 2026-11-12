@@ -200,12 +200,46 @@ func WithClaims(claims string) AcquireTokenOption {
 	}
 }
 
-// WithHTTPClient allows for a custom HTTP client to be set. Service Fabric requires a standard
-// *http.Client with a *http.Transport and does not support custom TLS dialing or verification.
+// WithHTTPClient allows for a custom HTTP client to be set. Flows that must configure the
+// transport underlying the client (for example, Service Fabric certificate pinning) require a
+// [ClientConfigurer], because a plain ops.HTTPClient exposes no way to apply those requirements;
+// pass a [ClientConfigurer] here and MSAL will invoke it to install the configuration it needs.
+//
+// Only the Service Fabric source currently consumes a [ClientConfigurer]; every other managed
+// identity source treats the value as a plain ops.HTTPClient and never calls ConfigureClient.
 func WithHTTPClient(httpClient ops.HTTPClient) ClientOption {
 	return func(c *Client) {
 		c.httpClient = httpClient
 	}
+}
+
+// ClientConfigurer is an [ops.HTTPClient] that lets MSAL install the transport and client
+// configuration a flow requires, such as Service Fabric certificate pinning. Pass one to
+// [WithHTTPClient] and MSAL will call ConfigureClient during [New].
+//
+// Only the Service Fabric managed identity source consumes a ClientConfigurer. For every other
+// source MSAL uses the value directly as an ops.HTTPClient and does not call ConfigureClient, so
+// implementations should not rely on ConfigureClient being invoked outside Service Fabric.
+//
+// Implementations of ConfigureClient must:
+//   - call augment exactly once, synchronously, before ConfigureClient returns, passing the
+//     non-nil client MSAL should build upon;
+//   - route every subsequent Do call through the client augment returns, without bypassing its
+//     transport, TLS configuration, or redirect policy;
+//   - forward CloseIdleConnections to that same client;
+//   - return any error augment reports and complete all configuration before returning.
+//
+// MSAL fails closed: if augment reports an error, [New] returns it even when ConfigureClient
+// discards the error and returns nil, so a misconfigured client is never returned.
+//
+// MSAL calls ConfigureClient once, during [New]; a ClientConfigurer need not be safe for
+// concurrent configuration. An implementation may wrap additional middleware around the client
+// augment returns so long as requests still traverse the augmented transport and redirect policy.
+type ClientConfigurer interface {
+	ops.HTTPClient
+	// ConfigureClient receives augment, which derives the client MSAL requires from the supplied
+	// base client. See [ClientConfigurer] for the contract implementations must satisfy.
+	ConfigureClient(augment func(*http.Client) (*http.Client, error)) error
 }
 
 func WithRetryPolicyDisabled() ClientOption {
@@ -273,11 +307,42 @@ func New(id ID, options ...ClientOption) (Client, error) {
 		option(&client)
 	}
 	if source == ServiceFabric {
-		serviceFabricClient, serviceFabricURL, err := serviceFabricCertificateVerifiedHTTPClient(client.httpClient)
+		serviceFabricURL, err := serviceFabricEndpoint()
 		if err != nil {
 			return Client{}, err
 		}
-		client.httpClient = serviceFabricClient
+
+		switch tt := client.httpClient.(type) {
+		case ClientConfigurer:
+			augmentCalls := 0
+			var augmentErr error
+			err = tt.ConfigureClient(func(c *http.Client) (*http.Client, error) {
+				augmentCalls++
+				var configured *http.Client
+				configured, augmentErr = serviceFabricCertificateVerifiedHTTPClient(c)
+				return configured, augmentErr
+			})
+			// Fail closed: if augment failed, New must return that error even when
+			// ConfigureClient ignores it, so a caller never receives a client that lacks
+			// the mandatory certificate pinning and redirect policy.
+			if err == nil {
+				err = augmentErr
+			}
+			if err == nil && augmentCalls != 1 {
+				return Client{}, fmt.Errorf("ConfigureClient must call augment exactly once to install the Service Fabric client, got %d calls", augmentCalls)
+			}
+		case *http.Client:
+			var serviceFabricClient *http.Client
+			serviceFabricClient, err = serviceFabricCertificateVerifiedHTTPClient(tt)
+			client.httpClient = serviceFabricClient
+		default:
+			return Client{}, errors.New("Service Fabric managed identity requires an *http.Client or a ClientConfigurer")
+		}
+
+		if err != nil {
+			return Client{}, err
+		}
+
 		client.serviceFabricURL = serviceFabricURL
 	}
 	fakeAuthInfo, err := authority.NewInfoFromAuthorityURI("https://login.microsoftonline.com/managed_identity", false, true)
@@ -441,7 +506,8 @@ func (c Client) acquireTokenForAzureArc(ctx context.Context, resource string) (A
 	if err != nil {
 		return AuthResult{}, err
 	}
-	defer response.Body.Close()
+	// The response body is unused; a close error can't change its status or headers.
+	_ = response.Body.Close()
 
 	if response.StatusCode != http.StatusUnauthorized {
 		return AuthResult{}, fmt.Errorf("expected a 401 response, received %d", response.StatusCode)
@@ -572,7 +638,8 @@ func bufferResponseBody(resp *http.Response) error {
 		return nil
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	// A close error can't change the result after the response body has been consumed.
+	_ = resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -597,7 +664,8 @@ func (c Client) retry(maxRetries int, req *http.Request) (*http.Response, error)
 		tryCtx, tryCancel := context.WithTimeout(req.Context(), time.Minute)
 		if resp != nil && resp.Body != nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			// The previous response is discarded, so a close error is non-actionable.
+			_ = resp.Body.Close()
 		}
 		if cancelPrev != nil {
 			cancelPrev()
@@ -646,7 +714,8 @@ func (c Client) getTokenForRequest(req *http.Request, resource string) (accessto
 		return r, err
 	}
 	responseBytes, err := io.ReadAll(resp.Body)
-	defer resp.Body.Close()
+	// A close error can't change the result after the response body has been consumed.
+	_ = resp.Body.Close()
 	if err != nil {
 		return r, err
 	}
@@ -691,6 +760,7 @@ func (c Client) getTokenForRequest(req *http.Request, resource string) (accessto
 
 func createAppServiceAuthRequest(ctx context.Context, id ID, resource string) (*http.Request, error) {
 	identityEndpoint := os.Getenv(identityEndpointEnvVar)
+	// #nosec G704 -- IDENTITY_ENDPOINT is supplied by the App Service managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, identityEndpoint, nil)
 	if err != nil {
 		return nil, err
@@ -728,6 +798,7 @@ func createIMDSAuthRequest(ctx context.Context, id ID, resource string) (*http.R
 	}
 
 	msiEndpoint.RawQuery = msiParameters.Encode()
+	// #nosec G704 -- imdsDefaultEndpoint is a library constant for the Azure IMDS link-local endpoint.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, msiEndpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http request %s", err)
@@ -761,6 +832,7 @@ func createAzureArcAuthRequest(ctx context.Context, id ID, resource string, key 
 	}
 
 	msiEndpoint.RawQuery = msiParameters.Encode()
+	// #nosec G704 -- IDENTITY_ENDPOINT is supplied by the Azure Arc managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, msiEndpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http request %s", err)

@@ -18,33 +18,32 @@
 package minio
 
 // Multipart upload defaults.
+//
+// The default* values below are Amazon S3's limits. They can be overridden
+// per client with Options.UploadLimits; see UploadLimits.
 
-// absMinPartSize - absolute minimum part size (5 MiB) below which
+// defaultMinPartSize - absolute minimum part size (5 MiB) below which
 // a part in a multipart upload may not be uploaded.
-const absMinPartSize = 1024 * 1024 * 5
+const defaultMinPartSize = 1024 * 1024 * 5
 
 // minPartSize - minimum part size 16MiB per object after which
 // putObject behaves internally as multipart.
 const minPartSize = 1024 * 1024 * 16
 
-// maxPartsCount - maximum number of parts for a single multipart session.
-const maxPartsCount = 10000
+// defaultMaxPartsCount - maximum number of parts for a single multipart session.
+const defaultMaxPartsCount = 10000
 
-// maxPartSize - maximum part size 5GiB for a single multipart upload
+// defaultMaxPartSize - maximum part size 5GiB for a single multipart upload
 // operation.
-const maxPartSize = 1024 * 1024 * 1024 * 5
+const defaultMaxPartSize = 1024 * 1024 * 1024 * 5
 
-// maxSinglePutObjectSize - maximum size 5GiB of object per PUT
+// defaultMaxSinglePutObjectSize - maximum size 5GiB of object per PUT
 // operation.
-const maxSinglePutObjectSize = 1024 * 1024 * 1024 * 5
+const defaultMaxSinglePutObjectSize = 1024 * 1024 * 1024 * 5
 
 // maxMultipartPutObjectSize - maximum size 5TiB of object for
 // Multipart operation.
 const maxMultipartPutObjectSize = 1024 * 1024 * 1024 * 1024 * 5
-
-// maxObjectSize - maximum size of an object calculated from
-// maxPartSize * maxPartsCount = 5GiB * 10000 = ~48.83TiB
-const maxObjectSize = maxPartSize * maxPartsCount
 
 // unsignedPayload - value to be set to X-Amz-Content-Sha256 header when
 // we don't want to sign the request payload
@@ -100,6 +99,11 @@ const (
 	amzRestore           = "X-Amz-Restore"
 	amzReplicationStatus = "X-Amz-Replication-Status"
 	amzDeleteMarker      = "X-Amz-Delete-Marker"
+
+	// Listing header asking for optional per object fields.
+	// "RestoreStatus" is its only value.
+	amzOptionalObjectAttributes = "X-Amz-Optional-Object-Attributes"
+	restoreStatusAttribute      = "RestoreStatus"
 
 	// Object legal hold header
 	amzLegalHoldHeader = "X-Amz-Object-Lock-Legal-Hold"

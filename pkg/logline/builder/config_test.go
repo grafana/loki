@@ -150,6 +150,44 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:  "less than the required",
 		},
 		{
+			// 16s × 32 → window end ≈ 2094-01-19.
+			name: "v5 default document shards accepted",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index:      logline.IndexConfig{Version: "v5"},
+			},
+			wantError: false,
+		},
+		{
+			// 500ms × 128 → window end = docIDEpoch + 2^25 × 500ms ≈
+			// 2026-07-14: shards shrink the window as much as a shorter
+			// interval does.
+			name: "v5 document shards with too-short docID window rejected",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index: logline.IndexConfig{
+					Version:           "v5",
+					DocumentInterval:  500 * time.Millisecond,
+					DocumentShardBits: 7,
+				},
+			},
+			wantError: true,
+			errorMsg:  "use a larger interval or fewer document shard bits",
+		},
+		{
+			// 100ms × 2^7 would end the window in 2026, but v3 ignores the
+			// shard bits, so the time-only window (2039) applies.
+			name: "v3 ignores document shard bits",
+			settings: Config{
+				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir: "/tmp/test",
+				Index:      logline.IndexConfig{Version: "v3", DocumentInterval: 100 * time.Millisecond, DocumentShardBits: 7},
+			},
+			wantError: false,
+		},
+		{
 			// Below 2^16 pairs the buffer degenerates into constant radix
 			// passes and tiny-run spills.
 			name: "postings_buffer_pairs below floor rejected",
@@ -494,6 +532,73 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		require.Empty(t, cfg.SASLPassword.String())
 		require.ErrorIs(t, cfg.Validate(), kafka.ErrInconsistentSASLUsernameAndPassword)
 	})
+
+	t.Run("api versions cap is inherited only when unset", func(t *testing.T) {
+		root := kafka.Config{APIVersionsMaxVersion: 3}
+
+		unset := KafkaConfig{APIVersionsMaxVersion: apiVersionsMaxVersionUnset}
+		unset.ApplyDefaultsFrom(root)
+		require.Equal(t, 3, unset.APIVersionsMaxVersion)
+
+		disabled := KafkaConfig{APIVersionsMaxVersion: 0}
+		disabled.ApplyDefaultsFrom(root)
+		require.Equal(t, 0, disabled.APIVersionsMaxVersion, "0 must not be overwritten")
+
+		explicit := KafkaConfig{APIVersionsMaxVersion: 2}
+		explicit.ApplyDefaultsFrom(root)
+		require.Equal(t, 2, explicit.APIVersionsMaxVersion)
+	})
+}
+
+// TestKafkaAPIVersionsMaxVersionMustBeValid checks that the logline builder accepts
+// caps from 0 to the default and rejects everything else.
+func TestKafkaAPIVersionsMaxVersionMustBeValid(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       int
+		expectedErr error
+	}{
+		{
+			name:  "the default is valid",
+			value: kafka.DefaultAPIVersionsMaxVersion,
+		},
+		{
+			name:  "zero is valid, and uses the franz-go default",
+			value: 0,
+		},
+		{
+			name:        "unset is invalid, as ApplyDefaultsFrom must fill it first",
+			value:       apiVersionsMaxVersionUnset,
+			expectedErr: kafka.ErrInvalidAPIVersionsMaxVersion,
+		},
+		{
+			name:        "negative is invalid",
+			value:       -2,
+			expectedErr: kafka.ErrInvalidAPIVersionsMaxVersion,
+		},
+		{
+			name:        "above the default is invalid",
+			value:       kafka.DefaultAPIVersionsMaxVersion + 1,
+			expectedErr: kafka.ErrInvalidAPIVersionsMaxVersion,
+		},
+		{
+			name:        "above int16 is invalid",
+			value:       40000,
+			expectedErr: kafka.ErrInvalidAPIVersionsMaxVersion,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := KafkaConfig{Address: "b:9092", Topic: "t", APIVersionsMaxVersion: tt.value}
+
+			err := cfg.Validate()
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestKafkaConfigFlags(t *testing.T) {
@@ -511,6 +616,7 @@ func TestKafkaConfigFlags(t *testing.T) {
 		"logline-builder.kafka.consumer-group-name",
 		"logline-builder.kafka.session-timeout",
 		"logline-builder.kafka.instance-id",
+		"logline-builder.kafka.api-versions-max-version",
 	} {
 		require.NotNil(t, fs.Lookup(name), "missing flag %s", name)
 	}
@@ -526,6 +632,7 @@ func TestKafkaConfigFlags(t *testing.T) {
 	require.Empty(t, cfg.Kafka.Address)
 	require.Empty(t, cfg.Kafka.Topic)
 	require.Zero(t, cfg.Kafka.DialTimeout)
+	require.Equal(t, apiVersionsMaxVersionUnset, cfg.Kafka.APIVersionsMaxVersion)
 	require.Equal(t, DefaultConsumerGroupName, cfg.Kafka.ConsumerGroupName)
 	require.Equal(t, DefaultKafkaSessionTimeout, cfg.Kafka.SessionTimeout)
 }

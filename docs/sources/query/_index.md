@@ -38,7 +38,7 @@ Loki indexes the timestamp and labels, but not the rest of the log line.
 
 LogQL queries are in the following format:
 
-```
+```logql
 { log stream selector } | log pipeline
 ```
 

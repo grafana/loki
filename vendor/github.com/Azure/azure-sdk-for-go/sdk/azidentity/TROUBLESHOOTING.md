@@ -20,6 +20,8 @@ This troubleshooting guide covers failure investigation techniques, common error
 - [Troubleshoot ManagedIdentityCredential authentication issues](#troubleshoot-managedidentitycredential-authentication-issues)
   - [Azure App Service and Azure Functions managed identity](#azure-app-service-and-azure-functions-managed-identity)
   - [Azure Virtual Machine managed identity](#azure-virtual-machine-managed-identity)
+  - [Azure Arc managed identity](#azure-arc-managed-identity)
+  - [Azure Service Fabric managed identity](#azure-service-fabric-managed-identity)
 - [Troubleshoot WorkloadIdentityCredential authentication issues](#troubleshoot-workloadidentitycredential-authentication-issues)
 - [Get additional help](#get-additional-help)
 
@@ -120,8 +122,35 @@ azlog.SetEvents(azidentity.EventAuthentication)
 |---|---|---|
 |Azure Virtual Machines and Scale Sets|[Configuration](https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm)|[Troubleshooting](#azure-virtual-machine-managed-identity)|
 |Azure App Service and Azure Functions|[Configuration](https://learn.microsoft.com/azure/app-service/overview-managed-identity)|[Troubleshooting](#azure-app-service-and-azure-functions-managed-identity)|
-|Azure Arc|[Configuration](https://learn.microsoft.com/azure/azure-arc/servers/managed-identity-authentication)||
-|Azure Service Fabric|[Configuration](https://learn.microsoft.com/azure/service-fabric/concepts-managed-identity)||
+|Azure Arc|[Configuration](https://learn.microsoft.com/azure/azure-arc/servers/managed-identity-authentication)|[Troubleshooting](#azure-arc-managed-identity)|
+|Azure Service Fabric|[Configuration](https://learn.microsoft.com/azure/service-fabric/concepts-managed-identity)|[Troubleshooting](#azure-service-fabric-managed-identity)|
+
+### Azure Arc managed identity
+
+User-assigned identities require an Azure Arc agent that supports selecting an identity by client,
+object, or resource ID. `NewManagedIdentityCredential` accepts these IDs, but token acquisition
+fails if the agent doesn't confirm the requested identity. This prevents an older agent from
+silently authenticating the machine's system-assigned identity instead.
+
+| Error Message | Description | Mitigation |
+|---|---|---|
+|azure arc did not confirm the requested user-assigned managed identity in the token response|The agent's response omitted the requested identity selector or returned a different identity.|Ensure the Azure Arc agent supports user-assigned identities, the identity is assigned to the resource, and the configured ID is correct. Upgrade the agent if necessary. Only omit the ID if the application intends to authenticate the system-assigned identity.|
+
+### Azure Service Fabric managed identity
+
+The credential requires an HTTPS endpoint, pins its certificate to `IDENTITY_SERVER_THUMBPRINT`,
+and rejects redirects. It derives a pinned HTTP client without modifying a caller-supplied client.
+
+| Error Message | Description | Mitigation |
+|---|---|---|
+|Service Fabric managed identity requires ClientOptions.Transport to be an *http.Client|The configured transport can't be augmented with the required certificate pinning.|Leave `ClientOptions.Transport` `nil`, or provide an `*http.Client` with a `nil` Transport or a standard `*http.Transport`.|
+|managed identity on Service Fabric requires a standard *http.Transport|The HTTP client's underlying transport can't be augmented with certificate pinning.|Use a standard `*http.Transport`, or leave the transport `nil`.|
+|managed identity on Service Fabric does not support a transport with custom TLS dialing|A custom `DialTLS` or `DialTLSContext` callback can bypass certificate verification.|Remove the custom TLS dialing callback. Use `DialContext` if custom connection setup is needed.|
+|managed identity on Service Fabric does not support custom TLS verification|The transport has a custom `VerifyPeerCertificate` or `VerifyConnection` callback.|Remove the custom verification callback so the credential can apply the required certificate pinning.|
+|IDENTITY_SERVER_THUMBPRINT must be a SHA-1 certificate thumbprint|The configured thumbprint isn't a valid 40-digit hexadecimal SHA-1 thumbprint. Colons and whitespace are allowed.|Verify the Service Fabric environment configuration supplies the endpoint certificate's thumbprint.|
+|TLS certificate thumbprint from Service Fabric did not match IDENTITY_SERVER_THUMBPRINT|The endpoint presented a certificate that doesn't match the configured thumbprint.|Verify the endpoint and thumbprint configuration, including any certificate rotation. Don't disable certificate verification.|
+|managed identity endpoint for Service Fabric must use HTTPS|The configured endpoint isn't an absolute HTTPS URL.|Verify `IDENTITY_ENDPOINT` contains the HTTPS endpoint provided by Service Fabric.|
+|redirects are not permitted for managed identity on Service Fabric|The endpoint returned a redirect.|Verify `IDENTITY_ENDPOINT` points directly to the Service Fabric managed identity endpoint.|
 
 ### Azure Virtual Machine managed identity
 
@@ -249,6 +278,7 @@ Get-AzAccessToken -ResourceUrl "https://management.core.windows.net"
 | Error Message |Description| Mitigation |
 |---|---|---|
 |no client ID/tenant ID/token file specified|Incomplete configuration|In most cases these values are provided via environment variables set by Azure Workload Identity.<ul><li>If your application runs on Azure Kubernetes Service (AKS) or a cluster that has deployed the Azure Workload Identity admission webhook, check pod labels and service account configuration. See the [AKS documentation](https://learn.microsoft.com/azure/aks/workload-identity-deploy-cluster#disable-workload-identity) and [Azure Workload Identity troubleshooting guide](https://azure.github.io/azure-workload-identity/docs/troubleshooting.html) for more details.</li><li>If your application isn't running on AKS or your cluster hasn't deployed the Workload Identity admission webhook, set these values in `WorkloadIdentityCredentialOptions`</li></ul>
+|In an application using [Azure Kubernetes Service identity bindings](https://learn.microsoft.com/azure/aks/identity-bindings-concepts): <ul><li>AADSTS700211: No matching federated identity record found for presented assertion issuer ...</li><li>AADSTS700212: No matching federated identity record found for presented assertion audience 'api://AKSIdentityBinding'.</li></ul> |`WorkloadIdentityCredential` isn't configured to use the identity binding proxy|Set `WorkloadIdentityCredentialOptions.EnableAzureProxy` to `true`
 
 <a id="apc"></a>
 ## Troubleshoot AzurePipelinesCredential authentication issues

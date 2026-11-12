@@ -6,6 +6,7 @@ package blob
 import (
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 )
 
@@ -19,6 +20,60 @@ type ObjectReplicationRules struct {
 type ObjectReplicationPolicy struct {
 	PolicyID *string
 	Rules    *[]ObjectReplicationRules
+}
+
+func convertDownloadResponse(dr generated.BlobClientDownloadResponseInternal) DownloadResponse {
+	return DownloadResponse{
+		AcceptRanges:                dr.AcceptRanges,
+		AccessTier:                  dr.AccessTier,
+		AccessTierChangeTime:        dr.AccessTierChangeTime,
+		BlobCommittedBlockCount:     dr.BlobCommittedBlockCount,
+		BlobContentMD5:              dr.BlobContentMD5,
+		BlobSequenceNumber:          dr.BlobSequenceNumber,
+		BlobType:                    dr.BlobType,
+		Body:                        dr.Body,
+		CacheControl:                dr.CacheControl,
+		ClientRequestID:             dr.ClientRequestID,
+		ContentCRC64:                dr.ContentCRC64,
+		ContentDisposition:          dr.ContentDisposition,
+		ContentEncoding:             dr.ContentEncoding,
+		ContentLanguage:             dr.ContentLanguage,
+		ContentLength:               dr.ContentLength,
+		ContentMD5:                  dr.ContentMD5,
+		ContentRange:                dr.ContentRange,
+		ContentType:                 dr.ContentType,
+		CopyCompletionTime:          dr.CopyCompletionTime,
+		CopyID:                      dr.CopyID,
+		CopyProgress:                dr.CopyProgress,
+		CopySource:                  dr.CopySource,
+		CopyStatus:                  dr.CopyStatus,
+		CopyStatusDescription:       dr.CopyStatusDescription,
+		CreationTime:                dr.CreationTime,
+		Date:                        dr.Date,
+		ETag:                        dr.ETag,
+		EncryptionKeySHA256:         dr.EncryptionKeySHA256,
+		EncryptionScope:             dr.EncryptionScope,
+		ImmutabilityPolicyExpiresOn: dr.ImmutabilityPolicyExpiresOn,
+		ImmutabilityPolicyMode:      dr.ImmutabilityPolicyMode,
+		IsCurrentVersion:            dr.IsCurrentVersion,
+		IsSealed:                    dr.IsSealed,
+		IsServerEncrypted:           dr.IsServerEncrypted,
+		LastAccessed:                dr.LastAccessed,
+		LeaseDuration:               dr.LeaseDuration,
+		LastModified:                dr.LastModified,
+		LeaseState:                  dr.LeaseState,
+		LeaseStatus:                 dr.LeaseStatus,
+		LegalHold:                   dr.LegalHold,
+		Metadata:                    dr.Metadata,
+		ObjectReplicationPolicyID:   dr.ObjectReplicationPolicyID,
+		ObjectReplicationRules:      dr.ObjectReplicationRules,
+		RequestID:                   dr.RequestID,
+		StructuredBodyType:          dr.StructuredBodyType,
+		StructuredContentLength:     dr.StructuredContentLength,
+		TagCount:                    dr.TagCount,
+		Version:                     dr.Version,
+		VersionID:                   dr.VersionID,
+	}
 }
 
 // deserializeORSPolicies is utility function to deserialize ORS Policies.

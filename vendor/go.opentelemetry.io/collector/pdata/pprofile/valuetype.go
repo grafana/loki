@@ -7,13 +7,13 @@ import "fmt"
 
 // switchDictionary updates the ValueType, switching its indices from one
 // dictionary to another.
-func (ms ValueType) switchDictionary(src, dst ProfilesDictionary) error {
+func (ms ValueType) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	if ms.TypeStrindex() > 0 {
 		if src.StringTable().Len() <= int(ms.TypeStrindex()) {
 			return fmt.Errorf("invalid type index %d", ms.TypeStrindex())
 		}
 
-		idx, err := SetString(dst.StringTable(), src.StringTable().At(int(ms.TypeStrindex())))
+		idx, err := mi.setString(dst.StringTable(), src.StringTable().At(int(ms.TypeStrindex())))
 		if err != nil {
 			return fmt.Errorf("couldn't set type: %w", err)
 		}
@@ -25,7 +25,7 @@ func (ms ValueType) switchDictionary(src, dst ProfilesDictionary) error {
 			return fmt.Errorf("invalid unit index %d", ms.UnitStrindex())
 		}
 
-		idx, err := SetString(dst.StringTable(), src.StringTable().At(int(ms.UnitStrindex())))
+		idx, err := mi.setString(dst.StringTable(), src.StringTable().At(int(ms.UnitStrindex())))
 		if err != nil {
 			return fmt.Errorf("couldn't set unit: %w", err)
 		}

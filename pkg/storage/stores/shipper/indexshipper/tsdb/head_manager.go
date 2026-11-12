@@ -101,6 +101,9 @@ type HeadManager struct {
 	// Locked before rotating heads/wal
 	mtx sync.RWMutex
 
+	// Locked to synchronize appending to active tenantHeads and logging to active headWAL
+	appendMtx sync.Mutex
+
 	// how often WALs should be rotated and TSDBs cut
 	period period
 
@@ -249,13 +252,27 @@ var errHeadManagerStopped = errors.New("head manager is stopping")
 // The freshly built TSDBs are handed to the index shipper but are not yet
 // uploaded to object storage; callers wanting them durable in object storage
 // must also force an upload (see (*store).FlushIndexes).
-func (m *HeadManager) Flush() error {
-	resp := make(chan error, 1)
+//
+// If ctx is done before the loop picks up the request, nothing is flushed. If it
+// is done while the flush is running, Flush returns ctx.Err() but the flush still
+// completes on the loop goroutine.
+func (m *HeadManager) Flush(ctx context.Context) error {
+	resp := make(chan error, 1) // buffered so the loop never blocks on an abandoned request
+	// initiate the flush
 	select {
 	case m.flush <- resp:
-		return <-resp
 	case <-m.cancel:
 		return errHeadManagerStopped
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// wait for completion
+	select {
+	case err := <-resp:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -306,6 +323,14 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
+
+	// Hold appendMtx across both the in-memory decision and the WAL write so
+	// concurrent Appends to the same series can't have their WAL records land
+	// out of order. The mtx.RLock alone isn't desired, since m.mtx.Lock() would
+	// lock against all other in-flight operations gated with m.mtx and cause a
+	// performance regression.
+	m.appendMtx.Lock()
+	defer m.appendMtx.Unlock()
 
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
@@ -421,6 +446,15 @@ func managerPerTenantDir(parent string) string {
 }
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
+	// A head's WAL dir and its TSDB's name are both its start at one-second
+	// resolution. Forced rotations (/flush/tenant) can land in the same second as
+	// the previous rotation, which would reuse both. This simple check
+	// prevents that by bumping the new head's start to one second after the previous
+	// head's start if they would otherwise collide.
+	if m.activeHeads != nil && t.Unix() <= m.activeHeads.start.Unix() {
+		t = time.Unix(m.activeHeads.start.Unix()+1, 0)
+	}
+
 	// create new wal
 	nextWALPath := walPath(m.name, m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
@@ -813,8 +847,13 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	if !ok {
 		return
 	}
+	idx = NewTSDBIndex(tenant.Index())
+	// tenantHeads.Bounds() spans every tenant, so MultiIndex cannot tell that
+	// this tenant's head misses the query window.
+	if !Overlap(idx, newBounds(from, through)) {
+		return nil, false
+	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
 	if f := t.getChunkFilter(); f != nil {
 		idx.SetChunkFilterer(f)
 	}

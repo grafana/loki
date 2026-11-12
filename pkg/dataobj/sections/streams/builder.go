@@ -18,16 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-const (
-	// ShardBits is the number of high labels.StableHash(labels) bits that select a stream's shard bucket.
-	// Changing it is a storage-format break, not a tunable: the query side reads it to map shards to
-	// buckets, and the exact fast path trusts stored bucket values without re-verifying them, so a change
-	// would mis-read every object written with the old value.
-	ShardBits = 5
-	// ShardFactor is the number of physical shard buckets, 2^ShardBits.
-	ShardFactor = 1 << ShardBits
-)
-
 // A Stream is an individual stream within a data object.
 type Stream struct {
 	// ID to uniquely represent a stream in a data object. Valid IDs start at 1.
@@ -48,8 +38,8 @@ type Stream struct {
 	// Total number of log records in the stream.
 	Rows int
 
-	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
-	// Valid buckets are in [0, ShardFactor).
+	// ShardBucket is the bucket that the builder's [ShardLayout] assigned
+	// to Labels, in [0, Buckets()).
 	ShardBucket int64
 }
 
@@ -78,6 +68,13 @@ type Builder struct {
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
 
+	// shardLayout selects the shard bucket of each stream.
+	shardLayout ShardLayout
+
+	// layout is the layout that Flush records in the section metadata, or nil
+	// to record none. Reset clears it.
+	layout *Layout
+
 	// The optional tenant that owns the builder. If specified, the section
 	// must only contain streams owned by the tenant, and no other tenants.
 	tenant string
@@ -89,14 +86,18 @@ type Builder struct {
 	globalMinTimestamp time.Time // Minimum timestamp across all streams, used for metrics.
 	globalMaxTimestamp time.Time // Maximum timestamp across all streams, used for metrics.
 
-	// orderedStreams is used for consistently iterating over the list of
-	// streams. It contains streamed added in append order.
+	// ordered holds the streams in append order, so iteration over them is
+	// deterministic.
 	ordered []*Stream
 }
 
-// NewBuilder creates a new sterams section builder. The pageSize argument
-// specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
+// NewBuilder creates a new streams section builder. pageSize is the target
+// page size in bytes. shardLayout selects the shard bucket of each stream
+// that the builder adds.
+//
+// The builder records no layout until SetLayout is called, and again after
+// [Builder.Reset].
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
@@ -104,9 +105,26 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 		metrics:      metrics,
 		pageSize:     pageSize,
 		pageRowCount: pageRowCount,
+		shardLayout:  shardLayout,
 		lookup:       make(map[uint64][]*Stream, 1024),
 		ordered:      make([]*Stream, 0, 1024),
 	}
+}
+
+// SetLayout makes b record layout in the section metadata on Flush. The
+// layout applies until the next [Builder.Reset].
+//
+// SetLayout panics if layout has another shard layout than b, because the
+// shard buckets of the streams would not match the recorded layout. It also
+// panics if layout is the zero value.
+func (b *Builder) SetLayout(layout Layout) {
+	if layout.shardLayout != b.shardLayout {
+		panic("streams: SetLayout called with another shard layout than the builder")
+	}
+	if layout.streamOrder == StreamOrderUnspecified {
+		panic("streams: SetLayout called with a layout that has no stream order")
+	}
+	b.layout = &layout
 }
 
 // Tenant returns the optional tenant that owns the builder.
@@ -229,19 +247,6 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-// ShardBucketFromHash returns the physical shard bucket for a stream fingerprint.
-// Buckets are 0-based in [0, ShardFactor).
-func ShardBucketFromHash(hash uint64) uint32 {
-	return uint32(hash >> (64 - ShardBits))
-}
-
-// ShardBucket returns the physical shard bucket for streamLabels.
-// Buckets are 0-based in [0, ShardFactor).
-func ShardBucket(streamLabels labels.Labels) uint32 {
-	fp := labels.StableHash(streamLabels)
-	return ShardBucketFromHash(fp)
-}
-
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	streamLabels.Range(func(l labels.Label) {
 		b.currentLabelsSize += len(l.Value)
@@ -251,7 +256,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.ShardBucket = int64(ShardBucketFromHash(hash))
+	newStream.ShardBucket = int64(b.shardLayout.BucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
@@ -292,6 +297,9 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	columnarEnc.SetTenant(b.tenant)
+	if b.layout != nil {
+		columnarEnc.SetSortInfo(NewSortInfo(*b.layout, nil))
+	}
 
 	n, err = columnarEnc.Flush(w)
 	if err == nil {
@@ -477,6 +485,7 @@ func (b *Builder) Reset() {
 	}
 	clear(b.lookup)
 	b.tenant = ""
+	b.layout = nil
 	b.ordered = sliceclear.Clear(b.ordered)
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}

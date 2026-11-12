@@ -294,7 +294,64 @@ func (m *ProcessingRequest) validate(all bool) error {
 		}
 	}
 
-	oneofRequestPresent := false
+	if all {
+		switch v := interface{}(m.GetFlowControlInit()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ProcessingRequestValidationError{
+					field:  "FlowControlInit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ProcessingRequestValidationError{
+					field:  "FlowControlInit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetFlowControlInit()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ProcessingRequestValidationError{
+				field:  "FlowControlInit",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetClientWindowUpdate()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ProcessingRequestValidationError{
+					field:  "ClientWindowUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ProcessingRequestValidationError{
+					field:  "ClientWindowUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetClientWindowUpdate()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ProcessingRequestValidationError{
+				field:  "ClientWindowUpdate",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	switch v := m.Request.(type) {
 	case *ProcessingRequest_RequestHeaders:
 		if v == nil {
@@ -307,7 +364,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestHeaders()).(type) {
@@ -349,7 +405,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseHeaders()).(type) {
@@ -391,7 +446,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestBody()).(type) {
@@ -433,7 +487,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseBody()).(type) {
@@ -475,7 +528,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestTrailers()).(type) {
@@ -517,7 +569,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseTrailers()).(type) {
@@ -550,16 +601,6 @@ func (m *ProcessingRequest) validate(all bool) error {
 
 	default:
 		_ = v // ensures v is used
-	}
-	if !oneofRequestPresent {
-		err := ProcessingRequestValidationError{
-			field:  "Request",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
 	}
 
 	if len(errors) > 0 {
@@ -693,6 +734,52 @@ func (m *ProcessingResponse) validate(all bool) error {
 		}
 	}
 
+	{
+		sorted_keys := make([]string, len(m.GetTypedDynamicMetadata()))
+		i := 0
+		for key := range m.GetTypedDynamicMetadata() {
+			sorted_keys[i] = key
+			i++
+		}
+		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
+		for _, key := range sorted_keys {
+			val := m.GetTypedDynamicMetadata()[key]
+			_ = val
+
+			// no validation rules for TypedDynamicMetadata[key]
+
+			if all {
+				switch v := interface{}(val).(type) {
+				case interface{ ValidateAll() error }:
+					if err := v.ValidateAll(); err != nil {
+						errors = append(errors, ProcessingResponseValidationError{
+							field:  fmt.Sprintf("TypedDynamicMetadata[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				case interface{ Validate() error }:
+					if err := v.Validate(); err != nil {
+						errors = append(errors, ProcessingResponseValidationError{
+							field:  fmt.Sprintf("TypedDynamicMetadata[%v]", key),
+							reason: "embedded message failed validation",
+							cause:  err,
+						})
+					}
+				}
+			} else if v, ok := interface{}(val).(interface{ Validate() error }); ok {
+				if err := v.Validate(); err != nil {
+					return ProcessingResponseValidationError{
+						field:  fmt.Sprintf("TypedDynamicMetadata[%v]", key),
+						reason: "embedded message failed validation",
+						cause:  err,
+					}
+				}
+			}
+
+		}
+	}
+
 	if all {
 		switch v := interface{}(m.GetModeOverride()).(type) {
 		case interface{ ValidateAll() error }:
@@ -724,6 +811,10 @@ func (m *ProcessingResponse) validate(all bool) error {
 
 	// no validation rules for RequestDrain
 
+	// no validation rules for RequestDrainRequests
+
+	// no validation rules for RequestDrainResponses
+
 	if all {
 		switch v := interface{}(m.GetOverrideMessageTimeout()).(type) {
 		case interface{ ValidateAll() error }:
@@ -753,7 +844,35 @@ func (m *ProcessingResponse) validate(all bool) error {
 		}
 	}
 
-	oneofResponsePresent := false
+	if all {
+		switch v := interface{}(m.GetServerWindowUpdate()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ProcessingResponseValidationError{
+					field:  "ServerWindowUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ProcessingResponseValidationError{
+					field:  "ServerWindowUpdate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetServerWindowUpdate()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ProcessingResponseValidationError{
+				field:  "ServerWindowUpdate",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	switch v := m.Response.(type) {
 	case *ProcessingResponse_RequestHeaders:
 		if v == nil {
@@ -766,7 +885,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestHeaders()).(type) {
@@ -808,7 +926,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseHeaders()).(type) {
@@ -850,7 +967,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestBody()).(type) {
@@ -892,7 +1008,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseBody()).(type) {
@@ -934,7 +1049,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetRequestTrailers()).(type) {
@@ -976,7 +1090,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseTrailers()).(type) {
@@ -1018,7 +1131,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetImmediateResponse()).(type) {
@@ -1060,7 +1172,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 			}
 			errors = append(errors, err)
 		}
-		oneofResponsePresent = true
 
 		if all {
 			switch v := interface{}(m.GetStreamedImmediateResponse()).(type) {
@@ -1093,16 +1204,6 @@ func (m *ProcessingResponse) validate(all bool) error {
 
 	default:
 		_ = v // ensures v is used
-	}
-	if !oneofResponsePresent {
-		err := ProcessingResponseValidationError{
-			field:  "Response",
-			reason: "value is required",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
 	}
 
 	if len(errors) > 0 {
@@ -1390,6 +1491,8 @@ func (m *HttpBody) validate(all bool) error {
 	// no validation rules for EndOfStreamWithoutMessage
 
 	// no validation rules for GrpcMessageCompressed
+
+	// no validation rules for DrainComplete
 
 	if len(errors) > 0 {
 		return HttpBodyMultiError(errors)
@@ -2881,6 +2984,8 @@ func (m *StreamedBodyResponse) validate(all bool) error {
 
 	// no validation rules for GrpcMessageCompressed
 
+	// no validation rules for DrainComplete
+
 	if len(errors) > 0 {
 		return StreamedBodyResponseMultiError(errors)
 	}
@@ -3129,3 +3234,334 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = BodyMutationValidationError{}
+
+// Validate checks the field values on ProcessingRequest_FlowControlInit with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the first error encountered is returned, or nil if there are
+// no violations.
+func (m *ProcessingRequest_FlowControlInit) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ProcessingRequest_FlowControlInit
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// ProcessingRequest_FlowControlInitMultiError, or nil if none found.
+func (m *ProcessingRequest_FlowControlInit) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ProcessingRequest_FlowControlInit) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for InitialWindowDownstreamToSidestream
+
+	// no validation rules for InitialWindowSidestreamToUpstream
+
+	// no validation rules for InitialWindowUpstreamToSidestream
+
+	// no validation rules for InitialWindowSidestreamToDownstream
+
+	if len(errors) > 0 {
+		return ProcessingRequest_FlowControlInitMultiError(errors)
+	}
+
+	return nil
+}
+
+// ProcessingRequest_FlowControlInitMultiError is an error wrapping multiple
+// validation errors returned by
+// ProcessingRequest_FlowControlInit.ValidateAll() if the designated
+// constraints aren't met.
+type ProcessingRequest_FlowControlInitMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ProcessingRequest_FlowControlInitMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ProcessingRequest_FlowControlInitMultiError) AllErrors() []error { return m }
+
+// ProcessingRequest_FlowControlInitValidationError is the validation error
+// returned by ProcessingRequest_FlowControlInit.Validate if the designated
+// constraints aren't met.
+type ProcessingRequest_FlowControlInitValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ProcessingRequest_FlowControlInitValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ProcessingRequest_FlowControlInitValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ProcessingRequest_FlowControlInitValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ProcessingRequest_FlowControlInitValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ProcessingRequest_FlowControlInitValidationError) ErrorName() string {
+	return "ProcessingRequest_FlowControlInitValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ProcessingRequest_FlowControlInitValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sProcessingRequest_FlowControlInit.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ProcessingRequest_FlowControlInitValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ProcessingRequest_FlowControlInitValidationError{}
+
+// Validate checks the field values on ProcessingRequest_ClientWindowUpdate
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the first error encountered is returned, or nil if
+// there are no violations.
+func (m *ProcessingRequest_ClientWindowUpdate) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ProcessingRequest_ClientWindowUpdate
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// ProcessingRequest_ClientWindowUpdateMultiError, or nil if none found.
+func (m *ProcessingRequest_ClientWindowUpdate) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ProcessingRequest_ClientWindowUpdate) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for WindowIncrementSidestreamToUpstream
+
+	// no validation rules for WindowIncrementSidestreamToDownstream
+
+	if len(errors) > 0 {
+		return ProcessingRequest_ClientWindowUpdateMultiError(errors)
+	}
+
+	return nil
+}
+
+// ProcessingRequest_ClientWindowUpdateMultiError is an error wrapping multiple
+// validation errors returned by
+// ProcessingRequest_ClientWindowUpdate.ValidateAll() if the designated
+// constraints aren't met.
+type ProcessingRequest_ClientWindowUpdateMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ProcessingRequest_ClientWindowUpdateMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ProcessingRequest_ClientWindowUpdateMultiError) AllErrors() []error { return m }
+
+// ProcessingRequest_ClientWindowUpdateValidationError is the validation error
+// returned by ProcessingRequest_ClientWindowUpdate.Validate if the designated
+// constraints aren't met.
+type ProcessingRequest_ClientWindowUpdateValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ProcessingRequest_ClientWindowUpdateValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ProcessingRequest_ClientWindowUpdateValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ProcessingRequest_ClientWindowUpdateValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ProcessingRequest_ClientWindowUpdateValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ProcessingRequest_ClientWindowUpdateValidationError) ErrorName() string {
+	return "ProcessingRequest_ClientWindowUpdateValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ProcessingRequest_ClientWindowUpdateValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sProcessingRequest_ClientWindowUpdate.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ProcessingRequest_ClientWindowUpdateValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ProcessingRequest_ClientWindowUpdateValidationError{}
+
+// Validate checks the field values on ProcessingResponse_ServerWindowUpdate
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the first error encountered is returned, or nil if
+// there are no violations.
+func (m *ProcessingResponse_ServerWindowUpdate) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ProcessingResponse_ServerWindowUpdate
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// ProcessingResponse_ServerWindowUpdateMultiError, or nil if none found.
+func (m *ProcessingResponse_ServerWindowUpdate) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ProcessingResponse_ServerWindowUpdate) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for WindowIncrementDownstreamToSidestream
+
+	// no validation rules for WindowIncrementUpstreamToSidestream
+
+	if len(errors) > 0 {
+		return ProcessingResponse_ServerWindowUpdateMultiError(errors)
+	}
+
+	return nil
+}
+
+// ProcessingResponse_ServerWindowUpdateMultiError is an error wrapping
+// multiple validation errors returned by
+// ProcessingResponse_ServerWindowUpdate.ValidateAll() if the designated
+// constraints aren't met.
+type ProcessingResponse_ServerWindowUpdateMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ProcessingResponse_ServerWindowUpdateMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ProcessingResponse_ServerWindowUpdateMultiError) AllErrors() []error { return m }
+
+// ProcessingResponse_ServerWindowUpdateValidationError is the validation error
+// returned by ProcessingResponse_ServerWindowUpdate.Validate if the
+// designated constraints aren't met.
+type ProcessingResponse_ServerWindowUpdateValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e ProcessingResponse_ServerWindowUpdateValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e ProcessingResponse_ServerWindowUpdateValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e ProcessingResponse_ServerWindowUpdateValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e ProcessingResponse_ServerWindowUpdateValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e ProcessingResponse_ServerWindowUpdateValidationError) ErrorName() string {
+	return "ProcessingResponse_ServerWindowUpdateValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e ProcessingResponse_ServerWindowUpdateValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sProcessingResponse_ServerWindowUpdate.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = ProcessingResponse_ServerWindowUpdateValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = ProcessingResponse_ServerWindowUpdateValidationError{}

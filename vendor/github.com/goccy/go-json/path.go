@@ -1,6 +1,7 @@
 package json
 
 import (
+	"bytes"
 	"reflect"
 
 	"github.com/goccy/go-json/internal/decoder"
@@ -43,14 +44,22 @@ func (p *Path) UsedSingleQuotePathSelector() bool {
 	return p.path.SingleQuotePathSelector
 }
 
-// UsedSingleQuotePathSelector whether double quote-based escaping was done when building the JSON Path.
+// UsedDoubleQuotePathSelector whether double quote-based escaping was done when building the JSON Path.
 func (p *Path) UsedDoubleQuotePathSelector() bool {
 	return p.path.DoubleQuotePathSelector
 }
 
 // Extract extracts a specific JSON string.
 func (p *Path) Extract(data []byte, optFuncs ...DecodeOptionFunc) ([][]byte, error) {
-	return extractFromPath(p, data, optFuncs...)
+	contents, err := extractFromPath(p, data, optFuncs...)
+	if err != nil {
+		return nil, err
+	}
+	// each one is a copy of its own, which keeps alive neither the input nor the other ones
+	for i, content := range contents {
+		contents[i] = bytes.Clone(content)
+	}
+	return contents, nil
 }
 
 // PathString returns original JSON Path string.
@@ -59,14 +68,14 @@ func (p *Path) PathString() string {
 }
 
 // Unmarshal extract and decode the value of the part corresponding to JSON Path from the input data.
-func (p *Path) Unmarshal(data []byte, v interface{}, optFuncs ...DecodeOptionFunc) error {
+func (p *Path) Unmarshal(data []byte, v any, optFuncs ...DecodeOptionFunc) error {
 	contents, err := extractFromPath(p, data, optFuncs...)
 	if err != nil {
 		return err
 	}
-	results := make([]interface{}, 0, len(contents))
+	results := make([]any, 0, len(contents))
 	for _, content := range contents {
-		var result interface{}
+		var result any
 		if err := Unmarshal(content, &result); err != nil {
 			return err
 		}
@@ -79,6 +88,6 @@ func (p *Path) Unmarshal(data []byte, v interface{}, optFuncs ...DecodeOptionFun
 }
 
 // Get extract and substitute the value of the part corresponding to JSON Path from the input value.
-func (p *Path) Get(src, dst interface{}) error {
+func (p *Path) Get(src, dst any) error {
 	return p.path.Get(reflect.ValueOf(src), reflect.ValueOf(dst))
 }

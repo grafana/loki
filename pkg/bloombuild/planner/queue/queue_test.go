@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -208,4 +211,55 @@ type fakeLimits struct{}
 
 func (f fakeLimits) MaxConsumers(_ string, _ int) int {
 	return 0 // Unlimited
+}
+
+func TestActiveUsersCleanupSkippedWhileQueueNotEmpty(t *testing.T) {
+	const (
+		cleanupInterval = 10 * time.Millisecond
+		inactiveTimeout = 50 * time.Millisecond
+		numTasks        = 5
+	)
+
+	reg := prometheus.NewPedanticRegistry()
+	queueMetrics := NewMetrics(reg, "test", "queue")
+	clientMetrics := storage.NewClientMetrics()
+	defer clientMetrics.Unregister()
+
+	cfg := Config{MaxQueuedTasksPerTenant: 1000}
+	q, err := newQueue(log.NewNopLogger(), cfg, fakeLimits{}, queueMetrics, clientMetrics, cleanupInterval, inactiveTimeout)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), q))
+	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), q) })
+
+	const consumer = "fakeConsumer"
+	q.RegisterConsumerConnection(consumer)
+	defer q.UnregisterConsumerConnection(consumer)
+
+	tasks := createTasks(numTasks)
+	for _, task := range tasks {
+		require.NoError(t, q.Enqueue(task.ProtoTask, task.taskMeta, nil))
+	}
+
+	time.Sleep(3 * inactiveTimeout)
+
+	expected := fmt.Sprintf(`# HELP test_queue_queue_length Number of queries in the queue.
+# TYPE test_queue_queue_length gauge
+test_queue_queue_length{user="fakeTenant"} %d
+`, numTasks)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected), "test_queue_queue_length"))
+
+	idx := StartIndex
+	for i := 0; i < numTasks; i++ {
+		var task *protos.ProtoTask
+		task, _, idx, err = q.Dequeue(context.Background(), idx, consumer)
+		require.NoError(t, err)
+		require.NotNil(t, task)
+		q.Release(task)
+	}
+
+	require.Eventually(t, func() bool {
+		count, err := testutil.GatherAndCount(reg, "test_queue_queue_length")
+		return err == nil && count == 0
+	}, 5*inactiveTimeout, cleanupInterval, "queue_length series should be cleaned up after drain")
 }

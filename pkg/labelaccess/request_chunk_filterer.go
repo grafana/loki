@@ -26,7 +26,8 @@ func (r *RequestChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
 }
 
 // filtererForRequest extracts LBAC policies from the context and returns a ChunkFilterer.
-// This is shared between RequestChunkFilterer (V1 engine) and RequestStreamFilterer (V2 engine).
+// It returns nil, which disables filtering, when the context has no policy for
+// the tenant or when it cannot read the policies or the tenant.
 func filtererForRequest(ctx context.Context) *ChunkFilterer {
 	// Extract policies from context
 	instancePolicyMap, err := ExtractLabelMatchersContext(ctx)
@@ -115,6 +116,27 @@ func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 		}
 	}
 	return true
+}
+
+func (c *ChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Policies combine with OR, but the label matchers of one policy combine with AND. We can push
+	// down label matchers only when the request has a single policy.
+	if len(c.policies) != 1 {
+		return nil
+	}
+
+	selector := c.policies[0].Selector
+	matchers := make([]*labels.Matcher, 0, len(selector))
+	for _, lm := range selector {
+		matcher, err := types.LabelMatcherToPromLabel(lm)
+		if err != nil {
+			// ShouldFilter drops every stream for a policy it cannot convert, so push nothing and
+			// let it do so.
+			return nil
+		}
+		matchers = append(matchers, matcher)
+	}
+	return matchers
 }
 
 func (c *ChunkFilterer) RequiredLabelNames() []string {

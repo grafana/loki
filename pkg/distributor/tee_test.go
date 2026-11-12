@@ -6,8 +6,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 type mockedTee struct {

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -114,7 +115,7 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 		return "", err
 	}
 
-	location := locationConstraint
+	location := strings.TrimSpace(locationConstraint)
 	// Location is empty will be 'us-east-1'.
 	if location == "" {
 		location = "us-east-1"

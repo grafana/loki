@@ -21,6 +21,10 @@ var (
 	// Limits can be set on the Reader to prevent excessive memory usage by adversarial data.
 	ErrLimitExceeded error = errLimitExceeded{}
 
+	// ErrDuplicateEntry is returned when a duplicate map key or struct field
+	// is encountered during decoding and the noduplicates directive is active.
+	ErrDuplicateEntry error = errDuplicateEntry{}
+
 	// this error is only returned
 	// if we reach code that should
 	// be unreachable
@@ -151,6 +155,11 @@ type errLimitExceeded struct{}
 
 func (e errLimitExceeded) Error() string   { return "msgp: configured reader limit exceeded" }
 func (e errLimitExceeded) Resumable() bool { return false }
+
+type errDuplicateEntry struct{}
+
+func (e errDuplicateEntry) Error() string   { return "msgp: duplicate map key or field" }
+func (e errDuplicateEntry) Resumable() bool { return false }
 
 // ArrayError is an error returned
 // when decoding a fix-sized array

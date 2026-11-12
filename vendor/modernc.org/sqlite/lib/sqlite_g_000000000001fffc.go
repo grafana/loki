@@ -18,6 +18,8 @@ const INT_FAST16_MAX = 2147483647
 
 const INT_FAST16_MIN = -2147483648
 
+const NULL = 0
+
 const RTLD_GLOBAL = 256
 
 type Tfsblkcnt_t = uint64

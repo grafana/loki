@@ -17,6 +17,7 @@
 package array
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
@@ -91,6 +93,14 @@ func (a *numericArray[T]) GetOneForMarshal(i int) any {
 	return a.values[i]
 }
 
+func (a *numericArray[T]) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+
+	return a.values[i]
+}
+
 func (a *numericArray[T]) MarshalJSON() ([]byte, error) {
 	vals := make([]any, a.Len())
 	for i := range a.Len() {
@@ -113,6 +123,14 @@ func (a *oneByteArrs[T]) GetOneForMarshal(i int) any {
 	}
 
 	return float64(a.values[i]) // prevent uint8/int8 from being seen as binary data
+}
+
+func (a *oneByteArrs[T]) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+
+	return a.values[i]
 }
 
 func (a *oneByteArrs[T]) MarshalJSON() ([]byte, error) {
@@ -157,6 +175,14 @@ func (a *floatArray[T]) GetOneForMarshal(i int) any {
 	}
 }
 
+func (a *floatArray[T]) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+
+	return a.Value(i)
+}
+
 func (a *floatArray[T]) MarshalJSON() ([]byte, error) {
 	vals := make([]any, a.Len())
 	for i := range a.values {
@@ -171,6 +197,19 @@ type dateArray[T interface {
 	ToTime() time.Time
 }] struct {
 	numericArray[T]
+}
+
+func (d *dateArray[T]) String() string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i := range d.values {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(d.ValueStr(i))
+	}
+	b.WriteByte(']')
+	return b.String()
 }
 
 func (d *dateArray[T]) MarshalJSON() ([]byte, error) {
@@ -195,6 +234,14 @@ func (d *dateArray[T]) GetOneForMarshal(i int) interface{} {
 	}
 
 	return d.values[i].FormattedString()
+}
+
+func (d *dateArray[T]) ValueAsAny(i int) any {
+	if d.IsNull(i) {
+		return nil
+	}
+
+	return d.values[i]
 }
 
 type timeType interface {
@@ -233,6 +280,14 @@ func (a *timeArray[T]) GetOneForMarshal(i int) interface{} {
 	return a.values[i].ToTime(a.DataType().(timeType).TimeUnit()).Format("15:04:05.999999999")
 }
 
+func (a *timeArray[T]) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+
+	return a.values[i]
+}
+
 type Duration struct {
 	numericArray[arrow.Duration]
 }
@@ -266,6 +321,14 @@ func (a *Duration) GetOneForMarshal(i int) any {
 		return nil
 	}
 	return fmt.Sprintf("%d%s", a.values[i], a.DataType().(timeType).TimeUnit())
+}
+
+func (a *Duration) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+
+	return a.values[i]
 }
 
 type Int64 struct {
@@ -436,7 +499,49 @@ func NewDate64Data(data arrow.ArrayData) *Date64 {
 
 func (a *Date64) Date64Values() []arrow.Date64 { return a.Values() }
 
-func arrayEqualFixedWidth[T arrow.FixedWidthType](left, right arrow.TypedArray[T]) bool {
+type fixedWidthArray[T arrow.FixedWidthType] interface {
+	arrow.TypedArray[T]
+	Values() []T
+}
+
+func arrayEqualFixedWidth[T arrow.FixedWidthType](left, right fixedWidthArray[T]) bool {
+	// Avoid the fixed cost of bytes.Equal for very small arrays.
+	if left.Len() < 8 {
+		return arrayEqualFixedWidthScalar(left, right)
+	}
+
+	leftValues := left.Values()
+	rightValues := right.Values()
+	if left.NullN() == 0 {
+		return bytes.Equal(arrow.GetBytes(leftValues), arrow.GetBytes(rightValues))
+	}
+
+	leftBitmap := left.NullBitmapBytes()
+	if len(leftBitmap) == 0 {
+		return arrayEqualFixedWidthScalar(left, right)
+	}
+
+	runs := bitutils.NewSetBitRunReader(
+		leftBitmap, int64(left.Data().Offset()), int64(left.Len()),
+	)
+	for {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return true
+		}
+
+		start := int(run.Pos)
+		end := start + int(run.Length)
+		if !bytes.Equal(
+			arrow.GetBytes(leftValues[start:end]),
+			arrow.GetBytes(rightValues[start:end]),
+		) {
+			return false
+		}
+	}
+}
+
+func arrayEqualFixedWidthScalar[T arrow.FixedWidthType](left, right arrow.TypedArray[T]) bool {
 	for i := range left.Len() {
 		if left.IsNull(i) {
 			continue

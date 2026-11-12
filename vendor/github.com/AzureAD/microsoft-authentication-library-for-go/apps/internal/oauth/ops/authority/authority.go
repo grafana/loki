@@ -25,14 +25,14 @@ import (
 )
 
 const (
-	authorizationEndpoint             = "https://%v/%v/oauth2/v2.0/authorize"
-	aadInstanceDiscoveryEndpoint      = "https://%v/common/discovery/instance"
-	tenantDiscoveryEndpointWithRegion = "https://%s.%s/%s/v2.0/.well-known/openid-configuration"
-	regionName                        = "REGION_NAME"
-	defaultAPIVersion                 = "2021-02-01"
-	imdsEndpoint                      = "http://169.254.169.254/metadata/instance/compute?api-version=" + defaultAPIVersion
-	autoDetectRegion                  = "TryAutoDetect"
-	AccessTokenTypeBearer             = "Bearer"
+	authorizationEndpoint           = "https://%v/%v/oauth2/v2.0/authorize"
+	aadInstanceDiscoveryEndpoint    = "https://%v/common/discovery/instance"
+	regionalTenantDiscoveryEndpoint = "https://%s/%s/v2.0/.well-known/openid-configuration"
+	regionName                      = "REGION_NAME"
+	defaultAPIVersion               = "2021-02-01"
+	imdsEndpoint                    = "http://169.254.169.254/metadata/instance/compute?api-version=" + defaultAPIVersion
+	autoDetectRegion                = "TryAutoDetect"
+	AccessTokenTypeBearer           = "Bearer"
 )
 
 // These are various hosts that host AAD Instance discovery endpoints.
@@ -134,17 +134,19 @@ func (r *TenantDiscoveryResponse) ValidateIssuerMatchesAuthority(authorityURI st
 	}
 
 	// Fast path: exact scheme + host match
-	if issuerURL.Scheme == authorityURL.Scheme && issuerURL.Host == authorityURL.Host {
+	if issuerURL.Scheme == authorityURL.Scheme && strings.EqualFold(issuerURL.Host, authorityURL.Host) {
 		return nil
 	}
 
 	// Alias-based acceptance
-	if aliases != nil && aliases[issuerURL.Host] {
-		return nil
+	for alias, trusted := range aliases {
+		if trusted && strings.EqualFold(alias, issuerURL.Host) {
+			return nil
+		}
 	}
 
-	issuerHost := issuerURL.Host
-	authorityHost := authorityURL.Host
+	issuerHost := strings.ToLower(issuerURL.Host)
+	authorityHost := strings.ToLower(authorityURL.Host)
 
 	// Accept if issuer host is trusted
 	if TrustedHost(issuerHost) {
@@ -678,16 +680,30 @@ func (c Client) AADInstanceDiscovery(ctx context.Context, authorityInfo Info) (I
 	}
 	if region != "" {
 		environment := authorityInfo.Host
+		canonicalAlias := ""
 		switch environment {
 		case loginMicrosoft, loginWindows, loginSTSWindows, defaultHost:
 			environment = loginMicrosoft
+		default:
+			if metadata, ok := GetKnownMetadata(environment); ok {
+				environment = metadata.PreferredNetwork
+				if environment != authorityInfo.Host {
+					canonicalAlias = environment
+				}
+			}
 		}
 
-		resp.TenantDiscoveryEndpoint = fmt.Sprintf(tenantDiscoveryEndpointWithRegion, region, environment, authorityInfo.Tenant)
+		regionalEnvironment := fmt.Sprintf("%s.%s", region, environment)
+		aliases := []string{regionalEnvironment}
+		if canonicalAlias != "" {
+			aliases = append(aliases, canonicalAlias)
+		}
+		aliases = append(aliases, authorityInfo.Host)
+		resp.TenantDiscoveryEndpoint = fmt.Sprintf(regionalTenantDiscoveryEndpoint, regionalEnvironment, authorityInfo.Tenant)
 		metadata := InstanceDiscoveryMetadata{
-			PreferredNetwork: fmt.Sprintf("%v.%v", region, authorityInfo.Host),
+			PreferredNetwork: regionalEnvironment,
 			PreferredCache:   authorityInfo.Host,
-			Aliases:          []string{fmt.Sprintf("%v.%v", region, authorityInfo.Host), authorityInfo.Host},
+			Aliases:          aliases,
 		}
 		resp.Metadata = []InstanceDiscoveryMetadata{metadata}
 	} else {
@@ -728,20 +744,37 @@ func detectRegion(ctx context.Context) string {
 	client := http.Client{
 		Timeout: time.Duration(2 * time.Second),
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, imdsEndpoint, nil)
+	return detectRegionWithClient(ctx, &client, imdsEndpoint)
+}
+
+func detectRegionWithClient(ctx context.Context, client *http.Client, endpoint string) string {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	req.Header.Set("Metadata", "true")
 	resp, err := client.Do(req)
 	if err == nil {
-		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			response, readErr := io.ReadAll(resp.Body)
+			// A close error can't change the result after the response body has been consumed.
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return ""
+			}
+			return parseRegionFromIMDSResponse(response)
+		}
+		_ = resp.Body.Close()
 	}
 	// If the request times out or there is an error, it is retried once
-	if err != nil || resp.StatusCode != http.StatusOK {
-		resp, err = client.Do(req)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return ""
-		}
+	resp, err = client.Do(req)
+	if err != nil {
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return ""
 	}
 	response, err := io.ReadAll(resp.Body)
+	// A close error can't change the result after the response body has been consumed.
+	_ = resp.Body.Close()
 	if err != nil {
 		return ""
 	}

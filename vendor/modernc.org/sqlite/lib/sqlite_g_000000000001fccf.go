@@ -6,6 +6,8 @@ package sqlite3
 
 type Twchar_t = int32
 
+const WCHAR_MIN = -2147483648
+
 const __WCHAR_MAX__ = 2147483647
 
 type t__predefined_wchar_t = int32

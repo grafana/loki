@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -148,6 +149,18 @@ func resetMetricRegistry() {
 	prometheus.DefaultGatherer = registry
 }
 
+// resetDefaultLimits restores validation.Limits' YAML-unmarshalling default to the values
+// registered flags would produce. Each component in this process calls
+// validation.SetDefaultLimitsForYAMLUnmarshalling with its own limits, overwriting that single
+// global for every other component already running or started later in the same process. Without
+// this, a cluster could unmarshal a limit field left unset in its own config from whatever value a
+// previous test's component happened to leave behind.
+func resetDefaultLimits() {
+	var defaults validation.Limits
+	flagext.DefaultValues(&defaults)
+	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+}
+
 type wrappedRegisterer struct {
 	*prometheus.Registry
 }
@@ -187,6 +200,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	resetMetricRegistry()
+	resetDefaultLimits()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())

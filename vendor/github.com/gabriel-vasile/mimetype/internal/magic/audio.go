@@ -50,7 +50,7 @@ func M3U(raw []byte, _ uint32) bool {
 
 // AAC matches an Advanced Audio Coding file.
 func AAC(raw []byte, _ uint32) bool {
-	return len(raw) > 1 && ((raw[0] == 0xFF && raw[1] == 0xF1) || (raw[0] == 0xFF && raw[1] == 0xF9))
+	return len(raw) > 1 && raw[0] == 0xFF && (raw[1] == 0xF1 || raw[1] == 0xF9)
 }
 
 // MP3 matches a .mp3 file.
@@ -128,27 +128,30 @@ func id3v2(raw []byte) bool {
 	}
 
 	size := uint32(raw[6])<<21 | uint32(raw[7])<<14 | uint32(raw[8])<<7 | uint32(raw[9])
-	// Disallow too big frames, let's say 10MB.
-	return size > 0 && size < 10*1024*1024
+	// The synchsafe integer is already bounded to 28 bits (~256MB). A 10MB
+	// cap rejected legitimate files with large ID3v2 album art. #839 
+	return size > 0
+}
+
+// iff checks for an Interchange File Format layout: 4-byte container tag,
+// 4-byte size, 4-byte format tag.
+func iff(raw []byte, container, format []byte) bool {
+	return len(raw) > 12 &&
+		bytes.Equal(raw[:4], container) &&
+		bytes.Equal(raw[8:12], format)
 }
 
 // Wav matches a Waveform Audio File Format file.
 func Wav(raw []byte, limit uint32) bool {
-	return len(raw) > 12 &&
-		bytes.Equal(raw[:4], []byte("RIFF")) &&
-		bytes.Equal(raw[8:12], []byte{0x57, 0x41, 0x56, 0x45})
+	return iff(raw, []byte("RIFF"), []byte("WAVE"))
 }
 
 // Aiff matches Audio Interchange File Format file.
 func Aiff(raw []byte, limit uint32) bool {
-	return len(raw) > 12 &&
-		bytes.Equal(raw[:4], []byte{0x46, 0x4F, 0x52, 0x4D}) &&
-		bytes.Equal(raw[8:12], []byte{0x41, 0x49, 0x46, 0x46})
+	return iff(raw, []byte("FORM"), []byte("AIFF"))
 }
 
 // Qcp matches a Qualcomm Pure Voice file.
 func Qcp(raw []byte, limit uint32) bool {
-	return len(raw) > 12 &&
-		bytes.Equal(raw[:4], []byte("RIFF")) &&
-		bytes.Equal(raw[8:12], []byte("QLCM"))
+	return iff(raw, []byte("RIFF"), []byte("QLCM"))
 }

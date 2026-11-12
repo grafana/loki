@@ -26,6 +26,8 @@ import "C"
 import (
 	"sync"
 	"unsafe"
+
+	"github.com/fluent/fluent-bit-go/internal/plugin"
 )
 
 // Define constants matching Fluent Bit core
@@ -70,25 +72,15 @@ const (
 type FLBPluginProxyDef C.struct_flb_plugin_proxy_def
 type FLBOutPlugin C.struct_flbgo_output_plugin
 
-// ConfigMap describes a single typed configuration property that a plugin
-// exposes. It mirrors the public registration fields of the C struct flb_config_map.
-type ConfigMap struct {
-	// Type is one of the FLB_CONFIG_MAP_* property types.
-	Type int
-	// Name is the property identifier as written in the configuration.
-	Name string
-	// DefValue is the default value applied when the property is not set.
-	DefValue string
-	// Flags is a bitmask of FLB_CONFIG_MAP_* flags.
-	Flags int
-	// Desc is a human readable description of the property.
-	Desc string
-}
+type ConfigMap = plugin.ConfigMap
+type Option = plugin.Option
 
-// When the FLBPluginInit is triggered by Fluent Bit, a plugin context
-// is passed and the next step is to invoke this FLBPluginRegister() function
-// to fill the required information: type, proxy type, flags name and
-// description.
+var WithName = plugin.WithName
+var WithDescription = plugin.WithDescription
+var WithEventType = plugin.WithEventType
+var WithConfigMap = plugin.WithConfigMap
+
+// Deprecated: Use FLBPluginRegisterWithOptions instead.
 func FLBPluginRegister(def unsafe.Pointer, name, desc string) int {
 	p := (*FLBPluginProxyDef)(def)
 	p._type = FLB_PROXY_OUTPUT_PLUGIN
@@ -100,6 +92,7 @@ func FLBPluginRegister(def unsafe.Pointer, name, desc string) int {
 	return 0
 }
 
+// Deprecated: Use FLBPluginRegisterWithOptions instead.
 func FLBPluginRegisterWithEventType(def unsafe.Pointer, eventType int, name, desc string) int {
 	p := (*FLBPluginProxyDef)(def)
 	p._type = FLB_PROXY_OUTPUT_PLUGIN
@@ -111,6 +104,7 @@ func FLBPluginRegisterWithEventType(def unsafe.Pointer, eventType int, name, des
 	return 0
 }
 
+// Deprecated: Use FLBPluginRegisterWithOptions instead.
 func FLBPluginRegisterWithConfigMap(def unsafe.Pointer, name, desc string, cmap []ConfigMap) int {
 	p := (*FLBPluginProxyDef)(def)
 	p._type = FLB_PROXY_OUTPUT_PLUGIN
@@ -123,6 +117,7 @@ func FLBPluginRegisterWithConfigMap(def unsafe.Pointer, name, desc string, cmap 
 	return 0
 }
 
+// Deprecated: Use FLBPluginRegisterWithOptions instead.
 func FLBPluginRegisterWithEventTypeAndConfigMap(def unsafe.Pointer, eventType int, name, desc string, cmap []ConfigMap) int {
 	p := (*FLBPluginProxyDef)(def)
 	p._type = FLB_PROXY_OUTPUT_PLUGIN
@@ -132,6 +127,27 @@ func FLBPluginRegisterWithEventTypeAndConfigMap(def unsafe.Pointer, eventType in
 	p.description = C.CString(desc)
 	p.event_type = C.int(eventType)
 	setConfigMap(p, cmap)
+	return 0
+}
+
+// When the FLBPluginInit is triggered by Fluent Bit, a plugin context is passed
+// and the next step is to invoke this FLBPluginRegisterWithOptions() function
+// to fill the required information: type, proxy type, flags name and description.
+func FLBPluginRegisterWithOptions(def unsafe.Pointer, opts ...Option) int {
+	o := plugin.Options{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	p := (*FLBPluginProxyDef)(def)
+	p._type = FLB_PROXY_OUTPUT_PLUGIN
+	p.proxy = FLB_PROXY_GOLANG
+	p.flags = 0
+	p.name = C.CString(o.Name)
+	p.description = C.CString(o.Desc)
+	p.event_type = C.int(o.EventType)
+	if len(o.CMap) > 0 {
+		setConfigMap(p, o.CMap)
+	}
 	return 0
 }
 

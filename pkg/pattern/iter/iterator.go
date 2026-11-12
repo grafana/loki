@@ -41,23 +41,27 @@ func (s *PatternIter) Level() string {
 	return s.level
 }
 
-type nonOverlappingIterator struct {
+type chainedIterator struct {
 	iterators []Iterator
 	curr      Iterator
 	pattern   string
 	level     string
 }
 
-// NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(pattern, lvl string, iterators []Iterator) Iterator {
-	return &nonOverlappingIterator{
+// NewChainedIterator returns an iterator that plays each given iterator to completion,
+// in order, before moving to the next. It makes no assumption about the time range each
+// iterator covers.
+//
+// Producing time-ordered output, if that is required, is the caller's job.
+func NewChainedIterator(pattern, lvl string, iterators []Iterator) Iterator {
+	return &chainedIterator{
 		iterators: iterators,
 		pattern:   pattern,
 		level:     lvl,
 	}
 }
 
-func (i *nonOverlappingIterator) Next() bool {
+func (i *chainedIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if len(i.iterators) == 0 {
 			if i.curr != nil {
@@ -74,26 +78,26 @@ func (i *nonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingIterator) At() logproto.PatternSample {
+func (i *chainedIterator) At() logproto.PatternSample {
 	return i.curr.At()
 }
 
-func (i *nonOverlappingIterator) Pattern() string {
+func (i *chainedIterator) Pattern() string {
 	return i.pattern
 }
 
-func (i *nonOverlappingIterator) Level() string {
+func (i *chainedIterator) Level() string {
 	return i.level
 }
 
-func (i *nonOverlappingIterator) Err() error {
+func (i *chainedIterator) Err() error {
 	if i.curr != nil {
 		return i.curr.Err()
 	}
 	return nil
 }
 
-func (i *nonOverlappingIterator) Close() error {
+func (i *chainedIterator) Close() error {
 	if i.curr != nil {
 		i.curr.Close()
 	}

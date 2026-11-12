@@ -17,12 +17,20 @@
 package scalar
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
+)
+
+const (
+	timestampScalarLayout            = "2006-01-02 15:04:05.999999999"
+	timestampScalarZoneLayout        = timestampScalarLayout + "Z0700"
+	timestampScalarZoneSecondsLayout = timestampScalarLayout + "Z070000"
 )
 
 func temporalToString(s TemporalScalar) string {
@@ -39,7 +47,25 @@ func temporalToString(s TemporalScalar) string {
 	case *Time64:
 		return time.Unix(0, int64(s.Value)*int64(s.Unit().Multiplier())).UTC().Format("15:04:05.999999999")
 	case *Timestamp:
-		return time.Unix(0, int64(s.Value)*int64(s.Unit().Multiplier())).UTC().Format("2006-01-02 15:04:05.999999999")
+		typ := s.DataType().(*arrow.TimestampType)
+		toTime, err := typ.GetToTimeFunc()
+		if err != nil {
+			return "..."
+		}
+		tm := toTime(s.Value)
+		if tm.Year() < 0 || tm.Year() > 9999 {
+			// Timestamp parsing follows time.Parse, whose textual year range is
+			// limited to 0000 through 9999. Numeric timestamp values are raw epochs.
+			return strconv.FormatInt(int64(s.Value), 10)
+		}
+		layout := timestampScalarLayout
+		if typ.TimeZone != "" {
+			layout = timestampScalarZoneLayout
+			if _, offset := tm.Zone(); offset%60 != 0 {
+				layout = timestampScalarZoneSecondsLayout
+			}
+		}
+		return tm.Format(layout)
 	}
 	return "..."
 }
@@ -73,7 +99,7 @@ func (s *Duration) equals(rhs Scalar) bool {
 }
 
 func (s *Duration) Unit() arrow.TimeUnit {
-	return s.DataType().(*arrow.TimestampType).Unit
+	return s.DataType().(*arrow.DurationType).Unit
 }
 func (s *Duration) Data() []byte {
 	return (*[arrow.DurationSizeBytes]byte)(unsafe.Pointer(&s.Value))[:]
@@ -102,6 +128,18 @@ type IntervalScalar interface {
 }
 
 const millisecondsInDay = (time.Hour * 24) / time.Millisecond
+
+func timestampDate(s *Timestamp) (time.Time, error) {
+	timestampType := s.DataType().(*arrow.TimestampType)
+	toTime, err := timestampType.GetToTimeFunc()
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	tm := toTime(s.Value)
+	year, month, day := tm.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC), nil
+}
 
 func castTemporal(from TemporalScalar, to arrow.DataType) (Scalar, error) {
 	if arrow.TypeEqual(from.DataType(), to) {
@@ -148,18 +186,32 @@ func castTemporal(from TemporalScalar, to arrow.DataType) (Scalar, error) {
 		case *arrow.TimestampType:
 			return NewTimestampScalar(arrow.Timestamp(arrow.ConvertTimestampValue(s.Unit(), to.Unit, int64(s.Value))), to), nil
 		case *arrow.Date32Type:
-			millis := arrow.ConvertTimestampValue(s.Unit(), arrow.Millisecond, int64(s.Value))
-			return NewDate32Scalar(arrow.Date32(millis / int64(millisecondsInDay))), nil
+			tm, err := timestampDate(s)
+			if err != nil {
+				return nil, err
+			}
+			return NewDate32Scalar(arrow.Date32FromTime(tm)), nil
 		case *arrow.Date64Type:
-			millis := arrow.ConvertTimestampValue(s.Unit(), arrow.Millisecond, int64(s.Value))
-			return NewDate64Scalar(arrow.Date64(millis - millis%int64(millisecondsInDay))), nil
+			tm, err := timestampDate(s)
+			if err != nil {
+				return nil, err
+			}
+			return NewDate64Scalar(arrow.Date64FromTime(tm)), nil
 		}
 	case TimeScalar:
+		var value int64
+		switch s := s.(type) {
+		case *Time32:
+			value = int64(s.Value)
+		case *Time64:
+			value = int64(s.Value)
+		}
+
 		switch to := to.(type) {
 		case *arrow.Time32Type:
-			return NewTime32Scalar(arrow.Time32(arrow.ConvertTimestampValue(s.Unit(), to.Unit, int64(s.value().(arrow.Time64)))), to), nil
+			return NewTime32Scalar(arrow.Time32(arrow.ConvertTimestampValue(s.Unit(), to.Unit, value)), to), nil
 		case *arrow.Time64Type:
-			return NewTime64Scalar(arrow.Time64(arrow.ConvertTimestampValue(s.Unit(), to.Unit, int64(s.value().(arrow.Time32)))), to), nil
+			return NewTime64Scalar(arrow.Time64(arrow.ConvertTimestampValue(s.Unit(), to.Unit, value)), to), nil
 		}
 
 	case *Duration:
@@ -375,11 +427,7 @@ func (s *MonthInterval) String() string {
 	if !s.Valid {
 		return "null"
 	}
-	val, err := s.CastTo(arrow.BinaryTypes.String)
-	if err != nil {
-		return "..."
-	}
-	return string(val.(*String).Value.Bytes())
+	return fmt.Sprint(s.Value)
 }
 func (s *MonthInterval) equals(rhs Scalar) bool {
 	return s.Value == rhs.(*MonthInterval).Value
@@ -407,11 +455,11 @@ func (s *DayTimeInterval) String() string {
 	if !s.Valid {
 		return "null"
 	}
-	val, err := s.CastTo(arrow.BinaryTypes.String)
+	val, err := json.Marshal(s.Value)
 	if err != nil {
 		return "..."
 	}
-	return string(val.(*String).Value.Bytes())
+	return string(val)
 }
 
 func (s *DayTimeInterval) CastTo(to arrow.DataType) (Scalar, error) {
@@ -420,7 +468,7 @@ func (s *DayTimeInterval) CastTo(to arrow.DataType) (Scalar, error) {
 	}
 
 	if !arrow.TypeEqual(s.DataType(), to) {
-		return nil, fmt.Errorf("non-null daytimeinterval scalar cannot be cast to anything other than monthinterval")
+		return nil, fmt.Errorf("non-null daytimeinterval scalar cannot be cast to anything other than daytimeinterval")
 	}
 
 	return s, nil
@@ -449,11 +497,11 @@ func (s *MonthDayNanoInterval) String() string {
 	if !s.Valid {
 		return "null"
 	}
-	val, err := s.CastTo(arrow.BinaryTypes.String)
+	val, err := json.Marshal(s.Value)
 	if err != nil {
 		return "..."
 	}
-	return string(val.(*String).Value.Bytes())
+	return string(val)
 }
 
 func (s *MonthDayNanoInterval) CastTo(to arrow.DataType) (Scalar, error) {
@@ -462,7 +510,7 @@ func (s *MonthDayNanoInterval) CastTo(to arrow.DataType) (Scalar, error) {
 	}
 
 	if !arrow.TypeEqual(s.DataType(), to) {
-		return nil, fmt.Errorf("non-null month_day_nano_interval scalar cannot be cast to anything other than monthinterval")
+		return nil, fmt.Errorf("non-null month_day_nano_interval scalar cannot be cast to anything other than month_day_nano_interval")
 	}
 
 	return s, nil

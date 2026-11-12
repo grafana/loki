@@ -1,14 +1,11 @@
 package stages
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -35,13 +32,6 @@ var testLabelsLogLine = `
 	"level" : "WARN"
 }
 `
-var testLabelsLogLineWithMissingKey = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"]
-}
-`
 
 func TestLabelsPipeline_Labels(t *testing.T) {
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLabelsYaml), nil, prometheus.DefaultRegisterer)
@@ -55,24 +45,6 @@ func TestLabelsPipeline_Labels(t *testing.T) {
 
 	out := processEntries(pl, newEntry(nil, nil, testLabelsLogLine, time.Now()))[0]
 	assert.Equal(t, expectedLbls, out.Labels)
-}
-
-func TestLabelsPipelineWithMissingKey_Labels(t *testing.T) {
-	var buf bytes.Buffer
-	w := log.NewSyncWriter(&buf)
-	logger := log.NewLogfmtLogger(w)
-	pl, err := NewPipeline(logger, loadConfig(testLabelsYaml), nil, prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	Debug = true
-
-	_ = processEntries(pl, newEntry(nil, nil, testLabelsLogLineWithMissingKey, time.Now()))
-
-	expectedLog := "level=debug msg=\"failed to convert extracted label value to string\" err=\"can't convert <nil> to string\" type=null"
-	if !(strings.Contains(buf.String(), expectedLog)) {
-		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
-	}
 }
 
 var (

@@ -6,11 +6,7 @@ package sqlite3
 
 const __FLT16_DECIMAL_DIG__ = 5
 
-const __FLT16_DENORM_MIN__ = 0
-
 const __FLT16_DIG__ = 3
-
-const __FLT16_EPSILON__ = 0
 
 const __FLT16_HAS_DENORM__ = 1
 
@@ -24,12 +20,6 @@ const __FLT16_MAX_10_EXP__ = 4
 
 const __FLT16_MAX_EXP__ = 16
 
-const __FLT16_MAX__ = 0
-
 const __FLT16_MIN_10_EXP__ = -4
 
 const __FLT16_MIN_EXP__ = -13
-
-const __FLT16_MIN__ = 0
-
-const __FLT16_NORM_MAX__ = 0

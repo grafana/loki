@@ -8,9 +8,11 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"go.opentelemetry.io/collector/pdata/internal"
+	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
 
 // ProfilesServiceClient is the client API for ProfilesService service.
@@ -57,6 +59,11 @@ func RegisterProfilesServiceServer(s *grpc.Server, srv ProfilesServiceServer) {
 //
 //nolint:revive
 func profilesServiceExportHandler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+	// Unary interceptors run after dec, so validate the version here to reject
+	// incompatible payloads before protobuf deserialization.
+	if err := otlp.ValidateProfilesDevelopmentVersion(metadata.ValueFromIncomingContext(ctx, otlp.ProfilesDevelopmentVersionHeader)); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	in := internal.NewExportProfilesServiceRequest()
 	if err := dec(in); err != nil {
 		return nil, err

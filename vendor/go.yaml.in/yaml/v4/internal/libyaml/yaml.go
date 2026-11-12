@@ -20,6 +20,11 @@ type VersionDirective struct {
 	minor int8 // The minor version number.
 }
 
+// NewVersionDirective creates YAML version directive data.
+func NewVersionDirective(major, minor int) *VersionDirective {
+	return &VersionDirective{major: int8(major), minor: int8(minor)}
+}
+
 // Major returns the major version number.
 func (v *VersionDirective) Major() int { return int(v.major) }
 
@@ -32,6 +37,11 @@ type TagDirective struct {
 	prefix []byte // The tag prefix.
 }
 
+// NewTagDirective creates YAML tag directive data.
+func NewTagDirective(handle, prefix string) TagDirective {
+	return TagDirective{handle: []byte(handle), prefix: []byte(prefix)}
+}
+
 // GetHandle returns the tag handle.
 func (t *TagDirective) GetHandle() string { return string(t.handle) }
 
@@ -41,27 +51,33 @@ func (t *TagDirective) GetPrefix() string { return string(t.prefix) }
 // Encoding represents the character encoding of a YAML stream.
 type Encoding int
 
-// The stream encoding.
+// Possible [Encoding] values.
 const (
-	// Let the parser choose the encoding.
+	// ANY_ENCODING lets the parser choose the encoding.
 	ANY_ENCODING Encoding = iota
 
-	UTF8_ENCODING    // The default UTF-8 encoding.
-	UTF16LE_ENCODING // The UTF-16-LE encoding with BOM.
-	UTF16BE_ENCODING // The UTF-16-BE encoding with BOM.
+	// UTF8_ENCODING uses UTF-8 encoding (default).
+	UTF8_ENCODING
+	// UTF16LE_ENCODING uses UTF-16-LE encoding with BOM.
+	UTF16LE_ENCODING
+	// UTF16BE_ENCODING uses UTF-16-BE encoding with BOM.
+	UTF16BE_ENCODING
 )
 
 // LineBreak represents the line break style used in YAML output.
 type LineBreak int
 
-// Line break types.
+// Possible [LineBreak] values.
 const (
-	// Let the parser choose the break type.
+	// ANY_BREAK lets the parser choose the break type.
 	ANY_BREAK LineBreak = iota
 
-	CR_BREAK   // Use CR for line breaks (Mac style).
-	LN_BREAK   // Use LN for line breaks (Unix style).
-	CRLN_BREAK // Use CR LN for line breaks (DOS style).
+	// CR_BREAK uses CR for line breaks (Mac style).
+	CR_BREAK
+	// LN_BREAK uses LN for line breaks (Unix style).
+	LN_BREAK
+	// CRLN_BREAK uses CR LN for line breaks (DOS style).
+	CRLN_BREAK
 )
 
 // QuoteStyle represents the preferred quote style for scalar values.
@@ -69,9 +85,12 @@ type QuoteStyle int
 
 // Quote style types for required quoting.
 const (
-	QuoteSingle QuoteStyle = iota // Prefer single quotes when quoting is required.
-	QuoteDouble                   // Prefer double quotes when quoting is required.
-	QuoteLegacy                   // Legacy behavior: double in representer, single in emitter.
+	// QuoteSingle prefers single quotes for scalar values.
+	QuoteSingle QuoteStyle = iota
+	// QuoteDouble prefers double quotes for scalar values.
+	QuoteDouble
+	// QuoteLegacy uses double quotes in the representer and single quotes in the emitter.
+	QuoteLegacy
 )
 
 // ScalarStyle returns the scalar style for this quote preference in the
@@ -87,18 +106,25 @@ func (q QuoteStyle) ScalarStyle() ScalarStyle {
 // ErrorType represents the category of error that occurred during processing.
 type ErrorType int
 
-// Many bad things could happen with the parser and emitter.
+// Possible [ErrorType] values. Many bad things could happen with the parser and emitter.
 const (
 	// No error is produced.
 	NO_ERROR ErrorType = iota
 
-	MEMORY_ERROR   // Cannot allocate or reallocate a block of memory.
-	READER_ERROR   // Cannot read or decode the input stream.
-	SCANNER_ERROR  // Cannot scan the input stream.
-	PARSER_ERROR   // Cannot parse the input stream.
-	COMPOSER_ERROR // Cannot compose a YAML document.
-	WRITER_ERROR   // Cannot write to the output stream.
-	EMITTER_ERROR  // Cannot emit a YAML stream.
+	// MEMORY_ERROR when cannot allocate or reallocate a block of memory.
+	MEMORY_ERROR
+	// READER_ERROR when cannot read or decode the input stream.
+	READER_ERROR
+	// SCANNER_ERROR when cannot scan the input stream.
+	SCANNER_ERROR
+	// PARSER_ERROR when cannot parse the input stream.
+	PARSER_ERROR
+	// COMPOSER_ERROR when cannot compose a YAML document.
+	COMPOSER_ERROR
+	// WRITER_ERROR when cannot write to the output stream.
+	WRITER_ERROR
+	// EMITTER_ERROR when cannot emit a YAML stream.
+	EMITTER_ERROR
 )
 
 // Mark holds the pointer position.
@@ -122,6 +148,12 @@ func (m Mark) String() string {
 
 	return builder.String()
 }
+
+// ShortString is the exported form of shortString for use by plugins.
+func (m Mark) ShortString() string { return m.shortString() }
+
+// RangeString is the exported form of rangeString for use by plugins.
+func (m Mark) RangeString(end Mark) string { return m.rangeString(end) }
 
 // shortString returns a compact position string.
 // Returns "<unknown position>" when Line is 0 (position not known).
@@ -172,16 +204,21 @@ type styleInt int8
 // ScalarStyle represents the formatting style of a scalar value.
 type ScalarStyle styleInt
 
-// Scalar styles.
+// Possible [ScalarStyle] values.
 const (
-	// Let the emitter choose the style.
+	// ANY_SCALAR_STYLE lets the emitter choose the style.
 	ANY_SCALAR_STYLE ScalarStyle = 0
 
-	PLAIN_SCALAR_STYLE         ScalarStyle = 1 << iota // The plain scalar style.
-	SINGLE_QUOTED_SCALAR_STYLE                         // The single-quoted scalar style.
-	DOUBLE_QUOTED_SCALAR_STYLE                         // The double-quoted scalar style.
-	LITERAL_SCALAR_STYLE                               // The literal scalar style.
-	FOLDED_SCALAR_STYLE                                // The folded scalar style.
+	// PLAIN_SCALAR_STYLE represents the plain scalar style.
+	PLAIN_SCALAR_STYLE ScalarStyle = 1 << iota
+	// SINGLE_QUOTED_SCALAR_STYLE represents the single-quoted scalar style.
+	SINGLE_QUOTED_SCALAR_STYLE
+	// DOUBLE_QUOTED_SCALAR_STYLE represents the double-quoted scalar style.
+	DOUBLE_QUOTED_SCALAR_STYLE
+	// LITERAL_SCALAR_STYLE represents the literal scalar style.
+	LITERAL_SCALAR_STYLE
+	// FOLDED_SCALAR_STYLE represents the folded scalar style.
+	FOLDED_SCALAR_STYLE
 )
 
 // String returns a string representation of a [ScalarStyle].
@@ -205,64 +242,90 @@ func (style ScalarStyle) String() string {
 // SequenceStyle represents the formatting style of a sequence node.
 type SequenceStyle styleInt
 
-// Sequence styles.
+// Possible [SequenceStyle] values.
 const (
-	// Let the emitter choose the style.
+	// ANY_SEQUENCE_STYLE lets the emitter choose the style.
 	ANY_SEQUENCE_STYLE SequenceStyle = iota
 
-	BLOCK_SEQUENCE_STYLE // The block sequence style.
-	FLOW_SEQUENCE_STYLE  // The flow sequence style.
+	// BLOCK_SEQUENCE_STYLE represents a block sequence style.
+	BLOCK_SEQUENCE_STYLE
+	// FLOW_SEQUENCE_STYLE represents a flow sequence style.
+	FLOW_SEQUENCE_STYLE
 )
 
 // MappingStyle represents the formatting style of a mapping node.
 type MappingStyle styleInt
 
-// Mapping styles.
+// Possible [MappingStyle] values.
 const (
-	// Let the emitter choose the style.
+	// ANY_MAPPING_STYLE lets the emitter choose the style.
 	ANY_MAPPING_STYLE MappingStyle = iota
 
-	BLOCK_MAPPING_STYLE // The block mapping style.
-	FLOW_MAPPING_STYLE  // The flow mapping style.
+	// BLOCK_MAPPING_STYLE represents a block mapping style.
+	BLOCK_MAPPING_STYLE
+	// FLOW_MAPPING_STYLE represents a flow mapping style.
+	FLOW_MAPPING_STYLE
 )
 
 // Tokens
 
-// TokenType represents the type of a scanned token.
+// TokenType represents the [Token.Type] of a scanned [Token].
 type TokenType int
 
-// Token types.
+// Possible [TokenType] values.
 const (
-	// An empty token.
+	// NO_TOKEN represents an empty token.
 	NO_TOKEN TokenType = iota
 
-	STREAM_START_TOKEN // A STREAM-START token.
-	STREAM_END_TOKEN   // A STREAM-END token.
+	// STREAM_START_TOKEN represents a STREAM-START token.
+	STREAM_START_TOKEN
+	// STREAM_END_TOKEN represents a STREAM-END token.
+	STREAM_END_TOKEN
+	// VERSION_DIRECTIVE_TOKEN represents a VERSION-DIRECTIVE token.
+	VERSION_DIRECTIVE_TOKEN
 
-	VERSION_DIRECTIVE_TOKEN // A VERSION-DIRECTIVE token.
-	TAG_DIRECTIVE_TOKEN     // A TAG-DIRECTIVE token.
-	DOCUMENT_START_TOKEN    // A DOCUMENT-START token.
-	DOCUMENT_END_TOKEN      // A DOCUMENT-END token.
+	// TAG_DIRECTIVE_TOKEN represents a TAG-DIRECTIVE token.
+	TAG_DIRECTIVE_TOKEN
+	// DOCUMENT_START_TOKEN represents a DOCUMENT-START token.
+	DOCUMENT_START_TOKEN
+	// DOCUMENT_END_TOKEN represents a DOCUMENT-END token.
+	DOCUMENT_END_TOKEN
 
-	BLOCK_SEQUENCE_START_TOKEN // A BLOCK-SEQUENCE-START token.
-	BLOCK_MAPPING_START_TOKEN  // A BLOCK-SEQUENCE-END token.
-	BLOCK_END_TOKEN            // A BLOCK-END token.
+	// BLOCK_SEQUENCE_START_TOKEN represents a BLOCK-SEQUENCE-START token.
+	BLOCK_SEQUENCE_START_TOKEN
+	// BLOCK_MAPPING_START_TOKEN represents a BLOCK-MAPPING-START token.
+	BLOCK_MAPPING_START_TOKEN
+	// BLOCK_END_TOKEN represents a BLOCK-END token.
+	BLOCK_END_TOKEN
 
-	FLOW_SEQUENCE_START_TOKEN // A FLOW-SEQUENCE-START token.
-	FLOW_SEQUENCE_END_TOKEN   // A FLOW-SEQUENCE-END token.
-	FLOW_MAPPING_START_TOKEN  // A FLOW-MAPPING-START token.
-	FLOW_MAPPING_END_TOKEN    // A FLOW-MAPPING-END token.
+	// FLOW_SEQUENCE_START_TOKEN represents a FLOW-SEQUENCE-START token.
+	FLOW_SEQUENCE_START_TOKEN
+	// FLOW_SEQUENCE_END_TOKEN represents a FLOW-SEQUENCE-END token.
+	FLOW_SEQUENCE_END_TOKEN
+	// FLOW_MAPPING_START_TOKEN represents a FLOW-MAPPING-START token.
+	FLOW_MAPPING_START_TOKEN
+	// FLOW_MAPPING_END_TOKEN represents a FLOW-MAPPING-END token.
+	FLOW_MAPPING_END_TOKEN
 
-	BLOCK_ENTRY_TOKEN // A BLOCK-ENTRY token.
-	FLOW_ENTRY_TOKEN  // A FLOW-ENTRY token.
-	KEY_TOKEN         // A KEY token.
-	VALUE_TOKEN       // A VALUE token.
+	// BLOCK_ENTRY_TOKEN represents a BLOCK-ENTRY token.
+	BLOCK_ENTRY_TOKEN
+	// FLOW_ENTRY_TOKEN represents a FLOW-ENTRY token.
+	FLOW_ENTRY_TOKEN
+	// KEY_TOKEN represents a KEY token.
+	KEY_TOKEN
+	// VALUE_TOKEN represents a VALUE token.
+	VALUE_TOKEN
 
-	ALIAS_TOKEN   // An ALIAS token.
-	ANCHOR_TOKEN  // An ANCHOR token.
-	TAG_TOKEN     // A TAG token.
-	SCALAR_TOKEN  // A SCALAR token.
-	COMMENT_TOKEN // A COMMENT token.
+	// ALIAS_TOKEN represents an ALIAS token.
+	ALIAS_TOKEN
+	// ANCHOR_TOKEN represents an ANCHOR token.
+	ANCHOR_TOKEN
+	// TAG_TOKEN represents a TAG token.
+	TAG_TOKEN
+	// SCALAR_TOKEN represents a SCALAR token.
+	SCALAR_TOKEN
+	// COMMENT_TOKEN represents a COMMENT token.
+	COMMENT_TOKEN
 )
 
 // String returns a string representation of the token type.
@@ -346,6 +409,33 @@ type Token struct {
 	major, minor int8
 }
 
+// GetEncoding returns the stream encoding carried by a STREAM-START token.
+func (t *Token) GetEncoding() Encoding { return t.encoding }
+
+// SetEncoding sets the stream encoding carried by a STREAM-START token.
+func (t *Token) SetEncoding(encoding Encoding) { t.encoding = encoding }
+
+// GetSuffix returns the suffix carried by a TAG token.
+func (t *Token) GetSuffix() string { return string(t.suffix) }
+
+// SetSuffix sets the suffix carried by a TAG token.
+func (t *Token) SetSuffix(suffix string) { t.suffix = []byte(suffix) }
+
+// GetPrefix returns the prefix carried by a TAG-DIRECTIVE token.
+func (t *Token) GetPrefix() string { return string(t.prefix) }
+
+// SetPrefix sets the prefix carried by a TAG-DIRECTIVE token.
+func (t *Token) SetPrefix(prefix string) { t.prefix = []byte(prefix) }
+
+// GetVersion returns the version carried by a VERSION-DIRECTIVE token.
+func (t *Token) GetVersion() (int, int) { return int(t.major), int(t.minor) }
+
+// SetVersion sets the version carried by a VERSION-DIRECTIVE token.
+func (t *Token) SetVersion(major, minor int) {
+	t.major = int8(major)
+	t.minor = int8(minor)
+}
+
 // Events
 
 // EventType represents the type of a parsing or emitting event.
@@ -353,19 +443,29 @@ type EventType int8
 
 // Event types.
 const (
-	// An empty event.
+	// NO_EVENT represents an empty event.
 	NO_EVENT EventType = iota
-
-	STREAM_START_EVENT   // A STREAM-START event.
-	STREAM_END_EVENT     // A STREAM-END event.
-	DOCUMENT_START_EVENT // A DOCUMENT-START event.
-	DOCUMENT_END_EVENT   // A DOCUMENT-END event.
-	ALIAS_EVENT          // An ALIAS event.
-	SCALAR_EVENT         // A SCALAR event.
-	SEQUENCE_START_EVENT // A SEQUENCE-START event.
-	SEQUENCE_END_EVENT   // A SEQUENCE-END event.
-	MAPPING_START_EVENT  // A MAPPING-START event.
-	MAPPING_END_EVENT    // A MAPPING-END event.
+	// STREAM_START_EVENT represents a STREAM-START event.
+	STREAM_START_EVENT
+	// STREAM_END_EVENT represents a STREAM-END event.
+	STREAM_END_EVENT
+	// DOCUMENT_START_EVENT represents a DOCUMENT-START event.
+	DOCUMENT_START_EVENT
+	// DOCUMENT_END_EVENT represents a DOCUMENT-END event.
+	DOCUMENT_END_EVENT
+	// ALIAS_EVENT represents an ALIAS event.
+	ALIAS_EVENT
+	// SCALAR_EVENT represents a SCALAR event.
+	SCALAR_EVENT
+	// SEQUENCE_START_EVENT represents a SEQUENCE-START event.
+	SEQUENCE_START_EVENT
+	// SEQUENCE_END_EVENT represents a SEQUENCE-END event.
+	SEQUENCE_END_EVENT
+	// MAPPING_START_EVENT represents a MAPPING-START event.
+	MAPPING_START_EVENT
+	// MAPPING_END_EVENT represents a MAPPING-END event.
+	MAPPING_END_EVENT
+	// TAIL_COMMENT_EVENT represents a TAIL-COMMENT event.
 	TAIL_COMMENT_EVENT
 )
 
@@ -454,23 +554,43 @@ func (e *Event) GetVersionDirective() *VersionDirective { return e.versionDirect
 // GetTagDirectives returns the tag directives (for DOCUMENT_START_EVENT).
 func (e *Event) GetTagDirectives() []TagDirective { return e.tagDirectives }
 
-// Nodes
+// GetQuotedImplicit reports whether a scalar tag may be omitted for a
+// non-plain scalar style.
+func (e *Event) GetQuotedImplicit() bool { return e.quoted_implicit }
+
+// Possible values for [Node.Tag]
 const (
-	NULL_TAG      = "tag:yaml.org,2002:null"      // The tag !!null with the only possible value: null.
-	BOOL_TAG      = "tag:yaml.org,2002:bool"      // The tag !!bool with the values: true and false.
-	STR_TAG       = "tag:yaml.org,2002:str"       // The tag !!str for string values.
-	INT_TAG       = "tag:yaml.org,2002:int"       // The tag !!int for integer values.
-	FLOAT_TAG     = "tag:yaml.org,2002:float"     // The tag !!float for float values.
-	TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp" // The tag !!timestamp for date and time values.
+	// NULL_TAG is the tag !!null with the only possible value: null.
+	NULL_TAG = "tag:yaml.org,2002:null"
+	// BOOL_TAG is the tag !!bool with the values: true and false.
+	BOOL_TAG = "tag:yaml.org,2002:bool"
+	// STR_TAG is the tag !!str for string values.
+	STR_TAG = "tag:yaml.org,2002:str"
+	// INT_TAG is the tag !!int for integer values.
+	INT_TAG = "tag:yaml.org,2002:int"
+	// FLOAT_TAG is the tag !!float for float values.
+	FLOAT_TAG = "tag:yaml.org,2002:float"
+	// TIMESTAMP_TAG is the tag !!timestamp for date and time values.
+	TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp"
+	// SEQ_TAG is the tag !!seq for sequences.
+	SEQ_TAG = "tag:yaml.org,2002:seq"
+	// MAP_TAG is the tag !!map for mappings.
+	MAP_TAG = "tag:yaml.org,2002:map"
+)
 
-	SEQ_TAG = "tag:yaml.org,2002:seq" // The tag !!seq is used to denote sequences.
-	MAP_TAG = "tag:yaml.org,2002:map" // The tag !!map is used to denote mapping.
-
-	// Not in original libyaml.
+// Additional possible values for [Node.Tag]
+// These are the tags that are not in the original [libyaml] but are used in go-yaml for specific purposes.
+//
+// [libyaml]: https://github.com/yaml/libyaml
+const (
+	// BINARY_TAG is the tag !!binary for binary data.
 	BINARY_TAG = "tag:yaml.org,2002:binary"
-	MERGE_TAG  = "tag:yaml.org,2002:merge"
-
-	DEFAULT_SCALAR_TAG   = STR_TAG // The default scalar tag is !!str.
-	DEFAULT_SEQUENCE_TAG = SEQ_TAG // The default sequence tag is !!seq.
-	DEFAULT_MAPPING_TAG  = MAP_TAG // The default mapping tag is !!map.
+	// MERGE_TAG is the tag !!merge for merging mappings.
+	MERGE_TAG = "tag:yaml.org,2002:merge"
+	// DEFAULT_SCALAR_TAG is the default tag for scalars, which is !!str.
+	DEFAULT_SCALAR_TAG = STR_TAG
+	// DEFAULT_SEQUENCE_TAG is the default tag for sequences, which is !!seq.
+	DEFAULT_SEQUENCE_TAG = SEQ_TAG
+	// DEFAULT_MAPPING_TAG is the default tag for mappings, which is !!map.
+	DEFAULT_MAPPING_TAG = MAP_TAG
 )

@@ -1,0 +1,1297 @@
+package correctness
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"math/rand" //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/RoaringBitmap/roaring"
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
+	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/querybounds"
+	"github.com/grafana/loki/v3/pkg/logline/store"
+)
+
+func TestRunVerificationCycle_Correct(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+
+	loki := newTestLokiServer(t, witnessTS, needle)
+	defer loki.Close()
+
+	indexStore := newTestStore(t)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base.Add(50*time.Second), base.Add(70*time.Second))
+
+	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
+	report, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, report.SkippedReason)
+	require.True(t, report.Correct)
+	require.Equal(t, 0, report.FalseNegatives)
+	require.Equal(t, 0, report.FalsePositives)
+	require.GreaterOrEqual(t, report.TruePositives, 1)
+}
+
+func TestRunVerificationCycle_FalseNegative(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+
+	loki := newTestLokiServer(t, witnessTS, needle)
+	defer loki.Close()
+
+	indexStore := newTestStore(t)
+	// Candidate doc does not overlap the witness timestamp → false negative.
+	// The candidate also won't match in Loki → false positive (expected for a
+	// non-deterministic index, does not affect correctness).
+	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(110*time.Second), base.Add(115*time.Second))
+
+	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
+	report, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, report.SkippedReason)
+	require.False(t, report.Correct, "false negative should make the test incorrect")
+	require.Greater(t, report.FalseNegatives, 0)
+	require.Equal(t, 1, report.FalsePositives)
+}
+
+func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+	hash := "cccccccccccccccc"
+
+	loki := newTestLokiServer(t, witnessTS, needle)
+	defer loki.Close()
+
+	// Match correctness QIW so IndexesExcludedByIngesterWindow can fire.
+	bucket := objstore.NewInMemBucket()
+	indexStore, err := store.NewStore(bucket, store.Config{
+		MinDate:              "0001-01-01",
+		QueryIngestersWithin: 1 * time.Minute,
+	}, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	// Log span covers the witness (service clock). Kafka/rec time must be fresh
+	// against wall clock — IndexesForRange uses time.Now(), not svc.nowFn.
+	wallNow := time.Now().UTC()
+	writeTestIndexWithRecordTs(t, indexStore, hash, needle,
+		base.Add(50*time.Second), base.Add(70*time.Second),
+		wallNow.Add(-30*time.Second), wallNow.Add(-15*time.Second),
+	)
+
+	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
+	report, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, report.SkippedReason)
+	require.False(t, report.Correct)
+	require.Greater(t, report.FalseNegatives, 0)
+
+	covering := svc.excludedIndexesCoveringFNs(
+		report.FalseNegativeTimestamps,
+		base,
+		base.Add(2*time.Minute),
+	)
+	require.Len(t, covering, 1)
+	require.Equal(t, "2026-02-26/"+hash, covering[0].ID())
+}
+
+func TestRunVerificationCycle_UnsupportedQuery(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+
+	loki := newTestLokiServer(t, witnessTS, needle)
+	defer loki.Close()
+
+	indexStore := newTestStore(t)
+	svc := newTestService(t, indexStore, loki.URL, base)
+	useLogHintSeed(svc)
+	svc.hintProvider = unsupportedHintProvider{}
+
+	report, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, skipQueryUnsupported, report.SkippedReason)
+}
+
+func TestPickNeedle(t *testing.T) {
+	entries := []logproto.Entry{
+		{Line: "stable token hellohello"},
+		{Line: "trace=9fA81cD2Ef0077aa done"},
+	}
+
+	needle, _, ok := pickNeedle(entries, 6)
+	require.True(t, ok)
+	require.Equal(t, "9fA81cD2Ef0077aa", needle)
+}
+
+func TestBuildLabelFilterHintQuery(t *testing.T) {
+	query := buildLabelFilterHintQuery(`{job="api"}`, "trace_id", "abc123def456")
+	require.Equal(t, `{job="api"} | trace_id="abc123def456"`, query)
+}
+
+func TestBuildJSONLabelFilterHintQuery(t *testing.T) {
+	query := buildJSONLabelFilterHintQuery(`{job="api"}`, "dashboardUID", "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec")
+	require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, query)
+}
+
+func TestBuildMetricQuery(t *testing.T) {
+	hq, err := newHintQuery(hintQueryTypeLineFilter, "9fA81cD2Ef0077aa", `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	require.NoError(t, err)
+
+	got, err := buildMetricQuery(hq)
+	require.NoError(t, err)
+	require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, got.query)
+	require.Equal(t, hintQueryTypeMetricRange, got.queryType)
+	require.Equal(t, "9fA81cD2Ef0077aa", got.needle)
+	require.NotNil(t, got.expr)
+	require.NotEmpty(t, hintprovider.SupportedMetricQuery(got.expr, 6))
+}
+
+func TestPickJSONField(t *testing.T) {
+	t.Run("picks top-level string long enough for ngrams", func(t *testing.T) {
+		field, value, ok := pickJSONField([]queryEntry{{
+			Entry: logproto.Entry{Line: `{"dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec","level":"info"}`},
+		}}, 6)
+		require.True(t, ok)
+		require.Equal(t, "dashboardUID", field)
+		require.Equal(t, "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", value)
+	})
+	t.Run("skips non-json lines", func(t *testing.T) {
+		_, _, ok := pickJSONField([]queryEntry{{Entry: logproto.Entry{Line: "request completed"}}}, 6)
+		require.False(t, ok)
+	})
+	t.Run("skips escaped values that are not a line substring", func(t *testing.T) {
+		_, _, ok := pickJSONField([]queryEntry{{
+			Entry: logproto.Entry{Line: `{"msg":"hello\nworldxx"}`},
+		}}, 6)
+		require.False(t, ok)
+	})
+	t.Run("skips ineligible siblings and picks the valid field", func(t *testing.T) {
+		field, value, ok := pickJSONField([]queryEntry{{
+			Entry: logproto.Entry{Line: `{"level":"info","status":200,"dashboard-uid":"skipped-hyphen-keyxx","dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"}`},
+		}}, 6)
+		require.True(t, ok)
+		require.Equal(t, "dashboardUID", field)
+		require.Equal(t, "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", value)
+	})
+	t.Run("skips json key that already exists as a stream label", func(t *testing.T) {
+		field, value, ok := pickJSONField([]queryEntry{{
+			Entry:        logproto.Entry{Line: `{"name":"celz-us-portland","dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"}`},
+			StreamLabels: loghttp.LabelSet{"name": "k6-operator"},
+		}}, 6)
+		require.True(t, ok)
+		require.Equal(t, "dashboardUID", field)
+		require.Equal(t, "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", value)
+	})
+	t.Run("skips json key that already exists as structured metadata", func(t *testing.T) {
+		field, value, ok := pickJSONField([]queryEntry{{
+			Entry: logproto.Entry{
+				Line: `{"name":"celz-us-portland","dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"}`,
+				StructuredMetadata: []logproto.LabelAdapter{
+					{Name: "name", Value: "from-sm"},
+				},
+			},
+		}}, 6)
+		require.True(t, ok)
+		require.Equal(t, "dashboardUID", field)
+		require.Equal(t, "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", value)
+	})
+	t.Run("no field when every eligible key collides", func(t *testing.T) {
+		_, _, ok := pickJSONField([]queryEntry{{
+			Entry:        logproto.Entry{Line: `{"name":"celz-us-portland"}`},
+			StreamLabels: loghttp.LabelSet{"name": "k6-operator"},
+		}}, 6)
+		require.False(t, ok)
+	})
+	t.Run("uses first value when a key is duplicated", func(t *testing.T) {
+		field, value, ok := pickJSONField([]queryEntry{{
+			Entry: logproto.Entry{Line: `{"module":"agent_virtual_environment","module":"environment"}`},
+		}}, 6)
+		require.True(t, ok)
+		require.Equal(t, "module", field)
+		require.Equal(t, "agent_virtual_environment", value)
+	})
+}
+
+func TestPickHintQuery_ShortValueUsesLineFilter(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
+	start, end := usableMetricPickRange(svc)
+	for i := 0; i < 20; i++ {
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
+		require.True(t, ok)
+		require.NotNil(t, h.expr)
+		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+		switch h.queryType {
+		case hintQueryTypeLineFilter:
+			require.Equal(t, `{job="api"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, `sum(count_over_time({job="api"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
+	}
+}
+
+func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	// No SM: SM path falls back to line; stream-label and line paths remain.
+	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
+	value := "checkout-service"
+	start, end := usableMetricPickRange(svc)
+	sawLabel, sawLine := false, false
+	for seed := int64(0); seed < 50 && (!sawLabel || !sawLine); seed++ {
+		svc.randMu.Lock()
+		svc.rand = rand.New(rand.NewSource(seed))
+		svc.randMu.Unlock()
+
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", value, logs, start, end)
+		require.True(t, ok)
+		require.NotNil(t, h.expr)
+		switch h.queryType {
+		case hintQueryTypeLabelFilter:
+			sawLabel = true
+			require.Equal(t, value, h.needle)
+			require.Equal(t, `{job="checkout-service"} | job="checkout-service"`, h.query)
+		case hintQueryTypeLineFilter:
+			sawLine = true
+			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+			require.Equal(t, `{job="checkout-service"} |= "9fA81cD2Ef0077aa"`, h.query)
+		case hintQueryTypeMetricRange:
+			require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "9fA81cD2Ef0077aa" [5m0s]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
+	}
+	require.True(t, sawLabel, "expected some seeds to pick label_filter")
+	require.True(t, sawLine, "expected some seeds to pick line_filter")
+}
+
+func TestPickHintQuery_FiveWayWhenAllEligible(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	jsonValue := "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"
+	smValue := "traceidvalue99"
+	streamValue := "checkout-service"
+	logs := []queryEntry{{
+		Entry: logproto.Entry{
+			Line: `{"dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec","trace-id":"9fA81cD2Ef0077aa"}`,
+			StructuredMetadata: []logproto.LabelAdapter{
+				{Name: "trace_id", Value: smValue},
+			},
+		},
+	}}
+	lineNeedle, _, ok := pickNeedle(protoEntries(logs), 6)
+	require.True(t, ok)
+	start, end := usableMetricPickRange(svc)
+
+	sawSM, sawLabel, sawJSON, sawLine, sawMetricRange := false, false, false, false, false
+	for seed := int64(0); seed < 200 && (!sawSM || !sawLabel || !sawJSON || !sawLine || !sawMetricRange); seed++ {
+		svc.randMu.Lock()
+		svc.rand = rand.New(rand.NewSource(seed))
+		svc.randMu.Unlock()
+
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, start, end)
+		require.True(t, ok)
+		require.NotNil(t, h.expr)
+		switch h.queryType {
+		case hintQueryTypeSMLabelFilter:
+			sawSM = true
+			require.Equal(t, smValue, h.needle)
+		case hintQueryTypeLabelFilter:
+			sawLabel = true
+			require.Equal(t, streamValue, h.needle)
+		case hintQueryTypeJSONLabelFilter:
+			sawJSON = true
+			require.Equal(t, jsonValue, h.needle)
+			require.Equal(t, `{job="checkout-service"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, h.query)
+		case hintQueryTypeLineFilter:
+			sawLine = true
+			require.Equal(t, lineNeedle, h.needle)
+		case hintQueryTypeMetricRange:
+			sawMetricRange = true
+			require.Equal(t, lineNeedle, h.needle)
+			require.Equal(t, `sum(count_over_time({job="checkout-service"} |= "`+lineNeedle+`" [5m0s]))`, h.query)
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
+	}
+	require.True(t, sawSM, "expected some seeds to pick sm_label_filter")
+	require.True(t, sawLabel, "expected some seeds to pick label_filter")
+	require.True(t, sawJSON, "expected some seeds to pick json_label_filter")
+	require.True(t, sawMetricRange, "expected some seeds to pick metric_range")
+	require.True(t, sawLine, "expected some seeds to pick line_filter")
+}
+
+func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	jsonValue := "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"
+	logs := []queryEntry{{
+		Entry: logproto.Entry{Line: `{"dashboardUID":"grafana_slo_app-klu4xpj1w5lmbmvi8u6ec","trace-id":"9fA81cD2Ef0077aa"}`},
+	}}
+	start, end := usableMetricPickRange(svc)
+
+	sawJSON, sawLine := false, false
+	for seed := int64(0); seed < 80 && (!sawJSON || !sawLine); seed++ {
+		svc.randMu.Lock()
+		svc.rand = rand.New(rand.NewSource(seed))
+		svc.randMu.Unlock()
+
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
+		require.True(t, ok)
+		require.NotNil(t, h.expr)
+		switch h.queryType {
+		case hintQueryTypeJSONLabelFilter:
+			sawJSON = true
+			require.Equal(t, jsonValue, h.needle)
+			require.Equal(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`, h.query)
+		case hintQueryTypeLineFilter:
+			sawLine = true
+		case hintQueryTypeMetricRange:
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
+	}
+	require.True(t, sawJSON, "expected some seeds to pick json_label_filter")
+	require.True(t, sawLine, "expected some seeds to pick line_filter")
+}
+
+func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	smValue := "traceidvalue99"
+	logs := []queryEntry{{
+		Entry: logproto.Entry{
+			Line: "request completed",
+			StructuredMetadata: []logproto.LabelAdapter{
+				{Name: "trace_id", Value: smValue},
+				{Name: "__error__", Value: "shouldbeignored"},
+			},
+		},
+	}}
+	start, end := usableMetricPickRange(svc)
+
+	// Stream label value is short, so the stream-label path falls back to line.
+	sawSM, sawLine := false, false
+	for seed := int64(0); seed < 50 && (!sawSM || !sawLine); seed++ {
+		svc.randMu.Lock()
+		svc.rand = rand.New(rand.NewSource(seed))
+		svc.randMu.Unlock()
+
+		h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, start, end)
+		require.True(t, ok)
+		require.NotNil(t, h.expr)
+		switch h.queryType {
+		case hintQueryTypeSMLabelFilter:
+			sawSM = true
+			require.Equal(t, smValue, h.needle)
+			require.Equal(t, `{job="api"} | trace_id="traceidvalue99"`, h.query)
+		case hintQueryTypeLineFilter:
+			sawLine = true
+		case hintQueryTypeMetricRange:
+		default:
+			t.Fatalf("unexpected query type %q", h.queryType)
+		}
+	}
+	require.True(t, sawSM, "expected some seeds to pick sm_label_filter")
+	require.True(t, sawLine, "expected some seeds to pick line_filter")
+}
+
+func TestPickHintQuery_IneligibleSMFallsBackToLineNotLabel(t *testing.T) {
+	indexStore := newTestStore(t)
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	svc := newTestService(t, indexStore, loki.URL, time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC))
+
+	// SM present but unusable; stream label is long enough that the label path
+	// would succeed if tried. SM-first must fall back to line, not label.
+	streamValue := "checkout-service"
+	logs := []queryEntry{{
+		Entry: logproto.Entry{
+			Line: "request trace=9fA81cD2Ef0077aa completed",
+			StructuredMetadata: []logproto.LabelAdapter{
+				{Name: "__error__", Value: "shouldbeignored"},
+				{Name: "trace_id", Value: "short"},
+			},
+		},
+	}}
+	start, end := usableMetricPickRange(svc)
+
+	sawSMFirst := false
+	for seed := int64(0); seed < 100; seed++ {
+		if rand.New(rand.NewSource(seed)).Intn(5) != 0 {
+			continue
+		}
+		sawSMFirst = true
+
+		svc.randMu.Lock()
+		svc.rand = rand.New(rand.NewSource(seed))
+		svc.randMu.Unlock()
+
+		h, ok := svc.pickHintQuery(`{job="checkout-service"}`, "job", streamValue, logs, start, end)
+		require.True(t, ok)
+		require.Equal(t, hintQueryTypeLineFilter, h.queryType,
+			"SM-first with ineligible SM must fall back to line_filter, not label_filter")
+		require.Equal(t, "9fA81cD2Ef0077aa", h.needle)
+	}
+	require.True(t, sawSMFirst, "expected at least one seed that picks the SM branch first")
+}
+
+// usableMetricPickRange is a window whose 5m lookback stays after startedAt
+// and the test store's min date. It moves svc's clock an hour past the window,
+// so the read also ends before the ingester window.
+func usableMetricPickRange(svc *Service) (time.Time, time.Time) {
+	start := svc.startedAt.Add(time.Hour)
+	end := start.Add(15 * time.Minute)
+	svc.nowFn = func() time.Time { return end.Add(time.Hour) }
+	return start, end
+}
+
+// seedMetricPick fixes the RNG so the next pickHintQuery chooses the metric arm.
+func seedMetricPick(t *testing.T, svc *Service) {
+	t.Helper()
+	for seed := int64(0); seed < 100; seed++ {
+		if rand.New(rand.NewSource(seed)).Intn(5) == 3 {
+			svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+			return
+		}
+	}
+	t.Fatal("no seed selects the metric arm")
+}
+
+func TestPickHintQuery_MetricWindow(t *testing.T) {
+	loki := newTestLokiServer(t, time.Now(), "9fA81cD2Ef0077aa")
+	defer loki.Close()
+	needle := "9fA81cD2Ef0077aa"
+
+	tests := []struct {
+		name      string
+		minDate   string
+		startedAt time.Time
+		// maxLookback overrides the default 30d when set.
+		maxLookback time.Duration
+		now         time.Time
+		start       time.Time
+		end         time.Time
+		needleTs    time.Time
+		align       bool
+		wantMetric  bool
+	}{
+		{
+			// now-maxLookback is 11:00, after startedAt. 11:03 floored minus
+			// 5m is 10:58.
+			name:        "lookback before now minus max_lookback",
+			minDate:     "0001-01-01",
+			startedAt:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			maxLookback: time.Hour,
+			now:         time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:       time.Date(2026, 2, 26, 11, 3, 0, 0, time.UTC),
+			end:         time.Date(2026, 2, 26, 11, 20, 0, 0, time.UTC),
+			needleTs:    time.Date(2026, 2, 26, 11, 10, 0, 0, time.UTC),
+			wantMetric:  false,
+		},
+		{
+			name:        "lookback after now minus max_lookback",
+			minDate:     "0001-01-01",
+			startedAt:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			maxLookback: time.Hour,
+			now:         time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:       time.Date(2026, 2, 26, 11, 6, 0, 0, time.UTC),
+			end:         time.Date(2026, 2, 26, 11, 20, 0, 0, time.UTC),
+			needleTs:    time.Date(2026, 2, 26, 11, 10, 0, 0, time.UTC),
+			wantMetric:  true,
+		},
+		{
+			name:       "lookback before min date",
+			minDate:    "2026-06-01",
+			startedAt:  time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC),
+			start:      time.Date(2026, 6, 1, 0, 2, 0, 0, time.UTC),
+			end:        time.Date(2026, 6, 1, 0, 20, 0, 0, time.UTC),
+			needleTs:   time.Date(2026, 6, 1, 0, 10, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "lookback before earliest",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 10, 15, 0, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 10, 5, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "aligned query drops the final partial minute",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 30, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
+			align:      true,
+			wantMetric: false,
+		},
+		{
+			name:       "unaligned query keeps the final partial minute",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 30, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 12, 5, 30, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 12, 5, 10, 0, time.UTC),
+			wantMetric: true,
+		},
+		{
+			// newTestService sets query_ingesters_within to 1m. The end
+			// 11:59:10 is before now-1m (11:59:30), but rounding it up to
+			// 12:00:00 is not.
+			name:       "unaligned end rounds up into the ingester window",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 0, 30, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 44, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 11, 59, 10, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 11, 50, 0, 0, time.UTC),
+			wantMetric: false,
+		},
+		{
+			name:       "unaligned end rounds up to the ingester window start",
+			minDate:    "0001-01-01",
+			startedAt:  time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC),
+			now:        time.Date(2026, 2, 26, 12, 1, 0, 0, time.UTC),
+			start:      time.Date(2026, 2, 26, 11, 44, 0, 0, time.UTC),
+			end:        time.Date(2026, 2, 26, 11, 59, 10, 0, time.UTC),
+			needleTs:   time.Date(2026, 2, 26, 11, 50, 0, 0, time.UTC),
+			wantMetric: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestService(t, newTestStoreMinDate(t, tc.minDate), loki.URL, tc.startedAt)
+			svc.nowFn = func() time.Time { return tc.now }
+			svc.cfg.AlignQueriesWithStep = tc.align
+			if tc.maxLookback > 0 {
+				svc.cfg.MaxLookback = tc.maxLookback
+			}
+			seedMetricPick(t, svc)
+
+			logs := []queryEntry{{Entry: logproto.Entry{
+				Timestamp: tc.needleTs,
+				Line:      "request trace=" + needle + " completed",
+			}}}
+			h, ok := svc.pickHintQuery(`{job="api"}`, "job", "api", logs, tc.start, tc.end)
+			require.True(t, ok)
+			require.Equal(t, needle, h.needle)
+			if tc.wantMetric {
+				require.Equal(t, hintQueryTypeMetricRange, h.queryType)
+				return
+			}
+			require.Equal(t, hintQueryTypeLineFilter, h.queryType)
+		})
+	}
+}
+
+func TestRunVerificationCycle_MetricQueriesBothWays(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	report, got := runUntilMetricCycle(t, newTestStore(t), base, needle, func(string) any {
+		return map[string]any{"resultType": "matrix", "result": []any{}}
+	})
+
+	var logs, metrics []recordedMetricQuery
+	for _, q := range got {
+		if q.step == "" {
+			logs = append(logs, q)
+			continue
+		}
+		metrics = append(metrics, q)
+	}
+	require.Len(t, logs, 1)
+	require.Empty(t, logs[0].logline)
+	require.Empty(t, logs[0].skipCache)
+	require.Empty(t, logs[0].cacheControl)
+
+	require.Len(t, metrics, 2)
+	require.Equal(t, report.HintQuery, metrics[0].query)
+	require.Equal(t, metrics[0].query, metrics[1].query)
+	require.Equal(t, "60", metrics[0].step)
+	require.Equal(t, "60", metrics[1].step)
+	require.Equal(t, "live", metrics[0].logline)
+	require.Equal(t, "true", metrics[0].skipCache)
+	require.Equal(t, "no-cache", metrics[0].cacheControl)
+	require.Equal(t, "off", metrics[1].logline)
+	require.Empty(t, metrics[1].skipCache)
+	require.Equal(t, "no-cache", metrics[1].cacheControl)
+
+	// Both requests send the sampled range. Loki widens it for the lookback,
+	// so neither sends the widened read bounds.
+	for _, q := range append(logs, metrics...) {
+		require.Equal(t, report.RangeStart.UnixNano(), q.start)
+		require.Equal(t, report.RangeEnd.UnixNano(), q.end)
+	}
+
+	require.False(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+}
+
+func TestRunVerificationCycle_MetricMatricesEqual(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	indexStore := newTestStore(t)
+	same := metricMatrix([]any{1_760_000_000.0, "1"}, []any{1_760_000_060.0, "3"})
+	report, svc, seed := runUntilMetricCycleSvc(t, indexStore, base, needle, func(string) any {
+		return same
+	})
+	require.True(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+
+	expr, err := syntax.ParseExpr(report.HintQuery)
+	require.NoError(t, err)
+	qb := querybounds.GetQueryBounds(report.RangeStart, report.RangeEnd, time.Minute.Milliseconds(), expr, querybounds.QueryTypeMetricRange, svc.cfg.AlignQueriesWithStep)
+	// Ends before the requested start, so only the widened read range overlaps it.
+	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, qb.ReadStart, report.RangeStart.Add(-time.Millisecond))
+	writeTestIndex(t, indexStore, "cccccccccccccccc", needle, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC))
+
+	before := readTestCounts(svc)
+	svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+	again, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.True(t, again.Correct)
+	require.Equal(t, testCounts{total: before.total + 1, correct: before.correct + 1, incorrect: before.incorrect}, readTestCounts(svc))
+	require.True(t, again.RangeStart.Equal(report.RangeStart))
+	require.Equal(t, indexIDsForRange(indexStore, qb.ReadStart, qb.ReadEnd), again.OverlappingIndexIDs)
+	require.NotEqual(t, indexIDsForRange(indexStore, report.RangeStart, report.RangeEnd), again.OverlappingIndexIDs)
+}
+
+func TestRunVerificationCycle_MetricMatricesMismatch(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	report, svc, seed := runUntilMetricCycleSvc(t, newTestStore(t), base, needle, func(logline string) any {
+		if logline == "live" {
+			return metricMatrix([]any{1_760_000_000.0, "2"})
+		}
+		return metricMatrix([]any{1_760_000_000.0, "1"})
+	})
+	require.False(t, report.Correct)
+	requireMetricIdentity(t, report, needle)
+
+	// Earlier seeds can run log cycles, so compare one rerun of the metric seed.
+	before := readTestCounts(svc)
+	svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+	again, err := svc.runVerificationCycle(context.Background())
+	require.NoError(t, err)
+	require.False(t, again.Correct)
+	require.Equal(t, testCounts{total: before.total + 1, correct: before.correct, incorrect: before.incorrect + 1}, readTestCounts(svc))
+}
+
+// testCounts holds the totalTests, totalCorrectTests and totalIncorrectTests
+// counters, so a test can check one cycle's effect on them.
+type testCounts struct {
+	total, correct, incorrect float64
+}
+
+func readTestCounts(svc *Service) testCounts {
+	return testCounts{
+		total:     testutil.ToFloat64(svc.metrics.totalTests),
+		correct:   testutil.ToFloat64(svc.metrics.totalCorrectTests),
+		incorrect: testutil.ToFloat64(svc.metrics.totalIncorrectTests),
+	}
+}
+
+func TestRunVerificationCycle_MetricScoresWhenNotNarrowed(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	same := metricMatrix([]any{1_760_000_000.0, "1"})
+
+	tests := []struct {
+		name string
+		// logline is the live response's stats.logline block. Nil leaves it out.
+		logline map[string]any
+	}{
+		{name: "no logline stats"},
+		{name: "size gate", logline: map[string]any{"outcome": "query_too_small"}},
+		{name: "unsupported query", logline: map[string]any{"outcome": "unsupported_query", "hintStatus": "unsupported"}},
+		{name: "ingester window only", logline: map[string]any{"outcome": "recent_data_only", "hintStatus": "ingester_window"}},
+		{name: "nothing narrowed", logline: map[string]any{"outcome": "time_range_not_indexed", "hintStatus": "ok"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// runUntilMetricCycle requires the cycle not to error.
+			report, _ := runUntilMetricCycle(t, newTestStore(t), base, needle, func(logline string) any {
+				if logline == "live" && tt.logline != nil {
+					return withLogline(same, tt.logline)
+				}
+				return same
+			})
+			// Not narrowed is scored like any other cycle, so equal matrices
+			// with a positive sample are correct.
+			require.Empty(t, report.SkippedReason)
+			require.True(t, report.Correct)
+			requireMetricIdentity(t, report, needle)
+		})
+	}
+}
+
+func TestRunVerificationCycle_MetricErrorsWhenLookupFailed(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	needle := "9fA81cD2Ef0077aa"
+	same := metricMatrix([]any{1_760_000_000.0, "1"})
+
+	tests := []struct {
+		name       string
+		hintStatus string
+		outcome    string
+	}{
+		{name: "lookup failed", hintStatus: "error", outcome: "lookup_failed"},
+		{name: "lookup timed out", hintStatus: "incomplete", outcome: "lookup_timeout"},
+		{name: "lookup canceled", hintStatus: "canceled", outcome: "canceled"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Find a seed that picks the metric arm while the lookup succeeds,
+			// then rerun that seed with the failed lookup.
+			var failed atomic.Bool
+			report, svc, seed := runUntilMetricCycleSvc(t, newTestStore(t), base, needle, func(logline string) any {
+				if logline == "live" && failed.Load() {
+					// Some sub-requests can still be narrowed before the lookup fails.
+					return withLogline(same, map[string]any{"outcome": tt.outcome, "hintStatus": tt.hintStatus, "narrowedRequests": 1})
+				}
+				return same
+			})
+			require.True(t, report.Correct)
+
+			failed.Store(true)
+			svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+			_, err := svc.runVerificationCycle(context.Background())
+			require.ErrorContains(t, err, tt.hintStatus)
+			require.ErrorContains(t, err, tt.outcome)
+		})
+	}
+}
+
+type recordedMetricQuery struct {
+	query        string
+	step         string
+	start, end   int64 // Unix nanoseconds
+	logline      string
+	skipCache    string
+	cacheControl string
+}
+
+func runUntilMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, []recordedMetricQuery) {
+	t.Helper()
+	report, _, _, got := runMetricCycle(t, indexStore, base, needle, matrix)
+	return report, got
+}
+
+func runUntilMetricCycleSvc(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, *Service, int64) {
+	t.Helper()
+	report, svc, seed, _ := runMetricCycle(t, indexStore, base, needle, matrix)
+	return report, svc, seed
+}
+
+func runMetricCycle(t *testing.T, indexStore *store.Store, base time.Time, needle string, matrix func(logline string) any) (CycleReport, *Service, int64, []recordedMetricQuery) {
+	t.Helper()
+
+	var mu sync.Mutex
+	var got []recordedMetricQuery
+	writeEnvelope := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   data,
+		}))
+	}
+	loki := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
+		switch r.URL.Path {
+		case "/loki/api/v1/labels":
+			writeEnvelope(w, []string{"job"})
+		case "/loki/api/v1/label/job/values":
+			writeEnvelope(w, []string{"api"})
+		case "/loki/api/v1/query_range":
+			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			require.NoError(t, err)
+			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			require.NoError(t, err)
+			q := recordedMetricQuery{
+				query:        r.URL.Query().Get("query"),
+				step:         r.URL.Query().Get("step"),
+				start:        startNS,
+				end:          endNS,
+				logline:      r.Header.Get("X-Logline-Index"),
+				skipCache:    r.Header.Get("X-Logline-Skip-Cache"),
+				cacheControl: r.Header.Get("Cache-Control"),
+			}
+			mu.Lock()
+			got = append(got, q)
+			mu.Unlock()
+			if q.step != "" {
+				writeEnvelope(w, matrix(q.logline))
+				return
+			}
+			mid := startNS + (endNS-startNS)/2
+			writeEnvelope(w, map[string]any{
+				"resultType": "streams",
+				"result": []map[string]any{{
+					"stream": map[string]string{"job": "api"},
+					"values": [][]string{{strconv.FormatInt(mid, 10), "request trace=" + needle + " completed"}},
+				}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(loki.Close)
+
+	svc := newTestService(t, indexStore, loki.URL, base.Add(-2*time.Hour))
+	svc.nowFn = func() time.Time { return base.Add(3 * time.Minute) }
+
+	var report CycleReport
+	var seed int64
+	found := false
+	for seed = 0; seed < 40 && !found; seed++ {
+		mu.Lock()
+		got = nil
+		mu.Unlock()
+		svc.rand = rand.New(rand.NewSource(seed)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		var err error
+		report, err = svc.runVerificationCycle(context.Background())
+		require.NoError(t, err)
+		found = report.HintQueryType == string(hintQueryTypeMetricRange)
+	}
+	require.True(t, found, "expected a seed to run the metric query")
+
+	mu.Lock()
+	defer mu.Unlock()
+	recorded := append([]recordedMetricQuery(nil), got...)
+	return report, svc, seed - 1, recorded
+}
+
+func metricMatrix(values ...[]any) map[string]any {
+	return map[string]any{
+		"resultType": "matrix",
+		"result": []any{map[string]any{
+			"metric": map[string]string{},
+			"values": values,
+		}},
+	}
+}
+
+// withLogline returns a copy of a metric response's data with a stats.logline
+// block, the way the query frontend reports its logline handling.
+func withLogline(data map[string]any, logline map[string]any) map[string]any {
+	out := make(map[string]any, len(data)+1)
+	for k, v := range data {
+		out[k] = v
+	}
+	out["stats"] = map[string]any{"logline": logline}
+	return out
+}
+
+func requireMetricIdentity(t *testing.T, report CycleReport, needle string) {
+	t.Helper()
+	require.Equal(t, string(hintQueryTypeMetricRange), report.HintQueryType)
+	require.Equal(t, needle, report.Needle)
+	require.NotEmpty(t, report.HintQuery)
+	require.Zero(t, report.FalseNegatives)
+	require.Empty(t, report.FalseNegativeTimestamps)
+	require.Zero(t, report.FalsePositives)
+	require.Zero(t, report.CoveredResults)
+}
+
+func indexIDsForRange(indexStore *store.Store, start, end time.Time) []string {
+	overlapping := indexStore.IndexesForRange(start, end)
+	ids := make([]string, len(overlapping))
+	for i, m := range overlapping {
+		ids[i] = m.ID()
+	}
+	return ids
+}
+
+// useLogHintSeed fixes the cycle RNG so the hint pick stays a line filter.
+// With one label value, the cycle draws Intn(1) and then Intn(5). Seed 0
+// draws 4, which is the line-filter arm.
+func useLogHintSeed(svc *Service) {
+	svc.rand = rand.New(rand.NewSource(0)) //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+}
+
+type unsupportedHintProvider struct{}
+
+func (unsupportedHintProvider) ProvideHints(
+	context.Context,
+	string,
+	syntax.Expr,
+	model.Time,
+	model.Time,
+) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
+	return nil, nil, hintprovider.ErrUnsupported
+}
+
+func newTestService(t *testing.T, indexStore *store.Store, endpoint string, start time.Time) *Service {
+	t.Helper()
+
+	cfg := Config{
+		LokiQueryEndpoints:   []string{endpoint},
+		TenantID:             "test-tenant",
+		QueryInterval:        1 * time.Second,
+		QueryIngestersWithin: 1 * time.Minute,
+		QueryRangeMin:        2 * time.Minute,
+		QueryRangeMax:        2 * time.Minute,
+		RequestTimeout:       5 * time.Second,
+		CycleTimeout:         20 * time.Second,
+		ErrorBackoffMin:      1 * time.Second,
+		ErrorBackoffMax:      2 * time.Second,
+		LogQueryLimit:        100,
+		NgramLength:          6,
+	}
+
+	svc, err := New(indexStore, cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	svc.startedAt = start
+	svc.nowFn = func() time.Time {
+		return start.Add(3 * time.Minute)
+	}
+	return svc
+}
+
+func newTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	return newTestStoreMinDate(t, "0001-01-01")
+}
+
+func newTestStoreMinDate(t *testing.T, minDate string) *store.Store {
+	t.Helper()
+	bucket := objstore.NewInMemBucket()
+	indexStore, err := store.NewStore(bucket, store.Config{MinDate: minDate}, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	return indexStore
+}
+
+func writeTestIndex(t *testing.T, indexStore *store.Store, hash, needle string, docMin, docMax time.Time) {
+	t.Helper()
+	writeTestIndexWithRecordTs(t, indexStore, hash, needle, docMin, docMax, docMin, docMax)
+}
+
+func writeTestIndexWithRecordTs(
+	t *testing.T,
+	indexStore *store.Store,
+	hash, needle string,
+	docMin, docMax, minRec, maxRec time.Time,
+) {
+	t.Helper()
+	indexBytes, headerInfo := buildIndexBytes(t, needle, docMin, docMax)
+
+	meta := store.Meta{
+		Date:        docMin.UTC().Format("2006-01-02"),
+		Hash:        hash,
+		Version:     "v3",
+		MinLogTs:    docMin.UTC(),
+		MaxLogTs:    docMax.UTC(),
+		MinRecordTs: minRec.UTC(),
+		MaxRecordTs: maxRec.UTC(),
+		IndexHeader: headerInfo,
+		SizeBytes:   int64(len(indexBytes)),
+	}
+
+	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
+	require.NoError(t, indexStore.Poll(context.Background()))
+}
+
+func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "test.lidx")
+
+	docs := []format.DocumentMetadata{
+		{ID: 0, MinTimeUnix: docMin.UnixMilli(), MaxTimeUnix: docMax.UnixMilli()},
+	}
+	writer, err := logline.NewWriter("v3", path, docs, nil)
+	require.NoError(t, err)
+
+	terms, err := hintprovider.ExtractQueryNgrams(needle, 6, "v3")
+	require.NoError(t, err)
+	require.NotEmpty(t, terms)
+
+	bm := roaring.New()
+	bm.Add(0)
+	for _, term := range terms {
+		var key [8]byte
+		copy(key[:], term)
+		require.NoError(t, writer.WriteTermBitmap(key, format.Bitmap{Roaring: bm}))
+	}
+	require.NoError(t, writer.Close())
+
+	reader, _, err := logline.OpenFile(path)
+	require.NoError(t, err)
+	info := reader.ReadHeader()
+	reader.Close()
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return data, &info
+}
+
+func TestRunning_CompletesTests(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	witnessTS := base.Add(1 * time.Minute)
+	needle := "9fA81cD2Ef0077aa"
+
+	loki := newTestLokiServer(t, witnessTS, needle)
+	defer loki.Close()
+
+	indexStore := newTestStore(t)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base.Add(50*time.Second), base.Add(70*time.Second))
+
+	cfg := Config{
+		LokiQueryEndpoints:   []string{loki.URL},
+		TenantID:             "test-tenant",
+		QueryInterval:        time.Second,
+		QueryIngestersWithin: 1 * time.Minute,
+		QueryRangeMin:        2 * time.Minute,
+		QueryRangeMax:        2 * time.Minute,
+		RequestTimeout:       5 * time.Second,
+		CycleTimeout:         20 * time.Second,
+		ErrorBackoffMin:      1 * time.Second,
+		ErrorBackoffMax:      2 * time.Second,
+		LogQueryLimit:        100,
+		NgramLength:          6,
+	}
+
+	reg := prometheus.NewRegistry()
+	svc, err := New(indexStore, cfg, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	svc.startedAt = base
+	svc.nowFn = func() time.Time {
+		return base.Add(3 * time.Minute)
+	}
+	useLogHintSeed(svc)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, svc.StartAsync(ctx))
+	require.NoError(t, svc.AwaitRunning(ctx))
+
+	// Let cycles run, then stop via context cancellation.
+	<-ctx.Done()
+	svc.StopAsync()
+	require.NoError(t, svc.AwaitTerminated(context.Background()))
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+	var testsTotal float64
+	for _, mf := range mfs {
+		if mf.GetName() == "logline_index_correctness_tests_total" {
+			testsTotal = mf.GetMetric()[0].GetCounter().GetValue()
+		}
+	}
+	require.GreaterOrEqual(t, testsTotal, float64(1), "service should complete at least one test")
+}
+
+func newTestLokiServer(t *testing.T, witnessTS time.Time, needle string) *httptest.Server {
+	t.Helper()
+
+	writeEnvelope := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   data,
+		}))
+	}
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
+
+		switch r.URL.Path {
+		case "/loki/api/v1/labels":
+			writeEnvelope(w, []string{"job"})
+			return
+		case "/loki/api/v1/label/job/values":
+			writeEnvelope(w, []string{"api"})
+			return
+		case "/loki/api/v1/query_range":
+			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
+			require.NoError(t, err)
+			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)
+			require.NoError(t, err)
+
+			withinRange := witnessTS.UnixNano() >= startNS && witnessTS.UnixNano() <= endNS
+
+			result := []map[string]any{}
+			if withinRange {
+				result = append(result, map[string]any{
+					"stream": map[string]string{"job": "api"},
+					"values": [][]string{{strconv.FormatInt(witnessTS.UnixNano(), 10), "request trace=" + needle + " completed"}},
+				})
+			}
+
+			writeEnvelope(w, map[string]any{
+				"resultType": "streams",
+				"result":     result,
+			})
+			return
+		default:
+			http.NotFound(w, r)
+			return
+		}
+	}))
+}
+
+func TestPickRandomRange_ClampsToMaxLookback(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	startedAt := now.Add(-60 * 24 * time.Hour) // older than max lookback
+	maxLookback := 30 * 24 * time.Hour
+	rangeDur := 10 * time.Minute
+
+	svc := &Service{
+		cfg: Config{
+			QueryIngestersWithin: 3 * time.Hour,
+			QueryRangeMin:        rangeDur,
+			QueryRangeMax:        rangeDur,
+			MaxLookback:          maxLookback,
+		},
+		startedAt: startedAt,
+		rand:      rand.New(rand.NewSource(1)),
+	}
+
+	earliest := now.Add(-maxLookback)
+	eligibleEnd := now.Add(-3 * time.Hour)
+
+	for i := 0; i < 50; i++ {
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.False(t, start.Before(earliest), "start %v before earliest %v", start, earliest)
+		require.True(t, start.After(startedAt), "expected clamp past started_at")
+		require.Equal(t, rangeDur, end.Sub(start))
+		require.False(t, end.After(eligibleEnd))
+	}
+}
+
+func TestPickRandomRange_RespectsRecentStartedAt(t *testing.T) {
+	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	startedAt := now.Add(-7 * 24 * time.Hour) // more recent than max lookback
+	maxLookback := 30 * 24 * time.Hour
+	rangeDur := 10 * time.Minute
+
+	svc := &Service{
+		cfg: Config{
+			QueryIngestersWithin: 3 * time.Hour,
+			QueryRangeMin:        rangeDur,
+			QueryRangeMax:        rangeDur,
+			MaxLookback:          maxLookback,
+		},
+		startedAt: startedAt,
+		rand:      rand.New(rand.NewSource(1)),
+	}
+
+	for i := 0; i < 50; i++ {
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.False(t, start.Before(startedAt), "start %v before started_at %v", start, startedAt)
+		require.Equal(t, rangeDur, end.Sub(start))
+	}
+}
+
+func TestPickRandomRange_EndsOnMinute(t *testing.T) {
+	// A step-aligned metric request drops the final partial minute, so a range
+	// ends on a minute whenever sliding it back keeps start after earliest.
+	t.Run("slides back when there is room", func(t *testing.T) {
+		now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+		startedAt := now.Add(-7*24*time.Hour + 17*time.Second) // not on a minute
+		svc := &Service{
+			cfg: Config{
+				QueryIngestersWithin: 3 * time.Hour,
+				QueryRangeMin:        5 * time.Minute,
+				QueryRangeMax:        30 * time.Minute,
+				MaxLookback:          30 * 24 * time.Hour,
+			},
+			startedAt: startedAt,
+			rand:      rand.New(rand.NewSource(1)), //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		}
+		eligibleEnd := now.Add(-3 * time.Hour)
+
+		for i := 0; i < 200; i++ {
+			start, end, skip := svc.pickRandomRange(now)
+			require.Empty(t, skip)
+			require.Equal(t, end.Truncate(time.Minute), end, "end %v is not on a minute", end)
+			require.False(t, start.Before(startedAt), "start %v before started_at %v", start, startedAt)
+			require.False(t, end.After(eligibleEnd), "end %v after the ingester window starts at %v", end, eligibleEnd)
+			require.GreaterOrEqual(t, end.Sub(start), 5*time.Minute)
+			require.LessOrEqual(t, end.Sub(start), 30*time.Minute)
+		}
+	})
+
+	t.Run("stays put when sliding would pass earliest", func(t *testing.T) {
+		// eligibleEnd 08:59:45 minus the 10m15s range leaves start only one
+		// choice, startedAt 08:49:30. Ending on 08:59:00 would need start
+		// 08:48:45.
+		now := time.Date(2026, 8, 3, 11, 59, 45, 0, time.UTC)
+		startedAt := time.Date(2026, 8, 3, 8, 49, 30, 0, time.UTC)
+		svc := &Service{
+			cfg: Config{
+				QueryIngestersWithin: 3 * time.Hour,
+				QueryRangeMin:        10*time.Minute + 15*time.Second,
+				QueryRangeMax:        10*time.Minute + 15*time.Second,
+				MaxLookback:          30 * 24 * time.Hour,
+			},
+			startedAt: startedAt,
+			rand:      rand.New(rand.NewSource(1)), //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
+		}
+
+		start, end, skip := svc.pickRandomRange(now)
+		require.Empty(t, skip)
+		require.Equal(t, startedAt, start)
+		require.Equal(t, time.Date(2026, 8, 3, 8, 59, 45, 0, time.UTC), end)
+	})
+}

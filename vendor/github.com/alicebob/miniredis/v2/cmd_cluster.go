@@ -48,8 +48,8 @@ func (m *Miniredis) cmdClusterSlots(c *server.Peer, cmd string, args []string) {
 		c.WriteInt(0)
 		c.WriteInt(16383)
 		c.WriteLen(3)
-		c.WriteBulk(m.srv.Addr().IP.String())
-		c.WriteInt(m.srv.Addr().Port)
+		c.WriteBulk(m.ip)
+		c.WriteInt(m.port)
 		c.WriteBulk("09dbe9720cda62f7865eabc5fd8857c5d2678366")
 	})
 }
@@ -65,19 +65,13 @@ func (m *Miniredis) cmdClusterKeySlot(c *server.Peer, cmd string, args []string)
 func (m *Miniredis) cmdClusterNodes(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		// do not try to use m.Addr() here, as m is blocked by this tx.
-		addr := m.srv.Addr()
-		port := m.srv.Addr().Port
-		c.WriteBulk(fmt.Sprintf("e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca %s@%d myself,master - 0 0 1 connected 0-16383", addr, port))
+		c.WriteBulk(fmt.Sprintf("e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca %s:%d@%d myself,master - 0 0 1 connected 0-16383", m.ip, m.port, m.port))
 	})
 }
 
 // CLUSTER SHARDS
 func (m *Miniredis) cmdClusterShards(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		addr := m.srv.Addr()
-		host := addr.IP.String()
-		port := addr.Port
-
 		// Array of shards (we return 1 shard)
 		c.WriteLen(1)
 
@@ -105,10 +99,10 @@ func (m *Miniredis) cmdClusterShards(c *server.Peer, cmd string, args []string) 
 		//c.WriteBulk(host) // or host:port if your client expects that
 
 		c.WriteBulk("ip")
-		c.WriteBulk(host)
+		c.WriteBulk(m.ip)
 
 		c.WriteBulk("port")
-		c.WriteInt(port)
+		c.WriteInt(m.port)
 
 		c.WriteBulk("role")
 		c.WriteBulk("master")
