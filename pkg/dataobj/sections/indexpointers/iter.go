@@ -7,13 +7,11 @@ import (
 	"io"
 	"math"
 	"time"
-	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -63,8 +61,6 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 			return err
 		}
 
-		sym := symbolizer.New(128, 1024)
-
 		var rows [1024]dataset.Row
 		for {
 			n, err := r.Read(ctx, rows[:])
@@ -76,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 			var pointer IndexPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(section.Columns(), row, &pointer, sym); err != nil {
+				if err := decodeRow(section.Columns(), row, &pointer); err != nil {
 					return err
 				}
 
@@ -103,9 +99,10 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 // determine the column type. The list of columns must match the columns used
 // to create the row.
 //
-// The sym argument is used for reusing label values between calls to
-// decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+// decodeRow copies the path, so the pointer does not point into the buffers of
+// row. A path is unique within a section, so a symbol table would not save
+// memory.
+func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error {
 	*pointer = IndexPointer{}
 	var minPostingKey, maxPostingKey []byte
 	for columnIndex, columnValue := range row.Values {
@@ -120,11 +117,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 				return fmt.Errorf("nil or zero value for %s", column.Type)
 			}
 
-			if sym != nil {
-				pointer.Path = sym.Get(unsafeString(columnValue.Binary()))
-			} else {
-				pointer.Path = string(columnValue.Binary())
-			}
+			pointer.Path = string(columnValue.Binary())
 
 		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
@@ -245,8 +238,4 @@ func ShardBucketsFromCount(buckets int64) (ShardBuckets, error) {
 		return ShardBuckets{}, fmt.Errorf("invalid %s value: %w", ColumnTypeShardBuckets, err)
 	}
 	return NewShardBuckets(layout), nil
-}
-
-func unsafeString(data []byte) string {
-	return unsafe.String(unsafe.SliceData(data), len(data))
 }

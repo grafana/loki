@@ -230,7 +230,7 @@ func TestDecodeRow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			indexPointer := IndexPointer{}
-			err := decodeRow(tt.columns, tt.row, &indexPointer, nil)
+			err := decodeRow(tt.columns, tt.row, &indexPointer)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
