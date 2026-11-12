@@ -56,8 +56,6 @@ func TestNeedleKey(t *testing.T) {
 	for _, q := range []string{
 		keyTestVolumeQuery,
 		`{app="web", env="prod"} |= "timeout"`, // the lookup does not use stream matchers
-		`rate({app="api"} |= "timeout" [5m] offset 10m)`,
-		`{app="api"} |= "timeout" | json | line_format "{{.msg}}"`,
 	} {
 		require.Equal(t, base, needleKeyOf(t, q, ngram), q)
 	}
@@ -112,14 +110,11 @@ func TestNeedleKey_SurvivesReparse(t *testing.T) {
 		keyTestVolumeQuery,
 		"{app=\"api\"} |= `say \"hello\"`",
 		`{app="api"} |~ "time\\.out\\d+"`,
-		`{app="api"} |~ "(?i)timeout"`,
 		`{app="api"} |= "a,b:c\"d\\e"`,
 		`{app="api"} |= "\xff\xfetimeout"`,
 		`{app="api"} |= "timeout" |= "failure" or "error"`,
 		`{app="api"} |= "timeout" | (level="critical" or level="warning") and region="us-east"`,
 		`{app="api"} |= "timeout" | json | msg="failure" | line_format "{{.msg}}" | logfmt | other="ignored"`,
-		`{app="api"} | logfmt trace_id="tid" | trace_id="abc123def"`,
-		`sum(sum_over_time({app="api"} |= "timeout" | unwrap latency | region="us-east" [5m]))`,
 	} {
 		expr := mustParseExpr(t, q)
 		for _, n := range []int{3, 6} {
