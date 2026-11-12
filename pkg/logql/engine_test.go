@@ -1310,6 +1310,137 @@ func TestHttpreqIsLogsDrilldownRequest(t *testing.T) {
 	}
 }
 
+func TestVectorsToSeriesWithLimit_ShouldNotAddSeriesOnceLimitIsExceeded(t *testing.T) {
+	t.Parallel()
+
+	sample := func(app string, ts int64, f float64) promql.Sample {
+		return promql.Sample{Metric: labels.FromStrings("app", app), T: ts, F: f}
+	}
+
+	sm := map[uint64]promql.Series{}
+
+	// The limit trips part-way through the vector: "c" is the first series over the limit,
+	// "d" is a further new series, and "a" is an existing series that appears after the trip.
+	exceeded := vectorsToSeriesWithLimit(promql.Vector{
+		sample("a", 1, 1),
+		sample("b", 1, 2),
+		sample("c", 1, 3),
+		sample("d", 1, 4),
+		sample("a", 1, 5),
+	}, sm, 2)
+	require.True(t, exceeded)
+
+	// A later step adds more points to existing series and tries another new one.
+	exceeded = vectorsToSeriesWithLimit(promql.Vector{
+		sample("e", 2, 6),
+		sample("b", 2, 7),
+	}, sm, 2)
+	require.True(t, exceeded)
+
+	require.Len(t, sm, 2)
+	for _, s := range sm {
+		require.False(t, s.Metric.IsEmpty(), "series must keep its labels")
+	}
+
+	a := sm[labels.StableHash(labels.FromStrings("app", "a"))]
+	require.Equal(t, labels.FromStrings("app", "a"), a.Metric)
+	require.Equal(t, []promql.FPoint{{T: 1, F: 1}, {T: 1, F: 5}}, a.Floats)
+
+	b := sm[labels.StableHash(labels.FromStrings("app", "b"))]
+	require.Equal(t, labels.FromStrings("app", "b"), b.Metric)
+	require.Equal(t, []promql.FPoint{{T: 1, F: 2}, {T: 2, F: 7}}, b.Floats)
+}
+
+func TestVectorsToSeriesWithLimit_ShouldReturnWhetherNewSeriesWereDropped(t *testing.T) {
+	t.Parallel()
+
+	sample := func(app string) promql.Sample {
+		return promql.Sample{Metric: labels.FromStrings("app", app), T: 1, F: 1}
+	}
+
+	tests := map[string]struct {
+		existing        []string
+		vector          promql.Vector
+		maxSeries       int
+		expectedDropped bool
+		expectedSeries  int
+		expectedPoints  int
+	}{
+		"under the limit": {
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       3,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  2,
+		},
+		"exactly at the limit": {
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       2,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  2,
+		},
+		"full index and only existing series in the vector": {
+			existing:        []string{"a", "b"},
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       2,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  4,
+		},
+		"empty vector": {
+			existing:        []string{"a"},
+			vector:          promql.Vector{},
+			maxSeries:       1,
+			expectedDropped: false,
+			expectedSeries:  1,
+			expectedPoints:  1,
+		},
+		"no limit": {
+			vector:          promql.Vector{sample("a"), sample("b"), sample("c"), sample("d")},
+			maxSeries:       0,
+			expectedDropped: false,
+			expectedSeries:  4,
+			expectedPoints:  4,
+		},
+		"series with empty labels is a valid series": {
+			vector:          promql.Vector{{Metric: labels.EmptyLabels(), T: 1, F: 1}, {Metric: labels.EmptyLabels(), T: 2, F: 2}},
+			maxSeries:       1,
+			expectedDropped: false,
+			expectedSeries:  1,
+			expectedPoints:  2,
+		},
+		"new series over the limit": {
+			existing:        []string{"a"},
+			vector:          promql.Vector{sample("b"), sample("c")},
+			maxSeries:       1,
+			expectedDropped: true,
+			expectedSeries:  1,
+			expectedPoints:  1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			sm := map[uint64]promql.Series{}
+			for _, app := range tc.existing {
+				require.False(t, vectorsToSeriesWithLimit(promql.Vector{sample(app)}, sm, 0))
+			}
+
+			require.Equal(t, tc.expectedDropped, vectorsToSeriesWithLimit(tc.vector, sm, tc.maxSeries))
+			require.Len(t, sm, tc.expectedSeries)
+
+			points := 0
+			for _, s := range sm {
+				points += len(s.Floats)
+			}
+			require.Equal(t, tc.expectedPoints, points)
+		})
+	}
+}
+
 func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 	t.Parallel()
 
