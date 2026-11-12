@@ -4,7 +4,7 @@
 // This file contains the Dumper API for writing YAML documents.
 //
 // Primary functions:
-// - Dump: Encode value(s) to YAML (use WithAll for multi-doc)
+// - Dump: Encode value(s) to YAML (use WithAllDocuments for multi-doc)
 // - NewDumper: Create a streaming dumper to io.Writer
 
 package libyaml

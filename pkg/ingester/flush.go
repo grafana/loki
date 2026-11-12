@@ -342,10 +342,13 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 		return
 	}
 
-	lastChunk := stream.chunks[len(stream.chunks)-1]
-	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
-	if len(stream.chunks) == 1 && !immediate && !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
-		return
+	// Streams with more than one chunk, or swept for an immediate flush, are
+	// always enqueued, so only resolve the chunk idle period when it matters.
+	if len(stream.chunks) == 1 && !immediate {
+		shouldFlush, _ := i.shouldFlushChunk(&stream.chunks[0], i.chunkIdlePeriod(instance.instanceID, stream))
+		if !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
+			return
+		}
 	}
 
 	flushQueueIndex := i.flushQueueIndex(stream.fp)
@@ -494,10 +497,11 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
 	notOwnedStream := instance.ownedStreamsSvc.isStreamNotOwned(fp)
+	maxIdle := i.chunkIdlePeriod(instance.instanceID, stream)
 
 	var result []*chunkDesc
 	for j := range stream.chunks {
-		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
+		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j], maxIdle)
 		if !shouldFlush && notOwnedStream {
 			shouldFlush, reason = true, flushReasonNotOwned
 		}
@@ -520,7 +524,20 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	return result, stream.labels, &stream.chunkMtx
 }
 
-func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
+// chunkIdlePeriod returns how long the chunks of the stream may go without
+// appends before being flushed: the chunk_idle_period of the stream's policy,
+// or -ingester.chunks-idle-period if the policy does not override it.
+func (i *Ingester) chunkIdlePeriod(tenant string, s *stream) time.Duration {
+	if s.policy == "" {
+		return i.cfg.MaxChunkIdle
+	}
+	if idle, ok := i.limiter.limits.PolicyChunkIdlePeriod(tenant, s.policy); ok {
+		return idle
+	}
+	return i.cfg.MaxChunkIdle
+}
+
+func (i *Ingester) shouldFlushChunk(chunk *chunkDesc, maxIdle time.Duration) (bool, string) {
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
 		if chunk.synced {
@@ -529,7 +546,7 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 		return true, flushReasonFull
 	}
 
-	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
+	if time.Since(chunk.lastUpdated) > maxIdle {
 		return true, flushReasonIdle
 	}
 
@@ -606,11 +623,8 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
+			i.chunkIngestedAt(metric, firstTime, c.ingestedAt),
 		)
-
-		// For backfilled chunks, stamp the flush time as IngestedAt so retention
-		// can be measured from ingestion rather than from the log timestamps.
-		i.maybeSetIngestedAt(&ch, firstTime)
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
 		// for the duration of encode. Store Put remains unlocked.
@@ -647,31 +661,30 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	desc.flushed = time.Now()
 }
 
-// maybeSetIngestedAt stamps the flush time as the chunk's IngestedAt for chunks
-// belonging to backfilled streams (those carrying the __backfill__ label), so that
-// under TSDB FormatV4 (schema v14) retention can be measured from ingestion rather
-// than from the log timestamps. Live chunks, and chunks whose period does not
-// support FormatV4, keep the zero value and fall back to Through-based retention.
-func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
-	if ch.Metric.Get(constants.BackfillLabel) != "true" {
-		return
+// validRecordTimestamp reports whether ts can be used as the timestamp of an ingested Kafka record.
+// Records without one come with a zero time or Kafka's NoTimestamp (-1).
+func validRecordTimestamp(ts time.Time) bool {
+	return ts.UnixMilli() > 0
+}
+
+func (i *Ingester) chunkIngestedAt(metric labels.Labels, from model.Time, recordTime time.Time) model.Time {
+	if metric.Get(constants.BackfillLabel) != "true" {
+		return 0
 	}
 
-	// Resolve the schema from the chunk's own time (its From). That's deliberate:
-	// the index format is selected per chunk time bounds (see tsdb.IndexBuckets),
-	// so the gate must match the period the chunk is actually written under.
-	// Resolving from the chunk's (old) backfill time is safe because replay is only
-	// enabled once the schema is v14, so a backfilled chunk's time always resolves
-	// to a v14+ period and this passes; the check still guards against ever
-	// stamping IngestedAt onto a non-FormatV4 index.
+	// Only set for chunks that fall within >= v14
 	schemaCfg := config.SchemaConfig{Configs: i.periodicConfigs}
-	if !schemaCfg.SupportsIngestedAtForTime(chunkTime) {
-		return
+	if !schemaCfg.SupportsIngestedAtForTime(from) {
+		return 0
 	}
 
-	// Stamp the flush time. Backfilled chunks are flushed shortly after they are
-	// ingested, so at the day precision used by the index this matches ingestion.
-	ch.IngestedAt = model.Now()
+	if !validRecordTimestamp(recordTime) {
+		return 0
+	}
+
+	// Replicas of a partition consume the same records in the same order, so the record timestamp is the same on
+	// all of them and chunks will be able to deduplicate.
+	return model.Time(recordTime.UnixMilli())
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

@@ -55,7 +55,7 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 		ts := time.Unix(0, int64(1_000+i))
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: object, ColumnName: "service_name", LabelValue: object,
-			StreamID: 1, Timestamp: ts, UncompressedSize: 100,
+			StreamID: 1, Time: postings.At(ts), UncompressedSize: 100,
 		})
 		if withBlooms {
 			postingsBuilder.PrepareBloomColumn(object, 0, "trace_id", 1, 1)
@@ -143,13 +143,13 @@ type sizeRecordingBucket struct {
 	sizeErr error
 }
 
-func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		b.sizeErr = err
 	}
 	b.sizes[name] = size
-	return b.Bucket.Upload(ctx, name, r)
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func TestDoIndexFilter(t *testing.T) {
@@ -345,7 +345,7 @@ func TestDoIndexFilter(t *testing.T) {
 
 		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
 		indexPointersBuilder.SetTenant("acme")
-		indexPointersBuilder.Append("indexes/other", time.Unix(0, 1_000), time.Unix(0, 2_000))
+		indexPointersBuilder.Append(indexpointers.IndexPointer{Path: "indexes/other", StartTs: time.Unix(0, 1_000), EndTs: time.Unix(0, 2_000)})
 		require.NoError(t, objBuilder.Append(indexPointersBuilder))
 
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)

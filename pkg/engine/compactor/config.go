@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -34,6 +35,21 @@ type Config struct {
 	// runs concurrently per tenant. Zero means unlimited. Negative values are
 	// rejected at config validation.
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
+
+	// TaskMaxRetries is how many times the coordinator runs a failed
+	// compaction task again. The coordinator does not retry after shutdown
+	// begins or the tenant stops. Zero disables retries. Validate rejects
+	// negative values.
+	TaskMaxRetries int `yaml:"task_max_retries"`
+
+	// TaskRetryMinBackoff is the shortest wait before the first retry of a
+	// compaction task. The wait grows exponentially with each retry, with
+	// jitter, up to TaskRetryMaxBackoff.
+	TaskRetryMinBackoff time.Duration `yaml:"task_retry_min_backoff"`
+
+	// TaskRetryMaxBackoff is the longest wait before a retry of a compaction
+	// task.
+	TaskRetryMaxBackoff time.Duration `yaml:"task_retry_max_backoff"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and plans compaction per tenant.
@@ -106,6 +122,10 @@ type Config struct {
 	// endpoint for the embedded scheduler.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
+	// DeletionSweep holds the settings of the hourly deletion sweep of each
+	// tenant.
+	DeletionSweep DeletionSweepConfig `yaml:"deletion_sweep" category:"experimental"`
+
 	// Worker holds the worker-side knobs for the dataobj-compaction-worker
 	// target. Independent of Scheduler: a process can be a planner-only
 	// (scheduler+coordinator) or worker-only deployment, selected via
@@ -134,6 +154,22 @@ type SchedulerConfig struct {
 	// embedded scheduler listens for worker frame traffic. Defaults to
 	// "/api/v2/compaction-frame".
 	Endpoint string `yaml:"endpoint"`
+}
+
+// DeletionSweepConfig holds the settings of the deletion sweep.
+//
+// When enabled, the planner sweeps each tenant once an hour, at a minute
+// that it derives from the tenant ID. A sweep records the objects of the
+// tenant in its file list. Only tenants with the dataobj_deletion_sweep_enabled
+// limit are swept.
+type DeletionSweepConfig struct {
+	// Enabled starts the deletion sweep in the planner.
+	Enabled bool `yaml:"enabled"`
+
+	// MaxConcurrentSweeps caps the sweeps that run at the same time, across
+	// all tenants. Each sweep scans the uncompacted objects of the whole
+	// bucket, so the cap limits the load on object storage.
+	MaxConcurrentSweeps int `yaml:"max_concurrent_sweeps"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
@@ -172,11 +208,19 @@ type WorkerConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// taskRetryBackoff returns the backoff before each retry of a compaction task.
+func (cfg *Config) taskRetryBackoff() backoff.Config {
+	return backoff.Config{MinBackoff: cfg.TaskRetryMinBackoff, MaxBackoff: cfg.TaskRetryMaxBackoff}
+}
+
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
 	defaultMaxRunningCompactionTasks    = 16
 	defaultLogMaxRunningCompactionTasks = 16
+	defaultTaskMaxRetries               = 3
+	defaultTaskRetryMinBackoff          = 10 * time.Second
+	defaultTaskRetryMaxBackoff          = time.Minute
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
@@ -187,6 +231,8 @@ const (
 	defaultLogMaxRunsPerTask     = 8
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
+
+	defaultMaxConcurrentSweeps = 4
 )
 
 // RegisterFlags registers the compaction config flags under the given
@@ -206,6 +252,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
 		defaultLogMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
+	f.IntVar(&cfg.TaskMaxRetries, prefix+"task-max-retries", defaultTaskMaxRetries,
+		"Experimental: Number of times the coordinator runs a failed compaction task again. 0 disables retries.")
+	f.DurationVar(&cfg.TaskRetryMinBackoff, prefix+"task-retry-min-backoff", defaultTaskRetryMinBackoff,
+		"Experimental: Shortest wait before the first retry of a failed compaction task. The wait grows exponentially with each retry, with jitter, up to task-retry-max-backoff.")
+	f.DurationVar(&cfg.TaskRetryMaxBackoff, prefix+"task-retry-max-backoff", defaultTaskRetryMaxBackoff,
+		"Experimental: Longest wait before a retry of a failed compaction task.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.DurationVar(&cfg.MinBackoff, prefix+"min-backoff", defaultMinBackoff,
@@ -237,6 +289,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
+	f.BoolVar(&cfg.DeletionSweep.Enabled, prefix+"deletion-sweep.enabled", false,
+		"Experimental: Sweep each tenant once an hour and record its objects in its deletion file list. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
+	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
+		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep scans the uncompacted objects of the whole bucket.")
 
 	// These configs do not have defaults in the flagset so default values must be Set before registering
 	// the flags to be documented correctly.
@@ -271,9 +327,14 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
 }
 
-// Validate returns nil while the compaction planner is disabled.
+// Validate checks the config. It checks only the deletion sweep gate while
+// compaction is disabled, because the other settings have no effect then.
 func (cfg *Config) Validate() error {
 	if !cfg.Enabled {
+		// The sweep runs in the compaction planner, so it would never run.
+		if cfg.DeletionSweep.Enabled {
+			return errDeletionSweepRequiresCompaction
+		}
 		return nil
 	}
 
@@ -282,6 +343,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.LogMaxRunningCompactionTasks < 0 {
 		return errInvalidLogMaxRunningCompactionTasks
+	}
+	if cfg.TaskMaxRetries < 0 {
+		return errInvalidTaskMaxRetries
 	}
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
@@ -310,6 +374,15 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMinCompactionSize == 0 {
 		return errInvalidLogMinCompactionSize
 	}
+	if cfg.TaskRetryMinBackoff <= 0 {
+		return errInvalidTaskRetryMinBackoff
+	}
+	if cfg.TaskRetryMaxBackoff < cfg.TaskRetryMinBackoff {
+		return errInvalidTaskRetryMaxBackoff
+	}
+	if cfg.DeletionSweep.Enabled && cfg.DeletionSweep.MaxConcurrentSweeps < 1 {
+		return errInvalidMaxConcurrentSweeps
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -325,6 +398,9 @@ func (cfg *Config) Validate() error {
 var (
 	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
+	errInvalidTaskMaxRetries               = errors.New("dataobj.compaction.task_max_retries must be >= 0")
+	errInvalidTaskRetryMinBackoff          = errors.New("dataobj.compaction.task_retry_min_backoff must be > 0 when compaction is enabled")
+	errInvalidTaskRetryMaxBackoff          = errors.New("dataobj.compaction.task_retry_max_backoff must be >= dataobj.compaction.task_retry_min_backoff when compaction is enabled")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
@@ -334,4 +410,6 @@ var (
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
+	errInvalidMaxConcurrentSweeps          = errors.New("dataobj.compaction.deletion_sweep.max_concurrent_sweeps must be >= 1 when the deletion sweep is enabled")
+	errDeletionSweepRequiresCompaction     = errors.New("dataobj.compaction.deletion_sweep.enabled requires dataobj.compaction.enabled")
 )

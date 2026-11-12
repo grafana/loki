@@ -390,14 +390,19 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 		return
 	}
 	var (
-		now         = s.clock.Now()
-		bucketStart = rec.ShardRateBucket.BucketStart
-		cutoff      = now.Add(-s.activeWindow).UnixNano()
+		now             = s.clock.Now()
+		bucketStart     = rec.ShardRateBucket.BucketStart
+		cutoff          = now.Add(-s.activeWindow).UnixNano()
+		policyBucket, _ = getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	)
-	if bucketStart < cutoff {
+
+	admissionCutoff := cutoff
+	if expiry := resolveIdleExpiry(s.limits, tenant, policyBucket); expiry > 0 {
+		admissionCutoff = now.Add(-min(expiry, s.activeWindow)).UnixNano()
+	}
+	if bucketStart < admissionCutoff {
 		return
 	}
-	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	var (
 		hash             = rec.Metadata.StreamHash
 		partition        = s.getPartitionForHash(hash)
@@ -482,6 +487,34 @@ func (s *streamShardStore) Evict() map[string]int {
 						// Recompute the slots either way: shards can expire
 						// without the slice shrinking.
 						bucket.put(stream, cutoff)
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
+// EvictIdle evicts the streams of policy buckets with an idle expiry that
+// have not been seen within it, mirroring usageStore.EvictIdle.
+func (s *streamShardStore) EvictIdle() map[string]int {
+	now := s.clock.Now()
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
+			for _, policies := range partitions {
+				for policy, expiry := range expiries {
+					bucket, ok := policies[policy]
+					if !ok {
+						continue
+					}
+					cutoff := now.Add(-expiry).UnixNano()
+					for streamHash, stream := range bucket.streams {
+						if stream.lastSeenAt < cutoff {
+							bucket.remove(streamHash)
+							evicted[tenant]++
+						}
 					}
 				}
 			}

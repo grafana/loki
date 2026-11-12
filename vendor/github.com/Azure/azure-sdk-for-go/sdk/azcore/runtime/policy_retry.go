@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/sanitizer"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo"
@@ -89,15 +90,20 @@ func calcDelay(o policy.RetryOptions, try int32) time.Duration { // try is >=1; 
 // NewRetryPolicy creates a policy object configured using the specified options.
 // Pass nil to accept the default values; this is the same as passing a zero-value options.
 func NewRetryPolicy(o *policy.RetryOptions) policy.Policy {
+	return newRetryPolicy(o, sanitizer.New(sanitizer.Options{}))
+}
+
+func newRetryPolicy(o *policy.RetryOptions, s *sanitizer.Sanitizer) policy.Policy {
 	if o == nil {
 		o = &policy.RetryOptions{}
 	}
-	p := &retryPolicy{options: *o}
+	p := &retryPolicy{options: *o, sanitizer: s}
 	return p
 }
 
 type retryPolicy struct {
-	options policy.RetryOptions
+	options   policy.RetryOptions
+	sanitizer *sanitizer.Sanitizer
 }
 
 func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
@@ -123,8 +129,7 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 	try := int32(1)
 	for {
 		resp = nil // reset
-		// unfortunately we don't have access to the custom allow-list of query params, so we'll redact everything but the default allowed QPs
-		log.Writef(log.EventRetryPolicy, "=====> Try=%d for %s %s", try, req.Raw().Method, getSanitizedURL(*req.Raw().URL, getAllowedQueryParams(nil)))
+		log.Writef(log.EventRetryPolicy, "=====> Try=%d for %s %s", try, req.Raw().Method, p.sanitizer.GetSanitizedURL(*req.Raw().URL))
 
 		// For each try, seek to the beginning of the Body stream. We do this even for the 1st try because
 		// the stream may not be at offset 0 when we first get it and we want the same behavior for the
@@ -138,13 +143,14 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 			req.Raw().Body = rwbody
 		}
 
+		var clone *policy.Request
 		if options.TryTimeout == 0 {
-			clone := req.Clone(req.Raw().Context())
+			clone = req.Clone(req.Raw().Context())
 			resp, err = clone.Next()
 		} else {
 			// Set the per-try time for this particular retry operation and then Do the operation.
 			tryCtx, tryCancel := context.WithTimeout(req.Raw().Context(), options.TryTimeout)
-			clone := req.Clone(tryCtx)
+			clone = req.Clone(tryCtx)
 			resp, err = clone.Next() // Make the request
 			// if the body was already downloaded or there was an error it's safe to cancel the context now
 			if err != nil {
@@ -158,8 +164,8 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 		}
 		if err == nil {
 			log.Writef(log.EventRetryPolicy, "response %d", resp.StatusCode)
-		} else {
-			log.Writef(log.EventRetryPolicy, "error %v", err)
+		} else if log.Should(log.EventRetryPolicy) {
+			log.Writef(log.EventRetryPolicy, "error %s", p.sanitizer.GetSanitizedURLString(err.Error(), clone.Raw().URL))
 		}
 
 		if ctxErr := req.Raw().Context().Err(); ctxErr != nil {

@@ -17,6 +17,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -1341,6 +1342,137 @@ func TestHttpreqIsLogsDrilldownRequest(t *testing.T) {
 	}
 }
 
+func TestVectorsToSeriesWithLimit_ShouldNotAddSeriesOnceLimitIsExceeded(t *testing.T) {
+	t.Parallel()
+
+	sample := func(app string, ts int64, f float64) promql.Sample {
+		return promql.Sample{Metric: labels.FromStrings("app", app), T: ts, F: f}
+	}
+
+	sm := map[uint64]promql.Series{}
+
+	// The limit trips part-way through the vector: "c" is the first series over the limit,
+	// "d" is a further new series, and "a" is an existing series that appears after the trip.
+	exceeded := vectorsToSeriesWithLimit(promql.Vector{
+		sample("a", 1, 1),
+		sample("b", 1, 2),
+		sample("c", 1, 3),
+		sample("d", 1, 4),
+		sample("a", 1, 5),
+	}, sm, 2)
+	require.True(t, exceeded)
+
+	// A later step adds more points to existing series and tries another new one.
+	exceeded = vectorsToSeriesWithLimit(promql.Vector{
+		sample("e", 2, 6),
+		sample("b", 2, 7),
+	}, sm, 2)
+	require.True(t, exceeded)
+
+	require.Len(t, sm, 2)
+	for _, s := range sm {
+		require.False(t, s.Metric.IsEmpty(), "series must keep its labels")
+	}
+
+	a := sm[labels.StableHash(labels.FromStrings("app", "a"))]
+	require.Equal(t, labels.FromStrings("app", "a"), a.Metric)
+	require.Equal(t, []promql.FPoint{{T: 1, F: 1}, {T: 1, F: 5}}, a.Floats)
+
+	b := sm[labels.StableHash(labels.FromStrings("app", "b"))]
+	require.Equal(t, labels.FromStrings("app", "b"), b.Metric)
+	require.Equal(t, []promql.FPoint{{T: 1, F: 2}, {T: 2, F: 7}}, b.Floats)
+}
+
+func TestVectorsToSeriesWithLimit_ShouldReturnWhetherNewSeriesWereDropped(t *testing.T) {
+	t.Parallel()
+
+	sample := func(app string) promql.Sample {
+		return promql.Sample{Metric: labels.FromStrings("app", app), T: 1, F: 1}
+	}
+
+	tests := map[string]struct {
+		existing        []string
+		vector          promql.Vector
+		maxSeries       int
+		expectedDropped bool
+		expectedSeries  int
+		expectedPoints  int
+	}{
+		"under the limit": {
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       3,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  2,
+		},
+		"exactly at the limit": {
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       2,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  2,
+		},
+		"full index and only existing series in the vector": {
+			existing:        []string{"a", "b"},
+			vector:          promql.Vector{sample("a"), sample("b")},
+			maxSeries:       2,
+			expectedDropped: false,
+			expectedSeries:  2,
+			expectedPoints:  4,
+		},
+		"empty vector": {
+			existing:        []string{"a"},
+			vector:          promql.Vector{},
+			maxSeries:       1,
+			expectedDropped: false,
+			expectedSeries:  1,
+			expectedPoints:  1,
+		},
+		"no limit": {
+			vector:          promql.Vector{sample("a"), sample("b"), sample("c"), sample("d")},
+			maxSeries:       0,
+			expectedDropped: false,
+			expectedSeries:  4,
+			expectedPoints:  4,
+		},
+		"series with empty labels is a valid series": {
+			vector:          promql.Vector{{Metric: labels.EmptyLabels(), T: 1, F: 1}, {Metric: labels.EmptyLabels(), T: 2, F: 2}},
+			maxSeries:       1,
+			expectedDropped: false,
+			expectedSeries:  1,
+			expectedPoints:  2,
+		},
+		"new series over the limit": {
+			existing:        []string{"a"},
+			vector:          promql.Vector{sample("b"), sample("c")},
+			maxSeries:       1,
+			expectedDropped: true,
+			expectedSeries:  1,
+			expectedPoints:  1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			sm := map[uint64]promql.Series{}
+			for _, app := range tc.existing {
+				require.False(t, vectorsToSeriesWithLimit(promql.Vector{sample(app)}, sm, 0))
+			}
+
+			require.Equal(t, tc.expectedDropped, vectorsToSeriesWithLimit(tc.vector, sm, tc.maxSeries))
+			require.Len(t, sm, tc.expectedSeries)
+
+			points := 0
+			for _, s := range sm {
+				points += len(s.Floats)
+			}
+			require.Equal(t, tc.expectedPoints, points)
+		})
+	}
+}
+
 func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 	t.Parallel()
 
@@ -1444,4 +1576,195 @@ func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 	warnings := meta.Warnings()
 	require.NotEmpty(t, warnings, "Expected warnings due to series limit exceeded")
 	require.Contains(t, warnings[0], "maximum number of series")
+}
+
+// countingQuerier counts the samples read from the iterators that Querier returns.
+type countingQuerier struct {
+	Querier
+	read *atomic.Int64
+}
+
+// newCountingQuerier returns a Querier over q that counts the samples read into read.
+func newCountingQuerier(q Querier, read *atomic.Int64) countingQuerier {
+	return countingQuerier{Querier: q, read: read}
+}
+
+func (q countingQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	it, err := q.Querier.SelectSamples(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return &countingSampleIterator{SampleIterator: it, count: q.read}, nil
+}
+
+// distinctStreams returns n streams {app="a", id="<i>"} from 0s to end. Stream i has i+1 lines a
+// second, so every stream has a different rate.
+func distinctStreams(n int, end time.Time) []logproto.Stream {
+	streams := make([]logproto.Stream, 0, n)
+	for i := range n {
+		var entries []logproto.Entry
+		for ts := time.Unix(0, 0); !ts.After(end); ts = ts.Add(time.Second) {
+			for j := range i + 1 {
+				entries = append(entries, logproto.Entry{Timestamp: ts, Line: fmt.Sprintf("line %d %d", ts.Unix(), j)})
+			}
+		}
+		streams = append(streams, logproto.Stream{Labels: fmt.Sprintf(`{app="a", id="%d"}`, i), Entries: entries})
+	}
+	return streams
+}
+
+func TestEngine_MaxQuerySeriesCutoff_ShouldFailLikeWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, ctx context.Context, cutoff bool, query string, numSeries int) (logqlmodel.Result, int, error) {
+		t.Helper()
+		var read atomic.Int64
+		querier := newCountingQuerier(NewMockQuerier(1, distinctStreams(numSeries, end)), &read)
+		eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		params, err := NewLiteralParams(query, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		res, err := eng.Query(params).Exec(ctx)
+		return res, int(read.Load()), err
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		wantErr   bool
+		wantEarly bool
+	}{
+		"bare range aggregation":            {query: `count_over_time({app="a"}[1m])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"sort":                              {query: `sort(count_over_time({app="a"}[1m]))`, numSeries: 10, wantErr: true, wantEarly: true},
+		"arithmetic with a literal":         {query: `count_over_time({app="a"}[1m]) * 2`, numSeries: 10, wantErr: true, wantEarly: true},
+		"or":                                {query: `count_over_time({app="a"}[1m]) or rate({app="a"}[1m])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"stream iterator":                   {query: `count_over_time({app="a"}[10s])`, numSeries: 10, wantErr: true, wantEarly: true},
+		"vector aggregation over the limit": {query: `sum by (id) (count_over_time({app="a"}[1m]))`, numSeries: 10, wantErr: true},
+		"under the limit":                   {query: `count_over_time({app="a"}[1m])`, numSeries: maxSeries},
+		"or with overlapping legs":          {query: `count_over_time({app="a"}[1m]) or rate({app="a"}[1m])`, numSeries: maxSeries},
+		"sum":                               {query: `sum(count_over_time({app="a"}[1m]))`, numSeries: 10},
+		"topk":                              {query: `topk(1, count_over_time({app="a"}[1m]))`, numSeries: 10},
+		"filtering comparison":              {query: `count_over_time({app="a"}[1m]) > 450`, numSeries: 10},
+		"absent_over_time":                  {query: `absent_over_time({app="a"}[1m])`, numSeries: 10},
+		"label_replace":                     {query: `label_replace(count_over_time({app="a"}[1m]), "id", "x", "", "")`, numSeries: 10, wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			resOff, readOff, errOff := run(t, ctx, false, tc.query, tc.numSeries)
+			resOn, readOn, errOn := run(t, ctx, true, tc.query, tc.numSeries)
+
+			require.Equal(t, errOff, errOn)
+			if !tc.wantErr {
+				require.NoError(t, errOn)
+				require.Equal(t, resOff.Data, resOn.Data)
+				require.Equal(t, readOff, readOn)
+				return
+			}
+			require.Equal(t, logqlerr.NewSeriesLimitError(maxSeries), errOn)
+			if tc.wantEarly {
+				require.Less(t, readOn, readOff)
+			} else {
+				require.Equal(t, readOff, readOn)
+			}
+		})
+	}
+
+	t.Run("Logs Drilldown request gets partial results and a warning", func(t *testing.T) {
+		ctx := httpreq.InjectQueryTags(user.InjectOrgID(context.Background(), "fake"), "Source=grafana-lokiexplore-app")
+		const query = `count_over_time({app="a"}[1m])`
+		resOff, readOff, errOff := run(t, ctx, false, query, 10)
+		resOn, readOn, errOn := run(t, ctx, true, query, 10)
+
+		require.NoError(t, errOff)
+		require.NoError(t, errOn)
+		require.Equal(t, readOff, readOn)
+		require.Len(t, resOff.Data.(promql.Matrix), maxSeries)
+		require.Len(t, resOn.Data.(promql.Matrix), maxSeries)
+		require.Equal(t, resOff.Warnings, resOn.Warnings)
+		require.Equal(t, []string{seriesLimitPartialResultsWarning(maxSeries)}, resOn.Warnings)
+	})
+}
+
+func TestEngine_MaxQuerySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t *testing.T) {
+	const maxSeries = 2
+	start := time.Unix(10, 0)
+
+	for name, tc := range map[string]struct {
+		query      string
+		start, end time.Time
+		step       time.Duration
+		entriesAt  time.Time
+		wantErr    bool
+	}{
+		"sub-millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: 500 * time.Microsecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+		},
+		"one millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: time.Millisecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+			wantErr:   true,
+		},
+		"fractional millisecond step": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start, end: start.Add(3 * time.Millisecond), step: 1500 * time.Microsecond,
+			entriesAt: start.Add(2750 * time.Microsecond),
+			wantErr:   true,
+		},
+		"start and end off the millisecond": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start.Add(300 * time.Microsecond), end: start.Add(2700 * time.Microsecond), step: time.Millisecond,
+			entriesAt: start.Add(2 * time.Millisecond),
+			wantErr:   true,
+		},
+		"offset": {
+			query: `vector(0) or count_over_time({app="a"}[1ms] offset 1ms)`,
+			start: start, end: start.Add(3 * time.Millisecond), step: time.Millisecond,
+			entriesAt: start.Add(1500 * time.Microsecond),
+			wantErr:   true,
+		},
+		"instant": {
+			query: `vector(0) or count_over_time({app="a"}[1ms])`,
+			start: start.Add(2 * time.Millisecond), end: start.Add(2 * time.Millisecond),
+			entriesAt: start.Add(1500 * time.Microsecond),
+			wantErr:   true,
+		},
+		"range legs with different ranges": {
+			query: `count_over_time({app="a"}[1ms]) or count_over_time({app="a"}[2ms])`,
+			start: start, end: start.Add(2 * time.Millisecond), step: 500 * time.Microsecond,
+			entriesAt: start.Add(1250 * time.Microsecond),
+			wantErr:   true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			streams := make([]logproto.Stream, 0, maxSeries+1)
+			for i := range maxSeries + 1 {
+				streams = append(streams, logproto.Stream{
+					Labels:  fmt.Sprintf(`{app="a", id="%d"}`, i),
+					Entries: []logproto.Entry{{Timestamp: tc.entriesAt, Line: "x"}},
+				})
+			}
+			run := func(cutoff bool) (logqlmodel.Result, error) {
+				eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: cutoff}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+				params, err := NewLiteralParams(tc.query, tc.start, tc.end, tc.step, 0, logproto.FORWARD, 1000, nil, nil)
+				require.NoError(t, err)
+				return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+			}
+
+			resOff, errOff := run(false)
+			resOn, errOn := run(true)
+
+			require.Equal(t, errOff, errOn)
+			require.Equal(t, resOff.Data, resOn.Data)
+			if tc.wantErr {
+				require.Equal(t, logqlerr.NewSeriesLimitError(maxSeries), errOn)
+				return
+			}
+			require.NoError(t, errOn)
+		})
+	}
 }

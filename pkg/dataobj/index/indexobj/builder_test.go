@@ -40,7 +40,7 @@ func TestBuilder(t *testing.T) {
 			ColumnName:   "app",
 			LabelValue:   "foo",
 			StreamID:     1,
-			Timestamp:    time.Unix(10, 0).UTC(),
+			Time:         postings.At(time.Unix(10, 0).UTC()),
 		},
 		{
 			ObjectPath:   "test/path2",
@@ -48,7 +48,7 @@ func TestBuilder(t *testing.T) {
 			ColumnName:   "app",
 			LabelValue:   "bar",
 			StreamID:     2,
-			Timestamp:    time.Unix(15, 0).UTC(),
+			Time:         postings.At(time.Unix(15, 0).UTC()),
 		},
 	}
 
@@ -188,6 +188,24 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 		}, readWatermarks(t, obj))
 	})
 
+	t.Run("lists the watermarks section before the index pointers section", func(t *testing.T) {
+		builder := newBuilder(t)
+		for _, p := range testPointers {
+			require.NoError(t, builder.AppendIndexPointer(p))
+		}
+		require.NoError(t, builder.AppendWatermark("topic", 7, 42))
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		var kinds []string
+		for _, sec := range obj.Sections() {
+			kinds = append(kinds, sec.Type.Kind)
+		}
+		require.Equal(t, []string{"watermarks", "indexpointers"}, kinds)
+	})
+
 	t.Run("returns an error and records nothing for an invalid watermark", func(t *testing.T) {
 		builder := newBuilder(t)
 		require.Error(t, builder.AppendWatermark("", 0, 1))
@@ -250,11 +268,11 @@ func TestBuilder_TimeRange(t *testing.T) {
 		base := time.Unix(8000, 0).UTC()
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-			StreamID: 1, Timestamp: base,
+			StreamID: 1, Time: postings.At(base),
 		})
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
-			StreamID: 2, Timestamp: base.Add(time.Hour),
+			StreamID: 2, Time: postings.At(base.Add(time.Hour)),
 		})
 
 		require.Equal(t, dataobj.TimeRange{
@@ -270,7 +288,7 @@ func TestBuilder_TimeRange(t *testing.T) {
 
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-			StreamID: 1, Timestamp: time.Unix(8000, 0).UTC(),
+			StreamID: 1, Time: postings.At(time.Unix(8000, 0).UTC()),
 		})
 		require.False(t, b.TimeRange().MinTime.IsZero())
 

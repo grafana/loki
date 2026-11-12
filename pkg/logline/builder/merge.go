@@ -37,9 +37,9 @@ type mergedFile struct {
 
 // dateMapper derives dates and per-document time ranges from epoch cells. All
 // math is in absolute cells (baseCell + tick): a document's time range is its
-// bucket (absolute cell >> documentShardBits) × interval, and the merge
-// assigns dense ranks in ascending cell order. One per shard merge (its
-// dateCache is not safe for concurrent use).
+// bucket (absolute cell >> documentShardBits) × interval. For versions with a
+// document table the merge assigns dense ranks in ascending cell order. One
+// per shard merge (its dateCache is not safe for concurrent use).
 type dateMapper struct {
 	intervalNanos     int64
 	documentShardBits uint
@@ -66,13 +66,20 @@ func (dm *dateMapper) dateOfDay(day uint64) string {
 	if s, ok := dm.dateCache[day]; ok {
 		return s
 	}
-	absBucket := day * dm.cellsPerDay >> dm.documentShardBits
-	s := time.Unix(0, int64(absBucket)*dm.intervalNanos).UTC().Format("2006-01-02")
+	s := dm.dayStart(day).Format("2006-01-02")
 	dm.dateCache[day] = s
 	return s
 }
 
-// docMeta returns {ID, MinTimeUnix, MaxTimeUnix} for an epoch-cell docID: the
+// dayStart returns the UTC midnight of a day index. The epoch cell is a
+// multiple of cellsPerDay, so a day's first bucket starts at midnight.
+func (dm *dateMapper) dayStart(day uint64) time.Time {
+	absBucket := day * dm.cellsPerDay >> dm.documentShardBits
+	return time.Unix(0, int64(absBucket)*dm.intervalNanos).UTC()
+}
+
+// docMeta returns {ID, MinTimeUnix, MaxTimeUnix} for an epoch-cell docID, for
+// versions with a document table: the
 // document covers [bucket × interval, (bucket + 1) × interval). Cells of one
 // bucket in different document shards share those bounds.
 func (dm *dateMapper) docMeta(docID uint32, id uint32) format.DocumentMetadata {
@@ -143,17 +150,19 @@ func (b *postingsBuffer) mergeRuns(outDir, version string, cfg format.WriterConf
 // per-date .lidx files.
 func (b *postingsBuffer) mergeShard(outDir, version string, cfg format.WriterConfig, shardVal int, runPaths []string) (_ []mergedFile, err error) {
 	sm := &shardMerger{
-		shard:      shardVal,
-		outDir:     outDir,
-		version:    version,
-		cfg:        cfg,
-		dm:         b.newDateMapper(),
-		refTicks:   b.refTicks,
-		perDay:     b.cellsPerDay,
-		baseCell:   b.baseCell,
-		writers:    map[uint64]logline.Writer{},
-		ranks:      map[uint64]map[uint32]uint32{},
-		termCounts: map[uint64]int{},
+		shard:         shardVal,
+		outDir:        outDir,
+		version:       version,
+		documentTable: logline.VersionHasDocumentTable(version),
+		cfg:           cfg,
+		dm:            b.newDateMapper(),
+		refTicks:      b.refTicks,
+		perDay:        b.cellsPerDay,
+		baseCell:      b.baseCell,
+		writers:       map[uint64]logline.Writer{},
+		ranks:         map[uint64]map[uint32]uint32{},
+		termCounts:    map[uint64]int{},
+		docCounts:     map[uint64]int{},
 	}
 
 	h := &runHeap{}
@@ -226,30 +235,37 @@ func (b *postingsBuffer) mergeShard(outDir, version string, cfg format.WriterCon
 	// Stamp per-file cardinalities now that every term has been emitted.
 	for i := range sm.files {
 		sm.files[i].terms = sm.termCounts[sm.files[i].day]
+		sm.files[i].docs = sm.docCounts[sm.files[i].day]
 	}
 	return sm.files, nil
 }
 
 // shardMerger owns one shard's per-date writers during a merge.
 type shardMerger struct {
-	shard    int
-	outDir   string
-	version  string
-	cfg      format.WriterConfig
-	dm       *dateMapper
-	refTicks map[refKey][]uint64
-	perDay   uint64
-	baseCell uint64
+	shard   int
+	outDir  string
+	version string
+	// documentTable is set for versions whose files store document time
+	// bounds (v3, v4): postings hold dense ranks into that table. Otherwise
+	// (v5) postings hold the cell within the file's day.
+	documentTable bool
+	cfg           format.WriterConfig
+	dm            *dateMapper
+	refTicks      map[refKey][]uint64
+	perDay        uint64
+	baseCell      uint64
 
 	writers    map[uint64]logline.Writer    // day -> writer
-	ranks      map[uint64]map[uint32]uint32 // day -> (epoch-tick docID -> dense rank)
+	ranks      map[uint64]map[uint32]uint32 // day -> (epoch-tick docID -> dense rank); document tables only
 	termCounts map[uint64]int               // day -> terms written to that day's file
+	docCounts  map[uint64]int               // day -> documents in that day's closed file
 	files      []mergedFile
 }
 
 // emitTerm writes one term's globally-sorted, deduped docIDs into this shard's
-// writer(s), splitting the run at day boundaries and remapping epoch-tick docIDs to
-// dense per-(date,shard) ranks.
+// writer(s), splitting the run at day boundaries. Epoch-tick docIDs become dense
+// per-(date,shard) ranks for versions with a document table, and cells of the
+// file's day otherwise.
 func (sm *shardMerger) emitTerm(term [8]byte, docIDs []uint32) error {
 	if len(docIDs) == 0 {
 		return nil
@@ -262,6 +278,15 @@ func (sm *shardMerger) emitTerm(term [8]byte, docIDs []uint32) error {
 			return err
 		}
 		out := make([]uint32, len(seg))
+		if !sm.documentTable {
+			// abs / perDay is day, so the day-relative cell is below perDay.
+			dayStartAbs := day * sm.perDay
+			for i, d := range seg {
+				out[i] = uint32(sm.baseCell + uint64(d) - dayStartAbs)
+			}
+			sm.termCounts[day]++
+			return w.WriteTermDocIDs(term, out, len(out))
+		}
 		for i, d := range seg {
 			r, ok := ranks[d]
 			if !ok {
@@ -285,12 +310,27 @@ func (sm *shardMerger) emitTerm(term [8]byte, docIDs []uint32) error {
 	return flush(curDay, docIDs[start:])
 }
 
-// writerForDay lazily creates the (date, shard) writer for a day, seeded with
-// the exact documents this shard references in that day (from refTicks), and
-// the epoch-tick-docID -> dense-rank map for remapping postings.
+// writerForDay lazily creates the (date, shard) writer for a day. For versions
+// with a document table it seeds the writer with the exact documents this shard
+// references in that day (from refTicks) and returns the
+// epoch-tick-docID -> dense-rank map for remapping postings. Otherwise the
+// writer takes the day's start and the rank map is nil.
 func (sm *shardMerger) writerForDay(day uint64) (logline.Writer, map[uint32]uint32, error) {
 	if w, ok := sm.writers[day]; ok {
 		return w, sm.ranks[day], nil
+	}
+	date := sm.dm.dateOfDay(day)
+	path := filepath.Join(sm.outDir, fmt.Sprintf("%s_s%d.lidx", date, sm.shard))
+	if !sm.documentTable {
+		cfg := sm.cfg
+		cfg.DayStart = sm.dm.dayStart(day)
+		w, err := logline.NewWriter(sm.version, path, nil, &cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		sm.writers[day] = w
+		sm.files = append(sm.files, mergedFile{path: path, date: date, shard: sm.shard, day: day})
+		return w, nil, nil
 	}
 	bs := sm.refTicks[refKey{shard: sm.shard, day: day}]
 	ranks := make(map[uint32]uint32)
@@ -308,23 +348,25 @@ func (sm *shardMerger) writerForDay(day uint64) (logline.Writer, map[uint32]uint
 			rank++
 		}
 	}
-	date := sm.dm.dateOfDay(day)
-	path := filepath.Join(sm.outDir, fmt.Sprintf("%s_s%d.lidx", date, sm.shard))
 	w, err := logline.NewWriter(sm.version, path, docs, &sm.cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 	sm.writers[day] = w
 	sm.ranks[day] = ranks
-	sm.files = append(sm.files, mergedFile{path: path, date: date, shard: sm.shard, day: day, docs: len(docs)})
+	sm.files = append(sm.files, mergedFile{path: path, date: date, shard: sm.shard, day: day})
 	return w, ranks, nil
 }
 
 func (sm *shardMerger) closeAll() error {
 	var firstErr error
 	for day, w := range sm.writers {
-		if err := w.Close(); err != nil && firstErr == nil {
-			firstErr = err
+		if err := w.Close(); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			sm.docCounts[day] = int(w.Info().DocumentCount)
 		}
 		delete(sm.writers, day)
 	}

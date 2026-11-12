@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -109,10 +110,9 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	}
 }
 
-// requireIndexPaths asserts the indexEntry slice contains exactly the supplied
-// paths (set equality; order-independent because ToC iteration order is not a
-// contract).
-func requireIndexPaths(t *testing.T, got []indexEntry, want ...string) {
+// requireIndexPaths asserts that got holds exactly the paths want, in any
+// order, because the order of ToC iteration is not part of the contract.
+func requireIndexPaths(t *testing.T, got []indexpointers.IndexPointer, want ...string) {
 	t.Helper()
 	gotPaths := make([]string, len(got))
 	for i, e := range got {
@@ -227,7 +227,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -240,8 +240,9 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: newLogSortPrefix(0, []string{"auth"}),
-			Max: newLogSortPrefix(0, []string{"billing"}),
+			PlanningUnit: "logs/log-0",
+			Min:          newLogSortPrefix(0, []string{"auth"}),
+			Max:          newLogSortPrefix(0, []string{"billing"}),
 			Keys: []v2.KeySize[logSortPrefix]{
 				{Key: newLogSortPrefix(0, []string{"auth"}), UncompressedSize: 300},
 				{Key: newLogSortPrefix(0, []string{"billing"}), UncompressedSize: 200},
@@ -264,7 +265,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -289,7 +290,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
@@ -301,9 +302,10 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min:  newLogSortPrefix(0, []string{"auth", "eu"}),
-			Max:  newLogSortPrefix(0, []string{"auth", "eu"}),
-			Keys: []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
+			PlanningUnit: "logs/log-0",
+			Min:          newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max:          newLogSortPrefix(0, []string{"auth", "eu"}),
+			Keys:         []v2.KeySize[logSortPrefix]{{Key: newLogSortPrefix(0, []string{"auth", "eu"}), UncompressedSize: 100}},
 		},
 	}, refs)
 }
@@ -318,7 +320,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, refs, 1)
 	require.Equal(t, logSortPrefix{}, refs[0].Min)
@@ -365,7 +367,7 @@ func TestIndexLayout(t *testing.T) {
 		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
 
 		uploadObject(ctx, t, bucket, path, obj)
-		_, err = logSectionRefsFor(ctx, bucket, tenant, path)
+		_, _, err = logSectionRefsFor(ctx, bucket, tenant, path)
 		require.ErrorIs(t, err, errCorruptIndex)
 	})
 }
@@ -407,13 +409,14 @@ func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
 		{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
 	require.NoError(t, err)
 	require.Equal(t, []v2.Section[indexSortKey]{
 		{
-			Ref: &compactionv2pb.SectionRef{ObjectPath: path},
-			Min: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
-			Max: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+			Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
+			PlanningUnit: path,
+			Min:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+			Max:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
 		},
 	}, refs)
 }
@@ -437,7 +440,7 @@ func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
 		},
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
 	require.NoError(t, err)
 	require.Len(t, refs, 2)
 	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
@@ -452,7 +455,7 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
 	}})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
 }
@@ -499,4 +502,14 @@ func TestCompareLogSortPrefix(t *testing.T) {
 		ls := labels.FromStrings("service_name", "a\x00", "namespace", "b")
 		require.Equal(t, streamKey(t, ls).Prefix(), planKey(t, ls).prefix)
 	})
+}
+
+// indexLayoutAt opens the index at idxPath and returns its layout as
+// indexLayout does.
+func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
+	if err != nil {
+		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+	return indexLayout(ctx, obj, tenant, idxPath)
 }

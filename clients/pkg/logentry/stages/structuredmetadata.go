@@ -42,7 +42,7 @@ func (s *structuredMetadataStage) Run(in chan Entry) chan Entry {
 	return RunWith(in, func(e Entry) Entry {
 		structuredMetadata := make(map[model.LabelName]model.LabelValue)
 
-		processLabelsConfigs(s.logger, e.Extracted, s.cfgs, func(source, labelName model.LabelName, labelValue model.LabelValue) {
+		processLabelsConfigs(e.Extracted, s.cfgs, func(source, labelName model.LabelName, labelValue model.LabelValue) {
 			e.StructuredMetadata = append(e.StructuredMetadata, logproto.LabelAdapter{Name: string(labelName), Value: string(labelValue)})
 			structuredMetadata[source] = labelValue
 		})

@@ -22,7 +22,7 @@ One of the primary use cases for Loki is to collect and store logs from your [Ku
 
 {{< figure max-width="75%" src="/media/docs/loki/loki-k8s-logs.png" caption="Scraping Kubernetes Logs" alt="Scraping Kubernetes Logs" >}}
 
-In this tutorial, we will deploy [Loki](https://grafana.com/docs/loki/latest/get-started/overview/) and the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/) to collect two of these log types: Pod logs and Kubernetes events. We will also deploy [Grafana](https://grafana.com/docs/grafana/latest/) to visualize these logs.
+In this tutorial, we will deploy [Loki](https://grafana.com/docs/loki/latest/get-started/overview/) and the [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/) to collect two of these log types: Pod logs and Kubernetes events. We will also deploy [Grafana](https://grafana.com/docs/grafana/latest/) to visualize these logs.
 
 ## Things to know
 
@@ -172,7 +172,7 @@ As before, the command also includes a `values` file that specifies the configur
 The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect Pod logs and Kubernetes events.
 
 {{< admonition type="note" >}}
-This tutorial uses chart version 4.x, the current major version of the Kubernetes Monitoring Helm chart. If you have an existing `values.yml` file written for chart version 3.x or earlier, its configuration keys do not carry over directly. Refer to the [migration guide](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/) before reusing an older values file with this tutorial.
+This tutorial uses chart version 4.x, the current major version of the Kubernetes Monitoring Helm chart. If you have an existing `values.yml` file written for chart version 3.x or earlier, its configuration keys do not carry over directly. Refer to the [migration guide](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/helm-chart/migrate-helm-chart/) before reusing an older values file with this tutorial.
 {{< /admonition >}}
 
 To deploy the Kubernetes Monitoring Helm chart run the following command:
@@ -314,7 +314,7 @@ In this tutorial, you learned how to deploy Loki, Grafana, and the Kubernetes Mo
 
 * [Loki Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/)
 * [Grafana Helm chart](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/installation/helm/)
-* [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
+* [Kubernetes Monitoring Helm chart](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-infrastructure/kubernetes-monitoring/)
 
 
 <!-- INTERACTIVE page finish.md END -->

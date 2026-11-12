@@ -64,6 +64,10 @@ message LokiInstantRequest {
   logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
   resultscache.CachingOptions cachingOptions = 9 [(gogoproto.nullable) = false];
   logproto.DataObjOptions dataObjOptions = 10;
+  repeated logproto.HintTimeRange hintRanges = 11 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "hintRanges,omitempty"
+  ];
 }
 
 message Plan {

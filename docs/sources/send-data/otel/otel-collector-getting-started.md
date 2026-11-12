@@ -363,7 +363,6 @@ Head back to where you started from to continue with the [Loki documentation](ht
 For more information on the OpenTelemetry Collector and the native OTLP endpoint of Loki, refer to the following resources:
 
 - [Loki OTLP endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/)
-- [How is native OTLP endpoint different from Loki Exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/native_otlp_vs_loki_exporter)
 - [OpenTelemetry Collector Configuration](https://opentelemetry.io/docs/collector/configuration/)
 
 ## Complete metrics, logs, traces, and profiling example

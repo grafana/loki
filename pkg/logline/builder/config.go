@@ -96,7 +96,23 @@ type KafkaConfig struct {
 	// same identity instead of triggering a rebalance. Defaults to
 	// os.Hostname() when empty.
 	InstanceID string `yaml:"instance_id"`
+
+	// APIVersionsMaxVersion is apiVersionsMaxVersionUnset until ApplyDefaultsFrom
+	// fills it, so unset can be told apart from 0, which uses the franz-go default.
+	APIVersionsMaxVersion int `yaml:"api_versions_max_version"`
+
+	// MaxDecompressBatchBytes is maxDecompressBatchBytesUnset until
+	// ApplyDefaultsFrom fills it, like APIVersionsMaxVersion.
+	MaxDecompressBatchBytes int `yaml:"max_decompress_batch_bytes"`
 }
+
+// apiVersionsMaxVersionUnset marks KafkaConfig.APIVersionsMaxVersion as not set,
+// so ApplyDefaultsFrom takes the root value.
+const apiVersionsMaxVersionUnset = -1
+
+// maxDecompressBatchBytesUnset marks KafkaConfig.MaxDecompressBatchBytes as not
+// set, so ApplyDefaultsFrom takes the root value.
+const maxDecompressBatchBytesUnset = -1
 
 func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// The cluster-level flags default to empty so ApplyDefaultsFrom can tell
@@ -124,6 +140,10 @@ func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.InstanceID, prefix+".instance-id", "",
 		"Kafka static-membership ID (defaults to os.Hostname() if empty). "+
 			"Pod restarts within session-timeout rejoin without rebalance.")
+	f.IntVar(&c.APIVersionsMaxVersion, prefix+".api-versions-max-version", apiVersionsMaxVersionUnset,
+		"Kafka ApiVersions max version. Defaults to the root kafka_config value. See -kafka.api-versions-max-version.")
+	f.IntVar(&c.MaxDecompressBatchBytes, prefix+".max-decompress-batch-bytes", maxDecompressBatchBytesUnset,
+		"Kafka max decompress batch bytes. Defaults to the root kafka_config value. See -kafka.max-decompress-batch-bytes.")
 }
 
 // ApplyDefaultsFrom fills every unset field from Loki's root kafka_config.
@@ -150,6 +170,12 @@ func (c *KafkaConfig) ApplyDefaultsFrom(root kafka.Config) {
 	}
 	if c.DialTimeout == 0 {
 		c.DialTimeout = root.DialTimeout
+	}
+	if c.APIVersionsMaxVersion == apiVersionsMaxVersionUnset {
+		c.APIVersionsMaxVersion = root.APIVersionsMaxVersion
+	}
+	if c.MaxDecompressBatchBytes == maxDecompressBatchBytesUnset {
+		c.MaxDecompressBatchBytes = root.MaxDecompressBatchBytes
 	}
 	// SASL is a pair. Taking the username from one source and the password
 	// from another would produce a credential that was never configured
@@ -184,6 +210,12 @@ func (c *KafkaConfig) Validate() error {
 	}
 	if c.SessionTimeout < 0 {
 		return fmt.Errorf("session_timeout must be non-negative, got %v", c.SessionTimeout)
+	}
+	if c.APIVersionsMaxVersion < 0 || c.APIVersionsMaxVersion > kafka.DefaultAPIVersionsMaxVersion {
+		return kafka.ErrInvalidAPIVersionsMaxVersion
+	}
+	if c.MaxDecompressBatchBytes < 0 || c.MaxDecompressBatchBytes > kafka.DefaultMaxDecompressBatchBytes {
+		return kafka.ErrInvalidMaxDecompressBatchBytes
 	}
 
 	// InstanceID defaults to os.Hostname() so each pod gets a stable static-
@@ -307,6 +339,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid kafka config: %w", err)
 	}
 
+	return c.validateWithoutKafka()
+}
+
+// validateWithoutKafka validates the configuration and applies defaults, except for Kafka settings.
+func (c *Config) validateWithoutKafka() error {
 	if c.ScratchDir == "" {
 		return fmt.Errorf("scratch_dir is required")
 	}

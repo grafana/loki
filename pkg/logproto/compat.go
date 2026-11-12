@@ -429,7 +429,7 @@ func (m *VolumeRequest) LogToSpan(sp trace.Span) {
 		attribute.String("query", m.GetQuery()),
 		attribute.String("start", timestamp.Time(int64(m.From)).String()),
 		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
-		attribute.String("step", time.Duration(m.Step).String()),
+		attribute.String("step", (time.Duration(m.Step)*time.Millisecond).String()),
 	)
 }
 
@@ -620,7 +620,7 @@ func (m *DetectedFieldsRequest) LogToSpan(sp trace.Span) {
 		attribute.String("query", m.GetQuery()),
 		attribute.String("start", m.Start.String()),
 		attribute.String("end", m.End.String()),
-		attribute.String("step", time.Duration(m.Step).String()),
+		attribute.String("step", (time.Duration(m.Step)*time.Millisecond).String()),
 		attribute.String("field_limit", fmt.Sprintf("%d", m.Limit)),
 		attribute.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
 	)
@@ -650,7 +650,7 @@ func (m *QueryPatternsRequest) LogToSpan(sp trace.Span) {
 		attribute.String("query", m.GetQuery()),
 		attribute.String("start", m.Start.String()),
 		attribute.String("end", m.End.String()),
-		attribute.String("step", time.Duration(m.Step).String()),
+		attribute.String("step", (time.Duration(m.Step)*time.Millisecond).String()),
 	)
 }
 

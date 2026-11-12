@@ -11,5 +11,5 @@ func NewClient(cfg *config, logger log.Logger, metrics *util.Metrics) (util.Clie
 	if cfg.bufferConfig.buffer {
 		return NewBuffer(cfg, logger, metrics)
 	}
-	return util.New(metrics, cfg.clientConfig, 0, 0, false, logger)
+	return util.New(metrics, cfg.clientConfig, logger)
 }

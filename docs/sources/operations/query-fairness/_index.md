@@ -30,6 +30,15 @@ component each tenant has its own first in first out (FIFO) queue where
 sub-queries are enqueued. Sub-queries are queries that result from splitting
 and sharding of a query sent by a client using HTTP.
 
+{{< admonition type="note" >}}
+Hierarchical queues are managed by the query-scheduler, which is active by
+default in all current deployment modes (monolithic, high-availability (HA)
+monolithic, and microservices). If you have explicitly configured
+`frontend_worker.frontend_address` to connect queriers directly to the query
+frontend instead of using the scheduler, the `X-Loki-Actor-Path` header has
+no effect, and all sub-queries go to the tenant's single queue.
+{{< /admonition >}}
+
 Tenant queues are the first level of the queue hierarchy. When a tenant
 executes a query without any further controls, all of its sub-queries are
 enqueued to the first level queue.
@@ -72,15 +81,20 @@ tenant queue `grafana`. Another user can use their own name in the actor path
 header to enqueue their queries to their own sub-queue.
 
 Since the scheduler chooses the next task for a tenant in a round-robin manner,
-both actors (in our case human users) get their 50% share when the scheduler
-dequeues a sub-query to send to the querier.
+if all of a tenant's queries use an actor-path header, both actors (in our
+case human users) get their 50% share when the scheduler dequeues a sub-query
+to send to the querier.
 
-The tenant's local queue takes part in the same round-robin rotation as the
-sub-queues, so with N actor sub-queues and sub-queries also waiting in the
-tenant's local queue, each of the N+1 queues gets 1/(N+1) of the share. In our
-example with two users, the local queue gets 1/3 and each sub-queue gets 1/3
-of their share. A sub-queue drops out of the rotation once it drains, so the
-remaining queues' shares increase as actors go idle.
+However, the tenant's local queue also takes part in the same round-robin
+rotation as the sub-queues. If some of a tenant's queries don't include the
+`X-Loki-Actor-Path` header, those queries wait in the tenant's local queue,
+and that queue competes for its own share alongside the sub-queues. So with N
+actor sub-queues and sub-queries also waiting in the tenant's local queue,
+each of the N+1 queues gets 1/(N+1) of the share. In our example with two
+users, if some sub-queries also land in the local queue, the local queue gets
+1/3 and each sub-queue gets 1/3 of the total. A sub-queue drops out of the
+rotation once it drains, so the remaining queues' shares increase as actors
+go idle.
 
 As the explained implementation and the header name already suggest, it is
 possible to enqueue queries several levels deep. To do so, you can construct a
@@ -137,6 +151,8 @@ you would usually want to avoid this scenario and control yourself where the hea
 When using Grafana as the Loki user interface, you can, for example, create multiple data sources
 with the same tenant, but with a different additional HTTP header
 `X-Loki-Actor-Path` and restrict which Grafana user can use which data source.
+For instructions on adding a custom HTTP header to a data source, refer to
+[Configure the Loki data source](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/datasources/loki/configure/#custom-http-headers).
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.

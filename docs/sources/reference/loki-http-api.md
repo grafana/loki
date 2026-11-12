@@ -1284,7 +1284,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki](../../operations/meta-monitoring/)
+[Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/)
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -1504,7 +1504,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 - `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 - `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false`.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.tokens-file-path` is specified. Defaults to `false`.
 - `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 

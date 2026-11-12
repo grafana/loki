@@ -251,6 +251,7 @@ func newCountDistinctStepEvaluator(
 	interval, offset time.Duration,
 	emitSketch bool,
 	keepsErroredLines bool,
+	limits iteratorLimits,
 ) StepEvaluator {
 	iter := newCountDistinctIterator(
 		it,
@@ -260,6 +261,7 @@ func newCountDistinctStepEvaluator(
 		params.End().UnixNano(),
 		offset.Nanoseconds(),
 		emitSketch,
+		limits,
 	)
 	if emitSketch {
 		return &countDistinctSketchEvaluator{iter: iter, keepsErroredLines: keepsErroredLines}
@@ -271,6 +273,7 @@ func newCountDistinctIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
 	emitSketch bool,
+	limits iteratorLimits,
 ) RangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
@@ -291,6 +294,7 @@ func newCountDistinctIterator(
 			window:   map[string]*promql.Series{},
 			current:  start - step, // first loop iteration will set it to start
 			offset:   offset,
+			limits:   limits,
 		},
 		emitSketch: emitSketch,
 	}

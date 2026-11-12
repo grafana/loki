@@ -2506,3 +2506,47 @@ func TestBucketNamedStores_applyDefaults(t *testing.T) {
 		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
 }
+
+// TestLoglineBuilderAPIVersionsMaxVersion checks that the logline builder inherits
+// the root ApiVersions cap unless its own flag is set.
+func TestLoglineBuilderAPIVersionsMaxVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantRoot    int
+		wantLogline int
+	}{
+		{
+			name:        "defaults",
+			wantRoot:    4,
+			wantLogline: 4,
+		},
+		{
+			name:        "root cap disabled",
+			args:        []string{"-kafka.api-versions-max-version=0"},
+			wantRoot:    0,
+			wantLogline: 0,
+		},
+		{
+			name:        "root cap lowered",
+			args:        []string{"-kafka.api-versions-max-version=3"},
+			wantRoot:    3,
+			wantLogline: 3,
+		},
+		{
+			name:        "logline builder flag wins",
+			args:        []string{"-kafka.api-versions-max-version=0", "-logline-builder.kafka.api-versions-max-version=2"},
+			wantRoot:    0,
+			wantLogline: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _, err := configWrapperFromYAML(t, "", tt.args)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantRoot, cfg.KafkaConfig.APIVersionsMaxVersion)
+			assert.Equal(t, tt.wantLogline, cfg.Logline.Builder.Kafka.APIVersionsMaxVersion)
+		})
+	}
+}

@@ -36,7 +36,11 @@ type Config struct {
 	ErrorBackoffMax      time.Duration `yaml:"error_backoff_max"`
 	LogQueryLimit        int           `yaml:"log_query_limit"`
 	NgramLength          int           `yaml:"-"`
-	StartedAt            time.Time     `yaml:"started_at"`
+	// AlignQueriesWithStep floors both ends of a range metric query onto the step
+	// before the splitter rounds the end up. Populated from
+	// query_range.align_queries_with_step at assembly time.
+	AlignQueriesWithStep bool      `yaml:"-"`
+	StartedAt            time.Time `yaml:"started_at"`
 }
 
 // RegisterFlagsWithPrefix registers configuration flags with the given FlagSet under prefix.

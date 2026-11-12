@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/sanitizer"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -138,6 +139,7 @@ func NewClient(moduleName, moduleVersion string, plOpts runtime.PipelineOptions,
 	if tr.Enabled() && plOpts.Tracing.Namespace != "" {
 		tr.SetAttributes(tracing.Attribute{Key: shared.TracingNamespaceAttrName, Value: plOpts.Tracing.Namespace})
 	}
+	tr = sanitizer.WrapTracer(tr)
 
 	return &Client{
 		pl:        pl,
@@ -166,5 +168,6 @@ func (c *Client) WithClientName(clientName string) *Client {
 	if tr.Enabled() && c.namespace != "" {
 		tr.SetAttributes(tracing.Attribute{Key: shared.TracingNamespaceAttrName, Value: c.namespace})
 	}
+	tr = sanitizer.WrapTracer(tr)
 	return &Client{pl: c.pl, tr: tr, tp: c.tp, modVer: c.modVer, namespace: c.namespace}
 }

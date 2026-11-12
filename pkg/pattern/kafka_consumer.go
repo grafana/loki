@@ -3,7 +3,6 @@ package pattern
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -24,6 +23,10 @@ func (i *Ingester) initKafka() error {
 	if err != nil {
 		return fmt.Errorf("failed to create kafka decoder: %w", err)
 	}
+	i.lagObserver, err = newLagObserver(prometheus.WrapRegistererWithPrefix("pattern_ingester_kafka_", i.registerer))
+	if err != nil {
+		return fmt.Errorf("failed to create lag observer: %w", err)
+	}
 	// Offsets are committed automatically by the client. The patterns are only
 	// kept in memory, so there is no need to replay records after a restart.
 	// The instance ID makes the group membership static, so a restarted ingester
@@ -40,6 +43,9 @@ func (i *Ingester) initKafka() error {
 		kgo.AutoCommitInterval(cfg.KafkaConfig.ConsumerGroupOffsetCommitInterval),
 		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+		kgo.OnPartitionsAssigned(i.onPartitionsAssigned),
+		kgo.OnPartitionsRevoked(i.onPartitionsRevoked),
+		kgo.OnPartitionsLost(i.onPartitionsRevoked),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create kafka client: %w", err)
@@ -57,12 +63,36 @@ func (i *Ingester) initKafka() error {
 	return nil
 }
 
+// onPartitionsAssigned registers the consumer lag of each newly assigned
+// partition. It expects just one topic and panics if topics contains more than
+// one topic.
+func (i *Ingester) onPartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	for _, partitions := range topics {
+		i.lagObserver.Assign(partitions)
+	}
+}
+
+// onPartitionsRevoked removes the consumer lag of each revoked or lost
+// partition. It expects just one topic and panics if topics contains more than
+// one topic.
+func (i *Ingester) onPartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	for _, partitions := range topics {
+		i.lagObserver.Revoke(partitions)
+	}
+}
+
 // consumeRecords pushes the records from Kafka to the instance of the tenant
 // until the channel is closed.
 func (i *Ingester) consumeRecords(ctx context.Context, records <-chan *kgo.Record) {
 	for rec := range records {
 		i.metrics.kafkaRecordsTotal.Inc()
-		i.metrics.kafkaConsumerLagHighWatermark.Observe(time.Since(rec.Timestamp).Seconds())
+		i.lagObserver.Observe(rec.Partition, rec.Timestamp)
 		stream, err := i.kafkaDecoder.DecodeWithoutLabels(rec.Value)
 		if err != nil {
 			level.Error(i.logger).Log("msg", "failed to decode record", "offset", rec.Offset, "err", err)

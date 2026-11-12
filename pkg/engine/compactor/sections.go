@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -28,17 +26,10 @@ import (
 
 const prefetchBytes = 2 * 1024 * 1024
 
-// errCorruptIndex reports an index whose sections of one tenant do not share
-// one stream layout, or whose layout cannot be read. No retry can fix it, so
-// compaction skips it.
+// errCorruptIndex reports an index or index run whose sections of one tenant
+// do not share one stream layout, or whose layout cannot be read. No retry can
+// fix it, so compaction skips it.
 var errCorruptIndex = errors.New("corrupt index")
-
-// indexEntry is one index object listed in a ToC for a particular tenant.
-type indexEntry struct {
-	Path  string
-	Start time.Time
-	End   time.Time
-}
 
 // logSortPrefix is the planner key for log sections. It orders by the shared
 // [streams.SortPrefix], so planner order matches stream ID order in objects.
@@ -85,129 +76,33 @@ func indexKey(row postings.Row) indexSortKey {
 // loadTenantIndexes returns the entries of the tenant's ToC for the window.
 // Entry order reflects ToC enumeration order and is not part of the contract
 // — callers must not rely on it for correctness.
-func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexEntry, error) {
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexpointers.IndexPointer, error) {
 	tocPath := metastore.TableOfContentsPath(tenant, window.UTC().Truncate(metastore.MetastoreWindowSize))
 
-	r, err := bucket.Get(ctx, tocPath)
+	obj, err := metastore.OpenTableOfContents(ctx, bucket, tocPath)
 	if err != nil {
 		return nil, err // includes IsObjNotFoundErr — caller checks
 	}
-	defer r.Close()
 
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("read ToC %s: %w", tocPath, err)
-	}
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	if err != nil {
-		return nil, fmt.Errorf("decode ToC %s: %w", tocPath, err)
-	}
-
-	// Hoist the Reader and the per-batch decode scratch above the section
-	// loop. Reader.Reset(...) at each iteration reuses the reader's internal
-	// allocator + record-batch state — matches the upstream pattern in
-	// metastore/iter.go's forEachIndexPointer.
-	var reader indexpointers.Reader
-	defer reader.Close()
-	const batchSize = 1024
-	scratch := make([]indexEntry, batchSize)
-
-	var out []indexEntry
-	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
+	var out []indexpointers.IndexPointer
+	for res := range indexpointers.Iter(ctx, obj) {
+		pointer, err := res.Value()
+		if err != nil {
+			return nil, fmt.Errorf("read indexpointers of ToC %s: %w", tocPath, err)
+		}
 		// ToCs are written per tenant, so another tenant's section means the
 		// metastore is corrupt. Compacting it could merge indexes across tenants.
-		if section.Tenant != tenant {
-			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, section.Tenant))
+		if pointer.Tenant != tenant {
+			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, pointer.Tenant))
 		}
-		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
-		if err != nil {
-			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
-		}
-		out = append(out, entries...)
-	}
-
-	return out, nil
-}
-
-// readAllIndexPointers decodes every row of one indexpointers section into
-// indexEntry values. The caller owns the Reader and scratch slice; both are
-// reused across section iterations.
-//
-// Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
-// the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
-// predicate — the compactor reads every row of the tenant's ToC.
-func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
-	sec, err := indexpointers.Open(ctx, section)
-	if err != nil {
-		return nil, fmt.Errorf("opening indexpointers section: %w", err)
-	}
-
-	reader.Reset(indexpointers.ReaderOptions{Columns: sec.Columns()})
-	if err := reader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening reader: %w", err)
-	}
-
-	batchSize := len(scratch)
-	var out []indexEntry
-	for {
-		rec, readErr := reader.Read(ctx, batchSize)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return nil, fmt.Errorf("reading batch: %w", readErr)
-		}
-		numRows := int(rec.NumRows())
-		if numRows == 0 && errors.Is(readErr, io.EOF) {
-			break
-		}
-
-		// Clear the rows we will populate so prior batches don't leak through.
-		for i := range numRows {
-			scratch[i] = indexEntry{}
-		}
-
-		for colIdx := 0; colIdx < int(rec.NumCols()); colIdx++ {
-			col := rec.Column(colIdx)
-			pointerCol := sec.Columns()[colIdx]
-			switch pointerCol.Type {
-			case indexpointers.ColumnTypePath:
-				values := col.(*array.String)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].Path = values.Value(rIdx)
-				}
-			case indexpointers.ColumnTypeMinTimestamp:
-				values := col.(*array.Timestamp)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].Start = time.Unix(0, int64(values.Value(rIdx)))
-				}
-			case indexpointers.ColumnTypeMaxTimestamp:
-				values := col.(*array.Timestamp)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
-				}
-			}
-		}
-
-		for i := range numRows {
-			out = append(out, scratch[i])
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
+		out = append(out, pointer.IndexPointer)
 	}
 	return out, nil
 }
 
 const indexSectionReadConcurrency = 16
 
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexpointers.IndexPointer) ([]v2.Section[indexSortKey], error) {
 	type sectionRead struct {
 		objectPath   string
 		sectionIndex int64
@@ -296,13 +191,16 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 	if compareIndexSortKey(minKey, maxKey) > 0 {
 		return nil, errors.New("postings section bounds are out of order")
 	}
+	// The index object is the unit of its sections. The caller joins the
+	// index objects of one index run into one unit.
 	return &v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
 			ObjectPath:   objectPath,
 			SectionIndex: sectionIndex,
 		},
-		Min: minKey,
-		Max: maxKey,
+		Min:          minKey,
+		Max:          maxKey,
+		PlanningUnit: objectPath,
 	}, nil
 }
 
@@ -345,34 +243,26 @@ func indexLayout(ctx context.Context, obj *dataobj.Object, tenant, idxPath strin
 	return layout, ok, nil
 }
 
-// indexLayoutAt opens the index at idxPath and returns its layout as
-// indexLayout does.
-func indexLayoutAt(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) (streams.Layout, bool, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
-	if err != nil {
-		return streams.Layout{}, false, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
-	}
-	return indexLayout(ctx, obj, tenant, idxPath)
-}
-
 // logSectionRefsFor returns one bounded reference per log section indexed by
-// idxPath. It returns an error that wraps errCorruptIndex if the sections of
-// the index do not share one stream layout.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], error) {
+// idxPath, and the shard buckets of the index. It returns no references and the
+// zero ShardBuckets if the index has no stats section for tenant. It returns an
+// error that wraps errCorruptIndex if the sections of the index do not share
+// one stream layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 	layout, ok, err := indexLayout(ctx, obj, tenant, idxPath)
 	if err != nil {
-		return nil, err
+		return nil, indexpointers.ShardBuckets{}, err
 	}
 	if !ok {
-		return nil, nil
+		return nil, indexpointers.ShardBuckets{}, nil
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -384,6 +274,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		reader stats.Reader
 
 		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
+		interned  = make(map[string]string)
 	)
 	defer reader.Close()
 
@@ -396,18 +287,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, indexpointers.ShardBuckets{}, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -417,15 +308,19 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
+			// The decoded strings point into the buffers of the record batch.
+			// The plans keep the label values and object paths for the whole
+			// LogMerge phase. Without a copy, they keep every batch in memory.
+			// Interning copies each distinct value once.
 			for _, stat := range rows[:n] {
 				var labels []string
 				if len(labelNames) > 0 {
 					labels = make([]string, len(labelNames))
 					for i, name := range labelNames {
-						labels[i] = stat.Labels[name]
+						labels[i] = intern(interned, stat.Labels[name])
 					}
 				}
 				key := newLogSortPrefix(stat.ShardBucket, labels)
@@ -434,9 +329,12 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
+					// A log merge rewrites whole logs objects, so each logs
+					// object is a planning unit.
 					bySection[id] = &v2.Section[logSortPrefix]{
+						PlanningUnit: intern(interned, stat.ObjectPath),
 						Ref: &compactionv2pb.SectionRef{
-							ObjectPath:       stat.ObjectPath,
+							ObjectPath:       intern(interned, stat.ObjectPath),
 							SectionIndex:     stat.SectionIndex,
 							MinKey:           key.labels,
 							MaxKey:           key.labels,
@@ -481,7 +379,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, nil
+	return refs, indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+}
+
+// intern returns the copy of s in interned. It adds a copy of s on the
+// first call for each distinct value.
+func intern(interned map[string]string, s string) string {
+	if v, ok := interned[s]; ok {
+		return v
+	}
+	v := strings.Clone(s)
+	interned[v] = v
+	return v
 }
 
 // schemaLabelNames returns the label names of the fully-qualified schema

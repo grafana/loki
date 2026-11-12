@@ -36,7 +36,7 @@ func (m *mockBucket) Attributes(_ context.Context, name string) (objstore.Object
 	return objstore.ObjectAttributes{}, nil
 }
 
-func (m *mockBucket) Upload(_ context.Context, name string, _ io.Reader) error {
+func (m *mockBucket) Upload(_ context.Context, name string, _ io.Reader, _ ...objstore.ObjectUploadOption) error {
 	m.lastKey = name
 	return nil
 }

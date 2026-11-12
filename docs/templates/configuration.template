@@ -107,10 +107,8 @@ overrides:
   tenant1:
     ingestion_rate_mb: 10
     max_streams_per_user: 100000
-    max_chunks_per_query: 100000
   tenant2:
     max_streams_per_user: 1000000
-    max_chunks_per_query: 1000000
 
 multi_kv_config:
     mirror-enabled: false

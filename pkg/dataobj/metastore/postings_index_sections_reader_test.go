@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -22,13 +23,13 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 
 	ts := now.Add(-2 * time.Hour)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Timestamp: ts, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Time: postings.At(ts), UncompressedSize: 0},
 	})
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 8192, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-4*time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -55,12 +56,12 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsResultBatch(t *testing.T) {
 
 func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(now), UncompressedSize: 0},
 	})
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, matchers, nil, 8192, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-time.Hour), now, matchers, nil, 8192, nil)
 	t.Cleanup(r.Close)
 
 	// No org ID injected into the context.
@@ -73,14 +74,14 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 
 	ts := now.Add(-2 * time.Hour)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 2, Timestamp: ts, UncompressedSize: 0},
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 3, Timestamp: ts, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 2, Time: postings.At(ts), UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 3, Time: postings.At(ts), UncompressedSize: 0},
 	})
 	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 2, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-4*time.Hour), now, matchers, nil, 2, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -103,11 +104,11 @@ func TestPostingsIndexSectionsReader_PaginatesByBatchSize(t *testing.T) {
 func TestPostingsIndexSectionsReader_ZeroMatchersEOF(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 	obj, closer := buildIndexObject(t, tenantID, []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Timestamp: now, UncompressedSize: 0},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "nginx", StreamID: 1, Time: postings.At(now), UncompressedSize: 0},
 	})
 	defer closer()
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now, nil, nil, 8192, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj}}, now.Add(-time.Hour), now, nil, nil, 8192, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -151,26 +152,30 @@ func TestPostingsReader_ExpandsBitmapToStreamRows(t *testing.T) {
 func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	ctx := user.InjectOrgID(t.Context(), tenantID)
 	observations := []postings.LabelObservation{
-		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(now)},
 	}
 	eightBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), nil)
 	sixtyFourBuckets := streams.NewLayout(streams.MustShardLayoutFromBuckets(64), nil)
 
-	setup := func(t *testing.T, hashRange *streams.HashRange, layouts ...streams.Layout) *postingsIndexSectionsReader {
+	setupWithToC := func(t *testing.T, hashRange *streams.HashRange, tocBuckets indexpointers.ShardBuckets, layouts ...streams.Layout) *postingsIndexSectionsReader {
 		t.Helper()
 
 		obj, closer := buildIndexObject(t, tenantID, observations, layouts...)
 		t.Cleanup(closer)
 		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-		reader := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-time.Hour), now.Add(time.Hour), matchers, nil, 0, hashRange)
+		reader := newPostingsIndexSectionsReader(log.NewNopLogger(), []indexObject{{obj: obj, shardBuckets: tocBuckets}}, now.Add(-time.Hour), now.Add(time.Hour), matchers, nil, 0, hashRange)
 		t.Cleanup(reader.Close)
 		return reader
+	}
+	setup := func(t *testing.T, hashRange *streams.HashRange, layouts ...streams.Layout) *postingsIndexSectionsReader {
+		t.Helper()
+		return setupWithToC(t, hashRange, indexpointers.ShardBuckets{}, layouts...)
 	}
 
 	t.Run("maps the upper half of the hashes to the upper buckets of the layout that the index records", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err)
 		require.Equal(t, &postings.ShardBucketRange{From: 4, To: 7}, got)
 	})
@@ -178,7 +183,7 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	t.Run("returns no range when the range covers every bucket of the layout", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 0, To: math.MaxUint64}, eightBuckets)
 
-		got, err := reader.shardBucketRange(ctx, tenantID)
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.NoError(t, err)
 		require.Nil(t, got)
 	})
@@ -186,9 +191,29 @@ func TestPostingsIndexSectionsReader_ShardBucketRange(t *testing.T) {
 	t.Run("fails when the stats sections record different layouts", func(t *testing.T) {
 		reader := setup(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, eightBuckets, sixtyFourBuckets)
 
-		_, err := reader.shardBucketRange(ctx, tenantID)
+		_, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
 		require.ErrorIs(t, err, indexobj.ErrMixedLayouts)
 		require.ErrorIs(t, reader.Open(ctx), indexobj.ErrMixedLayouts)
+	})
+
+	t.Run("maps the hashes with the layout from the ToC when the ToC records one", func(t *testing.T) {
+		// The ToC and the index disagree only to show which layout the reader uses. Writers never
+		// produce such a pair.
+		tocBuckets := indexpointers.NewShardBuckets(sixtyFourBuckets.ShardLayout())
+		reader := setupWithToC(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, tocBuckets, eightBuckets)
+
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
+		require.NoError(t, err)
+		require.Equal(t, &postings.ShardBucketRange{From: 32, To: 63}, got)
+	})
+
+	t.Run("reads no stats section when the ToC records the layout", func(t *testing.T) {
+		tocBuckets := indexpointers.NewShardBuckets(eightBuckets.ShardLayout())
+		reader := setupWithToC(t, &streams.HashRange{From: 1 << 63, To: math.MaxUint64}, tocBuckets, eightBuckets, sixtyFourBuckets)
+
+		got, err := reader.shardBucketRange(ctx, tenantID, reader.objects)
+		require.NoError(t, err, "the mixed layouts of the stats sections must not be read")
+		require.Equal(t, &postings.ShardBucketRange{From: 4, To: 7}, got)
 	})
 
 	t.Run("reads no layout when the request has no hash range", func(t *testing.T) {

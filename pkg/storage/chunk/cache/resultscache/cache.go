@@ -126,7 +126,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 	sp.SetAttributes(
 		attribute.String("query", r.GetQuery()),
-		attribute.String("step", time.UnixMilli(r.GetStep()).String()),
+		attribute.String("step", (time.Duration(r.GetStep())*time.Millisecond).String()),
 		attribute.String("start", r.GetStart().String()),
 		attribute.String("end", r.GetEnd().String()),
 		attribute.String("key", key),

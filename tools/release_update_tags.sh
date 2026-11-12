@@ -26,7 +26,7 @@ LOKI_LOGCLI_DOCKER_TAG="grafana\/logcli:"
 echo "Updating version references to ${NEW_VERSION}"
 
 # grep -Iq is to ignore non-binary files.
-find . -type f -not -path "./.git/*" -not -path "./vendor/*" -not -path "./operator/*" -not -path "./CHANGELOG.md" -not -path "./docs/sources/setup/upgrade/*" -exec grep -Iq . {} \; -print0\
+find . -type f -not -path "./.git/*" -not -path "./vendor/*" -not -path "./CHANGELOG.md" -not -path "./docs/sources/setup/upgrade/*" -exec grep -Iq . {} \; -print0\
     | xargs -0 sed -i '' -E \
 	    -e "s/(${LOKI_DOCKER_DRIVER_TAG})(${OLD_VERSION})/\1${NEW_VERSION}/g" \
 	    -e "s/(${LOKI_DOCUMENTS_TAG})(${OLD_VERSION})/\1${NEW_VERSION}/g" \

@@ -470,7 +470,7 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		buf, dumpErr := httputil.DumpRequestOut(req, req.Body != nil)
 		if dumpErr == nil {
-			GetLogger().Debug("Request:\n%s\n", string(buf))
+			GetLogger().Debug("Request:\n%s\n", RedactSecrets(string(buf)))
 		} else {
 			GetLogger().Debug(fmt.Sprintf("error while attempting to log outbound request: %s", dumpErr.Error()))
 		}
@@ -487,7 +487,7 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		buf, dumpErr := httputil.DumpResponse(resp, resp.Body != nil)
 		if dumpErr == nil {
-			GetLogger().Debug("Response:\n%s\n", string(buf))
+			GetLogger().Debug("Response:\n%s\n", RedactSecrets(string(buf)))
 		} else {
 			GetLogger().Debug(fmt.Sprintf("error while attempting to log inbound response: %s", dumpErr.Error()))
 		}
@@ -561,7 +561,7 @@ func (authenticator *VpcInstanceAuthenticator) retrieveInstanceIdentityToken() (
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		buf, dumpErr := httputil.DumpRequestOut(req, req.Body != nil)
 		if dumpErr == nil {
-			GetLogger().Debug("Request:\n%s\n", string(buf))
+			GetLogger().Debug("Request:\n%s\n", RedactSecrets(string(buf)))
 		} else {
 			GetLogger().Debug(fmt.Sprintf("error while attempting to log outbound request: %s", dumpErr.Error()))
 		}
@@ -580,7 +580,7 @@ func (authenticator *VpcInstanceAuthenticator) retrieveInstanceIdentityToken() (
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		buf, dumpErr := httputil.DumpResponse(resp, resp.Body != nil)
 		if dumpErr == nil {
-			GetLogger().Debug("Response:\n%s\n", string(buf))
+			GetLogger().Debug("Response:\n%s\n", RedactSecrets(string(buf)))
 		} else {
 			GetLogger().Debug(fmt.Sprintf("error while attempting to log inbound response: %s", dumpErr.Error()))
 		}

@@ -314,8 +314,10 @@ func (n *Node) Decode(v any) (err error) {
 // Explicit Alias-Data policies are rejected because composition has already
 // occurred and the policy cannot be applied to this node graph.
 //
-// This method is useful when you need to preserve options like WithKnownFields()
-// inside custom UnmarshalYAML implementations.
+// Each call starts with fresh options, independently of an outer Loader.
+// Pass WithKnownFields() explicitly to check fields inside a custom
+// UnmarshalYAML implementation.
+// Parser settings do not apply to this already composed graph.
 //
 // Maps and pointers (to a struct, string, int, etc) are accepted as v
 // values. If an internal pointer within a struct is not initialized,
@@ -378,6 +380,8 @@ func (n *Node) Encode(v any) (err error) {
 //
 // This method is useful when you need to apply specific encoding options
 // while building Node trees programmatically.
+// Node stores styles, but not output indentation or document-marker settings.
+// Apply those options again when serializing the node to YAML.
 //
 // See the documentation for [yaml.Marshal] for details about the
 // conversion of Go values into YAML.
@@ -431,23 +435,16 @@ type IsZeroer interface {
 	IsZero() bool
 }
 
-// FromYAMLNode is a new interface that types can implement to customize
-// their unmarshaling behavior. It receives a Node directly and modifies
-// the receiver in place.
-// This is the preferred interface for new code.
-//
-// Note: This interface is reserved for the v4 API and is not yet fully
-// integrated into the current implementation.
+// FromYAMLNode is a reserved internal interface.
+// The current loading pipeline does not invoke it.
+// Use Unmarshaler to customize loading.
 type FromYAMLNode interface {
 	FromYAMLNode(*Node) error
 }
 
-// ToYAMLNode is a new interface that types can implement to customize
-// their marshaling behavior. It returns a Node directly.
-// This is the preferred interface for new code.
-//
-// Note: This interface is reserved for the v4 API and is not yet fully
-// integrated into the current implementation.
+// ToYAMLNode is a reserved internal interface.
+// The current dumping pipeline does not invoke it.
+// Use Marshaler to customize dumping.
 type ToYAMLNode interface {
 	ToYAMLNode() (*Node, error)
 }

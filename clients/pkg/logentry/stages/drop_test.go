@@ -43,7 +43,6 @@ func Test_dropStage_Process(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	tests := []struct {
 		name       string
@@ -409,7 +408,7 @@ func Test_dropStage_Process(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newDropStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newDropStage(tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			out := processEntries(m, newEntry(tt.extracted, tt.labels, tt.entry, tt.t))
 			if tt.shouldDrop {
