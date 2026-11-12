@@ -19,6 +19,7 @@ type SampleExprVisitor interface {
 	VisitLabelAggregation(*LabelAggregationExpr)
 	VisitCountDistinctSketch(*CountDistinctSketchExpr)
 	VisitLabelReplace(*LabelReplaceExpr)
+	VisitHistogramFunc(*HistogramFuncExpr)
 	VisitLiteral(*LiteralExpr)
 	VisitVector(*VectorExpr)
 }
@@ -67,6 +68,7 @@ type DepthFirstTraversal struct {
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitLabelAggregationFn       func(v RootVisitor, e *LabelAggregationExpr)
 	VisitCountDistinctSketchFn    func(v RootVisitor, e *CountDistinctSketchExpr)
+	VisitHistogramFuncFn          func(v RootVisitor, e *HistogramFuncExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
 }
@@ -289,6 +291,18 @@ func (v *DepthFirstTraversal) VisitCountDistinctSketch(e *CountDistinctSketchExp
 	}
 	if v.VisitCountDistinctSketchFn != nil {
 		v.VisitCountDistinctSketchFn(v, e)
+	} else {
+		e.Left.Accept(v)
+	}
+}
+
+// VisitHistogramFunc implements RootVisitor.
+func (v *DepthFirstTraversal) VisitHistogramFunc(e *HistogramFuncExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitHistogramFuncFn != nil {
+		v.VisitHistogramFuncFn(v, e)
 	} else {
 		e.Left.Accept(v)
 	}

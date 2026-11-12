@@ -3,6 +3,7 @@ package syntax
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -33,6 +34,7 @@ func EncodeJSON(e Expr, w io.Writer) error {
 const (
 	Bin                 = "bin"
 	Binary              = "binary"
+	Buckets             = "buckets"
 	Bytes               = "bytes"
 	And                 = "and"
 	Card                = "cardinality"
@@ -40,6 +42,7 @@ const (
 	Duration            = "duration"
 	Groups              = "groups"
 	GroupingField       = "grouping"
+	HistogramFunc       = "histogram_func"
 	Include             = "include"
 	Identifier          = "identifier"
 	Inner               = "inner"
@@ -102,6 +105,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeVector(iter)
 	case LabelReplace:
 		return decodeLabelReplace(iter)
+	case HistogramFunc:
+		return decodeHistogramFunc(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
 	default:
@@ -199,6 +204,19 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 		v.WriteMore()
 		v.WriteObjectField(Params)
 		v.WriteFloat64(*e.Params)
+	}
+
+	if e.Buckets != nil {
+		v.WriteMore()
+		v.WriteObjectField(Buckets)
+		v.WriteArrayStart()
+		for i, bound := range e.Buckets.Bounds {
+			if i > 0 {
+				v.WriteMore()
+			}
+			v.WriteFloat64(bound)
+		}
+		v.WriteArrayEnd()
 	}
 
 	v.WriteMore()
@@ -310,6 +328,45 @@ func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.WriteMore()
 	v.WriteObjectField(RegexField)
 	v.WriteString(e.Regex)
+
+	v.WriteObjectEnd()
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+// VisitHistogramFunc writes the numeric arguments as strings, because JSON has
+// no spelling for the infinities that histogram_fraction accepts as bounds.
+func (v *JSONSerializer) VisitHistogramFunc(e *HistogramFuncExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(HistogramFunc)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Op)
+	v.WriteString(e.Operation)
+
+	if e.Label != "" {
+		v.WriteMore()
+		v.WriteObjectField(Label)
+		v.WriteString(e.Label)
+	}
+
+	if len(e.Params) > 0 {
+		v.WriteMore()
+		v.WriteObjectField(Params)
+		v.WriteArrayStart()
+		for i, p := range e.Params {
+			if i > 0 {
+				v.WriteMore()
+			}
+			v.WriteString(formatHistogramParam(p))
+		}
+		v.WriteArrayEnd()
+	}
+
+	v.WriteMore()
+	v.WriteObjectField(Inner)
+	e.Left.Accept(v)
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -779,6 +836,8 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 			expr, err = decodeVector(iter)
 		case LabelReplace:
 			expr, err = decodeLabelReplace(iter)
+		case HistogramFunc:
+			expr, err = decodeHistogramFunc(iter)
 		default:
 			return nil, fmt.Errorf("unknown sample expression type: %s", key)
 		}
@@ -910,14 +969,36 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 		case Params:
 			tmp := iter.ReadFloat64()
 			expr.Params = &tmp
+		case Buckets:
+			buckets := &BucketSpec{}
+			for iter.ReadArray() {
+				buckets.Bounds = append(buckets.Bounds, iter.ReadFloat64())
+			}
+			expr.Buckets = buckets
 		case Range:
 			expr.Left, err = decodeLogRange(iter)
 		case GroupingField:
 			expr.Grouping, err = decodeGrouping(iter)
 		}
 	}
+	if err != nil {
+		return nil, err
+	}
 
-	return expr, err
+	// A querier receives the sub-queries of a sharded query through this path, so check what the
+	// grammar checks for a histogram: the bucket bounds are what the bucketing relies on. Other
+	// operations are not validated, they never were, and an in-flight query that was built by
+	// the shard mapper must not start failing.
+	if expr.Operation == OpRangeTypeHistogram || expr.Buckets != nil {
+		if expr.Left == nil {
+			return nil, fmt.Errorf("%s has no range", expr.Operation)
+		}
+		if err := expr.Validate(); err != nil {
+			return nil, err
+		}
+	}
+
+	return expr, nil
 }
 
 func decodeLabelAgg(iter *jsoniter.Iterator) (*LabelAggregationExpr, error) {
@@ -1002,6 +1083,49 @@ func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
 	}
 
 	return mustNewLabelReplaceExpr(left, dst, replacement, src, regex), nil
+}
+
+func decodeHistogramFunc(iter *jsoniter.Iterator) (*HistogramFuncExpr, error) {
+	var (
+		left      SampleExpr
+		operation string
+		label     string
+		params    []float64
+		err       error
+	)
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Op:
+			operation = iter.ReadString()
+		case Label:
+			label = iter.ReadString()
+		case Params:
+			for iter.ReadArray() {
+				p, parseErr := strconv.ParseFloat(iter.ReadString(), 64)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				params = append(params, p)
+			}
+		case Inner:
+			left, err = decodeSample(iter)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	expr := mustNewHistogramFuncExpr(left, operation, label, params)
+	if expr.err != nil {
+		return nil, expr.err
+	}
+	// The same rule as for a parsed query, otherwise the expression prints as something the
+	// parser rejects.
+	if err := validateHistogramFunc(expr); err != nil {
+		return nil, err
+	}
+	return expr, nil
 }
 
 func decodeLiteral(iter *jsoniter.Iterator) (*LiteralExpr, error) {

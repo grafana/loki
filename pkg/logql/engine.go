@@ -213,8 +213,8 @@ type queryOpts struct {
 	logExecutingQuery bool
 	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
 	maxQuerySeriesCutoff bool
-	// histogramsEnabled is EngineOpts.EnableHistograms. The engine does not read it yet: the check of a
-	// query comes with the histogram functions.
+	// histogramsEnabled controls if the histogram functions are allowed. A query that uses them fails
+	// without it.
 	histogramsEnabled bool
 }
 
@@ -226,6 +226,12 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 		histogramsEnabled:    opts.EnableHistograms,
 	}
 }
+
+// errHistogramsDisabled is returned for a query that uses histograms when they are not enabled. It wraps
+// ErrParse so that it is served as a client error: a server error is retried by the query frontend and
+// counts against the error rate.
+var errHistogramsDisabled = fmt.Errorf("%w: histogram functions are experimental and not enabled, "+
+	"set -querier.engine.enable-histograms to enable them", logqlerr.ErrParse)
 
 func (opts *EngineOpts) applyDefault() {
 	if opts.MaxLookBackPeriod == 0 {
@@ -418,6 +424,10 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	if vec, ok := expr.(*syntax.VectorExpr); ok {
 		return q.evalVector(ctx, vec)
+	}
+
+	if !q.opts.histogramsEnabled && syntax.UsesHistograms(expr) {
+		return nil, errHistogramsDisabled
 	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)

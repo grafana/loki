@@ -105,7 +105,17 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
+	OpRangeTypeHistogram:   HISTOGRAM_OVER_TIME,
 	OpTypeVector:           VECTOR,
+
+	// histograms
+	OpBuckets:            BUCKETS,
+	OpHistogramQuantile:  HISTOGRAM_QUANTILE,
+	OpHistogramQuantiles: HISTOGRAM_QUANTILES,
+	OpHistogramFraction:  HISTOGRAM_FRACTION,
+	OpHistogramCount:     HISTOGRAM_COUNT,
+	OpHistogramSum:       HISTOGRAM_SUM,
+	OpHistogramAvg:       HISTOGRAM_AVG,
 
 	// vec ops
 	OpTypeSum:      SUM,

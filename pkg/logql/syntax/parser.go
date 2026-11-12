@@ -120,6 +120,14 @@ func MustParseExpr(input string) Expr {
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
+		// A histogram vector cannot be a query result, because the query API
+		// only returns float samples.
+		// TODO: allow it once query results can carry native histograms. The
+		// shard sub-queries of a histogram query have a histogram root too, so
+		// they will need to skip this check before that.
+		if isHistogramValued(e) {
+			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
+		}
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
@@ -185,6 +193,9 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
+		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
@@ -202,6 +213,9 @@ func validateSampleExpr(expr SampleExpr) error {
 	case *VectorAggregationExpr:
 		if e.err != nil {
 			return e.err
+		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
 		}
 		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
 			if err := validateSortGrouping(e.Grouping); err != nil {
@@ -229,7 +243,19 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
+		}
 		return validateSampleExpr(e.Left)
+	case *HistogramFuncExpr:
+		if e.err != nil {
+			return e.err
+		}
+		// Validate the argument first, so its own error is not hidden by the check that it is a histogram.
+		if err := validateSampleExpr(e.Left); err != nil {
+			return err
+		}
+		return validateHistogramFunc(e)
 	default:
 		return validateSampleSelector(e)
 	}

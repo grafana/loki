@@ -215,6 +215,10 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 		s += "\n"
 	}
 
+	if e.Buckets != nil {
+		s += e.Buckets.Pretty(level+1) + ",\n"
+	}
+
 	s += e.Left.Pretty(level + 1)
 
 	s += "\n" + Indent(level) + ")"
@@ -223,6 +227,26 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 		s += e.Grouping.Pretty(level)
 	}
 
+	return s
+}
+
+// e.g: buckets(0.005, 0.05, 0.5, 5)
+//
+// A list that does not fit in a line has one bound per line.
+func (b *BucketSpec) Pretty(level int) string {
+	s := Indent(level)
+	if len(b.String()) <= MaxCharsPerLine {
+		return s + b.String()
+	}
+
+	bounds := make([]string, 0, len(b.Bounds))
+	for _, v := range b.Bounds {
+		bounds = append(bounds, Indent(level+1)+formatHistogramParam(v))
+	}
+
+	s += OpBuckets + "(\n"
+	s += strings.Join(bounds, ",\n")
+	s += "\n" + Indent(level) + ")"
 	return s
 }
 
@@ -378,6 +402,34 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 	}
 
 	s += Indent(level) + ")"
+
+	return s
+}
+
+// e.g: histogram_quantile(0.99, sum by (path) (histogram_over_time({app="api"} | json | unwrap duration_seconds(duration) [5m])))
+func (e *HistogramFuncExpr) Pretty(level int) string {
+	s := Indent(level)
+
+	if !NeedSplit(e) {
+		return s + e.String()
+	}
+
+	before, after := e.args()
+
+	s += e.Operation
+	s += "(\n"
+
+	params := make([]string, 0, len(before)+1+len(after))
+	for _, arg := range before {
+		params = append(params, Indent(level+1)+arg)
+	}
+	params = append(params, e.Left.Pretty(level+1))
+	for _, arg := range after {
+		params = append(params, Indent(level+1)+arg)
+	}
+
+	s += strings.Join(params, ",\n")
+	s += "\n" + Indent(level) + ")"
 
 	return s
 }

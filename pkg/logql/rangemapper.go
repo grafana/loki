@@ -178,6 +178,9 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 	case *syntax.LabelAggregationExpr:
 		// Temporal splitting of HLL estimates is unsafe; keep as-is.
 		return e, nil
+	case *syntax.HistogramFuncExpr:
+		// Histograms cannot be split by range yet; keep as-is.
+		return e, nil
 	case *syntax.LiteralExpr:
 		return e, nil
 	case *syntax.VectorExpr:
