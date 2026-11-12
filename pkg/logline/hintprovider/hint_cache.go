@@ -413,18 +413,17 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
-// needleKey identifies what a lookup does for expr: the needles SupportedQuery
-// extracts and the n-gram length. Queries with the same needles get the same key
-// whatever else is in them, including the stream matchers, which the lookup does
-// not use. ok is false when expr has no single log selector or no needles, and
-// the caller should key on the expression instead.
+// needleKey returns the cache key for what a lookup does for expr: its needles
+// and the n-gram length. Queries with the same needles share a key, even with
+// different stream matchers or pipelines. ok is false with no single log
+// selector or no needles; key on the expression then.
 func needleKey(expr syntax.Expr, ngramLength int) (key string, ok bool) {
-	// A binary operation has a selector per side, and SupportedQuery would mix
-	// their needles.
 	selector := expr
 	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
 		selector = inner
 	}
+	// A binary operation has a selector on each side, and SupportedQuery would
+	// combine their needles into one list. Key on the expression instead.
 	if _, isLog := selector.(syntax.LogSelectorExpr); !isLog {
 		return "", false
 	}
@@ -435,7 +434,7 @@ func needleKey(expr syntax.Expr, ngramLength int) (key string, ok bool) {
 	}
 	sort.Strings(needles)
 	for i, n := range needles {
-		needles[i] = strconv.Quote(n) // needles are arbitrary bytes
+		needles[i] = strconv.Quote(n) // so a needle containing "," can't look like two
 	}
 	return fmt.Sprintf("n=%d f=%s", ngramLength, strings.Join(needles, ",")), true
 }
