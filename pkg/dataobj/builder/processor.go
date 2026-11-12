@@ -19,23 +19,33 @@ import (
 )
 
 type multiBuilder interface {
-	Append(tenant string, stream logproto.Stream, recTime time.Time) error
+	Append(ctx context.Context, tenant string, stream logproto.Stream, recTime time.Time, offset int64) (AppendResult, error)
 	GetEstimatedSize() int
 	IsFull() bool
 	// Reset drops the builders. It must not change them, because a flush can
-	// still use the builders that getBuilders returned.
-	Reset()
+	// still use the builders that getBuilders returned. flushOffset is the offset
+	// that the flush of these builders raises the ToC watermarks to.
+	Reset(flushOffset int64)
 	getBuilders() []builder
 }
 
-// A builder allows mocking of [logsobj.Builder] in tests.
-type builder interface {
+// A logsBuilder allows mocking of [logsobj.Builder] in tests.
+type logsBuilder interface {
 	Append(tenant string, stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
 	IsFull() bool
 	FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error)
 	TimeRanges() []dataobj.TimeRange
 	GetEarliestRecordTime() time.Time
+}
+
+// A builder is a logsBuilder that knows the ToC watermark its first record was
+// checked against.
+type builder interface {
+	logsBuilder
+	// InitialWatermark returns the ToC watermark that the first record of the
+	// builder was checked against. Nil means the ToC held no watermark.
+	InitialWatermark() *int64
 }
 
 // A flushCommitter allows mocking of flushes in tests.
@@ -51,14 +61,15 @@ type processor struct {
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
 
-	// lastOffset contains the offset of the last record appended to the data object
-	// builder. It is used to commit the correct offset after a flush.
+	// lastOffset contains the offset of the last record processed (appended or
+	// dropped). A flush commits it and raises the ToC watermarks to it.
 	lastOffset int64
 
 	// idleFlushTimeout is the maximum amount of time to wait for more data. If no
 	// records are received within this timeout, the current data object builder
 	// is flushed. Most of the time, this timeout occurs when a partition is
-	// marked as inactive in preparation for a scale down.
+	// marked as inactive in preparation for a scale down. After a replay that
+	// dropped every record, the flush has no builders and only commits the offset.
 	idleFlushTimeout time.Duration
 
 	// maxBuilderAge is the maximum age a data object builder can reach before it
@@ -73,10 +84,16 @@ type processor struct {
 	// maximum age. It must be reset after each flush.
 	firstAppend time.Time
 
-	// lastAppend tracks the wall clock time of the last append to the data
-	// object builder. It is used to know if the builder has exceeded the
-	// idle timeout. It must be reset after each flush.
-	lastAppend time.Time
+	// firstRecordProcessedAt tracks the wall clock time of the first record that
+	// the processor appended or dropped. It is used to commit the offset of
+	// dropped records when the builder stays empty for the maximum age. It must be
+	// reset after each flush.
+	firstRecordProcessedAt time.Time
+
+	// lastRecordProcessedAt tracks the wall clock time of the last record that
+	// the processor appended or dropped. It is used to know if the processor has
+	// exceeded the idle timeout. It must be reset after each flush.
+	lastRecordProcessedAt time.Time
 
 	// flushes sends flush requests to the flush loop. It has no buffer, so a
 	// send blocks while the loop runs the previous flush. The processor then
@@ -99,7 +116,9 @@ type processor struct {
 type flushRequest struct {
 	builders []builder
 	reason   string
-	// offset is the biggest offset of the records in the builders.
+	// offset is the offset of the last record that the processor processed. The
+	// flush commits it and raises the ToC watermarks to it. The builders can be
+	// empty.
 	offset int64
 }
 
@@ -153,6 +172,11 @@ func (p *processor) stopping(_ error) error {
 // the error of a failed flush, if any.
 var errStopProcessing = errors.New("processor must stop")
 
+// errUnrecoverable means a record failed in a way that the processor must not
+// skip, because later commits would lose the record. The processor stops and
+// the service fails, so that the builder restarts and reads the record again.
+var errUnrecoverable = errors.New("unrecoverable record failure")
+
 func (p *processor) Run(ctx context.Context) error {
 	defer level.Info(p.logger).Log("msg", "stopped partition processor")
 	level.Info(p.logger).Log("msg", "started partition processor")
@@ -162,7 +186,7 @@ func (p *processor) Run(ctx context.Context) error {
 	// flush, which only stopFlushLoop reads.
 	p.startFlushLoop(ctx)
 
-	p.runUntilStopped(ctx)
+	runErr := p.runUntilStopped(ctx)
 
 	if err := p.stopFlushLoop(); err != nil {
 		// The error fails the service. The builder restarts and reads the
@@ -171,32 +195,46 @@ func (p *processor) Run(ctx context.Context) error {
 		return err
 	}
 
+	if runErr != nil {
+		level.Error(p.logger).Log("msg", "terminating after failed record", "err", runErr)
+		return runErr
+	}
+
 	// Run returns nil after a shutdown cancels ctx. Returning ctx.Err() would
 	// fail the service while it stops.
 	return nil
 }
 
 // runUntilStopped processes records until ctx is canceled, the records channel
-// closes, or the flush loop stops.
-func (p *processor) runUntilStopped(ctx context.Context) {
+// closes, or the flush loop stops. It returns an error if a record failed in a
+// way that the processor must not skip.
+func (p *processor) runUntilStopped(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			level.Info(p.logger).Log("msg", "context canceled")
-			return
+			return nil
 		case <-p.flushLoopDone:
 			// The processor stops now, not at the next flush, so it does not
 			// append records that it can never commit.
-			return
+			return nil
 		case rec, ok := <-p.records:
 			if !ok {
 				level.Info(p.logger).Log("msg", "channel closed")
-				return
+				return nil
 			}
 			if err := p.processRecord(ctx, rec); err != nil {
 				// This record will be reprocessed on the restart, so it's not lost.
 				if errors.Is(err, errStopProcessing) {
-					return
+					return nil
+				}
+				if errors.Is(err, errUnrecoverable) {
+					// A shutdown can cancel the work of the record. The record is read
+					// again after the restart.
+					if ctx.Err() != nil {
+						return nil
+					}
+					return err
 				}
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
 				p.observeRecordErr(rec)
@@ -211,7 +249,7 @@ func (p *processor) runUntilStopped(ctx context.Context) {
 
 			enqueued := p.enqueueFlush(ctx, flushReasonIdle)
 			if !enqueued {
-				return
+				return nil
 			}
 		}
 	}
@@ -227,7 +265,7 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	tenant := string(rec.Key)
 	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
 	if err != nil {
-		// This is an unrecoverable error and no amount of retries will fix it.
+		// Retries cannot fix a decode failure, so the processor skips the record.
 		return fmt.Errorf("failed to decode stream: %w", err)
 	}
 
@@ -243,45 +281,47 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
+	res, err := p.builder.Append(ctx, tenant, stream, rec.Timestamp, rec.Offset)
+	p.metrics.droppedRecords.Add(float64(res.Dropped))
+	if err != nil {
 		return fmt.Errorf("failed to append stream: %w", err)
 	}
 	p.metrics.sizeEstimate.Set(float64(p.builder.GetEstimatedSize()))
 
-	if p.firstAppend.IsZero() {
+	if res.Appended > 0 && p.firstAppend.IsZero() {
 		p.firstAppend = now
 	}
-	p.lastAppend = now
+	if p.firstRecordProcessedAt.IsZero() {
+		p.firstRecordProcessedAt = now
+	}
+	p.lastRecordProcessedAt = now
 	p.lastOffset = rec.Offset
 
 	return nil
 }
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
-	return p.maxBuilderAge > 0 &&
-		p.builder.GetEstimatedSize() > 0 &&
-		!p.firstAppend.IsZero() &&
-		time.Since(p.firstAppend) > p.maxBuilderAge
+	if p.maxBuilderAge <= 0 {
+		return false
+	}
+	if p.builder.GetEstimatedSize() > 0 {
+		return !p.firstAppend.IsZero() && time.Since(p.firstAppend) > p.maxBuilderAge
+	}
+	// The builder is empty because the processor dropped every record. The flush
+	// has no builders and only commits the offset.
+	return !p.firstRecordProcessedAt.IsZero() && time.Since(p.firstRecordProcessedAt) > p.maxBuilderAge
 }
 
-// needsIdleFlush returns true if the partition has exceeded the idle timeout
-// and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {
-	if p.lastAppend.IsZero() {
+	if p.lastRecordProcessedAt.IsZero() {
 		return false
 	}
-	// This is a safety check to make sure we never flush empty data objects.
-	// It should never happen that lastAppend is non-zero while the builder
-	// is empty.
-	if p.builder.GetEstimatedSize() == 0 {
-		return false
-	}
-	return time.Since(p.lastAppend) > p.idleFlushTimeout
+	return time.Since(p.lastRecordProcessedAt) > p.idleFlushTimeout
 }
 
 // enqueueFlush sends the builders to the flush loop as a flush request. The loop
-// flushes them and commits the offset of the last appended record, while the
-// processor keeps appending records to new builders.
+// flushes them, raises the ToC watermarks and commits the offset of the last
+// processed record, while the processor keeps appending records to new builders.
 //
 // enqueueFlush waits while the loop runs the previous flush. It returns false
 // if the flush loop stopped or ctx is canceled. The builders are then lost, so
@@ -296,8 +336,9 @@ func (p *processor) enqueueFlush(ctx context.Context, reason string) bool {
 	// Reset the state to prepare for building the next data objects. Reset
 	// drops the builders from p.builder, and the flush request keeps them.
 	p.firstAppend = time.Time{}
-	p.lastAppend = time.Time{}
-	p.builder.Reset()
+	p.firstRecordProcessedAt = time.Time{}
+	p.lastRecordProcessedAt = time.Time{}
+	p.builder.Reset(p.lastOffset)
 
 	// The size estimate includes these builders until the flush loop takes
 	// them.
