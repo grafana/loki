@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // reachableIndexPrefetchBytes is the size of the first request that
@@ -179,21 +180,15 @@ func (w *reachabilityWalk) addAll(paths []string) {
 // window. The paths are relative to the index storage. A missing ToC has no
 // paths.
 //
-// It reads the whole ToC with one request. A ToC is rewritten in place, so
-// reads of several ranges could mix two versions.
+// It reads the whole ToC with one request, and does not use
+// [dataobj.FromBucket]. A ToC is rewritten in place. FromBucket reads the
+// metadata first and the sections later, and a section read after a rewrite
+// would come from another version of the ToC.
 func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) ([]string, error) {
 	tocPath := TableOfContentsPath(w.tenant, window)
-	r, err := w.indexBucket.Get(ctx, tocPath)
-	if err != nil {
-		if w.indexBucket.IsObjNotFoundErr(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading ToC %s: %w", tocPath, err)
-	}
-	defer r.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("reading ToC %s: %w", tocPath, err)
+	data, found, err := w.readToC(ctx, tocPath)
+	if err != nil || !found {
+		return nil, err
 	}
 	toc, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -229,6 +224,24 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 		return nil, fmt.Errorf("reading index pointers of ToC %s: %w", tocPath, err)
 	}
 	return paths, nil
+}
+
+// readToC returns the content of the ToC at tocPath. found is false if the ToC
+// does not exist.
+func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []byte, found bool, err error) {
+	r, err := w.indexBucket.Get(ctx, tocPath)
+	if err != nil {
+		if w.indexBucket.IsObjNotFoundErr(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("reading ToC %s: %w", tocPath, err)
+	}
+	defer util.CloseAndHandleError(r, &err)
+	data, err = io.ReadAll(r)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading ToC %s: %w", tocPath, err)
+	}
+	return data, true, nil
 }
 
 // addReferencedObjects adds the log objects that the index object at
@@ -269,7 +282,7 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 // addStatsObjectPaths adds the object paths of a stats section. It returns an
 // error if the section has no object_path column or more than one, because
 // reading only one of several columns could miss object paths.
-func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) error {
+func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) (err error) {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
 		return err
@@ -284,7 +297,7 @@ func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dat
 		return fmt.Errorf("stats section has %d object_path columns, want 1", len(columns))
 	}
 	reader := stats.NewReader(stats.ReaderOptions{Columns: columns})
-	defer reader.Close()
+	defer util.CloseAndHandleError(reader, &err)
 	if err := reader.Open(ctx); err != nil {
 		return err
 	}

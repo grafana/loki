@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // DefaultTocBuilderConfig is the builder config for ToC objects. Its sizes are
@@ -586,9 +587,9 @@ func formatWatermark(w *int64) string {
 
 // forEachTocPointer calls fn for every pointer of every index pointers
 // section of tocObject. It stops at the first error.
-func forEachTocPointer(ctx context.Context, tocObject *dataobj.Object, fn func(indexpointers.IndexPointer) error) error {
+func forEachTocPointer(ctx context.Context, tocObject *dataobj.Object, fn func(indexpointers.IndexPointer) error) (err error) {
 	var reader indexpointers.RowReader
-	defer reader.Close()
+	defer util.CloseAndHandleError(&reader, &err)
 
 	buf := make([]indexpointers.IndexPointer, 256)
 	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
