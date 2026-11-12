@@ -1,10 +1,10 @@
 package deletion
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"iter"
-	"math/rand/v2"
 	"slices"
 	"testing"
 
@@ -82,12 +82,11 @@ func TestFindCandidates(t *testing.T) {
 }
 
 func TestCandidates_Examples(t *testing.T) {
-	rng := func() *rand.Rand { return rand.New(rand.NewPCG(1, 2)) }
-
 	t.Run("returns every candidate of each kind sorted when each kind has five or fewer", func(t *testing.T) {
-		cands := candidates{logObjects: []string{"objects/00/b", "objects/00/a"}, indexObjects: []string{"index/v0/indexes/00/x"}}
+		cands := candidates{logObjects: []string{"objects/00/a", "objects/00/b"}, indexObjects: []string{"index/v0/indexes/00/x"}}
 
-		logObjects, indexObjects := cands.examples(rng())
+		logObjects, indexObjects, err := cands.examples(rand.Reader)
+		require.NoError(t, err)
 		require.Equal(t, []string{"objects/00/a", "objects/00/b"}, logObjects)
 		require.Equal(t, []string{"index/v0/indexes/00/x"}, indexObjects)
 	})
@@ -99,7 +98,8 @@ func TestCandidates_Examples(t *testing.T) {
 			cands.logObjects = append(cands.logObjects, fmt.Sprintf("objects/%02d/x", i))
 		}
 
-		logObjects, indexObjects := cands.examples(rng())
+		logObjects, indexObjects, err := cands.examples(rand.Reader)
+		require.NoError(t, err)
 		for kind, examples := range map[string][]string{"log": logObjects, "index": indexObjects} {
 			require.Len(t, examples, 5, kind)
 			require.True(t, slices.IsSorted(examples), kind)
@@ -113,14 +113,11 @@ func TestCandidates_Examples(t *testing.T) {
 		}
 	})
 
-	t.Run("returns candidates other than the first five when each kind has more", func(t *testing.T) {
-		var cands candidates
-		for i := range 20 {
-			cands.logObjects = append(cands.logObjects, fmt.Sprintf("objects/%02d/x", i))
-		}
+	t.Run("returns an error when the random source fails", func(t *testing.T) {
+		cands := candidates{logObjects: []string{"objects/00/a", "objects/00/b", "objects/00/c", "objects/00/d", "objects/00/e", "objects/00/f"}}
 
-		logObjects, _ := cands.examples(rng())
-		require.NotEqual(t, cands.logObjects[:5], logObjects)
+		_, _, err := cands.examples(failingReader{})
+		require.ErrorContains(t, err, "picking random examples")
 	})
 }
 
@@ -132,40 +129,45 @@ func TestSample(t *testing.T) {
 
 	t.Run("returns a copy of every path when there are n or fewer", func(t *testing.T) {
 		in := []string{"a", "b"}
-		out := sample(rand.New(rand.NewPCG(1, 2)), in, 5)
+		out, err := sample(rand.Reader, in, 5)
+		require.NoError(t, err)
 		require.Equal(t, in, out)
 		out[0] = "changed"
 		require.Equal(t, "a", in[0])
 	})
 
-	t.Run("returns n distinct paths of the input when there are more", func(t *testing.T) {
-		out := sample(rand.New(rand.NewPCG(1, 2)), paths, 5)
+	t.Run("returns n distinct sorted paths of the input when there are more", func(t *testing.T) {
+		out, err := sample(rand.Reader, paths, 5)
+		require.NoError(t, err)
 		require.Len(t, out, 5)
-		slices.Sort(out)
-		require.Len(t, slices.Compact(out), 5)
+		require.True(t, slices.IsSorted(out))
+		require.Len(t, slices.Compact(slices.Clone(out)), 5)
 		for _, p := range out {
 			require.Contains(t, paths, p)
 		}
 	})
 
-	t.Run("returns different paths for different random sources", func(t *testing.T) {
-		require.NotEqual(t, sample(rand.New(rand.NewPCG(1, 2)), paths, 5), sample(rand.New(rand.NewPCG(3, 4)), paths, 5))
-	})
-
 	t.Run("picks each path about equally often", func(t *testing.T) {
 		const runs = 10000
-		rng := rand.New(rand.NewPCG(1, 2))
 		hits := make(map[string]int, len(paths))
 		for range runs {
-			for _, p := range sample(rng, paths, 5) {
+			out, err := sample(rand.Reader, paths, 5)
+			require.NoError(t, err)
+			for _, p := range out {
 				hits[p]++
 			}
 		}
 		// Each path has a chance of 5 in 100 per run, so it is picked about
-		// 500 times. The bounds are wide, so that only a biased sample fails.
+		// 500 times, with a standard deviation of about 22. The bounds are
+		// about seven standard deviations wide, so only a biased sample fails.
 		for _, p := range paths {
 			require.InDelta(t, 500, hits[p], 150, p)
 		}
+	})
+
+	t.Run("returns an error when the random source fails", func(t *testing.T) {
+		_, err := sample(failingReader{}, paths, 5)
+		require.ErrorContains(t, err, "picking random examples")
 	})
 }
 

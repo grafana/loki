@@ -2,9 +2,9 @@ package deletion
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"path"
 	"strings"
 	"time"
@@ -264,8 +264,9 @@ func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHea
 // modification time and size. An operator uses these lines to check the
 // candidates by hand.
 //
-// If logDryRun cannot read the attributes of an example, it logs the error
-// instead. The list is already stored, so the error does not fail the sweep.
+// If logDryRun cannot pick the examples or read the attributes of an
+// example, it logs the error instead. The list is already stored, so the
+// error does not fail the sweep.
 func (s *Sweeper) logDryRun(ctx context.Context, logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) {
 	level.Info(logger).Log(
 		"msg", "deletion sweep dry run: would delete objects",
@@ -278,7 +279,11 @@ func (s *Sweeper) logDryRun(ctx context.Context, logger log.Logger, previousCrea
 		"index_objects", len(cands.indexObjects),
 	)
 
-	logObjects, indexObjects := cands.examples(rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())))
+	logObjects, indexObjects, err := cands.examples(rand.Reader)
+	if err != nil {
+		level.Warn(logger).Log("msg", "deletion sweep dry run: cannot pick example candidates", "err", err)
+		return
+	}
 	s.logExamples(ctx, logger, "index", indexObjects)
 	s.logExamples(ctx, logger, "log", logObjects)
 }

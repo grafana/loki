@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"slices"
 	"testing"
@@ -453,11 +453,11 @@ func readUntilError(r *FileListReader) ([]string, error) {
 // list is at least size bytes.
 func incompressiblePaths(size int) []string {
 	const randomBytesPerPath = 4096
-	rng := rand.NewChaCha8([32]byte{})
 	paths := make([]string, 0, size/randomBytesPerPath+1)
 	buf := make([]byte, randomBytesPerPath)
 	for range size/randomBytesPerPath + 1 {
-		_, _ = rng.Read(buf)
+		// crypto/rand.Read never returns an error.
+		_, _ = rand.Read(buf)
 		paths = append(paths, "objects/"+hex.EncodeToString(buf))
 	}
 	slices.Sort(paths)

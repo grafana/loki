@@ -1,8 +1,11 @@
 package deletion
 
 import (
+	"crypto/rand"
+	"fmt"
+	"io"
 	"iter"
-	"math/rand/v2"
+	"math/big"
 	"slices"
 	"strings"
 
@@ -86,32 +89,51 @@ func findCandidates(previous iter.Seq2[string, error], current []string) (candid
 // examples returns up to examplesPerKind log objects and up to
 // examplesPerKind index objects of the candidates, each sorted. The
 // candidates are sorted, so the first ones come from a few hash prefixes
-// only. examples picks them at random with rng instead, so that repeated
-// sweeps show different candidates.
-func (c candidates) examples(rng *rand.Rand) (logObjects, indexObjects []string) {
-	logObjects = sample(rng, c.logObjects, examplesPerKind)
-	indexObjects = sample(rng, c.indexObjects, examplesPerKind)
-	slices.Sort(logObjects)
-	slices.Sort(indexObjects)
-	return logObjects, indexObjects
+// only. examples reads random to pick them at random instead, so that
+// repeated sweeps show different candidates.
+func (c candidates) examples(random io.Reader) (logObjects, indexObjects []string, err error) {
+	logObjects, err = sample(random, c.logObjects, examplesPerKind)
+	if err != nil {
+		return nil, nil, err
+	}
+	indexObjects, err = sample(random, c.indexObjects, examplesPerKind)
+	if err != nil {
+		return nil, nil, err
+	}
+	return logObjects, indexObjects, nil
 }
 
-// sample returns n random elements of paths, or a copy of paths if it holds
-// n or fewer. It uses memory for n elements only, whatever the length of
-// paths.
-func sample(rng *rand.Rand, paths []string, n int) []string {
-	result := make([]string, 0, min(n, len(paths)))
-	for i, p := range paths {
-		switch {
-		case i < n:
-			result = append(result, p)
-		default:
-			if j := rng.IntN(i + 1); j < n {
-				result[j] = p
-			}
-		}
+// sample returns n distinct random elements of the sorted paths, or a copy
+// of paths if it holds n or fewer. The result is sorted.
+//
+// sample uses Floyd's algorithm, so it reads n random numbers from random,
+// whatever the length of paths.
+func sample(random io.Reader, paths []string, n int) ([]string, error) {
+	if len(paths) <= n {
+		return slices.Clone(paths), nil
 	}
-	return result
+	picked := make(map[int]struct{}, n)
+	for j := len(paths) - n; j < len(paths); j++ {
+		r, err := rand.Int(random, big.NewInt(int64(j+1)))
+		if err != nil {
+			return nil, fmt.Errorf("picking random examples: %w", err)
+		}
+		i := int(r.Int64())
+		if _, ok := picked[i]; ok {
+			i = j
+		}
+		picked[i] = struct{}{}
+	}
+	indexes := make([]int, 0, n)
+	for i := range picked {
+		indexes = append(indexes, i)
+	}
+	slices.Sort(indexes)
+	result := make([]string, 0, n)
+	for _, i := range indexes {
+		result = append(result, paths[i])
+	}
+	return result, nil
 }
 
 func isIndexObject(p string) bool {
