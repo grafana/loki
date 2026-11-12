@@ -47,10 +47,10 @@ To install the mixins in Grafana and a Prometheus-compatible rules store, the ge
    cd loki
    ```
 
-1. Check out the tag that matches the version of Loki you are running, so that the dashboards, alerts, and recording rules match the metrics your Loki cluster exposes. For example, if you are running Loki 3.7.6:
+1. Check out the tag that matches the version of Loki you are running, so that the dashboards, alerts, and recording rules match the metrics your Loki cluster exposes. For example, if you are running Loki 3.7.9:
 
    ```bash
-   git checkout v3.7.6
+   git checkout v3.7.9
    ```
 
 1. Once you have a local copy of the repository at the matching version, navigate to the `production/loki-mixin-compiled` directory.
@@ -74,7 +74,7 @@ Refer to [Import a dashboard](https://grafana.com/docs/grafana/latest/dashboards
 {{< admonition type="note" >}}
 The dashboards and alerts expect your metrics to carry these labels: `cluster`, `namespace`, `job`, `container`, `pod`, and `instance`. The Kubernetes Monitoring Helm chart provides them, because it adds the cluster name as a global label and collects container and node metrics using cAdvisor, kube-state-metrics, and Node Exporter.
 
-If your setup uses different label names, or does not collect container and node metrics, some panels and alerts show no data until you relabel your metrics to match.
+If your setup uses different label names, or does not collect container and node metrics, some panels and alerts show no data until you relabel your metrics to match. If you scrape Loki directly instead of using the Kubernetes Monitoring Helm chart, refer to [Single binary meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/single-binary/) for an example of adding these labels through your scrape configuration.
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}
