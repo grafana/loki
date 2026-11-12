@@ -115,7 +115,7 @@ Fixed-width offsets permit direct string access without a prefix scan.
 
 The `fsst-varint` fixture replaces `uint32[N+1]` offsets with one unsigned varint compressed length per non-NULL string.
 Both layouts use identical symbol tables and payloads.
-All sizes are bytes:
+All page sizes are in bytes:
 
 | Page values | uint32 boundaries | Varint boundaries | uint32 page | Varint page |
 | --- | ---: | ---: | ---: | ---: |
@@ -130,22 +130,15 @@ They require a prefix scan or a reconstructed offset array before direct access.
 The existing `DecodeBatch` accepts that reconstructed array.
 Full results reside in `fsst-go/results/loki-pages-varint.json`.
 
-For the log page, access to one uniformly selected non-NULL value has these mean byte costs:
+Warm decode throughput for the 2,048-row log page, in decoded MB/s:
 
-| Layout | One: boundaries | One: boundaries + payload | All: boundaries | All: boundaries + payload |
-| --- | ---: | ---: | ---: | ---: |
-| uint32 offsets | 8 | 125.49 | 8,196 | 248,816 |
-| Varint lengths | 1,365.67 | 1,483.16 | 2,730 | 243,350 |
+| Decode mode | uint32 offsets | Varint lengths |
+| --- | ---: | ---: |
+| Random single value | 4,447 | 183 |
+| Whole page | 4,961 | 4,863 |
 
-A single value needs two fixed-width offsets, versus `(N+1)/2` varint lengths on average: 1,024.5 for this page.
-These logical byte counts assume a loaded symbol table and an available non-NULL value index, without a cached cumulative index.
-A cold Loki open still reads the complete page for CRC32C verification.
-Full access results reside in `fsst-go/results/loki-pages-access.json`.
-
-For logs, warm random access reaches 4,447 MB/s with fixed offsets and 183 MB/s with varint lengths (24.3× more time per value).
-Whole-page rates are 4,961 and 4,863 MB/s, respectively: approximately 2% less throughput with varints.
 The timer includes boundary parsing and FSST decode, but excludes table construction, bitmap processing, CRC32C, and I/O.
-Rates use decoded string bytes. Full results reside in `fsst-go/results/loki-boundary-decode-summary.json`.
+Full results reside in `fsst-go/results/loki-boundary-decode-summary.json`.
 
 ##### Symbol table and small-page overhead
 
@@ -217,87 +210,16 @@ Its measured decode throughput is approximately 3.75× higher.
 The grouped Zstd cases approximate the current whole-page compression model.
 Loki page framing and reader overhead remain unmeasured.
 
+Stored ratios include serialized tables and boundary metadata.
+The measured FSST layout also includes a four-byte total decoded size for exact buffer allocation.
+
+The measurements exclude table training and construction.
+Zstd checksums remain enabled, while the FSST benchmark adds no checksum.
+Optimized throughput measurements cover ARM64 only.
+
 The Zstd target is 1 MiB before compression, which matches Loki's default target for log-message pages.
 Each corpus fits in one block without padding.
 The log block contains 819,418 original bytes plus 4,096 bytes of row framing.
-
-#### Optimized batch decode
-
-The separate kernel experiment records these earlier measurements.
-The fresh upstream batch control reaches 2,781.5 MB/s on logs.
-The fork reaches 5,192.2 MB/s, a 1.87× gain.
-Its independent repeat reaches 5,119.3 MB/s.
-Batch speedups across logs, URLs, prose, and random text range from 1.85× to 1.90×.
-
-The fork calls the checked eight-symbol kernel with each compressed range and the remaining page capacity.
-It reconstructs decoded offsets from actual output sizes without individual decoded lengths.
-The scalar fallback preserves buffer growth and legacy error behavior.
-A capacity shortage can cause duplicate work for the current row.
-
-In the current page comparison, generic per-string decode reaches 2,712.0 MB/s on logs.
-Checked `DecodeIntoExact` reaches 3,261.4 MB/s with individual decoded lengths.
-The optimized batch kernel needs only sufficient destination capacity.
-The exact API limits each kernel call to that row's decoded length.
-The batch API exposes more capacity, so more row tails can use wide stores.
-
-#### Allocation and random access
-
-Every timed reusable batch decode sample records zero allocations and zero allocated bytes.
-The destination capacity equals the total decoded page size, with no extra padding.
-The output offset buffer contains `N+1` reusable entries.
-These counts exclude initial buffers, table construction, and input offset conversion.
-
-The log page retains 819,418 decoded bytes and 16,392 bytes of decoded offsets on the 64-bit host.
-The separate cold-buffer experiment records the following allocation costs.
-Cold decode with nil destinations records 33 allocations and approximately 4.15 MB allocated per page in both implementations.
-The fork reaches 1,998.2 MB/s in that cold-buffer test, versus 1,470.0 MB/s upstream.
-Reusable destinations avoid those repeated allocations and copies.
-Loki allocator integration remains unmeasured.
-
-Compressed offsets still permit direct access to one selected string.
-A singleton `DecodeBatch` call needs that compressed range and two relative offsets, without prior rows or an individual decoded length.
-A sufficient reusable scratch buffer avoids allocations.
-The random access benchmark uses the maximum row size of 1,023 bytes for all row decoders.
-
-The earlier random access experiment remains separate from the page comparison.
-For logs, warm random-order access takes 93.2 ns per row with the fork, versus 154.2 ns with upstream batch decode.
-Fork generic decode takes 150.4 ns per row, and exact decode takes 124.7 ns.
-All random access samples record zero allocations.
-The test excludes storage I/O and persistent output copies.
-The current Loki reader still needs a separate change to skip decode for unselected rows.
-
-#### Storage accounting and limits
-
-Stored ratios include serialized models and boundary metadata.
-The measured FSST batch directory contains `uint32[N+1]` compressed offsets and one `uint32` total decoded size.
-It costs 8,200 bytes for 2,048 rows, versus 16,388 bytes for the earlier directory with individual decoded lengths.
-The payload contains 236,999 bytes, and the serialized table contains 812 bytes.
-Total stored size is 246,011 bytes for 819,418 original bytes.
-
-The proposed page sketch does not yet include the four-byte total decoded size from this measured layout.
-That field permits exact allocation for full-page decode without individual decoded lengths.
-Its location in the Loki page format remains open.
-The optimized kernel does not change the compressed payload or symbol table.
-
-The Zstd blocks contain two-byte string lengths.
-The single-block directory costs 12 bytes per corpus.
-Zstd decode records zero, two, or six allocations per timed sample, across many repeated sweeps.
-The nonzero samples allocate 136 or 456 bytes in total.
-
-Zstd frame checksums remain enabled.
-The FSST benchmark adds no checksum.
-These differences prevent direct comparison with the final Loki serialized format.
-
-The throughput timer excludes table training and construction.
-Fresh training for each Loki output page remains outside these measurements.
-Loki ingestion and selective-query performance remain unmeasured.
-Only ARM64 throughput is measured for the optimized kernel.
-
-The current page samples reside in `results/pages-1mib.json` and `results/pages-1mib-repeat.json`.
-The audit and summary reside in `results/pages-1mib-summary.json`.
-The earlier kernel samples remain in `results/kernel-upstream.json`, `results/kernel.json`, and `results/kernel-repeat.json`.
-The access samples remain in `results/kernel-access.log` and `results/kernel-upstream-access.log`.
-The original HTML report records the earlier experiment with 64 KiB blocks and excludes the optimized fork.
 
 ### Integration
 
