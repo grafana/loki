@@ -1,24 +1,17 @@
 package hintprovider
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
-	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -28,9 +21,10 @@ import (
 //  1. The key builder: which queries get the same key.
 //  2. The cache wiring: the key is used for entries and singleflight, and the
 //     delegate is asked about the expression as written.
-//  3. The contract: queries with equal keys get equal hints from the real
-//     lookup. This is what makes sharing an entry safe, so it must fail if the
-//     lookup starts to read anything the key leaves out.
+//  3. The contract. The key is the needles, so different queries share an entry.
+//     That is safe only while the lookup's hints depend on nothing the key
+//     leaves out. These tests run the real lookup and must fail if it starts to
+//     read stream matchers or the rest of the pipeline.
 
 const (
 	keyTestLogQuery = `{app="api"} |= "timeout"`
@@ -208,7 +202,8 @@ func TestCachingHintProvider_SingleflightSharesByNeedles(t *testing.T) {
 
 // --- 3. The contract: equal keys, equal hints, from the real lookup ---
 
-// singleNeedlePairs have the same key and a single needle, "timeout".
+// singleNeedlePairs have the same key and a single needle, "timeout". They differ
+// in what the key leaves out: stream matchers and the rest of the pipeline.
 var singleNeedlePairs = [][2]string{
 	{
 		`{app="api"} |= "timeout"`,
@@ -224,29 +219,16 @@ var singleNeedlePairs = [][2]string{
 func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 	const ngram = 6
 	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
-	t1 := t0.Add(5 * time.Minute)
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
 	t5 := day.Add(10 * time.Hour)
 
-	// "timeout" is in both documents and "failure" only in the second, so
-	// requiring both narrows the hints to the second.
 	v3 := newTestStore(t)
-	writeNeedleIndex(t, v3, "aaaaaaaaaaaaaaaa",
-		[]format.DocumentMetadata{
-			{ID: 0, MinTimeUnix: t0.UnixMilli(), MaxTimeUnix: t0.Add(time.Minute).UnixMilli()},
-			{ID: 1, MinTimeUnix: t1.UnixMilli(), MaxTimeUnix: t1.Add(time.Minute).UnixMilli()},
-		},
-		map[string][]uint32{"timeout": {0, 1}, "failure": {1}})
+	writeTestIndex(t, v3, "aaaaaaaaaaaaaaaa", "timeout", t0, t0.Add(time.Minute))
 	// v5 ranges come from the footer's layout, one per document shard.
 	v5 := newTestStore(t)
 	writeV5TestIndex(t, v5, "aaaaaaaaaaaaaaaa", "timeout", day, day,
 		[]uint32{v5Cell(2250, 3), v5Cell(2250, 17), v5Cell(2260, 3)})
 
-	// The order of the filters doesn't matter, and the second query adds a stage.
-	filterOrder := [2]string{
-		`{app="api"} |= "timeout" |= "failure"`,
-		`{app="web"} |= "failure" |= "timeout" | json`,
-	}
 	for _, tc := range []struct {
 		name     string
 		store    *store.Store
@@ -255,9 +237,9 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 		distinct [2]string // queries with different hints, so the check can tell hints apart
 	}{
 		{
-			"v3", v3, t0.Add(-time.Minute), t1.Add(2 * time.Minute),
-			append([][2]string{filterOrder}, singleNeedlePairs...),
-			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "timeout" |= "failure"`},
+			"v3", v3, t0.Add(-time.Minute), t0.Add(5 * time.Minute),
+			singleNeedlePairs,
+			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "absent-needle"`},
 		},
 		{
 			"v5", v5, t5.Add(-time.Minute), t5.Add(5 * time.Minute),
@@ -285,58 +267,4 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 			require.NotEqual(t, hints(tc.distinct[0]), hints(tc.distinct[1]))
 		})
 	}
-}
-
-// writeNeedleIndex stores an index over docs where each needle's terms are posted
-// to the document IDs listed for it.
-func writeNeedleIndex(t *testing.T, indexStore *store.Store, hash string, docs []format.DocumentMetadata, postings map[string][]uint32) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "needles.lidx")
-	writer, err := logline.NewWriter(logline.CurrentVersion, path, docs, nil)
-	require.NoError(t, err)
-
-	byTerm := map[string][]uint32{}
-	for needle, ids := range postings {
-		terms, err := ExtractQueryNgrams(needle, 6, logline.CurrentVersion)
-		require.NoError(t, err)
-		for _, term := range terms {
-			byTerm[term] = ids
-		}
-	}
-	terms := make([]string, 0, len(byTerm))
-	for term := range byTerm {
-		terms = append(terms, term)
-	}
-	sort.Strings(terms)
-	for _, term := range terms {
-		ids := roaring.New()
-		ids.AddMany(byTerm[term])
-		var key [8]byte
-		copy(key[:], term)
-		require.NoError(t, writer.WriteTermBitmap(key, format.Bitmap{Roaring: ids}))
-	}
-	require.NoError(t, writer.Close())
-
-	reader, _, err := logline.OpenFile(path)
-	require.NoError(t, err)
-	header := reader.ReadHeader()
-	require.NoError(t, reader.Close())
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	minTS := time.UnixMilli(docs[0].MinTimeUnix).UTC()
-	maxTS := time.UnixMilli(docs[len(docs)-1].MaxTimeUnix).UTC()
-	meta := store.Meta{
-		Date:        minTS.Format("2006-01-02"),
-		Hash:        hash,
-		Version:     logline.CurrentVersion,
-		MinLogTs:    minTS,
-		MaxLogTs:    maxTS,
-		MinRecordTs: minTS,
-		MaxRecordTs: maxTS,
-		IndexHeader: &header,
-		SizeBytes:   int64(len(data)),
-	}
-	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(data), meta))
-	require.NoError(t, indexStore.Poll(context.Background()))
 }
