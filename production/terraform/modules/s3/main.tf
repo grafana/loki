@@ -51,7 +51,7 @@ resource "aws_s3_bucket_policy" "grant-access" {
             Sid: "Statement1",
             Effect: "Allow",
             Principal: {
-                AWS: aws_iam_role.loki.arn  
+                AWS: aws_iam_role.loki.arn
             },
             Action: [
               "s3:PutObject",
@@ -71,8 +71,6 @@ resource "aws_s3_bucket_policy" "grant-access" {
 resource "aws_iam_role" "loki" {
   name               = "LokiStorage-${var.cluster_name}"
   assume_role_policy = data.aws_iam_policy_document.oidc.json
-
-  inline_policy {}
 }
 
 resource "aws_iam_policy" "loki" {
