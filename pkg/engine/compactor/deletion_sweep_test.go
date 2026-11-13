@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -166,6 +167,16 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 }
 
 func TestSweepScheduler_Sweep(t *testing.T) {
+	t.Run("logs the tenant and its minute when it dispatches a sweep", func(t *testing.T) {
+		var logs bytes.Buffer
+		s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), (&sweepRecorder{}).run)
+		s.logger = log.NewLogfmtLogger(log.NewSyncWriter(&logs))
+
+		s.sweep(t.Context(), "a")
+
+		require.Contains(t, logs.String(), fmt.Sprintf(`msg="dispatching deletion sweep" tenant=a minute=%d`, sweepMinute("a")))
+	})
+
 	t.Run("waits for a free slot when the maximum number of sweeps runs", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			release := make(chan struct{})
