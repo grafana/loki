@@ -1927,6 +1927,10 @@ func (f fakeLimits) MaxQuerySeries(string) int {
 	return f.maxSeries
 }
 
+func (f fakeLimits) MaxQueryIntermediateSeries(string) int {
+	return 0
+}
+
 func (f fakeLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 	return 1 * time.Minute
 }
