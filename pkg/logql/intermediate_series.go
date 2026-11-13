@@ -54,7 +54,7 @@ func (c *intermediateSeriesCounter) Reserve(n int) error {
 	}
 }
 
-// Release removes n label sets from the count, because the iterator that held them discarded them.
+// Release removes n label sets from the count, because the iterator that reserved them has now discarded them.
 func (c *intermediateSeriesCounter) Release(n int) {
 	if c == nil {
 		return
@@ -62,7 +62,7 @@ func (c *intermediateSeriesCounter) Release(n int) {
 	c.current.Add(-int64(n))
 }
 
-// Current returns the number of label sets held now.
+// Current returns the number of label sets reserved now.
 func (c *intermediateSeriesCounter) Current() int64 {
 	if c == nil {
 		return 0
