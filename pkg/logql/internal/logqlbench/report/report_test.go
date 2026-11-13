@@ -15,8 +15,8 @@ goarch: arm64
 pkg: github.com/grafana/loki/v3/pkg/logql/internal/logqlbench
 cpu: Apple M3 Pro
 BenchmarkLogQLMetricQueries
-BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11         	       1	1000000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	2000000 B/op	500000 allocs/op
-BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11         	       1	3000000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	2000000 B/op	500000 allocs/op
+BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11         	       1	1000000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	2000000 B/op	500000 allocs/op	3000 intermediate_series_peak/op
+BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11         	       1	3000000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	2000000 B/op	500000 allocs/op	5000 intermediate_series_peak/op
 BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=50ms-11        	       1	1100000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	2 store_max_parallel	2000000 B/op	500000 allocs/op
 BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=250ms-11       	       1	1300000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	8 store_max_parallel	2000000 B/op	500000 allocs/op
 BenchmarkLogQLMetricQueries/query=sum(count_over_time({cluster="x"}[5m]))_(high_input,_low_output,_range)/scenario=chunk-stream-first/latency=0s-11            	       1	500000000 ns/op	 1000000 store_bytes/op	      10 store_reqs/op	1 store_max_parallel	1000000 B/op	250000 allocs/op
@@ -45,10 +45,10 @@ const wantReport = "## Benchmark results\n" +
 	"| `sum(count over time({cluster=\"x\"}[5m]))`<br>high input, low output | range | 2.00s<br>0.50s<br>0.10s | 1.10s<br>0.55s<br>0.90s | 1.30s<br>0.70s<br>4.00s |\n" +
 	"| `count over time({service=\"y\"}[24h])`<br>medium input, medium output | instant | 2.00s<br>n/a<br>n/a | 2.10s<br>n/a<br>n/a | 2.30s<br>n/a<br>n/a |\n" +
 	"\n" +
-	"| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) |\n" +
-	"|---|---|---|---|---|---|---|\n" +
-	"| `sum(count over time({cluster=\"x\"}[5m]))`<br>high input, low output | range | 10<br>10<br>5 | 1.0MB<br>1.0MB<br>0.2MB | 8<br>16<br>32 | 0.50M<br>0.25M<br>0.05M | 2.0MB<br>1.0MB<br>0.3MB |\n" +
-	"| `count over time({service=\"y\"}[24h])`<br>medium input, medium output | instant | 20<br>n/a<br>n/a | 5.0MB<br>n/a<br>n/a | 4<br>n/a<br>n/a | 1.00M<br>n/a<br>n/a | 4.0MB<br>n/a<br>n/a |\n"
+	"| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) | Intermediate series peak |\n" +
+	"|---|---|---|---|---|---|---|---|\n" +
+	"| `sum(count over time({cluster=\"x\"}[5m]))`<br>high input, low output | range | 10<br>10<br>5 | 1.0MB<br>1.0MB<br>0.2MB | 8<br>16<br>32 | 0.50M<br>0.25M<br>0.05M | 2.0MB<br>1.0MB<br>0.3MB | 4000<br>n/a<br>n/a |\n" +
+	"| `count over time({service=\"y\"}[24h])`<br>medium input, medium output | instant | 20<br>n/a<br>n/a | 5.0MB<br>n/a<br>n/a | 4<br>n/a<br>n/a | 1.00M<br>n/a<br>n/a | 4.0MB<br>n/a<br>n/a | n/a<br>n/a<br>n/a |\n"
 
 // gomaxprocs1RE strips a GOMAXPROCS suffix ("-11") from a benchmark line, matching the output of
 // a `go test -cpu 1` run: Go omits that suffix when GOMAXPROCS is 1.

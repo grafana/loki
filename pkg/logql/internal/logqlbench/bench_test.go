@@ -76,7 +76,7 @@ func newDataObjRangeConfig() rangeio.Config {
 	return cfg
 }
 
-var queries = []benchQuery{
+var queries = append([]benchQuery{
 	{
 		expr:                 fmt.Sprintf("sum(count_over_time(%s[5m]))", selectorAll),
 		description:          "high input, low output",
@@ -178,6 +178,29 @@ var queries = []benchQuery{
 		instant:              true,
 		streamFirstSupported: false,
 	},
+}, highCardinalityQueries()...)
+
+// highCardinalityQueries returns the shapes whose intermediate series outgrow their output at
+// each range. The fixture lines carry unique structured metadata, which a metric query promotes
+// to labels, and a unique logfmt value, so each line is a new label set. The grouping injection
+// that keeps the sum shapes cheap does not apply to these. They read selectorLow, about 40
+// streams, to stay small enough to run on one machine.
+func highCardinalityQueries() []benchQuery {
+	var out []benchQuery
+	for _, rng := range []string{"5m", "30m"} {
+		for _, shape := range []struct {
+			expr, description string
+		}{
+			{fmt.Sprintf("count(count_over_time(%s[%s]))", selectorLow, rng), "high intermediate, low output"},
+			{fmt.Sprintf("topk(10, count_over_time(%s[%s]))", selectorLow, rng), "high intermediate, low output, topk"},
+			{fmt.Sprintf("max by (%s) (max_over_time(%s | logfmt | unwrap value [%s]))", labelMediumCardName, selectorLow, rng), "high intermediate, medium output, unwrap"},
+			{fmt.Sprintf("avg(max_over_time(%s | logfmt | unwrap value [%s]))", selectorLow, rng), "high intermediate, low output, unwrap"},
+			{fmt.Sprintf("count_over_time(%s | logfmt [%s])", selectorLow, rng), "high intermediate, high output, expected to fail once the limit is on"},
+		} {
+			out = append(out, benchQuery{expr: shape.expr, description: shape.description})
+		}
+	}
+	return out
 }
 
 func TestQueriesStreamFirstSupport(t *testing.T) {
@@ -260,11 +283,13 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 
 	scenarios := newScenarios(getChunkStore, getDataObjStore)
 
-	runQuery := func(b *testing.B, engine logql.Engine, params logql.Params) {
+	// runQuery returns the intermediate series peak the query reported.
+	runQuery := func(b *testing.B, engine logql.Engine, params logql.Params) int64 {
 		ctx := user.InjectOrgID(context.Background(), tenant)
 		res, err := engine.Query(params).Exec(ctx)
 		require.NoError(b, err)
 		require.NotNil(b, res.Data)
+		return res.Statistics.Summary.IntermediateSeriesPeak
 	}
 
 	for _, query := range queries {
@@ -299,8 +324,9 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 							instrumentation.artificialLatencyNs.Store(int64(latency.duration))
 							instrumentation.Reset()
 							b.ReportAllocs()
+							var intermediateSeriesPeak int64
 							for b.Loop() {
-								runQuery(b, engine, params)
+								intermediateSeriesPeak += runQuery(b, engine, params)
 							}
 
 							require.Zero(b, instrumentation.inflight.Load(), "every read must be closed once the query returns")
@@ -308,6 +334,7 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 							b.ReportMetric(float64(instrumentation.requests.Load())/float64(b.N), "store_reqs/op")
 							b.ReportMetric(float64(instrumentation.bytes.Load())/float64(b.N), "store_bytes/op")
 							b.ReportMetric(float64(instrumentation.maxInflight.Load()), "store_max_parallel")
+							b.ReportMetric(float64(intermediateSeriesPeak)/float64(b.N), "intermediate_series_peak/op")
 						})
 					}
 				})
