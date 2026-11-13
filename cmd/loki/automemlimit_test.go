@@ -8,8 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/loki"
 )
 
 func TestSetAutoMemLimit(t *testing.T) {
@@ -36,7 +34,7 @@ func TestSetAutoMemLimit(t *testing.T) {
 				t.Setenv("GOMEMLIMIT", *tc.gomemlimit)
 			}
 
-			setAutoMemLimit(t.Context(), loki.Config{AutoMemLimitEnabled: tc.enabled}, log.NewNopLogger())
+			setAutoMemLimit(t.Context(), tc.enabled, log.NewNopLogger())
 
 			got := debug.SetMemoryLimit(-1)
 			if tc.wantChanged {

@@ -128,7 +128,7 @@ func main() {
 	}
 
 	setProfilingOptions(config.Profiling)
-	setAutoMemLimit(context.Background(), config.Config, util_log.Logger)
+	setAutoMemLimit(context.Background(), config.AutoMemLimitEnabled, util_log.Logger)
 
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.

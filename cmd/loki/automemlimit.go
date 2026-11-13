@@ -7,7 +7,6 @@ import (
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/v3/pkg/loki"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -15,8 +14,8 @@ import (
 // limit changes, such as an in-place pod resize, until ctx is done. An explicit
 // GOMEMLIMIT env var wins, and AUTOMEMLIMIT overrides the default 90% ratio.
 // memlimit logs the outcome, including errors.
-func setAutoMemLimit(ctx context.Context, cfg loki.Config, logger log.Logger) {
-	if !cfg.AutoMemLimitEnabled {
+func setAutoMemLimit(ctx context.Context, enabled bool, logger log.Logger) {
+	if !enabled {
 		return
 	}
 	_, _ = memlimit.Set(
