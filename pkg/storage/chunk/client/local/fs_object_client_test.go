@@ -57,6 +57,19 @@ func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
 }
 
+func TestFSObjectClient_DeleteChunksBefore_WalkError(t *testing.T) {
+	fsChunksDir := t.TempDir()
+
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory: fsChunksDir,
+	})
+	require.NoError(t, err)
+
+	// Removing the directory makes the walk fail with a nil FileInfo
+	require.NoError(t, os.RemoveAll(fsChunksDir))
+	require.Error(t, bucketClient.DeleteChunksBefore(context.Background(), time.Now()))
+}
+
 func TestFSObjectClient_List_and_ObjectExists(t *testing.T) {
 	fsObjectsDir := t.TempDir()
 
