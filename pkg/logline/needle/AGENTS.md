@@ -13,11 +13,16 @@ versions, and apply those lookup semantics with `Expr.Map` before compilation.
   `AllOf` stores a compact AND of leaves, retaining contained literals.
 - `Expr.Map` rewrites leaves before lowering. Shared nodes are mapped once and
   their mapped output is reused. It does not collapse or prune.
-- `Expr.Compile(maxConjunctions int) Plan` bounds lowering and prunes at the end.
-- `Plan` is a distinct immutable DNF result with `IsTrue`, `Conjunctions` and
-  `String`. Its zero value is TRUE. `Conjunctions` returns a deep copy.
-- There are no public expression inspection, collapse or prune methods, nor
-  plan transformation methods. Inspect the compiled plan instead.
+- `Expr.Compile(maxConjunctions int) Conjunctions` bounds lowering and prunes at
+  the end. It returns caller-owned, sorted and normalized conjunctions: all
+  literals of at least one conjunction must be present. A nil or zero-length
+  outer slice means TRUE; inner slices are never empty. TRUE compiles to nil.
+- Both slice levels belong to the caller. Mutating a result must not affect the
+  source expression, shared subtrees, another conjunction, or any other compile
+  call. The final prune creates the owned slices; do not add a second copy.
+- `Conjunctions` is a named `[][]string` with a diagnostic `String` method.
+  Callers use `len`, `range` and indexing directly; there is no accessor or
+  extra copy. DNF remains private compiler state.
 
 ## Compiler rules
 
@@ -50,7 +55,8 @@ versions, and apply those lookup semantics with `Expr.Map` before compilation.
    each compilation. Index candidates once, lazily on the first collapse.
    Avoid rewalking every nested subtree for every candidate.
 6. **Prune only at the end.** Retain contained literals until every collapse
-   decision is complete. Never mutate source nodes or shared plan slices.
+   decision is complete. Never mutate source nodes or shared DNF slices. Final
+   pruning copies both slice levels before handing the result to the caller.
    Normalize intermediate DNF with sorting, deduplication and absorption,
    preserving exact-membership fast paths before substring searches. Final
    pruning preserves implication, so only re-sort afterwards; do not repeat
@@ -69,6 +75,6 @@ go vet ./pkg/logline/needle
 go test ./pkg/logline/needle -run '^$' -bench . -benchmem
 ```
 
-Use deterministic tests for caps, substring candidates, mapping, immutability,
-long chains and shared DAGs. `BenchmarkNestedOverCap` covers nested source proofs;
+Use direct slice comparisons and deterministic tests for caps, substring
+candidates, mapping, result ownership, immutability, long chains and shared DAGs. `BenchmarkNestedOverCap` covers nested source proofs;
 `BenchmarkSharedConjunctions` covers the exact-membership fast path.

@@ -8,23 +8,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConjunctionsString(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		conj Conjunctions
+		want string
+	}{
+		{"nil", nil, "TRUE"},
+		{"empty", Conjunctions{}, "TRUE"},
+		{"one set", Conjunctions{{"abc", "def"}}, `{"abc", "def"}`},
+		{"alternatives", Conjunctions{{"abc"}, {"def", "ghi"}}, `{"abc"} or {"def", "ghi"}`},
+		{"escaped literals", Conjunctions{{"a\"b", "line\nbreak", "\\"}}, `{"a\"b", "line\nbreak", "\\"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.conj.String())
+		})
+	}
+}
+
 func TestConstructors(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		expr Expr
-		want string
+		want Conjunctions
 	}{
-		{"zero value", Expr{}, "TRUE"},
-		{"true", True(), "TRUE"},
-		{"empty literal", Lit(""), "TRUE"},
-		{"literal", Lit("abc"), `{"abc"}`},
-		{"all of nothing", AllOf(), "TRUE"},
-		{"all of empty", AllOf("", ""), "TRUE"},
-		{"all of sorted and deduped", AllOf("def", "", "abc", "def"), `{"abc", "def"}`},
-		{"all of prunes contained literals at compilation", AllOf("abcdef", "abc"), `{"abcdef"}`},
+		{"zero value", Expr{}, nil},
+		{"true", True(), nil},
+		{"empty literal", Lit(""), nil},
+		{"literal", Lit("abc"), Conjunctions{{"abc"}}},
+		{"all of nothing", AllOf(), nil},
+		{"all of empty", AllOf("", ""), nil},
+		{"all of sorted and deduped", AllOf("def", "", "abc", "def"), Conjunctions{{"abc", "def"}}},
+		{"all of prunes contained literals at compilation", AllOf("abcdef", "abc"), Conjunctions{{"abcdef"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, tc.expr.Compile(64).String())
+			require.Equal(t, tc.want, tc.expr.Compile(64))
 		})
 	}
 }
@@ -39,38 +57,38 @@ func TestOr(t *testing.T) {
 		name            string
 		maxConjunctions int
 		xs              []Expr
-		want            string
+		want            Conjunctions
 	}{
-		{"no operands", 64, nil, "TRUE"},
-		{"single operand", 64, []Expr{AllOf("b", "a")}, `{"a", "b"}`},
-		{"two literals", 64, []Expr{Lit("foo"), Lit("bar")}, `{"bar"} or {"foo"}`},
-		{"duplicates", 64, []Expr{Lit("foo"), Lit("foo")}, `{"foo"}`},
-		{"true operand", 64, []Expr{Lit("foo"), True()}, "TRUE"},
-		{"empty literal operand", 64, []Expr{Lit("foo"), Lit("")}, "TRUE"},
-		{"nested", 64, []Expr{Or(Lit("a"), Lit("b")), Lit("c")}, `{"a"} or {"b"} or {"c"}`},
-		{"substring absorbs", 64, []Expr{Lit("errors"), Lit("error")}, `{"error"}`},
-		{"subset absorbs", 64, []Expr{AllOf("abc", "def"), Lit("abc")}, `{"abc"}`},
-		{"contained subset absorbs", 64, []Expr{AllOf("xabc", "def"), Lit("abc")}, `{"abc"}`},
-		{"split literal absorbs", 64, []Expr{AllOf("abc", "bcd"), Lit("abcd")}, `{"abc", "bcd"}`},
-		{"mutual implication keeps one then prunes", 64, []Expr{Lit("abcd"), AllOf("abc", "abcd")}, `{"abcd"}`},
-		{"no absorption", 64, []Expr{AllOf("abc", "def"), AllOf("abc", "xyz")}, `{"abc", "def"} or {"abc", "xyz"}`},
-		{"collapse keeps shared literals", 2, []Expr{AllOf("x", "a"), AllOf("x", "b"), AllOf("x", "c")}, `{"x"}`},
-		{"collapse with nothing shared", 2, []Expr{Lit("a"), Lit("b"), Lit("c")}, "TRUE"},
-		{"absorption before collapse", 2, []Expr{Lit("a"), Lit("b"), Lit("ab")}, `{"a"} or {"b"}`},
-		{"one conjunction", 1, []Expr{Lit("a"), Lit("b")}, "TRUE"},
-		{"maxConjunctions below one", 0, []Expr{AllOf("x", "a"), AllOf("x", "b")}, `{"x"}`},
-		{"maxConjunctions does not overflow absorption threshold", int(^uint(0) >> 1), []Expr{Lit("a"), Lit("b")}, `{"a"} or {"b"}`},
-		{"large union gets candidate from last branch", 1, []Expr{Lit("Xbc0"), Lit("Xbc1"), Lit("Xbc2"), Lit("Xbc3"), Lit("Xbc4"), Lit("bc")}, `{"bc"}`},
-		{"many branches", 64, traceIDs, `{"trace_id="}`},
-		{"many branches share a substring", 1, append([]Expr{Lit("trace_id")}, traceIDs...), `{"trace_id"}`},
+		{"no operands", 64, nil, nil},
+		{"single operand", 64, []Expr{AllOf("b", "a")}, Conjunctions{{"a", "b"}}},
+		{"two literals", 64, []Expr{Lit("foo"), Lit("bar")}, Conjunctions{{"bar"}, {"foo"}}},
+		{"duplicates", 64, []Expr{Lit("foo"), Lit("foo")}, Conjunctions{{"foo"}}},
+		{"true operand", 64, []Expr{Lit("foo"), True()}, nil},
+		{"empty literal operand", 64, []Expr{Lit("foo"), Lit("")}, nil},
+		{"nested", 64, []Expr{Or(Lit("a"), Lit("b")), Lit("c")}, Conjunctions{{"a"}, {"b"}, {"c"}}},
+		{"substring absorbs", 64, []Expr{Lit("errors"), Lit("error")}, Conjunctions{{"error"}}},
+		{"subset absorbs", 64, []Expr{AllOf("abc", "def"), Lit("abc")}, Conjunctions{{"abc"}}},
+		{"contained subset absorbs", 64, []Expr{AllOf("xabc", "def"), Lit("abc")}, Conjunctions{{"abc"}}},
+		{"split literal absorbs", 64, []Expr{AllOf("abc", "bcd"), Lit("abcd")}, Conjunctions{{"abc", "bcd"}}},
+		{"mutual implication keeps one then prunes", 64, []Expr{Lit("abcd"), AllOf("abc", "abcd")}, Conjunctions{{"abcd"}}},
+		{"no absorption", 64, []Expr{AllOf("abc", "def"), AllOf("abc", "xyz")}, Conjunctions{{"abc", "def"}, {"abc", "xyz"}}},
+		{"collapse keeps shared literals", 2, []Expr{AllOf("x", "a"), AllOf("x", "b"), AllOf("x", "c")}, Conjunctions{{"x"}}},
+		{"collapse with nothing shared", 2, []Expr{Lit("a"), Lit("b"), Lit("c")}, nil},
+		{"absorption before collapse", 2, []Expr{Lit("a"), Lit("b"), Lit("ab")}, Conjunctions{{"a"}, {"b"}}},
+		{"one conjunction", 1, []Expr{Lit("a"), Lit("b")}, nil},
+		{"maxConjunctions below one", 0, []Expr{AllOf("x", "a"), AllOf("x", "b")}, Conjunctions{{"x"}}},
+		{"maxConjunctions does not overflow absorption threshold", int(^uint(0) >> 1), []Expr{Lit("a"), Lit("b")}, Conjunctions{{"a"}, {"b"}}},
+		{"large union gets candidate from last branch", 1, []Expr{Lit("Xbc0"), Lit("Xbc1"), Lit("Xbc2"), Lit("Xbc3"), Lit("Xbc4"), Lit("bc")}, Conjunctions{{"bc"}}},
+		{"many branches", 64, traceIDs, Conjunctions{{"trace_id="}}},
+		{"many branches share a substring", 1, append([]Expr{Lit("trace_id")}, traceIDs...), Conjunctions{{"trace_id"}}},
 		{
 			"collapse keeps shared substrings", 2,
 			[]Expr{AllOf("get foo", " foo"), AllOf("put foo", " foo"), AllOf("1 foobaz", " foobaz")},
-			`{" foo"}`,
+			Conjunctions{{" foo"}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Or(tc.xs...).Compile(tc.maxConjunctions).String())
+			require.Equal(t, tc.want, Or(tc.xs...).Compile(tc.maxConjunctions))
 		})
 	}
 }
@@ -80,58 +98,58 @@ func TestAnd(t *testing.T) {
 		name            string
 		maxConjunctions int
 		xs              []Expr
-		want            string
+		want            Conjunctions
 	}{
-		{"no operands", 64, nil, "TRUE"},
-		{"true operands", 64, []Expr{True(), True()}, "TRUE"},
-		{"true is the identity", 64, []Expr{True(), Lit("a")}, `{"a"}`},
-		{"literals", 64, []Expr{Lit("b"), Lit("a"), Lit("b")}, `{"a", "b"}`},
-		{"distributes", 64, []Expr{Lit("seed"), Or(Lit("a"), Lit("b"))}, `{"a", "seed"} or {"b", "seed"}`},
+		{"no operands", 64, nil, nil},
+		{"true operands", 64, []Expr{True(), True()}, nil},
+		{"true is the identity", 64, []Expr{True(), Lit("a")}, Conjunctions{{"a"}}},
+		{"literals", 64, []Expr{Lit("b"), Lit("a"), Lit("b")}, Conjunctions{{"a", "b"}}},
+		{"distributes", 64, []Expr{Lit("seed"), Or(Lit("a"), Lit("b"))}, Conjunctions{{"a", "seed"}, {"b", "seed"}}},
 		{
 			"product", 64,
 			[]Expr{Or(Lit("a"), Lit("b")), Or(Lit("c"), Lit("d"))},
-			`{"a", "c"} or {"a", "d"} or {"b", "c"} or {"b", "d"}`,
+			Conjunctions{{"a", "c"}, {"a", "d"}, {"b", "c"}, {"b", "d"}},
 		},
-		{"absorbs after product", 64, []Expr{Or(Lit("error"), Lit("warn")), Lit("errors")}, `{"errors"}`},
-		{"shared literal absorbs", 64, []Expr{Or(Lit("a"), Lit("b")), Or(Lit("a"), Lit("c"))}, `{"a"} or {"b", "c"}`},
+		{"absorbs after product", 64, []Expr{Or(Lit("error"), Lit("warn")), Lit("errors")}, Conjunctions{{"errors"}}},
+		{"shared literal absorbs", 64, []Expr{Or(Lit("a"), Lit("b")), Or(Lit("a"), Lit("c"))}, Conjunctions{{"a"}, {"b", "c"}}},
 		{
 			"collapse the second operand", 3,
 			[]Expr{Or(Lit("c"), Lit("d")), Or(Lit("a"), Lit("b"))},
-			`{"c"} or {"d"}`,
+			Conjunctions{{"c"}, {"d"}},
 		},
 		{
 			"collapse keeps shared literals", 3,
 			[]Expr{Or(Lit("a"), Lit("b")), Or(AllOf("x", "c"), AllOf("x", "d"))},
-			`{"a", "x"} or {"b", "x"}`,
+			Conjunctions{{"a", "x"}, {"b", "x"}},
 		},
 		{
 			"collapse keeps shared substrings", 3,
 			[]Expr{Or(Lit("a"), Lit("b")), Or(AllOf("foo", "x"), AllOf("foobar", "y"))},
-			`{"a", "foo"} or {"b", "foo"}`,
+			Conjunctions{{"a", "foo"}, {"b", "foo"}},
 		},
 		{
 			"fewest first", 2,
 			[]Expr{Or(Lit("a"), Lit("b"), Lit("c")), Or(Lit("d"), Lit("e"))},
-			`{"d"} or {"e"}`,
+			Conjunctions{{"d"}, {"e"}},
 		},
 		{
 			"one conjunction keeps single literals", 1,
 			[]Expr{Or(Lit("b"), Lit("c")), Lit("a"), Or(Lit("d"), Lit("e")), Lit("f")},
-			`{"a", "f"}`,
+			Conjunctions{{"a", "f"}},
 		},
 		{
 			"operand above maxConjunctions", 2,
 			[]Expr{Or(AllOf("x", "a"), AllOf("x", "b"), AllOf("x", "c"))},
-			`{"x"}`,
+			Conjunctions{{"x"}},
 		},
 		{
 			"maxConjunctions below one", -5,
 			[]Expr{Lit("a"), Or(Lit("b"), Lit("c"))},
-			`{"a"}`,
+			Conjunctions{{"a"}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, And(tc.xs...).Compile(tc.maxConjunctions).String())
+			require.Equal(t, tc.want, And(tc.xs...).Compile(tc.maxConjunctions))
 		})
 	}
 }
@@ -145,20 +163,20 @@ func TestMap(t *testing.T) {
 		name string
 		expr Expr
 		f    func(string) (string, bool)
-		want string
+		want Conjunctions
 	}{
-		{"true", True(), upper, "TRUE"},
-		{"rewrites", Or(Lit("abc"), Lit("def")), upper, `{"ABC"} or {"DEF"}`},
-		{"merges equal results", Or(Lit("abc"), Lit("ABC")), upper, `{"ABC"}`},
-		{"merges literals in a conjunction", AllOf("abc", "ABC"), upper, `{"ABC"}`},
-		{"absorbs after rewrite", Or(AllOf("abcd", "XYZ"), Lit("ABC")), upper, `{"ABC"}`},
-		{"drops from a conjunction", AllOf("ab", "abc"), minLen3, `{"abc"}`},
-		{"empty conjunction is true", Or(Lit("ab"), Lit("abc")), minLen3, "TRUE"},
-		{"empty result is dropped", Or(Lit("abc"), Lit("def")), toEmpty, "TRUE"},
-		{"nested AND and OR", And(Lit("service"), Or(Lit("abc"), Lit("def"))), upper, `{"ABC", "SERVICE"} or {"DEF", "SERVICE"}`},
+		{"true", True(), upper, nil},
+		{"rewrites", Or(Lit("abc"), Lit("def")), upper, Conjunctions{{"ABC"}, {"DEF"}}},
+		{"merges equal results", Or(Lit("abc"), Lit("ABC")), upper, Conjunctions{{"ABC"}}},
+		{"merges literals in a conjunction", AllOf("abc", "ABC"), upper, Conjunctions{{"ABC"}}},
+		{"absorbs after rewrite", Or(AllOf("abcd", "XYZ"), Lit("ABC")), upper, Conjunctions{{"ABC"}}},
+		{"drops from a conjunction", AllOf("ab", "abc"), minLen3, Conjunctions{{"abc"}}},
+		{"empty conjunction is true", Or(Lit("ab"), Lit("abc")), minLen3, nil},
+		{"empty result is dropped", Or(Lit("abc"), Lit("def")), toEmpty, nil},
+		{"nested AND and OR", And(Lit("service"), Or(Lit("abc"), Lit("def"))), upper, Conjunctions{{"ABC", "SERVICE"}, {"DEF", "SERVICE"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, tc.expr.Map(tc.f).Compile(64).String())
+			require.Equal(t, tc.want, tc.expr.Map(tc.f).Compile(64))
 		})
 	}
 }
@@ -167,54 +185,54 @@ func TestCompileCollapse(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		expr Expr
-		want string
+		want Conjunctions
 	}{
-		{"true", True(), "TRUE"},
-		{"one conjunction", AllOf("a", "b"), `{"a", "b"}`},
-		{"shared literals", Or(AllOf("x", "y", "a"), AllOf("x", "y", "b")), `{"x", "y"}`},
-		{"nothing shared", Or(Lit("a"), Lit("b")), "TRUE"},
-		{"shared substring", Or(AllOf("abc", "x"), AllOf("abcd", "y")), `{"abc"}`},
-		{"shared substring from later conjunction", Or(AllOf("abcd", "x"), AllOf("bcd", "y")), `{"bcd"}`},
+		{"true", True(), nil},
+		{"one conjunction", AllOf("a", "b"), Conjunctions{{"a", "b"}}},
+		{"shared literals", Or(AllOf("x", "y", "a"), AllOf("x", "y", "b")), Conjunctions{{"x", "y"}}},
+		{"nothing shared", Or(Lit("a"), Lit("b")), nil},
+		{"shared substring", Or(AllOf("abc", "x"), AllOf("abcd", "y")), Conjunctions{{"abc"}}},
+		{"shared substring from later conjunction", Or(AllOf("abcd", "x"), AllOf("bcd", "y")), Conjunctions{{"bcd"}}},
 		{
 			"shared substring from last conjunction", Or(AllOf("abcX", "x"), AllOf("Xbcd", "y"), AllOf("bc", "z")),
-			`{"bc"}`,
+			Conjunctions{{"bc"}},
 		},
-		{"does not discover new substrings", Or(Lit("abcX"), Lit("Xbcd")), "TRUE"},
+		{"does not discover new substrings", Or(Lit("abcX"), Lit("Xbcd")), nil},
 		{
 			"all implied literals survive", Or(AllOf("abc", "bcd", "x"), AllOf("abcd", "y")),
-			`{"abc", "bcd"}`,
+			Conjunctions{{"abc", "bcd"}},
 		},
 		{
 			"redundant literals remain collapse candidates", Or(AllOf("abc", "abcd"), AllOf("XabcY", "z")),
-			`{"abc"}`,
+			Conjunctions{{"abc"}},
 		},
 		{
 			"absorbed branches remain collapse candidates", Or(Lit("abcd"), AllOf("bc", "abcd"), AllOf("XbcY", "z")),
-			`{"bc"}`,
+			Conjunctions{{"bc"}},
 		},
 		{
 			"nested AND implication", Or(And(Lit("abc"), Or(Lit("p"), Lit("q"))), AllOf("XabcY", "z")),
-			`{"abc"}`,
+			Conjunctions{{"abc"}},
 		},
 		{
 			"late outer candidate survives nested cap", Or(And(Or(Lit("abcX"), Lit("Xbcd")), Or(Lit("p"), Lit("q"))), Lit("bc")),
-			`{"bc"}`,
+			Conjunctions{{"bc"}},
 		},
 		{
 			"factored last branch supplies witness", Or(Lit("bc"), And(Or(Lit("abcX"), Lit("Xbcd")), Lit("z"))),
-			`{"bc"}`,
+			Conjunctions{{"bc"}},
 		},
 		{
 			"outside candidates are not imported into a collapsed subtree", And(Or(Lit("abcX"), Lit("Xbcd")), Or(Lit("bc"), Lit("xy"))),
-			"TRUE",
+			nil,
 		},
 		{
 			"nested OR must imply candidate on every branch", Or(And(Or(Lit("abc"), Lit("def")), Lit("x")), AllOf("abc", "y")),
-			"TRUE",
+			nil,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, tc.expr.Compile(1).String())
+			require.Equal(t, tc.want, tc.expr.Compile(1))
 		})
 	}
 }
@@ -223,34 +241,76 @@ func TestCompilePrune(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		expr Expr
-		want string
+		want Conjunctions
 	}{
-		{"true", True(), "TRUE"},
-		{"contained literal", AllOf("abcdef", "xabcdefy"), `{"xabcdefy"}`},
-		{"chain", AllOf("a", "ab", "abc"), `{"abc"}`},
-		{"unrelated literals", AllOf("abc", "def"), `{"abc", "def"}`},
-		{"per conjunction", Or(AllOf("abc", "abcd"), AllOf("xy", "xyz")), `{"abcd"} or {"xyz"}`},
-		{"reorders conjunctions after pruning", Or(AllOf("a", "zax"), Lit("m")), `{"m"} or {"zax"}`},
+		{"true", True(), nil},
+		{"contained literal", AllOf("abcdef", "xabcdefy"), Conjunctions{{"xabcdefy"}}},
+		{"chain", AllOf("a", "ab", "abc"), Conjunctions{{"abc"}}},
+		{"unrelated literals", AllOf("abc", "def"), Conjunctions{{"abc", "def"}}},
+		{"per conjunction", Or(AllOf("abc", "abcd"), AllOf("xy", "xyz")), Conjunctions{{"abcd"}, {"xyz"}}},
+		{"reorders conjunctions after pruning", Or(AllOf("a", "zax"), Lit("m")), Conjunctions{{"m"}, {"zax"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, tc.expr.Compile(64).String())
+			require.Equal(t, tc.want, tc.expr.Compile(64))
 		})
 	}
 }
 
-func TestPlan(t *testing.T) {
-	var zero Plan
-	require.True(t, zero.IsTrue())
-	require.Equal(t, "TRUE", zero.String())
-	require.Empty(t, zero.Conjunctions())
+func TestCompileTrue(t *testing.T) {
+	for _, e := range []Expr{
+		{}, True(), Lit(""), AllOf(), And(), Or(),
+		Or(Lit("a"), Lit("b")),
+		AllOf("a", "b").Map(func(string) (string, bool) { return "", false }),
+	} {
+		require.Nil(t, e.Compile(1))
+	}
+}
 
-	p := Or(AllOf("b", "a"), Lit("c")).Compile(64)
-	require.False(t, p.IsTrue())
-	got := p.Conjunctions()
-	require.Equal(t, [][]string{{"a", "b"}, {"c"}}, got)
+func TestCompileOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		expr  Expr
+		limit int
+		want  Conjunctions
+	}{
+		{"literal", Lit("foo"), 1, Conjunctions{{"foo"}}},
+		{"pruned literals", AllOf("ab", "abc", "def"), 1, Conjunctions{{"abc", "def"}}},
+		{"union", Or(AllOf("b", "a"), Lit("c")), 64, Conjunctions{{"a", "b"}, {"c"}}},
+		{"product", And(Or(Lit("a"), Lit("b")), Lit("seed")), 64, Conjunctions{{"a", "seed"}, {"b", "seed"}}},
+		{"collapse", Or(AllOf("shared", "x"), AllOf("shared", "y")), 1, Conjunctions{{"shared"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, other := tc.expr.Compile(tc.limit), tc.expr.Compile(tc.limit)
+			require.Equal(t, tc.want, got)
+			for _, c := range got {
+				require.NotEmpty(t, c)
+			}
+			got[0][0] = "changed"
+			got[0] = append(got[0], "extra")
+			if len(got) > 1 {
+				require.Equal(t, tc.want[1:], got[1:], "conjunctions must not share mutable backing arrays")
+			}
+			got[0] = nil
+			got = append(got, []string{"added"})
+			require.Len(t, got, len(tc.want)+1)
+			require.Equal(t, tc.want, other, "an earlier compilation must remain unchanged")
+			require.Equal(t, tc.want, tc.expr.Compile(tc.limit), "the source must remain unchanged")
+		})
+	}
+
+	shared := AllOf("alpha", "beta")
+	left, right := And(shared, Lit("left")), And(shared, Lit("right"))
+	e := Or(left, right)
+	want := Conjunctions{{"alpha", "beta", "left"}, {"alpha", "beta", "right"}}
+	got, other := e.Compile(64), e.Compile(64)
 	got[0][0] = "changed"
-	got[1] = []string{"changed"}
-	require.Equal(t, `{"a", "b"} or {"c"}`, p.String())
+	require.Equal(t, want[1], got[1])
+	got[1] = nil
+	require.Equal(t, want, other)
+	require.Equal(t, want, e.Compile(64))
+	require.Equal(t, Conjunctions{{"alpha", "beta"}}, shared.Compile(1))
+	require.Equal(t, want[:1], left.Compile(1))
+	require.Equal(t, want[1:], right.Compile(1))
 }
 
 func TestTreeImmutability(t *testing.T) {
@@ -266,12 +326,12 @@ func TestTreeImmutability(t *testing.T) {
 	_ = And(disjunction, Lit("d")).Compile(1)
 	_ = Or(conjunction, Lit("e")).Compile(1)
 	mapped := disjunction.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
-	require.Equal(t, `{"a", "b"}`, a.Compile(64).String())
-	require.Equal(t, `{"a", "b", "c"}`, conjunction.Compile(64).String())
-	require.Equal(t, `{"a", "b"} or {"c"}`, disjunction.Compile(64).String())
-	require.Equal(t, `{"A", "B"} or {"C"}`, mapped.Compile(64).String())
-	require.Equal(t, before.String(), disjunction.Compile(64).String())
-	require.Equal(t, `{"a", "b"} or {"c"}`, before.String())
+	require.Equal(t, Conjunctions{{"a", "b"}}, a.Compile(64))
+	require.Equal(t, Conjunctions{{"a", "b", "c"}}, conjunction.Compile(64))
+	require.Equal(t, Conjunctions{{"a", "b"}, {"c"}}, disjunction.Compile(64))
+	require.Equal(t, Conjunctions{{"A", "B"}, {"C"}}, mapped.Compile(64))
+	require.Equal(t, before, disjunction.Compile(64))
+	require.Equal(t, Conjunctions{{"a", "b"}, {"c"}}, before)
 }
 
 func TestCompileLateCap(t *testing.T) {
@@ -280,37 +340,37 @@ func TestCompileLateCap(t *testing.T) {
 	require.Equal(t, and, e.root.op)
 	require.Len(t, e.root.children, 2)
 	require.Equal(t, or, e.root.children[0].root.op)
-	require.Equal(t, `{"a"} or {"b"}`, e.Compile(2).String())
-	require.Equal(t, `{"a", "c"} or {"a", "d"} or {"b", "c"} or {"b", "d"}`, e.Compile(4).String())
-	require.Equal(t, `{"a"} or {"b"}`, e.Compile(2).String())
+	require.Equal(t, Conjunctions{{"a"}, {"b"}}, e.Compile(2))
+	require.Equal(t, Conjunctions{{"a", "c"}, {"a", "d"}, {"b", "c"}, {"b", "d"}}, e.Compile(4))
+	require.Equal(t, Conjunctions{{"a"}, {"b"}}, e.Compile(2))
 }
 
 func TestMapBeforeCap(t *testing.T) {
 	e := Or(Lit("ABC"), Lit("abc"))
-	require.True(t, e.Compile(1).IsTrue())
+	require.Nil(t, e.Compile(1))
 	mapped := e.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
-	require.Equal(t, `{"ABC"}`, mapped.Compile(1).String())
-	require.True(t, e.Compile(1).IsTrue())
+	require.Equal(t, Conjunctions{{"ABC"}}, mapped.Compile(1))
+	require.Nil(t, e.Compile(1))
 
 	// Even a contained leaf remains available until Map has run.
 	e = AllOf("abc", "abcdef")
 	mapped = e.Map(func(s string) (string, bool) { return s, len(s) == 3 })
-	require.Equal(t, `{"abc"}`, mapped.Compile(1).String())
-	require.Equal(t, `{"abcdef"}`, e.Compile(1).String())
+	require.Equal(t, Conjunctions{{"abc"}}, mapped.Compile(1))
+	require.Equal(t, Conjunctions{{"abcdef"}}, e.Compile(1))
 }
 
 func TestCompileAssociativeChains(t *testing.T) {
 	a := Or(Lit("a"), Lit("b"), Lit("c"))
 	b := Or(Lit("d"), Lit("e"))
 	c := Or(Lit("f"), Lit("g"))
-	want := `{"d", "f"} or {"d", "g"} or {"e", "f"} or {"e", "g"}`
+	want := Conjunctions{{"d", "f"}, {"d", "g"}, {"e", "f"}, {"e", "g"}}
 	// Flatten before lowering: the nested first pair must not consume the
 	// cap before the smaller factors have been considered together.
 	for _, e := range []Expr{And(a, b, c), And(And(a, b), c), And(a, And(b, c))} {
-		require.Equal(t, want, e.Compile(4).String())
+		require.Equal(t, want, e.Compile(4))
 	}
 	for _, e := range []Expr{Or(a, b, c), Or(Or(a, b), c), Or(a, Or(b, c))} {
-		require.Equal(t, Or(a, b, c).Compile(4).String(), e.Compile(4).String())
+		require.Equal(t, Or(a, b, c).Compile(4), e.Compile(4))
 	}
 }
 
@@ -329,10 +389,10 @@ func TestCompileBoundedProduct(t *testing.T) {
 	e := And(xs...)
 	for _, limit := range []int{1, 2, 16, 64} {
 		t.Run(fmt.Sprint(limit), func(t *testing.T) {
-			p := e.Compile(limit)
-			require.Len(t, p.conj, limit)
+			conjunctions := e.Compile(limit)
+			require.Len(t, conjunctions, limit)
 			matches := false
-			for _, c := range p.conj {
+			for _, c := range conjunctions {
 				require.Contains(t, c, "mandatory")
 				require.Contains(t, c, "shared")
 				all := true
@@ -341,7 +401,7 @@ func TestCompileBoundedProduct(t *testing.T) {
 				}
 				matches = matches || all
 			}
-			require.True(t, matches, "an exact match must satisfy the bounded plan")
+			require.True(t, matches, "an exact match must satisfy the bounded requirement")
 		})
 	}
 }
@@ -357,14 +417,14 @@ func TestCompileBoundedUnion(t *testing.T) {
 			Or(Lit(fmt.Sprintf("c%d", i)), Lit(fmt.Sprintf("d%d", i))),
 		)
 	}
-	require.Equal(t, `{"guard"}`, Or(xs...).Compile(4).String())
+	require.Equal(t, Conjunctions{{"guard"}}, Or(xs...).Compile(4))
 }
 
 func TestCompileCollapsedOperandNormalizesBeforeNextCap(t *testing.T) {
 	a := Or(Lit("a"), Lit("b"))
 	b := Or(AllOf("a", "b", "u"), AllOf("a", "b", "v"), AllOf("a", "b", "w"))
 	c := Or(Lit("c"), Lit("d"), Lit("e"))
-	require.Equal(t, `{"a", "b", "c"} or {"a", "b", "d"} or {"a", "b", "e"}`, And(a, b, c).Compile(3).String())
+	require.Equal(t, Conjunctions{{"a", "b", "c"}, {"a", "b", "d"}, {"a", "b", "e"}}, And(a, b, c).Compile(3))
 }
 
 func TestCompileDuplicateOr(t *testing.T) {
@@ -379,7 +439,7 @@ func TestCompileDuplicateOr(t *testing.T) {
 					e = Or(e, Lit("foo"), Lit("bar"))
 				}
 			}
-			require.Equal(t, `{"bar"} or {"foo"}`, e.Compile(2).String())
+			require.Equal(t, Conjunctions{{"bar"}, {"foo"}}, e.Compile(2))
 		})
 	}
 
@@ -389,7 +449,7 @@ func TestCompileDuplicateOr(t *testing.T) {
 	for i := range 100 {
 		e = Or(e, Lit(fmt.Sprintf("foo_%03d", i)))
 	}
-	require.Equal(t, `{"foo"}`, e.Compile(1).String())
+	require.Equal(t, Conjunctions{{"foo"}}, e.Compile(1))
 }
 
 func nestedOverCapExpression(count int, reversed bool) Expr {
@@ -412,8 +472,8 @@ func TestCompileNestedOverCap(t *testing.T) {
 			for _, depth := range []int{64, 256, 800} {
 				t.Run(fmt.Sprintf("reversed=%t/cap=%d/depth=%d", reversed, limit, depth), func(t *testing.T) {
 					e := nestedOverCapExpression(depth, reversed)
-					c := compiler{root: e, limit: limit, plans: make(map[*node]Plan)}
-					require.Equal(t, `{"shared"}`, c.lower(e).prune().String())
+					c := compiler{root: e, limit: limit, plans: make(map[*node]dnf)}
+					require.Equal(t, Conjunctions{{"shared"}}, Conjunctions(c.lower(e).prune().conj))
 					// This family needs linear proof storage in either order,
 					// not a separate proof for every ancestor/literal pair.
 					require.LessOrEqual(t, len(c.proofs), 32*depth)
@@ -426,8 +486,8 @@ func TestCompileNestedOverCap(t *testing.T) {
 		e := nestedOverCapExpression(64, reversed)
 		// A literal outside the nested subtree remains a candidate even after
 		// memoized proofs for other literals have been populated.
-		require.Equal(t, `{"hare"}`, Or(e, Lit("hare")).Compile(1).String())
-		require.Equal(t, `{"shared"}`, e.Compile(1).String())
+		require.Equal(t, Conjunctions{{"hare"}}, Or(e, Lit("hare")).Compile(1))
+		require.Equal(t, Conjunctions{{"shared"}}, e.Compile(1))
 	}
 }
 
@@ -495,8 +555,8 @@ func TestSharedExpressionDAG(t *testing.T) {
 				return strings.ToUpper(s), true
 			})
 			require.Equal(t, 1, calls)
-			require.Equal(t, `{"FOO"}`, mapped.Compile(1).String())
-			require.Equal(t, `{"foo"}`, e.Compile(1).String())
+			require.Equal(t, Conjunctions{{"FOO"}}, mapped.Compile(1))
+			require.Equal(t, Conjunctions{{"foo"}}, e.Compile(1))
 		})
 	}
 
@@ -513,7 +573,7 @@ func TestSharedExpressionDAG(t *testing.T) {
 	})
 	require.Equal(t, 3, calls)
 	require.Same(t, mapped.root.children[0].root, mapped.root.children[1].root.children[0].root)
-	require.Equal(t, `{"bar"} or {"foo"}`, mapped.Compile(2).String())
+	require.Equal(t, Conjunctions{{"bar"}, {"foo"}}, mapped.Compile(2))
 
 	// Repeated shared operands behind alternating operators cannot be
 	// eliminated by associative flattening alone. Lowering is memoized too.
@@ -528,8 +588,8 @@ func TestSharedExpressionDAG(t *testing.T) {
 		return strings.ToUpper(s), true
 	})
 	require.Equal(t, 3, calls)
-	require.Equal(t, `{"BAR", "FOO"} or {"BAZ", "FOO"}`, mapped.Compile(2).String())
-	require.Equal(t, `{"bar", "foo"} or {"baz", "foo"}`, e.Compile(2).String())
+	require.Equal(t, Conjunctions{{"BAR", "FOO"}, {"BAZ", "FOO"}}, mapped.Compile(2))
+	require.Equal(t, Conjunctions{{"bar", "foo"}, {"baz", "foo"}}, e.Compile(2))
 }
 
 func TestLongNestedAndOr(t *testing.T) {
@@ -541,9 +601,9 @@ func TestLongNestedAndOr(t *testing.T) {
 		disjunction = Or(disjunction, AllOf("shared", lit))
 	}
 	identity := func(s string) (string, bool) { return s, true }
-	p := conjunction.Map(identity).Compile(1)
-	require.Len(t, p.conj, 1)
-	require.Len(t, p.conj[0], count)
-	require.Equal(t, "literal_000000", p.conj[0][0])
-	require.Equal(t, `{"shared"}`, disjunction.Map(identity).Compile(1).String())
+	conjunctions := conjunction.Map(identity).Compile(1)
+	require.Len(t, conjunctions, 1)
+	require.Len(t, conjunctions[0], count)
+	require.Equal(t, "literal_000000", conjunctions[0][0])
+	require.Equal(t, Conjunctions{{"shared"}}, disjunction.Map(identity).Compile(1))
 }

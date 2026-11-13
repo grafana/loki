@@ -2,55 +2,22 @@ package needle
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 )
 
-// Plan is an immutable compiled requirement in disjunctive normal form: a
-// line must contain every literal of at least one conjunction. The zero value
-// is TRUE. Only Expr.Compile constructs non-TRUE plans.
-type Plan struct {
-	// Both levels are sorted and deduplicated. Conjunctions are non-empty,
-	// contain no redundant substrings, and do not imply another conjunction.
+// dnf is the compiler's private disjunctive normal form. Intermediate values
+// may share literal slices with source nodes. Only the final prune produces
+// fully owned, substring-pruned conjunctions for callers. Its zero value is TRUE.
+type dnf struct {
 	conj [][]string
 }
 
-// IsTrue reports whether p requires nothing.
-func (p Plan) IsTrue() bool { return len(p.conj) == 0 }
+func (p dnf) isTrue() bool { return len(p.conj) == 0 }
 
-// Conjunctions returns a deep copy of the normalized conjunctions, or an
-// empty slice for TRUE.
-func (p Plan) Conjunctions() [][]string {
-	out := make([][]string, len(p.conj))
-	for i, c := range p.conj {
-		out[i] = slices.Clone(c)
+func (p dnf) prune() dnf {
+	if p.isTrue() {
+		return dnf{}
 	}
-	return out
-}
-
-// String formats p as `{"a", "b"} or {"c"}`, or as TRUE.
-func (p Plan) String() string {
-	if p.IsTrue() {
-		return "TRUE"
-	}
-	var sb strings.Builder
-	for i, c := range p.conj {
-		if i > 0 {
-			sb.WriteString(" or ")
-		}
-		sb.WriteByte('{')
-		for j, lit := range c {
-			if j > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(strconv.Quote(lit))
-		}
-		sb.WriteByte('}')
-	}
-	return sb.String()
-}
-
-func (p Plan) prune() Plan {
 	out := make([][]string, 0, len(p.conj))
 	for _, c := range p.conj {
 		longest := 0
@@ -64,7 +31,7 @@ func (p Plan) prune() Plan {
 	// Pruning preserves each conjunction's meaning, so it cannot introduce
 	// new duplicates or implications. Only the lexicographic order can change.
 	slices.SortFunc(out, slices.Compare[[]string])
-	return Plan{conj: out}
+	return dnf{conj: out}
 }
 
 // canonical returns a sorted, deduplicated copy without empty literals.
@@ -81,11 +48,11 @@ func canonical(lits []string) []string {
 
 // product is called only after checking the conjunction limit. TRUE is its
 // identity. The resulting literals must not be pruned until compilation ends.
-func product(a, b Plan) Plan {
-	if a.IsTrue() {
+func product(a, b dnf) dnf {
+	if a.isTrue() {
 		return b
 	}
-	if b.IsTrue() {
+	if b.isTrue() {
 		return a
 	}
 	out := make([][]string, 0, len(a.conj)*len(b.conj))
@@ -102,17 +69,17 @@ func product(a, b Plan) Plan {
 }
 
 // normalize owns and modifies only the outer slice. Literal slices can still
-// belong to the source tree or another intermediate plan.
-func normalize(conj [][]string) Plan {
+// belong to the source tree or another intermediate DNF.
+func normalize(conj [][]string) dnf {
 	if len(conj) == 0 {
-		return Plan{}
+		return dnf{}
 	}
 	slices.SortFunc(conj, slices.Compare[[]string])
 	conj = slices.CompactFunc(conj, slices.Equal[[]string])
 	if len(conj) > 1 {
 		conj = absorb(conj)
 	}
-	return Plan{conj: conj}
+	return dnf{conj: conj}
 }
 
 // absorb drops conjunctions implying another one. For mutual implication,

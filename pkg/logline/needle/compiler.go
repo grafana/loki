@@ -9,43 +9,47 @@ import (
 // Duplicate and absorbed conjunctions do not count toward this allowance.
 const orAbsorbFactor = 4
 
-// Compile lowers e to an immutable bounded Plan. Values below one are treated
-// as one. Products are checked before expansion; oversized operands or unions
-// are weakened to their implied existing literals, including substrings.
-// No new substrings are invented. Redundant literals remain available for
-// every collapse decision, and are pruned only from the final plan.
-func (e Expr) Compile(maxConjunctions int) Plan {
+// Compile lowers e to bounded disjunctive normal form. A line must contain
+// every literal of at least one conjunction. A nil or empty outer slice means
+// TRUE; inner slices are never empty. Both slice levels are sorted, normalized
+// and caller-owned: mutating them cannot affect e or any other compilation.
+//
+// Values below one are treated as one. Products are checked before expansion;
+// oversized operands or unions are weakened to their implied existing
+// literals, including substrings. No new substrings are invented. Redundant
+// literals remain available for every collapse decision and are pruned last.
+func (e Expr) Compile(maxConjunctions int) Conjunctions {
 	c := compiler{
 		root:  e,
 		limit: max(maxConjunctions, 1),
-		plans: make(map[*node]Plan),
+		plans: make(map[*node]dnf),
 	}
-	return c.lower(e).prune()
+	return c.lower(e).prune().conj
 }
 
 type compiler struct {
 	root       Expr
 	limit      int
-	plans      map[*node]Plan
-	collapsed  map[*node]Plan
+	plans      map[*node]dnf
+	collapsed  map[*node]dnf
 	candidates []string
 	proofs     map[implicationKey]bool
 	scratch    []implicationFrame
 	costs      map[*node]int
 }
 
-func (c *compiler) lower(e Expr) Plan {
+func (c *compiler) lower(e Expr) dnf {
 	if e.root == nil {
-		return Plan{}
+		return dnf{}
 	}
 	if e.root.op == literals {
-		return Plan{conj: [][]string{e.root.lits}}
+		return dnf{conj: [][]string{e.root.lits}}
 	}
 	if p, ok := c.plans[e.root]; ok {
 		return p
 	}
 	ops := flatten(e)
-	var p Plan
+	var p dnf
 	if e.root.op == or {
 		p = c.lowerOr(e, ops)
 	} else {
@@ -81,11 +85,11 @@ func flatten(e Expr) []Expr {
 	return out
 }
 
-func (c *compiler) lowerOr(source Expr, ops []Expr) Plan {
+func (c *compiler) lowerOr(source Expr, ops []Expr) dnf {
 	var all [][]string
 	for _, x := range ops {
 		p := c.lower(x)
-		if p.IsTrue() {
+		if p.isTrue() {
 			// A bounded child may have lost a substring that exists only as
 			// a candidate in another branch. Consult the entire source OR.
 			return c.collapse(source)
@@ -110,10 +114,10 @@ func (c *compiler) lowerOr(source Expr, ops []Expr) Plan {
 	return p
 }
 
-func (c *compiler) lowerAnd(xs []Expr) Plan {
+func (c *compiler) lowerAnd(xs []Expr) dnf {
 	type operand struct {
 		source Expr
-		plan   Plan
+		plan   dnf
 	}
 	var mandatory []string
 	ops := make([]operand, 0, len(xs))
@@ -134,7 +138,7 @@ func (c *compiler) lowerAnd(xs []Expr) Plan {
 	slices.SortStableFunc(ops, func(a, b operand) int {
 		return cmp.Compare(len(a.plan.conj), len(b.plan.conj))
 	})
-	acc := literalPlan(mandatory)
+	acc := literalDNF(mandatory)
 	for _, x := range ops {
 		p := x.plan
 		// Division avoids overflowing before deciding whether to expand.
@@ -148,18 +152,18 @@ func (c *compiler) lowerAnd(xs []Expr) Plan {
 	return acc
 }
 
-func literalPlan(lits []string) Plan {
+func literalDNF(lits []string) dnf {
 	c := canonical(lits)
 	if len(c) == 0 {
-		return Plan{}
+		return dnf{}
 	}
-	return Plan{conj: [][]string{c}}
+	return dnf{conj: [][]string{c}}
 }
 
 // collapse considers candidates from the entire source subtree, even branches
 // removed by absorption or earlier bounded lowering. Source node identities
 // remain intact so implication proofs can be reused across nested collapses.
-func (c *compiler) collapse(e Expr) Plan {
+func (c *compiler) collapse(e Expr) dnf {
 	if p, ok := c.collapsed[e.root]; ok {
 		return p
 	}
@@ -173,12 +177,12 @@ func (c *compiler) collapse(e Expr) Plan {
 			common = append(common, lit)
 		}
 	}
-	var p Plan
+	var p dnf
 	if len(common) > 0 {
-		p = Plan{conj: [][]string{common}}
+		p = dnf{conj: [][]string{common}}
 	}
 	if c.collapsed == nil {
-		c.collapsed = make(map[*node]Plan)
+		c.collapsed = make(map[*node]dnf)
 	}
 	c.collapsed[e.root] = p
 	return p

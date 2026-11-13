@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-var benchmarkPlan Plan
+var benchmarkConjunctions Conjunctions
 
 // BenchmarkCompileWorkload includes construction and final pruning in both APIs.
 func BenchmarkCompileWorkload(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
-		benchmarkPlan = And(
+		benchmarkConjunctions = And(
 			AllOf("service=api", "level=error"),
 			Or(Lit("timeout"), Lit("refused"), Lit("unavailable")),
 			Or(Lit("region=east"), Lit("region=west")),
@@ -30,7 +30,7 @@ func BenchmarkIncrementalChain(b *testing.B) {
 		for _, lit := range lits {
 			e = And(e, Lit(lit))
 		}
-		benchmarkPlan = e.Compile(16)
+		benchmarkConjunctions = e.Compile(16)
 	}
 }
 
@@ -45,7 +45,7 @@ func BenchmarkIncrementalOrChain(b *testing.B) {
 		for _, x := range xs[1:] {
 			e = Or(e, x)
 		}
-		benchmarkPlan = e.Compile(16)
+		benchmarkConjunctions = e.Compile(16)
 	}
 }
 
@@ -68,7 +68,7 @@ func BenchmarkSharedConjunctions(b *testing.B) {
 				e := Or(xs...)
 				b.ReportAllocs()
 				for b.Loop() {
-					benchmarkPlan = e.Compile(branches)
+					benchmarkConjunctions = e.Compile(branches)
 				}
 			})
 		}
@@ -83,7 +83,7 @@ func BenchmarkSubstringFallback(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		benchmarkPlan = Or(xs...).Compile(1)
+		benchmarkConjunctions = Or(xs...).Compile(1)
 	}
 }
 
@@ -95,9 +95,9 @@ func BenchmarkNestedOverCap(b *testing.B) {
 					e := nestedOverCapExpression(depth, reversed)
 					b.ReportAllocs()
 					for b.Loop() {
-						benchmarkPlan = e.Compile(limit)
+						benchmarkConjunctions = e.Compile(limit)
 					}
-					c := compiler{root: e, limit: limit, plans: make(map[*node]Plan)}
+					c := compiler{root: e, limit: limit, plans: make(map[*node]dnf)}
 					c.lower(e)
 					b.ReportMetric(float64(len(c.proofs)), "proofs/op")
 					b.ReportMetric(float64(c.witnessCost(e)), "witness-cost")
@@ -118,7 +118,7 @@ func BenchmarkPruneSharedLiterals(b *testing.B) {
 			e := AllOf(lits...)
 			b.ReportAllocs()
 			for b.Loop() {
-				benchmarkPlan = e.Compile(1)
+				benchmarkConjunctions = e.Compile(1)
 			}
 		})
 	}
