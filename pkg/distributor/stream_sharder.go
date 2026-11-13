@@ -14,22 +14,45 @@ import (
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
-// streamSharder shards the streams that passed validation, each with the shard-streams config of
-// its policy (see PolicyShardStreams), so a policy can override the tenant sharding behavior (e.g.
-// toggle time sharding or use a different desired_rate). streams holds the streams ready to be
-// written.
+// shardedStreams is the result of shardStreams. streams are written once enforceStreamLimits has
+// checked them.
 //
-// Tenants can ask the limits service for a shard count, see
-// shardstreams.Config.LimitsServiceStreamShardingMode. Their streams are collected as candidates,
-// which enforceStreamLimits sends in one call after the rate limit. Shadow-mode streams are
-// already sharded by the local rate store and are only compared against the service's answer.
-// Live-mode streams are only time-sharded here: enforceStreamLimits shards them by rate with the
-// count the service returns, so they are not in streams. The mode is per tenant, so at most one of
-// the two is used per request.
-//
-// Side effects: rate sharding a stream into more than one shard advances its shard rotation, and
-// time sharding sorts each scope's entries by timestamp in place, even when it then does not
-// time-shard.
+// When a tenant asks the limits service for shard counts (see
+// shardstreams.Config.LimitsServiceStreamShardingMode), its streams are also collected as
+// candidates for one call to the service, after the rate limit. Shadow-mode streams are in streams
+// too, sharded by the local rate store, and the service's answer is only compared. Live-mode
+// streams are only time-sharded and are not in streams: the service decides their shard count. The
+// mode is per tenant, so a push has candidates of one mode at most.
+type shardedStreams struct {
+	streams                          []KeyedStream
+	shadowCandidates, liveCandidates []limitsServiceShardCandidate
+}
+
+// shardStreams shards the accepted streams, each with its policy's shard-streams config. Side
+// effects: rate sharding a stream into more than one shard advances its shard rotation, a warning is
+// logged when the push's policies disagree on whether sharding is enabled, and time sharding sorts
+// each scope's entries by timestamp in place, even when it then does not time-shard.
+func (d *Distributor) shardStreams(tenantID string, now time.Time, accepted []acceptedStream) shardedStreams {
+	sharder := newStreamSharder(d, tenantID, now, len(accepted))
+	for _, a := range accepted {
+		shardCfg, _ := d.validator.PolicyShardStreams(tenantID, a.policy)
+		sharder.shard(a.stream, a.lbs, a.stats.expandedSize, a.policy, shardCfg)
+	}
+	if sharder.shardStreamsEnabledSeen && sharder.shardStreamsDisabledSeen {
+		level.Warn(d.logger).Log(
+			"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
+			"tenant", tenantID,
+			"enabled_policy", sharder.shardStreamsEnabledPolicy,
+			"disabled_policy", sharder.shardStreamsDisabledPolicy,
+		)
+	}
+	return shardedStreams{
+		streams:          sharder.streams,
+		shadowCandidates: sharder.shadowCandidates,
+		liveCandidates:   sharder.liveCandidates,
+	}
+}
+
 type streamSharder struct {
 	d        *Distributor
 	tenantID string
@@ -38,8 +61,8 @@ type streamSharder struct {
 	streams                          []KeyedStream
 	shadowCandidates, liveCandidates []limitsServiceShardCandidate
 
-	// The policies seen with sharding enabled and disabled, the first of each, for
-	// warnMixedShardStreams. A tenant's policies are expected to agree: in live mode, a stream with
+	// The policies seen with sharding enabled and disabled, the first of each, for the warning in
+	// shardStreams. A tenant's policies are expected to agree: in live mode, a stream with
 	// sharding disabled is limited by EnforceLimits instead of CheckLimitsAndShard, splitting
 	// max_global_streams_per_user between two trackers. The warning is logged whenever the ingest
 	// limits are enabled, in every mode.
@@ -48,7 +71,6 @@ type streamSharder struct {
 }
 
 func newStreamSharder(d *Distributor, tenantID string, now time.Time, numStreams int) streamSharder {
-	// Sized for one KeyedStream per pushed stream; sharding can add more.
 	return streamSharder{d: d, tenantID: tenantID, now: now, streams: make([]KeyedStream, 0, numStreams)}
 }
 
@@ -75,7 +97,7 @@ func (s *streamSharder) shard(stream logproto.InternalStreamAdapter, lbls labels
 }
 
 // shardByRate shards stream with the local rate store's count, or collects it as a candidate for
-// the limits service, or both in shadow mode. See streamSharder.
+// the limits service, or both in shadow mode. See shardedStreams.
 func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 	d, tenantID := s.d, s.tenantID
 
@@ -136,18 +158,4 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 		s.streams = append(s.streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
 		s.shadowCandidates = append(s.shadowCandidates, candidate)
 	}
-}
-
-// warnMixedShardStreams logs a warning when the push mixed policies with stream sharding enabled
-// and disabled, see streamSharder.shardStreamsEnabledSeen.
-func (s *streamSharder) warnMixedShardStreams() {
-	if !s.shardStreamsEnabledSeen || !s.shardStreamsDisabledSeen {
-		return
-	}
-	level.Warn(s.d.logger).Log(
-		"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
-		"tenant", s.tenantID,
-		"enabled_policy", s.shardStreamsEnabledPolicy,
-		"disabled_policy", s.shardStreamsDisabledPolicy,
-	)
 }
