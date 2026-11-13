@@ -60,6 +60,22 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/01/unreachable"}}, readFileList(t, bucket, "a"))
 	})
 
+	t.Run("stores the list and logs the missing index objects when a ToC points to an index object that lifecycle rules removed", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "objects/tenants/a/00/reachable", notADataObject, old)
+		bucket.put(t, "objects/tenants/a/01/only-in-expired-index", notADataObject, old)
+		storeReachableIndex(t, bucket, "a", "indexes/tenants/a/aa/index", []string{"objects/tenants/a/00/reachable"}, old)
+		storeReachableIndex(t, bucket, "a", "indexes/53/expired", []string{"objects/tenants/a/01/only-in-expired-index"}, old)
+		require.NoError(t, bucket.Delete(t.Context(), "index/v0/indexes/53/expired"))
+		sweeper, logs := newLoggedSweeper(t, bucket)
+
+		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		require.NoError(t, err)
+		require.Equal(t, SweepScanned, outcome)
+		require.Contains(t, logs.String(), "scanned=3 reachable=2 unreachable=1 missing_index_objects=1")
+		require.Equal(t, []string{"objects/tenants/a/01/only-in-expired-index"}, readFileList(t, bucket, "a").Paths)
+	})
+
 	t.Run("logs the objects that are unreachable in both the stored list and the scan as deletion candidates and deletes nothing", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "index/v0/indexes/tenants/a/00/orphan-index", notADataObject, old)
@@ -81,7 +97,7 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Contains(t, logs.String(), `msg="deletion sweep dry run: would delete objects"`)
 		require.Contains(t, logs.String(), "previous_list_created_at="+stale.Format(time.RFC3339)+" list_created_at="+now.Format(time.RFC3339)+" previous_list_paths=4 list_paths=3 candidates=2 log_objects=1 index_objects=1\n")
 		lastModified := old.Format(time.RFC3339)
-		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep stored unreachable objects" scanned=5 reachable=2 unreachable=3`)
+		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep stored unreachable objects" scanned=5 reachable=2 unreachable=3 missing_index_objects=0 unexpected_index_sections=map[]`)
 		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep dry run: candidate" kind=index path=index/v0/indexes/tenants/a/00/orphan-index last_modified=`+lastModified+" size=")
 		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep dry run: candidate" kind=log path=objects/tenants/a/01/orphan last_modified=`+lastModified+" size=")
 		require.NotContains(t, logs.String(), "path=objects/tenants/a/00/reachable-now last_modified")

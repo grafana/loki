@@ -152,7 +152,7 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	if err != nil {
 		return "", fmt.Errorf("scanning objects of tenant %q: %w", tenant, err)
 	}
-	reachable, err := metastore.ReachableObjects(ctx, s.bucket, tenant, sweepMaxOpenIndexes)
+	reachable, reachability, err := metastore.ReachableObjects(ctx, s.bucket, tenant, sweepMaxOpenIndexes)
 	if err != nil {
 		return "", fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
 	}
@@ -198,6 +198,8 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 		"scanned", len(scanned),
 		"reachable", len(scanned)-len(list.Paths),
 		"unreachable", len(list.Paths),
+		"missing_index_objects", reachability.MissingIndexObjects,
+		"unexpected_index_sections", fmt.Sprint(reachability.UnexpectedSections),
 	)
 	if cands != nil {
 		s.logDryRun(ctx, logger, previous.CreatedAt, list, *cands)
