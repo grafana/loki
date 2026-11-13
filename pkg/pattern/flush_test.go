@@ -118,6 +118,8 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 type fakeRingClient struct {
 	ring       ring.ReadRing
 	poolClient ring_client.PoolClient
+	// clientFor, when set, replaces poolClient to give each address its own client or error.
+	clientFor func(addr string) (ring_client.PoolClient, error)
 }
 
 func (f *fakeRingClient) StartAsync(_ context.Context) error {
@@ -152,7 +154,10 @@ func (f *fakeRingClient) Ring() ring.ReadRing {
 	return f.ring
 }
 
-func (f *fakeRingClient) GetClientFor(_ string) (ring_client.PoolClient, error) {
+func (f *fakeRingClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
+	if f.clientFor != nil {
+		return f.clientFor(addr)
+	}
 	return f.poolClient, nil
 }
 
