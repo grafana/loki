@@ -1,11 +1,7 @@
 # Caching the metadata of data objects
 
-This document describes how queriers cache the metadata of log objects, and why the cache works the
-way it does. Data objects and this cache are experimental.
-
-The cache applies to the log objects that a querier opens to serve a stream-first metric query from
-data objects. It does not apply to index objects or to tables of contents, which have their own
-caches.
+This document describes how queriers cache the metadata of data objects, and why the caches work the
+way they do. Data objects and the metadata prefetcher are experimental.
 
 ## Purpose
 
@@ -20,7 +16,58 @@ they share. A querier that starts cold, or opens an object for the first time, f
 another querier cached. The cache needs no invalidation: compaction writes new objects, and it never
 edits old ones.
 
-## What the cache holds
+## Which cache serves what
+
+| Object | Served by |
+|---|---|
+| Index objects | the metadata cache |
+| Log objects | the metadata cache, or the metadata prefetcher when it is enabled |
+
+The prefetcher is opt-in. When it is enabled, it takes over the log objects, and the metadata cache does
+not serve them any more. A querier never uses both for one object. When the prefetcher cannot serve a log
+object, the querier reads the metadata directly from object storage.
+
+Both store their items in the same cache backend, for example memcached, under different keys.
+
+## The metadata cache
+
+The metadata cache keeps one cache item for each object, under the path of the object. A lookup reads one
+key. On a miss, the querier reads the object from object storage and stores the item. Concurrent misses
+for one object in one querier share one read, and the read has a time limit. A cache that fails costs
+time and nothing more: the querier reads the object directly. The cache does not store an item above the
+item size limit of the backend.
+
+### Index objects
+
+The cache holds the metadata region of an index object, or the whole object when it is tiny. An index
+object has few sections with a fixed schema, its metadata is tens of kilobytes, and a query reads whole
+sections. So one item for the object is the right shape. A hit replaces the first read of the open. A
+tiny object is kept whole, so a warm open reads nothing from object storage.
+
+### Log objects, when the prefetcher is off
+
+The cache holds the object from its start to the end of the metadata of the last section that is not a
+logs section. A tiny object is kept whole. The cache leaves out the metadata of the logs sections on
+purpose, because it grows with the number of columns. But the item is one contiguous prefix, so it also
+holds the metadata of every logs section that lies before the last non-logs section. In compacted objects
+the small streams section lies among the logs sections, so the item can be megabytes. When that prefix
+does not fit in the item size limit, the item holds only the file metadata.
+
+This shape does not fit log objects well:
+
+- A query fetches the whole item, even when it reads only a few columns.
+- What the item holds depends on the order of the sections in the object, and not on what a query needs.
+- The metadata of the logs sections that lies after the prefix still needs reads from object storage.
+
+The prefetcher exists to fix this.
+
+## The metadata prefetcher
+
+The prefetcher takes over the metadata cache for log objects. It applies to the log objects that a querier
+opens to serve a stream-first metric query from data objects. In this section, "the cache" means the
+cache items of the prefetcher.
+
+### What the cache holds
 
 The metadata region of an object is the part from its start to the end of the metadata of all its
 sections.
@@ -48,7 +95,7 @@ that filters on one structured metadata column then prefetches a few kilobytes, 
 region. The whole region serves the queries that need all the metadata, and it is the source for the
 groups.
 
-## How a query reads metadata
+### How a query reads metadata
 
 ```mermaid
 flowchart TD
@@ -69,7 +116,7 @@ flowchart TD
   as if there were no cache. After a failed lookup, the query goes straight to the direct read.
   Loading the whole region would cost more, and a failed cache cannot take the fill.
 
-### Loading the whole region
+#### Loading the whole region
 
 ```mermaid
 flowchart LR
@@ -90,13 +137,13 @@ The price is a storage read that a cache hit makes unnecessary. The price is sma
 last resort, after a group miss. It leaves the groups in the cache, so the next request for the object
 stops at the groups. The load also cancels the storage read when the cache answers first.
 
-## Size limit
+### Size limit
 
 The cache skips an object whose metadata region is above a limit. Moving a very large region costs
 more than the direct read saves. A cache item also cannot be larger than the item size limit of the
 cache backend. Loki checks at startup that the limit fits in a cache item.
 
-## Cache items
+### Cache items
 
 A cache item has these properties:
 
