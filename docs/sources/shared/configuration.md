@@ -1153,7 +1153,8 @@ dataobj:
     # CLI flag: -dataobj.metadata-prefetcher.enabled
     [enabled: <boolean> | default = false]
 
-    # The codec of the cache items. Supported values are: zstd, none.
+    # The codec of the cache items. Supported values are: "zstd", "none". With
+    # "none", the cache items stay uncompressed.
     # CLI flag: -dataobj.metadata-prefetcher.compression
     [compression: <string> | default = "zstd"]
 
@@ -1172,8 +1173,9 @@ dataobj:
     # metadata region of an object is the part of the object from its start to
     # the end of the metadata of all sections. The prefetcher skips an object
     # with a larger region, and a query reads the metadata of that object
-    # directly. When the metadata cache has a maximum item size, this value plus
-    # 64 KiB must not exceed it.
+    # directly. When the metadata cache has a maximum item size
+    # (-dataobj.metadata-cache.memcached.max-item-size, where 0 means no
+    # maximum), this value plus 64 KiB must not exceed it.
     # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
     [max_region_bytes: <int> | default = 4194304]
 
