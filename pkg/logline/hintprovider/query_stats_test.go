@@ -277,7 +277,6 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
-	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, float64(snap.TotalIOWait)/float64(5*time.Second), got.EffectiveConcurrency)
 	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
 	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
