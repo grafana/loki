@@ -235,10 +235,10 @@ func TestReachableObjects(t *testing.T) {
 			registerIndex(t, bucket, tenant, first, "indexes/aa/present")
 			registerIndex(t, bucket, tenant, second, "indexes/aa/missing")
 
-			paths, missingIndexObjects, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+			paths, reachability, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 			require.NoError(t, err)
 			require.Equal(t, []string{"index/v0/indexes/aa/missing", "index/v0/indexes/aa/present", "objects/00/log"}, paths)
-			require.Equal(t, 1, missingIndexObjects)
+			require.Equal(t, ReachabilityStats{MissingIndexObjects: 1, UnexpectedSections: map[string]int{}}, reachability)
 		})
 	}
 
@@ -315,19 +315,22 @@ func TestReachableObjects(t *testing.T) {
 		require.Nil(t, paths)
 	})
 
-	t.Run("returns an error and no paths when an index object holds a section of an unknown type", func(t *testing.T) {
+	t.Run("skips and counts a section of an unexpected type and returns the paths of the stats sections", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 1<<20, 1000, streams.DefaultShardLayout())
 		streamsBuilder.SetTenant(tenant)
 		streamsBuilder.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
 		require.NoError(t, objBuilder.Append(streamsBuilder))
-		uploadObject(t, bucket, "indexes/aa/unknown", objBuilder.Flush)
-		registerIndex(t, bucket, tenant, first, "indexes/aa/unknown")
+		uploadObject(t, bucket, "indexes/aa/legacy", objBuilder.Flush)
+		registerIndex(t, bucket, tenant, first, "indexes/aa/legacy")
+		storeIndexFor(t, bucket, "indexes/aa/current", tenant, []string{"objects/00/log"})
+		registerIndex(t, bucket, tenant, second, "indexes/aa/current")
 
-		paths, _, err := ReachableObjects(t.Context(), bucket, tenant, 1)
-		require.ErrorContains(t, err, "index object indexes/aa/unknown: section 0 has unknown type")
-		require.Nil(t, paths)
+		paths, reachability, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		require.NoError(t, err)
+		require.Equal(t, []string{"index/v0/indexes/aa/current", "index/v0/indexes/aa/legacy", "objects/00/log"}, paths)
+		require.Equal(t, map[string]int{streams.SectionType().String(): 1}, reachability.UnexpectedSections)
 	})
 
 	t.Run("returns an error and no paths when a ToC holds a section of an unknown type", func(t *testing.T) {
