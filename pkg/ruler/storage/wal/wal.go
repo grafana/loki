@@ -153,9 +153,9 @@ func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t
 
 	// Forward exemplars to the inner appender per the AppenderV2 contract.
 	var pErr storage.AppendPartialError
-	for _, e := range opts.Exemplars {
+	for index, e := range opts.Exemplars {
 		if _, exemplarErr := a.inner.AppendExemplar(sRef, ls, e); exemplarErr != nil {
-			pErr.ExemplarErrors = append(pErr.ExemplarErrors, exemplarErr)
+			pErr.ExemplarErrors = append(pErr.ExemplarErrors, storage.ExemplarError{Index: index, Err: exemplarErr})
 		}
 	}
 	return sRef, pErr.ToError()
