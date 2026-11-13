@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"flag"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -38,6 +39,10 @@ type Config struct {
 	OldQueryFrontendGRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=Configures the querier gRPC client used to communicate with the query-frontend and with the query-scheduler. This can't be used in conjunction with 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'."`
 
 	QuerySchedulerGRPCClientConfig grpcclient.Config `yaml:"query_scheduler_grpc_client" doc:"description=Configures the querier gRPC client used to communicate with the query-scheduler. This can't be used in conjunction with 'grpc_client_config'."`
+
+	ShutdownQueryStatsPushGatewayURL string        `yaml:"shutdown_query_stats_pushgateway_url" doc:"description=Optional Pushgateway URL to push the final loki_logql_querystats_bytes_processed_total value when the process receives SIGINT/SIGTERM. Disabled when empty."`
+	ShutdownQueryStatsPushJobName    string        `yaml:"shutdown_query_stats_push_job_name" doc:"description=Pushgateway job name used for shutdown query stats push."`
+	ShutdownQueryStatsPushTimeout    time.Duration `yaml:"shutdown_query_stats_push_timeout" doc:"description=Timeout for pushing query stats to Pushgateway during shutdown."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -51,6 +56,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.NewQueryFrontendGRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-grpc-client", f)
 	cfg.QuerySchedulerGRPCClientConfig.RegisterFlagsWithPrefix("querier.scheduler-grpc-client", f)
+
+	f.StringVar(&cfg.ShutdownQueryStatsPushGatewayURL, "querier.shutdown-query-stats-pushgateway-url", "", "Optional Pushgateway URL to push final loki_logql_querystats_bytes_processed_total on SIGINT/SIGTERM. If empty, pushing is disabled.")
+	f.StringVar(&cfg.ShutdownQueryStatsPushJobName, "querier.shutdown-query-stats-push-job-name", "loki-querier-shutdown", "Pushgateway job name used for shutdown query stats push.")
+	f.DurationVar(&cfg.ShutdownQueryStatsPushTimeout, "querier.shutdown-query-stats-push-timeout", 5*time.Second, "Timeout for pushing shutdown query stats to Pushgateway.")
 }
 
 func (cfg *Config) Validate() error {
@@ -62,6 +71,17 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.OldQueryFrontendGRPCClientConfig.Validate(); err != nil {
 		return err
+	}
+	if cfg.ShutdownQueryStatsPushGatewayURL != "" {
+		if _, err := url.ParseRequestURI(cfg.ShutdownQueryStatsPushGatewayURL); err != nil {
+			return errors.Wrap(err, "invalid querier.shutdown-query-stats-pushgateway-url")
+		}
+		if cfg.ShutdownQueryStatsPushJobName == "" {
+			return errors.New("querier.shutdown-query-stats-push-job-name must be set when querier.shutdown-query-stats-pushgateway-url is configured")
+		}
+		if cfg.ShutdownQueryStatsPushTimeout <= 0 {
+			return errors.New("querier.shutdown-query-stats-push-timeout must be greater than 0")
+		}
 	}
 
 	return cfg.QuerySchedulerGRPCClientConfig.Validate()
