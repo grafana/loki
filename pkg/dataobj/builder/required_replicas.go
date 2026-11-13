@@ -89,20 +89,20 @@ func (r *requiredReplicasReporter) readRequiredReplicas(ctx context.Context) (in
 	// because the topic can have many pre-created partitions that get none.
 	// The end offset is the offset after the last record, so a partition with
 	// one record at offset 0 has a start offset of 0 and an end offset of 1.
-	partitionsWithRecords := make(map[int32]string)
+	var partitionsWithRecords []int32
 	for partition, endOffset := range endOffsets {
 		if endOffset > startOffsets[partition] {
-			partitionsWithRecords[partition] = r.consumerGroup
+			partitionsWithRecords = append(partitionsWithRecords, partition)
 		}
 	}
-	lastCommittedOffsets, err := r.offsets.LastCommittedOffsets(ctx, partitionsWithRecords)
+	lastCommittedOffsets, err := r.offsets.LastCommittedOffsets(ctx, r.consumerGroup, partitionsWithRecords)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch committed offsets: %w", err)
 	}
 	// Builder-0 always counts, because it exports this gauge. A value of 0
 	// would scale builder-0 away, and nothing would scale the builders back up.
 	replicas := int32(1)
-	for partition := range partitionsWithRecords {
+	for _, partition := range partitionsWithRecords {
 		// Builders commit the offset of the last record they consumed.
 		resumeOffset := lastCommittedOffsets[partition] + 1
 		if recordsLeftToConsume(startOffsets[partition], endOffsets[partition], resumeOffset) > 0 {
