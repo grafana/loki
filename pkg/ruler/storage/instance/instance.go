@@ -528,6 +528,7 @@ type walStorage interface {
 	StartTime() (int64, error)
 	WriteStalenessMarkers(remoteTsFunc func() int64) error
 	SetWriteNotified(wlog.WriteNotified)
+	// Appender is required for walStorage to be usable as a storage.Storage.
 	Appender(context.Context) storage.Appender
 	AppenderV2(context.Context) storage.AppenderV2
 	Truncate(mint int64) error

@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
@@ -120,49 +119,15 @@ func (w *Storage) Directory() string {
 	return w.path
 }
 
-// Appender returns a new appender against the storage.
+// Appender exists only to satisfy storage.Storage. Nothing in Loki calls it.
 func (w *Storage) Appender(_ context.Context) storage.Appender {
-	return w.appenderPool.Get().(storage.Appender)
+	panic("wal.Storage does not support the V1 Appender; use AppenderV2")
 }
 
 // AppenderV2 returns a new AppenderV2 against the storage.
-func (w *Storage) AppenderV2(ctx context.Context) storage.AppenderV2 {
-	return &appenderV2Adapter{inner: w.Appender(ctx)}
+func (w *Storage) AppenderV2(_ context.Context) storage.AppenderV2 {
+	return w.appenderPool.Get().(storage.AppenderV2)
 }
-
-// appenderV2Adapter wraps a v1 Appender to satisfy the AppenderV2 interface.
-type appenderV2Adapter struct {
-	inner storage.Appender
-}
-
-func (a *appenderV2Adapter) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
-	var sRef storage.SeriesRef
-	var err error
-
-	switch {
-	case fh != nil:
-		sRef, err = a.inner.AppendHistogram(ref, ls, t, nil, fh)
-	case h != nil:
-		sRef, err = a.inner.AppendHistogram(ref, ls, t, h, nil)
-	default:
-		sRef, err = a.inner.Append(ref, ls, t, v)
-	}
-	if err != nil {
-		return 0, err
-	}
-
-	// Forward exemplars to the inner appender per the AppenderV2 contract.
-	var pErr storage.AppendPartialError
-	for index, e := range opts.Exemplars {
-		if _, exemplarErr := a.inner.AppendExemplar(sRef, ls, e); exemplarErr != nil {
-			pErr.ExemplarErrors = append(pErr.ExemplarErrors, storage.ExemplarError{Index: index, Err: exemplarErr})
-		}
-	}
-	return sRef, pErr.ToError()
-}
-
-func (a *appenderV2Adapter) Commit() error   { return a.inner.Commit() }
-func (a *appenderV2Adapter) Rollback() error { return a.inner.Rollback() }
 
 // StartTime always returns 0, nil. It is implemented for compatibility with
 // Prometheus, but is unused in the agent.
@@ -284,7 +249,7 @@ func (w *Storage) WriteStalenessMarkers(remoteTsFunc func() int64) error {
 	var lastErr error
 	var lastTs int64
 
-	app := w.Appender(context.Background())
+	app := w.AppenderV2(context.Background())
 	it := w.series.iterator()
 	for series := range it.Channel() {
 		var (
@@ -293,7 +258,7 @@ func (w *Storage) WriteStalenessMarkers(remoteTsFunc func() int64) error {
 		)
 
 		ts := timestamp.FromTime(time.Now())
-		_, err := app.Append(storage.SeriesRef(ref), lset, ts, math.Float64frombits(value.StaleNaN))
+		_, err := app.Append(storage.SeriesRef(ref), lset, 0, ts, math.Float64frombits(value.StaleNaN), nil, nil, storage.AppendV2Options{})
 		if err != nil {
 			lastErr = err
 		}
@@ -395,9 +360,18 @@ type appender struct {
 	exemplars []record.RefExemplar
 }
 
-var _ storage.Appender = (*appender)(nil)
+var _ storage.AppenderV2 = (*appender)(nil)
 
-func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+// Append appends a float sample and any exemplars in opts to the pending batch.
+//
+// Native histograms are not yet supported and are silently dropped. The start
+// timestamp, metric family name and metadata are ignored.
+func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	if h != nil || fh != nil {
+		// TODO: support native histograms
+		return 0, nil
+	}
+
 	series := a.w.series.getByID(chunks.HeadSeriesRef(ref))
 	if series == nil {
 		// Ensure no empty or duplicate labels have gotten through. This mirrors the
@@ -438,7 +412,15 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 	})
 
 	a.w.metrics.TotalAppendedSamples.Inc()
-	return storage.SeriesRef(series.ref), nil
+
+	// Append exemplars, attempting all of them and reporting failures as a partial error.
+	var pErr storage.AppendPartialError
+	for index, e := range opts.Exemplars {
+		if err := a.appendExemplar(series, e); err != nil {
+			pErr.ExemplarErrors = append(pErr.ExemplarErrors, storage.ExemplarError{Index: index, Err: err})
+		}
+	}
+	return storage.SeriesRef(series.ref), pErr.ToError()
 }
 
 func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool) {
@@ -454,17 +436,12 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 	return series, true
 }
 
-func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
-	s := a.w.series.getByID(chunks.HeadSeriesRef(ref))
-	if s == nil {
-		return 0, fmt.Errorf("unknown series ref. when trying to add exemplar: %d", ref)
-	}
-
+func (a *appender) appendExemplar(s *memSeries, e exemplar.Exemplar) error {
 	// Ensure no empty labels have gotten through.
 	e.Labels = e.Labels.WithoutEmpty()
 
 	if lbl, dup := e.Labels.HasDuplicateLabelNames(); dup {
-		return 0, errors.Wrap(tsdb.ErrInvalidExemplar, fmt.Sprintf(`label name "%s" is not unique`, lbl))
+		return errors.Wrap(tsdb.ErrInvalidExemplar, fmt.Sprintf(`label name "%s" is not unique`, lbl))
 	}
 
 	// Exemplar label length does not include chars involved in text rendering such as quotes
@@ -481,49 +458,18 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	a.exemplars = append(a.exemplars, record.RefExemplar{
-		Ref:    chunks.HeadSeriesRef(ref),
+		Ref:    s.ref,
 		T:      e.Ts,
 		V:      e.Value,
 		Labels: e.Labels,
 	})
 
-	return storage.SeriesRef(s.ref), nil
+	return nil
 }
-
-func (a *appender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	// TODO: support native histograms
-	return 0, nil
-}
-
-func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	// TODO: support histogram created timestamps
-	return 0, nil
-}
-
-func (a *appender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	// TODO: support histogram start timestamps
-	return 0, nil
-}
-
-func (a *appender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	// TODO: support start timestamps
-	return 0, nil
-}
-
-func (a *appender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	// TODO: support created timestamp
-	return 0, nil
-}
-
-func (a *appender) SetOptions(_ *storage.AppendOptions) {}
 
 // Commit submits the collected samples and purges the batch.
 func (a *appender) Commit() error {
