@@ -347,6 +347,14 @@ func (c NodeContext) iteratorLimits(expr syntax.SampleExpr) iteratorLimits {
 type iteratorLimits struct {
 	// maxSeries is zero when the early cut-off does not apply to the iterator.
 	maxSeries int
+	// counter counts the label sets the iterator holds. It is nil when the job has no counter.
+	counter *intermediateSeriesCounter
+}
+
+// withCounter returns the limits with the given intermediate series counter.
+func (l iteratorLimits) withCounter(counter *intermediateSeriesCounter) iteratorLimits {
+	l.counter = counter
+	return l
 }
 
 // validateMaxSeries returns the series limit error when an iterator holding series series has passed the
@@ -596,7 +604,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines, limits), nil
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines, limits.withCounter(intermediateSeriesCounterFromContext(ctx))), nil
 }
 
 func newVectorAggEvaluator(
@@ -886,6 +894,7 @@ func newTimestampFirstRangeAggEvaluator(
 			util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 		}
 	}()
+	limits = limits.withCounter(intermediateSeriesCounterFromContext(ctx))
 
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:

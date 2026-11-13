@@ -180,9 +180,13 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 				if r.err = r.limits.validateMaxSeries(len(r.metrics) + 1); r.err != nil {
 					return
 				}
+				if r.err = r.limits.counter.Reserve(1); r.err != nil {
+					return
+				}
 				var err error
 				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
+					r.limits.counter.Release(1)
 					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
 					return
 				}
