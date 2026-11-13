@@ -134,9 +134,9 @@ func TestNeedles(t *testing.T) {
 		{"empty branch", `abc|`, 64, "TRUE"},
 		{"alternation next to required text", `kubelet.*(abc.*|def.*)`, 64, `{"abc", "kubelet"} or {"def", "kubelet"}`},
 
-		// Exact-set enumeration is capped separately from the final DNF.
+		// Fixed exact-set enumeration is independent of the final DNF cap.
 		// The basic walk keeps the plain text next to an alternation even
-		// when both caps are low.
+		// when the rich walk's alternatives exceed the DNF cap.
 		{"one conjunction keeps the plain literal", `(a|b)verylongliteral`, 1, `{"verylongliteral"}`},
 		{"two conjunctions collapse to shared text", `(a|b|c)xyz`, 2, `{"xyz"}`},
 		{"one conjunction without required text", `foo|bar`, 1, "TRUE"},
@@ -147,9 +147,17 @@ func TestNeedles(t *testing.T) {
 			"one-conjunction literals in every set", `(GET|POST|PUT|DELETE) /api/v1/(users|orders)`, 4,
 			`{" /api/v1/", "orders"} or {" /api/v1/", "users"}`,
 		},
+		// Fixed enumeration joins all four rich alternatives into one run.
+		// Unlike enumeration capped at two, it does not split the run into
+		// two joined prefixes and two suffixes. Compile(2) therefore falls
+		// back to basic literals, while Compile(4) keeps all complete runs.
 		{
-			"one-conjunction suffix in every set", `prefix_(a|b)_middle_(c|d)_suffix`, 2,
-			`{"_suffix", "prefix_A_middle_"} or {"_suffix", "prefix_B_middle_"}`,
+			"basic suffix survives collapsed rich run", `prefix_(a|b)_middle_(c|d)_suffix`, 2,
+			`{"_middle_", "_suffix", "prefix_"}`,
+		},
+		{
+			"fixed enumeration keeps complete rich runs", `prefix_(a|b)_middle_(c|d)_suffix`, 4,
+			`{"prefix_A_middle_C_suffix"} or {"prefix_A_middle_D_suffix"} or {"prefix_B_middle_C_suffix"} or {"prefix_B_middle_D_suffix"}`,
 		},
 
 		// Nothing required.
@@ -159,45 +167,46 @@ func TestNeedles(t *testing.T) {
 		{"invalid", `(`, 64, "TRUE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Needles(tc.pattern, tc.maxConjunctions).Compile(tc.maxConjunctions).String())
+			require.Equal(t, tc.want, Needles(tc.pattern).Compile(tc.maxConjunctions).String())
 		})
 	}
 }
 
 func TestNeedles_OrCollapse(t *testing.T) {
 	upper := func(s string) (string, bool) { return strings.ToUpper(s), true }
+	// The two regexes have five alternatives in total. Their shared text
+	// must survive combining and mapping before the final cap.
+	e := needle.Or(
+		Needles(`(get|put) foo`).Map(upper),
+		Needles(`(1|2|3) foobaz`).Map(upper),
+	)
 	for _, maxConjunctions := range []int{1, 2, 3, 4, 5, 64} {
 		t.Run(strconv.Itoa(maxConjunctions), func(t *testing.T) {
-			// The two regexes have five alternatives in total. Their shared
-			// text must survive combining and mapping before the final cap.
-			e := needle.Or(
-				Needles(`(get|put) foo`, maxConjunctions).Map(upper),
-				Needles(`(1|2|3) foobaz`, maxConjunctions).Map(upper),
-			)
-			require.Equal(t, `{" FOO"}`, e.Compile(1).String())
-			if maxConjunctions == 4 {
-				require.Equal(t, `{" FOO"}`, e.Compile(maxConjunctions).String())
+			want := `{" FOO"}`
+			if maxConjunctions >= 5 {
+				want = `{"1 FOOBAZ"} or {"2 FOOBAZ"} or {"3 FOOBAZ"} or {"GET FOO"} or {"PUT FOO"}`
 			}
+			require.Equal(t, want, e.Compile(maxConjunctions).String())
 		})
 	}
 }
 
 func TestNeedles_CompileAfterMap(t *testing.T) {
-	t.Run("OR survives the enumeration cap", func(t *testing.T) {
-		// Neither branch is exact. An enumeration cap of one must not
-		// collapse the alternation before the caller chooses its DNF cap.
-		e := Needles(`alpha.*left|beta.*right`, 1)
-		require.Equal(t, `{"alpha", "left"} or {"beta", "right"}`, e.Compile(2).String())
-		require.True(t, e.Compile(1).IsTrue())
+	t.Run("OR survives walking", func(t *testing.T) {
+		// Neither branch is exact. Walking must not collapse the alternation
+		// before the caller chooses its DNF cap.
+		e := Needles(`alpha.*left|beta.*right`)
+		require.Equal(t, needle.Conjunctions{{"alpha", "left"}, {"beta", "right"}}, e.Compile(2))
+		require.Empty(t, e.Compile(1))
 	})
 
 	t.Run("map precedes the DNF cap", func(t *testing.T) {
 		// There is no shared case-sensitive literal. Folding before the
 		// final cap reveals one; eagerly collapsing the OR would lose it.
-		e := Needles(`foo|FOO`, 1)
-		require.True(t, e.Compile(1).IsTrue())
+		e := Needles(`foo|FOO`)
+		require.Empty(t, e.Compile(1))
 		mapped := e.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
-		require.Equal(t, `{"FOO"}`, mapped.Compile(1).String())
+		require.Equal(t, needle.Conjunctions{{"FOO"}}, mapped.Compile(1))
 	})
 }
 

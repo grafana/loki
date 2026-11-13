@@ -38,7 +38,7 @@ const (
 )
 
 // Literals returns the literals that every string matched by pattern
-// contains, sorted. It compiles Needles(pattern, 1) with a DNF cap of one, so
+// contains, sorted. It compiles Needles(pattern) with a DNF cap of one, so
 // duplicates and literals contained in another one are removed. Nothing is
 // returned for a pattern that does not parse or has no required literal.
 //
@@ -48,7 +48,7 @@ const (
 //
 // Callers still decide whether a literal is long enough to look up.
 func Literals(pattern string) []string {
-	conjs := Needles(pattern, 1).Compile(1).Conjunctions()
+	conjs := Needles(pattern).Compile(1)
 	if len(conjs) == 0 {
 		return nil
 	}
@@ -60,9 +60,9 @@ func Literals(pattern string) []string {
 // finite alternations are joined to the literals next to them, so
 // `(GET|POST) /api` gives {GET /api} or {POST /api}.
 //
-// maxConjunctions bounds exact-set and literal-run enumeration, not the DNF
-// size of the result. Values below one are treated as one. With a cap of one,
-// each exact set is a single string, but non-exact alternations are still kept.
+// Exact-set and literal-run enumeration use fixed internal limits, independent
+// of the final DNF cap passed to Compile. A basic walk also keeps required
+// text that the richer walk joins into alternatives, so it survives a low cap.
 // A pattern that does not parse gives True.
 //
 // Case follows the same rules as Literals, with one addition: runes of a
@@ -71,18 +71,16 @@ func Literals(pattern string) []string {
 // The result is uncompiled and unpruned. Map and combine it with other
 // requirements before calling Compile on the final expression; Compile applies
 // the DNF cap and final pruning.
-func Needles(pattern string, maxConjunctions int) needle.Expr {
+func Needles(pattern string) needle.Expr {
 	re, err := parse(pattern)
 	if err != nil {
 		return needle.True()
 	}
 
-	// Basic selection first.
+	// Preserve basic literals as fallback candidates when the richer walk's
+	// alternatives exceed the final DNF cap.
 	single := newWalker(1).expr(re)
-	if maxConjunctions <= 1 {
-		return single
-	}
-	return needle.And(single, newWalker(maxConjunctions).expr(re))
+	return needle.And(single, newWalker(maxExact).expr(re))
 }
 
 // parse runs the same parse as Loki's parseRegexpFilter. It does not call
