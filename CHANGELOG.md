@@ -1,5 +1,25 @@
 # Changelog
 
+## [4.0.0-rc.4](https://github.com/grafana/loki/compare/v4.0.0-rc.3...v4.0.0-rc.4) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **limits:** Remove unused `max_chunks_per_query` limit [release-4.0.0] ([#26404](https://github.com/grafana/loki/issues/26404))
+
+### Bug Fixes
+
+* **logql:** Skip every new series once the Logs Drilldown series limit trips [release-4.0.0] ([#26434](https://github.com/grafana/loki/issues/26434)) ([1228128](https://github.com/grafana/loki/commit/12281286df6bbc88c439ea54288c119308bf75d0))
+* **security/UNKNOWN/pkg/push:** Update module golang.org/x/net to v0.62.0 [SECURITY] (release-4.0.0) ([#26353](https://github.com/grafana/loki/issues/26353)) ([42b3047](https://github.com/grafana/loki/commit/42b3047d6e8837f36eac28d8c095a3d49d4f20ef))
+* **security/UNKNOWN/:** Update module github.com/andybalholm/brotli to v1.2.7 [SECURITY] (release-4.0.0) ([#26351](https://github.com/grafana/loki/issues/26351)) ([e6cbd66](https://github.com/grafana/loki/commit/e6cbd66a4957a3d1c7624848014941e711df27cd))
+* **security/UNKNOWN/:** Update module golang.org/x/crypto to v0.59.0 [SECURITY] (release-4.0.0) ([#26421](https://github.com/grafana/loki/issues/26421)) ([e732ee8](https://github.com/grafana/loki/commit/e732ee876849756121b3c4f1fa9b2ffac8aa8798))
+* **security/UNKNOWN/:** Update module golang.org/x/net to v0.62.0 [SECURITY] (release-4.0.0) ([#26352](https://github.com/grafana/loki/issues/26352)) ([6b5b49c](https://github.com/grafana/loki/commit/6b5b49c7d2ad88215b22c7fe8f49d79825ac9d6e))
+
+
+### Miscellaneous Chores
+
+* **limits:** Remove unused `max_chunks_per_query` limit [release-4.0.0] ([#26404](https://github.com/grafana/loki/issues/26404)) ([f2ae5f6](https://github.com/grafana/loki/commit/f2ae5f65a1355ef4d57b6e0d2b2ee1749105e3ed))
+
 ## [4.0.0-rc.3](https://github.com/grafana/loki/compare/v4.0.0-rc.2...v4.0.0-rc.3) (2026-11-06)
 
 
