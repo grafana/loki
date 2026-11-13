@@ -58,10 +58,10 @@ the querier rejects it.
   with `X-Logline-Index: live` skips that byte threshold. Dry-run, and live mode from
   the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
-- **`max_conjunctions`** (default 4) bounds the needle sets a query is planned
+- **`max_conjunctions`** (default 1) bounds the needle sets a query is planned
   into. The frontend uses it for the eligibility check and sends it to the
   querier in `LoglineIndexRequest.max_conjunctions`, like `ngram_length`. Set it
-  to 1 on a cell to go back to the needles every branch of an OR shares.
+  above 1 explicitly to enable multiple conjunctions on a cell.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
   sub-interval responses. It inherits `Direction`, `Limit`, and `Version` from

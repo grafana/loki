@@ -2502,10 +2502,10 @@ type LoglineIndexRequest struct {
 	Indexes []IndexMeta                             `protobuf:"bytes,4,rep,name=indexes,proto3" json:"indexes"`
 	// NgramLength, MaxParallel and MaxConjunctions are the query-frontend's
 	// settings for this lookup so the querier does not need matching logline
-	// config. Zero means use the querier's configured defaults.
+	// config. Zero NgramLength or MaxParallel uses the querier's configured defaults.
 	NgramLength int32 `protobuf:"varint,5,opt,name=ngram_length,json=ngramLength,proto3" json:"ngram_length"`
 	MaxParallel int32 `protobuf:"varint,6,opt,name=max_parallel,json=maxParallel,proto3" json:"max_parallel"`
-	// MaxConjunctions is the most needle sets the query is planned into.
+	// MaxConjunctions is the most needle sets the query is planned into. Zero means one.
 	MaxConjunctions int32 `protobuf:"varint,7,opt,name=max_conjunctions,json=maxConjunctions,proto3" json:"max_conjunctions"`
 }
 

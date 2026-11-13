@@ -27,8 +27,7 @@ type LoglineHintProvider struct {
 	store       *store.Store
 	ngramLength int
 	maxParallel int
-	// maxConjunctions is the most needle sets a query is planned into when
-	// the request does not set it.
+	// maxConjunctions is the local planning cap, sent explicitly with lookups.
 	maxConjunctions int
 	// queryMultipleObserver is optional and receives one callback per
 	// QueryMultiple call with termination reason and term batches processed.
@@ -56,9 +55,6 @@ func NewLoglineHintProvider(
 	if maxParallel <= 0 {
 		maxParallel = defaultHintParallel
 	}
-	if maxConjunctions <= 0 {
-		maxConjunctions = DefaultMaxConjunctions
-	}
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -67,7 +63,7 @@ func NewLoglineHintProvider(
 		store:                 indexStore,
 		ngramLength:           ngramLength,
 		maxParallel:           maxParallel,
-		maxConjunctions:       maxConjunctions,
+		maxConjunctions:       max(maxConjunctions, 1),
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
@@ -141,15 +137,13 @@ func timeUnion(ranges []HintTimeRange) []HintTimeRange {
 }
 
 func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel, maxConjunctions int) {
-	ngramLength, maxParallel, maxConjunctions = p.ngramLength, p.maxParallel, p.maxConjunctions
+	ngramLength, maxParallel = p.ngramLength, p.maxParallel
+	maxConjunctions = max(int(req.MaxConjunctions), 1)
 	if req.NgramLength > 0 {
 		ngramLength = int(req.NgramLength)
 	}
 	if req.MaxParallel > 0 {
 		maxParallel = int(req.MaxParallel)
-	}
-	if req.MaxConjunctions > 0 {
-		maxConjunctions = int(req.MaxConjunctions)
 	}
 	return
 }

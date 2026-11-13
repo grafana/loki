@@ -12,10 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// DefaultMaxConjunctions is the most needle sets a query is planned into when
-// no other value is configured.
-const DefaultMaxConjunctions = 4
-
 // SupportedQuery returns the needles for query shapes that can use logline
 // index hints. The result is True when the query has no needle.
 //
@@ -51,17 +47,13 @@ const DefaultMaxConjunctions = 4
 // Requirements remain factored until all filters are combined and mapped.
 // Compile then bounds expansion to maxConjunctions sets, collapsing operands
 // or unions to their implied existing literals when needed. maxConjunctions 1 gives one
-// set, the needles every branch of every OR shares. A value below 1 means
-// DefaultMaxConjunctions.
+// set, the needles every branch of every OR shares. Values below 1 are treated as 1.
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
 func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Conjunctions {
 	if expr == nil || ngramLength <= 0 {
 		return nil
-	}
-	if maxConjunctions <= 0 {
-		maxConjunctions = DefaultMaxConjunctions
 	}
 	p := planner{ngramLength: ngramLength}
 

@@ -161,5 +161,6 @@ Query-shape support and hint lookup for logline index lookups.
       prunes at the end. Over the limit an operand or union collapses to its
       implied existing literals. 1 gives at most one set.
     - The query-frontend sends its value in `LoglineIndexRequest.max_conjunctions`.
-      The querier uses it when above 0, else its own default.
-    - Default 4. Examples are pinned in `TestSupportedQuery_Or`.
+      The querier uses it when above 0, otherwise 1 regardless of its local cap.
+    - The frontend owns the configuration default of 1; multiple conjunctions
+      require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.

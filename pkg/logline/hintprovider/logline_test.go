@@ -275,12 +275,17 @@ func TestLoglineHintProvider_LookupParams(t *testing.T) {
 	ngram, parallel, conjunctions := provider.lookupParams(&logproto.LoglineIndexRequest{})
 	require.Equal(t, 6, ngram)
 	require.Equal(t, 32, parallel)
-	require.Equal(t, DefaultMaxConjunctions, conjunctions)
+	require.Equal(t, 1, conjunctions)
 
-	ngram, parallel, conjunctions = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8, MaxConjunctions: 1})
+	ngram, parallel, conjunctions = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8, MaxConjunctions: 4})
 	require.Equal(t, 3, ngram)
 	require.Equal(t, 8, parallel)
-	require.Equal(t, 1, conjunctions)
+	require.Equal(t, 4, conjunctions)
+
+	provider, err = NewLoglineHintProvider(indexStore, 6, 32, 4, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	_, _, conjunctions = provider.lookupParams(&logproto.LoglineIndexRequest{})
+	require.Equal(t, 1, conjunctions, "an omitted request cap must not inherit the local planning cap")
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {

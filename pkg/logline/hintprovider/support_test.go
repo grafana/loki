@@ -1061,7 +1061,8 @@ func TestSupportedQuery_Or(t *testing.T) {
 		},
 		{"one conjunction keeps today's needles", `{app="foo"} |= "seed text" |= "option_a" or "option_b"`, 1, `{"SEED TEXT"}`},
 		{"one conjunction without shared needles", `{app="foo"} |= "abcdef" or "ghijkl"`, 1, "TRUE"},
-		{"zero means the default", `{app="foo"} |= "abcdef" or "ghijkl"`, 0, `{"ABCDEF"} or {"GHIJKL"}`},
+		{"zero means one conjunction", `{app="foo"} |= "abcdef" or "ghijkl"`, 0, "TRUE"},
+		{"explicitly enable multiple conjunctions", `{app="foo"} |= "abcdef" or "ghijkl"`, 4, `{"ABCDEF"} or {"GHIJKL"}`},
 		{
 			"mapping precedes the final cap", `{app="foo"} |= "ABCDEF" or "abcdef"`, 1,
 			`{"ABCDEF"}`,
@@ -1085,10 +1086,10 @@ func BenchmarkSupportedQuerySharedLiterals(b *testing.B) {
 			pattern.WriteString("(?:(z000000)|(z000001)|(z000002)|(z000003))")
 			expr, err := syntax.ParseExpr(fmt.Sprintf("{app=\"foo\"} |~ %q", pattern.String()))
 			require.NoError(b, err)
-			require.Len(b, SupportedQuery(expr, 6, 0), DefaultMaxConjunctions)
+			require.Len(b, SupportedQuery(expr, 6, 4), 4)
 			b.ReportAllocs()
 			for b.Loop() {
-				SupportedQuery(expr, 6, 0)
+				SupportedQuery(expr, 6, 4)
 			}
 		})
 	}
@@ -1117,7 +1118,7 @@ func BenchmarkSupportedQuery(b *testing.B) {
 		require.NoError(b, err)
 		b.Run(bc.name, func(b *testing.B) {
 			for b.Loop() {
-				SupportedQuery(expr, 6, DefaultMaxConjunctions)
+				SupportedQuery(expr, 6, 4)
 			}
 		})
 	}
