@@ -134,11 +134,11 @@ eval range from 40s to 60s step 20s sum by (app) (count_over_time({app=~"a|b|c|d
   {app="c"} 2 3
   {app="d"} 2 3
 
-# logfmt: an escaped apostrophe
+# logfmt: an escaped apostrophe. msg=welcome gives each line a word that the Logline index holds.
 clear
 load
-  {app="a"} `name="o\'brien"` @ 20s [repeat every 20s for 3]   # trap: escape
-  {app="a"} `name="o\'neil"`  @ 10s                            # noise
+  {app="a"} `name="o\'brien" msg=welcome` @ 20s [repeat every 20s for 3]   # trap: escape
+  {app="a"} `name="o\'neil" msg=welcome`  @ 10s                            # noise
 
 eval instant at 60s sum(count_over_time({app="a"} | logfmt | name="o'brien" [1m]))
   {} 3
