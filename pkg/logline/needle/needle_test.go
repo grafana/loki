@@ -2,6 +2,7 @@ package needle
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -188,6 +189,53 @@ func TestPrune(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, tc.expr.Prune().String())
 		})
+	}
+}
+
+func TestSubstringOptimizationsMatchReference(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	literal := func() string {
+		const alphabet = "abc012"
+		buf := make([]byte, 1+rng.Intn(12))
+		for i := range buf {
+			buf[i] = alphabet[rng.Intn(len(alphabet))]
+		}
+		return string(buf)
+	}
+	for range 10000 {
+		pool := make([]string, 16)
+		for i := range pool {
+			pool[i] = literal()
+		}
+		conjunction := func() []string {
+			lits := make([]string, rng.Intn(32))
+			for i := range lits {
+				lits[i] = pool[rng.Intn(len(pool))]
+			}
+			return canonical(lits)
+		}
+		a, b := conjunction(), conjunction()
+		wantImplies := true
+		for _, lit := range a {
+			found := false
+			for _, other := range b {
+				found = found || strings.Contains(other, lit)
+			}
+			wantImplies = wantImplies && found
+		}
+		require.Equal(t, wantImplies, implies(b, a), "b=%q a=%q", b, a)
+
+		var wantPruned []string
+		for _, lit := range a {
+			contained := false
+			for _, other := range a {
+				contained = contained || (other != lit && strings.Contains(other, lit))
+			}
+			if !contained {
+				wantPruned = append(wantPruned, lit)
+			}
+		}
+		require.Equal(t, AllOf(wantPruned...).String(), AllOf(a...).Prune().String(), "a=%q", a)
 	}
 }
 

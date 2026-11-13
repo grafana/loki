@@ -169,8 +169,12 @@ func (e Expr) Collapse() Expr {
 func (e Expr) Prune() Expr {
 	out := make([][]string, 0, len(e.conj))
 	for _, c := range e.conj {
+		longest := 0
+		for _, lit := range c {
+			longest = max(longest, len(lit))
+		}
 		out = append(out, slices.DeleteFunc(slices.Clone(c), func(lit string) bool {
-			return containedInOther(c, lit)
+			return len(lit) < longest && containedInOther(c, lit)
 		}))
 	}
 	return normalize(out)
@@ -304,7 +308,12 @@ func absorb(conj [][]string) [][]string {
 // substring of some literal of b.
 func implies(b, a []string) bool {
 	for _, x := range a {
-		if !slices.ContainsFunc(b, func(y string) bool { return strings.Contains(y, x) }) {
+		// Conjunctions are sorted. Most implied literals are exact members,
+		// especially when OR branches share many mandatory literals.
+		if _, found := slices.BinarySearch(b, x); found {
+			continue
+		}
+		if !containedInOther(b, x) {
 			return false
 		}
 	}
@@ -316,6 +325,6 @@ func implies(b, a []string) bool {
 // lit is longer.
 func containedInOther(c []string, lit string) bool {
 	return slices.ContainsFunc(c, func(other string) bool {
-		return other != lit && strings.Contains(other, lit)
+		return len(other) > len(lit) && strings.Contains(other, lit)
 	})
 }
