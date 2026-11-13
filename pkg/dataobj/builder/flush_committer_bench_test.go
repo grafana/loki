@@ -157,7 +157,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		tocWriter = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
 	)
 	return &benchFlush{
-		committer: newFlushCommitter(flusher, offsets, indexer, tocWriter, 0, concurrency, logger, reg),
+		committer: newFlushCommitter(flusher, offsets, indexer, tocWriter, "test-topic", 0, concurrency, logger, reg),
 		factory:   factory,
 		bucket:    bucket,
 		offsets:   offsets,
@@ -214,7 +214,7 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 			}
 		}
 	}
-	return lb
+	return WatermarkedBuilder{logsBuilder: lb}
 }
 
 // newBenchTenants returns the tenants of one flush. The sizes follow a real
