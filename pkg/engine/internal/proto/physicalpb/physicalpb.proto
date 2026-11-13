@@ -78,11 +78,16 @@ message LogMerge {
 
 // IndexFilter copies the postings and stats rows of the listed log objects
 // from one tenant's index into a new index object. It reads only the source
-// index.
+// index, which is one index object or the index objects of one index run.
 message IndexFilter {
+  reserved 2;
+  reserved "source_index_path";
+
   string tenant = 1;
-  string source_index_path = 2;
   repeated string object_paths = 3;
+  // source_index_paths lists the paths of every index object of the source
+  // index.
+  repeated string source_index_paths = 4;
 }
 
 // DeletionSweep applies delete requests to the objects of one tenant.
