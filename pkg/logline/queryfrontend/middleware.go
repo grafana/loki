@@ -1459,7 +1459,7 @@ func withHintRanges(req queryrangebase.Request, hints []logproto.HintTimeRange) 
 // pre-min-date sentinel into that overlap, then sorts and merges each document
 // shard's ranges. Touching ranges merge, matching querier hint consumption.
 func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
-	clipped := make([]hintprovider.HintTimeRange, 0, len(ranges))
+	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
 		rangeStart := r.Start
 		if r.IsPassthrough() || rangeStart.Before(start) {
@@ -1472,9 +1472,35 @@ func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end t
 		if !rangeStart.Before(rangeEnd) {
 			continue
 		}
-		clipped = append(clipped, hintprovider.HintTimeRange{Start: rangeStart, End: rangeEnd, DocumentShard: r.DocumentShard, DocumentShardBits: r.DocumentShardBits})
+		clipped = append(clipped, logproto.HintTimeRange{Start: rangeStart, End: rangeEnd, DocumentShard: r.DocumentShard, DocumentShardBits: uint32(r.DocumentShardBits)})
 	}
-	return hintprovider.ToProtoRanges(hintprovider.NormalizeRanges(clipped))
+	sort.Slice(clipped, func(i, j int) bool {
+		if ki, kj := documentShardKey(clipped[i]), documentShardKey(clipped[j]); ki != kj {
+			return ki < kj
+		}
+		if clipped[i].Start.Equal(clipped[j].Start) {
+			return clipped[i].End.Before(clipped[j].End)
+		}
+		return clipped[i].Start.Before(clipped[j].Start)
+	})
+
+	merged := clipped[:0]
+	for _, current := range clipped {
+		if len(merged) == 0 || documentShardKey(current) != documentShardKey(merged[len(merged)-1]) || current.Start.After(merged[len(merged)-1].End) {
+			merged = append(merged, current)
+			continue
+		}
+		if current.End.After(merged[len(merged)-1].End) {
+			merged[len(merged)-1].End = current.End
+		}
+	}
+	return merged
+}
+
+// documentShardKey orders and groups ranges by document shard like
+// hintprovider.NormalizeRanges.
+func documentShardKey(r logproto.HintTimeRange) uint64 {
+	return uint64(r.DocumentShardBits)<<32 | uint64(r.DocumentShard)
 }
 
 // passthroughCoversInterval reports that every overlapping hint is a
