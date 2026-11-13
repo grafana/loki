@@ -197,10 +197,28 @@ func (p *CachingHintProvider) fetchDay(
 			return nil, fmt.Errorf("unexpected singleflight result type %T", call.Val)
 		}
 		if led || !isContextErr(res.err) || gCtx.Err() != nil || attempt == maxSharedLookupAttempts {
+			if !led {
+				res = clearJoinerIOWait(res)
+			}
 			return res, nil
 		}
 		p.singleflightRetriesTot.Inc()
 	}
+}
+
+// clearJoinerIOWait copies a shared lookup result and drops its IO wait.
+// This caller did not run the delegate call, so the leader's ReadAt time is
+// not this caller's IO.
+func clearJoinerIOWait(res *provideHintsResult) *provideHintsResult {
+	if res == nil || res.stats == nil {
+		return res
+	}
+	copied := *res
+	stats := NewQueryStats()
+	stats.Merge(res.stats)
+	stats.totalIOWaitNanos.Store(0)
+	copied.stats = stats
+	return &copied
 }
 
 func isContextErr(err error) bool {

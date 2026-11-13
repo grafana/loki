@@ -134,8 +134,9 @@ func TestQueryStats_SnapshotIncludesConcurrencyAndPrefetch(t *testing.T) {
 
 	stats.WorkerStarted()
 	stats.WorkerStarted()
-	stats.WorkerFinished(time.Now().Add(-80 * time.Millisecond))
-	stats.WorkerFinished(time.Now().Add(-40 * time.Millisecond))
+	stats.WorkerFinished()
+	stats.WorkerFinished()
+	stats.totalIOWaitNanos.Store((120 * time.Millisecond).Nanoseconds())
 	stats.ObservePrefetchCall(false)
 	stats.ObservePrefetchCall(true)
 	stats.ObserveHeaderCacheMiss()
@@ -173,7 +174,7 @@ func TestQueryStats_Merge(t *testing.T) {
 	left.ObservePrefetchCall(true)
 	left.SetWallTime(40 * time.Millisecond)
 	left.WorkerStarted()
-	left.WorkerFinished(time.Now().Add(-20 * time.Millisecond))
+	left.WorkerFinished()
 
 	right := NewQueryStats()
 	right.ObserveMetadataCacheMiss()
@@ -188,8 +189,8 @@ func TestQueryStats_Merge(t *testing.T) {
 	right.SetWallTime(120 * time.Millisecond)
 	right.WorkerStarted()
 	right.WorkerStarted()
-	right.WorkerFinished(time.Now().Add(-30 * time.Millisecond))
-	right.WorkerFinished(time.Now().Add(-10 * time.Millisecond))
+	right.WorkerFinished()
+	right.WorkerFinished()
 
 	left.Merge(right)
 	snap := left.Snapshot()
@@ -212,6 +213,27 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(6), snap.TotalTermBatchesProcessed)
 }
 
+func TestQueryStats_EffectiveConcurrencyUsesSummedIOWaitOverWall(t *testing.T) {
+	day := func(ioWait time.Duration) *QueryStats {
+		stats := NewQueryStats()
+		stats.totalIOWaitNanos.Store(ioWait.Nanoseconds())
+		stats.SetWallTime(100 * time.Millisecond)
+		snap := stats.Snapshot()
+		return FromProtoStats(&snap)
+	}
+
+	combined := NewQueryStats()
+	combined.Merge(day(200 * time.Millisecond))
+	combined.Merge(day(300 * time.Millisecond))
+	require.Equal(t, 0.0, combined.Snapshot().EffectiveConcurrency)
+
+	combined.SetWallTime(150 * time.Millisecond)
+
+	snap := combined.Snapshot()
+	require.Equal(t, 500*time.Millisecond, snap.TotalIOWait)
+	require.Equal(t, float64(500*time.Millisecond)/float64(150*time.Millisecond), snap.EffectiveConcurrency)
+}
+
 func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats := NewQueryStats()
 	stats.headerReads.Add(1)
@@ -221,11 +243,10 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats.ObserveHeaderCacheMiss()
 	stats.ObserveMetadataCacheMiss()
 	stats.ObserveMetadataCacheMiss()
-	stats.totalIOWaitNanos.Add(1500)
+	stats.totalIOWaitNanos.Store((250 * time.Millisecond).Nanoseconds())
 	stats.totalIOBytes.Add(99)
 	stats.peakConcurrency.Store(7)
 	stats.SetWallTime(100 * time.Millisecond)
-	stats.totalWorkNanos.Store((250 * time.Millisecond).Nanoseconds())
 	stats.prefetchCalls.Store(3)
 	stats.prefetchTimeouts.Store(1)
 	stats.indexQueriesTotal.Add(5)
@@ -235,9 +256,15 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 
 	snap := stats.Snapshot()
 	require.Equal(t, 2.5, snap.EffectiveConcurrency)
+	require.Equal(t, 250*time.Millisecond, snap.TotalIOWait)
+
+	raw, err := snap.Marshal()
+	require.NoError(t, err)
+	var decoded logproto.HintQueryStats
+	require.NoError(t, decoded.Unmarshal(raw))
+	require.Equal(t, snap.TotalIOWait, decoded.TotalIOWait)
 
 	restored := FromProtoStats(&snap)
-	// QF overwrites wall after the hop; work is not on the proto.
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
 
@@ -250,7 +277,7 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
-	require.Equal(t, snap.EffectiveConcurrency, got.EffectiveConcurrency)
+	require.Equal(t, float64(snap.TotalIOWait)/float64(5*time.Second), got.EffectiveConcurrency)
 	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
 	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
 	require.Equal(t, snap.IndexQueriesTotal, got.IndexQueriesTotal)
