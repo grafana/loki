@@ -39,21 +39,25 @@ type logPair struct {
 	folder string
 	// keep created files after stopping the container.
 	keepFile bool
+
+	closeOnce sync.Once
 }
 
 func (l *logPair) Close() {
-	if err := l.stream.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
-	}
-	if err := l.lokil.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
-	}
-	if l.jsonl == nil {
-		return
-	}
-	if err := l.jsonl.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
-	}
+	l.closeOnce.Do(func() {
+		if err := l.stream.Close(); err != nil {
+			level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
+		}
+		if err := l.lokil.Close(); err != nil {
+			level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
+		}
+		if l.jsonl == nil {
+			return
+		}
+		if err := l.jsonl.Close(); err != nil {
+			level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
+		}
+	})
 }
 
 func newDriver(logger log.Logger) *driver {
@@ -107,7 +111,15 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	}
 
 	d.mu.Lock()
-	lf := &logPair{jsonl, lokil, f, logCtx, d.logger, folder, keepFile}
+	lf := &logPair{
+		jsonl:    jsonl,
+		lokil:    lokil,
+		stream:   f,
+		info:     logCtx,
+		logger:   d.logger,
+		folder:   folder,
+		keepFile: keepFile,
+	}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
 	d.mu.Unlock()
@@ -136,6 +148,7 @@ func (d *driver) StopLogging(file string) {
 
 func consumeLog(lf *logPair) {
 	dec := logdriver.NewLogEntryDecoder(lf.stream)
+	defer lf.Close()
 	var buf logdriver.LogEntry
 	for {
 		if err := dec.Decode(&buf); err != nil {
@@ -143,8 +156,17 @@ func consumeLog(lf *logPair) {
 				level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
 				return
 			}
-			dec = logdriver.NewLogEntryDecoder(lf.stream)
-			continue
+			if errors.Is(err, logdriver.ErrPayloadUnmarshal) {
+				// The frame was consumed in full, so the stream is still
+				// aligned: drop this entry and carry on.
+				level.Warn(lf.logger).Log("msg", "skipping undecodable log entry", "id", lf.info.ContainerID, "err", err)
+				buf.Reset()
+				continue
+			}
+			// Any other failure leaves the stream at an unknown offset, and the
+			// framing gives us nothing to resynchronise against.
+			level.Error(lf.logger).Log("msg", "error decoding log entry, shutting down log logger", "id", lf.info.ContainerID, "err", err)
+			return
 		}
 		var msg logger.Message
 		msg.Line = buf.Line
