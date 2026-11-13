@@ -981,10 +981,9 @@ func TestSupportedQuery_UppercaseDedupe(t *testing.T) {
 
 // literals returns the one conjunction SupportedQuery builds, or nil when it
 // is True.
-func literals(t *testing.T, e needle.Plan) []string {
+func literals(t *testing.T, conjs needle.Conjunctions) []string {
 	t.Helper()
-	conjs := e.Conjunctions()
-	require.LessOrEqual(t, len(conjs), 1, "%v", e)
+	require.LessOrEqual(t, len(conjs), 1, "%v", conjs)
 	if len(conjs) == 0 {
 		return nil
 	}

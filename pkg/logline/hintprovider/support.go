@@ -44,9 +44,9 @@ import (
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Plan {
+func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Conjunctions {
 	if expr == nil || ngramLength <= 0 {
-		return needle.Plan{}
+		return nil
 	}
 
 	lineFilters := collectLineFilters(expr)

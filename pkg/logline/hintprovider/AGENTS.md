@@ -121,7 +121,7 @@ Query-shape support and hint lookup for logline index lookups.
       date (inside the index ID), and ranges take both values from the footer.
       The v5 merge guard is where `meta.json` must agree with the footer.
 16. **Shards are intersected per conjunction, never across conjunctions**
-    - Lookups consume a compiled `needle.Plan`, an OR of conjunctions. `executeQuery` keeps
+    - Lookups consume compiled `needle.Conjunctions`, an OR of conjunctions. `executeQuery` keeps
       state per (reader, conjunction) and returns ranges per conjunction.
       `aggregateConjunctionRanges` runs `aggregateShardRanges` on each
       conjunction and unions the results.
