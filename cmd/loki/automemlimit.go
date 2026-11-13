@@ -13,13 +13,13 @@ import (
 
 // setAutoMemLimit sets GOMEMLIMIT from the memory limit and keeps it in step with
 // limit changes, such as an in-place pod resize, until ctx is done. An explicit
-// GOMEMLIMIT env var wins. memlimit logs the outcome, including errors.
+// GOMEMLIMIT env var wins, and AUTOMEMLIMIT overrides the default 90% ratio.
+// memlimit logs the outcome, including errors.
 func setAutoMemLimit(ctx context.Context, cfg loki.Config, logger log.Logger) {
 	if !cfg.AutoMemLimitEnabled {
 		return
 	}
 	_, _ = memlimit.Set(
-		memlimit.WithRatio(cfg.AutoMemLimitRatio),
 		memlimit.WithProvider(memlimit.ApplyFallback(memlimit.FromCgroup, memlimit.FromSystem)),
 		memlimit.WithRefreshInterval(ctx, 15*time.Second),
 		memlimit.WithLogger(util_log.SlogFromGoKit(logger)),

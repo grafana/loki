@@ -95,7 +95,6 @@ type Config struct {
 	HTTPPrefix          string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes        int                    `yaml:"ballast_bytes"`
 	AutoMemLimitEnabled bool                   `yaml:"automemlimit_enabled"`
-	AutoMemLimitRatio   float64                `yaml:"automemlimit_ratio"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
@@ -186,11 +185,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
 	f.BoolVar(&c.AutoMemLimitEnabled, "config.automemlimit-enabled", false,
-		"Set GOMEMLIMIT from the cgroup memory limit, falling back to system memory, and refresh it when the limit changes, "+
-			"for example after an in-place pod resize. Has no effect if the GOMEMLIMIT environment variable is set.",
-	)
-	f.Float64Var(&c.AutoMemLimitRatio, "config.automemlimit-ratio", 0.9,
-		"Fraction of the memory limit to set as GOMEMLIMIT when -config.automemlimit-enabled is true. Must be greater than 0 and at most 1. "+
+		"Set GOMEMLIMIT to 90% of the cgroup memory limit, falling back to system memory, and refresh it when the limit changes, "+
+			"for example after an in-place pod resize. Set the AUTOMEMLIMIT environment variable to a value in (0, 1] to change the ratio. "+
+			"Has no effect if the GOMEMLIMIT environment variable is set. "+
 			"Memory ballast counts toward this limit, so keep -config.ballast-bytes well below it.",
 	)
 
@@ -312,9 +309,6 @@ func (c *Config) Clone() flagext.Registerer {
 func (c *Config) Validate() error {
 	var errs []error
 
-	if err := c.validateAutoMemLimit(); err != nil {
-		errs = append(errs, err)
-	}
 	if err := c.SchemaConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid schema config"))
 	}
@@ -446,13 +440,6 @@ func (c *Config) Validate() error {
 
 func (c *Config) isTarget(m string) bool {
 	return util.StringsContain(c.Target, m)
-}
-
-func (c *Config) validateAutoMemLimit() error {
-	if c.AutoMemLimitEnabled && (c.AutoMemLimitRatio <= 0 || c.AutoMemLimitRatio > 1) {
-		return fmt.Errorf("CONFIG ERROR: invalid automemlimit_ratio %v: must be greater than 0 and at most 1", c.AutoMemLimitRatio)
-	}
-	return nil
 }
 
 func (c *Config) validateNoAuthTenant() error {

@@ -409,28 +409,3 @@ func TestNoAuthTenantValidation(t *testing.T) {
 		})
 	}
 }
-
-func TestAutoMemLimitValidation(t *testing.T) {
-	for _, tt := range []struct {
-		name    string
-		enabled bool
-		ratio   float64
-		wantErr bool
-	}{
-		{name: "disabled ignores ratio", enabled: false, ratio: 0},
-		{name: "default ratio", enabled: true, ratio: 0.9},
-		{name: "ratio of 1", enabled: true, ratio: 1},
-		{name: "zero ratio", enabled: true, ratio: 0, wantErr: true},
-		{name: "ratio above 1", enabled: true, ratio: 1.5, wantErr: true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := Config{AutoMemLimitEnabled: tt.enabled, AutoMemLimitRatio: tt.ratio}
-			err := cfg.validateAutoMemLimit()
-			if tt.wantErr {
-				require.ErrorContains(t, err, "automemlimit_ratio")
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
