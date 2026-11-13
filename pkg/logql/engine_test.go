@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1765,6 +1766,131 @@ func TestEngine_MaxQuerySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t
 				return
 			}
 			require.NoError(t, errOn)
+		})
+	}
+}
+
+// recordingQuerier records the selector of every sample request that reaches the Querier below it.
+type recordingQuerier struct {
+	Querier
+	mtx       *sync.Mutex
+	selectors *[]string
+}
+
+// newRecordingQuerier returns a Querier over q that appends the selector of each sample request to
+// selectors.
+func newRecordingQuerier(q Querier, selectors *[]string) recordingQuerier {
+	return recordingQuerier{Querier: q, mtx: &sync.Mutex{}, selectors: selectors}
+}
+
+func (q recordingQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	q.mtx.Lock()
+	*q.selectors = append(*q.selectors, p.Selector)
+	q.mtx.Unlock()
+	return q.Querier.SelectSamples(ctx, p)
+}
+
+// minMaxPushdownStreams returns streams of JSON lines that carry a number, a label and, now and
+// then, a value that is NaN or not a number.
+func minMaxPushdownStreams(end time.Time) []logproto.Stream {
+	values := []string{"1", "7", "3", `"NaN"`, "5", "2", "9", "4"}
+	streams := make([]logproto.Stream, 0, 6)
+	for i := range 6 {
+		var entries []logproto.Entry
+		for n, ts := 0, time.Unix(0, 0); !ts.After(end); n, ts = n+1, ts.Add(5*time.Second) {
+			line := fmt.Sprintf(`{"v":%s,"w":"%d","msg":"m%d"}`, values[(n+i)%len(values)], (n+i)%3, n%2)
+			if i == 5 && n%11 == 3 {
+				line = `{"v":"abc","w":"1","msg":"bad"}`
+			}
+			entries = append(entries, logproto.Entry{Timestamp: ts, Line: line})
+		}
+		streams = append(streams, logproto.Stream{Labels: fmt.Sprintf(`{app="a", pod="p%d", zone="z%d"}`, i, i%2), Entries: entries})
+	}
+	return streams
+}
+
+func TestEngine_PushMinMaxGrouping_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	end := time.Unix(120, 0)
+	const (
+		unwrap = `{app="a"} | json | unwrap v | __error__=""`
+		tail   = `{app="a"} | json | unwrap v`
+	)
+
+	for name, tc := range map[string]struct {
+		query      string
+		start      time.Time
+		step       time.Duration
+		wantPushed bool
+		wantErr    bool
+	}{
+		"max by the unwrap label":                   {query: `max by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"min by the unwrap label":                   {query: `min by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the unwrap label and another":       {query: `max by (v, zone) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a stream label":                     {query: `max by (zone) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"min by a stream label":                     {query: `min by (zone) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a parsed label":                     {query: `max by (w) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a stream and a parsed label":        {query: `max by (pod, w) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by nothing":                            {query: `max(max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a label no series has":              {query: `max by (nope) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the error label":                    {query: `max by (__error__) (max_over_time(` + tail + ` | __error__!="zzz" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the error label and a stream label": {query: `max by (__error__, zone) (max_over_time(` + tail + ` | __error__!="zzz" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max over the errors only":                  {query: `max by (v) (max_over_time(` + tail + ` | __error__!="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max over a failing unwrap":                 {query: `max by (zone) (max_over_time(` + tail + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true, wantErr: true},
+		"max with a step longer than the range":     {query: `max by (v) (max_over_time(` + unwrap + ` [10s]))`, start: time.Unix(30, 0), step: 30 * time.Second, wantPushed: true},
+		"min with a step longer than the range":     {query: `min by (zone) (min_over_time(` + unwrap + ` [10s]))`, start: time.Unix(30, 0), step: 30 * time.Second, wantPushed: true},
+		"max with an offset":                        {query: `max by (v, zone) (max_over_time(` + unwrap + ` [30s] offset 20s))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with an instant query":                 {query: `max by (v, zone) (max_over_time(` + unwrap + ` [1m]))`, start: end, wantPushed: true},
+		"max over a converted unwrap":               {query: `max by (zone) (max_over_time({app="a"} | json | unwrap bytes(v) | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a post filter":                    {query: `max by (v) (max_over_time({app="a"} | json | unwrap v | __error__="" | v > 2 [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a label format on the group":      {query: `max by (v) (max_over_time({app="a"} | json | label_format v="{{.w}}" | unwrap v | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a dropped group":                  {query: `max by (zone) (max_over_time({app="a"} | json | drop zone | unwrap v | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max without":                               {query: `max without (pod) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max without the unwrap label":              {query: `max without (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max with a grouping on the range":          {query: `max by (v) (max_over_time(` + unwrap + ` [30s]) by (v, zone))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max over min_over_time":                    {query: `max by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"min over max_over_time":                    {query: `min by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max over sum_over_time":                    {query: `max by (v) (sum_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"avg over max_over_time":                    {query: `avg by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"sum by the unwrap label":                   {query: `sum by (v) (sum_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max in a binary operation":                 {query: `max by (v) (max_over_time(` + unwrap + ` [30s])) + min by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max under label_replace":                   {query: `label_replace(max by (v, pod) (max_over_time(` + unwrap + ` [30s])), "x", "$1", "pod", "(.*)")`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			run := func(t *testing.T, push bool) (logqlmodel.Result, []string, error) {
+				t.Helper()
+				var selectors []string
+				querier := newRecordingQuerier(NewMockQuerier(1, minMaxPushdownStreams(end)), &selectors)
+				eng := NewEngine(EngineOpts{PushMinMaxGrouping: push}, querier, &fakeLimits{maxSeries: 1000, timeout: time.Minute}, log.NewNopLogger())
+				params, err := NewLiteralParams(tc.query, tc.start, end, tc.step, 0, logproto.FORWARD, 1000, nil, nil)
+				require.NoError(t, err)
+				res, err := eng.Query(params).Exec(ctx)
+				return res, selectors, err
+			}
+
+			resOff, selectorsOff, errOff := run(t, false)
+			resOn, selectorsOn, errOn := run(t, true)
+
+			if tc.wantErr {
+				require.ErrorContains(t, errOff, "SampleExtractionErr")
+				require.ErrorContains(t, errOn, "SampleExtractionErr")
+				return
+			}
+			require.NoError(t, errOff)
+			require.NoError(t, errOn)
+			require.NotEmpty(t, resOff.Data)
+			require.Equal(t, resOff.Data.String(), resOn.Data.String())
+
+			for _, selector := range selectorsOff {
+				require.True(t, strings.HasPrefix(selector, "max_over_time") || !strings.HasPrefix(selector, "max by") && !strings.HasPrefix(selector, "min by"), "off must send the range aggregation: %s", selector)
+			}
+			pushed := 0
+			for _, selector := range selectorsOn {
+				if strings.HasPrefix(selector, "max by") || strings.HasPrefix(selector, "min by") || strings.HasPrefix(selector, "max(") {
+					pushed++
+				}
+			}
+			require.Equal(t, tc.wantPushed, pushed > 0, "selectors with the flag on: %v", selectorsOn)
 		})
 	}
 }

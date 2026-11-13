@@ -285,6 +285,10 @@ type NodeContext struct {
 	preserving bool
 	maxSeries  int
 	reads      ParentReads
+	// pushMinMaxGrouping is true when the query lets max and min push their grouping into the
+	// range aggregation below. Unlike the other fields it is a setting of the query, so every
+	// child inherits it.
+	pushMinMaxGrouping bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -319,6 +323,13 @@ func isSketch(expr syntax.SampleExpr) bool {
 	return false
 }
 
+// withMinMaxGroupingPushdown returns c, and the NodeContexts derived from it, with max and min
+// allowed to push their grouping into the range aggregation below when enabled is true.
+func (c NodeContext) withMinMaxGroupingPushdown(enabled bool) NodeContext {
+	c.pushMinMaxGrouping = enabled
+	return c
+}
+
 // OutputPreserving is true when every operator between the expression and the root keeps every
 // series it receives, though it may add series from elsewhere. The query then returns at least as
 // many series as the expression holds. It is true for the root expression unless that produces a
@@ -336,9 +347,9 @@ func (c NodeContext) ParentReads() ParentReads {
 // of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
 func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{reads: reads}
+		return NodeContext{reads: reads, pushMinMaxGrouping: c.pushMinMaxGrouping}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, pushMinMaxGrouping: c.pushMinMaxGrouping}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -432,6 +443,20 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 	return ev.querier.SelectLogs(ctx, params)
 }
 
+// pushesGrouping is true when the evaluator of e sends e itself, not only its range aggregation, to
+// the store, so the extractor builds only the label sets of e's grouping. A sum always does. max and
+// min do when the query enables it and [syntax.VectorAggregationExpr.InjectedGrouping] says they can.
+func pushesGrouping(e *syntax.VectorAggregationExpr, nc NodeContext) bool {
+	if e.Operation == syntax.OpTypeSum {
+		return true
+	}
+	if !nc.pushMinMaxGrouping {
+		return false
+	}
+	_, ok := e.InjectedGrouping()
+	return ok
+}
+
 func (ev *DefaultEvaluator) NewStepEvaluator(
 	ctx context.Context,
 	nextEvFactory SampleEvaluatorFactory,
@@ -441,7 +466,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && pushesGrouping(e, nc) {
 			sampleOrder := sampleOrderForExpr(ctx, e, ev.limits)
 
 			// if range expression is wrapped with a vector expression

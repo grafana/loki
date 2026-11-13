@@ -305,6 +305,8 @@ Each `eval` runs on multiple execution stacks:
   the samples before 90s from chunks.
 - `query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)` — the
   unsharded loop with max query series cutoff on in every engine.
+- `query-frontend + query-scheduler (no sharding, timestamp-first, min/max grouping pushdown)` — the
+  unsharded loop with `max` and `min` grouping pushed into the range aggregation in every engine.
 
 The logline fixture (`store_logline.go`) uses the production `builder.NewBuilder`, `ProcessStream`,
 `Prepare`, and `Upload` path, with `Clear` for cleanup. It publishes indexes and their metadata through
