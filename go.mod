@@ -14,6 +14,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.25.3
 	github.com/IBM/ibm-cos-sdk-go v1.15.2
+	github.com/KimMachineGun/automemlimit v1.0.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/RoaringBitmap/roaring v1.9.4
@@ -303,6 +304,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.9.0 // indirect
 	github.com/pandatix/go-abnf v0.5.5 // indirect
 	github.com/parquet-go/jsonlite v1.5.5 // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/pires/go-proxyproto v0.16.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect

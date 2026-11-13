@@ -88,12 +88,13 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBAC         labelaccess.Config     `yaml:"lbac,omitempty"`
-	NoAuthTenant string                 `yaml:"no_auth_tenant,omitempty"`
-	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
-	BallastBytes int                    `yaml:"ballast_bytes"`
+	Target              flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled         bool                   `yaml:"auth_enabled,omitempty"`
+	LBAC                labelaccess.Config     `yaml:"lbac,omitempty"`
+	NoAuthTenant        string                 `yaml:"no_auth_tenant,omitempty"`
+	HTTPPrefix          string                 `yaml:"http_prefix" doc:"hidden"`
+	BallastBytes        int                    `yaml:"ballast_bytes"`
+	AutoMemLimitEnabled bool                   `yaml:"automemlimit_enabled"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
@@ -182,6 +183,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
 			"The ballast will not consume physical memory, because it is never read from. "+
 			"It will, however, distort metrics, because it is counted as live memory. ",
+	)
+	f.BoolVar(&c.AutoMemLimitEnabled, "config.automemlimit-enabled", false,
+		"Set GOMEMLIMIT to 90% of the cgroup memory limit, falling back to system memory, and refresh it when the limit changes, "+
+			"for example after an in-place pod resize. Set the AUTOMEMLIMIT environment variable to a value in (0, 1] to change the ratio. "+
+			"Has no effect if the GOMEMLIMIT environment variable is set. "+
+			"Memory ballast counts toward this limit, so keep -config.ballast-bytes well below it.",
 	)
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
