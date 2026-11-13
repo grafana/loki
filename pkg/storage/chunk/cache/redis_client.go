@@ -84,38 +84,41 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 }
 
 func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)) ([]string, error) {
-	if lookup == nil {
-		return nil, fmt.Errorf("lookup function is nil")
-	}
+    if lookup == nil {
+        return nil, fmt.Errorf("lookup function is nil")
+    }
 
-	endpoints := strings.Split(endpoint, ",")
+    endpoints := strings.Split(endpoint, ",")
 
-	// no endpoints or multiple endpoints will not need derivation
-	if len(endpoints) != 1 {
-		return endpoints, nil
-	}
+    // no endpoints or multiple endpoints will not need derivation
+    if len(endpoints) != 1 {
+        return endpoints, nil
+    }
 
-	// Handle single configuration endpoint which resolves multiple nodes.
-	host, port, err := net.SplitHostPort(endpoints[0])
-	if err != nil {
-		return nil, fmt.Errorf("splitting host:port failed :%w", err)
-	}
-	addrs, err := lookup(host)
-	if err != nil {
-		return nil, fmt.Errorf("could not lookup host: %w", err)
-	}
+    // Handle single configuration endpoint which resolves multiple nodes.
+    host, port, err := net.SplitHostPort(endpoints[0])
+    if err != nil {
+        // If the port is missing, use the host as is and set a default port, if desired
+        host = endpoints[0]
+        // Example: set a default port, or you can choose to handle this differently
+        port = "6379" // Default Redis port
+    }
+    addrs, err := lookup(host)
+    if err != nil {
+        return nil, fmt.Errorf("could not lookup host: %w", err)
+    }
 
-	// only use the resolved addresses if they are not all loopback addresses;
-	// multiple addresses invokes cluster mode
-	allLoopback := allAddrsAreLoopback(addrs)
-	if len(addrs) > 1 && !allLoopback {
-		endpoints = nil
-		for _, addr := range addrs {
-			endpoints = append(endpoints, net.JoinHostPort(addr, port))
-		}
-	}
+    // only use the resolved addresses if they are not all loopback addresses;
+    // multiple addresses invokes cluster mode
+    allLoopback := allAddrsAreLoopback(addrs)
+    if len(addrs) > 1 && !allLoopback {
+        endpoints = nil
+        for _, addr := range addrs {
+            endpoints = append(endpoints, net.JoinHostPort(addr, port))
+        }
+    }
 
-	return endpoints, nil
+    return endpoints, nil
 }
 
 func allAddrsAreLoopback(addrs []string) bool {
