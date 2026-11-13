@@ -153,13 +153,15 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		committer,
 		indexer,
 		tocWriter,
+		cfg.Topic,
 		partitionID,
 		cfg.FlushConcurrency,
 		logger,
 		reg,
 	)
+	watermarks := newWatermarkCache(cfg.Topic, partitionID, idxBucket, NewWatermarkMetrics(reg))
 	processor := newProcessor(
-		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize), watermarks),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

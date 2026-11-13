@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
@@ -60,6 +62,8 @@ func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time
 	}
 	return m.builder.Append(tenant, stream, recTime)
 }
+
+func (m *mockBuilder) InitialWatermark() *int64 { return nil }
 
 func (m *mockBuilder) GetEarliestRecordTime() time.Time {
 	return m.builder.GetEarliestRecordTime()
@@ -196,7 +200,10 @@ type mockTOCWriter struct {
 	paths        []string
 	tenants      []string
 	shardBuckets []indexpointers.ShardBuckets
-	err          error
+	// updates holds the watermark updates of the successful
+	// WriteEntryWithWatermark calls.
+	updates []metastore.WatermarkUpdate
+	err     error
 	// afterWrite, if set, runs after an entry is recorded, letting tests act
 	// between updating the ToC and committing the offset.
 	afterWrite func()
@@ -214,6 +221,17 @@ func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metas
 	m.paths = append(m.paths, entry.Path)
 	m.tenants = append(m.tenants, tenant)
 	m.shardBuckets = append(m.shardBuckets, entry.ShardBuckets)
+	return nil
+}
+
+// WriteEntryWithWatermark records the entry like WriteEntry, and the update.
+func (m *mockTOCWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
+	if err := m.WriteEntry(ctx, tenant, entry); err != nil {
+		return err
+	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.updates = append(m.updates, update)
 	return nil
 }
 
@@ -358,25 +376,25 @@ type fixedCountMultiBuilder struct {
 
 var _ multiBuilder = (*fixedCountMultiBuilder)(nil)
 
-func (m *fixedCountMultiBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+func (m *fixedCountMultiBuilder) Append(ctx context.Context, tenant string, stream logproto.Stream, recTime time.Time, offset int64) (AppendResult, error) {
 	m.appends++
-	return m.MultiObjectBuilder.Append(tenant, stream, recTime)
+	return m.MultiObjectBuilder.Append(ctx, tenant, stream, recTime, offset)
 }
 
 func (m *fixedCountMultiBuilder) IsFull() bool {
 	return m.appends >= m.fullAfter
 }
 
-func (m *fixedCountMultiBuilder) Reset() {
+func (m *fixedCountMultiBuilder) Reset(flushOffset int64) {
 	m.appends = 0
-	m.MultiObjectBuilder.Reset()
+	m.MultiObjectBuilder.Reset(flushOffset)
 }
 
 // newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
-		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newTestWatermarks()),
 	}
 }
 
@@ -397,4 +415,10 @@ type failureUploader struct{}
 
 func (f *failureUploader) Upload(_ context.Context, _ *dataobj.Object) (string, error) {
 	return "", errors.New("mock error")
+}
+
+// newTestWatermarks returns a watermarkCache that reads ToCs from an empty
+// in-memory bucket, so no ToC holds a watermark.
+func newTestWatermarks() *watermarkCache {
+	return newWatermarkCache("test-topic", 0, objstore.NewInMemBucket(), NewWatermarkMetrics(prometheus.NewRegistry()))
 }

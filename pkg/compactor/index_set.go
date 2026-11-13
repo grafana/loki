@@ -51,7 +51,7 @@ type IndexSet interface {
 // CompactedIndex is built by TableCompactor for IndexSet after compaction.
 // It would be used for:
 // 1. applying custom retention, processing delete requests using IndexProcessor
-// 2. uploading the compacted index to storage by converting it to index.Index using ToIndexFiles
+// 2. uploading the compacted index to storage by converting it to index.Index using ToIndexFile
 // After all the operations are successfully done or in case of failure, Cleanup would be called to cleanup the state.
 type CompactedIndex interface {
 	// IndexProcessor is used for applying custom retention and processing delete requests.
@@ -59,15 +59,16 @@ type CompactedIndex interface {
 	// Cleanup should clean up all the state built during compaction.
 	// It is typically called at the end or in case of an error.
 	Cleanup()
-	// ToIndexFiles converts the compacted index into files for uploading to the object store.
+	// ToIndexFile is used to convert the CompactedIndex to an IndexFile for uploading to the object store.
 	// Once the IndexFile is uploaded using Index.Reader, the file is closed using Index.Close and removed from disk using Index.Path.
-	ToIndexFiles() ([]index.Index, error)
+	ToIndexFile() (index.Index, error)
 }
 
 // ShardedCompactedIndex is optionally implemented by a CompactedIndex that can
-// also be written as fingerprint-range shard files, for the sharded index copy.
+// also be written as shardFactor fingerprint-range shard files, for the sharded
+// index copy.
 type ShardedCompactedIndex interface {
-	ToShardedIndexFiles() ([]index.Index, error)
+	ToShardedIndexFiles(shardFactor int) ([]index.Index, error)
 }
 
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
@@ -77,6 +78,7 @@ type indexSet struct {
 	workingDir        string
 	baseIndexSet      storage.IndexSet
 	shardedIndexSet   storage.IndexSet
+	shardFactor       int
 
 	uploadCompactedDB   bool
 	removeSourceObjects bool
@@ -271,31 +273,23 @@ func (is *indexSet) applyUpdates(labels labels.Labels, rebuiltChunks map[string]
 	return chunksNotIndexed, nil
 }
 
-// upload uploads the compacted index in compressed format, one object per index file.
+// upload uploads the compacted index in compressed format.
 func (is *indexSet) upload() error {
 	if is.compactedIndex == nil {
 		return errors.New("can't upload nil or empty compacted index")
 	}
 
-	idxs, err := is.compactedIndex.ToIndexFiles()
+	idx, err := is.compactedIndex.ToIndexFile()
 	if err != nil {
 		return err
 	}
-	if len(idxs) == 0 {
-		return errors.New("compacted index produced no index files")
-	}
 
-	defer is.closeAndRemove(idxs)
+	defer is.closeAndRemove(idx)
 
-	for _, idx := range idxs {
-		if err := is.uploadFile(is.baseIndexSet, idx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return is.uploadFile(is.baseIndexSet, idx)
 }
 
-func (is *indexSet) closeAndRemove(idxs []index.Index) {
+func (is *indexSet) closeAndRemove(idxs ...index.Index) {
 	for _, idx := range idxs {
 		filePath := idx.Path()
 
@@ -463,11 +457,11 @@ func (is *indexSet) updateShardedCopy() error {
 			return fmt.Errorf("compacted index %T cannot produce sharded index files", is.compactedIndex)
 		}
 		var err error
-		idxs, err = sharded.ToShardedIndexFiles()
+		idxs, err = sharded.ToShardedIndexFiles(is.shardFactor)
 		if err != nil {
 			return err
 		}
-		defer is.closeAndRemove(idxs)
+		defer is.closeAndRemove(idxs...)
 	}
 
 	// bypass the listing cache, which can hide files written by a previous run
