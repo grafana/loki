@@ -1033,7 +1033,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 		EndTs:     end,
 		HintRanges: []logproto.HintTimeRange{
 			{Start: start.Add(5 * time.Minute), End: start.Add(10 * time.Minute)},
-			{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute)},
+			{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 		},
 	}
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
@@ -1081,7 +1081,7 @@ func Test_codec_InstantRequestHintRangesRoundTrip(t *testing.T) {
 		// Hint ranges for an instant request sit in the lookback before TimeTs.
 		HintRanges: []logproto.HintTimeRange{
 			{Start: ts.Add(-4 * time.Minute), End: ts.Add(-3 * time.Minute)},
-			{Start: ts.Add(-2 * time.Minute), End: ts.Add(-time.Minute)},
+			{Start: ts.Add(-2 * time.Minute), End: ts.Add(-time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 		},
 	}
 
@@ -1107,7 +1107,7 @@ func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
 		EndTs:   end,
 		HintRanges: []logproto.HintTimeRange{
 			{Start: start.Add(-time.Minute), End: start.Add(10 * time.Minute)},
-			{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+			{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 			{Start: end, End: end.Add(time.Minute)},
 		},
 	}
@@ -1116,11 +1116,11 @@ func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
 
 	require.Equal(t, []logproto.HintTimeRange{
 		{Start: start.Add(5 * time.Minute), End: start.Add(10 * time.Minute)},
-		{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 	}, got.HintRanges)
 	require.Equal(t, []logproto.HintTimeRange{
 		{Start: start.Add(-time.Minute), End: start.Add(10 * time.Minute)},
-		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 		{Start: end, End: end.Add(time.Minute)},
 	}, original.HintRanges)
 }

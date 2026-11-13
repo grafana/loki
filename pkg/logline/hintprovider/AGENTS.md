@@ -55,7 +55,10 @@ Query-shape support and hint lookup for logline index lookups.
 8. **Only successful results are cached**
    - `ErrUnsupported` and all other errors are passthrough and never stored.
 9. **Cached payload is minimal**
-   - JSON stores only time ranges (`s`/`e` epoch millis).
+   - JSON stores only time ranges (`s`/`e` epoch millis) and their document
+     shard (`d`/`n`, omitted for ranges that cover every stream).
+   - A range without `d`/`n` decodes as covering every stream, so an entry
+     written without them reads as a superset under the same generation.
    - `HintTimeRange.Source` is diagnostic-only and intentionally omitted.
 10. **Per-request cache bypass is context-driven**
    - `WithSkipCache` and `SkipCache` propagate bypass state from request handling.
@@ -105,10 +108,14 @@ Query-shape support and hint lookup for logline index lookups.
     - `NormalizeRanges` merges ranges only within one document shard.
       `intersectRanges` intersects two shards' ranges only when one shard holds
       the other, and keeps the narrower shard.
-    - `logproto.HintTimeRange` has no shard, so `QueryHints` returns the time
-      union, and the query frontend (adapter, hint cache, dry run) sees only
-      times. `ProvideHints` keeps the shards, and correctness checks them per
-      stream.
+    - `QueryHints` sends the shards in `logproto.HintTimeRange` too. The query
+      frontend gives each shard sub-request the ranges of its document shards,
+      and queriers prune each chunk by its stream's shard
+      (`iter.HintTimeRanges.ForFingerprint`). A fingerprint the ingester may
+      have remapped (`logline.MaxMappedFingerprint`) gets every shard's
+      ranges, because chunks and TSDB store the remapped fingerprint while the
+      builder shards by the stream's own. Dry-run uses their time union
+      (`TimeUnion`), and correctness checks them per stream.
     - `checkLayoutDay` requires the footer's day to be the meta's date. A
       mismatch fails the lookup, so the query runs without hints instead of
       getting ranges on the wrong day.

@@ -24,7 +24,7 @@ func Test_PreservesCachingOptions(t *testing.T) {
 		},
 		HintRanges: []logproto.HintTimeRange{
 			{Start: end.Add(-150 * time.Minute), End: end.Add(-90 * time.Minute)},
-			{Start: end.Add(-30 * time.Minute), End: end.Add(30 * time.Minute)},
+			{Start: end.Add(-30 * time.Minute), End: end.Add(30 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 		},
 	}
 	splitReqs, enabled := splitter.split(time.Now().UTC(), []string{"1"}, req)
@@ -42,8 +42,10 @@ func Test_PreservesCachingOptions(t *testing.T) {
 		End:   end.Add(-90 * time.Minute),
 	}}, splitReqs[1].(*LokiRequest).HintRanges)
 	require.Equal(t, []logproto.HintTimeRange{{
-		Start: end.Add(-30 * time.Minute),
-		End:   end,
+		Start:             end.Add(-30 * time.Minute),
+		End:               end,
+		DocumentShard:     17,
+		DocumentShardBits: 5,
 	}}, splitReqs[2].(*LokiRequest).HintRanges)
 }
 

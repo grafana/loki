@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -753,6 +754,29 @@ func TestDryRun_VerifiesHintCoverage(t *testing.T) {
 	require.Contains(t, logLine, "total_entries=1")
 	require.Contains(t, logLine, "query_timeout=false")
 	require.Contains(t, logLine, "query_hash=")
+}
+
+func TestDryRun_SummarizesTheTimeUnionOfShardRanges(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	start, end := now.Add(-50*time.Minute), now.Add(-49*time.Minute)
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+		{Start: start, End: end, DocumentShard: 3, DocumentShardBits: 5},
+		{Start: start, End: end, DocumentShard: 4, DocumentShardBits: 5},
+	}}}
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return streamResponseWithEntries(logproto.Entry{Timestamp: start.Add(10 * time.Second), Line: "failure"}), nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 3}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	_, err := handler.Do(testTenantContext(), newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-time.Hour), now))
+	require.NoError(t, err)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.Contains(t, logLine, "correct=true")
+	require.Contains(t, logLine, "hint_ranges=1 ")
+	require.Contains(t, logLine, "hint_total_seconds=60.0")
 }
 
 func TestDryRun_LogsHintSummaryFields(t *testing.T) {
@@ -2090,6 +2114,47 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	require.Equal(t, 0.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("skipped")))
 }
 
+// A shard request gets the ranges that can cover its streams, and is skipped
+// when only other document shards' ranges overlap it.
+func TestPrefetchFilter_LeafShardGetsItsDocumentShards(t *testing.T) {
+	at := func(minute int) time.Time { return time.Date(2026, 9, 8, 12, minute, 0, 0, time.UTC) }
+	hints := hintprovider.NormalizeRanges([]hintprovider.HintTimeRange{
+		{Start: at(5), End: at(6)},
+		{Start: at(10), End: at(25), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: at(10), End: at(20), DocumentShard: 4, DocumentShardBits: 5},
+	})
+
+	run := func(t *testing.T, shard string, start, end time.Time) (*queryrange.LokiRequest, *queryrange.LokiResponse) {
+		var got *queryrange.LokiRequest
+		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			got = req.(*queryrange.LokiRequest)
+			return emptyStreamResponse(), nil
+		})
+		handler := buildStack(&mockHintProvider{hints: &hintprovider.Hints{TimeRanges: hints}}, Config{RequireOptInHeader: true}, newTestMetrics(), next)
+		req := newTestLokiRequest(`{job="test"} |= "error"`, start, end)
+		req.Shards = []string{shard}
+		resp, err := handler.Do(testTenantContextWithLive(), req)
+		require.NoError(t, err)
+		return got, resp.(*queryrange.LokiResponse)
+	}
+
+	t.Run("keeps wildcard and own shard ranges", func(t *testing.T) {
+		got, resp := run(t, "3_of_32", at(0), at(59))
+		require.NotNil(t, got)
+		require.Equal(t, []logproto.HintTimeRange{
+			{Start: at(5), End: at(6)},
+			{Start: at(10), End: at(25), DocumentShard: 3, DocumentShardBits: 5},
+		}, got.HintRanges)
+		require.Equal(t, (16 * time.Minute).Nanoseconds(), resp.Statistics.Logline.HintRangesDuration, "range duration is the time union of every shard")
+	})
+
+	t.Run("skips a shard without ranges", func(t *testing.T) {
+		got, resp := run(t, "7_of_32", at(8), at(30))
+		require.Nil(t, got)
+		require.Equal(t, int64(1), resp.Statistics.Logline.SkippedRequests)
+	})
+}
+
 func TestPrefetchFilter_ClipsHintsToInterval(t *testing.T) {
 	intervalStart := time.Date(2026, 9, 8, 12, 10, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 12, 40, 0, 0, time.UTC)
@@ -3103,15 +3168,84 @@ func TestRangesOverlapping(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := rangesOverlapping(ranges, tc.start, tc.end)
+			got := rangesOverlapping(ranges, nil, tc.start, tc.end)
 			require.Len(t, got, tc.want)
 			require.Equal(t, tc.want > 0, rangesOverlap(ranges, tc.start, tc.end))
 		})
 	}
 
 	// Empty input.
-	require.Nil(t, rangesOverlapping(nil, base, base.Add(time.Hour)))
+	require.Nil(t, rangesOverlapping(nil, nil, base, base.Add(time.Hour)))
 	require.False(t, rangesOverlap(nil, base, base.Add(time.Hour)))
+}
+
+// Normalized ranges are grouped by document shard, so their ends are not
+// sorted across shards.
+func TestRangesOverlapping_DocumentShards(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ranges := hintprovider.NormalizeRanges([]hintprovider.HintTimeRange{
+		{Start: base.Add(10 * time.Minute), End: base.Add(20 * time.Minute), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: base.Add(50 * time.Minute), End: base.Add(60 * time.Minute), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: base, End: base.Add(5 * time.Minute), DocumentShard: 4, DocumentShardBits: 5},
+		{Start: base.Add(30 * time.Minute), End: base.Add(40 * time.Minute), DocumentShard: 4, DocumentShardBits: 5},
+	})
+
+	require.Equal(t, ranges[3:], rangesOverlapping(ranges, nil, base.Add(30*time.Minute), base.Add(35*time.Minute)))
+	require.Equal(t, []hintprovider.HintTimeRange{ranges[0], ranges[2]}, rangesOverlapping(ranges, nil, base, base.Add(15*time.Minute)))
+}
+
+func TestRangesOverlapping_LeafShards(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	wildcard := hintprovider.HintTimeRange{Start: base, End: base.Add(time.Minute)}
+	inShard := func(shard uint32) hintprovider.HintTimeRange {
+		return hintprovider.HintTimeRange{Start: base, End: base.Add(time.Minute), DocumentShard: shard, DocumentShardBits: 5}
+	}
+	ranges := []hintprovider.HintTimeRange{wildcard, inShard(3), inShard(4), inShard(20), inShard(31)}
+	bounded := func(minFP, maxFP uint64) string {
+		return logql.NewBoundedShard(logproto.Shard{Bounds: logproto.FPBounds{Min: model.Fingerprint(minFP), Max: model.Fingerprint(maxFP)}}).String()
+	}
+
+	for _, tc := range []struct {
+		name   string
+		shards []string
+		want   []hintprovider.HintTimeRange
+	}{
+		{"unsharded", nil, ranges},
+		{"same power of two", []string{"3_of_32"}, []hintprovider.HintTimeRange{wildcard, inShard(3)}},
+		{"coarser power of two", []string{"1_of_2"}, []hintprovider.HintTimeRange{wildcard, inShard(20), inShard(31)}},
+		{"finer power of two", []string{"9_of_64"}, []hintprovider.HintTimeRange{wildcard, inShard(4)}},
+		{"last power-of-two shard", []string{"31_of_32"}, []hintprovider.HintTimeRange{wildcard, inShard(31)}},
+		{"several shards", []string{"3_of_32", "4_of_32"}, []hintprovider.HintTimeRange{wildcard, inShard(3), inShard(4)}},
+		{"bounded inside one document shard", []string{bounded(20<<59+1, 20<<59+2)}, []hintprovider.HintTimeRange{wildcard, inShard(20)}},
+		{"bounded across two document shards", []string{bounded(3<<59|5, 4<<59|7)}, []hintprovider.HintTimeRange{wildcard, inShard(3), inShard(4)}},
+		{"bounded through the max fingerprint", []string{bounded(31<<59, math.MaxUint64)}, []hintprovider.HintTimeRange{wildcard, inShard(31)}},
+		// The ingester remaps colliding streams to fingerprints from 1, so the
+		// first query shard can hold a stream of any document shard.
+		{"first power-of-two shard", []string{"0_of_32"}, ranges},
+		{"bounded from the min fingerprint", []string{bounded(0, 1<<59-1)}, ranges},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shards, _, err := logql.ParseShards(tc.shards)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, rangesOverlapping(ranges, shards, base, base.Add(time.Minute)))
+		})
+	}
+}
+
+func TestClipHintRangesForInterval_MergesPerDocumentShard(t *testing.T) {
+	at := func(minute int) time.Time { return time.Date(2026, 9, 8, 12, minute, 0, 0, time.UTC) }
+	ranges := []hintprovider.HintTimeRange{
+		{End: at(10)}, // pre-min-date passthrough
+		{Start: at(10), End: at(20)},
+		{Start: at(10), End: at(20), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: at(15), End: at(30), DocumentShard: 4, DocumentShardBits: 5},
+	}
+
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: at(5), End: at(20)},
+		{Start: at(10), End: at(20), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: at(15), End: at(25), DocumentShard: 4, DocumentShardBits: 5},
+	}, clipHintRangesForInterval(ranges, at(5), at(25)))
 }
 
 func TestRangesOverlap_ExclusiveHintEnd(t *testing.T) {

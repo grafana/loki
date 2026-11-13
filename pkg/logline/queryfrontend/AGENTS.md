@@ -103,6 +103,23 @@ so the filter dispatches them without waiting. This changes what some signals co
   middleware records the pre-min-date range the lookup would have returned, so the
   hint status, ranges and outcome match a query that ran the lookup.
 
+### Document shards
+
+v5 hint ranges belong to one document shard: the top bits of a stream's
+fingerprint (`hintprovider` invariant 15). A shard sub-request reads only the
+streams in its query shards' fingerprint bounds (`GetFromThrough`), so the
+filter keeps the ranges whose document shard lies in those bounds, plus every
+range without a shard. A request without shards keeps every range, and so
+does a query shard starting at or below `logline.MaxMappedFingerprint`: the
+ingester remaps colliding streams into that space, so they can belong to any
+document shard. Prefetched
+ranges are grouped by document shard, and ranges of different shards overlap
+in time, so `rangesOverlapping` searches each group on its own.
+
+The hint range duration in the query stats and the dry-run report use the
+time union (`hintprovider.TimeUnion`). Dry-run verifies entries by time
+alone, and a per-shard sum would count the same time once per shard.
+
 ### Detected fields
 
 The prefetch middleware also handles `DetectedFieldsRequest`, for both

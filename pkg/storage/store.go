@@ -704,7 +704,7 @@ func filterChunksByHintRanges(chunks []chunk.Chunk, hintRanges iter.HintTimeRang
 
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chk := range chunks {
-		if hintRanges.OverlapsClosed(chk.From.Time(), chk.Through.Time()) {
+		if hintRanges.ForFingerprint(chk.Fingerprint).OverlapsClosed(chk.From.Time(), chk.Through.Time()) {
 			filtered = append(filtered, chk)
 		}
 	}
