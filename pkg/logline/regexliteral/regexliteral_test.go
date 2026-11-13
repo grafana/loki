@@ -172,6 +172,93 @@ func TestNeedles(t *testing.T) {
 	}
 }
 
+func TestNeedles_JoinedCross(t *testing.T) {
+	upperLong := func(s string) (string, bool) { return strings.ToUpper(s), len(s) >= 6 }
+	for _, tc := range []struct {
+		name    string
+		pattern string
+		mapLit  func(string) (string, bool)
+		want    map[int]string
+	}{
+		{
+			name:    "whole joined literals",
+			pattern: `(GET|PUT) /api (ok|fail)`,
+			want: map[int]string{
+				1: `{" /api "}`,
+				2: `{" /api ", "GET"} or {" /api ", "PUT"}`,
+				4: `{"GET /api fail"} or {"GET /api ok"} or {"PUT /api fail"} or {"PUT /api ok"}`,
+			},
+		},
+		{
+			name:    "folded literals with retained basic alternatives",
+			pattern: `(GETGET|PUTPUT) /api (okayokay|failfail)`,
+			mapLit:  upperLong,
+			want: map[int]string{
+				1: `{" /API "}`,
+				2: `{" /API ", "GETGET"} or {" /API ", "PUTPUT"}`,
+				4: `{"GETGET /API FAILFAIL"} or {"GETGET /API OKAYOKAY"} or {"PUTPUT /API FAILFAIL"} or {"PUTPUT /API OKAYOKAY"}`,
+			},
+		},
+		{
+			name:    "folded literals with short basic alternatives dropped",
+			pattern: `(get|put) /api (ok|fail)`,
+			mapLit:  upperLong,
+			want: map[int]string{
+				1: `{" /API "}`,
+				2: `{" /API "}`,
+				4: `{"GET /API FAIL"} or {"GET /API OK"} or {"PUT /API FAIL"} or {"PUT /API OK"}`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Needles(tc.pattern)
+			if tc.mapLit != nil {
+				e = e.Map(tc.mapLit)
+			}
+			for _, cap := range []int{1, 2, 4} {
+				t.Run("cap="+strconv.Itoa(cap), func(t *testing.T) {
+					require.Equal(t, tc.want[cap], e.Compile(cap).String())
+				})
+			}
+		})
+	}
+}
+
+func TestNeedles_JoinedCrossWithMandatorySeed(t *testing.T) {
+	for _, seedFirst := range []bool{true, false} {
+		t.Run("seedFirst="+strconv.FormatBool(seedFirst), func(t *testing.T) {
+			for _, tc := range []struct {
+				cap  int
+				want string
+			}{
+				{1, `{" /api ", "tenant=acme"}`},
+				{2, `{" /api ", "GET", "tenant=acme"} or {" /api ", "PUT", "tenant=acme"}`},
+				{4, `{"GET /api fail", "tenant=acme"} or {"GET /api ok", "tenant=acme"} or {"PUT /api fail", "tenant=acme"} or {"PUT /api ok", "tenant=acme"}`},
+			} {
+				t.Run("cap="+strconv.Itoa(tc.cap), func(t *testing.T) {
+					ops := []needle.Expr{Needles(`(GET|PUT) /api (ok|fail)`), needle.Lit("tenant=acme")}
+					if seedFirst {
+						ops[0], ops[1] = ops[1], ops[0]
+					}
+					require.Equal(t, tc.want, needle.And(ops...).Compile(tc.cap).String())
+				})
+			}
+
+			t.Run("mapped cap=4", func(t *testing.T) {
+				ops := []needle.Expr{Needles(`(GETGET|PUTPUT) /api (okayokay|failfail)`), needle.Lit("tenant=acme")}
+				if seedFirst {
+					ops[0], ops[1] = ops[1], ops[0]
+				}
+				e := needle.And(ops...).Map(func(s string) (string, bool) { return strings.ToUpper(s), len(s) >= 6 })
+				require.Equal(t,
+					`{"GETGET /API FAILFAIL", "TENANT=ACME"} or {"GETGET /API OKAYOKAY", "TENANT=ACME"} or {"PUTPUT /API FAILFAIL", "TENANT=ACME"} or {"PUTPUT /API OKAYOKAY", "TENANT=ACME"}`,
+					e.Compile(4).String(),
+				)
+			})
+		})
+	}
+}
+
 func TestNeedles_OrCollapse(t *testing.T) {
 	upper := func(s string) (string, bool) { return strings.ToUpper(s), true }
 	// The two regexes have five alternatives in total. Their shared text

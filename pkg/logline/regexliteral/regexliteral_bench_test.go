@@ -9,6 +9,38 @@ import (
 )
 
 var benchmarkRequirement needle.Expr
+var benchmarkConjunctions needle.Conjunctions
+
+func BenchmarkNeedlesCompileJoinedCross(b *testing.B) {
+	for _, tc := range []struct {
+		name    string
+		pattern string
+		mapLit  bool
+		seed    bool
+	}{
+		{"joined", `(GET|PUT) /api (ok|fail)`, false, false},
+		{"mapped_joined", `(GETGET|PUTPUT) /api (okayokay|failfail)`, true, false},
+		{"seeded_joined", `(GET|PUT) /api (ok|fail)`, false, true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			for _, cap := range []int{1, 4} {
+				b.Run(fmt.Sprintf("cap=%d", cap), func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						e := Needles(tc.pattern)
+						if tc.seed {
+							e = needle.And(needle.Lit("tenant=acme"), e)
+						}
+						if tc.mapLit {
+							e = e.Map(func(s string) (string, bool) { return strings.ToUpper(s), len(s) >= 6 })
+						}
+						benchmarkConjunctions = e.Compile(cap)
+					}
+				})
+			}
+		})
+	}
+}
 
 func BenchmarkNeedlesAdjacentCaptures(b *testing.B) {
 	for _, captures := range []int{1000, 4000, 8000} {
