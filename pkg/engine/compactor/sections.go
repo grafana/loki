@@ -381,9 +381,9 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 // add folds stat into the reference of its log section.
 //
 // The decoded strings of stat point into the buffers of a record batch. The
-// plans keep the label values and object paths for the whole LogMerge phase.
-// Without a copy, they keep every batch in memory. Interning copies each
-// distinct value once.
+// plans and the bySection keys keep the label values and object paths for the
+// whole LogMerge phase. Without a copy, they keep every batch in memory.
+// Interning copies each distinct value once.
 func (f *logSectionFolder) add(stat stats.Stat) {
 	var labels []string
 	if len(f.labelNames) > 0 {
@@ -395,10 +395,10 @@ func (f *logSectionFolder) add(stat stats.Stat) {
 	key := newLogSortPrefix(stat.ShardBucket, labels)
 	keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
-	id := logSectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+	path := intern(f.interned, stat.ObjectPath)
+	id := logSectionID{path: path, index: stat.SectionIndex}
 	bounded, ok := f.bySection[id]
 	if !ok {
-		path := intern(f.interned, stat.ObjectPath)
 		// A log merge rewrites whole logs objects, so each logs object is a
 		// planning unit.
 		f.bySection[id] = &v2.Section[logSortPrefix]{
