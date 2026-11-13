@@ -63,6 +63,15 @@ func groupIndexRuns(entries []indexpointers.IndexPointer) []indexRun {
 // of an index object of another run.
 func (r indexRun) planningUnit() string { return r.entries[0].Path }
 
+// paths returns the paths of the index objects of r, in the order of r.
+func (r indexRun) paths() []string {
+	paths := make([]string, len(r.entries))
+	for i, entry := range r.entries {
+		paths[i] = entry.Path
+	}
+	return paths
+}
+
 // String describes r for logs and errors. It names the paths of up to
 // maxLoggedRunPaths index objects of r.
 func (r indexRun) String() string {

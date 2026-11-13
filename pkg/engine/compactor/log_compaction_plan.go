@@ -11,14 +11,15 @@ import (
 )
 
 // logCompactionPlan is the work that replaces one source index in one window.
-// Each task produces one artifact, and the swap replaces the source index with
-// one ToC entry per task.
+// The source index is an index run: one index object, or every index object
+// that shares a RunID. Each task produces one artifact, and the swap replaces
+// every index object of the run with one ToC entry per task.
 //
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
-	window      time.Time
-	sourceIndex indexpointers.IndexPointer
-	tasks       []logCompactionTask
+	window         time.Time
+	sourceIndexRun indexRun
+	tasks          []logCompactionTask
 
 	// shardBuckets is the shard layout of the source index. Compaction never
 	// changes the layout of an object, so every artifact has this layout.
@@ -132,13 +133,16 @@ func (t logMergeTask) logStats() logTaskStats {
 // indexFilterTask writes a new index that keeps only the rows of objectPaths
 // from the source index. It keeps log data without rewriting it.
 type indexFilterTask struct {
-	sourceIndexPath string
-	objectPaths     []string
-	entry           metastore.TableOfContentsEntry
+	// sourceIndexPaths are the paths of every index object of the source index
+	// run. A run splits postings across its index objects, so a filter over
+	// part of a run loses postings.
+	sourceIndexPaths []string
+	objectPaths      []string
+	entry            metastore.TableOfContentsEntry
 }
 
 func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan {
-	return buildIndexFilterPlan(tenant, t.sourceIndexPath, t.objectPaths)
+	return buildIndexFilterPlan(tenant, t.sourceIndexPaths, t.objectPaths)
 }
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }

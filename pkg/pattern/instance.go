@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -37,6 +38,13 @@ var tracer = otel.Tracer("pkg/pattern")
 
 const indexShards = 32
 
+// fakePartition is the partition that pushes which do not come from Kafka,
+// such as those received over gRPC, are aggregated under. It stands in for a
+// real Kafka partition so these pushes can use the same code as records
+// consumed from Kafka. It is negative so it cannot collide with a real
+// partition, and it is also used in tests.
+const fakePartition int32 = -1
+
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
 	instanceID      string
@@ -51,12 +59,31 @@ type instance struct {
 	owner           streamOwner
 	volumeThreshold float64
 
-	aggMetricsLock             sync.Mutex
-	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
+	aggMetricsMtx sync.Mutex
+	aggMetrics    map[int32]metricsBucket // partition -> metricsBucket
+	samplePeriod  time.Duration
 
 	metricWriter       aggregation.EntryWriter
 	patternWriter      aggregation.EntryWriter
 	aggregationMetrics *aggregation.Metrics
+}
+
+// metricsBucket holds the aggregated metrics for one partition over one sample
+// period. A bucket covers the window from start to start plus the sample
+// period.
+type metricsBucket struct {
+	// The start of the window, inclusive. It truncated to the sample period, not
+	// the wall clock time, and is used as the timestamp for both the ts field and
+	// the log line timestamp when downsampling.
+	start time.Time
+	// The wall clock time entries were last added. Downsample uses it to avoid
+	// writing a bucket before the window has expired. It cannot compare the end
+	// of the window to the wall clock, because with consumer lag the end is in
+	// the past while the bucket is still being filled. Writing it then would
+	// split one window into several entries. Instead Downsample waits until the
+	// bucket has been idle, or later records start a new window.
+	lastObserved time.Time
+	metrics      map[string]map[string]*aggregatedMetrics
 }
 
 type aggregatedMetrics struct {
@@ -74,6 +101,7 @@ func newInstance(
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	samplePeriod time.Duration,
 	volumeThreshold float64,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
@@ -81,20 +109,21 @@ func newInstance(
 		return nil, err
 	}
 	i := &instance{
-		buf:                        make([]byte, 0, 1024),
-		logger:                     logger,
-		instanceID:                 instanceID,
-		streams:                    newStreamsMap(),
-		index:                      index,
-		metrics:                    metrics,
-		drainCfg:                   drainCfg,
-		limits:                     drainLimits,
-		owner:                      owner,
-		volumeThreshold:            volumeThreshold,
-		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
-		metricWriter:               metricWriter,
-		patternWriter:              patternWriter,
-		aggregationMetrics:         aggregationMetrics,
+		buf:                make([]byte, 0, 1024),
+		logger:             logger,
+		instanceID:         instanceID,
+		streams:            newStreamsMap(),
+		index:              index,
+		metrics:            metrics,
+		drainCfg:           drainCfg,
+		limits:             drainLimits,
+		owner:              owner,
+		volumeThreshold:    volumeThreshold,
+		aggMetrics:         make(map[int32]metricsBucket),
+		samplePeriod:       samplePeriod,
+		metricWriter:       metricWriter,
+		patternWriter:      patternWriter,
+		aggregationMetrics: aggregationMetrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -102,7 +131,7 @@ func newInstance(
 
 // Push pushes the log entries in the given PushRequest to the appropriate streams.
 // It returns an error if any error occurs during the push operation.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, now time.Time, partition int32) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
@@ -115,9 +144,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		// All streams are observed for metrics
+		// All streams are observed for metrics, if aggregation is enabled for the
+		// tenant. Tenants that disable it must not accumulate metrics that would
+		// never be written.
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
+		if i.limits.MetricAggregationEnabled(i.instanceID) {
+			i.Observe(ctx, reqStream.Labels, reqStream.Entries, now, partition)
+		}
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
@@ -326,9 +359,12 @@ func (i *instance) flushPatterns() {
 	})
 }
 
-func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
-	i.aggMetricsLock.Lock()
-	defer i.aggMetricsLock.Unlock()
+// Observe adds the entries to the aggregated metrics of the sample period that
+// contains now. If now is in a newer sample period than the open bucket, the
+// open bucket is written first.
+func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry, now time.Time, partition int32) {
+	i.aggMetricsMtx.Lock()
+	defer i.aggMetricsMtx.Unlock()
 
 	_, sp := tracer.Start(ctx, "patternIngester.Observe")
 	defer sp.End()
@@ -338,6 +374,24 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 		attribute.Int("entries", len(entries)),
 	))
 
+	start := now.Truncate(i.samplePeriod)
+	b, ok := i.aggMetrics[partition]
+	if ok && start.After(b.start) {
+		// The entries are in a newer window. Records only move forward in time,
+		// so nothing more will arrive for the open bucket and it can be written.
+		// Entries in an older window are added to the open bucket.
+		i.flushBucket(b)
+		ok = false
+	}
+	if !ok {
+		b = metricsBucket{
+			start:   start,
+			metrics: make(map[string]map[string]*aggregatedMetrics),
+		}
+	}
+	b.lastObserved = time.Now()
+	i.aggMetrics[partition] = b
+
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
@@ -345,10 +399,10 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
 		}
 
-		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
-
+		streamMetrics, ok := b.metrics[stream]
 		if !ok {
 			streamMetrics = map[string]*aggregatedMetrics{}
+			b.metrics[stream] = streamMetrics
 		}
 
 		if _, ok := streamMetrics[lvl]; !ok {
@@ -357,19 +411,33 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))
 		streamMetrics[lvl].count++
-
-		i.aggMetricsByStreamAndLevel[stream] = streamMetrics
 	}
 }
 
-func (i *instance) Downsample(now model.Time) {
-	i.aggMetricsLock.Lock()
-	defer func() {
-		i.aggMetricsByStreamAndLevel = make(map[string]map[string]*aggregatedMetrics)
-		i.aggMetricsLock.Unlock()
-	}()
+// Downsample writes the buckets that have not been observed for a sample
+// period. A newer record writes the bucket of its partition in Observe,
+// so this is for the buckets that no newer record will write, such as those of
+// partitions that were revoked or have stopped receiving records. It must not
+// write a bucket that is still being filled, as when a partition replays a
+// backlog, because the record time of that bucket is in the past.
+func (i *instance) Downsample(now time.Time) {
+	i.aggMetricsMtx.Lock()
+	defer i.aggMetricsMtx.Unlock()
 
-	for stream, metricsByLevel := range i.aggMetricsByStreamAndLevel {
+	for partition, b := range i.aggMetrics {
+		if now.Sub(b.lastObserved) >= i.samplePeriod {
+			i.flushBucket(b)
+			delete(i.aggMetrics, partition)
+		}
+	}
+}
+
+// flushBucket writes the aggregated metrics of the bucket, with the start of
+// the bucket as their timestamp. The caller must hold aggMetricsMtx and is
+// responsible for removing the bucket.
+func (i *instance) flushBucket(b metricsBucket) {
+	ts := model.TimeFromUnixNano(b.start.UnixNano())
+	for stream, metricsByLevel := range b.metrics {
 		lbls, err := syntax.ParseLabels(stream)
 		if err != nil {
 			continue
@@ -378,7 +446,7 @@ func (i *instance) Downsample(now model.Time) {
 		for level, metrics := range metricsByLevel {
 			// we start with an empty bucket for each level, so only write if we have metrics
 			if metrics.count > 0 {
-				i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+				i.writeAggregatedMetrics(ts, lbls, level, metrics.bytes, metrics.count)
 			}
 		}
 	}

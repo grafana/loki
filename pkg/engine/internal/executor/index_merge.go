@@ -20,6 +20,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// indexPrefetchBytes is how many bytes the index merge and filter read from
+// the start of a source index object when they open it.
+//
+// The decoder keeps these bytes and serves later reads inside them from
+// memory. A window above the 16 KiB minimum of the decoder also holds more
+// section metadata, which saves a request per section.
+const indexPrefetchBytes = 64 * 1024
+
 // executeIndexMerge orchestrates the index merge: classify sections,
 // drive both merges, feed indexobj.Builder, upload the result, and emit a record
 // reporting the content-hash path.
@@ -60,12 +68,12 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	defer builder.Reset()
 
 	// Merge postings sections
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 
 	// Merge stats sections
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
@@ -126,8 +134,9 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 // object. Non-mergable section types (streams, indexPointers) are silently
 // ignored.
 //
-// classifyRuns also returns the stream layout of the source indexes, and an
-// error if they do not share one, because the output records one layout.
+// classifyRuns also returns the stream layout of the source indexes. It
+// returns an error if they record different layouts, or if only some record
+// one.
 func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
@@ -139,7 +148,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
-			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
+			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, indexPrefetchBytes)
 			if openErr != nil {
 				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
@@ -156,13 +165,10 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	// For each unique source object, scan its sections and classify by type,
 	// preserving section order. Other section types (streams, indexPointers)
-	// are skipped silently. doIndexFilter also skips streams sections, but it
-	// rejects every other type.
+	// are skipped silently. openFilterSources also skips streams sections, but
+	// it rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
-	var (
-		layout       streams.Layout
-		layoutSource string
-	)
+	var layout sourceLayout
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
@@ -180,24 +186,61 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				// default: skip silently (streams/indexPointers etc.)
 			}
 		}
-		// Only stats sections record a layout, so an object without them does
-		// not constrain the layout of the output.
-		if len(group.stats) > 0 {
-			objLayout, _, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
-			if err != nil {
-				return nil, streams.Layout{}, fmt.Errorf("reading stream layout of index %q: %w", path, err)
-			}
-			if layoutSource != "" && !objLayout.Equal(layout) {
-				return nil, streams.Layout{}, fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, objLayout, layoutSource, layout)
-			}
-			layout, layoutSource = objLayout, path
+		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
+			return nil, streams.Layout{}, err
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
 		}
 	}
 
-	return grouped, layout, nil
+	merged, err := layout.shared()
+	if err != nil {
+		return nil, streams.Layout{}, err
+	}
+	return grouped, merged, nil
+}
+
+// sourceLayout collects the stream layouts that the source index objects of
+// one task record for a tenant.
+//
+// The output index records one layout for all the log objects it indexes. So
+// all sources must record the same layout, or none must record one. The
+// planner groups index runs that way. A merge that mixes a source without a
+// layout with sources that have one would claim that layout for log objects
+// that were not written in it.
+type sourceLayout struct {
+	layout            streams.Layout
+	pathWithLayout    string
+	pathWithoutLayout string
+}
+
+// add reads the layout that obj, the source index object at path, records
+// for tenant. It returns an error if the layout differs from the layout of an
+// earlier source.
+func (s *sourceLayout) add(ctx context.Context, path string, obj *dataobj.Object, tenant string) error {
+	layout, ok, err := indexobj.TenantLayout(ctx, obj, tenant)
+	if err != nil {
+		return fmt.Errorf("reading stream layout of index %q: %w", path, err)
+	}
+	if !ok {
+		s.pathWithoutLayout = path
+		return nil
+	}
+	if s.pathWithLayout != "" && !layout.Equal(s.layout) {
+		return fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, layout, s.pathWithLayout, s.layout)
+	}
+	s.layout, s.pathWithLayout = layout, path
+	return nil
+}
+
+// shared returns the layout of the sources. It is the zero layout if no source
+// records one. It returns an error if only some sources record a layout.
+func (s *sourceLayout) shared() (streams.Layout, error) {
+	if s.pathWithLayout != "" && s.pathWithoutLayout != "" {
+		return streams.Layout{}, fmt.Errorf("index %q records no stream layout, but index %q records %v", s.pathWithoutLayout, s.pathWithLayout, s.layout)
+	}
+	return s.layout, nil
 }
 
 // objectSections holds one source object's mergable sections, split by type and
@@ -211,9 +254,13 @@ type objectSections struct {
 	stats    []*dataobj.Section
 }
 
-// mergePostingsIntoBuilder merges the postings sections of all source objects
-// with a K-way loser-tree merge and feeds the result into the builder.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+// keepAll keeps every row, whatever log object the row references.
+func keepAll(string) bool { return true }
+
+// mergePostingsIntoBuilder merges the postings sections of all source index
+// objects with a K-way loser-tree merge. It writes a row to builder only if
+// keep returns true for the log object path of the row.
+func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
@@ -235,9 +282,12 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
-		// ColumnName, LabelValue) means two source indexes reference the same
+		// ColumnName, LabelValue) means two source index objects reference the same
 		// physical section/column/label — this shouldn't happen, so log a
 		// warning. The data is logically equivalent, so keep the first row and
 		// drop the later duplicate.
@@ -299,10 +349,10 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 	}
 }
 
-// mergeStatsIntoBuilder merges the stats sections of all source objects with a
-// K-way loser-tree merge and feeds the result into the builder. Uses D3
-// aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+// mergeStatsIntoBuilder merges the stats sections of all source index objects
+// with a K-way loser-tree merge. It writes a row to builder only if keep
+// returns true for the log object path of the row.
+func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -336,9 +386,12 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// stats.Compare includes (ObjectPath, SectionIndex) as final
-		// tiebreakers, so an equal-key collision here means two source indexes
+		// tiebreakers, so an equal-key collision here means two source index objects
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
@@ -422,8 +475,7 @@ func (s *sectionConcatSeq[R]) Next() bool {
 			return true
 		}
 		// Current section drained or errored: capture any error, close, advance.
-		err := s.cur.Err()
-		_ = s.cur.Close()
+		err := errors.Join(s.cur.Err(), s.cur.Close())
 		s.cur = nil
 		if err != nil {
 			s.err = err
@@ -492,6 +544,10 @@ func heapAt[R any](s sequence[R]) heapVal[R] {
 }
 
 // closeSeq closes a sequence when the loser tree is done with it.
+//
+// It drops the close error. A drained sequence has no open reader, because
+// Next closes each reader and keeps its close error in Err. A sequence that
+// still has an open reader belongs to a merge that already failed.
 func closeSeq[R any](s sequence[R]) {
 	_ = s.Close()
 }

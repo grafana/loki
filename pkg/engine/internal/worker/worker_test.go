@@ -101,10 +101,10 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		})
 
 		node := &physical.IndexFilter{
-			NodeID:          ulid.Make(),
-			Tenant:          "tenant",
-			SourceIndexPath: "index/source",
-			ObjectPaths:     []string{"objects/a"},
+			NodeID:           ulid.Make(),
+			Tenant:           "tenant",
+			SourceIndexPaths: []string{"index/source"},
+			ObjectPaths:      []string{"objects/a"},
 		}
 		var graph dag.Graph[physical.Node]
 		graph.Add(node)
