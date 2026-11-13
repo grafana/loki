@@ -75,6 +75,9 @@ go vet ./pkg/logline/needle
 go test ./pkg/logline/needle -run '^$' -bench . -benchmem
 ```
 
-Use direct slice comparisons and deterministic tests for caps, substring
-candidates, mapping, result ownership, immutability, long chains and shared DAGs. `BenchmarkNestedOverCap` covers nested source proofs;
+Use `Conjunctions.String()` expectations for readable behavior tests, with
+`TRUE` for unconstrained results. Keep direct slice assertions for ownership
+and shape, and literal slice fixtures in `TestConjunctionsString`. Preserve
+deterministic tests for caps, substring candidates, mapping, immutability, long
+chains and shared DAGs. `BenchmarkNestedOverCap` covers nested source proofs;
 `BenchmarkSharedConjunctions` covers the exact-membership fast path.
