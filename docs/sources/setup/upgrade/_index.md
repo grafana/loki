@@ -120,6 +120,17 @@ Loki sets the reset offset for each consumer in code. You can't change it with a
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
 
+### LogQL label filter regexes are anchored to the whole label value
+
+A label filter such as `| name=~"al.*"` now matches the whole label value, as the documentation has always stated and as stream selector matchers already behaved. It previously matched a substring for some patterns, so `| name=~"al.*"` also returned `prealpha`.
+
+Two shapes were affected, for `=~` and `!~`, on parsed fields, stream labels, and structured metadata:
+
+- a one-sided star, `foo.*` or `.*foo`, and their `(?i)` forms;
+- an alternation whose branches share a leading literal, such as `warn|warning`, `prod|preprod`, or `bar|buzz`, which Go factors into a common prefix. An alternation with no shared prefix, such as `foo|bar`, was not affected.
+
+Queries using those patterns return fewer results than before, and `!~` returns more. If a dashboard or alert relied on the substring behavior, write it explicitly: use `.*foo.*` for a substring match, and `foo.*` only when you mean a prefix.
+
 ## 4.0.0
 
 ### Loki 4.0.0
