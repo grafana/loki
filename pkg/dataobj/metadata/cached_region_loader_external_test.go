@@ -4,12 +4,14 @@
 package metadata_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -17,6 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
+
+var regionLoaderCodec = metadata.CacheItemCodec{Zstd: true, MinRatio: 1.5}
 
 func TestCachedRegionLoader(t *testing.T) {
 	obj := newTestObject(t)
@@ -27,7 +31,9 @@ func TestCachedRegionLoader(t *testing.T) {
 		t.Helper()
 
 		reg := prometheus.NewPedanticRegistry()
-		return metadata.NewCachedRegionLoader(backend, metadata.CacheItemCodec{Zstd: true, MinRatio: 1.5}, maxRegionBytes, headBytes, reg, nil), reg
+		l, err := metadata.NewCachedRegionLoader(backend, regionLoaderCodec, maxRegionBytes, headBytes, reg, nil)
+		require.NoError(t, err)
+		return l, reg
 	}
 
 	t.Run("loads the whole region from object storage with a head read and a tail read, and writes it to the cache", func(t *testing.T) {
@@ -119,6 +125,33 @@ func TestCachedRegionLoader(t *testing.T) {
 			cacheDurations:   1,
 			stores:           2,
 		}, gatherRegionLoaderMetrics(t, reg))
+	})
+
+	t.Run("warns when the cached region is corrupt", func(t *testing.T) {
+		logs := loadWithCachedRegionChanged(t, obj, func(backend *fakeCache) { backend.corrupt("region") })
+
+		require.Contains(t, logs, `msg="data object metadata region in the cache is invalid"`)
+		require.Contains(t, logs, "path="+obj.path)
+	})
+
+	t.Run("does not warn when the cached region has another version", func(t *testing.T) {
+		logs := loadWithCachedRegionChanged(t, obj, func(backend *fakeCache) {
+			item := cachedRegionItem(t, backend)
+			item[0]++
+			replaceCachedRegionItem(t, backend, item)
+		})
+
+		require.Empty(t, logs)
+	})
+
+	t.Run("does not warn when the cached region belongs to another object", func(t *testing.T) {
+		logs := loadWithCachedRegionChanged(t, obj, func(backend *fakeCache) {
+			otherBackend := newFakeCache()
+			fillCache(t, otherBackend, newTestObjectWithStreams(t, 41))
+			replaceCachedRegionItem(t, backend, cachedRegionItem(t, otherBackend))
+		})
+
+		require.Empty(t, logs)
 	})
 
 	t.Run("loads the region from object storage when the cache read fails", func(t *testing.T) {
@@ -249,4 +282,59 @@ func gatherRegionLoaderMetrics(t *testing.T, reg *prometheus.Registry) regionLoa
 		stores:           mfm.SumCounters(prefix + "cache_stores_total"),
 		storeFailures:    mfm.SumCounters(prefix + "cache_store_failures_total"),
 	}
+}
+
+// loadWithCachedRegionChanged loads the region of obj, so the cache holds its region item. It then
+// applies change to the cache, makes object storage fail, and loads the region again. It returns what
+// the second loader logged. The second load fails, and it ends after both reads ended, so the logs
+// are complete.
+func loadWithCachedRegionChanged(t *testing.T, obj *testObject, change func(backend *fakeCache)) string {
+	t.Helper()
+
+	backend := newFakeCache()
+	fillCache(t, backend, obj)
+	change(backend)
+
+	var logs bytes.Buffer
+	l, err := metadata.NewCachedRegionLoader(backend, regionLoaderCodec, obj.metadataRegionEnd, headBytes, nil, log.NewLogfmtLogger(&logs))
+	require.NoError(t, err)
+	req := obj.request(metadata.PrefetchSet{})
+	readErr := errors.New("object storage is down")
+	source(req).err = readErr
+
+	_, err = l.Load(t.Context(), req)
+
+	require.ErrorIs(t, err, readErr)
+	return logs.String()
+}
+
+// fillCache loads the region of obj with a loader that logs nothing, so backend holds its region item.
+func fillCache(t *testing.T, backend *fakeCache, obj *testObject) {
+	t.Helper()
+
+	l, err := metadata.NewCachedRegionLoader(backend, regionLoaderCodec, obj.metadataRegionEnd, headBytes, nil, nil)
+	require.NoError(t, err)
+	_, err = l.Load(t.Context(), obj.request(metadata.PrefetchSet{}))
+	require.NoError(t, err)
+}
+
+// cachedRegionItem returns a copy of the region item in backend.
+func cachedRegionItem(t *testing.T, backend *fakeCache) []byte {
+	t.Helper()
+
+	name := backend.entry("region")
+	require.NotEmpty(t, name)
+	_, bufs, _, err := backend.Fetch(t.Context(), []string{name})
+	require.NoError(t, err)
+	require.Len(t, bufs, 1)
+	return bytes.Clone(bufs[0])
+}
+
+// replaceCachedRegionItem replaces the region item in backend with item, under the same cache key.
+func replaceCachedRegionItem(t *testing.T, backend *fakeCache, item []byte) {
+	t.Helper()
+
+	name := backend.entry("region")
+	require.NotEmpty(t, name)
+	require.NoError(t, backend.Store(t.Context(), []string{name}, [][]byte{item}))
 }

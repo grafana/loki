@@ -7,16 +7,18 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCacheItem(t *testing.T) {
 	var (
-		codec        = CacheItemCodec{Zstd: true, MinRatio: 1.5}
-		compressible = bytes.Repeat([]byte("metadata "), 2000)
-		incompress   = randomBytes(8 * 1024)
-		maxRawSize   = int64(1 << 20)
-		key          = "dataobj-prefetcher/v1/10:objects/ab#core"
+		codec            = CacheItemCodec{Zstd: true, MinRatio: 1.5}
+		compressible     = bytes.Repeat([]byte("metadata "), 2000)
+		incompress       = randomBytes(8 * 1024)
+		maxRawSize       = int64(1 << 20)
+		key              = "dataobj-prefetcher/v1/10:objects/ab#core"
+		encoder, decoder = newTestZstd(t)
 	)
 
 	// codecOf returns the codec byte of a cache item.
@@ -25,40 +27,40 @@ func TestCacheItem(t *testing.T) {
 	t.Run("a cache item below the size threshold stays raw", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), minCompressBytes-1)
 
-		stored := encodeCacheItem(raw, key, codec)
+		stored := encodeCacheItem(raw, key, codec, encoder)
 
 		require.Equal(t, codecNone, codecOf(stored))
-		got, err := decodeCacheItem(stored, key, maxRawSize)
+		got, err := decodeCacheItem(stored, key, maxRawSize, decoder)
 		require.NoError(t, err)
 		require.Equal(t, raw, got)
 	})
 
 	t.Run("a compressible cache item is stored compressed and decodes to the raw bytes", func(t *testing.T) {
-		stored := encodeCacheItem(compressible, key, codec)
+		stored := encodeCacheItem(compressible, key, codec, encoder)
 
 		require.Equal(t, codecZstd, codecOf(stored))
 		require.Less(t, len(stored), len(compressible)/2)
-		got, err := decodeCacheItem(stored, key, maxRawSize)
+		got, err := decodeCacheItem(stored, key, maxRawSize, decoder)
 		require.NoError(t, err)
 		require.Equal(t, compressible, got)
 	})
 
 	t.Run("a cache item that does not reach the ratio stays raw", func(t *testing.T) {
-		stored := encodeCacheItem(incompress, key, codec)
+		stored := encodeCacheItem(incompress, key, codec, encoder)
 
 		require.Equal(t, codecNone, codecOf(stored))
 	})
 
 	t.Run("a cache item stays raw when the codec is off", func(t *testing.T) {
-		stored := encodeCacheItem(compressible, key, CacheItemCodec{})
+		stored := encodeCacheItem(compressible, key, CacheItemCodec{}, encoder)
 
 		require.Equal(t, codecNone, codecOf(stored))
 	})
 
 	t.Run("a cache item for an empty key decodes for an empty key", func(t *testing.T) {
-		stored := encodeCacheItem(compressible, "", codec)
+		stored := encodeCacheItem(compressible, "", codec, encoder)
 
-		got, err := decodeCacheItem(stored, "", maxRawSize)
+		got, err := decodeCacheItem(stored, "", maxRawSize, decoder)
 
 		require.NoError(t, err)
 		require.Equal(t, compressible, got)
@@ -72,16 +74,26 @@ func TestCacheItem(t *testing.T) {
 	}
 	for name, askedKey := range mismatches {
 		t.Run("returns errKeyMismatch for "+name, func(t *testing.T) {
-			stored := encodeCacheItem(compressible, key, codec)
+			stored := encodeCacheItem(compressible, key, codec, encoder)
 
-			_, err := decodeCacheItem(stored, askedKey, maxRawSize)
+			_, err := decodeCacheItem(stored, askedKey, maxRawSize, decoder)
 
 			require.ErrorIs(t, err, errKeyMismatch)
 		})
 	}
 
+	t.Run("returns errVersionMismatch for a cache item of another version", func(t *testing.T) {
+		stored := encodeCacheItem(compressible, key, codec, encoder)
+		stored[0] = cacheItemVersion + 1
+
+		_, err := decodeCacheItem(stored, key, maxRawSize, decoder)
+
+		require.ErrorIs(t, err, errVersionMismatch)
+		require.EqualError(t, err, "cache item version does not match: got 2, want 1")
+	})
+
 	corrupt := func(mutate func(stored []byte) []byte) []byte {
-		return mutate(encodeCacheItem(compressible, key, codec))
+		return mutate(encodeCacheItem(compressible, key, codec, encoder))
 	}
 	keyLengthPastTheEnd := binary.LittleEndian.AppendUint32(binary.AppendUvarint([]byte{cacheItemVersion, codecNone}, 0), 0)
 	keyLengthPastTheEnd = binary.AppendUvarint(keyLengthPastTheEnd, math.MaxUint64)
@@ -89,16 +101,12 @@ func TestCacheItem(t *testing.T) {
 		stored     []byte
 		maxRawSize int64
 	}{
-		"a cache item with an unknown version": {
-			stored:     corrupt(func(s []byte) []byte { s[0] = 99; return s }),
-			maxRawSize: maxRawSize,
-		},
 		"a cache item with an unknown codec": {
 			stored:     corrupt(func(s []byte) []byte { s[1] = 99; return s }),
 			maxRawSize: maxRawSize,
 		},
 		"a cache item with a raw size above the limit": {
-			stored:     encodeCacheItem(compressible, key, codec),
+			stored:     encodeCacheItem(compressible, key, codec, encoder),
 			maxRawSize: int64(len(compressible)) - 1,
 		},
 		"a cache item with a key length past the end": {
@@ -120,31 +128,42 @@ func TestCacheItem(t *testing.T) {
 	}
 	for name, tc := range rejects {
 		t.Run("rejects "+name, func(t *testing.T) {
-			_, err := decodeCacheItem(tc.stored, key, tc.maxRawSize)
+			_, err := decodeCacheItem(tc.stored, key, tc.maxRawSize, decoder)
 
 			require.Error(t, err)
 			require.NotErrorIs(t, err, errKeyMismatch)
+			require.NotErrorIs(t, err, errVersionMismatch)
 		})
 	}
 
 	t.Run("rejects a raw cache item with a payload byte that differs from the checksum", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), 200)
-		stored := encodeCacheItem(raw, key, codec)
+		stored := encodeCacheItem(raw, key, codec, encoder)
 		stored[len(stored)-1] ^= 0xff
 
-		_, err := decodeCacheItem(stored, key, maxRawSize)
+		_, err := decodeCacheItem(stored, key, maxRawSize, decoder)
 
 		require.EqualError(t, err, "cache item checksum mismatch")
 	})
 
 	t.Run("rejects a raw cache item that is one byte shorter than its raw size", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), 200)
-		stored := encodeCacheItem(raw, key, codec)
+		stored := encodeCacheItem(raw, key, codec, encoder)
 
-		_, err := decodeCacheItem(stored[:len(stored)-1], key, maxRawSize)
+		_, err := decodeCacheItem(stored[:len(stored)-1], key, maxRawSize, decoder)
 
 		require.EqualError(t, err, "cache item has 199 bytes, want 200")
 	})
+}
+
+func newTestZstd(t *testing.T) (*zstd.Encoder, *zstd.Decoder) {
+	t.Helper()
+
+	encoder, err := newZstdEncoder()
+	require.NoError(t, err)
+	decoder, err := newZstdDecoder()
+	require.NoError(t, err)
+	return encoder, decoder
 }
 
 func randomBytes(n int) []byte {

@@ -31,7 +31,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"sync"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -67,23 +66,17 @@ type CacheItemCodec struct {
 	MinRatio float64
 }
 
-var (
-	zstdEncoder = sync.OnceValue(func() *zstd.Encoder {
-		enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
-		if err != nil {
-			panic(err)
-		}
-		return enc
-	})
+// newZstdEncoder returns the encoder that compresses the cache items. It is safe for concurrent use.
+// EncodeAll starts no goroutine, so the encoder needs no Close.
+func newZstdEncoder() (*zstd.Encoder, error) {
+	return zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+}
 
-	zstdDecoder = sync.OnceValue(func() *zstd.Decoder {
-		dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecoderMaxMemory(maxZstdDecodedBytes))
-		if err != nil {
-			panic(err)
-		}
-		return dec
-	})
-)
+// newZstdDecoder returns the decoder that decompresses the cache items. It is safe for concurrent
+// use. DecodeAll starts no goroutine, so the decoder needs no Close.
+func newZstdDecoder() (*zstd.Decoder, error) {
+	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecoderMaxMemory(maxZstdDecodedBytes))
+}
 
 // maxCachedBytes returns the largest raw size of a cache item, before compression, for regions of up
 // to maxRegionBytes.
@@ -91,16 +84,23 @@ func maxCachedBytes(maxRegionBytes int64) int64 {
 	return maxRegionBytes + cacheItemOverheadBytes
 }
 
-// errKeyMismatch means a cache item holds another key than the key that the reader asked for. It
-// happens when two keys have the same hash.
-var errKeyMismatch = errors.New("cache item key does not match")
+var (
+	// errKeyMismatch means a cache item holds another key than the key that the reader asked for. It
+	// happens when two keys have the same hash.
+	errKeyMismatch = errors.New("cache item key does not match")
 
-// encodeCacheItem wraps raw in a cache item for the unhashed cache key. It compresses raw when the
-// codec asks for it, raw is at least minCompressBytes long, and the ratio reaches the minimum.
-func encodeCacheItem(raw []byte, key string, codec CacheItemCodec) []byte {
+	// errVersionMismatch means a cache item has another version than cacheItemVersion. It happens
+	// while a rollout changes the version, because the old and the new processes share the cache.
+	errVersionMismatch = errors.New("cache item version does not match")
+)
+
+// encodeCacheItem wraps raw in a cache item for the unhashed cache key. It compresses raw with
+// encoder when the codec asks for it, raw is at least minCompressBytes long, and the ratio reaches
+// the minimum.
+func encodeCacheItem(raw []byte, key string, codec CacheItemCodec, encoder *zstd.Encoder) []byte {
 	payload, codecType := raw, codecNone
 	if codec.Zstd && len(raw) >= minCompressBytes {
-		if compressed := zstdEncoder().EncodeAll(raw, nil); float64(len(raw)) >= codec.MinRatio*float64(len(compressed)) {
+		if compressed := encoder.EncodeAll(raw, nil); float64(len(raw)) >= codec.MinRatio*float64(len(compressed)) {
 			payload, codecType = compressed, codecZstd
 		}
 	}
@@ -114,16 +114,19 @@ func encodeCacheItem(raw []byte, key string, codec CacheItemCodec) []byte {
 	return append(out, payload...)
 }
 
-// decodeCacheItem returns the raw bytes of a cache item. It returns errKeyMismatch when the key in the
-// cache item is not expectedKey, the unhashed cache key that the reader asked for. It returns another
-// error when the cache item is malformed, when its raw size is above maxRawSize, or when the checksum
-// does not match. The result aliases stored when the cache item is not compressed.
-func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64) ([]byte, error) {
+// decodeCacheItem returns the raw bytes of a cache item. It decompresses the payload with decoder.
+// The result aliases stored when the cache item is not compressed.
+//
+// It returns errKeyMismatch when the key in the cache item is not expectedKey, the unhashed cache key
+// that the caller asked for. It returns errVersionMismatch when the version of the cache item is not
+// cacheItemVersion. It returns another error when the cache item is malformed or corrupt, or when
+// its raw size is above maxRawSize.
+func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decoder *zstd.Decoder) ([]byte, error) {
 	if len(stored) < 2 {
 		return nil, errors.New("cache item is truncated")
 	}
 	if stored[0] != cacheItemVersion {
-		return nil, fmt.Errorf("unknown cache item version %d", stored[0])
+		return nil, fmt.Errorf("%w: got %d, want %d", errVersionMismatch, stored[0], cacheItemVersion)
 	}
 	codecType := stored[1]
 
@@ -163,7 +166,7 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64) ([]byt
 		}
 
 		var err error
-		if raw, err = zstdDecoder().DecodeAll(payload, make([]byte, 0, rawSize)); err != nil {
+		if raw, err = decoder.DecodeAll(payload, make([]byte, 0, rawSize)); err != nil {
 			return nil, fmt.Errorf("decompressing cache item: %w", err)
 		}
 	default:

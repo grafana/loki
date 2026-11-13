@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
@@ -69,6 +70,10 @@ type CachedRegionLoader struct {
 	cache cache.Cache
 	codec CacheItemCodec
 
+	// encoder and decoder compress and decompress the region item.
+	encoder *zstd.Encoder
+	decoder *zstd.Decoder
+
 	// maxRegionBytes is the largest region size that the loader accepts.
 	maxRegionBytes int64
 
@@ -95,13 +100,26 @@ type CachedRegionLoader struct {
 // whose header and file metadata do not fit in it.
 //
 // The loader registers its counters on reg. The registerer and the logger may be nil.
-func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionBytes int64, headBytes int, reg prometheus.Registerer, logger log.Logger) *CachedRegionLoader {
+//
+// It returns an error when it cannot create the zstd encoder or decoder of the region item.
+func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionBytes int64, headBytes int, reg prometheus.Registerer, logger log.Logger) (*CachedRegionLoader, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
+	encoder, err := newZstdEncoder()
+	if err != nil {
+		return nil, fmt.Errorf("creating the zstd encoder: %w", err)
+	}
+	decoder, err := newZstdDecoder()
+	if err != nil {
+		return nil, fmt.Errorf("creating the zstd decoder: %w", err)
+	}
+
 	l := &CachedRegionLoader{
 		cache:          backend,
 		codec:          codec,
+		encoder:        encoder,
+		decoder:        decoder,
 		maxRegionBytes: maxRegionBytes,
 		headBytes:      headBytes,
 		logger:         logger,
@@ -142,7 +160,7 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 		l.loadSuccesses.WithLabelValues(source)
 		l.loadDuration.WithLabelValues(source)
 	}
-	return l
+	return l, nil
 }
 
 // Load returns the whole region of the object. It returns an error that wraps ErrNotPrefetchable
@@ -190,7 +208,7 @@ func (l *CachedRegionLoader) storeRegion(ctx context.Context, path string, regio
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
 
 	l.cacheStores.Inc()
-	if err := l.cache.Store(ctx, []string{hashedKey}, [][]byte{encodeCacheItem(region, unhashedKey, l.codec)}); err != nil {
+	if err := l.cache.Store(ctx, []string{hashedKey}, [][]byte{encodeCacheItem(region, unhashedKey, l.codec, l.encoder)}); err != nil {
 		l.cacheStoreFailures.Inc()
 		l.warn("data object metadata region store failed", path, err)
 	}
@@ -235,7 +253,7 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 }
 
 // loadFromCache reads the region item from the cache. It returns errNotFound when there is none, and
-// an error when the item does not decode.
+// an error when the item does not decode. It warns about an item that is malformed or corrupt.
 func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]byte, error) {
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
 	found, bufs, _, err := l.cache.Fetch(ctx, []string{hashedKey})
@@ -250,9 +268,13 @@ func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]
 		return nil, errNotFound
 	}
 
-	region, err := decodeCacheItem(bufs[0], unhashedKey, maxCachedBytes(l.maxRegionBytes))
+	region, err := decodeCacheItem(bufs[0], unhashedKey, maxCachedBytes(l.maxRegionBytes), l.decoder)
 	if err != nil {
-		l.warn("data object metadata region did not decode", path, err)
+		// A healthy cache can hold an item of another key or version, so do not warn about it. The load
+		// counts it as a miss, and the storage read replaces the item.
+		if !errors.Is(err, errKeyMismatch) && !errors.Is(err, errVersionMismatch) {
+			l.warn("data object metadata region in the cache is invalid", path, err)
+		}
 		return nil, err
 	}
 	return region, nil
