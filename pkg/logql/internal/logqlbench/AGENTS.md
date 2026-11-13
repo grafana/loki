@@ -34,6 +34,8 @@ Each case reports:
 - `ns/op`, `allocs/op`: the standard Go benchmark time and allocations.
 - `store_reqs/op`: object-store calls made to answer the query.
 - `store_bytes/op`: bytes read from the object store.
+- `intermediate_series_peak/op`: the largest number of label sets one querier job held while it
+  evaluated the query, from `res.Statistics`. It shows how far a shape outgrows its output.
 - `store_max_parallel`: peak object-store reads in flight at once, over all iterations. The results
   table reports it at `latency=250ms`. Read it only with injected latency, because a read with no
   delay can end before another starts.
