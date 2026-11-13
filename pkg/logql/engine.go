@@ -541,8 +541,8 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {
-		if httpreq.IsLogsDrilldownRequest(ctx) {
-			// For Logs Drilldown requests, return partial results with warning
+		if httpreq.IsLogsDrilldownRequest(ctx) || httpreq.IsRulerEvalRequest(ctx) {
+			// For Logs Drilldown and ruler eval requests, return partial results with warning
 			vec = vec[:maxSeries]
 			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			// Since we've already reached the series limit, skip processing additional steps and add the initial vector to seriesIndex
@@ -583,10 +583,10 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		// exist and reports whether the limit was hit, so seriesIndex never grows past
 		// maxSeries regardless of request type.
 		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
-			if !httpreq.IsLogsDrilldownRequest(ctx) {
+			if !httpreq.IsLogsDrilldownRequest(ctx) && !httpreq.IsRulerEvalRequest(ctx) {
 				return nil, logqlerr.NewSeriesLimitError(maxSeries)
 			}
-			// Logs Drilldown returns partial results with a warning instead of failing.
+			// Logs Drilldown and ruler eval return partial results with a warning instead of failing.
 			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			break
 		}

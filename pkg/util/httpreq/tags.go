@@ -22,6 +22,8 @@ var (
 	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=.@, ]+") // only alpha-numeric, ' ', ',', '=', '@', '.' and `-`
 
 	QueryQueueTimeHTTPHeader ctxKey = "X-Query-Queue-Time"
+
+	rulerEvalKey ctxKey = "ruler-eval"
 )
 
 func ExtractQueryTagsMiddleware() middleware.Interface {
@@ -143,4 +145,15 @@ func IsLogsDrilldownRequest(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+// InjectRulerEval marks the context as originating from a ruler rule evaluation.
+func InjectRulerEval(ctx context.Context) context.Context {
+	return context.WithValue(ctx, rulerEvalKey, true)
+}
+
+// IsRulerEvalRequest returns true if the context was marked as a ruler evaluation.
+func IsRulerEvalRequest(ctx context.Context) bool {
+	v, _ := ctx.Value(rulerEvalKey).(bool)
+	return v
 }

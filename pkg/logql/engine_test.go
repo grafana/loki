@@ -1086,6 +1086,7 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 	tests := []struct {
 		name               string
 		queryTags          string
+		isRulerEval        bool
 		maxSeries          int
 		vectorSize         int // Number of series in the vector to test immediate limit check
 		isRangeQuery       bool
@@ -1167,6 +1168,37 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 			expectTruncation:   false,
 			expectedWarningMsg: "",
 		},
+		{
+			name:               "Ruler eval - immediate limit exceeded in first vector",
+			isRulerEval:        true,
+			maxSeries:          2,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        false,
+			expectTruncation:   true,
+			expectedWarningMsg: "maximum number of series (2) reached for a single query; returning partial results",
+		},
+		{
+			name:               "Ruler eval - range query limit exceeded in second vector",
+			isRulerEval:        true,
+			maxSeries:          3,
+			vectorSize:         2,
+			isRangeQuery:       true,
+			additionalVectors:  []int{2},
+			expectError:        false,
+			expectTruncation:   true,
+			expectedWarningMsg: "maximum number of series (3) reached for a single query; returning partial results",
+		},
+		{
+			name:               "Ruler eval - limit NOT exceeded",
+			isRulerEval:        true,
+			maxSeries:          5,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        false,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
 	}
 
 	for _, test := range tests {
@@ -1175,6 +1207,9 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 			ctx := context.Background()
 			if test.queryTags != "" {
 				ctx = httpreq.InjectQueryTags(ctx, test.queryTags)
+			}
+			if test.isRulerEval {
+				ctx = httpreq.InjectRulerEval(ctx)
 			}
 			_, ctx = metadata.NewContext(ctx)
 

@@ -253,3 +253,14 @@ func TestIsLogsDrilldownRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestIsRulerEvalRequest(t *testing.T) {
+	t.Run("returns true when context is marked as ruler eval", func(t *testing.T) {
+		ctx := InjectRulerEval(context.Background())
+		require.True(t, IsRulerEvalRequest(ctx))
+	})
+
+	t.Run("returns false for unmarked context", func(t *testing.T) {
+		require.False(t, IsRulerEvalRequest(context.Background()))
+	})
+}
