@@ -227,6 +227,12 @@ func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int
 	}
 }
 
+// withLineFilter returns fn with the line filter it runs, for NewLabelFilterHints.
+func (fn StageFunc) withLineFilter(f Filterer) StageFunc {
+	fn.lineFilter = f
+	return fn
+}
+
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return fn.process(ts, line, lbs)
 }

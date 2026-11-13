@@ -300,11 +300,9 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
-	s := NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, a.Filter(line)
-	})
-	s.lineFilter = a
-	return s
+	}).withLineFilter(a)
 }
 
 type orFilter struct {
@@ -540,11 +538,9 @@ func containsLower(line, substr []byte) bool {
 }
 
 func (l containsFilter) ToStage() Stage {
-	s := NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, l.Filter(line)
-	})
-	s.lineFilter = &l
-	return s
+	}).withLineFilter(&l)
 }
 
 // Matches implements Matcher
@@ -592,11 +588,9 @@ func (f containsAllFilter) Filter(line []byte) bool {
 }
 
 func (f containsAllFilter) ToStage() Stage {
-	s := NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, f.Filter(line)
-	})
-	s.lineFilter = &f
-	return s
+	}).withLineFilter(&f)
 }
 
 func (f containsAllFilter) Matches(test Checker) bool {
