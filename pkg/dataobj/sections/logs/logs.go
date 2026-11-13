@@ -203,10 +203,10 @@ const (
 
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:   "invalid",
-	ColumnTypeStreamID:  "stream_id",
-	ColumnTypeTimestamp: "timestamp",
-	ColumnTypeMetadata:  "metadata",
-	ColumnTypeMessage:   "message",
+	ColumnTypeStreamID:  format.LogsColumnStreamID,
+	ColumnTypeTimestamp: format.LogsColumnTimestamp,
+	ColumnTypeMetadata:  format.LogsColumnMetadata,
+	ColumnTypeMessage:   format.LogsColumnMessage,
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -215,13 +215,13 @@ func ParseColumnType(text string) (ColumnType, error) {
 	switch text {
 	case "invalid":
 		return ColumnTypeInvalid, nil
-	case "stream_id":
+	case format.LogsColumnStreamID:
 		return ColumnTypeStreamID, nil
-	case "timestamp":
+	case format.LogsColumnTimestamp:
 		return ColumnTypeTimestamp, nil
-	case "metadata":
+	case format.LogsColumnMetadata:
 		return ColumnTypeMetadata, nil
-	case "message":
+	case format.LogsColumnMessage:
 		return ColumnTypeMessage, nil
 	}
 
