@@ -210,9 +210,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 // layout with sources that have one would claim that layout for log objects
 // that were not written in it.
 type sourceLayout struct {
-	layout        streams.Layout
-	withLayout    string
-	withoutLayout string
+	layout            streams.Layout
+	pathWithLayout    string
+	pathWithoutLayout string
 }
 
 // add reads the layout that obj, the source index object at path, records
@@ -224,21 +224,21 @@ func (s *sourceLayout) add(ctx context.Context, path string, obj *dataobj.Object
 		return fmt.Errorf("reading stream layout of index %q: %w", path, err)
 	}
 	if !ok {
-		s.withoutLayout = path
+		s.pathWithoutLayout = path
 		return nil
 	}
-	if s.withLayout != "" && !layout.Equal(s.layout) {
-		return fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, layout, s.withLayout, s.layout)
+	if s.pathWithLayout != "" && !layout.Equal(s.layout) {
+		return fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, layout, s.pathWithLayout, s.layout)
 	}
-	s.layout, s.withLayout = layout, path
+	s.layout, s.pathWithLayout = layout, path
 	return nil
 }
 
 // shared returns the layout of the sources. It is the zero layout if no source
 // records one. It returns an error if only some sources record a layout.
 func (s *sourceLayout) shared() (streams.Layout, error) {
-	if s.withLayout != "" && s.withoutLayout != "" {
-		return streams.Layout{}, fmt.Errorf("index %q records no stream layout, but index %q records %v", s.withoutLayout, s.withLayout, s.layout)
+	if s.pathWithLayout != "" && s.pathWithoutLayout != "" {
+		return streams.Layout{}, fmt.Errorf("index %q records no stream layout, but index %q records %v", s.pathWithoutLayout, s.pathWithLayout, s.layout)
 	}
 	return s.layout, nil
 }

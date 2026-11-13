@@ -605,7 +605,7 @@ func (c *coordinator) runLayout(ctx context.Context, tenant string, run indexRun
 	if err != nil {
 		return streams.Layout{}, false, err
 	}
-	return layoutOfRun(ctx, tenant, opened)
+	return indexLayoutOfRun(ctx, tenant, opened)
 }
 
 // dropRunsWithoutPostings returns sections without the sections of each index

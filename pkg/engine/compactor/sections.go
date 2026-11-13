@@ -265,15 +265,15 @@ func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, 
 	return opened, nil
 }
 
-// layoutOfRun returns the stream layout that the opened index objects of a
-// run record for tenant. hasLayout is false if no index object has a stats
+// indexLayoutOfRun returns the stream layout that the opened index objects of
+// a run record for tenant. hasLayout is false if no index object has a stats
 // section of tenant.
 //
 // Every index object of a run records the layout of the run in a stats
-// section, even if the section holds no rows. layoutOfRun returns an error that
-// wraps errCorruptIndex if an index object is corrupt, records no layout while
-// another index object does, or records another layout.
-func layoutOfRun(ctx context.Context, tenant string, run []openedIndex) (layout streams.Layout, hasLayout bool, err error) {
+// section, even if the section holds no rows. indexLayoutOfRun returns an
+// error that wraps errCorruptIndex if an index object is corrupt, records no
+// layout while another index object does, or records another layout.
+func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (layout streams.Layout, hasLayout bool, err error) {
 	var (
 		source        string
 		withoutLayout string
@@ -314,7 +314,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 	if err != nil {
 		return nil, indexpointers.ShardBuckets{}, err
 	}
-	layout, ok, err := layoutOfRun(ctx, tenant, opened)
+	layout, ok, err := indexLayoutOfRun(ctx, tenant, opened)
 	if err != nil {
 		return nil, indexpointers.ShardBuckets{}, err
 	}
