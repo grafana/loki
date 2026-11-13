@@ -107,7 +107,7 @@ func (i *Ingester) consumeRecords(ctx context.Context, records <-chan *kgo.Recor
 			continue
 		}
 		req := &logproto.PushRequest{Streams: []logproto.Stream{stream}}
-		if err := instance.Push(ctx, req); err != nil {
+		if err := instance.Push(ctx, req, rec.Timestamp, rec.Partition); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to push record", "tenant", instanceID, "offset", rec.Offset, "err", err)
 			i.metrics.kafkaRecordsFailed.Inc()
 			continue
