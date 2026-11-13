@@ -120,6 +120,12 @@ Loki sets the reset offset for each consumer in code. You can't change it with a
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.
 
+### `ruler_storage` uses the common object store configuration
+
+When `storage_config.use_thanos_objstore` is `true`, Loki now applies `common.storage.object_store` to `ruler_storage`, as it already does for `storage_config.object_store`. Previously, the ruler ignored the common configuration and used the local `filesystem` backend unless you configured `ruler_storage` yourself. Loki applies the common configuration only when exactly one storage provider, such as `s3` or `gcs`, is configured under `common.storage.object_store`. The ruler stores rules under the `rules/` prefix in that bucket. Settings that you configure in `ruler_storage` still take precedence.
+
+If you run Loki with `-target=all` and configure only `common.storage.object_store`, the ruler now starts and reads rules from the object store. Before, it didn't start. To keep rules on local disk, set `ruler_storage.backend` to `local` and set `ruler_storage.local.directory`.
+
 ## 4.0.0
 
 ### Loki 4.0.0

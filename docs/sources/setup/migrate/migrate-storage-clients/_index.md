@@ -48,7 +48,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
            bucket_name: "example-bucket"
    ```
 
-1. Ruler storage should be configured under the `ruler_storage` section when using the new storage clients.
+1. Ruler storage should be configured under the `ruler_storage` section when using the new storage clients. If you configure a single provider in `common.storage.object_store`, Loki also applies it to `ruler_storage`, so you only need this section to use a different bucket or backend for rules.
 
    ```yaml
    storage_config:

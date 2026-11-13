@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -647,6 +648,9 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
+			if r.StorageConfig.UseThanosObjstore {
+				applyCommonObjectStoreToRulerStorage(r, defaults)
+			}
 		}
 	}
 
@@ -659,6 +663,50 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
+}
+
+// applyCommonObjectStoreToRulerStorage copies the common object store config
+// into ruler_storage when exactly one provider is configured in it.
+func applyCommonObjectStoreToRulerStorage(r, defaults *ConfigWrapper) {
+	common := r.Common.Storage.ObjectStore
+	def := defaults.StorageConfig.ObjectStore.Config
+
+	var backends []string
+	if !reflect.DeepEqual(common.S3, def.S3) {
+		backends = append(backends, bucket.S3)
+	}
+	if !reflect.DeepEqual(common.GCS, def.GCS) {
+		backends = append(backends, bucket.GCS)
+	}
+	if !reflect.DeepEqual(common.Azure, def.Azure) {
+		backends = append(backends, bucket.Azure)
+	}
+	if !reflect.DeepEqual(common.Swift, def.Swift) {
+		backends = append(backends, bucket.Swift)
+	}
+	if !reflect.DeepEqual(common.Filesystem, def.Filesystem) {
+		backends = append(backends, bucket.Filesystem)
+	}
+	if !reflect.DeepEqual(common.Alibaba, def.Alibaba) {
+		backends = append(backends, bucket.Alibaba)
+	}
+	if !reflect.DeepEqual(common.BOS, def.BOS) {
+		backends = append(backends, bucket.BOS)
+	}
+
+	if len(backends) != 1 {
+		return
+	}
+
+	r.RulerStorage.Backend = backends[0]
+	r.RulerStorage.S3 = common.S3
+	r.RulerStorage.GCS = common.GCS
+	r.RulerStorage.Azure = common.Azure
+	r.RulerStorage.Swift = common.Swift
+	r.RulerStorage.Filesystem = common.Filesystem
+	r.RulerStorage.Alibaba = common.Alibaba
+	r.RulerStorage.BOS = common.BOS
+	r.RulerStorage.StoragePrefix = common.StoragePrefix
 }
 
 func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
