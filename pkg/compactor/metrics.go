@@ -10,6 +10,10 @@ import (
 const (
 	statusFailure = "failure"
 	statusSuccess = "success"
+
+	// reasons a run failed, empty on success.
+	reasonIndex            = "index"
+	reasonShardedIndexCopy = "sharded_index_copy"
 )
 
 type metrics struct {
@@ -28,8 +32,8 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		compactTablesOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "tsdb_shipper_compact_tables_operation_total",
-			Help:      "Total number of tables compaction done by status",
-		}, []string{"status"}),
+			Help:      "Total number of tables compaction done by status, and by reason of failure: 'sharded_index_copy' when updating the sharded index copy failed, 'index' otherwise",
+		}, []string{"status", "reason"}),
 		compactTablesOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "tsdb_shipper_compact_tables_operation_duration_seconds",
@@ -43,8 +47,8 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		applyRetentionOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "compactor_apply_retention_operation_total",
-			Help:      "Total number of attempts done to apply retention with status",
-		}, []string{"status"}),
+			Help:      "Total number of attempts done to apply retention with status, and by reason of failure: 'sharded_index_copy' when updating the sharded index copy failed, 'index' otherwise",
+		}, []string{"status", "reason"}),
 		applyRetentionOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "compactor_apply_retention_operation_duration_seconds",
