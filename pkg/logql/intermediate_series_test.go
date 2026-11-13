@@ -382,3 +382,78 @@ func TestStreamRangeVectorIterator_ShouldNotReleaseAReservationItNeverMade(t *te
 	require.NoError(t, rangeIt.Close())
 	require.Equal(t, int64(1), counter.Current(), "the reservation belongs to another iterator")
 }
+
+func TestStreamRangeVectorIterator_ShouldCountLabelSetsPerStep(t *testing.T) {
+	const numSeries = 4
+	var (
+		start = time.Unix(10, 0)
+		count = &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	)
+
+	for name, tc := range map[string]struct {
+		selRange time.Duration
+		step     time.Duration
+		end      time.Time
+		it       func() iter.PeekingSampleIterator
+		wantPeak int64
+	}{
+		"a stable label set does not grow across steps": {
+			selRange: 2 * time.Second, step: 5 * time.Second, end: time.Unix(30, 0),
+			it: func() iter.PeekingSampleIterator {
+				return repeatedSeriesIterator(numSeries, time.Unix(10, 0).Add(-time.Second), time.Unix(15, 0).Add(-time.Second), time.Unix(20, 0).Add(-time.Second), time.Unix(25, 0).Add(-time.Second))
+			},
+			wantPeak: numSeries,
+		},
+		"step greater than range": {
+			selRange: time.Second, step: 10 * time.Second, end: time.Unix(30, 0),
+			it: func() iter.PeekingSampleIterator {
+				return repeatedSeriesIterator(numSeries, time.Unix(10, 0).Add(-500*time.Millisecond), time.Unix(20, 0).Add(-500*time.Millisecond))
+			},
+			wantPeak: numSeries,
+		},
+		"instant query": {
+			selRange: 2 * time.Second, step: 0, end: start,
+			it:       func() iter.PeekingSampleIterator { return distinctSeriesIterator(numSeries, start.Add(-time.Second)) },
+			wantPeak: numSeries,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			counter := newIntermediateSeriesCounter(0)
+			rangeIt, err := newTimestampFirstRangeVectorIterator(tc.it(), count, tc.selRange.Nanoseconds(), tc.step.Nanoseconds(), start.UnixNano(), tc.end.UnixNano(), 0, iteratorLimits{counter: counter})
+			require.NoError(t, err)
+			require.IsType(t, &streamRangeVectorIterator{}, rangeIt)
+
+			for rangeIt.Next() {
+				rangeIt.At()
+				require.LessOrEqual(t, counter.Current(), int64(numSeries))
+			}
+			require.NoError(t, rangeIt.Error())
+			require.Equal(t, tc.wantPeak, counter.Peak())
+
+			require.NoError(t, rangeIt.Close())
+			require.Zero(t, counter.Current())
+		})
+	}
+}
+
+func TestStreamRangeVectorIterator_ShouldReleaseTheStepBeforeTheNext(t *testing.T) {
+	start := time.Unix(10, 0)
+	count := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	// 3 label sets in the first step, 1 in the second.
+	series := []iter.SampleIterator{}
+	for i, ts := range []time.Time{start.Add(-time.Second), start.Add(-time.Second), start.Add(-time.Second), start.Add(4 * time.Second)} {
+		lbs := labels.FromStrings("app", "a", "id", fmt.Sprint(i))
+		series = append(series, iter.NewSeriesIterator(logproto.Series{Labels: lbs.String(), StreamHash: labels.StableHash(lbs),
+			Samples: []logproto.Sample{{Timestamp: ts.UnixNano(), Hash: uint64(i), Value: 1}}}))
+	}
+	it := iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator(series))
+	counter := newIntermediateSeriesCounter(0)
+	rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (2 * time.Second).Nanoseconds(), (5 * time.Second).Nanoseconds(), start.UnixNano(), start.Add(5*time.Second).UnixNano(), 0, iteratorLimits{counter: counter})
+	require.NoError(t, err)
+
+	require.True(t, rangeIt.Next())
+	require.Equal(t, int64(3), counter.Current())
+	require.True(t, rangeIt.Next())
+	require.Equal(t, int64(1), counter.Current())
+	require.Equal(t, int64(3), counter.Peak())
+}

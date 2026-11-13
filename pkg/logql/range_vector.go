@@ -497,6 +497,7 @@ type streamRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	limits                               iteratorLimits
+	counterReserved                      int //number of label sets reserved from the limits counter
 	err                                  error
 }
 
@@ -513,6 +514,7 @@ func (r *streamRangeVectorIterator) Next() bool {
 	rangeStart := rangeEnd - r.selRange
 	// load samples
 
+	r.releaseReserved()
 	r.windowRangeAgg = make(map[string]RangeStreamingAgg, 0)
 	r.metrics = map[string]labels.Labels{}
 	r.load(rangeStart, rangeEnd)
@@ -520,7 +522,15 @@ func (r *streamRangeVectorIterator) Next() bool {
 }
 
 func (r *streamRangeVectorIterator) Close() error {
+	r.releaseReserved()
 	return r.iter.Close()
+}
+
+// releaseReserved releases the label sets the iterator has reserved from the counter and forgets them, so
+// the count remains per step.
+func (r *streamRangeVectorIterator) releaseReserved() {
+	r.limits.counter.Release(r.counterReserved)
+	r.counterReserved = 0
 }
 
 func (r *streamRangeVectorIterator) Error() error {
@@ -552,12 +562,17 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			}
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
+				if r.err = r.limits.counter.Reserve(1); r.err != nil {
+					return
+				}
 				var err error
 				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
+					r.limits.counter.Release(1)
 					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
 					return
 				}
+				r.counterReserved++
 				r.metrics[lbs] = metric
 			}
 
