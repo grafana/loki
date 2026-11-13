@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/go-kit/log"
@@ -32,6 +33,10 @@ var (
 
 	// errCacheUnavailable means the cache lookup failed.
 	errCacheUnavailable = errors.New("the cache lookup failed")
+
+	// errCacheTimeout means the cache client gave up waiting for the lookup. The request was still
+	// alive, so the deadline is not the one of the request.
+	errCacheTimeout = errors.New("the cache lookup timed out")
 )
 
 // Values of the outcome label of the successes counter and of the duration histogram.
@@ -45,11 +50,13 @@ const (
 const (
 	reasonCanceled         = "canceled"
 	reasonTimeout          = "timeout"
+	reasonCacheTimeout     = "cache_timeout"
 	reasonCacheUnavailable = "cache_unavailable"
 	reasonTooLarge         = "too_large"
 	reasonHeadTooSmall     = "head_too_small"
 	reasonUnsupported      = "unsupported"
 	reasonCorrupted        = "corrupted"
+	reasonStorageTimeout   = "storage_timeout"
 	reasonStorage          = "storage_error"
 )
 
@@ -57,11 +64,13 @@ const (
 var failureReasons = []string{
 	reasonCanceled,
 	reasonTimeout,
+	reasonCacheTimeout,
 	reasonCacheUnavailable,
 	reasonTooLarge,
 	reasonHeadTooSmall,
 	reasonUnsupported,
 	reasonCorrupted,
+	reasonStorageTimeout,
 	reasonStorage,
 }
 
@@ -153,7 +162,7 @@ func NewCachedPrefetcher(backend cache.Cache, maxItemBytes int64, cfg Prefetcher
 		}, []string{"outcome"}),
 		failures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_failures_total",
-			Help: "Prefetch requests that returned an error, by reason: canceled, timeout, cache_unavailable for a failed cache lookup, too_large for a metadata region above the limit, head_too_small for a file metadata that does not fit in the head read, unsupported for an object that a newer writer made, corrupted for metadata that is not valid, and storage_error for a failed object storage read.",
+			Help: "Prefetch requests that returned an error, by reason: canceled, timeout for the deadline of the request or of the load, cache_timeout for a cache lookup that the cache client gave up waiting for, cache_unavailable for another failed cache lookup, too_large for a metadata region above the limit, head_too_small for a file metadata that does not fit in the head read, unsupported for an object that a newer writer made, corrupted for metadata that is not valid, storage_timeout for an object storage read that the storage client gave up waiting for, and storage_error for another failed object storage read.",
 		}, []string{"reason"}),
 		duration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_metadata_prefetcher_duration_seconds",
@@ -247,7 +256,12 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 	// The whole region costs more to read than the direct read does, and a failed cache would drop
 	// the fill. So a failed lookup sends the caller to the direct read.
 	if lookupErr != nil {
-		return PrefetchResponse{}, fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, errCacheUnavailable, lookupErr)
+		// The request is still alive here, so a timeout comes from the cache client.
+		cause := errCacheUnavailable
+		if isTimeout(lookupErr) {
+			cause = errCacheTimeout
+		}
+		return PrefetchResponse{}, fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, cause, lookupErr)
 	}
 
 	loaded, err := p.fetchAndFillMetadataRangesCacheSingleFlight(ctx, req, found)
@@ -536,8 +550,15 @@ func (f *fetchResult) satisfies(prefetchSet PrefetchSet) bool {
 
 // failureReason returns the value of the reason label for the error of a failed prefetch. It names
 // the cause of the failure, and not the operation that failed.
+//
+// A timeout of a cache or of an object storage client can wrap the same deadline error as the context
+// of the request. So the code that sees the timeout marks it, and the marks come first.
 func failureReason(err error) string {
 	switch {
+	case errors.Is(err, errCacheTimeout):
+		return reasonCacheTimeout
+	case errors.Is(err, errStorageTimeout):
+		return reasonStorageTimeout
 	case errors.Is(err, context.Canceled):
 		return reasonCanceled
 	case errors.Is(err, context.DeadlineExceeded):
@@ -559,4 +580,14 @@ func failureReason(err error) string {
 		return reasonCorrupted
 	}
 	return reasonStorage
+}
+
+// isTimeout reports whether err comes from a deadline: the deadline of a context, or the timeout of a
+// socket.
+func isTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	netErr, ok := errors.AsType[net.Error](err)
+	return ok && netErr.Timeout()
 }

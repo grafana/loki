@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,6 +52,8 @@ func TestFailureReason(t *testing.T) {
 		"a canceled context is canceled":                               {context.Canceled, reasonCanceled},
 		"a deadline is a timeout":                                      {fmt.Errorf("reading the metadata region: %w", context.DeadlineExceeded), reasonTimeout},
 		"a failed cache lookup is cache unavailable":                   {fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, errCacheUnavailable, errors.New("cache is down")), reasonCacheUnavailable},
+		"a cache lookup that timed out is a cache timeout":             {fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, errCacheTimeout, context.DeadlineExceeded), reasonCacheTimeout},
+		"an object storage read that timed out is a storage timeout":   {fmt.Errorf("reading the metadata region: %w: %w", errStorageTimeout, context.DeadlineExceeded), reasonStorageTimeout},
 		"a region above the limit is too large":                        {fmt.Errorf("%w: %w: it has at least 2 bytes", ErrNotPrefetchable, errRegionTooLarge), reasonTooLarge},
 		"a head without the file metadata is a head too small":         {fmt.Errorf("%w: %w: it has 4 bytes", ErrNotPrefetchable, errHeadTooShort), reasonHeadTooSmall},
 		"a column type that this version does not know is unsupported": {fmt.Errorf("%w: section 0: %w", ErrNotPrefetchable, unsupportedError("column 0 has an unknown type")), reasonUnsupported},
@@ -67,6 +71,25 @@ func TestFailureReason(t *testing.T) {
 			require.Contains(t, failureReasons, failureReason(tc.err))
 		}
 	})
+}
+
+func TestIsTimeout(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		want bool
+	}{
+		"a context deadline is a timeout":         {context.DeadlineExceeded, true},
+		"a wrapped context deadline is a timeout": {fmt.Errorf("reading the metadata region: %w", context.DeadlineExceeded), true},
+		"a socket timeout is a timeout":           {&net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}, true},
+		"a refused connection is not a timeout":   {&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, false},
+		"a canceled context is not a timeout":     {context.Canceled, false},
+		"any other error is not a timeout":        {errors.New("cache is down"), false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, isTimeout(tc.err))
+		})
+	}
 }
 
 func TestFetchResult_Satisfies(t *testing.T) {

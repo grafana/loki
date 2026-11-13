@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -487,7 +489,7 @@ func TestCachedPrefetcher(t *testing.T) {
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Zero(t, backend.sets())
 		require.Equal(t, map[string]float64{"too_large": 1}, gatherPrefetcherCounts(t, reg).failures)
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"too_large": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 
 	t.Run("returns ErrNotPrefetchable for bytes that are not a data object, and writes nothing", func(t *testing.T) {
@@ -514,6 +516,30 @@ func TestCachedPrefetcher(t *testing.T) {
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Empty(t, req.Source.(*testSource).calls(), "the open must not read the whole region")
 		require.Equal(t, map[string]float64{"cache_unavailable": 1}, gatherPrefetcherCounts(t, reg).failures)
+	})
+
+	t.Run("returns ErrNotPrefetchable and counts a cache timeout when the cache lookup times out", func(t *testing.T) {
+		backend := newFakeCache()
+		backend.timeoutReads = true
+		p, reg := newPrefetcherWithRegistry(t, backend, nil)
+		req := obj.request(prefetchSets["message"])
+
+		_, err := p.Prefetch(t.Context(), req)
+
+		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
+		require.Empty(t, req.Source.(*testSource).calls(), "the open must not read the whole region")
+		require.Equal(t, map[string]float64{"cache_timeout": 1}, gatherPrefetcherCounts(t, reg).failures)
+	})
+
+	t.Run("counts a storage timeout when the object storage client gives up waiting", func(t *testing.T) {
+		p, reg := newPrefetcherWithRegistry(t, newFakeCache(), nil)
+		req := obj.request(prefetchSets["message"])
+		req.Source.(*testSource).err = socketTimeoutError()
+
+		_, err := p.Prefetch(t.Context(), req)
+
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.Equal(t, map[string]float64{"storage_timeout": 1}, gatherPrefetcherCounts(t, reg).failures)
 	})
 
 	t.Run("serves the prefetch from the groups the cache returned when the cache also returned an error", func(t *testing.T) {
@@ -760,7 +786,7 @@ func gatherPrefetcherCounts(t *testing.T, reg *prometheus.Registry) prefetcherCo
 	require.NoError(t, err)
 
 	var failures map[string]float64
-	for _, reason := range []string{"canceled", "timeout", "cache_unavailable", "too_large", "head_too_small", "unsupported", "corrupted", "storage_error"} {
+	for _, reason := range []string{"canceled", "timeout", "cache_timeout", "cache_unavailable", "too_large", "head_too_small", "unsupported", "corrupted", "storage_timeout", "storage_error"} {
 		n := counterWithLabels(t, mfm, prefix+"failures_total", "reason", reason)
 		if n == 0 {
 			continue
@@ -802,8 +828,9 @@ type fakeCache struct {
 	mu     sync.Mutex
 	values map[string][]byte
 
-	// failReads and failWrites make the reads and the writes return an error.
-	failReads, failWrites bool
+	// failReads and failWrites make the reads and the writes return an error. timeoutReads makes the
+	// reads return a socket timeout.
+	failReads, failWrites, timeoutReads bool
 
 	lookupCalls, setItems int
 }
@@ -820,6 +847,9 @@ func (s *fakeCache) Fetch(_ context.Context, keys []string) (found []string, buf
 	}
 	if s.failReads {
 		return nil, nil, nil, errors.New("cache is down")
+	}
+	if s.timeoutReads {
+		return nil, nil, nil, socketTimeoutError()
 	}
 	for _, key := range keys {
 		if value, ok := s.values[key]; ok {
@@ -1040,4 +1070,9 @@ func (b *recordingBucket) readsBelow(end int64) (n int) {
 		}
 	}
 	return n
+}
+
+// socketTimeoutError returns the error that a client gets when a socket read passes its deadline.
+func socketTimeoutError() error {
+	return &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
 }
