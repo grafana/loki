@@ -130,7 +130,7 @@ Common labels: {package_status="critical", service_name="Delivery World"}
 2024-11-26T10:39:50Z {package_id="PKG34018", package_size="Large", state="Illinois"}    {"timestamp": "2024-11-26T10:39:50.510841Z", "state": "Illinois", "city": "Chicago", "package_id": "PKG34018", "package_type": "Clothing", "package_size": "Large", "package_status": "critical", "note": "Delayed due to weather", "sender": {"name": "Sender22", "address": "758 Elm St, Chicago, Illinois"}, "receiver": {"name": "Receiver10", "address": "441 Cedar Blvd, Naperville, Illinois"}}
 ```
 
-Lets suppose we want to look back for the last 24 hours, we can use the `--since` flag to specify the time range:
+Lets suppose we want to look back for the last 24 hours (or 1 day), we can use the `--since` flag to specify the time range (supported duration units include `y`, `w`, `d`, `h`, `m`, `s`, `ms`, e.g. `--since 1d` or `--since 24h`):
 
 ```bash
 logcli query --since 24h '{service_name="Delivery World"} | package_status="critical"' 
