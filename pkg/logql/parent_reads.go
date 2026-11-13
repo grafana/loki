@@ -114,6 +114,12 @@ func (l LabelReads) None() bool {
 	return l.only && len(l.names) == 0
 }
 
+// Bounded is true when the operator reads a fixed set of label names and no other, which is empty
+// when it reads no label.
+func (l LabelReads) Bounded() bool {
+	return l.only
+}
+
 // Reads is true when the operator reads the label name.
 func (l LabelReads) Reads(name string) bool {
 	_, found := slices.BinarySearch(l.names, name)

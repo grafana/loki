@@ -288,6 +288,9 @@ type NodeContext struct {
 	// identityOnly is true when the query lets a range iterator keep only the identity of its
 	// series. Unlike the other fields it is a setting of the query, so every child inherits it.
 	identityOnly bool
+	// hashKeyed is true when the query lets a range iterator key its series on a hash and keep
+	// only the labels that its parent reads.
+	hashKeyed bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -336,6 +339,23 @@ func (c NodeContext) identityOnlyRangeIterator() bool {
 	return c.identityOnly && c.reads.Labels().None() && c.reads.Identity() && !c.reads.Values()
 }
 
+// withHashKeyedRangeIterator returns c, and the NodeContexts derived from it, with range
+// iterators allowed to key their series on a hash when enabled is true.
+func (c NodeContext) withHashKeyedRangeIterator(enabled bool) NodeContext {
+	c.hashKeyed = enabled
+	return c
+}
+
+// hashKeyedRangeIterator returns the hashKeyedRangeIterator of the expression. It is enabled when
+// the query allows it, and the parent reads the values, keeps every series apart, and reads no
+// label or only some.
+func (c NodeContext) hashKeyedRangeIterator() hashKeyedRangeIterator {
+	if !c.hashKeyed || !c.reads.Identity() || !c.reads.Values() || !c.reads.Labels().Bounded() {
+		return hashKeyedRangeIterator{}
+	}
+	return hashKeyedRangeIterator{enabled: true, keep: c.reads.Labels()}
+}
+
 // OutputPreserving is true when every operator between the expression and the root keeps every
 // series it receives, though it may add series from elsewhere. The query then returns at least as
 // many series as the expression holds. It is true for the root expression unless that produces a
@@ -353,9 +373,9 @@ func (c NodeContext) ParentReads() ParentReads {
 // of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
 func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{reads: reads, identityOnly: c.identityOnly}
+		return NodeContext{reads: reads, identityOnly: c.identityOnly, hashKeyed: c.hashKeyed}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, identityOnly: c.identityOnly}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, identityOnly: c.identityOnly, hashKeyed: c.hashKeyed}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -477,7 +497,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				case logproto.SAMPLE_ORDER_BY_STREAM:
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.seriesCutoff(ctx, nc), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, false, rangeAggIteratorLimits(rangeNC, rangExpr))
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, false, hashKeyedRangeIterator{}, rangeAggIteratorLimits(rangeNC, rangExpr))
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -497,7 +517,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, nc.identityOnlyRangeIterator(), rangeAggIteratorLimits(nc, e))
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, nc.identityOnlyRangeIterator(), nc.hashKeyedRangeIterator(), rangeAggIteratorLimits(nc, e))
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false, nc.iteratorLimits(e))
 	case *syntax.CountDistinctSketchExpr:
@@ -897,7 +917,8 @@ func (e *VectorAggEvaluator) Error() error {
 
 // newTimestampFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples
 // must come in global timestamp order. identityOnly is true when the parent reads only which series
-// exist, which lets the iterator keep only the identity of each. On error, it closes the input
+// exist, which lets the iterator keep only the identity of each. hashKeyed is enabled when the
+// parent reads the values and only some of the labels. On error, it closes the input
 // iterator.
 func newTimestampFirstRangeAggEvaluator(
 	ctx context.Context,
@@ -907,6 +928,7 @@ func newTimestampFirstRangeAggEvaluator(
 	o time.Duration,
 	keepsErroredLines bool,
 	identityOnly bool,
+	hashKeyed hashKeyedRangeIterator,
 	limits iteratorLimits,
 ) (_ StepEvaluator, returnErr error) {
 	defer func() {
@@ -978,8 +1000,13 @@ func newTimestampFirstRangeAggEvaluator(
 		}, nil
 	default:
 		newIterator := newTimestampFirstRangeVectorIterator
-		if identityOnly {
+		switch {
+		case identityOnly:
 			newIterator = newTimestampFirstIdentityRangeVectorIterator
+		case hashKeyed.enabled:
+			newIterator = func(it iter.PeekingSampleIterator, expr *syntax.RangeAggregationExpr, selRange, step, start, end, offset int64, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newTimestampFirstHashKeyedRangeVectorIterator(it, expr, hashKeyed.keep, selRange, step, start, end, offset, limits)
+			}
 		}
 		iter, err := newIterator(
 			it, expr,

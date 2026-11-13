@@ -1832,3 +1832,96 @@ func TestEngine_IdentityOnlyRangeIterator_ShouldReturnWhatItReturnsWithoutIt(t *
 		})
 	}
 }
+
+func TestEngine_HashKeyedRangeIterator_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, hashKeyed, cutoff bool, query string, numSeries, step int) (logqlmodel.Result, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, distinctStreams(numSeries, end))
+		eng := NewEngine(EngineOpts{HashKeyedRangeIterator: hashKeyed, MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		// step is in seconds. Zero is an instant query.
+		step int
+		// wantEmpty is true when the query returns no series.
+		wantEmpty bool
+		// wantErr is a part of the error that the query returns, whether the option is on or off.
+		wantErr string
+	}{
+		"avg of max_over_time":                    {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of min_over_time":                    {query: `avg(min_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of avg_over_time":                    {query: `avg(avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of sum_over_time":                    {query: `avg(sum_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of stddev_over_time":                 {query: `avg(stddev_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of quantile_over_time":               {query: `avg(quantile_over_time(0.5, {app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of first_over_time":                  {query: `avg(first_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of last_over_time":                   {query: `avg(last_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of rate_counter":                     {query: `avg(rate_counter({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of count_over_time":                  {query: `avg(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg of rate":                             {query: `avg(rate({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg of bytes_over_time":                  {query: `avg(bytes_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"stddev of count_over_time":               {query: `stddev(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"stdvar of rate":                          {query: `stdvar(rate({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg by an empty grouping":                {query: `avg by () (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that every series has":    {query: `avg by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that tells series apart":  {query: `avg by (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that no series has":       {query: `avg by (missing) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg without reads every label but one":   {query: `avg without (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"stddev by":                               {query: `stddev by (app) (count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"sum of max_over_time keeps series apart": {query: `sum(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"sum by of max_over_time":                 {query: `sum by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"max of avg_over_time":                    {query: `max(avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"min by of avg_over_time":                 {query: `min by (app) (avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg with a range aggregation grouping":   {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]) by (app))`, numSeries: 3, step: 30},
+		"avg with an offset":                      {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m] offset 30s))`, numSeries: 3, step: 30},
+		"avg with a step longer than the range":   {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [10s]))`, numSeries: 3, step: 30},
+		"avg of an instant query":                 {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 0},
+		"avg of a filtered range aggregation":     {query: `avg(count_over_time({app="a"} |= "line 9" [1m]))`, numSeries: 3, step: 30},
+		"avg of a conversion that fails":          {query: `avg(max_over_time({app="a"} | unwrap app [1m]))`, numSeries: 3, step: 30, wantErr: "SampleExtractionErr"},
+		"avg of a malformed json":                 {query: `avg(count_over_time({app="a"} | json [1m]))`, numSeries: 3, step: 30, wantErr: "JSONParserErr"},
+		"avg that drops the errored lines":        {query: `avg(count_over_time({app="a"} | json | __error__="" [1m]))`, numSeries: 3, step: 30, wantEmpty: true},
+		"avg that keeps the errored lines":        {query: `avg(count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 3, step: 30},
+		"avg by that keeps the errored lines":     {query: `avg by (id) (count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 3, step: 30},
+		"avg of more series than the limit":       {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30},
+		"avg by id of more series than the limit": {query: `avg by (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30, wantErr: "maximum number of series (3)"},
+		"avg by of more series than the limit":    {query: `avg by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30},
+		"avg of a binary operation":               {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m])) + avg(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg compared with a vector":              {query: `max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]) > on() group_left avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg inside topk":                         {query: `topk(2, avg by (id) (count_over_time({app="a"}[1m])))`, numSeries: 3, step: 30},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, cutoff := range []bool{false, true} {
+				resOff, errOff := run(t, false, cutoff, tc.query, tc.numSeries, tc.step)
+				resOn, errOn := run(t, true, cutoff, tc.query, tc.numSeries, tc.step)
+
+				if tc.wantErr != "" {
+					require.ErrorContains(t, errOff, tc.wantErr)
+					require.ErrorContains(t, errOn, tc.wantErr)
+					continue
+				}
+				require.Equal(t, errOff, errOn)
+				if errOff != nil {
+					require.NotEqual(t, logqlmodel.Result{}, resOff)
+				}
+				if errOff == nil && !tc.wantEmpty {
+					require.NotEmpty(t, resOn.Data)
+				}
+				require.Equal(t, resOff.Data, resOn.Data)
+			}
+		})
+	}
+}

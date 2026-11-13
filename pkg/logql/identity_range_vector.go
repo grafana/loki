@@ -13,6 +13,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+// seriesHasher returns the seriesKey of a label string. Its seeds are random for each iterator.
+type seriesHasher struct {
+	seeds [2]maphash.Seed
+}
+
+// newSeriesHasher returns a seriesHasher with new random seeds.
+func newSeriesHasher() seriesHasher {
+	return seriesHasher{seeds: [2]maphash.Seed{maphash.MakeSeed(), maphash.MakeSeed()}}
+}
+
+// key returns the seriesKey of the series with label string lbs.
+func (h seriesHasher) key(lbs string) seriesKey {
+	return seriesKey{hi: maphash.String(h.seeds[0], lbs), lo: maphash.String(h.seeds[1], lbs)}
+}
+
 // seriesKey identifies a series by two 64-bit hashes of its label string, taken with different
 // seeds. The seeds are random for each iterator, so a collision is as unlikely as one of a 128-bit
 // hash, and a query cannot be written to force one.
@@ -28,7 +43,7 @@ type seriesKey struct {
 type identityBatchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
-	seeds                                [2]maphash.Seed
+	hasher                               seriesHasher
 	// seen holds every series seen so far, as the batch iterator does with its metrics, so that
 	// the series limit counts the same series.
 	seen map[seriesKey]struct{}
@@ -68,7 +83,7 @@ func newTimestampFirstIdentityRangeVectorIterator(
 		step:     step,
 		end:      end,
 		selRange: selRange,
-		seeds:    [2]maphash.Seed{maphash.MakeSeed(), maphash.MakeSeed()},
+		hasher:   newSeriesHasher(),
 		seen:     map[seriesKey]struct{}{},
 		lastSeen: map[seriesKey]int64{},
 		errored:  map[seriesKey]labels.Labels{},
@@ -102,11 +117,6 @@ func (r *identityBatchRangeVectorIterator) Error() error {
 	return r.iter.Err()
 }
 
-// key returns the seriesKey of the series with label string lbs.
-func (r *identityBatchRangeVectorIterator) key(lbs string) seriesKey {
-	return seriesKey{hi: maphash.String(r.seeds[0], lbs), lo: maphash.String(r.seeds[1], lbs)}
-}
-
 // load the next sample range window.
 func (r *identityBatchRangeVectorIterator) load(start, end int64) {
 	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
@@ -119,7 +129,7 @@ func (r *identityBatchRangeVectorIterator) load(start, end int64) {
 			_ = r.iter.Next()
 			continue
 		}
-		key := r.key(lbs)
+		key := r.hasher.key(lbs)
 		if _, ok := r.seen[key]; !ok {
 			if r.err = r.limits.validateMaxSeries(len(r.seen) + 1); r.err != nil {
 				return

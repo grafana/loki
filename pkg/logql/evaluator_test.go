@@ -649,7 +649,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, iteratorLimits{})
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, hashKeyedRangeIterator{}, iteratorLimits{})
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -661,7 +661,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, iteratorLimits{})
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, hashKeyedRangeIterator{}, iteratorLimits{})
 		require.NoError(t, err)
 		require.False(t, *closed)
 
@@ -683,7 +683,28 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				it, _ := newIterator()
-				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, tc.identityOnly, iteratorLimits{})
+				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, tc.identityOnly, hashKeyedRangeIterator{}, iteratorLimits{})
+				require.NoError(t, err)
+				require.IsType(t, tc.want, ev.(*RangeVectorEvaluator).iter)
+			})
+		}
+	})
+
+	t.Run("builds the hash-keyed iterator only when the parent reads values and few labels", func(t *testing.T) {
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: syntax.OpRangeTypeCount,
+		}
+		for name, tc := range map[string]struct {
+			hashKeyed hashKeyedRangeIterator
+			want      RangeVectorIterator
+		}{
+			"hash keyed":     {hashKeyed: hashKeyedRangeIterator{enabled: true, keep: noLabels()}, want: &hashKeyedBatchRangeVectorIterator{}},
+			"not hash keyed": {want: &batchRangeVectorIterator{}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				it, _ := newIterator()
+				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, tc.hashKeyed, iteratorLimits{})
 				require.NoError(t, err)
 				require.IsType(t, tc.want, ev.(*RangeVectorEvaluator).iter)
 			})
@@ -1692,6 +1713,31 @@ func TestNodeContext(t *testing.T) {
 				nc := RootContext(parse(t, rate), 10).withIdentityOnlyRangeIterator(tc.enabled)
 				require.Equal(t, tc.want, nc.child(false, tc.reads).identityOnlyRangeIterator())
 				require.Equal(t, tc.want, nc.child(true, tc.reads).identityOnlyRangeIterator())
+			})
+		}
+	})
+
+	t.Run("hash-keyed range iterator needs the setting and a parent that reads values and a bounded set of labels", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			enabled bool
+			reads   ParentReads
+			want    hashKeyedRangeIterator
+		}{
+			"no labels":                       {enabled: true, reads: newParentReads(noLabels(), true, true), want: hashKeyedRangeIterator{enabled: true, keep: noLabels()}},
+			"some labels":                     {enabled: true, reads: newParentReads(onlyLabels("app"), true, true), want: hashKeyedRangeIterator{enabled: true, keep: onlyLabels("app")}},
+			"not enabled":                     {enabled: false, reads: newParentReads(noLabels(), true, true)},
+			"every label but some":            {enabled: true, reads: newParentReads(labelsWithout("app"), true, true)},
+			"every label":                     {enabled: true, reads: newParentReads(allLabels(), true, true)},
+			"the parent reads no values":      {enabled: true, reads: newParentReads(noLabels(), true, false)},
+			"the parent merges series":        {enabled: true, reads: newParentReads(noLabels(), false, true)},
+			"the parent reads everything":     {enabled: true, reads: readsEverything()},
+			"the parent reads some, not ids":  {enabled: true, reads: newParentReads(onlyLabels("app"), false, true)},
+			"the parent reads only the label": {enabled: true, reads: newParentReads(onlyLabels("app"), true, false)},
+		} {
+			t.Run(name, func(t *testing.T) {
+				nc := RootContext(parse(t, rate), 10).withHashKeyedRangeIterator(tc.enabled)
+				require.Equal(t, tc.want, nc.child(false, tc.reads).hashKeyedRangeIterator())
+				require.Equal(t, tc.want, nc.child(true, tc.reads).hashKeyedRangeIterator())
 			})
 		}
 	})

@@ -188,6 +188,7 @@ type EngineOpts struct {
 	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
 
 	IdentityOnlyRangeIterator bool `yaml:"identity_only_range_iterator" category:"experimental"`
+	HashKeyedRangeIterator    bool `yaml:"hash_keyed_range_iterator" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -199,6 +200,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 
+	f.BoolVar(&opts.HashKeyedRangeIterator, prefix+"hash-keyed-range-iterator", false, "Experimental: Keep the series of the range iterator of a query that reads the values of its series but few or no labels, such as avg(max_over_time(...)), by a hash, and keep only the labels that the query reads, instead of all the labels.")
 	f.BoolVar(&opts.IdentityOnlyRangeIterator, prefix+"identity-only-range-iterator", false, "Experimental: Keep only a hash and the last timestamp of each series in the range iterator of a query that reads only which series exist, such as count(count_over_time(...)), instead of the labels and the points.")
 
 	// Log executing query by default
@@ -215,6 +217,9 @@ type queryOpts struct {
 	// identityOnlyRangeIterator controls if a range iterator keeps only the identity of its series
 	// where its parent reads nothing else.
 	identityOnlyRangeIterator bool
+	// hashKeyedRangeIterator controls if a range iterator keys its series on a hash, and keeps only
+	// the labels that its parent reads, when the parent reads the values of the series.
+	hashKeyedRangeIterator bool
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
@@ -224,6 +229,7 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
 
 		identityOnlyRangeIterator: opts.IdentityOnlyRangeIterator,
+		hashKeyedRangeIterator:    opts.HashKeyedRangeIterator,
 	}
 }
 
@@ -453,7 +459,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withIdentityOnlyRangeIterator(q.opts.identityOnlyRangeIterator))
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withIdentityOnlyRangeIterator(q.opts.identityOnlyRangeIterator).withHashKeyedRangeIterator(q.opts.hashKeyedRangeIterator))
 	if err != nil {
 		return nil, err
 	}

@@ -253,6 +253,34 @@ eval instant at 60s count(count_over_time({app="a"} | json | __error__!="zzz" [1
   {} 2
 eval range from 20s to 60s step 20s count(count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
   {} 1 2 2
+# An avg or stddev reads the values and keeps every series apart, but keeps no label, or only the
+# grouping one. The errored series is still a series of its own with its own value.
+eval instant at 60s avg(count_over_time({app="a"} | json [1m]))
+  expect fail msg: JSONParserErr
+eval range from 40s to 60s step 20s avg(count_over_time({app="a"} | json [1m])) # overlapping
+  expect fail msg: JSONParserErr
+eval range from 40s to 60s step 20s stddev(count_over_time({app="a"} | json [1m])) # overlapping
+  expect fail msg: JSONParserErr
+eval range from 40s to 60s step 20s avg by (app) (count_over_time({app="a"} | json [1m])) # overlapping
+  expect fail msg: JSONParserErr
+eval instant at 60s avg(count_over_time({app="a"} | json | __error__="" [1m]))
+  {} 2
+eval range from 40s to 60s step 20s avg(count_over_time({app="a"} | json | __error__="JSONParserErr" [1m])) # overlapping
+  {} 1 1
+eval instant at 60s avg(count_over_time({app="a"} | json | __error__!="zzz" [1m]))
+  {} 1.5
+eval range from 40s to 60s step 20s avg(count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
+  {} 1 1.5
+eval range from 40s to 60s step 20s stddev(count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
+  {} 0 0.5
+eval range from 40s to 60s step 20s avg by (app) (count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
+  {app="a"} 1 1.5
+eval range from 40s to 60s step 20s avg by (ok) (count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
+  {ok="1"} 1 2
+  {} 1 1
+eval range from 40s to 60s step 20s avg by (__error__) (count_over_time({app="a"} | json | __error__!="zzz" [1m])) # overlapping
+  {__error__="JSONParserErr"} 1 1
+  {} 1 2
 
 # json() parsing error, that an __error__ filter, keeps in the result the series with the grouped labels
 # plus the labels that report the error.

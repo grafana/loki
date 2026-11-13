@@ -27,6 +27,7 @@ const (
 	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
 	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
 	queryFrontendNoShardIdentityOnlyStackName         = "query-frontend + query-scheduler (no sharding, timestamp-first, identity-only range iterator)"
+	queryFrontendNoShardHashKeyedStackName            = "query-frontend + query-scheduler (no sharding, timestamp-first, hash-keyed range iterator)"
 )
 
 var (
@@ -42,6 +43,7 @@ var (
 		queryFrontendShardDataObjAndChunkStackName,
 		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
 		queryFrontendNoShardIdentityOnlyStackName,
+		queryFrontendNoShardHashKeyedStackName,
 	}
 )
 
@@ -116,6 +118,10 @@ type stackOptions struct {
 	// runs, in the querier and in the query-frontend.
 	identityOnlyRangeIterator bool
 
+	// hashKeyedRangeIterator turns on HashKeyedRangeIterator in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	hashKeyedRangeIterator bool
+
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
 
@@ -143,6 +149,12 @@ func withIdentityOnlyRangeIterator() stackOption {
 	return func(o *stackOptions) { o.identityOnlyRangeIterator = true }
 }
 
+// withHashKeyedRangeIterator returns the stackOption that turns on HashKeyedRangeIterator in
+// every engine of the stack.
+func withHashKeyedRangeIterator() stackOption {
+	return func(o *stackOptions) { o.hashKeyedRangeIterator = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -159,6 +171,7 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	flagext.DefaultValues(&engineOpts)
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
 	engineOpts.IdentityOnlyRangeIterator = o.identityOnlyRangeIterator
+	engineOpts.HashKeyedRangeIterator = o.hashKeyedRangeIterator
 	return engineOpts
 }
 

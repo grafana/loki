@@ -191,6 +191,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 		// Every engine runs with the identity-only range iterator on.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardIdentityOnlyStackName, withIdentityOnlyRangeIterator())),
+
+		// Every engine runs with the hash-keyed range iterator on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardHashKeyedStackName, withHashKeyedRangeIterator())),
 	}
 }
 
