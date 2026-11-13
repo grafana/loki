@@ -70,14 +70,20 @@ func checkStaleCheckpoint(dir string) error {
 	return nil
 }
 
-// warnOnStaleCheckpoint logs, and otherwise ignores, anything checkStaleCheckpoint finds.
+// warnOnStaleCheckpoint logs, and otherwise ignores, anything checkStaleCheckpoint finds. A failure
+// to run the check is logged separately so it isn't mistaken for a stale checkpoint.
 func warnOnStaleCheckpoint(dir string, logger log.Logger) {
 	err := checkStaleCheckpoint(dir)
 	if err == nil {
 		return
 	}
+	if !errors.Is(err, errStaleCheckpoint) {
+		level.Warn(logger).Log("msg", "unable to check the WAL checkpoint against the WAL segments", "err", err)
+		return
+	}
 	level.Error(logger).Log(
-		"msg", "WAL checkpoint doesn't match the WAL segments, it may be stale and replaying it can flush old data; segment files were probably deleted while the checkpoint was kept",
+		"msg", "stale WAL checkpoint found, replaying it may flush old data",
+		"hint", "WAL segment files were probably deleted without the checkpoint directory",
 		"err", err,
 	)
 }
