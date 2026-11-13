@@ -188,6 +188,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 		// Every engine runs with max query series cutoff on.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMaxQuerySeriesCutoffStackName, withMaxQuerySeriesCutoff())),
+
+		// Every engine runs with the identity-only range iterator on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardIdentityOnlyStackName, withIdentityOnlyRangeIterator())),
 	}
 }
 

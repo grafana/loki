@@ -26,6 +26,7 @@ const (
 	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
 	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
 	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
+	queryFrontendNoShardIdentityOnlyStackName         = "query-frontend + query-scheduler (no sharding, timestamp-first, identity-only range iterator)"
 )
 
 var (
@@ -40,6 +41,7 @@ var (
 		queryFrontendShardDataObjStackName,
 		queryFrontendShardDataObjAndChunkStackName,
 		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+		queryFrontendNoShardIdentityOnlyStackName,
 	}
 )
 
@@ -110,6 +112,10 @@ type stackOptions struct {
 	// runs, in the querier and in the query-frontend.
 	maxQuerySeriesCutoff bool
 
+	// identityOnlyRangeIterator turns on IdentityOnlyRangeIterator in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	identityOnlyRangeIterator bool
+
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
 
@@ -131,6 +137,12 @@ func withMaxQuerySeriesCutoff() stackOption {
 	return func(o *stackOptions) { o.maxQuerySeriesCutoff = true }
 }
 
+// withIdentityOnlyRangeIterator returns the stackOption that turns on IdentityOnlyRangeIterator in
+// every engine of the stack.
+func withIdentityOnlyRangeIterator() stackOption {
+	return func(o *stackOptions) { o.identityOnlyRangeIterator = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -146,6 +158,7 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	engineOpts.IdentityOnlyRangeIterator = o.identityOnlyRangeIterator
 	return engineOpts
 }
 
