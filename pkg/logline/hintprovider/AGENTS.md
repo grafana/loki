@@ -153,10 +153,11 @@ Query-shape support and hint lookup for logline index lookups.
       every line, `|= "a" or "" or ""` does not), so we plan nothing for it
       until LogQL defines the semantic.
 18. **`maxConjunctions` bounds the needle sets**
-    - `SupportedQuery` ANDs every clause with `needle.And(maxConjunctions, ...)`
-      and prunes once at the end. Over the limit a clause collapses to the
-      needles all its sets share. 1 gives one set, the needles every branch
-      shares.
+    - `SupportedQuery` builds a factored `needle.Expr` with uncapped `And` and
+      `Or`, maps literals before collapse, and calls `Compile(maxConjunctions)`
+      once on the complete requirement. Compilation bounds DNF expansion and
+      prunes at the end. Over the limit an operand or union collapses to its
+      implied existing literals. 1 gives at most one set.
     - The query-frontend sends its value in `LoglineIndexRequest.max_conjunctions`.
       The querier uses it when above 0, else its own default.
     - Default 4. Examples are pinned in `TestSupportedQuery_Or`.

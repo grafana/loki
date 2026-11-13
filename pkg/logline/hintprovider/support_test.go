@@ -1062,11 +1062,34 @@ func TestSupportedQuery_Or(t *testing.T) {
 		{"one conjunction keeps today's needles", `{app="foo"} |= "seed text" |= "option_a" or "option_b"`, 1, `{"SEED TEXT"}`},
 		{"one conjunction without shared needles", `{app="foo"} |= "abcdef" or "ghijkl"`, 1, "TRUE"},
 		{"zero means the default", `{app="foo"} |= "abcdef" or "ghijkl"`, 0, `{"ABCDEF"} or {"GHIJKL"}`},
+		{
+			"mapping precedes the final cap", `{app="foo"} |= "ABCDEF" or "abcdef"`, 1,
+			`{"ABCDEF"}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, SupportedQuery(expr, 6, tc.maxConjunctions).String())
+		})
+	}
+}
+
+func BenchmarkSupportedQuerySharedLiterals(b *testing.B) {
+	for _, count := range []int{1000, 4000} {
+		b.Run(fmt.Sprintf("literals=%d", count), func(b *testing.B) {
+			var pattern strings.Builder
+			for i := range count {
+				fmt.Fprintf(&pattern, "a%06d.*", i)
+			}
+			pattern.WriteString("(?:(z000000)|(z000001)|(z000002)|(z000003))")
+			expr, err := syntax.ParseExpr(fmt.Sprintf("{app=\"foo\"} |~ %q", pattern.String()))
+			require.NoError(b, err)
+			require.Len(b, SupportedQuery(expr, 6, 0).Conjunctions(), DefaultMaxConjunctions)
+			b.ReportAllocs()
+			for b.Loop() {
+				SupportedQuery(expr, 6, 0)
+			}
 		})
 	}
 }

@@ -19,8 +19,8 @@ const DefaultMaxConjunctions = 4
 // SupportedQuery returns the needles for query shapes that can use logline
 // index hints. The result is True when the query has no needle.
 //
-// Needles are a needle.Expr, an OR of sets of literals. A line can match only
-// if it contains every literal of at least one set. Each filter becomes a
+// Needles are a compiled needle.Plan, an OR of sets of literals. A line can
+// match only if it contains every literal of at least one set. Each filter becomes a
 // clause and all clauses are ANDed:
 //   - line filters (|=, |~) that still run on the ingested line
 //     (collectLineFilters stops at line_format / decolorize / unpack). An or
@@ -48,16 +48,17 @@ const DefaultMaxConjunctions = 4
 // Post-parser literals are split at slashes and spaces so decoded JSON/logfmt
 // values do not require text absent from the ingested line.
 //
-// The result has at most maxConjunctions sets. A clause that would go over
-// collapses to the literals all its sets share. maxConjunctions 1 gives one
+// Requirements remain factored until all filters are combined and mapped.
+// Compile then bounds expansion to maxConjunctions sets, collapsing operands
+// or unions to their implied existing literals when needed. maxConjunctions 1 gives one
 // set, the needles every branch of every OR shares. A value below 1 means
 // DefaultMaxConjunctions.
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Expr {
+func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Plan {
 	if expr == nil || ngramLength <= 0 {
-		return needle.True()
+		return needle.Plan{}
 	}
 	if maxConjunctions <= 0 {
 		maxConjunctions = DefaultMaxConjunctions
@@ -75,7 +76,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.E
 	}
 	clauses = append(clauses, p.postParserClauses(expr)...)
 
-	return needle.And(maxConjunctions, clauses...).Prune()
+	return needle.And(clauses...).Compile(maxConjunctions)
 }
 
 // planner builds the needles of one query.
@@ -136,9 +137,9 @@ func (p planner) lineFilterStage(f *syntax.LineFilterExpr) needle.Expr {
 		for or := curr.Or; or != nil; or = or.Or {
 			branches = append(branches, p.lineFilter(or.LineFilter))
 		}
-		clauses = append(clauses, needle.Or(p.maxConjunctions, branches...))
+		clauses = append(clauses, needle.Or(branches...))
 	}
-	return needle.And(p.maxConjunctions, clauses...)
+	return needle.And(clauses...)
 }
 
 // hasEmptyOrBranch reports whether f has an or chain with a "" branch.
@@ -179,9 +180,9 @@ func (p planner) labelFilter(filter logql_log.LabelFilterer, keep func(string) (
 		left := p.labelFilter(f.Left, keep)
 		right := p.labelFilter(f.Right, keep)
 		if f.And {
-			return needle.And(p.maxConjunctions, left, right)
+			return needle.And(left, right)
 		}
-		return needle.Or(p.maxConjunctions, left, right)
+		return needle.Or(left, right)
 
 	case *logql_log.LineFilterLabelFilter:
 		// Usual leaf after ParseExpr for | foo="bar" / | foo=~"...".
