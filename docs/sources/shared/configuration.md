@@ -5681,6 +5681,12 @@ engine:
   # CLI flag: -querier.engine.enable-histograms
   [enable_histograms: <boolean> | default = false]
 
+  # Experimental: Comma-separated counts of intermediate series. A query job
+  # logs a line the first time the label sets its range iterators hold reach
+  # each count. Set empty to turn off.
+  # CLI flag: -querier.engine.intermediate-series-breadcrumbs
+  [intermediate_series_breadcrumbs: <list of ints> | default = 10000,50000,100000,500000]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
