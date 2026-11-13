@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.22](https://github.com/grafana/loki/compare/v3.6.21...v3.6.22) (2026-11-13)
+
+
+### Bug Fixes
+
+* **security/MEDIUM/:** Update module go.opentelemetry.io/otel/sdk/log to v1 [SECURITY] (release-3.6.x) ([#26487](https://github.com/grafana/loki/issues/26487)) ([3d2b1a6](https://github.com/grafana/loki/commit/3d2b1a63ff96577da50a6058278c326df6c455b3))
+
 ## [3.6.21](https://github.com/grafana/loki/compare/v3.6.20...v3.6.21) (2026-11-12)
 
 
