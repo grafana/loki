@@ -25,9 +25,21 @@ func TestUnreachable(t *testing.T) {
 		{"ignores reachable paths that were not scanned", []string{"b", "d"}, []string{"a", "c", "d", "e"}, []string{"b"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, unreachable(tc.scanned, tc.reachable))
+			got, err := unreachable(tc.scanned, tc.reachable)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
 		})
 	}
+
+	t.Run("returns an error when the scanned paths are not sorted", func(t *testing.T) {
+		_, err := unreachable([]string{"b", "a"}, nil)
+		require.ErrorContains(t, err, "scanned paths are not sorted")
+	})
+
+	t.Run("returns an error when the reachable paths are not sorted", func(t *testing.T) {
+		_, err := unreachable([]string{"a"}, []string{"b", "a"})
+		require.ErrorContains(t, err, "reachable paths are not sorted")
+	})
 }
 
 func TestFindCandidates(t *testing.T) {
@@ -69,6 +81,23 @@ func TestFindCandidates(t *testing.T) {
 
 		cands, err := findCandidates(seqOf([]string{"a", "b", "c"}, errAtEnd), []string{"a"})
 		require.ErrorIs(t, err, errAtEnd)
+		require.Zero(t, cands.count())
+	})
+
+	t.Run("returns an error when the current paths are not sorted", func(t *testing.T) {
+		_, err := findCandidates(seqOf([]string{"a"}, nil), []string{"b", "a"})
+		require.ErrorContains(t, err, "current paths are not sorted")
+	})
+
+	t.Run("returns no candidates and an error when the stored paths are not in increasing order", func(t *testing.T) {
+		cands, err := findCandidates(seqOf([]string{"a", "c", "b"}, nil), []string{"a", "b", "c"})
+		require.ErrorContains(t, err, `previous paths are not in strictly increasing order: "b" is not after "c"`)
+		require.Zero(t, cands.count())
+	})
+
+	t.Run("returns no candidates and an error when the stored paths repeat", func(t *testing.T) {
+		cands, err := findCandidates(seqOf([]string{"a", "a"}, nil), []string{"a"})
+		require.ErrorContains(t, err, "not in strictly increasing order")
 		require.Zero(t, cands.count())
 	})
 

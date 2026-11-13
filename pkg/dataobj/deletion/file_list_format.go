@@ -22,12 +22,8 @@ var ErrMalformedFileList = errors.New("malformed file list")
 
 // fileListVersion is the version of the stored format that this package
 // writes and reads. The paths of the list are the objects of the tenant that
-// no ToC could reach.
-//
-// Older binaries wrote version 1 lists, whose paths are every object of the
-// tenant. Each side rejects the other version as malformed. So a sweep never
-// compares with a list of every object, and an older binary never replaces
-// a newer list.
+// no ToC could reach. Decoding rejects lists of any other version as
+// malformed, and the sweep never replaces them.
 const fileListVersion = 2
 
 // fileListHeader is the first record of a stored file list.

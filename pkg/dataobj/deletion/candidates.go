@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -18,9 +19,17 @@ import (
 const examplesPerKind = 5
 
 // unreachable returns the paths of scanned that reachable does not hold.
-// Both must be sorted. The result is sorted, and shares no memory with
-// scanned.
-func unreachable(scanned, reachable []string) []string {
+// The result is sorted, and shares no memory with scanned.
+//
+// It returns an error if scanned or reachable is not sorted. The merge would
+// then miss reachable paths and return them as unreachable.
+func unreachable(scanned, reachable []string) ([]string, error) {
+	if !slices.IsSorted(scanned) {
+		return nil, errors.New("scanned paths are not sorted")
+	}
+	if !slices.IsSorted(reachable) {
+		return nil, errors.New("reachable paths are not sorted")
+	}
 	result := make([]string, 0, len(scanned))
 	i := 0
 	for _, p := range scanned {
@@ -32,7 +41,7 @@ func unreachable(scanned, reachable []string) []string {
 		}
 		result = append(result, p)
 	}
-	return result
+	return result, nil
 }
 
 // candidates are the deletion candidates of a sweep: the objects in both the
@@ -55,21 +64,33 @@ func (c candidates) count() int {
 }
 
 // findCandidates returns the paths that previous yields and that current
-// holds, split into log objects and index objects. previous must yield paths
-// in strictly increasing order, and current must be sorted.
+// holds, split into log objects and index objects.
+//
+// It returns an error, and no candidates, if previous does not yield paths in
+// strictly increasing order or current is not sorted. The merge would then
+// miss candidates. previous streams from the stored list, so findCandidates
+// checks its order while it reads.
 //
 // findCandidates reads previous to the end, even after the last match. gzip
 // checks the checksum only at the end of the list. So findCandidates returns
 // an error, and no candidates, for a corrupt or truncated list.
 func findCandidates(previous iter.Seq2[string, error], current []string) (candidates, error) {
+	if !slices.IsSorted(current) {
+		return candidates{}, errors.New("current paths are not sorted")
+	}
 	var (
 		result candidates
 		i      int
+		last   string
 	)
 	for p, err := range previous {
 		if err != nil {
 			return candidates{}, err
 		}
+		if result.previousPaths > 0 && p <= last {
+			return candidates{}, fmt.Errorf("previous paths are not in strictly increasing order: %q is not after %q", p, last)
+		}
+		last = p
 		result.previousPaths++
 		for i < len(current) && current[i] < p {
 			i++

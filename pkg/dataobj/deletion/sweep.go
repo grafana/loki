@@ -156,7 +156,11 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	if err != nil {
 		return "", fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
 	}
-	list := FileList{Tenant: tenant, CreatedAt: now, Paths: unreachable(scanned, reachable)}
+	unreachablePaths, err := unreachable(scanned, reachable)
+	if err != nil {
+		return "", fmt.Errorf("finding unreachable objects of tenant %q: %w", tenant, err)
+	}
+	list := FileList{Tenant: tenant, CreatedAt: now, Paths: unreachablePaths}
 	if len(scanned) > 0 && len(list.Paths) == len(scanned) {
 		return "", fmt.Errorf("no ToC of tenant %q reaches any of the %d scanned objects, and none of the %d reachable objects is among them", tenant, len(scanned), len(reachable))
 	}
