@@ -6,8 +6,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
@@ -126,4 +129,168 @@ func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, 
 
 func (m *mockRulesManager) RuleGroups() []*promRules.Group {
 	return nil
+}
+
+func TestNotifierRebuiltOnAMConfigChange(t *testing.T) {
+	dir := t.TempDir()
+	const user = "testUser"
+
+	limits := ruleLimits{
+		alertManagerConfig: map[string]*rulerconfig.AlertManagerConfig{
+			user: {AlertmanagerURL: "http://alertmanager-initial:9093"},
+		},
+	}
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, prometheus.NewRegistry(), log.NewNopLogger(), limits, "test")
+	require.NoError(t, err)
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {{Name: "group1", Namespace: "ns", Interval: 1 * time.Minute, User: user}},
+	}
+	m.SyncRuleGroups(context.Background(), userRules)
+
+	require.False(t, m.amConfigChanged(user))
+
+	// Change the alertmanager URL — amConfigChanged should detect it.
+	limits.alertManagerConfig[user] = &rulerconfig.AlertManagerConfig{AlertmanagerURL: "http://alertmanager-updated:9093"}
+	m.limits = limits
+	require.True(t, m.amConfigChanged(user))
+
+	// After sync the hash is updated and the change is no longer detected.
+	m.SyncRuleGroups(context.Background(), userRules)
+	require.False(t, m.amConfigChanged(user))
+
+	m.Stop()
+}
+
+func TestNotifierHashUnchangedWhenConfigUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	const user = "testUser"
+
+	limits := ruleLimits{
+		alertManagerConfig: map[string]*rulerconfig.AlertManagerConfig{
+			user: {AlertmanagerURL: "http://alertmanager:9093"},
+		},
+	}
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, prometheus.NewRegistry(), log.NewNopLogger(), limits, "test")
+	require.NoError(t, err)
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {{Name: "group1", Namespace: "ns", Interval: 1 * time.Minute, User: user}},
+	}
+	m.SyncRuleGroups(context.Background(), userRules)
+	require.False(t, m.amConfigChanged(user))
+
+	m.SyncRuleGroups(context.Background(), userRules)
+	require.False(t, m.amConfigChanged(user))
+
+	m.Stop()
+}
+
+func TestNoNotifierForUnknownTenant(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{}, "test")
+	require.NoError(t, err)
+	require.False(t, m.amConfigChanged("unknown-tenant"))
+}
+
+// TestNotifierAppliesURLChange verifies that after a sync following an alertmanager URL change,
+// the notifier's active targets reflect the new URL.
+func TestNotifierAppliesURLChange(t *testing.T) {
+	dir := t.TempDir()
+	const user = "testUser"
+
+	limits := ruleLimits{
+		alertManagerConfig: map[string]*rulerconfig.AlertManagerConfig{
+			user: {AlertmanagerURL: "http://alertmanager-initial:9093"},
+		},
+	}
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, prometheus.NewRegistry(), log.NewNopLogger(), limits, "test")
+	require.NoError(t, err)
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {{Name: "group1", Namespace: "ns", Interval: 1 * time.Minute, User: user}},
+	}
+	m.SyncRuleGroups(context.Background(), userRules)
+
+	// Verify the initial URL is active. The notifier appends /api/v1/alerts to the path.
+	test.Poll(t, 2*time.Second, "http://alertmanager-initial:9093/api/v1/alerts", func() interface{} {
+		m.notifiersMtx.Lock()
+		defer m.notifiersMtx.Unlock()
+		n, ok := m.notifiers[user]
+		if !ok || len(n.notifier.Alertmanagers()) == 0 {
+			return ""
+		}
+		return n.notifier.Alertmanagers()[0].String()
+	})
+
+	// Update the alertmanager URL and re-sync.
+	limits.alertManagerConfig[user] = &rulerconfig.AlertManagerConfig{AlertmanagerURL: "http://alertmanager-updated:9093"}
+	m.limits = limits
+	m.SyncRuleGroups(context.Background(), userRules)
+
+	// Verify the notifier now points at the new URL.
+	test.Poll(t, 2*time.Second, "http://alertmanager-updated:9093/api/v1/alerts", func() interface{} {
+		m.notifiersMtx.Lock()
+		defer m.notifiersMtx.Unlock()
+		n, ok := m.notifiers[user]
+		if !ok || len(n.notifier.Alertmanagers()) == 0 {
+			return ""
+		}
+		return n.notifier.Alertmanagers()[0].String()
+	})
+
+	m.Stop()
+}
+
+// TestNotifierDetectsCredentialRotation verifies that rotating a password or bearer token
+// in the alertmanager config is detected as a change. Previously this was broken because
+// flagext.Secret.MarshalYAML redacts values to "********", making the hash identical.
+func TestNotifierDetectsCredentialRotation(t *testing.T) {
+	dir := t.TempDir()
+	const user = "testUser"
+
+	limits := ruleLimits{
+		alertManagerConfig: map[string]*rulerconfig.AlertManagerConfig{
+			user: {
+				AlertmanagerURL: "http://alertmanager:9093",
+				Notifier: rulerconfig.NotifierConfig{
+					BasicAuth: lokiutil.BasicAuth{
+						Username: "user",
+						Password: flagext.SecretWithValue("initial-password"),
+					},
+				},
+			},
+		},
+	}
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, prometheus.NewRegistry(), log.NewNopLogger(), limits, "test")
+	require.NoError(t, err)
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {{Name: "group1", Namespace: "ns", Interval: 1 * time.Minute, User: user}},
+	}
+	m.SyncRuleGroups(context.Background(), userRules)
+	require.False(t, m.amConfigChanged(user))
+
+	// Rotate the password — amConfigChanged must detect this.
+	limits.alertManagerConfig[user] = &rulerconfig.AlertManagerConfig{
+		AlertmanagerURL: "http://alertmanager:9093",
+		Notifier: rulerconfig.NotifierConfig{
+			BasicAuth: lokiutil.BasicAuth{
+				Username: "user",
+				Password: flagext.SecretWithValue("rotated-password"),
+			},
+		},
+	}
+	m.limits = limits
+	require.True(t, m.amConfigChanged(user), "credential rotation must be detected")
+
+	// After sync the hash is updated and the change is no longer detected.
+	m.SyncRuleGroups(context.Background(), userRules)
+	require.False(t, m.amConfigChanged(user))
+
+	m.Stop()
 }
