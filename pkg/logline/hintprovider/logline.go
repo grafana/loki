@@ -229,6 +229,15 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 	return p.store.MinDate()
 }
 
+// NgramLength returns the n-gram length lookups use, so the hint cache can key
+// on it.
+func (p *LoglineHintProvider) NgramLength() int {
+	if p == nil {
+		return 0
+	}
+	return p.ngramLength
+}
+
 func (p *LoglineHintProvider) openIndexReader(
 	ctx context.Context,
 	meta store.Meta,

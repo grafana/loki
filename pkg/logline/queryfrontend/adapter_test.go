@@ -215,6 +215,11 @@ func requireEqualAdapterHintBounds(t *testing.T, want, got []hintprovider.HintTi
 	}
 }
 
+func TestFrontendHintAdapter_NgramLength(t *testing.T) {
+	adapter := &frontendHintAdapter{inner: newAdapterTestProvider(t, newAdapterTestStore(t), 32)}
+	require.Equal(t, 6, adapter.NgramLength())
+}
+
 func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
 	t.Helper()
 	expr, err := syntax.ParseExpr(query)

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,7 +22,7 @@ import (
 
 const (
 	hintCacheKeyPrefix  = "logline:"
-	hintCacheGeneration = 1
+	hintCacheGeneration = 2
 	hintCacheDayLayout  = "2006-01-02"
 )
 
@@ -72,6 +75,10 @@ type provideHintsResult struct {
 
 type minDateProvider interface {
 	MinDate() time.Time
+}
+
+type ngramLengthProvider interface {
+	NgramLength() int
 }
 
 // CachingHintProvider wraps another QueryHintProvider with day-aligned caching.
@@ -217,7 +224,12 @@ func (p *CachingHintProvider) ProvideHints(
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
 	}
 
+	// Key on what the lookup does, so queries with the same needles share entries.
+	// The delegate is still asked about expr. Without needles, key on expr.
 	queryString := expr.String()
+	if key, ok := needleKey(expr, cacheKeyNgramLength(p.delegate)); ok {
+		queryString = key
+	}
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
 
@@ -367,6 +379,16 @@ func cacheKeyMinDate(delegate QueryHintProvider) string {
 	return minDate.Format(hintCacheDayLayout)
 }
 
+// cacheKeyNgramLength returns the delegate's n-gram length, or 0 when it doesn't
+// report one.
+func cacheKeyNgramLength(delegate QueryHintProvider) int {
+	p, ok := delegate.(ngramLengthProvider)
+	if !ok {
+		return 0
+	}
+	return p.NgramLength()
+}
+
 func buildDayWindows(tenant, query, minDate string, from, through time.Time) []dayWindow {
 	start := from.UTC()
 	end := through.UTC()
@@ -389,6 +411,32 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 		})
 	}
 	return days
+}
+
+// needleKey returns the cache key for what a lookup does for expr: its needles
+// and the n-gram length. Queries with the same needles share a key, even with
+// different stream matchers or pipelines. ok is false with no single log
+// selector or no needles; key on the expression then.
+func needleKey(expr syntax.Expr, ngramLength int) (key string, ok bool) {
+	selector := expr
+	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
+		selector = inner
+	}
+	// A binary operation has a selector on each side, and SupportedQuery would
+	// combine their needles into one list. Key on the expression instead.
+	if _, isLog := selector.(syntax.LogSelectorExpr); !isLog {
+		return "", false
+	}
+	// The same call the lookup makes, so the key holds the needles it uses.
+	needles := SupportedQuery(expr, ngramLength)
+	if len(needles) == 0 {
+		return "", false
+	}
+	sort.Strings(needles)
+	for i, n := range needles {
+		needles[i] = strconv.Quote(n) // so a needle containing "," can't look like two
+	}
+	return fmt.Sprintf("n=%d f=%s", ngramLength, strings.Join(needles, ",")), true
 }
 
 func buildHintCacheLogicalKey(tenant, query, minDate, day string) string {
