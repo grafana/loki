@@ -212,7 +212,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		labels.Label{Name: "service_name", Value: "baz_service"},
 	)
 
-	setup := func(now time.Time) (*instance, *mockEntryWriter) {
+	setup := func(t *testing.T, now time.Time) (*instance, *mockEntryWriter) {
 		ingesterID := "foo"
 		replicationSet := ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -248,7 +248,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		err = inst.Push(context.Background(), &push.PushRequest{
+		err = inst.Push(t.Context(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),
@@ -296,9 +296,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 					},
 				},
 			},
-		}, time.Now(), fakePartition)
+		}, now, fakePartition)
 		for i := 0; i < 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
+			err = inst.Push(t.Context(), &push.PushRequest{
 				Streams: []push.Stream{
 					{
 						Labels: lbs.String(),
@@ -331,7 +331,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						},
 					},
 				},
-			}, time.Now(), fakePartition)
+			}, now, fakePartition)
 			require.NoError(t, err)
 		}
 		require.NoError(t, err)
@@ -341,7 +341,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 
 	t.Run("accumulates bytes and count for each stream and level on every push", func(t *testing.T) {
 		now := time.Now()
-		inst, _ := setup(now)
+		inst, _ := setup(t, now)
 
 		require.Len(t, inst.aggMetrics[fakePartition].metrics, 3)
 
@@ -368,7 +368,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
 		now := model.Now()
-		inst, mockWriter := setup(now.Time())
+		inst, mockWriter := setup(t, now.Time())
 		// Entries are written at the start of the bucket, once the bucket has been
 		// idle for a sample period.
 		bucket := inst.aggMetrics[fakePartition]
