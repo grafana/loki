@@ -120,6 +120,8 @@ lbac:
 
 # Fraction of the memory limit to set as GOMEMLIMIT when
 # -config.automemlimit-enabled is true. Must be greater than 0 and at most 1.
+# Memory ballast counts toward this limit, so keep -config.ballast-bytes well
+# below it.
 # CLI flag: -config.automemlimit-ratio
 [automemlimit_ratio: <float> | default = 0.9]
 

@@ -36,7 +36,7 @@ func TestSetAutoMemLimit(t *testing.T) {
 				t.Setenv("GOMEMLIMIT", *tc.gomemlimit)
 			}
 
-			setAutoMemLimit(loki.Config{AutoMemLimitEnabled: tc.enabled, AutoMemLimitRatio: 0.9}, log.NewNopLogger())
+			setAutoMemLimit(t.Context(), loki.Config{AutoMemLimitEnabled: tc.enabled, AutoMemLimitRatio: 0.9}, log.NewNopLogger())
 
 			got := debug.SetMemoryLimit(-1)
 			if tc.wantChanged {

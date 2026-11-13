@@ -190,7 +190,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"for example after an in-place pod resize. Has no effect if the GOMEMLIMIT environment variable is set.",
 	)
 	f.Float64Var(&c.AutoMemLimitRatio, "config.automemlimit-ratio", 0.9,
-		"Fraction of the memory limit to set as GOMEMLIMIT when -config.automemlimit-enabled is true. Must be greater than 0 and at most 1.",
+		"Fraction of the memory limit to set as GOMEMLIMIT when -config.automemlimit-enabled is true. Must be greater than 0 and at most 1. "+
+			"Memory ballast counts toward this limit, so keep -config.ballast-bytes well below it.",
 	)
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
