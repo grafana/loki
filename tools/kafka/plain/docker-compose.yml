@@ -1,10 +1,10 @@
 services:
   zookeeper:
-    image: wurstmeister/zookeeper
+    image: wurstmeister/zookeeper@sha256:7a7fd44a72104bfbd24a77844bad5fabc86485b036f988ea927d1780782a6680
     ports:
       - "2181:2181"
   kafka:
-    image: wurstmeister/kafka
+    image: wurstmeister/kafka@sha256:2d4bbf9cc83d9854d36582987da5f939fb9255fb128d18e3cf2c6ad825a32751
     ports:
       - "9092"
     environment:
