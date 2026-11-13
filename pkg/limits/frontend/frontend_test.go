@@ -317,6 +317,7 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	tests := []struct {
 		name             string
 		response         *proto.CheckLimitsAndShardResponse
+		err              error
 		expected         []*proto.StreamShardResult
 		expectedShards   float64
 		expectedFailed   float64
@@ -330,6 +331,13 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	}, {
 		name:           "results for a subset of the streams",
 		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
+		expectedShards: 5,
+		expectedFailed: 1,
+	}, {
+		name:           "results for a subset of the streams, returned with an error",
+		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		err:            errors.New("boom"),
 		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
 		expectedShards: 5,
 		expectedFailed: 1,
@@ -359,7 +367,7 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := newTestFrontend(t)
-			f.limitsClient = &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.response}
+			f.limitsClient = &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.response, err: test.err}
 			resp, err := f.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
 				Tenant:  "test",
 				Streams: streams,

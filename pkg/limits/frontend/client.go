@@ -22,7 +22,9 @@ type limitsClient interface {
 	// CheckLimitsAndShard checks limits and returns a shard-count
 	// recommendation per stream. The results may cover just a subset of the
 	// requested streams, as backends do not answer streams whose partition
-	// they do not own, and unavailable backends do not answer at all.
+	// they do not own, and unavailable backends do not answer at all. A
+	// response returned together with an error holds the results decided
+	// without the failed call, such as those answered from a cache.
 	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 
