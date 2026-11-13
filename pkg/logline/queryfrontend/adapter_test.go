@@ -107,6 +107,24 @@ func TestFrontendHintAdapter_ProvideHints(t *testing.T) {
 		require.Empty(t, hints.TimeRanges)
 	})
 
+	t.Run("passes through when no indexes overlap and a version has no terms for the query", func(t *testing.T) {
+		indexStore := newAdapterTestStore(t)
+		adapter := &frontendHintAdapter{
+			inner: newAdapterTestProvider(t, indexStore, 32),
+			next: queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				t.Fatal("next should not run when the plan has no indexes")
+				return nil, nil
+			}),
+		}
+		// `'` splits o'brien into words shorter than 6 bytes. v4 and v5 need 9 digits for a numeric term.
+		for _, query := range []string{`{job="api"} |= "o'brien"`, `{job="api"} |= "12345678"`} {
+			hints, _, err := adapter.ProvideHints(context.Background(), "test-tenant", mustParseAdapterExpr(t, query), from, through)
+			require.NoError(t, err)
+			require.Len(t, hints.TimeRanges, 1, query)
+			require.True(t, hints.TimeRanges[0].IsPassthrough(), query)
+		}
+	})
+
 	t.Run("errors on unexpected response type", func(t *testing.T) {
 		indexStore := newAdapterTestStore(t)
 		writeAdapterTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)

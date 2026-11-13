@@ -80,6 +80,18 @@ eval instant at 60s sum(count_over_time({app="a"} |= "error" or "xxer" [1m]))
 eval instant at 60s sum(count_over_time({app="a"} |= "error" |= "here" [1m]))
   {} 2
 
+# |= (substring match) on lines with only short words. `'` splits "o'brien" into "o" and "brien".
+# This scenario is related to the Logline index, which holds no term for a word shorter than 6 bytes.
+clear
+load
+  {app="a"} "name=o'brien" @ 20s [repeat every 20s for 3]
+  {app="a"} "name=o'neil"  @ 10s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} |= "o'brien" [1m])
+  {app="a"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} |= "o'brien" [1m])   # overlapping
+  {app="a"} 2 3
+
 # |~ / !~ (regexp match)
 clear
 load
