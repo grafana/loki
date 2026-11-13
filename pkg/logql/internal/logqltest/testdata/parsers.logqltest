@@ -32,6 +32,23 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt --keep-empty [1m])
   {app="a", a_b="1", _9x="2", dup="first", msg="hi there", empty=""} 2 3
 
+# logfmt() edge cases:
+# - A quoted value decodes `\/` to `/`.
+# - U+FFFD in a value becomes a space.
+clear
+load
+  {app="a"} `path="\/api\/v1\/accounts" msg=connection�refused` @ 20s [repeat every 20s for 3]
+  {app="a"} `path="\/api\/v1\/payments" msg=connection�accepted` @ 10s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | path="/api/v1/accounts" [1m])
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt | path="/api/v1/accounts" [1m])  # overlapping
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 2 3
+eval instant at 60s count_over_time({app="a"} | logfmt | msg="connection refused" [1m])
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt | msg="connection refused" [1m])  # overlapping
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 2 3
+
 # logfmt() clashing labels keep the loser under `<name>_extracted`, following the base-name
 # precedence stream > metadata > parsed (the same for every parser).
 clear
@@ -175,6 +192,23 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
   {app="a", level="stream", level_extracted="parsed", a_b="1", dup="first"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])  # overlapping
   {app="a", level="stream", level_extracted="parsed", a_b="1", dup="first"} 2 3
+
+# json() edge cases:
+# - `\/` decodes to `/`.
+# - `\ufffd` decodes to U+FFFD, which becomes a space.
+clear
+load
+  {app="a"} `{"path":"\/api\/v1\/accounts","msg":"connection\ufffdrefused"}` @ 20s [repeat every 20s for 3]
+  {app="a"} `{"path":"\/api\/v1\/payments","msg":"connection\ufffdaccepted"}` @ 10s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json | path="/api/v1/accounts" [1m])
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json | path="/api/v1/accounts" [1m])  # overlapping
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 2 3
+eval instant at 60s count_over_time({app="a"} | json | msg="connection refused" [1m])
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json | msg="connection refused" [1m])  # overlapping
+  {app="a", path="/api/v1/accounts", msg="connection refused"} 2 3
 
 # json() clashing labels keep the loser under `<name>_extracted`, following the base-name
 # precedence stream > metadata > parsed (the same for every parser).
