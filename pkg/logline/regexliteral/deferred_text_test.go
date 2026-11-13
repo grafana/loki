@@ -168,8 +168,8 @@ func TestDeferredText_RepeatAdjacency(t *testing.T) {
 		})
 	}
 
-	// The first branch is shorter but lexically later. The old sorted set's
-	// first member has 257 bytes, so a second exact copy must be rejected.
+	// The first branch is shorter but lexically later. The lexically first
+	// member has 257 bytes, so a second exact copy must be rejected.
 	re, err := parse(`(?:z|a{257}){2}`)
 	require.NoError(t, err)
 	require.Nil(t, analyze(re, maxExact).exact[re][richMode])

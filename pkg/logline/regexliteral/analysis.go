@@ -45,16 +45,16 @@ func (a *regexAnalysis) summary(re *syntax.Regexp) [2]textSet {
 	return sets
 }
 
-// exactNode requests child summaries only when needed, preserving the old
-// short-circuit traversal. This matters for an optional body whose first child
-// is non-exact: no fallback emission needs the rest of that body either.
+// exactNode requests child summaries only when needed so optional non-exact
+// bodies can short-circuit. If the first child is non-exact, fallback emission
+// does not need the rest of that body either.
 // Each mode retains its own intermediate checks and sticky failures.
 func (a *regexAnalysis) exactNode(re *syntax.Regexp, mode int) textSet {
 	limit := a.limits[mode]
 	switch re.Op {
 	case syntax.OpLiteral:
-		// Preserve the parser's case-fold canonical form. As before, a few
-		// non-ASCII spellings of ASCII fold orbits are deliberately missed;
+		// Use the parser's case-fold canonical form. A few non-ASCII
+		// spellings of ASCII fold orbits are deliberately missed;
 		// see AGENTS.md and the existing no-false-negatives test exclusions.
 		return textSet{textLeaf(string(re.Rune))}
 
@@ -107,8 +107,9 @@ func (a *regexAnalysis) exactNode(re *syntax.Regexp, mode int) textSet {
 			return nil
 		}
 		if len(s) == 1 {
-			// Check before the final copy, as in P2. A zero count still
-			// requires an exact child; do not bypass an earlier failure.
+			// Check the byte limit before the final copy, which may cross it.
+			// A zero count still requires an exact child; do not bypass an
+			// earlier failure.
 			if n := textBytes(s[0]); re.Min > 0 && n > 0 && re.Min-1 > maxRepeatBytes/n {
 				return nil
 			}
@@ -140,7 +141,7 @@ func optionalExact(s textSet, limit int) textSet {
 	return set
 }
 
-// classExact keeps P2's raw-rune check before ASCII uppercasing and dedup.
+// classExact bounds the raw rune count before ASCII uppercasing and dedup.
 // The basic and rich class caps remain independent of the final DNF cap.
 func classExact(re *syntax.Regexp, limit int) textSet {
 	n := 0

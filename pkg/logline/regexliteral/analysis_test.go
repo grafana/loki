@@ -11,9 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/needle"
 )
 
-// Deterministic syntax and context combinations, not randomly generated cases.
-// The frozen P2 implementation is the oracle: this optimization must preserve
-// precision, not merely avoid false negatives.
+// Deterministic syntax and context combinations check exact precision against
+// the reference walker, not merely the absence of false negatives.
 var analysisPatterns = []string{
 	``, `plain`, `.*`, `.+`, `[a-z]+`, `a\bword$`,
 	`(a?)(a?)`, `((a?)(a?)){0}`, `(?:.*){0}`, `(?:x*)?`,
@@ -193,7 +192,7 @@ func TestAnalysis_NestedNonExact(t *testing.T) {
 		{`L((foo.*bar)+)R`, needle.Conjunctions{{"L", "R", "bar", "foo"}}},
 		{`L((foo.*bar){2,3})R`, needle.Conjunctions{{"L", "R", "bar", "foo"}}},
 		{`L((foo.*bar)?)R`, needle.Conjunctions{{"L", "R"}}},
-		// Even zero copies must retain the old child's exact failure: do
+		// Even zero copies must retain the child's exact failure: do
 		// not infer an empty exact set and accidentally join L to R.
 		{`L((?:.*){0})R`, needle.Conjunctions{{"L", "R"}}},
 	} {

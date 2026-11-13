@@ -42,7 +42,7 @@ func BenchmarkNeedlesNestedNonExact(b *testing.B) {
 	}
 }
 
-// Optional non-exact bodies previously short-circuited at the first wildcard.
+// Optional non-exact bodies can short-circuit at the first wildcard.
 // Keep this case alongside nested captures to expose eager-analysis overhead.
 func BenchmarkNeedlesOptionalNonExact(b *testing.B) {
 	for _, captures := range []int{64, 1000} {

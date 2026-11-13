@@ -1,5 +1,5 @@
-// Frozen P2 walker from 072f4aa2ff: a test-only oracle for exact compiled-output parity.
-// Keep its recursive exact attempts independent of the production analysis.
+// The reference walker is a test-only oracle for exact compiled-output parity.
+// Its recursive exact attempts are independent of the memoized analysis.
 package regexliteral
 
 import (
@@ -213,9 +213,9 @@ func (w *referenceWalker) exact(re *syntax.Regexp) (textSet, bool) {
 			return nil, false
 		}
 		if len(s) == 1 {
-			// The old loop checks the accumulated byte length before each
-			// copy, so the last copy may cross maxRepeatBytes. Share repeated
-			// subtrees without changing that boundary (or truncating text).
+			// The byte limit is checked before each copy, so the final copy
+			// may cross maxRepeatBytes. Repeated subtrees share storage
+			// without truncating text.
 			if n := textBytes(s[0]); re.Min > 0 && n > 0 && re.Min-1 > maxRepeatBytes/n {
 				return nil, false
 			}

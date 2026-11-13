@@ -88,15 +88,15 @@ intermediate text. Only `Compile` takes the query's DNF cap.
    bounded OR absorption can lose precision if absorbing literals arrive late.
    Singleton exact repeats share doubled subtrees. There is no new text
    budget or truncation: large adjacent captures still produce full literals.
-8. **Deduplication and repeat accounting are unchanged.** Deferred sets are
+8. **Deduplication and repeat accounting.** Deferred sets are
    unordered to avoid sorting and rescanning shared prefixes after every
    cross. Fingerprints only reject unequal text; equal fingerprints and byte
    lengths require byte comparisons, which skip identical shared subtrees.
-   Deduplicate unions and cross products as before, but retain the existing
-   product-size check *before* crossing, even when duplicates would make the
+   Deduplicate unions and cross products, but check the product size
+   *before* crossing, even when duplicates would make the
    result fit. Repeat limits use the byte length of the **lexicographically
-   first** alternative, not the shortest or first-inserted one. Preserve the
-   old check-before-append boundary for exact repeats: the final copy can
+   first** alternative, not the shortest or first-inserted one. Check the byte
+   limit before appending each exact repeat: the final copy can
    cross `maxRepeatBytes`. Omitted or variable copies still break adjacency.
 9. **Exact failure is sticky.** Analyze each mode with its own intermediate
    product/union checks; do not infer exactness from the final language alone.
@@ -108,12 +108,10 @@ intermediate text. Only `Compile` takes the query's DNF cap.
    for each mode. If contextual fallback later needs a skipped child, it must
    request that child's summary, not read the cache as if it were complete.
 
-`analysis_reference_test.go` freezes the P2 walker from `072f4aa2ff` as a
-test-only oracle.
+`analysis_reference_test.go` provides a recursive test-only oracle independent
+of the memoized analysis.
 `analysis_test.go` compares exact summaries and compiled results over a
 deterministic syntax/context/cap/mapping matrix, and covers nested non-exact
 nodes, optional-body short-circuiting, on-demand fallback, and deferred exact
-ancestors. Do not update parity expectations to
-accept a precision change as part of this optimization. `deferred_text_test.go`
-covers rope storage and boundary invariants. Leave the existing test and
-benchmark files to the parent workflow.
+ancestors. Parity checks assert exact precision, not merely the absence of false
+negatives. `deferred_text_test.go` covers rope storage and boundary invariants.
