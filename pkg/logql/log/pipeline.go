@@ -215,6 +215,7 @@ type StageFunc struct {
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
 	hints          StageHints
+	lineFilter     Filterer // the line filter the stage runs, for the filters whose literals NewLabelFilterHints reads.
 }
 
 // NewStageFunc builds a StageFunc from its required label names, its hints, and its process function.
@@ -224,6 +225,12 @@ func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int
 		requiredLabels: requiredLabels,
 		hints:          hints,
 	}
+}
+
+// withLineFilter returns fn with the line filter it runs, for NewLabelFilterHints.
+func (fn StageFunc) withLineFilter(f Filterer) StageFunc {
+	fn.lineFilter = f
+	return fn
 }
 
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {

@@ -129,7 +129,7 @@ type BaseLabelsBuilder struct {
 	groups                       []string
 	baseMap                      map[string]string
 	parserKeyHints               ParserHint       // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
-	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
+	labelFilterHints             LabelFilterHints // lets a parser skip a line that cannot pass a filter positioned later in the pipeline, or stop early once a label it just extracted already fails one.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -178,9 +178,10 @@ func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
 }
 
-// WithLabelFilterHints sets the hints that let a parser stop extracting a
-// line early once a label it just extracted already fails a filter
-// positioned later in the pipeline. Returns b for chaining.
+// WithLabelFilterHints sets the hints that let a parser skip a line that
+// cannot pass a filter positioned later in the pipeline, or stop extracting
+// a line early once a label it just extracted already fails one. Returns b
+// for chaining.
 func (b *BaseLabelsBuilder) WithLabelFilterHints(h LabelFilterHints) *BaseLabelsBuilder {
 	if h == nil {
 		h = NoLabelFilterHints()
@@ -230,9 +231,9 @@ func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
 }
 
-// LabelFilterHints returns the hints that let a parser stop extracting a
-// line early once a label it just extracted already fails a filter
-// positioned later in the pipeline.
+// LabelFilterHints returns the hints that let a parser skip a line that
+// cannot pass a filter positioned later in the pipeline, or stop extracting
+// a line early once a label it just extracted already fails one.
 func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
 	return b.labelFilterHints
 }
