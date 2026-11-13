@@ -49,6 +49,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid ruler wal cleaner config: %w", err)
 	}
 
+	if err := c.Evaluation.Validate(); err != nil {
+		return fmt.Errorf("invalid ruler evaluation config: %w", err)
+	}
+
 	return nil
 }
 

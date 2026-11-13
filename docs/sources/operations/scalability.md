@@ -109,6 +109,7 @@ ruler:
 ```
 
 If the `query-frontend` connection requires TLS, set `tls_enabled: true` under `query_frontend` and configure the accompanying TLS options.
+To configure gRPC client options (such as `max_recv_msg_size`, `max_send_msg_size`, or `grpc_compression`) to accommodate large rule evaluations, configure them directly under `query_frontend` or nested under `grpc_client_config`.
 
 To reduce contention when many rules evaluate at the same time, set `max_jitter` to add a bounded, random delay before each rule evaluation. This option applies to both local and remote evaluation modes:
 
