@@ -402,9 +402,9 @@ func (i *Instance) StorageDirectory() string {
 	return i.wal.Directory()
 }
 
-// Appender returns a storage.Appender from the instance's WAL
-func (i *Instance) Appender(ctx context.Context) storage.Appender {
-	return i.wal.Appender(ctx)
+// AppenderV2 returns a storage.AppenderV2 from the instance's WAL
+func (i *Instance) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return i.wal.AppenderV2(ctx)
 }
 
 // Stop stops the WAL

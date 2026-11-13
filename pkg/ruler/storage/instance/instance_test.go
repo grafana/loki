@@ -193,12 +193,12 @@ func TestInstance(t *testing.T) {
 		return inst.Ready()
 	})
 
-	app := inst.Appender(context.TODO())
+	app := inst.AppenderV2(context.TODO())
 	refTime := time.Now().UnixNano()
 
 	count := 3
 	for i := 0; i < count; i++ {
-		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), refTime-int64(i), float64(i))
+		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), 0, refTime-int64(i), float64(i), nil, nil, storage.AppendV2Options{})
 
 		require.NoError(t, err)
 	}

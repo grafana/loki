@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -74,8 +75,8 @@ func TestPusherAppendable(t *testing.T) {
 			require.NoError(t, err)
 
 			pusher.response = &logproto.WriteResponse{}
-			a := pa.Appender(ctx)
-			_, err = a.Append(0, lbls, 120_000, tc.value)
+			a := pa.AppenderV2(ctx)
+			_, err = a.Append(0, lbls, 0, 120_000, tc.value, nil, nil, storage.AppendV2Options{})
 			require.NoError(t, err)
 
 			require.NoError(t, a.Commit())
@@ -128,8 +129,8 @@ func TestPusherErrors(t *testing.T) {
 			lbls, err := syntax.ParseLabels("foo_bar")
 			require.NoError(t, err)
 
-			a := pa.Appender(ctx)
-			_, err = a.Append(0, lbls, int64(model.Now()), 123456)
+			a := pa.AppenderV2(ctx)
+			_, err = a.Append(0, lbls, 0, int64(model.Now()), 123456, nil, nil, storage.AppendV2Options{})
 			require.NoError(t, err)
 
 			require.Equal(t, tc.returnedError, a.Commit())
