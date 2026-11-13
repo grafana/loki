@@ -105,7 +105,7 @@ type mockInstance struct {
 	UpdateFunc           func(c Config) error
 	TargetsActiveFunc    func() map[string][]*scrape.Target
 	StorageDirectoryFunc func() string
-	AppenderFunc         func() storage.Appender
+	AppenderFunc         func() storage.AppenderV2
 }
 
 func (m mockInstance) Ready() bool {
@@ -148,7 +148,7 @@ func (m mockInstance) StorageDirectory() string {
 	panic("StorageDirectoryFunc not provided")
 }
 
-func (m mockInstance) Appender(_ context.Context) storage.Appender {
+func (m mockInstance) AppenderV2(_ context.Context) storage.AppenderV2 {
 	if m.AppenderFunc != nil {
 		return m.AppenderFunc()
 	}
