@@ -86,6 +86,9 @@ func (w wrapper) IsFilterer() bool {
 }
 
 func WrapFilterer(f Filterer) MatcherFilterer {
+	if w, ok := f.(wrapper); ok {
+		return w
+	}
 	return wrapper{Filterer: f}
 }
 
