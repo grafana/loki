@@ -1613,9 +1613,19 @@ func newLabelReplaceEvaluator(
 
 type LabelReplaceEvaluator struct {
 	nextEvaluator StepEvaluator
-	labelCache    map[uint64]labels.Labels
+	labelCache    map[uint64]labelReplaceCacheEntry
 	expr          *syntax.LabelReplaceExpr
 	buf           []byte
+
+	// hashFn overrides the hash of the input label set; it is only set in tests, to force collisions.
+	hashFn func(ls labels.Labels, buf []byte) (uint64, []byte)
+}
+
+// labelReplaceCacheEntry holds the input label set next to its replacement, so a hash hit can be
+// verified before it is trusted.
+type labelReplaceCacheEntry struct {
+	in  labels.Labels
+	out labels.Labels
 }
 
 func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
@@ -1625,33 +1635,45 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 	if e.labelCache == nil {
-		e.labelCache = make(map[uint64]labels.Labels, len(vec))
+		e.labelCache = make(map[uint64]labelReplaceCacheEntry, len(vec))
 	}
 	var hash uint64
 	for i, s := range vec {
-		hash, e.buf = s.Metric.HashWithoutLabels(e.buf)
-		if labels, ok := e.labelCache[hash]; ok {
-			vec[i].Metric = labels
+		if e.hashFn != nil {
+			hash, e.buf = e.hashFn(s.Metric, e.buf)
+		} else {
+			hash, e.buf = s.Metric.HashWithoutLabels(e.buf)
+		}
+		entry, cached := e.labelCache[hash]
+		if cached && labels.Equal(entry.in, s.Metric) {
+			vec[i].Metric = entry.out
 			continue
 		}
-		src := s.Metric.Get(e.expr.Src)
-		indexes := e.expr.Re.FindStringSubmatchIndex(src)
-		if indexes == nil {
-			// If there is no match, no replacement should take place.
-			e.labelCache[hash] = s.Metric
-			continue
-		}
-		res := e.expr.Re.ExpandString([]byte{}, e.expr.Replacement, src, indexes)
-
-		lb := labels.NewBuilder(s.Metric).Del(e.expr.Dst)
-		if len(res) > 0 {
-			lb.Set(e.expr.Dst, string(res))
-		}
-		outLbs := lb.Labels()
-		e.labelCache[hash] = outLbs
+		outLbs := e.replace(s.Metric)
 		vec[i].Metric = outLbs
+		// On a hash collision the first series keeps the slot, and later ones are recomputed.
+		if !cached {
+			e.labelCache[hash] = labelReplaceCacheEntry{in: s.Metric, out: outLbs}
+		}
 	}
 	return next, ts, SampleVector(vec)
+}
+
+// replace returns lbs with the label_replace expression applied, or lbs itself when the regex does not match.
+func (e *LabelReplaceEvaluator) replace(lbs labels.Labels) labels.Labels {
+	src := lbs.Get(e.expr.Src)
+	indexes := e.expr.Re.FindStringSubmatchIndex(src)
+	if indexes == nil {
+		// If there is no match, no replacement should take place.
+		return lbs
+	}
+	res := e.expr.Re.ExpandString([]byte{}, e.expr.Replacement, src, indexes)
+
+	lb := labels.NewBuilder(lbs).Del(e.expr.Dst)
+	if len(res) > 0 {
+		lb.Set(e.expr.Dst, string(res))
+	}
+	return lb.Labels()
 }
 
 func (e *LabelReplaceEvaluator) Close() error {
