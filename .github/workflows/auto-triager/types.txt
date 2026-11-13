@@ -1,0 +1,10 @@
+type/bug
+type/community
+type/discussion
+type/docs
+type/duplicate
+type/feature-request
+type/performance
+type/question
+type/refactor
+type/regression
