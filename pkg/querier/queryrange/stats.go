@@ -469,6 +469,7 @@ func logFailedQueryUsage(
 		"status", strconv.Itoa(status),
 		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
 		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
+		"intermediate_series_peak", discardedStats.Summary.IntermediateSeriesPeak,
 		"failure_category", category,
 		"failure_reason", reason,
 	}

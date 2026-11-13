@@ -272,6 +272,10 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
 
+	if stats.Summary.IntermediateSeriesPeak > 0 {
+		logValues = append(logValues, "intermediate_series_peak", stats.Summary.IntermediateSeriesPeak)
+	}
+
 	logValues = appendLoglineStats(logValues, stats)
 
 	if r, ok := result.(CountMinSketchVector); ok {
