@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -434,6 +435,92 @@ func TestLoadTable(t *testing.T) {
 	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
 		return table.ForEach(context.Background(), userID, callbackFunc)
 	})
+}
+
+// storageClientWithFailingCommonList fails listing the common index while failCommonList is set,
+// simulating a transient object storage error that only hits the common index set.
+type storageClientWithFailingCommonList struct {
+	storage.Client
+	failCommonList *atomic.Bool
+}
+
+func (o storageClientWithFailingCommonList) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]storage.IndexFile, []string, error) {
+	if o.failCommonList.Load() {
+		return nil, nil, errors.New("transient storage error")
+	}
+	return o.Client.ListFiles(ctx, tableName, bypassCache)
+}
+
+func TestTable_CleanupBrokenCommonIndexSetKeepsUserIndexSets(t *testing.T) {
+	tempDir := t.TempDir()
+	tablePathInStorage := filepath.Join(tempDir, objectsStorageDirName, tableName)
+	setupIndexesAtPath(t, "", tablePathInStorage, 0, 5)
+	setupIndexesAtPath(t, userID, filepath.Join(tablePathInStorage, userID), 0, 5)
+
+	failCommonList := atomic.NewBool(false)
+	storageClient := storageClientWithFailingCommonList{
+		Client:         buildTestStorageClient(t, tempDir),
+		failCommonList: failCommonList,
+	}
+	tablePathInCache := filepath.Join(tempDir, cacheDirName, tableName)
+	table := NewTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
+		return openMockIndexFile(t, path), nil
+	}, newMetrics(nil), testDownloadTimeout).(*table)
+	defer table.Close()
+
+	ctx := context.Background()
+
+	// the user index set initializes successfully.
+	userIndexSet, err := table.getOrCreateIndexSet(ctx, userID, false)
+	require.NoError(t, err)
+	require.NoError(t, userIndexSet.AwaitReady(ctx, "test"))
+
+	// the common index set fails to initialize and gets cleaned up as a broken index set.
+	failCommonList.Store(true)
+	commonIndexSet, err := table.getOrCreateIndexSet(ctx, "", false)
+	require.NoError(t, err)
+	require.NoError(t, commonIndexSet.AwaitReady(ctx, "test"))
+	require.Error(t, commonIndexSet.Err())
+	require.Eventually(t, func() bool {
+		table.indexSetsMtx.RLock()
+		defer table.indexSetsMtx.RUnlock()
+		_, ok := table.indexSets[""]
+		return !ok
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// cleaning up the common index set must not remove the directory of the healthy user index set.
+	require.DirExists(t, filepath.Join(tablePathInCache, userID))
+
+	// once storage recovers, the user index set keeps syncing new files.
+	failCommonList.Store(false)
+	setupIndexesAtPath(t, userID, filepath.Join(tablePathInStorage, userID), 5, 6)
+	table.storageClient.RefreshIndexTableCache(ctx, tableName)
+	require.NoError(t, table.Sync(ctx))
+
+	expectedIndexes := append(buildListOfExpectedIndexes(userID, 0, 6), buildListOfExpectedIndexes("", 0, 5)...)
+	verifyIndexForEach(t, expectedIndexes, func(callbackFunc index.ForEachIndexCallback) error {
+		return table.ForEach(ctx, userID, callbackFunc)
+	})
+}
+
+func TestTable_DropUnusedIndexRemovesTableDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	tablePathInStorage := filepath.Join(tempDir, objectsStorageDirName, tableName)
+	setupIndexesAtPath(t, "", tablePathInStorage, 0, 5)
+	setupIndexesAtPath(t, userID, filepath.Join(tablePathInStorage, userID), 0, 5)
+
+	table, stopFunc := buildTestTable(t, tempDir)
+	defer stopFunc()
+
+	// buildTestTable uses the cache directory itself as the table directory.
+	tablePathInCache := filepath.Join(tempDir, cacheDirName)
+	require.DirExists(t, filepath.Join(tablePathInCache, userID))
+
+	// once every index set has expired, dropping them removes the whole table directory.
+	dropped, err := table.DropUnusedIndex(time.Hour, time.Now().Add(2*time.Hour))
+	require.NoError(t, err)
+	require.True(t, dropped)
+	require.NoDirExists(t, tablePathInCache)
 }
 
 func buildListOfExpectedIndexes(userID string, start, end int) []string {
