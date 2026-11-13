@@ -186,6 +186,10 @@ type EngineOpts struct {
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 
 	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
+
+	// IntermediateSeriesBreadcrumbs are the counts of intermediate series at which a job logs a line
+	// while it is still alive, so that a job killed by OOM leaves a trace.
+	IntermediateSeriesBreadcrumbs IntermediateSeriesBreadcrumbThresholds `yaml:"intermediate_series_breadcrumbs" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -196,6 +200,9 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
+
+	opts.IntermediateSeriesBreadcrumbs = IntermediateSeriesBreadcrumbThresholds{10_000, 50_000, 100_000, 500_000}
+	f.Var(&opts.IntermediateSeriesBreadcrumbs, prefix+"intermediate-series-breadcrumbs", "Experimental: Comma-separated counts of intermediate series. A query job logs a line the first time the label sets its range iterators hold reach each count. Set empty to turn off.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -208,13 +215,16 @@ type queryOpts struct {
 	logExecutingQuery bool
 	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
 	maxQuerySeriesCutoff bool
+	// intermediateSeriesBreadcrumbs are the counts of intermediate series a job logs a line at.
+	intermediateSeriesBreadcrumbs []int
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
 func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
-		logExecutingQuery:    opts.LogExecutingQuery,
-		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
+		logExecutingQuery:             opts.LogExecutingQuery,
+		maxQuerySeriesCutoff:          opts.MaxQuerySeriesCutoff,
+		intermediateSeriesBreadcrumbs: opts.IntermediateSeriesBreadcrumbs,
 	}
 }
 
@@ -402,6 +412,24 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	return false
 }
 
+// newIntermediateSeriesCounter returns the counter of one job over expr. It logs a breadcrumb
+// line the first time the count reaches each of the configured thresholds.
+func (q *query) newIntermediateSeriesCounter(ctx context.Context, tenantIDs []string, expr syntax.SampleExpr) *intermediateSeriesCounter {
+	c := newIntermediateSeriesCounter(0)
+	if len(q.opts.intermediateSeriesBreadcrumbs) == 0 {
+		return c
+	}
+	return c.notifyOnCrossing(q.opts.intermediateSeriesBreadcrumbs, func(threshold, current int64) {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log(
+			"msg", "query job holds many intermediate series",
+			"tenant", strings.Join(tenantIDs, "|"),
+			"query", expr.String(),
+			"threshold", threshold,
+			"intermediate_series", current,
+		)
+	})
+}
+
 // evalSample evaluate a sampleExpr
 func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_parser.Value, error) {
 	if lit, ok := expr.(*syntax.LiteralExpr); ok {
@@ -444,7 +472,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	ctx = withIntermediateSeriesCounter(ctx, newIntermediateSeriesCounter(0))
+	ctx = withIntermediateSeriesCounter(ctx, q.newIntermediateSeriesCounter(ctx, tenantIDs, expr))
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err

@@ -1,15 +1,21 @@
 package logql
 
 import (
+	"bytes"
 	"context"
+	"flag"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -381,4 +387,135 @@ func TestStreamRangeVectorIterator_ShouldNotReleaseAReservationItNeverMade(t *te
 	require.NoError(t, rangeIt.Close())
 	require.NoError(t, rangeIt.Close())
 	require.Equal(t, int64(1), counter.Current(), "the reservation belongs to another iterator")
+}
+
+// crossings returns a counter that records every threshold it is called for, and the record.
+func crossings(thresholds ...int) (*intermediateSeriesCounter, *[]int64) {
+	var got []int64
+	c := newIntermediateSeriesCounter(0).notifyOnCrossing(thresholds, func(threshold, _ int64) {
+		got = append(got, threshold)
+	})
+	return c, &got
+}
+
+func TestIntermediateSeriesCounter_ShouldNotifyOnceForEachThresholdCrossed(t *testing.T) {
+	c, got := crossings(10, 50, 100)
+
+	for range 60 {
+		require.NoError(t, c.Reserve(1))
+	}
+
+	require.Equal(t, []int64{10, 50}, *got)
+}
+
+func TestIntermediateSeriesCounter_ShouldNotNotifyUnderTheLowestThreshold(t *testing.T) {
+	c, got := crossings(10, 50)
+
+	require.NoError(t, c.Reserve(9))
+
+	require.Empty(t, *got)
+}
+
+func TestIntermediateSeriesCounter_ShouldNotNotifyTwiceForChurnAroundAThreshold(t *testing.T) {
+	c, got := crossings(10)
+
+	for range 5 {
+		require.NoError(t, c.Reserve(10))
+		c.Release(10)
+	}
+
+	require.Equal(t, []int64{10}, *got)
+}
+
+func TestIntermediateSeriesCounter_ShouldNotifyEveryThresholdOneReservationJumpsOver(t *testing.T) {
+	c, got := crossings(50, 10)
+
+	require.NoError(t, c.Reserve(60))
+
+	require.Equal(t, []int64{10, 50}, *got)
+}
+
+func TestIntermediateSeriesCounter_ShouldNotifyOnceUnderConcurrentUse(t *testing.T) {
+	var calls atomic.Int64
+	c := newIntermediateSeriesCounter(0).notifyOnCrossing([]int{100}, func(_, _ int64) { calls.Add(1) })
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1000 {
+				require.NoError(t, c.Reserve(1))
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.Equal(t, int64(1), calls.Load())
+}
+
+func TestIntermediateSeriesBreadcrumbThresholds_ShouldRoundTripThroughAFlag(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in      string
+		want    IntermediateSeriesBreadcrumbThresholds
+		wantErr bool
+	}{
+		"list":     {in: "10,50, 100", want: IntermediateSeriesBreadcrumbThresholds{10, 50, 100}},
+		"empty":    {in: "", want: nil},
+		"not int":  {in: "10,x", wantErr: true},
+		"negative": {in: "-1", wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got IntermediateSeriesBreadcrumbThresholds
+			err := got.Set(tc.in)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestEngineOpts_ShouldReadBreadcrumbThresholdsFromYAML(t *testing.T) {
+	var opts EngineOpts
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	opts.RegisterFlags(fs)
+	require.Equal(t, IntermediateSeriesBreadcrumbThresholds{10_000, 50_000, 100_000, 500_000}, opts.IntermediateSeriesBreadcrumbs)
+
+	require.NoError(t, yaml.Unmarshal([]byte("intermediate_series_breadcrumbs: \"5,7\"\n"), &opts))
+
+	require.Equal(t, IntermediateSeriesBreadcrumbThresholds{5, 7}, opts.IntermediateSeriesBreadcrumbs)
+}
+
+func TestEngine_ShouldLogOneBreadcrumbForEachThresholdAJobCrosses(t *testing.T) {
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	for name, tc := range map[string]struct {
+		thresholds []int
+		want       int
+	}{
+		"crosses two thresholds":  {thresholds: []int{2, 4, 100}, want: 2},
+		"under the lowest":        {thresholds: []int{100}, want: 0},
+		"turned off with no list": {thresholds: nil, want: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			eng := NewEngine(EngineOpts{IntermediateSeriesBreadcrumbs: tc.thresholds}, NewMockQuerier(1, distinctStreams(5, end)), NoLimits, log.NewLogfmtLogger(&buf))
+			params, err := NewLiteralParams(`count(count_over_time({app="a"}[1m]))`, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+
+			_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+			require.NoError(t, err)
+
+			require.Equal(t, tc.want, strings.Count(buf.String(), "intermediate_series="), buf.String())
+			if tc.want > 0 {
+				require.Contains(t, buf.String(), "tenant=fake")
+				require.Contains(t, buf.String(), "count_over_time")
+			}
+		})
+	}
 }
