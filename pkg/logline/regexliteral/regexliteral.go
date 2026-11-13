@@ -112,7 +112,7 @@ type walker struct {
 	*walkConfig
 	// run is the set of exact alternatives for the current literal run. nil
 	// means there is no run.
-	run []string
+	run textSet
 	acc needle.Expr
 }
 
@@ -186,7 +186,7 @@ func (w *walker) walk(re *syntax.Regexp) {
 
 // join appends an exact set to the run. When the cross product would be
 // larger than maxExact, the run is flushed and a new one starts with set.
-func (w *walker) join(set []string) {
+func (w *walker) join(set textSet) {
 	switch {
 	case w.run == nil:
 		w.run = set
@@ -194,7 +194,7 @@ func (w *walker) join(set []string) {
 		w.flush()
 		w.run = set
 	default:
-		w.run = cross(w.run, set)
+		w.run = crossText(w.run, set)
 	}
 }
 
@@ -204,18 +204,25 @@ func (w *walker) flush() {
 	if w.run == nil {
 		return
 	}
-	lits := make([]needle.Expr, len(w.run))
+	texts := make([]string, len(w.run))
 	for i, s := range w.run {
+		texts[i] = materializeText(s)
+	}
+	// Bounded OR absorption depends on input order. Restore lexical order
+	// once, after materialization, without sorting growing rope prefixes.
+	slices.Sort(texts)
+	lits := make([]needle.Expr, len(texts))
+	for i, s := range texts {
 		lits[i] = needle.Lit(s)
 	}
 	w.acc = needle.And(w.acc, needle.Or(lits...))
 	w.run = nil
 }
 
-// exact returns the set of strings re matches, sorted and deduplicated, when
+// exact returns the deferred, deduplicated set of strings re matches when
 // it has at most maxExact members. Zero-width assertions match the empty
 // string. The set is never empty.
-func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
+func (w *walker) exact(re *syntax.Regexp) (textSet, bool) {
 	switch re.Op {
 	case syntax.OpLiteral:
 		// For a case-insensitive literal the parser stores the smallest rune
@@ -227,7 +234,7 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 		// example U+017F for s and U+212A for k. The parser stores those
 		// orbits as ASCII S and K, so lines that spell a letter that way are
 		// missed. We accept that to keep needles whole.
-		return []string{string(re.Rune)}, true
+		return textSet{textLeaf(string(re.Rune))}, true
 
 	case syntax.OpEmptyMatch,
 		syntax.OpBeginLine, syntax.OpEndLine,
@@ -237,30 +244,30 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 		// the run continues. Prometheus only strips ^ and $ at the ends
 		// because its matchers are anchored. Unanchored, they can appear
 		// anywhere and still consume nothing.
-		return []string{""}, true
+		return textSet{nil}, true
 
 	case syntax.OpCapture:
 		return w.exact(re.Sub[0])
 
 	case syntax.OpConcat:
-		set := []string{""}
+		set := textSet{nil}
 		for _, sub := range re.Sub {
 			s, ok := w.exact(sub)
 			if !ok || len(set)*len(s) > w.maxExact {
 				return nil, false
 			}
-			set = cross(set, s)
+			set = crossText(set, s)
 		}
 		return set, true
 
 	case syntax.OpAlternate:
-		var set []string
+		var set textSet
 		for _, sub := range re.Sub {
 			s, ok := w.exact(sub)
 			if !ok {
 				return nil, false
 			}
-			set = sortedSet(append(set, s...))
+			set = unionText(set, s)
 			if len(set) > w.maxExact {
 				return nil, false
 			}
@@ -272,7 +279,7 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 		if !ok {
 			return nil, false
 		}
-		set := sortedSet(append(slices.Clone(s), ""))
+		set := unionText(s, textSet{nil})
 		if len(set) > w.maxExact {
 			return nil, false
 		}
@@ -290,12 +297,21 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 		if !ok {
 			return nil, false
 		}
-		set := []string{""}
-		for range re.Min {
-			if len(set)*len(s) > w.maxExact || len(set[0]) > maxRepeatBytes {
+		if len(s) == 1 {
+			// The old loop checks the accumulated byte length before each
+			// copy, so the last copy may cross maxRepeatBytes. Share repeated
+			// subtrees without changing that boundary (or truncating text).
+			if n := textBytes(s[0]); re.Min > 0 && n > 0 && re.Min-1 > maxRepeatBytes/n {
 				return nil, false
 			}
-			set = cross(set, s)
+			return textSet{repeatText(s[0], re.Min)}, true
+		}
+		set := textSet{nil}
+		for range re.Min {
+			if len(set)*len(s) > w.maxExact || set.firstBytes() > maxRepeatBytes {
+				return nil, false
+			}
+			set = crossText(set, s)
 		}
 		return set, true
 
@@ -309,7 +325,7 @@ func (w *walker) exact(re *syntax.Regexp) ([]string, bool) {
 // ASCII letters uppercased. Parse turns `500|503` into `50[03]`, and a case
 // insensitive letter into a class of its fold orbit, so small classes are
 // common.
-func (w *walker) classSet(re *syntax.Regexp) ([]string, bool) {
+func (w *walker) classSet(re *syntax.Regexp) (textSet, bool) {
 	// Uppercasing can at most halve the count, so a class with more than
 	// twice maxClass runes cannot fit.
 	n := 0
@@ -323,13 +339,12 @@ func (w *walker) classSet(re *syntax.Regexp) ([]string, bool) {
 		return nil, false
 	}
 
-	set := make([]string, 0, n)
+	set := make(textSet, 0, n)
 	for i := 0; i < len(re.Rune); i += 2 {
 		for r := re.Rune[i]; r <= re.Rune[i+1]; r++ {
-			set = append(set, string(upperASCII(r)))
+			set = set.with(textLeaf(string(upperASCII(r))))
 		}
 	}
-	set = sortedSet(set)
 	if len(set) > w.maxClass {
 		return nil, false
 	}
@@ -341,22 +356,6 @@ func upperASCII(r rune) rune {
 		return r - ('a' - 'A')
 	}
 	return r
-}
-
-// cross returns every concatenation of a member of a and a member of b.
-func cross(a, b []string) []string {
-	out := make([]string, 0, len(a)*len(b))
-	for _, x := range a {
-		for _, y := range b {
-			out = append(out, x+y)
-		}
-	}
-	return sortedSet(out)
-}
-
-func sortedSet(s []string) []string {
-	slices.Sort(s)
-	return slices.Compact(s)
 }
 
 // repeat walks x{min,max}. max is -1 when there is no upper bound. A repeat
@@ -377,10 +376,11 @@ func (w *walker) repeat(re *syntax.Regexp) {
 		return
 	}
 	copies, added := 0, 0
+	firstBytes := set.firstBytes()
 	for copies < re.Min && added < maxRepeatBytes {
 		w.join(set)
 		copies++
-		added += len(set[0])
+		added += firstBytes
 	}
 	// When copies were left out or the count can vary, the run's end is not
 	// next to the text that follows, so the last copy starts a new run.
