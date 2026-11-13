@@ -285,6 +285,10 @@ type NodeContext struct {
 	preserving bool
 	maxSeries  int
 	reads      ParentReads
+	// restrictParsing is true when the query lets the extractor of a range aggregation parse only
+	// the fields its parent reads. Unlike the other fields it is a setting of the query, so every
+	// child inherits it.
+	restrictParsing bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -319,6 +323,21 @@ func isSketch(expr syntax.SampleExpr) bool {
 	return false
 }
 
+// withRestrictedParsing returns c, and the NodeContexts derived from it, with the extractor of a
+// range aggregation allowed to parse only the fields its parent reads when enabled is true.
+func (c NodeContext) withRestrictedParsing(enabled bool) NodeContext {
+	c.restrictParsing = enabled
+	return c
+}
+
+// restrictsParsing is true when the query allows restricted parsing and the parent of the
+// expression, which reads reads from it, needs neither series kept apart nor any label outside a
+// listed set. Fields the parent does not read then tell no series apart that the parent keeps
+// apart, so the extractor may leave them out.
+func (c NodeContext) restrictsParsing(reads ParentReads) bool {
+	return c.restrictParsing && reads.labels.only && !reads.Identity()
+}
+
 // OutputPreserving is true when every operator between the expression and the root keeps every
 // series it receives, though it may add series from elsewhere. The query then returns at least as
 // many series as the expression holds. It is true for the root expression unless that produces a
@@ -336,9 +355,9 @@ func (c NodeContext) ParentReads() ParentReads {
 // of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
 func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{reads: reads}
+		return NodeContext{reads: reads, restrictParsing: c.restrictParsing}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, restrictParsing: c.restrictParsing}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -441,7 +460,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && (e.Operation == syntax.OpTypeSum || nc.restrictsParsing(vectorAggReads(e))) {
 			sampleOrder := sampleOrderForExpr(ctx, e, ev.limits)
 
 			// if range expression is wrapped with a vector expression
@@ -1144,21 +1163,7 @@ func vectorAggReads(expr *syntax.VectorAggregationExpr) ParentReads {
 // depends on the series being kept apart, such as sum over max_over_time, or max over rate.
 func vectorAggMergesRangeAgg(op string, left syntax.SampleExpr) bool {
 	rangeExpr, ok := left.(*syntax.RangeAggregationExpr)
-	if !ok {
-		return false
-	}
-	switch op {
-	case syntax.OpTypeSum:
-		switch rangeExpr.Operation {
-		case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytes, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeSum:
-			return true
-		}
-	case syntax.OpTypeMax:
-		return rangeExpr.Operation == syntax.OpRangeTypeMax
-	case syntax.OpTypeMin:
-		return rangeExpr.Operation == syntax.OpRangeTypeMin
-	}
-	return false
+	return ok && syntax.CanInjectVectorGrouping(op, rangeExpr.Operation)
 }
 
 // binOpReads returns what expr reads from its left and right legs.

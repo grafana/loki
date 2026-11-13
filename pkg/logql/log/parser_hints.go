@@ -129,6 +129,9 @@ func (p *ParserHints) Reset() {
 // NewParserHint creates the hints that tell the parsers of a query which labels to extract. They
 // name the labels that later stages read, the grouping labels and the metric label.
 func NewParserHint(stages Stages, groups []string, without, noLabels bool, metricLabelName string) *ParserHints {
+	if readsUnlistedLabels(stages) {
+		return &ParserHints{}
+	}
 	requiredLabelNames := stages.RequiredLabelNamesForParsers()
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
@@ -152,6 +155,25 @@ func NewParserHint(stages Stages, groups []string, without, noLabels bool, metri
 	}
 
 	return &ParserHints{requiredLabels: hints, extracted: extracted}
+}
+
+// readsUnlistedLabels reports whether a stage reads labels that its RequiredLabelNames does not
+// list, so the parsers must extract every field. A template that reads its data as a whole, as in
+// {{ index . "k" }}, does.
+func readsUnlistedLabels(stages Stages) bool {
+	for _, s := range stages {
+		switch st := s.(type) {
+		case *LineFormatter:
+			if !st.readsOnlyListedLabels() {
+				return true
+			}
+		case *LabelsFormatter:
+			if !st.readsOnlyListedLabels() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.

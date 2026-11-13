@@ -5264,6 +5264,13 @@ engine:
   # CLI flag: -querier.engine.max-query-series-cutoff
   [max_query_series_cutoff: <boolean> | default = false]
 
+  # Experimental: Make the json and logfmt parsers of a range aggregation
+  # extract only the fields that its parent aggregation reads, where the parent
+  # needs neither the labels it does not group by nor the series kept apart,
+  # such as max by (x) (max_over_time(... | unwrap y [5m])).
+  # CLI flag: -querier.engine.restricted-parsing
+  [restricted_parsing: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

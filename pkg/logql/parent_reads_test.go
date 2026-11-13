@@ -107,3 +107,31 @@ func TestLabelReads_ShouldNotChangeEitherSideOfAUnion(t *testing.T) {
 	require.Equal(t, labelsWithout("app", "pod"), l)
 	require.Equal(t, onlyLabels("pod"), o)
 }
+
+func TestNodeContext_RestrictsParsing(t *testing.T) {
+	for name, tc := range map[string]struct {
+		enabled bool
+		reads   ParentReads
+		want    bool
+	}{
+		"off for a parent that merges by a label":    {reads: newParentReads(onlyLabels("x"), false, true)},
+		"on for a parent that merges by a label":     {enabled: true, reads: newParentReads(onlyLabels("x"), false, true), want: true},
+		"on for a parent that merges by no label":    {enabled: true, reads: newParentReads(noLabels(), false, true), want: true},
+		"on for a parent that needs identity":        {enabled: true, reads: newParentReads(onlyLabels("x"), true, true)},
+		"on for a parent that reads every label":     {enabled: true, reads: newParentReads(allLabels(), false, true)},
+		"on for a parent that reads all but a label": {enabled: true, reads: newParentReads(labelsWithout("x"), false, true)},
+		"on for a parent that reads everything":      {enabled: true, reads: readsEverything()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, NodeContext{}.withRestrictedParsing(tc.enabled).restrictsParsing(tc.reads))
+		})
+	}
+}
+
+func TestNodeContext_Child_ShouldKeepTheRestrictedParsingSetting(t *testing.T) {
+	nc := NodeContext{}.withRestrictedParsing(true)
+
+	require.True(t, nc.child(true, readsEverything()).restrictParsing)
+	require.True(t, nc.child(false, readsEverything()).restrictParsing)
+	require.False(t, NodeContext{}.child(true, readsEverything()).restrictParsing)
+}

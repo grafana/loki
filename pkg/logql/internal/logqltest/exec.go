@@ -26,6 +26,7 @@ const (
 	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
 	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
 	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
+	queryFrontendNoShardRestrictedParsingStackName    = "query-frontend + query-scheduler (no sharding, timestamp-first, restricted parsing)"
 )
 
 var (
@@ -40,6 +41,7 @@ var (
 		queryFrontendShardDataObjStackName,
 		queryFrontendShardDataObjAndChunkStackName,
 		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+		queryFrontendNoShardRestrictedParsingStackName,
 	}
 )
 
@@ -110,6 +112,10 @@ type stackOptions struct {
 	// runs, in the querier and in the query-frontend.
 	maxQuerySeriesCutoff bool
 
+	// restrictedParsing turns on RestrictedParsing in every engine the stack runs, in the querier
+	// and in the query-frontend.
+	restrictedParsing bool
+
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
 
@@ -131,6 +137,12 @@ func withMaxQuerySeriesCutoff() stackOption {
 	return func(o *stackOptions) { o.maxQuerySeriesCutoff = true }
 }
 
+// withRestrictedParsing returns the stackOption that turns on RestrictedParsing in every engine of
+// the stack.
+func withRestrictedParsing() stackOption {
+	return func(o *stackOptions) { o.restrictedParsing = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -146,6 +158,7 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	engineOpts.RestrictedParsing = o.restrictedParsing
 	return engineOpts
 }
 

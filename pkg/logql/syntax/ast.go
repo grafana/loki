@@ -2072,7 +2072,8 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 		return nil, e.err
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
-	// This is only possible if the operation is a sum. Anything else needs all labels.
+	// This is only possible if merging the series first gives the same answer (see
+	// CanInjectVectorGrouping). Anything else needs all labels.
 	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
@@ -2084,19 +2085,26 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 
 // CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
 //
+// It can when merging the series that share the grouping before the range aggregation gives the same
+// answer as merging them after it: sum over the range aggregations that count or add, and max and min
+// over their own range aggregation.
+//
 // An injected grouping replaces the extractor's label set at extraction time. It reaches the
 // extractor only when the range aggregation carries no grouping of its own, because that one
 // wins.
 func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
-	if vecOp != OpTypeSum {
-		return false
+	switch vecOp {
+	case OpTypeSum:
+		switch rangeOp {
+		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeRate, OpRangeTypeCount:
+			return true
+		}
+	case OpTypeMax:
+		return rangeOp == OpRangeTypeMax
+	case OpTypeMin:
+		return rangeOp == OpRangeTypeMin
 	}
-	switch rangeOp {
-	case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeRate, OpRangeTypeCount:
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 func (e *VectorAggregationExpr) String() string {

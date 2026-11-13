@@ -321,6 +321,95 @@ func listNodeFields(nodes []parse.Node) []string {
 	return res
 }
 
+// readsAllFields reports whether a template can read fields that listNodeFields does not list,
+// because it uses the data of the template as a whole, as in {{ index . "k" }} or {{ range . }}.
+// It answers true for a node it does not know.
+func readsAllFields(nodes []parse.Node) bool {
+	for _, node := range nodes {
+		switch n := node.(type) {
+		case nil, *parse.TextNode, *parse.CommentNode, *parse.FieldNode, *parse.IdentifierNode,
+			*parse.BoolNode, *parse.NumberNode, *parse.StringNode, *parse.NilNode,
+			*parse.BreakNode, *parse.ContinueNode:
+		case *parse.DotNode:
+			return true
+		case *parse.VariableNode:
+			if len(n.Ident) == 1 && n.Ident[0] == "$" {
+				return true
+			}
+		case *parse.ListNode:
+			if n != nil && readsAllFields(n.Nodes) {
+				return true
+			}
+		case *parse.ActionNode:
+			if readsAllFields([]parse.Node{n.Pipe}) {
+				return true
+			}
+		case *parse.PipeNode:
+			if n != nil {
+				for _, c := range n.Cmds {
+					if readsAllFields([]parse.Node{c}) {
+						return true
+					}
+				}
+			}
+		case *parse.CommandNode:
+			if readsAllFields(n.Args) {
+				return true
+			}
+		case *parse.ChainNode:
+			if readsAllFields([]parse.Node{n.Node}) {
+				return true
+			}
+		case *parse.TemplateNode:
+			if n.Pipe != nil && readsAllFields([]parse.Node{n.Pipe}) {
+				return true
+			}
+		case *parse.IfNode:
+			if readsAllFieldsInBranch(n.BranchNode) {
+				return true
+			}
+		case *parse.WithNode:
+			if readsAllFieldsInBranch(n.BranchNode) {
+				return true
+			}
+		case *parse.RangeNode:
+			if readsAllFieldsInBranch(n.BranchNode) {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+func readsAllFieldsInBranch(b parse.BranchNode) bool {
+	if b.Pipe != nil && readsAllFields([]parse.Node{b.Pipe}) {
+		return true
+	}
+	if b.List != nil && readsAllFields([]parse.Node{b.List}) {
+		return true
+	}
+	return b.ElseList != nil && readsAllFields([]parse.Node{b.ElseList})
+}
+
+// readsOnlyListedLabels reports whether the template reads only the labels that RequiredLabelNames
+// lists.
+func (lf *LineFormatter) readsOnlyListedLabels() bool {
+	return !readsAllFields([]parse.Node{lf.Root})
+}
+
+// readsOnlyListedLabels reports whether the formats read only the labels that RequiredLabelNames
+// lists.
+func (lf *LabelsFormatter) readsOnlyListedLabels() bool {
+	for _, fm := range lf.formats {
+		if !fm.Rename && readsAllFields([]parse.Node{fm.tmpl.Root}) {
+			return false
+		}
+	}
+	return true
+}
+
 func listNodeFieldsFromBranch(node parse.Node) []string {
 	var res []string
 	var b parse.BranchNode

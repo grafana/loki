@@ -1,0 +1,138 @@
+# count_over_time() under count() keeps the series that differ only in an unfiltered field apart.
+clear
+load
+  {app="x"} `{"x":"ok","id":"1"}`  @ 20s
+  {app="x"} `{"x":"ok","id":"2"}`  @ 30s
+  {app="x"} `{"x":"bad","id":"3"}` @ 40s
+
+eval instant at 60s count(count_over_time({app="x"} | json | x="ok" [1m]))
+  {} 2
+eval instant at 60s count by (x) (count_over_time({app="x"} | json | x="ok" [1m]))
+  {x="ok"} 2
+eval instant at 60s count(count_over_time({app="x"} | json [1m]))
+  {} 3
+eval instant at 60s avg(count_over_time({app="x"} | json | x="ok" [1m]))
+  {} 1
+eval instant at 60s max(count_over_time({app="x"} | json | x="ok" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="x"} | json | x="ok" [1m]))
+  {} 2
+eval range from 40s to 60s step 20s count(count_over_time({app="x"} | json | x="ok" [1m])) # overlapping
+  {} 2 2
+
+# max_over_time() and min_over_time() under max() and min() merge the series of a group.
+clear
+load
+  {app="x", pod="p1"} `{"v":"3","x":"a","id":"1"}`            @ 10s
+  {app="x", pod="p1"} `{"v":"9","x":"a","id":"2"}`            @ 20s
+  {app="x", pod="p2"} `{"v":"5","x":"a","id":"3"}`            @ 30s
+  {app="x", pod="p2"} `{"v":"7","x":"b","id":"4"}`            @ 40s
+  {app="x", pod="p2"} `{"v":"100","x":"b","id":"5","skip":"1"}` @ 50s
+
+eval instant at 60s max by (x) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a"} 9
+  {x="b"} 100
+eval instant at 60s max by (x) (max_over_time({app="x"} | json | skip="" | unwrap v [1m]))
+  {x="a"} 9
+  {x="b"} 7
+eval instant at 60s min by (x) (min_over_time({app="x"} | json | id!="1" | unwrap v [1m]))
+  {x="a"} 5
+  {x="b"} 7
+eval instant at 60s max by (pod) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {pod="p1"} 9
+  {pod="p2"} 100
+eval instant at 60s max by (x, pod) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a", pod="p1"} 9
+  {x="a", pod="p2"} 5
+  {x="b", pod="p2"} 100
+eval instant at 60s max(max_over_time({app="x"} | json | unwrap v [1m]))
+  {} 100
+eval instant at 60s min(min_over_time({app="x"} | json | unwrap v [1m]))
+  {} 3
+eval instant at 60s max by (v) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {} 100
+eval instant at 60s sum by (v) (sum_over_time({app="x"} | json | unwrap v [1m]))
+  {} 124
+eval instant at 60s max without (app, pod, id, skip) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a"} 9
+  {x="b"} 100
+eval range from 40s to 60s step 20s max by (x) (max_over_time({app="x"} | json | skip="" | unwrap v [1m])) # overlapping
+  {x="a"} 9 9
+  {x="b"} 7 7
+eval range from 40s to 60s step 20s max by (x) (max_over_time({app="x"} | json | unwrap v [20s])) # overlapping
+  {x="a"} 5 _
+  {x="b"} 7 100
+
+# An aggregation that needs the series kept apart gets every field extracted.
+eval instant at 60s max by (x) (avg_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a"} 9
+  {x="b"} 100
+eval instant at 60s sum by (x) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a"} 17
+  {x="b"} 107
+eval instant at 60s sum by (x) (sum_over_time({app="x"} | json | unwrap v [1m]))
+  {x="a"} 17
+  {x="b"} 107
+eval instant at 60s max by (x) (rate({app="x"} | json [1m]))
+  {x="a"} 0.016666666666666666
+  {x="b"} 0.016666666666666666
+
+# A parsed field that clashes with a stream label is read as <name>_extracted.
+clear
+load
+  {app="x", level="stream", v="s"} `{"level":"a","v":"4"}` @ 20s
+  {app="x", level="stream", v="s"} `{"level":"b","v":"6"}` @ 30s
+  {app="x", level="stream", v="s"} `{"level":"b","v":"8"}` @ 40s
+
+eval instant at 60s max by (level_extracted) (max_over_time({app="x"} | json | unwrap v_extracted [1m]))
+  {level_extracted="a"} 4
+  {level_extracted="b"} 8
+eval instant at 60s max by (level_extracted) (max_over_time({app="x"} | json | level_extracted="b" | unwrap v_extracted [1m]))
+  {level_extracted="b"} 8
+eval instant at 60s max by (level) (max_over_time({app="x"} | json | unwrap v_extracted [1m]))
+  {level="stream"} 8
+eval instant at 60s sum by (level_extracted) (count_over_time({app="x"} | json [1m]))
+  {level_extracted="a"} 1
+  {level_extracted="b"} 2
+eval instant at 60s count(count_over_time({app="x"} | json | level_extracted="b" [1m]))
+  {} 2
+
+# line_format and label_format templates read the fields that they name.
+clear
+load
+  {app="x"} `{"a":"1","b":"2","v":"4","n":"p"}` @ 20s
+  {app="x"} `{"a":"3","b":"2","v":"6","n":"q"}` @ 30s
+
+eval instant at 60s max by (z) (max_over_time({app="x"} | json | label_format z="{{.a}}{{.b}}" | unwrap v [1m]))
+  {z="12"} 4
+  {z="32"} 6
+eval instant at 60s max by (z) (max_over_time({app="x"} | json | label_format z=a | unwrap v [1m]))
+  {z="1"} 4
+  {z="3"} 6
+eval instant at 60s max(max_over_time({app="x"} | json | line_format "k={{.a}}" | logfmt | unwrap k [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="x"} | json | line_format "{{.a}}-{{.b}}" |= "3-2" [1m]))
+  {} 1
+eval instant at 60s sum by (n) (count_over_time({app="x"} | json | line_format "{{.a}}-{{.b}}" |= "3-2" [1m]))
+  {n="q"} 1
+# A template that reads all its fields needs them all extracted.
+eval instant at 60s max(max_over_time({app="x"} | json | line_format `k={{ index . "a" }}` | logfmt | unwrap k [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="x"} | json | line_format `{{ index . "a" }}-{{ index . "b" }}` |= "3-2" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="x"} | json | line_format `{{ range $k, $v := . }}{{ $k }}={{ $v }};{{ end }}` |= "n=q" [1m]))
+  {} 1
+
+# An unwrap source that the stream also labels, and one a parser alone provides.
+clear
+load
+  {app="x", amount="stream"} `{"amount":"5","id":"1"}` @ 20s
+  {app="x", amount="stream"} `{"amount":"8","id":"2"}` @ 30s
+
+eval instant at 60s max(max_over_time({app="x"} | json | unwrap amount_extracted [1m]))
+  {} 8
+eval instant at 60s sum(sum_over_time({app="x"} | json | unwrap amount_extracted [1m]))
+  {} 13
+eval instant at 60s max by (id) (max_over_time({app="x"} | json | unwrap amount_extracted [1m]))
+  {id="1"} 5
+  {id="2"} 8
