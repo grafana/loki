@@ -409,12 +409,6 @@ type PolicyOverridableLimits struct {
 	// max_global_streams_per_user or inherit_limits.
 	LimitsServiceStreamsExpiry *model.Duration `yaml:"limits_service_streams_expiry" json:"limits_service_streams_expiry" doc:"hidden"`
 
-	// RejectPartialWrites is for rejecting the whole push with a 429 if
-	// any of its streams is rejected with a 429. It applies to any push
-	// containing at least one stream resolved to the policy. It is not
-	// affected by inherit_limits.
-	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
-
 	// ChunkIdlePeriod overrides -ingester.chunks-idle-period for the policy's streams.
 	// Unset or 0 keeps -ingester.chunks-idle-period.
 	// Note: a very short period may flush too-small chunks.
@@ -575,13 +569,6 @@ func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, 
 		rl.Burst = pl.PerStreamRateLimitBurst.Val()
 	}
 	return rl, true
-}
-
-// PolicyRejectPartialWrites returns whether pushes containing streams resolved to the policy must be
-// rejected as a whole instead of being partially written. See PolicyOverridableLimits.RejectPartialWrites.
-func (o *Overrides) PolicyRejectPartialWrites(userID, policy string) bool {
-	pl, ok := o.policyOverride(userID, policy)
-	return ok && pl.RejectPartialWrites
 }
 
 // PolicyChunkIdlePeriod returns how long a chunk of the policy's streams may go without appends
