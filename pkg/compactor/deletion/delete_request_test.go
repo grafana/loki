@@ -300,6 +300,55 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 	}
 }
 
+func TestDeleteRequest_GetChunkFilter_LegacyQueries(t *testing.T) {
+	start := model.TimeFromUnix(1787906640)
+	end := model.TimeFromUnix(1788068640)
+	chunk := retention.Chunk{From: start, Through: end}
+
+	for _, tc := range []struct {
+		name      string
+		query     string
+		lbls      labels.Labels
+		hasFilter bool
+	}{
+		{"regexp matching everything", `{job=~".*"}`, labels.FromStrings("job", "app"), false},
+		{"regexp matching an absent label", `{job=~".*"}`, labels.FromStrings("app", "foo"), false},
+		{"empty equality matcher", `{job=""}`, labels.FromStrings("app", "foo"), false},
+		{"negative matcher", `{job!="dev"}`, labels.FromStrings("job", "prod"), false},
+		{"regexp with line filter", `{job=~".*"} |= "delete me"`, labels.FromStrings("app", "foo"), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := newDeleteRequest(deletionproto.DeleteRequest{
+				RequestID: "3028272a",
+				UserID:    "1767400",
+				StartTime: start,
+				EndTime:   end,
+				Query:     tc.query,
+			}, newDeleteRequestsManagerMetrics(nil).deletedLinesTotal)
+			require.NoError(t, err)
+
+			deleted, filterFunc := req.GetChunkFilter([]byte("1767400"), tc.lbls, chunk)
+			require.True(t, deleted)
+			if tc.hasFilter {
+				require.NotNil(t, filterFunc)
+				require.True(t, filterFunc(start.Time(), "delete me", labels.EmptyLabels()))
+				require.False(t, filterFunc(start.Time(), "keep me", labels.EmptyLabels()))
+				require.False(t, filterFunc(start.Add(-time.Second).Time(), "delete me", labels.EmptyLabels()))
+				require.False(t, filterFunc(end.Add(time.Second).Time(), "delete me", labels.EmptyLabels()))
+			} else {
+				require.Nil(t, filterFunc)
+			}
+
+			deleted, _ = req.GetChunkFilter([]byte("other-tenant"), tc.lbls, chunk)
+			require.False(t, deleted)
+			deleted, _ = req.GetChunkFilter([]byte("1767400"), tc.lbls, retention.Chunk{
+				From: end.Add(time.Second), Through: end.Add(time.Hour),
+			})
+			require.False(t, deleted)
+		})
+	}
+}
+
 func mustParseLabel(input string) labels.Labels {
 	lbls, err := syntax.ParseLabels(input)
 	if err != nil {
