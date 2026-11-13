@@ -2,6 +2,7 @@ package v2
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -232,8 +233,13 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 
 	backoff := backoff.New(ctx, backoffConfig)
 	for backoff.Ongoing() {
-		loop, loopErr := client.FrontendLoop(ctx)
+		// Each stream gets its own context, cancelled once we are done with the stream. This releases the
+		// stream's resources and ends the goroutine receiving from it (see schedulerLoop).
+		loopCtx, loopCancel := context.WithCancel(ctx)
+
+		loop, loopErr := client.FrontendLoop(loopCtx)
 		if loopErr != nil {
+			loopCancel()
 			level.Error(w.log).Log("msg", "error contacting scheduler", "err", loopErr, "addr", w.schedulerAddr)
 			backoff.Wait()
 			continue
@@ -243,6 +249,7 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 		if closeErr := loop.CloseSend(); closeErr != nil {
 			level.Debug(w.log).Log("msg", "failed to close frontend loop", "err", loopErr, "addr", w.schedulerAddr)
 		}
+		loopCancel()
 
 		if loopErr != nil {
 			level.Error(w.log).Log("msg", "error sending requests to scheduler", "err", loopErr, "addr", w.schedulerAddr)
@@ -254,7 +261,23 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 	}
 }
 
+type schedulerResponse struct {
+	resp *schedulerpb.SchedulerToFrontend
+	err  error
+}
+
+// schedulerLoop forwards requests and cancellations to the scheduler over a single FrontendLoop stream, until
+// the stream fails, the scheduler reports that it is shutting down, or the worker is stopped.
+//
+// Requests that the scheduler accepted through this stream are tracked until they complete. When this function
+// returns, those still waiting for a response are failed with a retryable error. The scheduler cancels a
+// frontend's requests once that frontend's streams are gone, and drops them when it stops or leaves the
+// scheduler ring; in none of these cases is the frontend told, so without this a caller without a deadline
+// would wait forever.
 func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
+	enqueued := newEnqueuedRequests()
+	defer enqueued.failAll(w.log, w.schedulerAddr)
+
 	if err := loop.Send(&schedulerpb.FrontendToScheduler{
 		Type:            schedulerpb.INIT,
 		FrontendAddress: w.frontendAddr,
@@ -271,16 +294,56 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 	ctx := loop.Context()
 
+	// Receive on a separate goroutine, so that the scheduler ending the stream (or sending an unsolicited
+	// SHUTTING_DOWN) is noticed while this worker is idle, not only when it next sends something.
+	// runOne cancels the stream context once this function returns, which ends this goroutine.
+	responses := make(chan schedulerResponse, 1)
+	go func() {
+		for {
+			resp, err := loop.Recv()
+			select {
+			case responses <- schedulerResponse{resp: resp, err: err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	recv := func() (*schedulerpb.SchedulerToFrontend, error) {
+		select {
+		case r := <-responses:
+			return r.resp, r.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			// No need to report error if our internal context is canceled. This can happen during shutdown,
-			// or when scheduler is no longer resolvable. (It would be nice if this context reported "done" also when
-			// connection scheduler stops the call, but that doesn't seem to be the case).
+			// or when scheduler is no longer resolvable.
 			//
 			// Reporting error here would delay reopening the stream (if the worker context is not done yet).
 			level.Debug(w.log).Log("msg", "stream context finished", "err", ctx.Err())
 			return nil
+
+		case r := <-responses:
+			// Nothing is expected from the scheduler while no reply is outstanding. The scheduler sends an
+			// unsolicited SHUTTING_DOWN when it leaves the scheduler ring, and ends the stream when it stops.
+			if r.err != nil {
+				if errors.Is(r.err, io.EOF) {
+					return errors.New("scheduler closed the stream")
+				}
+				return r.err
+			}
+			if r.resp.Status == schedulerpb.SHUTTING_DOWN {
+				return errors.New("scheduler is shutting down")
+			}
+			return errors.Errorf("unexpected message received from scheduler: %v", r.resp.Status)
 
 		case req := <-w.requestCh:
 			msg := &schedulerpb.FrontendToScheduler{
@@ -307,7 +370,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				return err
 			}
 
-			resp, err := loop.Recv()
+			resp, err := recv()
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}
 				return err
@@ -315,7 +378,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 			switch resp.Status {
 			case schedulerpb.OK:
-				req.enqueue <- enqueueResult{status: waitForResponse, cancelCh: w.cancelCh}
+				// Track the request before handing it back, so that it is failed if this stream ends
+				// before its response (which will come from a querier) arrives.
+				enqueued.add(req)
+				req.enqueue <- enqueueResult{status: waitForResponse, cancelCh: w.cancelCh, done: enqueued.remover(req.queryID)}
 				// Response will come from querier.
 
 			case schedulerpb.SHUTTING_DOWN:
@@ -343,7 +409,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				return err
 			}
 
-			resp, err := loop.Recv()
+			resp, err := recv()
 			if err != nil {
 				return err
 			}
@@ -352,6 +418,68 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			if resp.Status != schedulerpb.OK {
 				return errors.Errorf("unexpected status received for cancellation: %v", resp.Status)
 			}
+		}
+	}
+}
+
+// enqueuedRequests tracks the requests a scheduler accepted through a single FrontendLoop stream that are still
+// waiting for their response.
+type enqueuedRequests struct {
+	mu       sync.Mutex
+	requests map[uint64]*frontendRequest
+}
+
+func newEnqueuedRequests() *enqueuedRequests {
+	return &enqueuedRequests{requests: map[uint64]*frontendRequest{}}
+}
+
+func (e *enqueuedRequests) add(req *frontendRequest) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.requests[req.queryID] = req
+}
+
+// remover returns a function that stops tracking the request. It is called once the request has completed.
+func (e *enqueuedRequests) remover(queryID uint64) func() {
+	return func() {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		delete(e.requests, queryID)
+	}
+}
+
+func (e *enqueuedRequests) count() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.requests)
+}
+
+// failAll fails all tracked requests with a retryable (5xx) error and stops tracking them.
+//
+// This includes requests the scheduler may already have dispatched to a querier. A querier runs a request with
+// a context derived from its own stream to the scheduler, and the scheduler cancels the request (by closing that
+// stream) when the frontend disconnects or when the scheduler stops; in these cases no result will be delivered.
+// Should a result still arrive (for example because the scheduler kept the request alive for another stream of
+// this frontend), it is dropped: the response channel has a buffer of one and every writer does a non-blocking
+// send, so the caller sees whichever arrived first, and a retry uses a new query ID.
+func (e *enqueuedRequests) failAll(logger log.Logger, schedulerAddr string) {
+	e.mu.Lock()
+	requests := e.requests
+	e.requests = map[uint64]*frontendRequest{}
+	e.mu.Unlock()
+
+	if len(requests) == 0 {
+		return
+	}
+
+	level.Warn(logger).Log("msg", "connection to scheduler ended while requests were waiting for a response, failing them so they can be retried", "addr", schedulerAddr, "requests", len(requests))
+
+	err := httpgrpc.Errorf(http.StatusServiceUnavailable, "connection to query-scheduler %s ended before the query completed", schedulerAddr)
+	for _, req := range requests {
+		select {
+		case req.response <- ResponseTuple{nil, err}:
+		default:
+			// A response has already been delivered.
 		}
 	}
 }

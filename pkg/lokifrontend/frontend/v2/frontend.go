@@ -134,6 +134,7 @@ type enqueueResult struct {
 	status enqueueStatus
 
 	cancelCh chan<- uint64 // Channel that can be used for request cancellation. If nil, cancellation is not possible.
+	done     func()        // If set, must be called once the request has completed, to release its tracking state.
 }
 
 // NewFrontend creates a new frontend.
@@ -244,8 +245,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		response: make(chan ResponseTuple, 1),
 	}
 
-	cancelCh, err := f.enqueue(ctx, freq)
+	cancelCh, done, err := f.enqueue(ctx, freq)
 	defer f.requests.delete(freq.queryID)
+	defer done()
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +266,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
+		if resp.error != nil {
+			return nil, resp.error
+		}
 		switch concrete := resp.Response.(type) {
 		case *frontendv2pb.QueryResultRequest_HttpResponse:
 			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
@@ -320,8 +325,9 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		}
 	}
 
-	cancelCh, err := f.enqueue(ctx, freq)
+	cancelCh, done, err := f.enqueue(ctx, freq)
 	defer f.requests.delete(freq.queryID)
+	defer done()
 	if err != nil {
 		return nil, err
 	}
@@ -364,16 +370,19 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 }
 
-func (f *Frontend) enqueue(ctx context.Context, freq *frontendRequest) (chan<- uint64, error) {
+// enqueue sends the request to a scheduler. It returns the channel to use for cancelling the request (nil if
+// cancellation is not possible) and a function that must be called once the request has completed.
+func (f *Frontend) enqueue(ctx context.Context, freq *frontendRequest) (chan<- uint64, func(), error) {
 	f.requests.put(freq)
 
 	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
 
 enqueueAgain:
 	var cancelCh chan<- uint64
+	done := func() {}
 	select {
 	case <-ctx.Done():
-		return cancelCh, ctx.Err()
+		return cancelCh, done, ctx.Err()
 
 	case f.requestsCh <- freq:
 		// Enqueued, let's wait for response.
@@ -381,6 +390,9 @@ enqueueAgain:
 
 		if enqRes.status == waitForResponse {
 			cancelCh = enqRes.cancelCh
+			if enqRes.done != nil {
+				done = enqRes.done
+			}
 			break // go wait for response.
 		} else if enqRes.status == failed {
 			retries--
@@ -389,10 +401,10 @@ enqueueAgain:
 			}
 		}
 
-		return cancelCh, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
+		return cancelCh, done, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
 	}
 
-	return cancelCh, nil
+	return cancelCh, done, nil
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
