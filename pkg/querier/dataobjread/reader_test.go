@@ -338,7 +338,7 @@ func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
-		objects := NewOpenObjects(&holdBucket{Bucket: fixture.bucket, release: release}, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(&holdBucket{Bucket: fixture.bucket, release: release}, objtest.Tenant, DefaultHeadPrefetchBytes)
 		ctx, capture := xcap.NewCapture(t.Context(), nil)
 		ctx, _ = xcap.StartRegion(ctx, regionStreamsReader)
 
@@ -376,7 +376,7 @@ func newReaderFixture(t *testing.T, query string, streams ...logproto.Stream) re
 	t.Helper()
 
 	fixture := newObjectsFixture(t, streams...)
-	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
 	expr, err := syntax.ParseSampleExpr(query)
