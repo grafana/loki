@@ -129,7 +129,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf("QQQQQQ"), active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf("QQQQQQ").Compile(64), active, stats, 6, 64)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -1122,7 +1122,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf(text, text), active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf(text, text).Compile(64), active, stats, 6, 64)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
@@ -1221,7 +1221,7 @@ func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
 
-	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter), metas, 6)
+	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter).Compile(64), metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
@@ -1248,7 +1248,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
 
-	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter), metas, 6)
+	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter).Compile(64), metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
@@ -1267,7 +1267,7 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
 
-	_, _, err := buildTermJobs(needle.AllOf(filter), metas, 6)
+	_, _, err := buildTermJobs(needle.AllOf(filter).Compile(64), metas, 6)
 	require.Error(t, err)
 }
 
@@ -1280,7 +1280,7 @@ func TestBuildTermJobs_FilterTooShortReturnsUnconstrained(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
-	_, _, err := buildTermJobs(needle.AllOf(filter), metas, 6)
+	_, _, err := buildTermJobs(needle.AllOf(filter).Compile(64), metas, 6)
 	require.ErrorIs(t, err, ErrUnconstrained)
 }
 
@@ -1290,7 +1290,7 @@ func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testin
 	// v4 can look up the text filter, but emits no term for an 8-digit number:
 	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
 	jobs, metasByID, err := buildTermJobs(
-		needle.AllOf("abcdefg", "12345678"),
+		needle.AllOf("abcdefg", "12345678").Compile(64),
 		[]store.Meta{meta},
 		6,
 	)
@@ -1340,7 +1340,7 @@ func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobs, metasByID, err := buildTermJobs(needle.AllOf(tt.filters...), tt.metas, 6)
+			jobs, metasByID, err := buildTermJobs(needle.AllOf(tt.filters...).Compile(64), tt.metas, 6)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				return

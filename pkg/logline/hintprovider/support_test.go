@@ -612,10 +612,10 @@ func TestSupportedQuery(t *testing.T) {
 			expected:    []string{"BARBAZQUX", "GHIJKL"},
 		},
 		{
-			name:        "keeps post-parser regex literal also contained in a line filter literal",
+			name:        "prunes post-parser regex literal contained in a line filter literal",
 			query:       `{app="foo"} |= "xbarbazquxy" | json | foo=~".*barbazqux.*"`,
 			ngramLength: 6,
-			expected:    []string{"XBARBAZQUXY", "BARBAZQUX"},
+			expected:    []string{"XBARBAZQUXY"},
 		},
 		{
 			name:        "rejects post-parser regex label filter with only short literals",
@@ -981,7 +981,7 @@ func TestSupportedQuery_UppercaseDedupe(t *testing.T) {
 
 // literals returns the one conjunction SupportedQuery builds, or nil when it
 // is True.
-func literals(t *testing.T, e needle.Expr) []string {
+func literals(t *testing.T, e needle.Plan) []string {
 	t.Helper()
 	conjs := e.Conjunctions()
 	require.LessOrEqual(t, len(conjs), 1, "%v", e)

@@ -155,7 +155,7 @@ func cloneBitmap(b format.Bitmap) format.Bitmap {
 // Conjunctions are aggregated separately (aggregateConjunctionRanges).
 func (p *LoglineHintProvider) executeQuery(
 	ctx context.Context,
-	needles needle.Expr,
+	needles needle.Plan,
 	overlapping []store.Meta,
 	stats *QueryStats,
 	ngramLength, maxParallel int,
@@ -292,7 +292,7 @@ func (p *LoglineHintProvider) executeQuery(
 // constrains nothing, and the conjunctions are ORed, so the whole query is
 // unconstrained.
 func buildTermJobs(
-	needles needle.Expr,
+	needles needle.Plan,
 	overlapping []store.Meta,
 	ngramLength int,
 ) ([]termJob, map[string]store.Meta, error) {

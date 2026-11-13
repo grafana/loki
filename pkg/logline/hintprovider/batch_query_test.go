@@ -67,7 +67,7 @@ func TestLoglineHintProvider_ExecuteQuery_OrAcrossShards(t *testing.T) {
 
 	t.Run("or returns both documents", func(t *testing.T) {
 		byConj, err := provider.executeQuery(context.Background(),
-			needle.Or(64, needle.Lit(first), needle.Lit(second)), active, NewQueryStats(), 6, 64)
+			needle.Or(needle.Lit(first), needle.Lit(second)).Compile(64), active, NewQueryStats(), 6, 64)
 		require.NoError(t, err)
 		require.Equal(t, []HintTimeRange{
 			{Start: t0, End: t0.Add(time.Second)},
@@ -77,7 +77,7 @@ func TestLoglineHintProvider_ExecuteQuery_OrAcrossShards(t *testing.T) {
 
 	t.Run("and returns nothing", func(t *testing.T) {
 		byConj, err := provider.executeQuery(context.Background(),
-			needle.AllOf(first, second), active, NewQueryStats(), 6, 64)
+			needle.AllOf(first, second).Compile(64), active, NewQueryStats(), 6, 64)
 		require.NoError(t, err)
 		require.Empty(t, aggregateConjunctionRanges(byConj))
 	})
@@ -90,7 +90,7 @@ func TestLoglineHintProvider_ExecuteQuery_OrAcrossShards(t *testing.T) {
 func TestBuildTermJobs_OrMixedVersions(t *testing.T) {
 	v3 := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
 	v4 := minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
-	or := needle.Or(64, needle.Lit("12345678"), needle.Lit("ABCDEFGH"))
+	or := needle.Or(needle.Lit("12345678"), needle.Lit("ABCDEFGH"))
 
 	for _, tc := range []struct {
 		name    string
@@ -101,11 +101,11 @@ func TestBuildTermJobs_OrMixedVersions(t *testing.T) {
 		{"v3 narrows both conjunctions", or, []store.Meta{v3}, nil},
 		{"v4 cannot narrow the number", or, []store.Meta{v4}, ErrUnconstrained},
 		{"mixed window is unconstrained", or, []store.Meta{v3, v4}, ErrUnconstrained},
-		{"shared literal narrows every conjunction", needle.And(64, needle.Lit("SEEDTEXTX"), or), []store.Meta{v3, v4}, nil},
+		{"shared literal narrows every conjunction", needle.And(needle.Lit("SEEDTEXTX"), or), []store.Meta{v3, v4}, nil},
 		{"true is unconstrained", needle.True(), []store.Meta{v3}, ErrUnconstrained},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			jobs, metasByID, err := buildTermJobs(tc.needles, tc.metas, 6)
+			jobs, metasByID, err := buildTermJobs(tc.needles.Compile(64), tc.metas, 6)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				return
@@ -123,7 +123,7 @@ func TestBuildTermJobs_OrMixedVersions(t *testing.T) {
 // all of them.
 func TestBuildTermJobs_SharedTermIsOneJob(t *testing.T) {
 	meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
-	jobs, _, err := buildTermJobs(needle.Or(64, needle.Lit("ABCDEFG"), needle.Lit("BCDEFGH")), []store.Meta{meta}, 6)
+	jobs, _, err := buildTermJobs(needle.Or(needle.Lit("ABCDEFG"), needle.Lit("BCDEFGH")).Compile(64), []store.Meta{meta}, 6)
 	require.NoError(t, err)
 
 	got := make(map[string][]int)
@@ -197,7 +197,7 @@ func TestLoglineHintProvider_ExecuteQuery_PerConjunctionEarlyTermination(t *test
 	provider.queryMultipleObserver = func(reason string, _ int) { reasons = append(reasons, reason) }
 
 	// QRSTUVWXYZ has five terms, none of them in the index.
-	needles := needle.Or(64, needle.Lit("QRSTUVWXYZ"), needle.Lit("ABCDEFGH"))
+	needles := needle.Or(needle.Lit("QRSTUVWXYZ"), needle.Lit("ABCDEFGH")).Compile(64)
 	byConj, err := provider.executeQuery(context.Background(), needles, active, NewQueryStats(), 6, 1)
 	require.NoError(t, err)
 
@@ -215,7 +215,7 @@ func TestLoglineHintProvider_ExecuteQuery_ReadsSharedTermsOnce(t *testing.T) {
 	var reasons []string
 	provider.queryMultipleObserver = func(reason string, _ int) { reasons = append(reasons, reason) }
 
-	needles := needle.Or(64, needle.Lit("ABCDEFG"), needle.Lit("BCDEFGH"))
+	needles := needle.Or(needle.Lit("ABCDEFG"), needle.Lit("BCDEFGH")).Compile(64)
 	byConj, err := provider.executeQuery(context.Background(), needles, active, NewQueryStats(), 6, 64)
 	require.NoError(t, err)
 
@@ -250,7 +250,7 @@ func TestLoglineHintProvider_ExecuteQuery_SharedBitmapIsNotAliased(t *testing.T)
 
 	// One worker, so AAAAAA is applied to both conjunctions first, then
 	// BBBBBB to the first and CCCCCC to the second.
-	needles := needle.Or(64, needle.AllOf("AAAAAA", "BBBBBB"), needle.AllOf("AAAAAA", "CCCCCC"))
+	needles := needle.Or(needle.AllOf("AAAAAA", "BBBBBB"), needle.AllOf("AAAAAA", "CCCCCC")).Compile(64)
 	byConj, err := provider.executeQuery(context.Background(), needles, indexStore.Snapshot().Active(), NewQueryStats(), 6, 1)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{

@@ -40,7 +40,7 @@ type QueryHintProvider interface {
 }
 
 type HintPlan struct {
-	Filters     needle.Expr
+	Filters     needle.Plan
 	Ranges      []HintTimeRange // pre-min-date passthrough, if any
 	Indexes     []store.Meta
 	Stats       *QueryStats

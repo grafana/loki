@@ -44,9 +44,9 @@ import (
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Expr {
+func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Plan {
 	if expr == nil || ngramLength <= 0 {
-		return needle.True()
+		return needle.Plan{}
 	}
 
 	lineFilters := collectLineFilters(expr)
@@ -79,8 +79,8 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Expr {
 		add(match)
 	}
 
-	// AllOf deduplicates, so filters that differ only in case share a needle.
-	return needle.AllOf(literals...)
+	// Compile deduplicates and prunes the final set of required literals.
+	return needle.AllOf(literals...).Compile(1)
 }
 
 func extractMandatoryPositiveFilterLiterals(filter *syntax.LineFilterExpr) []string {
