@@ -36,6 +36,29 @@ func TestCrossComponentValidation(t *testing.T) {
 			},
 			err: "CONFIG ERROR: invalid dataobj metastore config: twice the refresh interval of the ToC resolver (2m0s) must not exceed a tenth of the storage lag (1m0s)",
 		},
+		{
+			desc: "invalid uploader config with data objects enabled and Kafka ingestion disabled",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.Uploader.SHAPrefixSize = 0
+			},
+			err: "CONFIG ERROR: invalid dataobj config: SHAPrefixSize must be greater than 0",
+		},
+		{
+			desc: "data object builder without a topic with data objects enabled and Kafka ingestion disabled",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+			},
+		},
+		{
+			desc: "data object builder without a topic with data objects enabled and Kafka ingestion enabled",
+			setup: func(c *Config) {
+				c.Ingester.KafkaIngestion.Enabled = true
+				c.KafkaConfig.Topic = "ingest"
+				c.DataObj.Enabled = true
+			},
+			err: "CONFIG ERROR: invalid dataobj config: topic is required",
+		},
 	} {
 		cfg := &Config{
 			Ingester: ingester.Config{

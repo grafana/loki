@@ -372,10 +372,8 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
 	}
-	if c.Ingester.KafkaIngestion.Enabled {
-		if err := c.DataObj.Validate(); err != nil {
-			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
-		}
+	if err := c.DataObj.Validate(c.Ingester.KafkaIngestion.Enabled); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 	}
 	if c.DataObj.Enabled {
 		if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
