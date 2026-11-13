@@ -444,7 +444,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	ctx = withIntermediateSeriesCounter(ctx, newIntermediateSeriesCounter(0))
+	counter := newIntermediateSeriesCounter(0)
+	ctx = withIntermediateSeriesCounter(ctx, counter)
+	defer func() { stats.FromContext(ctx).RecordIntermediateSeriesPeak(counter.Peak()) }()
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err

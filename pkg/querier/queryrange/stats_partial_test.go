@@ -39,7 +39,7 @@ func wrapErr(sentinel, err error) error {
 var failedQueryUsageFields = []string{
 	"msg", "user_agent", "query", "query_hash", "query_type", "range_type", "length",
 	"start_delta", "end_delta", "step", "limit",
-	"status", "duration", "total_bytes", "failure_category", "failure_reason",
+	"status", "duration", "total_bytes", "intermediate_series_peak", "failure_category", "failure_reason",
 }
 
 // failedQueryUsageCapture collects the failed-query usage lines as key/value
