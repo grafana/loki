@@ -29,6 +29,13 @@ const (
 	// valuesVerbatim is for regexp. It takes the label name from the query and the value is a
 	// slice of the line.
 	valuesVerbatim
+
+	// maxLineSearches is the most literals ShouldParseLine searches a line for, not counting escapes.
+	maxLineSearches = 4
+
+	// minLiteralLen is the length of the shortest literal worth searching a line for. Shorter ones are
+	// in too many lines to reject many.
+	minLiteralLen = 4
 )
 
 func parserValuesOf(parser Stage) parserValues {
@@ -164,9 +171,6 @@ func appendParts(dst []lineRequirement, name string, need lineNeed) []lineRequir
 	return append(dst, lineRequirement{name: name, need: need})
 }
 
-// maxLineSearches is the most literals ShouldParseLine searches a line for, not counting escapes.
-const maxLineSearches = 4
-
 // withinBudget sorts reqs longest first, because a longer literal is in fewer lines, and keeps them
 // while they search the line for at most maxLineSearches literals. An alternation counts as long as
 // its shortest literal and searches for each of them, so it is dropped whole when it does not fit.
@@ -265,10 +269,6 @@ func valueNeed(f Filterer, values parserValues, guaranteed [][]byte) lineNeed {
 		return nil
 	}
 }
-
-// minLiteralLen is the length of the shortest literal worth searching a line for. Shorter ones are
-// in too many lines to reject many.
-const minLiteralLen = 4
 
 // literalNeed returns what the line must contain for the parser to set a value that contains match.
 // A case-insensitive match requires nothing, because contains checks it a byte at a time, which
