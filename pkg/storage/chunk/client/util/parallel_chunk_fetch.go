@@ -71,7 +71,11 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 
 	sp.SetAttributes(attribute.Int("fetched", len(result)))
 	if lastErr != nil {
-		level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", lastErr)
+		logAt := level.Error
+		if ctx.Err() != nil {
+			logAt = level.Debug
+		}
+		logAt(util_log.Logger).Log("msg", "error fetching chunks", "err", lastErr)
 	}
 
 	// Return any chunks we did receive: a partial result may be useful

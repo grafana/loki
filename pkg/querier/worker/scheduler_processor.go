@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -106,8 +107,11 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 		}
 
 		if err := sp.querierLoop(c, address, inflightQuery, workerID); err != nil {
-			// Do not log an error if the query-scheduler is shutting down.
-			if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
+			if util.IsConnCanceled(err) {
+				// the scheduler closes the stream to cancel a query, so this is expected.
+				level.Debug(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
+			} else if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
+				// Do not log an error if the query-scheduler is shutting down.
 				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
 			}
 
@@ -170,7 +174,8 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
-				if util.IsConnCanceled(err) {
+				// io.EOF means the scheduler already ended the stream, Recv reports the real status.
+				if util.IsConnCanceled(err) || errors.Is(err, io.EOF) {
 					level.Debug(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", address)
 				} else {
 					level.Error(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", address)
@@ -294,6 +299,11 @@ func runPoolWithBackoff(
 
 		if err = f(c); err != nil {
 			errs.Add(err)
+
+			// the query was cancelled, a health check now would fail and evict a good client.
+			if ctx.Err() != nil {
+				return
+			}
 
 			// copied from dskit. I'm assuming we need an org_id here.
 			hCtx := user.InjectOrgID(ctx, "0")

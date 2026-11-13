@@ -4,6 +4,7 @@ package worker
 
 import (
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -11,12 +12,15 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -128,7 +132,92 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 		assert.NotContains(t, logs.String(), "error")
 		assert.NotContains(t, logs.String(), schedulerpb.ErrSchedulerIsNotRunning)
 	})
+
+	t.Run("should not log an error when the query-scheduler cancels the inflight query", func(t *testing.T) {
+		sp, loopClient, requestHandler := prepareSchedulerProcessor()
+
+		logs := &concurrency.SyncBuffer{}
+		sp.log = log.NewLogfmtLogger(logs)
+		sp.maxMessageSize = 1 << 20
+
+		// the scheduler ended the stream, so sending the "finished" message fails with io.EOF.
+		loopClient.On("Send", mock.Anything).Unset()
+		loopClient.On("Send", &schedulerpb.QuerierToScheduler{QuerierID: "test-querier-id"}).Return(nil)
+		loopClient.On("Send", &schedulerpb.QuerierToScheduler{}).Return(io.EOF)
+
+		workerCtx, workerCancel := context.WithCancel(context.Background())
+		queryStarted := make(chan struct{})
+		recvCount := atomic.NewInt64(0)
+
+		loopClient.On("Recv").Return(func() (*schedulerpb.SchedulerToQuerier, error) {
+			switch recvCount.Inc() {
+			case 1:
+				return &schedulerpb.SchedulerToQuerier{
+					QueryID: 1,
+					Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+						HttpRequest: &httpgrpc.HTTPRequest{
+							Method: "GET",
+							Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+						},
+					},
+					FrontendAddress: "127.0.0.2",
+					UserID:          "user-1",
+				}, nil
+			case 2:
+				// the frontend cancelled the query, so the scheduler closes the stream.
+				<-queryStarted
+				return nil, status.Error(codes.Canceled, context.Canceled.Error())
+			default:
+				workerCancel()
+				<-loopClient.Context().Done()
+				return nil, status.Error(codes.Canceled, context.Canceled.Error())
+			}
+		})
+
+		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			close(queryStarted)
+			<-args.Get(0).(context.Context).Done()
+		}).Return(&queryrange.LokiResponse{}, context.Canceled)
+
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
+
+		loopClient.AssertCalled(t, "Send", &schedulerpb.QuerierToScheduler{})
+		assert.NotContains(t, logs.String(), "level=error")
+	})
 }
+
+func TestRunPoolWithBackoff_StopsWhenQueryIsCanceled(t *testing.T) {
+	logs := &concurrency.SyncBuffer{}
+	logger := log.NewLogfmtLogger(logs)
+
+	fc := &healthClientMock{}
+	pool := client.NewPool("frontend", client.PoolConfig{}, nil, client.PoolAddrFunc(func(string) (client.PoolClient, error) {
+		return fc, nil
+	}), prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_clients"}), logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runPoolWithBackoff(ctx, logger, pool, "frontend:9095", func(client.PoolClient) error {
+		// the query gets cancelled while the result is being sent.
+		cancel()
+		return status.Error(codes.Canceled, context.Canceled.Error())
+	})
+
+	assert.Zero(t, fc.checks.Load(), "health check should be skipped")
+	assert.Equal(t, []string{"frontend:9095"}, pool.RegisteredAddresses(), "client should stay in the pool")
+	assert.NotContains(t, logs.String(), "level=error")
+}
+
+type healthClientMock struct {
+	grpc_health_v1.HealthClient
+	checks atomic.Int64
+}
+
+func (m *healthClientMock) Check(ctx context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	m.checks.Inc()
+	return nil, ctx.Err()
+}
+
+func (m *healthClientMock) Close() error { return nil }
 
 func prepareSchedulerProcessor() (*schedulerProcessor, *querierLoopClientMock, *requestHandlerMock) {
 	var querierLoopCtx context.Context
