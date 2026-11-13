@@ -219,14 +219,15 @@ func TestFilterChunksByHintRangesAppliesTheChunksDocumentShard(t *testing.T) {
 	inShard := func(fp uint64) chunk.Chunk {
 		return chunk.Chunk{ChunkRef: logproto.ChunkRef{Fingerprint: fp, From: model.Time(base.UnixMilli()), Through: model.Time(base.UnixMilli())}}
 	}
-	chunks := []chunk.Chunk{inShard(0), inShard(1 << 63)}
+	remapped := inShard(logline.MaxMappedFingerprint)
+	chunks := []chunk.Chunk{inShard(1 << 62), inShard(1 << 63), remapped}
 	ranges := iter.NewHintTimeRanges(
 		[]logproto.HintTimeRange{{Start: base, End: base.Add(time.Millisecond), DocumentShard: 1, DocumentShardBits: 1}},
 		base,
 		base.Add(time.Millisecond),
 	)
 
-	require.Equal(t, chunks[1:], filterChunksByHintRanges(chunks, ranges))
+	require.Equal(t, chunks[1:], filterChunksByHintRanges(chunks, ranges), "a remapped fingerprint can be in any document shard")
 }
 
 func TestLazyChunksPop(t *testing.T) {

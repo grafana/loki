@@ -71,8 +71,12 @@ func (h HintTimeRange) MatchesFingerprint(fp uint64) bool {
 
 // MatchesFingerprintRange reports whether h covers a stream with a
 // fingerprint in [from, through), the bounds of a query shard
-// (GetFromThrough).
+// (GetFromThrough). Bounds from at most logline.MaxMappedFingerprint can hold
+// a remapped stream of any document shard, so every range covers them.
 func (h HintTimeRange) MatchesFingerprintRange(from, through uint64) bool {
+	if from <= logline.MaxMappedFingerprint {
+		return true
+	}
 	bits := uint(h.DocumentShardBits)
 	return logline.DocumentShard(from, bits) <= h.DocumentShard && h.DocumentShard <= logline.DocumentShard(through-1, bits)
 }

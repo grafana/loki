@@ -97,10 +97,12 @@ func mergeHintRanges(ranges []hintTimeRange) []hintTimeRange {
 	return merged
 }
 
-// ForFingerprint returns the ranges that cover the stream with fingerprint fp
-// (logline.StreamFingerprint). Without document shards, that is every range.
+// ForFingerprint returns the ranges that cover the stream with chunk
+// fingerprint fp. Without document shards, that is every range, and so it is
+// for a fingerprint the ingester may have remapped, whose document shard is
+// unknown (logline.MaxMappedFingerprint).
 func (r HintTimeRanges) ForFingerprint(fp uint64) HintTimeRanges {
-	if r.shards == nil {
+	if r.shards == nil || fp <= logline.MaxMappedFingerprint {
 		return r
 	}
 	return HintTimeRanges{enabled: true, ranges: r.shards[logline.DocumentShard(fp, r.shardBits)]}

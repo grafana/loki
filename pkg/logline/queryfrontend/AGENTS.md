@@ -109,7 +109,10 @@ v5 hint ranges belong to one document shard: the top bits of a stream's
 fingerprint (`hintprovider` invariant 15). A shard sub-request reads only the
 streams in its query shards' fingerprint bounds (`GetFromThrough`), so the
 filter keeps the ranges whose document shard lies in those bounds, plus every
-range without a shard. A request without shards keeps every range. Prefetched
+range without a shard. A request without shards keeps every range, and so
+does a query shard starting at or below `logline.MaxMappedFingerprint`: the
+ingester remaps colliding streams into that space, so they can belong to any
+document shard. Prefetched
 ranges are grouped by document shard, and ranges of different shards overlap
 in time, so `rangesOverlapping` searches each group on its own.
 

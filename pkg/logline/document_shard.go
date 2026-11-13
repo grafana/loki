@@ -18,10 +18,19 @@ func VersionHasDocumentTable(version string) bool {
 	return version != "v5"
 }
 
+// MaxMappedFingerprint is the highest fingerprint the ingester's FpMapper
+// gives a stream whose fingerprint collides with another stream's, or is at
+// most this value itself. TSDB and chunks store the remapped fingerprint, which
+// says nothing about the stream's document shard, so readers must treat a
+// fingerprint at or below it as in every document shard. A higher fingerprint
+// is always the stream's StreamFingerprint.
+const MaxMappedFingerprint = 1 << 20
+
 // StreamFingerprint returns a stream's fingerprint as the ingester computes it
 // (instance.getHashForLabels, before collision mapping). TSDB stores that
-// fingerprint for the stream's series and shards queries on it, so document
-// shards must be computed from this function and nothing else.
+// fingerprint for the stream's series and shards queries on it, unless the
+// ingester remapped it (MaxMappedFingerprint), so document shards must be
+// computed from this function and nothing else.
 //
 // buf is scratch space for the hash input; the grown buffer is returned for
 // reuse.

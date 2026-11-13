@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -72,8 +73,9 @@ func TestHintTimeRangesOverlapSemantics(t *testing.T) {
 func TestHintTimeRangesForFingerprint(t *testing.T) {
 	base := time.Unix(100, 0)
 	at := func(ms int) time.Time { return base.Add(time.Duration(ms) * time.Millisecond) }
-	// inShard returns a fingerprint in document shard s at 2 bits.
-	inShard := func(s uint64) uint64 { return s << 62 }
+	// inShard returns a fingerprint in document shard s at 2 bits, above the
+	// fingerprints the ingester remaps into.
+	inShard := func(s uint64) uint64 { return s<<62 | 1<<32 }
 	ranges := NewHintTimeRanges([]logproto.HintTimeRange{
 		{Start: at(0), End: at(1)},
 		{Start: at(2), End: at(3), DocumentShard: 1, DocumentShardBits: 1},
@@ -89,6 +91,7 @@ func TestHintTimeRangesForFingerprint(t *testing.T) {
 		{name: "wildcard ranges only", fp: inShard(0), want: []int{0, 6}},
 		{name: "coarser and exact shard", fp: inShard(2), want: []int{0, 2, 4, 6}},
 		{name: "coarser shard", fp: inShard(3), want: []int{0, 2, 6}},
+		{name: "remapped fingerprint gets every shard", fp: logline.MaxMappedFingerprint, want: []int{0, 2, 4, 6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			view := ranges.ForFingerprint(tc.fp)
