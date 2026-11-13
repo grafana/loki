@@ -33,22 +33,21 @@ func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
-// errStaleCheckpoint describes a WAL directory whose latest checkpoint doesn't line up with
-// its segments.
+// errStaleCheckpoint is returned when the latest checkpoint in a WAL directory doesn't line up
+// with its segments.
 //
-// Writing checkpoint N first creates segment N+1 and only then truncates segments below N+1,
-// so a healthy directory always satisfies firstSegment <= N+1 <= lastSegment. Anything else
-// (no segments at all, the checkpoint above or far below the segments) means segment files
-// were removed or restored without the checkpoint, e.g. a non-recursive `rm <wal.dir>/*`,
-// which skips directories. Replaying such a checkpoint flushes stale data, and startup
-// cleanup then deletes the older good checkpoint in favour of it.
+// Writing checkpoint N creates segment N+1 before truncating the segments below it, so a healthy
+// directory always has firstSegment <= N+1 <= lastSegment. Anything else means segment files were
+// deleted or restored without the checkpoint directory, for example by a non-recursive
+// `rm <wal.dir>/*`. Recovery keeps replaying such a checkpoint until the segment counter passes it.
 var errStaleCheckpoint = errors.New("stale WAL checkpoint")
 
-// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint
-// in dir isn't contiguous with the WAL segments. It never modifies dir.
+// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint in
+// dir doesn't line up with the WAL segments, or a different error if the check can't run. It
+// doesn't modify dir.
 //
-// It must run before the WAL is opened: opening it creates a new segment (0 on an empty
-// directory), which hides the evidence, and every restart would narrow the gap by one.
+// Call it before opening the WAL: opening it creates segment lastSegment+1, which can make a
+// stale checkpoint look healthy.
 func checkStaleCheckpoint(dir string) error {
 	_, checkpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
