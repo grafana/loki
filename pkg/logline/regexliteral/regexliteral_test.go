@@ -125,7 +125,7 @@ func TestNeedles(t *testing.T) {
 
 		// A run that would grow past maxExact is split.
 		// Here the first 16 strings are flushed and the run restarts at the
-		// third class. With 16 conjunctions the product with them collapses.
+		// third class. Compile(16) collapses the product with them.
 		{"run split", `[0-3][0-3][0-3]x`, 16, `{"0x"} or {"1x"} or {"2x"} or {"3x"}`},
 
 		// Non-exact alternation, each branch walked on its own.
@@ -134,8 +134,9 @@ func TestNeedles(t *testing.T) {
 		{"empty branch", `abc|`, 64, "TRUE"},
 		{"alternation next to required text", `kubelet.*(abc.*|def.*)`, 64, `{"abc", "kubelet"} or {"def", "kubelet"}`},
 
-		// maxConjunctions. Exact sets are capped at it, so the plain text next
-		// to an alternation survives a low maxConjunctions.
+		// Exact-set enumeration is capped separately from the final DNF.
+		// The basic walk keeps the plain text next to an alternation even
+		// when both caps are low.
 		{"one conjunction keeps the plain literal", `(a|b)verylongliteral`, 1, `{"verylongliteral"}`},
 		{"two conjunctions collapse to shared text", `(a|b|c)xyz`, 2, `{"xyz"}`},
 		{"one conjunction without required text", `foo|bar`, 1, "TRUE"},
@@ -158,7 +159,7 @@ func TestNeedles(t *testing.T) {
 		{"invalid", `(`, 64, "TRUE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Needles(tc.pattern, tc.maxConjunctions).Prune().String())
+			require.Equal(t, tc.want, Needles(tc.pattern, tc.maxConjunctions).Compile(tc.maxConjunctions).String())
 		})
 	}
 }
@@ -168,17 +169,36 @@ func TestNeedles_OrCollapse(t *testing.T) {
 	for _, maxConjunctions := range []int{1, 2, 3, 4, 5, 64} {
 		t.Run(strconv.Itoa(maxConjunctions), func(t *testing.T) {
 			// The two regexes have five alternatives in total. Their shared
-			// text must survive both an OR over the cap and a later collapse.
-			e := needle.Or(maxConjunctions,
+			// text must survive combining and mapping before the final cap.
+			e := needle.Or(
 				Needles(`(get|put) foo`, maxConjunctions).Map(upper),
 				Needles(`(1|2|3) foobaz`, maxConjunctions).Map(upper),
 			)
-			require.Equal(t, `{" FOO"}`, e.Collapse().Prune().String())
+			require.Equal(t, `{" FOO"}`, e.Compile(1).String())
 			if maxConjunctions == 4 {
-				require.Equal(t, `{" FOO"}`, e.Prune().String())
+				require.Equal(t, `{" FOO"}`, e.Compile(maxConjunctions).String())
 			}
 		})
 	}
+}
+
+func TestNeedles_CompileAfterMap(t *testing.T) {
+	t.Run("OR survives the enumeration cap", func(t *testing.T) {
+		// Neither branch is exact. An enumeration cap of one must not
+		// collapse the alternation before the caller chooses its DNF cap.
+		e := Needles(`alpha.*left|beta.*right`, 1)
+		require.Equal(t, `{"alpha", "left"} or {"beta", "right"}`, e.Compile(2).String())
+		require.True(t, e.Compile(1).IsTrue())
+	})
+
+	t.Run("map precedes the DNF cap", func(t *testing.T) {
+		// There is no shared case-sensitive literal. Folding before the
+		// final cap reveals one; eagerly collapsing the OR would lose it.
+		e := Needles(`foo|FOO`, 1)
+		require.True(t, e.Compile(1).IsTrue())
+		mapped := e.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
+		require.Equal(t, `{"FOO"}`, mapped.Compile(1).String())
+	})
 }
 
 // A long counted repeat adds at most maxRepeatBytes to a run, and the text

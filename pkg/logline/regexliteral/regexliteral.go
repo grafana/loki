@@ -11,8 +11,9 @@
 // is "contains", so every literal found is returned as a plain substring and
 // no position is kept.
 //
-// Needles keeps alternation and returns a needle.Expr, an OR of literal
-// sets. Literals is Needles with one conjunction, returned as plain literals.
+// Needles keeps alternation in an uncompiled needle.Expr. Callers map and
+// combine expressions before compiling the final requirement to a bounded
+// plan. Literals compiles Needles with a cap of one and returns plain literals.
 package regexliteral
 
 import (
@@ -37,9 +38,9 @@ const (
 )
 
 // Literals returns the literals that every string matched by pattern
-// contains, sorted. It is Needles with maxConjunctions 1, pruned, so duplicates and
-// literals contained in another one are removed. Nothing is returned for a
-// pattern that does not parse or has no required literal.
+// contains, sorted. It compiles Needles(pattern, 1) with a DNF cap of one, so
+// duplicates and literals contained in another one are removed. Nothing is
+// returned for a pattern that does not parse or has no required literal.
 //
 // Literals keep the case the regexp parser stores. Case-sensitive text is
 // returned as written. A case-insensitive literal comes back in the parser's
@@ -47,7 +48,7 @@ const (
 //
 // Callers still decide whether a literal is long enough to look up.
 func Literals(pattern string) []string {
-	conjs := Needles(pattern, 1).Prune().Conjunctions()
+	conjs := Needles(pattern, 1).Compile(1).Conjunctions()
 	if len(conjs) == 0 {
 		return nil
 	}
@@ -59,14 +60,17 @@ func Literals(pattern string) []string {
 // finite alternations are joined to the literals next to them, so
 // `(GET|POST) /api` gives {GET /api} or {POST /api}.
 //
-// The result has at most maxConjunctions conjunctions. A pattern that does
-// not parse gives True. With maxConjunctions 1 the result is one conjunction,
-// the literals of Literals before pruning.
+// maxConjunctions bounds exact-set and literal-run enumeration, not the DNF
+// size of the result. Values below one are treated as one. With a cap of one,
+// each exact set is a single string, but non-exact alternations are still kept.
+// A pattern that does not parse gives True.
 //
 // Case follows the same rules as Literals, with one addition: runes of a
 // small character class are used with ASCII letters uppercased. Callers must
 // uppercase ASCII before they look literals up, as every extractor does.
-// The result is not pruned. Call Prune on the final requirement.
+// The result is uncompiled and unpruned. Map and combine it with other
+// requirements before calling Compile on the final expression; Compile applies
+// the DNF cap and final pruning.
 func Needles(pattern string, maxConjunctions int) needle.Expr {
 	re, err := parse(pattern)
 	if err != nil {
@@ -78,7 +82,7 @@ func Needles(pattern string, maxConjunctions int) needle.Expr {
 	if maxConjunctions <= 1 {
 		return single
 	}
-	return needle.And(maxConjunctions, single, newWalker(maxConjunctions).expr(re))
+	return needle.And(single, newWalker(maxConjunctions).expr(re))
 }
 
 // parse runs the same parse as Loki's parseRegexpFilter. It does not call
@@ -96,10 +100,9 @@ func parse(pattern string) (*syntax.Regexp, error) {
 // walkConfig is shared by a walker and the walkers it starts for the
 // branches of an alternation.
 type walkConfig struct {
-	maxConjunctions int
-	// maxExact and maxClass are the caps, lowered to maxConjunctions. A run
-	// never has more strings than maxConjunctions, so flushing it never
-	// collapses, and with maxConjunctions 1 every run is a single literal.
+	// maxExact and maxClass bound enumeration, independently of the final
+	// DNF cap in Compile. With an enumeration cap of one, every run is a
+	// single literal. Flushing a run never compiles or collapses it.
 	maxExact int
 	maxClass int
 }
@@ -115,12 +118,11 @@ type walker struct {
 	acc needle.Expr
 }
 
-func newWalker(maxConjunctions int) *walker {
-	maxConjunctions = max(maxConjunctions, 1)
+func newWalker(maxAlternatives int) *walker {
+	maxAlternatives = max(maxAlternatives, 1)
 	return &walker{walkConfig: &walkConfig{
-		maxConjunctions: maxConjunctions,
-		maxExact:        min(maxExact, maxConjunctions),
-		maxClass:        min(maxClass, maxConjunctions),
+		maxExact: min(maxExact, maxAlternatives),
+		maxClass: min(maxClass, maxAlternatives),
 	}}
 }
 
@@ -174,7 +176,7 @@ func (w *walker) walk(re *syntax.Regexp) {
 			b := walker{walkConfig: w.walkConfig}
 			branches[i] = b.expr(sub)
 		}
-		w.acc = needle.And(w.maxConjunctions, w.acc, needle.Or(w.maxConjunctions, branches...))
+		w.acc = needle.And(w.acc, needle.Or(branches...))
 
 	default:
 		// ?, * and . over anything that is not exact, large character
@@ -208,7 +210,7 @@ func (w *walker) flush() {
 	for i, s := range w.run {
 		lits[i] = needle.Lit(s)
 	}
-	w.acc = needle.And(w.maxConjunctions, w.acc, needle.Or(w.maxConjunctions, lits...))
+	w.acc = needle.And(w.acc, needle.Or(lits...))
 	w.run = nil
 }
 
