@@ -278,6 +278,7 @@ func TestCompileOwnership(t *testing.T) {
 		{"union", Or(AllOf("b", "a"), Lit("c")), 64, Conjunctions{{"a", "b"}, {"c"}}},
 		{"product", And(Or(Lit("a"), Lit("b")), Lit("seed")), 64, Conjunctions{{"a", "seed"}, {"b", "seed"}}},
 		{"collapse", Or(AllOf("shared", "x"), AllOf("shared", "y")), 1, Conjunctions{{"shared"}}},
+		{"absorbed AND", And(Or(Lit("foo"), Lit("bar")), Or(Lit("prefixfoo"), Lit("prefixbar"))), 2, Conjunctions{{"prefixbar"}, {"prefixfoo"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, other := tc.expr.Compile(tc.limit), tc.expr.Compile(tc.limit)

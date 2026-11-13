@@ -40,7 +40,13 @@ versions, and apply those lookup semantics with `Expr.Map` before compilation.
    iteratively with a seen-node set. Batch initially mandatory literals; fold
    alternatives in stable fewest-alternatives-first order. Apply a collapsed
    operand immediately and normalize before checking the next product's cap:
-   it may absorb alternatives and make that next product fit.
+   it may absorb alternatives and make that next product fit. Before collapsing
+   an overflowing product, retain the incoming bounded plan if it implies the
+   accumulator when combined with the mandatory seed and recovered source
+   literals. These single-conjunction additions do not expand its width; keep
+   recovered source literals even when implication makes other factors redundant.
+   A replacement must use no more conjunctions than the normalized collapse
+   fallback, preserving capacity that absorption frees for subsequent factors.
 4. **Preserve collapse candidates.** Consider existing literals from every
    source branch, including late, absorbed and redundant ones. Do not invent
    substrings or import candidates absent from the collapsed subtree. A single

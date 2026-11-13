@@ -138,15 +138,33 @@ func (c *compiler) lowerAnd(xs []Expr) dnf {
 	slices.SortStableFunc(ops, func(a, b operand) int {
 		return cmp.Compare(len(a.plan.conj), len(b.plan.conj))
 	})
-	acc := literalDNF(mandatory)
+	seed := literalDNF(mandatory)
+	acc := seed
 	for _, x := range ops {
 		p := x.plan
 		// Division avoids overflowing before deciding whether to expand.
 		if max(len(acc.conj), 1) > c.limit/len(p.conj) {
-			p = c.collapse(x.source)
+			common := c.collapse(x.source)
+			fallback := product(acc, common)
+			// An already implied operand cannot strengthen the accumulator;
+			// only its recovered source literals need to be applied.
+			if impliesDNF(acc, p) {
+				acc = fallback
+				continue
+			}
+			// Keep the incoming alternatives if they subsume the accumulated
+			// requirements. Both seed and common have at most one conjunction,
+			// so this candidate fits without expanding the overflowing product.
+			candidate := product(product(seed, common), p)
+			// Collapse can free capacity for later factors. The replacement
+			// must not consume more conjunctions than that fallback.
+			if len(candidate.conj) <= len(fallback.conj) && impliesDNF(candidate, acc) {
+				acc = candidate
+			} else {
+				acc = fallback
+			}
+			continue
 		}
-		// A collapsed operand can absorb alternatives in acc. Apply and
-		// normalize it before deciding whether the next product fits.
 		acc = product(acc, p)
 	}
 	return acc

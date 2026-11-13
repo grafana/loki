@@ -106,6 +106,30 @@ func absorb(conj [][]string) [][]string {
 	return out
 }
 
+// impliesDNF reports whether each conjunction of a implies a conjunction of b.
+// Empty DNFs mean TRUE, not an empty disjunction.
+func impliesDNF(a, b dnf) bool {
+	if b.isTrue() {
+		return true
+	}
+	if a.isTrue() {
+		return false
+	}
+	for _, stronger := range a.conj {
+		found := false
+		for _, weaker := range b.conj {
+			if implies(stronger, weaker) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // implies reports whether containing every literal of b implies every literal
 // of a. Exact membership handles the common shared-mandatory-literal case.
 func implies(b, a []string) bool {
