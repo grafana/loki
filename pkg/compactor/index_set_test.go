@@ -392,7 +392,14 @@ type multiOutputIndex struct {
 	files []index.Index
 }
 
-func (m multiOutputIndex) ToIndexFiles() ([]index.Index, error) { return m.files, nil }
+func (m multiOutputIndex) ToShardedIndexFiles(int) ([]index.Index, error) { return m.files, nil }
+
+type unshardedIndex struct {
+	CompactedIndex
+	file index.Index
+}
+
+func (u unshardedIndex) ToIndexFile() (index.Index, error) { return u.file, nil }
 
 type outputFile struct {
 	path   string
@@ -404,19 +411,6 @@ func (f *outputFile) Path() string                       { return f.path }
 func (f *outputFile) Close() error                       { f.closed = true; return nil }
 func (f *outputFile) Reader() (io.ReadSeekCloser, error) { return os.Open(f.path) }
 
-type uploadRecorder struct {
-	storage.IndexSet
-	names  []string
-	failAt int
-}
-
-func (r *uploadRecorder) PutFile(_ context.Context, _, _, name string, _ io.ReadSeeker) error {
-	r.names = append(r.names, name)
-	if len(r.names) == r.failAt {
-		return errors.New("upload failed")
-	}
-	return nil
-}
 func TestIndexSetMultiOutputCleanup(t *testing.T) {
 	for _, failAt := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("failAt=%d", failAt), func(t *testing.T) {
@@ -426,15 +420,16 @@ func TestIndexSetMultiOutputCleanup(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte("index"), 0600))
 				files = append(files, &outputFile{path: path})
 			}
-			storage := &uploadRecorder{failAt: failAt}
-			set := &indexSet{ctx: context.Background(), baseIndexSet: storage, compactedIndex: multiOutputIndex{files: files}, logger: log.NewNopLogger()}
-			err := set.upload()
+			sharded := newMemIndexSet()
+			sharded.putFailAt = failAt
+			set := &indexSet{ctx: context.Background(), shardedIndexSet: sharded, compactedIndex: multiOutputIndex{files: files}, uploadCompactedDB: true, logger: log.NewNopLogger()}
+			err := set.updateShardedCopy()
 			if failAt == 0 {
 				require.NoError(t, err)
-				require.Len(t, storage.names, 3)
+				require.Len(t, sharded.names(), 3)
 			} else {
 				require.ErrorContains(t, err, "upload failed")
-				require.Len(t, storage.names, failAt)
+				require.Equal(t, failAt, sharded.puts)
 			}
 			for _, f := range files {
 				require.True(t, f.(*outputFile).closed)
@@ -495,14 +490,22 @@ func (m *memIndexSet) names() []string {
 
 type shardedOutputIndex struct {
 	CompactedIndex
-	dir string
+	dir         string
+	shardFactor *int
 }
 
-func (s shardedOutputIndex) ToIndexFiles() ([]index.Index, error) {
-	return s.files("compacted")
+func (s shardedOutputIndex) ToIndexFile() (index.Index, error) {
+	files, err := s.files("compacted")
+	if err != nil {
+		return nil, err
+	}
+	return files[0], nil
 }
 
-func (s shardedOutputIndex) ToShardedIndexFiles() ([]index.Index, error) {
+func (s shardedOutputIndex) ToShardedIndexFiles(shardFactor int) ([]index.Index, error) {
+	if s.shardFactor != nil {
+		*s.shardFactor = shardFactor
+	}
 	return s.files("shard-0", "shard-1")
 }
 
@@ -542,6 +545,17 @@ func TestIndexSetDone_WritesShardedCopy(t *testing.T) {
 
 	require.Equal(t, []string{"compacted.gz"}, base.names())
 	require.Equal(t, []string{"shard-0.gz", "shard-1.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ShardedCopyUsesShardFactor(t *testing.T) {
+	var got int
+	is := newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), newMemIndexSet())
+	is.shardFactor = 8
+	is.compactedIndex = shardedOutputIndex{dir: t.TempDir(), shardFactor: &got}
+
+	require.NoError(t, is.done())
+
+	require.Equal(t, 8, got)
 }
 
 func TestIndexSetDone_ReplacesPreviousShardedCopy(t *testing.T) {
@@ -597,7 +611,7 @@ func TestIndexSetDone_ShardedCopyRequiresShardedCompactedIndex(t *testing.T) {
 	is := newShardedCopyIndexSet(t, base, sharded)
 	path := filepath.Join(t.TempDir(), "compacted")
 	require.NoError(t, os.WriteFile(path, []byte("compacted"), 0600))
-	is.compactedIndex = multiOutputIndex{files: []index.Index{&outputFile{path: path}}}
+	is.compactedIndex = unshardedIndex{file: &outputFile{path: path}}
 
 	err := is.done()
 

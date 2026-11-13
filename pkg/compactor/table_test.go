@@ -270,6 +270,7 @@ func TestTable_CompactionWritesShardedCopyOfUserIndexes(t *testing.T) {
 	}{
 		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}, numUsers: 3},
 		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}, numUsers: 3},
+		{name: "compacted and uncompacted user indexes", perUser: IndexesConfig{NumCompactedFiles: 1, NumUnCompactedFiles: 5}, numUsers: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -290,6 +291,41 @@ func TestTable_CompactionWritesShardedCopyOfUserIndexes(t *testing.T) {
 			validateTable(t, filepath.Join(objectStoragePath, "sharded", tableName), 0, tc.numUsers, func(filename string) {
 				require.True(t, strings.HasSuffix(filename, ".gz"), filename)
 			})
+		})
+	}
+}
+
+type shardFactorLimits map[string]int
+
+func (l shardFactorLimits) TSDBShardedIndexShardFactor(userID string) int { return l[userID] }
+
+func TestTable_CompactionUsesPerTenantShardFactor(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		perUser IndexesConfig
+	}{
+		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}},
+		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}},
+		{name: "compacted and uncompacted user indexes", perUser: IndexesConfig{NumCompactedFiles: 1, NumUnCompactedFiles: 5}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+			SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{}, PerUserIndexesConfig{IndexesConfig: tc.perUser, NumUsers: 2})
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+			require.NoError(t, err)
+
+			table, err := newTable(context.Background(), filepath.Join(tempDir, workingDirName, tableName), storage.NewIndexStorageClient(objectClient, ""),
+				newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+			require.NoError(t, err)
+			table.shardedUserIndexSet = storage.NewIndexSet(storage.NewIndexStorageClient(objectClient, "sharded/"), true)
+			table.shardedIndexLimits = shardFactorLimits{BuildUserID(0): 8}
+			defer table.cleanup()
+
+			require.NoError(t, table.compact())
+
+			require.Equal(t, 8, table.indexSets[BuildUserID(0)].shardFactor)
+			require.Equal(t, 0, table.indexSets[BuildUserID(1)].shardFactor)
 		})
 	}
 }
