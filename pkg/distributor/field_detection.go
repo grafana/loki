@@ -30,12 +30,15 @@ var (
 	debugAbbrv = []byte("dbg")
 	info       = []byte("info")
 	infoAbbrv  = []byte("inf")
+	infoShort  = []byte("i")
 	infoFull   = []byte("information")
 	warn       = []byte("warn")
 	warnAbbrv  = []byte("wrn")
+	warnShort  = []byte("w")
 	warning    = []byte("warning")
 	errorStr   = []byte("error")
 	errorAbbrv = []byte("err")
+	errorShort = []byte("e")
 	critical   = []byte("critical")
 	fatal      = []byte("fatal")
 
@@ -213,11 +216,11 @@ func normalizeLogLevel(level string) string {
 		return constants.LogLevelTrace
 	case bytes.EqualFold(levelBytes, debug), bytes.EqualFold(levelBytes, debugAbbrv):
 		return constants.LogLevelDebug
-	case bytes.EqualFold(levelBytes, info), bytes.EqualFold(levelBytes, infoAbbrv), bytes.EqualFold(levelBytes, infoFull):
+	case bytes.EqualFold(levelBytes, info), bytes.EqualFold(levelBytes, infoAbbrv), bytes.EqualFold(levelBytes, infoFull), bytes.EqualFold(levelBytes, infoShort):
 		return constants.LogLevelInfo
-	case bytes.EqualFold(levelBytes, warn), bytes.EqualFold(levelBytes, warnAbbrv), bytes.EqualFold(levelBytes, warning):
+	case bytes.EqualFold(levelBytes, warn), bytes.EqualFold(levelBytes, warnAbbrv), bytes.EqualFold(levelBytes, warning), bytes.EqualFold(levelBytes, warnShort):
 		return constants.LogLevelWarn
-	case bytes.EqualFold(levelBytes, errorStr), bytes.EqualFold(levelBytes, errorAbbrv):
+	case bytes.EqualFold(levelBytes, errorStr), bytes.EqualFold(levelBytes, errorAbbrv), bytes.EqualFold(levelBytes, errorShort):
 		return constants.LogLevelError
 	case bytes.EqualFold(levelBytes, critical):
 		return constants.LogLevelCritical
