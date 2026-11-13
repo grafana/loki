@@ -75,8 +75,15 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // does not make the object garbage: a new log object stays unreachable until
 // an index object references it.
 //
-// A missing ToC is not an error. ReachableObjects returns an error, and no
-// paths, if it cannot read a ToC or an index object. It also returns an error
+// A missing ToC is not an error. A missing index object that a ToC points to
+// is not an error either. The index builder stores an index object before it
+// adds it to a ToC, so lifecycle rules of the object storage removed it. No
+// query can read the objects that it referenced. ReachableObjects returns
+// the index object itself as reachable, and counts it in
+// missingIndexObjects.
+//
+// ReachableObjects returns an error, and no paths, if it cannot read a ToC or
+// an index object for another reason. It also returns an error
 // for any content that it cannot interpret, for example a section of an
 // unknown type, a ToC of another tenant, or a path that is not clean and
 // relative. A partial result would make reachable objects look unreachable.
@@ -88,21 +95,21 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // a different time, and index builders and compaction change the ToCs during
 // the call. An object can become reachable or unreachable during or after the
 // call.
-func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, maxOpenFiles int) ([]string, error) {
+func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, maxOpenFiles int) (paths []string, missingIndexObjects int, err error) {
 	if tenantID == "" {
-		return nil, errors.New("tenant must not be empty")
+		return nil, 0, errors.New("tenant must not be empty")
 	}
 	if err := tenant.ValidTenantID(tenantID); err != nil {
-		return nil, fmt.Errorf("invalid tenant %q: %w", tenantID, err)
+		return nil, 0, fmt.Errorf("invalid tenant %q: %w", tenantID, err)
 	}
 	if maxOpenFiles < 1 {
-		return nil, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
+		return nil, 0, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
 	}
 	indexBucket := NewIndexBucket(bucket)
 
 	windows, err := ListTableOfContentsWindows(ctx, indexBucket)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	walk := &reachabilityWalk{
@@ -114,20 +121,22 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 }
 
 // reachabilityWalk holds the state of one ReachableObjects call. The index
-// goroutines add paths, so reachableMu guards reachable. Call run at most
-// once.
+// goroutines add paths and count missing index objects, so reachableMu
+// guards reachable and missingIndexObjects. Call run at most once.
 type reachabilityWalk struct {
 	indexBucket objstore.BucketReader
 	tenant      string
 
-	reachableMu sync.Mutex
-	reachable   map[string]struct{}
+	reachableMu         sync.Mutex
+	reachable           map[string]struct{}
+	missingIndexObjects int
 }
 
 // run reads the ToC of the tenant in each window, and the index objects that
 // it points to. It opens each index object once, and at most maxOpenFiles of
-// them at the same time. It returns the sorted reachable paths.
-func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpenFiles int) ([]string, error) {
+// them at the same time. It returns the sorted reachable paths and the
+// number of missing index objects.
+func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpenFiles int) ([]string, int, error) {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxOpenFiles)
 	opened := make(map[string]struct{})
@@ -138,9 +147,9 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 			// context error. Return the error of the index read first, because
 			// it is the cause.
 			if waitErr := g.Wait(); waitErr != nil {
-				return nil, waitErr
+				return nil, 0, waitErr
 			}
-			return nil, err
+			return nil, 0, err
 		}
 		for _, indexPath := range indexPaths {
 			if _, ok := opened[indexPath]; ok {
@@ -152,7 +161,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 		}
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	paths := make([]string, 0, len(w.reachable))
@@ -160,7 +169,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 		paths = append(paths, p)
 	}
 	slices.Sort(paths)
-	return paths, nil
+	return paths, w.missingIndexObjects, nil
 }
 
 func (w *reachabilityWalk) add(p string) {
@@ -252,10 +261,22 @@ func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []
 // It returns an error for a section that it does not know. A new section type
 // could reference log objects, and skipping it would make them look
 // unreachable.
+//
+// It counts a missing index object, and adds nothing for it.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
 	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, indexPrefetchBytes)
 	if err != nil {
-		return fmt.Errorf("opening index object %s: %w", indexPath, err)
+		missing, existsErr := w.isMissing(ctx, indexPath)
+		if existsErr != nil {
+			return fmt.Errorf("opening index object %s: %w", indexPath, errors.Join(err, existsErr))
+		}
+		if !missing {
+			return fmt.Errorf("opening index object %s: %w", indexPath, err)
+		}
+		w.reachableMu.Lock()
+		defer w.reachableMu.Unlock()
+		w.missingIndexObjects++
+		return nil
 	}
 
 	for i, section := range obj.Sections() {
@@ -270,6 +291,16 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 		}
 	}
 	return nil
+}
+
+// isMissing reports whether no object exists at indexPath.
+//
+// It asks the bucket again instead of checking the error of
+// [dataobj.FromBucket]. That error wraps the bucket error with fmt.Errorf,
+// and some buckets detect a missing object only in an unwrapped error.
+func (w *reachabilityWalk) isMissing(ctx context.Context, indexPath string) (bool, error) {
+	exists, err := w.indexBucket.Exists(ctx, indexPath)
+	return !exists, err
 }
 
 // addStatsObjectPaths adds the object paths of a stats section. It returns an
