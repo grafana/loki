@@ -1768,3 +1768,67 @@ func TestEngine_MaxQuerySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t
 		})
 	}
 }
+
+func TestEngine_IdentityOnlyRangeIterator_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, identityOnly, cutoff bool, query string, numSeries, step int) (logqlmodel.Result, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, distinctStreams(numSeries, end))
+		eng := NewEngine(EngineOpts{IdentityOnlyRangeIterator: identityOnly, MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		// step is in seconds. Zero is an instant query.
+		step int
+		// wantEmpty is true when the query returns no series.
+		wantEmpty bool
+		// wantErr is a part of the error that the query returns, whether the option is on or off. The
+		// error names one series, and which one is not fixed.
+		wantErr string
+	}{
+		"count":                                 {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count of rate":                         {query: `count(rate({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count by an empty grouping":            {query: `count by () (count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count without windows that overlap":    {query: `count(count_over_time({app="a"}[10s]))`, numSeries: 2, step: 30},
+		"count of an instant query":             {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 0},
+		"count by reads the label":              {query: `count by (id) (count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"sum reads the values":                  {query: `sum(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count of a filtered range aggregation": {query: `count(count_over_time({app="a"} |= "line 9" [1m]))`, numSeries: 2, step: 30},
+		"count of a malformed json":             {query: `count(count_over_time({app="a"} | json [1m]))`, numSeries: 2, step: 30, wantErr: "JSONParserErr"},
+		"count that drops the errored lines":    {query: `count(count_over_time({app="a"} | json | __error__="" [1m]))`, numSeries: 2, step: 30, wantEmpty: true},
+		"count that keeps the errored lines":    {query: `count(count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 2, step: 30},
+		"count of more series than the limit":   {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 10, step: 30},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, cutoff := range []bool{false, true} {
+				resOff, errOff := run(t, false, cutoff, tc.query, tc.numSeries, tc.step)
+				resOn, errOn := run(t, true, cutoff, tc.query, tc.numSeries, tc.step)
+
+				if tc.wantErr != "" {
+					require.ErrorContains(t, errOff, tc.wantErr)
+					require.ErrorContains(t, errOn, tc.wantErr)
+					continue
+				}
+				require.NoError(t, errOff)
+				require.NoError(t, errOn)
+				if !tc.wantEmpty {
+					require.NotEmpty(t, resOn.Data)
+				}
+				require.Equal(t, resOff.Data, resOn.Data)
+			}
+		})
+	}
+}

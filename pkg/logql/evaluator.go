@@ -285,6 +285,9 @@ type NodeContext struct {
 	preserving bool
 	maxSeries  int
 	reads      ParentReads
+	// identityOnly is true when the query lets a range iterator keep only the identity of its
+	// series. Unlike the other fields it is a setting of the query, so every child inherits it.
+	identityOnly bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -319,6 +322,20 @@ func isSketch(expr syntax.SampleExpr) bool {
 	return false
 }
 
+// withIdentityOnlyRangeIterator returns c, and the NodeContexts derived from it, with range
+// iterators allowed to keep only the identity of their series when enabled is true.
+func (c NodeContext) withIdentityOnlyRangeIterator(enabled bool) NodeContext {
+	c.identityOnly = enabled
+	return c
+}
+
+// identityOnlyRangeIterator is true when the range iterator of the expression may keep only which
+// series exist: the query allows it, and the parent reads no label or value and keeps every
+// series apart.
+func (c NodeContext) identityOnlyRangeIterator() bool {
+	return c.identityOnly && c.reads.Labels().None() && c.reads.Identity() && !c.reads.Values()
+}
+
 // OutputPreserving is true when every operator between the expression and the root keeps every
 // series it receives, though it may add series from elsewhere. The query then returns at least as
 // many series as the expression holds. It is true for the root expression unless that produces a
@@ -336,9 +353,9 @@ func (c NodeContext) ParentReads() ParentReads {
 // of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
 func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{reads: reads}
+		return NodeContext{reads: reads, identityOnly: c.identityOnly}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, identityOnly: c.identityOnly}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -460,7 +477,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				case logproto.SAMPLE_ORDER_BY_STREAM:
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.seriesCutoff(ctx, nc), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(rangeNC, rangExpr))
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, false, rangeAggIteratorLimits(rangeNC, rangExpr))
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -480,7 +497,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(nc, e))
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, nc.identityOnlyRangeIterator(), rangeAggIteratorLimits(nc, e))
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false, nc.iteratorLimits(e))
 	case *syntax.CountDistinctSketchExpr:
@@ -879,7 +896,9 @@ func (e *VectorAggEvaluator) Error() error {
 }
 
 // newTimestampFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples
-// must come in global timestamp order. On error, it closes the input iterator.
+// must come in global timestamp order. identityOnly is true when the parent reads only which series
+// exist, which lets the iterator keep only the identity of each. On error, it closes the input
+// iterator.
 func newTimestampFirstRangeAggEvaluator(
 	ctx context.Context,
 	it iter.PeekingSampleIterator,
@@ -887,6 +906,7 @@ func newTimestampFirstRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 	keepsErroredLines bool,
+	identityOnly bool,
 	limits iteratorLimits,
 ) (_ StepEvaluator, returnErr error) {
 	defer func() {
@@ -957,7 +977,11 @@ func newTimestampFirstRangeAggEvaluator(
 			keepsErroredLines: keepsErroredLines,
 		}, nil
 	default:
-		iter, err := newTimestampFirstRangeVectorIterator(
+		newIterator := newTimestampFirstRangeVectorIterator
+		if identityOnly {
+			newIterator = newTimestampFirstIdentityRangeVectorIterator
+		}
+		iter, err := newIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),

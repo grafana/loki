@@ -53,11 +53,7 @@ func newTimestampFirstRangeVectorIterator(
 		start = start - offset
 		end = end - offset
 	}
-	var overlap bool
-	if selRange >= step && start != end {
-		overlap = true
-	}
-	if !overlap {
+	if !windowsOverlap(selRange, step, start, end) {
 		_, err := streamingAggregator(expr, 0)
 		if err != nil {
 			return nil, err
@@ -90,6 +86,16 @@ func newTimestampFirstRangeVectorIterator(
 		offset:   offset,
 		limits:   limits,
 	}, nil
+}
+
+// windowsOverlap reports whether the range windows of a query with selRange, step, start and end
+// overlap, so that a sample can fall into more than one window.
+func windowsOverlap(selRange, step, start, end int64) bool {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	return selRange >= step && start != end
 }
 
 //batch

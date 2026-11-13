@@ -649,7 +649,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, iteratorLimits{})
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -661,12 +661,33 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, iteratorLimits{})
 		require.NoError(t, err)
 		require.False(t, *closed)
 
 		require.NoError(t, ev.Close())
 		require.True(t, *closed)
+	})
+
+	t.Run("builds the identity-only iterator only when the parent reads only the identity", func(t *testing.T) {
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: syntax.OpRangeTypeCount,
+		}
+		for name, tc := range map[string]struct {
+			identityOnly bool
+			want         RangeVectorIterator
+		}{
+			"identity only":     {identityOnly: true, want: &identityBatchRangeVectorIterator{}},
+			"not identity only": {identityOnly: false, want: &batchRangeVectorIterator{}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				it, _ := newIterator()
+				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, tc.identityOnly, iteratorLimits{})
+				require.NoError(t, err)
+				require.IsType(t, tc.want, ev.(*RangeVectorEvaluator).iter)
+			})
+		}
 	})
 }
 
@@ -1651,6 +1672,28 @@ func TestNodeContext(t *testing.T) {
 		var nc NodeContext
 		require.False(t, nc.OutputPreserving())
 		require.Equal(t, NodeContext{}, nc.child(true, readsEverything()))
+	})
+
+	t.Run("identity-only range iterator needs the setting and a parent that reads only the identity", func(t *testing.T) {
+		identityOnly := newParentReads(noLabels(), true, false)
+		for name, tc := range map[string]struct {
+			enabled bool
+			reads   ParentReads
+			want    bool
+		}{
+			"enabled and the parent reads only the identity": {enabled: true, reads: identityOnly, want: true},
+			"not enabled":                 {enabled: false, reads: identityOnly},
+			"the parent reads a label":    {enabled: true, reads: newParentReads(onlyLabels("app"), true, false)},
+			"the parent reads the values": {enabled: true, reads: newParentReads(noLabels(), true, true)},
+			"the parent merges series":    {enabled: true, reads: newParentReads(noLabels(), false, false)},
+			"the parent reads everything": {enabled: true, reads: readsEverything()},
+		} {
+			t.Run(name, func(t *testing.T) {
+				nc := RootContext(parse(t, rate), 10).withIdentityOnlyRangeIterator(tc.enabled)
+				require.Equal(t, tc.want, nc.child(false, tc.reads).identityOnlyRangeIterator())
+				require.Equal(t, tc.want, nc.child(true, tc.reads).identityOnlyRangeIterator())
+			})
+		}
 	})
 
 	t.Run("zero value and root read everything", func(t *testing.T) {

@@ -5264,6 +5264,12 @@ engine:
   # CLI flag: -querier.engine.max-query-series-cutoff
   [max_query_series_cutoff: <boolean> | default = false]
 
+  # Experimental: Keep only a hash and the last timestamp of each series in the
+  # range iterator of a query that reads only which series exist, such as
+  # count(count_over_time(...)), instead of the labels and the points.
+  # CLI flag: -querier.engine.identity-only-range-iterator
+  [identity_only_range_iterator: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
