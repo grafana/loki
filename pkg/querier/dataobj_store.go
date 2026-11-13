@@ -197,7 +197,7 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
-	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, s.metadataCache)
+	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, dataobjread.WithMetadataCache(s.metadataCache))
 	tasks := dataobjread.NewPlanner(s.metastore, objects, filterer).Plan(ctx, query)
 
 	// The dataset layer records its statistics into the region the context carries, and nothing

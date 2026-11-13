@@ -48,14 +48,25 @@ type OpenObjects struct {
 	opening singleflight.Group
 }
 
-func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, metadataCache dataobj.MetadataCache) *OpenObjects {
-	return &OpenObjects{
+// OpenObjectsOption customizes an [OpenObjects].
+type OpenObjectsOption func(*OpenObjects)
+
+// WithMetadataCache caches the metadata region of every opened object in cache.
+func WithMetadataCache(cache dataobj.MetadataCache) OpenObjectsOption {
+	return func(o *OpenObjects) { o.metadataCache = cache }
+}
+
+func NewOpenObjects(bucket objstore.BucketReader, tenant string, prefetchBytes int64, opts ...OpenObjectsOption) *OpenObjects {
+	o := &OpenObjects{
 		bucket:        bucket,
 		tenant:        tenant,
 		prefetchBytes: prefetchBytes,
-		metadataCache: metadataCache,
 		byPath:        map[string]*openObject{},
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // get returns the opened object at path, opening it when no caller has yet. Callers that ask for the
