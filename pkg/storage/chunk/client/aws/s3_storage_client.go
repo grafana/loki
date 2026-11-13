@@ -283,7 +283,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 	}
 
 	// Route SDK logs through Loki's logger so -log.level applies to them.
-	awsCfg, err := v2config.LoadDefaultConfig(context.Background(), v2config.WithLogger(storageawscommon.NewSDKLogger(util_log.Logger)))
+	awsCfg, err := v2config.LoadDefaultConfig(context.Background(), v2config.WithLogger(commonaws.NewSDKLogger(util_log.Logger)))
 	if err != nil {
 		return nil, err
 	}

@@ -820,7 +820,7 @@ func TestChunkDelimiter_RoundTrip(t *testing.T) {
 
 func TestS3ObjectClient_SDKLogsFollowLokiLogLevel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// No x-amz-checksum-* headers, so the SDK warns that it cannot validate the payload.
+		// No x-amz-checksum-* headers, so the SDK logs at debug that it cannot validate the payload.
 		_, _ = w.Write([]byte("chunk"))
 	}))
 	defer ts.Close()
@@ -829,8 +829,8 @@ func TestS3ObjectClient_SDKLogsFollowLokiLogLevel(t *testing.T) {
 		allow    level.Option
 		expected bool
 	}{
-		{allow: level.AllowWarn(), expected: true},
-		{allow: level.AllowError(), expected: false},
+		{allow: level.AllowDebug(), expected: true},
+		{allow: level.AllowInfo(), expected: false},
 	} {
 		var buf bytes.Buffer
 		orig := util_log.Logger
@@ -855,7 +855,7 @@ func TestS3ObjectClient_SDKLogsFollowLokiLogLevel(t *testing.T) {
 		out := buf.String()
 		require.Equal(t, tc.expected, strings.Contains(out, "Response has no supported checksum"), out)
 		if tc.expected {
-			require.Contains(t, out, "level=warn")
+			require.Contains(t, out, "level=debug")
 		}
 	}
 }
