@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"hash"
 	"hash/crc32"
+	"math"
 )
 
 // encbuf is a helper type to populate a byte slice with various types.
@@ -59,7 +60,17 @@ type decbuf struct {
 	e error
 }
 
-func (d *decbuf) uvarint() int { return int(d.uvarint64()) }
+func (d *decbuf) uvarint() int {
+	x := d.uvarint64()
+	// A varint larger than math.MaxInt would wrap to a negative int, which then
+	// slips past the len(d.b) < n bounds check in bytes() and turns into a
+	// negative make/reslice length at the call sites. Reject it here instead.
+	if x > math.MaxInt {
+		d.e = ErrInvalidSize
+		return 0
+	}
+	return int(x)
+}
 
 // crc32 returns a CRC32 checksum over the remaining bytes.
 func (d *decbuf) crc32() uint32 {
