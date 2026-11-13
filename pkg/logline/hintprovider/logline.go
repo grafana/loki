@@ -109,7 +109,7 @@ func (p *LoglineHintProvider) queryRanges(
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
-	if filters.IsTrue() {
+	if len(filters) == 0 {
 		return []HintTimeRange{passthroughForInclusiveThrough(through)}, stats, nil
 	}
 
@@ -169,7 +169,7 @@ func (p *LoglineHintProvider) PlanHints(
 	}
 
 	filters := SupportedQuery(expr, p.ngramLength, p.maxConjunctions)
-	if filters.IsTrue() {
+	if len(filters) == 0 {
 		return plan, ErrUnsupported
 	}
 	plan.Filters = filters

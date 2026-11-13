@@ -19,8 +19,8 @@ const DefaultMaxConjunctions = 4
 // SupportedQuery returns the needles for query shapes that can use logline
 // index hints. The result is True when the query has no needle.
 //
-// Needles are a compiled needle.Plan, an OR of sets of literals. A line can
-// match only if it contains every literal of at least one set. Each filter becomes a
+// Needles are compiled needle.Conjunctions, an OR of sets of literals. A line
+// can match only if it contains every literal of at least one set. Each filter becomes a
 // clause and all clauses are ANDed:
 //   - line filters (|=, |~) that still run on the ingested line
 //     (collectLineFilters stops at line_format / decolorize / unpack). An or
@@ -56,14 +56,14 @@ const DefaultMaxConjunctions = 4
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Plan {
+func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Conjunctions {
 	if expr == nil || ngramLength <= 0 {
-		return needle.Plan{}
+		return nil
 	}
 	if maxConjunctions <= 0 {
 		maxConjunctions = DefaultMaxConjunctions
 	}
-	p := planner{ngramLength: ngramLength, maxConjunctions: maxConjunctions}
+	p := planner{ngramLength: ngramLength}
 
 	var clauses []needle.Expr
 	for _, stage := range collectLineFilters(expr) {
@@ -81,8 +81,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.P
 
 // planner builds the needles of one query.
 type planner struct {
-	ngramLength     int
-	maxConjunctions int
+	ngramLength int
 }
 
 // keep maps a literal to the needle that is looked up, or reports false when
@@ -113,7 +112,7 @@ func (p planner) literal(s string, keep func(string) (string, bool)) needle.Expr
 
 // regex is the needle of a filter that requires a match of pattern.
 func (p planner) regex(pattern string, keep func(string) (string, bool)) needle.Expr {
-	return regexliteral.Needles(pattern, p.maxConjunctions).Map(keep)
+	return regexliteral.Needles(pattern).Map(keep)
 }
 
 // lineFilterStage mirrors LineFilterExpr.Filter. Every node on the Left chain

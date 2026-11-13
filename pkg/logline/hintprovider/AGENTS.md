@@ -86,8 +86,8 @@ Query-shape support and hint lookup for logline index lookups.
      leave them without ranges and hide their matches.
 13. **A regex contributes the needles every match satisfies**
     - `|~` and `=~` (line, pre-parser and post-parser filters alike) go through
-      `regexliteral.Needles` with the query's `maxConjunctions`, never a local
-      AST walk. It owns the rules that keep regex needles free of false
+      `regexliteral.Needles(pattern)`, never a local AST walk. Regex extraction
+      uses fixed internal enumeration limits, not the query's DNF cap. It owns the rules that keep regex needles free of false
       negatives, including `(?i)` handling.
     - Anchoring is irrelevant here. Label regexes are anchored, line regexes are
       not, and both only need "contains".
@@ -129,7 +129,9 @@ Query-shape support and hint lookup for logline index lookups.
       date (inside the index ID), and ranges take both values from the footer.
       The v5 merge guard is where `meta.json` must agree with the footer.
 16. **Shards are intersected per conjunction, never across conjunctions**
-    - Lookups consume compiled `needle.Conjunctions`, an OR of conjunctions. `executeQuery` keeps
+    - Lookups consume compiled `needle.Conjunctions`, a named `[][]string`.
+      An empty outer slice means unconstrained; callers must not mutate slices
+      shared between goroutines. `executeQuery` keeps
       state per (reader, conjunction) and returns ranges per conjunction.
       `aggregateConjunctionRanges` runs `aggregateShardRanges` on each
       conjunction and unions the results.

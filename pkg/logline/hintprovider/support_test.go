@@ -1085,7 +1085,7 @@ func BenchmarkSupportedQuerySharedLiterals(b *testing.B) {
 			pattern.WriteString("(?:(z000000)|(z000001)|(z000002)|(z000003))")
 			expr, err := syntax.ParseExpr(fmt.Sprintf("{app=\"foo\"} |~ %q", pattern.String()))
 			require.NoError(b, err)
-			require.Len(b, SupportedQuery(expr, 6, 0).Conjunctions(), DefaultMaxConjunctions)
+			require.Len(b, SupportedQuery(expr, 6, 0), DefaultMaxConjunctions)
 			b.ReportAllocs()
 			for b.Loop() {
 				SupportedQuery(expr, 6, 0)

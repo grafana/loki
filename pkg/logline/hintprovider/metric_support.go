@@ -5,10 +5,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-func SupportedMetricQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Plan {
+func SupportedMetricQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Conjunctions {
 	selector, ok := metricLogSelector(expr)
 	if !ok {
-		return needle.Plan{}
+		return nil
 	}
 	return SupportedQuery(selector, ngramLength, maxConjunctions)
 }
