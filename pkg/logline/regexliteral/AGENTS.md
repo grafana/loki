@@ -115,3 +115,8 @@ deterministic syntax/context/cap/mapping matrix, and covers nested non-exact
 nodes, optional-body short-circuiting, on-demand fallback, and deferred exact
 ancestors. Parity checks assert exact precision, not merely the absence of false
 negatives. `deferred_text_test.go` covers rope storage and boundary invariants.
+
+For behavior-focused conjunction assertions, compare `Compile(cap).String()`
+with literal expectations such as `{"foo"} or {"bar"}` or `TRUE`. Keep slice
+comparisons for exact text-set internals, huge literals, ownership/shape checks,
+and reference-versus-current differential checks that validate structure.

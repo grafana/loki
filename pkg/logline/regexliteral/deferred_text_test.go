@@ -33,26 +33,26 @@ func TestDeferredText_FlushOrderPreservesBoundedAbsorption(t *testing.T) {
 	// Sorting only at flush puts absorbing literals before the longer
 	// alternatives, before bounded OR absorption can collapse to TRUE.
 	conjs := Needles(pattern).Compile(2)
-	require.Equal(t, needle.Conjunctions{{"bar"}, {"foo"}}, conjs)
+
 	require.Equal(t, `{"bar"} or {"foo"}`, conjs.String())
 }
 
 func TestDeferredText_EmptyOptionalAndUTF8(t *testing.T) {
 	for _, tc := range []struct {
 		pattern string
-		want    needle.Conjunctions
+		want    string
 	}{
-		{`(?:|)`, nil},
-		{`(?:ab)?(?:ab)?`, nil},
-		{`(?:){1000}`, nil},
-		{`a(?:é?){0}b`, needle.Conjunctions{{"ab"}}},
-		{`x(?:a|)y`, needle.Conjunctions{{"xay"}, {"xy"}}},
-		{`(?:(é)(世))(界)`, needle.Conjunctions{{"é世界"}}},
-		{`x(?:é|)界`, needle.Conjunctions{{"xé界"}, {"x界"}}},
-		{`(?:(a)(bc)|(ab)(c))d`, needle.Conjunctions{{"abcd"}}},
+		{`(?:|)`, "TRUE"},
+		{`(?:ab)?(?:ab)?`, "TRUE"},
+		{`(?:){1000}`, "TRUE"},
+		{`a(?:é?){0}b`, `{"ab"}`},
+		{`x(?:a|)y`, `{"xay"} or {"xy"}`},
+		{`(?:(é)(世))(界)`, `{"é世界"}`},
+		{`x(?:é|)界`, `{"xé界"} or {"x界"}`},
+		{`(?:(a)(bc)|(ab)(c))d`, `{"abcd"}`},
 	} {
 		t.Run(tc.pattern, func(t *testing.T) {
-			require.Equal(t, tc.want, Needles(tc.pattern).Compile(64))
+			require.Equal(t, tc.want, Needles(tc.pattern).Compile(64).String())
 		})
 	}
 }

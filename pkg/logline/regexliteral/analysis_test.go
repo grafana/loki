@@ -113,8 +113,8 @@ func TestAnalysis_IgnoredSubtrees(t *testing.T) {
 			require.NoError(t, err)
 			a := analyze(re, maxExact)
 			require.Len(t, a.exact, 1)
-			require.Empty(t, a.expr(re, basicMode).Compile(1))
-			require.Empty(t, a.expr(re, richMode).Compile(1))
+			require.Equal(t, "TRUE", a.expr(re, basicMode).Compile(1).String())
+			require.Equal(t, "TRUE", a.expr(re, richMode).Compile(1).String())
 		})
 	}
 }
@@ -136,10 +136,10 @@ func TestAnalysis_OptionalNonExactHeadShortCircuits(t *testing.T) {
 			_, cached := a.exact[body.Sub[1]]
 			require.False(t, cached)
 			for _, mode := range []int{basicMode, richMode} {
-				require.Empty(t, a.expr(re, mode).Compile(1))
+				require.Equal(t, "TRUE", a.expr(re, mode).Compile(1).String())
 				require.Equal(t, 3, len(a.exact))
 			}
-			require.Empty(t, Needles(pattern).Compile(2))
+			require.Equal(t, "TRUE", Needles(pattern).Compile(2).String())
 		})
 	}
 }
@@ -155,15 +155,15 @@ func TestAnalysis_EmissionAnalyzesSkippedChildren(t *testing.T) {
 	_, cached = a.exact[re.Sub[1].Sub[0]]
 	require.False(t, cached)
 
-	want := needle.Conjunctions{{"head", "tail"}}
-	require.Equal(t, want, a.expr(re, basicMode).Compile(1))
+	const want = `{"head", "tail"}`
+	require.Equal(t, want, a.expr(re, basicMode).Compile(1).String())
 	_, cached = a.exact[re.Sub[2]]
 	require.True(t, cached)
 	_, cached = a.exact[re.Sub[1].Sub[0]]
 	require.True(t, cached)
 	entries := len(a.exact)
 	// The second mode reuses summaries populated by fallback emission.
-	require.Equal(t, want, a.expr(re, richMode).Compile(1))
+	require.Equal(t, want, a.expr(re, richMode).Compile(1).String())
 	require.Len(t, a.exact, entries)
 }
 
@@ -186,18 +186,18 @@ func TestAnalysis_SharedSubtreeVisitedOnce(t *testing.T) {
 func TestAnalysis_NestedNonExact(t *testing.T) {
 	for _, tc := range []struct {
 		pattern string
-		want    needle.Conjunctions
+		want    string
 	}{
-		{`L((foo.*bar))R`, needle.Conjunctions{{"Lfoo", "barR"}}},
-		{`L((foo.*bar)+)R`, needle.Conjunctions{{"L", "R", "bar", "foo"}}},
-		{`L((foo.*bar){2,3})R`, needle.Conjunctions{{"L", "R", "bar", "foo"}}},
-		{`L((foo.*bar)?)R`, needle.Conjunctions{{"L", "R"}}},
+		{`L((foo.*bar))R`, `{"Lfoo", "barR"}`},
+		{`L((foo.*bar)+)R`, `{"L", "R", "bar", "foo"}`},
+		{`L((foo.*bar){2,3})R`, `{"L", "R", "bar", "foo"}`},
+		{`L((foo.*bar)?)R`, `{"L", "R"}`},
 		// Even zero copies must retain the child's exact failure: do
 		// not infer an empty exact set and accidentally join L to R.
-		{`L((?:.*){0})R`, needle.Conjunctions{{"L", "R"}}},
+		{`L((?:.*){0})R`, `{"L", "R"}`},
 	} {
 		t.Run(tc.pattern, func(t *testing.T) {
-			require.Equal(t, tc.want, Needles(tc.pattern).Compile(64))
+			require.Equal(t, tc.want, Needles(tc.pattern).Compile(64).String())
 		})
 	}
 
@@ -210,7 +210,7 @@ func TestAnalysis_NestedNonExact(t *testing.T) {
 			// Each capture has one cached failure, not another recursive
 			// exact attempt during each enclosing fallback walk.
 			require.GreaterOrEqual(t, len(a.exact), depth)
-			require.Equal(t, needle.Conjunctions{{"Lfoo", "barR"}}, Needles(pattern).Compile(64))
+			require.Equal(t, `{"Lfoo", "barR"}`, Needles(pattern).Compile(64).String())
 			require.Equal(t, referenceNeedles(re).Compile(64), Needles(pattern).Compile(64))
 		})
 	}

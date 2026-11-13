@@ -196,17 +196,17 @@ func TestNeedles_CompileAfterMap(t *testing.T) {
 		// Neither branch is exact. Walking must not collapse the alternation
 		// before the caller chooses its DNF cap.
 		e := Needles(`alpha.*left|beta.*right`)
-		require.Equal(t, needle.Conjunctions{{"alpha", "left"}, {"beta", "right"}}, e.Compile(2))
-		require.Empty(t, e.Compile(1))
+		require.Equal(t, `{"alpha", "left"} or {"beta", "right"}`, e.Compile(2).String())
+		require.Equal(t, "TRUE", e.Compile(1).String())
 	})
 
 	t.Run("map precedes the DNF cap", func(t *testing.T) {
 		// There is no shared case-sensitive literal. Folding before the
 		// final cap reveals one; eagerly collapsing the OR would lose it.
 		e := Needles(`foo|FOO`)
-		require.Empty(t, e.Compile(1))
+		require.Equal(t, "TRUE", e.Compile(1).String())
 		mapped := e.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
-		require.Equal(t, needle.Conjunctions{{"FOO"}}, mapped.Compile(1))
+		require.Equal(t, `{"FOO"}`, mapped.Compile(1).String())
 	})
 }
 
