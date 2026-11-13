@@ -169,7 +169,12 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		e.RHS = rhsMapped
 		return e, nil
 	case *syntax.LabelReplaceExpr:
-		lhsMapped, err := m.Map(e.Left, vectorAggrPushdown, recorder)
+		// Do not push the outer vector aggregation past a label_replace. The
+		// pushdown would evaluate the grouping on the wrong side of the label
+		// mutation, and the label_replace kept on the merged result would be
+		// evaluated a second time on a label set the pushed down aggregation
+		// already reduced, silently rewriting labels whose source label is gone.
+		lhsMapped, err := m.Map(e.Left, nil, recorder)
 		if err != nil {
 			return nil, err
 		}
