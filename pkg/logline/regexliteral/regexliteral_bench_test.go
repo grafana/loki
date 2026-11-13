@@ -30,6 +30,32 @@ func BenchmarkNeedlesSharedPrefix(b *testing.B) {
 	}
 }
 
+func BenchmarkNeedlesNestedNonExact(b *testing.B) {
+	for _, depth := range []int{32, 128, 512} {
+		b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
+			pattern := "L" + strings.Repeat("(", depth) + "foo.*bar" + strings.Repeat(")", depth) + "R"
+			b.ReportAllocs()
+			for b.Loop() {
+				benchmarkRequirement = Needles(pattern)
+			}
+		})
+	}
+}
+
+// Optional non-exact bodies previously short-circuited at the first wildcard.
+// Keep this case alongside nested captures to expose eager-analysis overhead.
+func BenchmarkNeedlesOptionalNonExact(b *testing.B) {
+	for _, captures := range []int{64, 1000} {
+		b.Run(fmt.Sprintf("captures=%d", captures), func(b *testing.B) {
+			pattern := "(?:.+" + strings.Repeat("(a{256})", captures) + ")?"
+			b.ReportAllocs()
+			for b.Loop() {
+				benchmarkRequirement = Needles(pattern)
+			}
+		})
+	}
+}
+
 func BenchmarkNeedlesTypical(b *testing.B) {
 	ids := make([]string, 1000)
 	for i := range ids {

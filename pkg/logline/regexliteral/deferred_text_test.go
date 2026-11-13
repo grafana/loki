@@ -27,8 +27,7 @@ func TestDeferredText_FlushOrderPreservesBoundedAbsorption(t *testing.T) {
 		`(q06foo)|(q07foo)|(q08foo)|(q09foo)|(q10foo)|(q11foo)|(foo)|(bar)`
 	re, err := parse(pattern)
 	require.NoError(t, err)
-	set, ok := newWalker(maxExact).exact(re)
-	require.True(t, ok)
+	set := analyze(re, maxExact).exact[re][richMode]
 	require.Len(t, set, 14)
 
 	// Sorting only at flush puts absorbing literals before the longer
@@ -74,12 +73,12 @@ func TestDeferredText_ExactCardinality(t *testing.T) {
 		t.Run(tc.pattern+"/"+strconv.Itoa(tc.limit), func(t *testing.T) {
 			re, err := parse(tc.pattern)
 			require.NoError(t, err)
-			set, ok := newWalker(tc.limit).exact(re)
+			set := analyze(re, tc.limit).exact[re][richMode]
 			if tc.want == nil {
-				require.False(t, ok)
+				require.Nil(t, set)
 				return
 			}
-			require.True(t, ok)
+			require.NotNil(t, set)
 			require.Equal(t, tc.want, materializeTextSet(set))
 		})
 	}
@@ -91,8 +90,8 @@ func TestDeferredText_LongSharedPrefixAlternatives(t *testing.T) {
 	pattern := strings.Repeat("(a{256})", 512) + "(?:left|rite)" + strings.Repeat("(b{256})", 512)
 	re, err := parse(pattern)
 	require.NoError(t, err)
-	set, ok := newWalker(maxExact).exact(re)
-	require.True(t, ok)
+	set := analyze(re, maxExact).exact[re][richMode]
+	require.NotNil(t, set)
 	require.Equal(t, []string{prefix + "left" + suffix, prefix + "rite" + suffix}, materializeTextSet(set))
 	// The basic walk's shared requirements must still survive Compile(1).
 	require.Equal(t, []string{prefix, suffix}, Literals(pattern))
@@ -173,8 +172,7 @@ func TestDeferredText_RepeatAdjacency(t *testing.T) {
 	// first member has 257 bytes, so a second exact copy must be rejected.
 	re, err := parse(`(?:z|a{257}){2}`)
 	require.NoError(t, err)
-	_, ok := newWalker(maxExact).exact(re)
-	require.False(t, ok)
+	require.Nil(t, analyze(re, maxExact).exact[re][richMode])
 }
 
 func materializeTextSet(set textSet) []string {

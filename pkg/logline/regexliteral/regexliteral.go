@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	// maxExact bounds the exact sets the walk builds. A larger set is
+	// maxExact bounds the exact sets the analysis builds. A larger set is
 	// treated as not exact, and a run that would cross past it is split.
 	maxExact = 16
 	// maxClass bounds the runes of a character class that is used as an
@@ -77,10 +77,16 @@ func Needles(pattern string) needle.Expr {
 		return needle.True()
 	}
 
-	// Preserve basic literals as fallback candidates when the richer walk's
-	// alternatives exceed the final DNF cap.
-	single := newWalker(1).expr(re)
-	return needle.And(single, newWalker(maxExact).expr(re))
+	// Analyze both enumeration limits on demand. Emission keeps basic
+	// fallback literals without rebuilding exact summaries in either walk.
+	a := analyze(re, maxExact)
+	basic := a.expr(re, basicMode)
+	// A successful basic summary is the same singleton in both modes.
+	// Emit it once rather than materializing the same whole literal twice.
+	if a.summary(re)[basicMode] != nil {
+		return basic
+	}
+	return needle.And(basic, a.expr(re, richMode))
 }
 
 // parse runs the same parse as Loki's parseRegexpFilter. It does not call
@@ -95,44 +101,25 @@ func parse(pattern string) (*syntax.Regexp, error) {
 	return re, nil
 }
 
-// walkConfig is shared by a walker and the walkers it starts for the
-// branches of an alternation.
-type walkConfig struct {
-	// maxExact and maxClass bound enumeration, independently of the final
-	// DNF cap in Compile. With an enumeration cap of one, every run is a
-	// single literal. Flushing a run never compiles or collapses it.
-	maxExact int
-	maxClass int
-}
-
-// walker collects contiguous literal runs. A run is text that appears in
-// every match, held as the set of exact strings it can be. Anything that can
-// match more strings than the caps allow ends it.
+// walker emits requirements from cached analysis. It descends only when a
+// node is non-exact in its mode, so exact ancestors never materialize their
+// children's standalone requirements. nil run means no pending literal run.
 type walker struct {
-	*walkConfig
-	// run is the set of exact alternatives for the current literal run. nil
-	// means there is no run.
-	run textSet
-	acc needle.Expr
+	analysis *regexAnalysis
+	mode     int
+	run      textSet
+	acc      needle.Expr
 }
 
-func newWalker(maxAlternatives int) *walker {
-	maxAlternatives = max(maxAlternatives, 1)
-	return &walker{walkConfig: &walkConfig{
-		maxExact: min(maxExact, maxAlternatives),
-		maxClass: min(maxClass, maxAlternatives),
-	}}
-}
-
-// expr walks re and returns its requirement.
-func (w *walker) expr(re *syntax.Regexp) needle.Expr {
+func (a *regexAnalysis) expr(re *syntax.Regexp, mode int) needle.Expr {
+	w := walker{analysis: a, mode: mode}
 	w.walk(re)
 	w.flush()
 	return w.acc
 }
 
 func (w *walker) walk(re *syntax.Regexp) {
-	if set, ok := w.exact(re); ok {
+	if set := w.analysis.summary(re)[w.mode]; set != nil {
 		w.join(set)
 		return
 	}
@@ -147,7 +134,7 @@ func (w *walker) walk(re *syntax.Regexp) {
 		w.walk(re.Sub[0])
 
 	case syntax.OpPlus:
-		if set, ok := w.exact(re.Sub[0]); ok {
+		if set := w.analysis.summary(re.Sub[0])[w.mode]; set != nil {
 			// The first and the last repetition are each one member of the
 			// set, so the set joins the run on the left, and a new run
 			// starting with the set joins the right.
@@ -171,8 +158,7 @@ func (w *walker) walk(re *syntax.Regexp) {
 		w.flush()
 		branches := make([]needle.Expr, len(re.Sub))
 		for i, sub := range re.Sub {
-			b := walker{walkConfig: w.walkConfig}
-			branches[i] = b.expr(sub)
+			branches[i] = w.analysis.expr(sub, w.mode)
 		}
 		w.acc = needle.And(w.acc, needle.Or(branches...))
 
@@ -190,7 +176,7 @@ func (w *walker) join(set textSet) {
 	switch {
 	case w.run == nil:
 		w.run = set
-	case len(w.run)*len(set) > w.maxExact:
+	case len(w.run)*len(set) > w.analysis.limits[w.mode]:
 		w.flush()
 		w.run = set
 	default:
@@ -219,138 +205,6 @@ func (w *walker) flush() {
 	w.run = nil
 }
 
-// exact returns the deferred, deduplicated set of strings re matches when
-// it has at most maxExact members. Zero-width assertions match the empty
-// string. The set is never empty.
-func (w *walker) exact(re *syntax.Regexp) (textSet, bool) {
-	switch re.Op {
-	case syntax.OpLiteral:
-		// For a case-insensitive literal the parser stores the smallest rune
-		// of each fold orbit. That is the uppercase letter for ASCII, and it
-		// never turns a non-ASCII-only orbit into ASCII, so the runes can be
-		// used as they are.
-		//
-		// A few non-ASCII runes also match an ASCII letter under (?i), for
-		// example U+017F for s and U+212A for k. The parser stores those
-		// orbits as ASCII S and K, so lines that spell a letter that way are
-		// missed. We accept that to keep needles whole.
-		return textSet{textLeaf(string(re.Rune))}, true
-
-	case syntax.OpEmptyMatch,
-		syntax.OpBeginLine, syntax.OpEndLine,
-		syntax.OpBeginText, syntax.OpEndText,
-		syntax.OpWordBoundary, syntax.OpNoWordBoundary:
-		// Zero-width, so the text on either side is adjacent in the match and
-		// the run continues. Prometheus only strips ^ and $ at the ends
-		// because its matchers are anchored. Unanchored, they can appear
-		// anywhere and still consume nothing.
-		return textSet{nil}, true
-
-	case syntax.OpCapture:
-		return w.exact(re.Sub[0])
-
-	case syntax.OpConcat:
-		set := textSet{nil}
-		for _, sub := range re.Sub {
-			s, ok := w.exact(sub)
-			if !ok || len(set)*len(s) > w.maxExact {
-				return nil, false
-			}
-			set = crossText(set, s)
-		}
-		return set, true
-
-	case syntax.OpAlternate:
-		var set textSet
-		for _, sub := range re.Sub {
-			s, ok := w.exact(sub)
-			if !ok {
-				return nil, false
-			}
-			set = unionText(set, s)
-			if len(set) > w.maxExact {
-				return nil, false
-			}
-		}
-		return set, true
-
-	case syntax.OpQuest:
-		s, ok := w.exact(re.Sub[0])
-		if !ok {
-			return nil, false
-		}
-		set := unionText(s, textSet{nil})
-		if len(set) > w.maxExact {
-			return nil, false
-		}
-		return set, true
-
-	case syntax.OpRepeat:
-		// Only a fixed count is a finite set. x{0,1} is x?.
-		if re.Min == 0 && re.Max == 1 {
-			return w.exact(&syntax.Regexp{Op: syntax.OpQuest, Sub: re.Sub})
-		}
-		if re.Min != re.Max {
-			return nil, false
-		}
-		s, ok := w.exact(re.Sub[0])
-		if !ok {
-			return nil, false
-		}
-		if len(s) == 1 {
-			// The old loop checks the accumulated byte length before each
-			// copy, so the last copy may cross maxRepeatBytes. Share repeated
-			// subtrees without changing that boundary (or truncating text).
-			if n := textBytes(s[0]); re.Min > 0 && n > 0 && re.Min-1 > maxRepeatBytes/n {
-				return nil, false
-			}
-			return textSet{repeatText(s[0], re.Min)}, true
-		}
-		set := textSet{nil}
-		for range re.Min {
-			if len(set)*len(s) > w.maxExact || set.firstBytes() > maxRepeatBytes {
-				return nil, false
-			}
-			set = crossText(set, s)
-		}
-		return set, true
-
-	case syntax.OpCharClass:
-		return w.classSet(re)
-	}
-	return nil, false
-}
-
-// classSet returns the runes of a small character class as strings, with
-// ASCII letters uppercased. Parse turns `500|503` into `50[03]`, and a case
-// insensitive letter into a class of its fold orbit, so small classes are
-// common.
-func (w *walker) classSet(re *syntax.Regexp) (textSet, bool) {
-	// Uppercasing can at most halve the count, so a class with more than
-	// twice maxClass runes cannot fit.
-	n := 0
-	for i := 0; i < len(re.Rune); i += 2 {
-		n += int(re.Rune[i+1]-re.Rune[i]) + 1
-		if n > 2*w.maxClass {
-			return nil, false
-		}
-	}
-	if n == 0 {
-		return nil, false
-	}
-
-	set := make(textSet, 0, n)
-	for i := 0; i < len(re.Rune); i += 2 {
-		for r := re.Rune[i]; r <= re.Rune[i+1]; r++ {
-			set = set.with(textLeaf(string(upperASCII(r))))
-		}
-	}
-	if len(set) > w.maxClass {
-		return nil, false
-	}
-	return set, true
-}
-
 func upperASCII(r rune) rune {
 	if 'a' <= r && r <= 'z' {
 		return r - ('a' - 'A')
@@ -368,8 +222,8 @@ func (w *walker) repeat(re *syntax.Regexp) {
 		w.flush()
 		return
 	}
-	set, ok := w.exact(re.Sub[0])
-	if !ok {
+	set := w.analysis.summary(re.Sub[0])[w.mode]
+	if set == nil {
 		w.flush()
 		w.walk(re.Sub[0])
 		w.flush()

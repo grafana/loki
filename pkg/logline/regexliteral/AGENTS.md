@@ -2,7 +2,7 @@
 
 Literal substrings every match of a regex contains, used as logline index needles.
 
-One walker implementation, two entry points:
+One shared memoized bottom-up analysis on demand, two entry points:
 
 - `Needles` returns an uncompiled, factored `needle.Expr` that keeps
   alternation. `foo|bar` gives {foo} or {bar}. Small finite alternations are
@@ -13,16 +13,27 @@ One walker implementation, two entry points:
   a DNF cap of one keeps only requirements all branches imply. It is the
   behaviour at `max_alternatives` 1.
 
-`Needles(pattern string)` takes no cap. Keep the current two walks: a basic
-walk with enumeration capped at one, and a rich OR-aware walk with fixed
-`maxExact`/`maxClass` enumeration limits. Both use the same walker
-implementation, and their requirements are ANDed without compiling. The
-basic walk preserves fallback literals, including suffixes joined into the
-rich walk's alternatives. Only `Compile` takes the query's DNF cap.
-`TestLiterals` pins the one-conjunction behaviour. Exact attempts and runs
-now use deferred text, but keep the two walks and the existing exact-attempt
-control flow. A single bottom-up regex analysis is a separate, unapproved
-change.
+`Needles(pattern string)` takes no cap. `analysis.go` computes paired exact-set
+summaries on demand for a basic mode (cap one) and a rich mode
+(`maxExact`/`maxClass`). Each requested node is analyzed at most once, with
+child summaries completed bottom-up only when its exact operation needs them.
+Preserve short-circuit traversal: an optional body that starts with a non-exact
+node must not analyze its unused trailing captures. Basic successes can share
+immutable singleton sets with the rich mode. Basic failures must be computed
+independently, even when the rich result is a singleton.
+
+`regexliteral.go` emits the basic and rich requirements using cached summaries,
+ANDing them without compiling. If the root has a successful basic exact summary,
+its singleton is identical in both modes and is emitted only once. Fallback
+emission requests missing summaries
+on demand rather than treating an unvisited child as non-exact. These
+contextual emission walks keep the existing run joins, fallback boundaries,
+source order, and suffix requirements; they never recompute exact analysis
+for a cached node. An exact ancestor consumes its rope directly, without
+emitting its children's standalone
+requirements. Analysis never creates needle expressions or materializes
+intermediate text. Only `Compile` takes the query's DNF cap.
+`TestLiterals` pins the one-conjunction behaviour.
 
 ## Invariants
 
@@ -41,13 +52,13 @@ change.
    so lines that spell a letter that way are missed. Needles stay whole
    instead, and the property test does not generate those substitutions.
 2. **No length filtering.** The caller owns the n-gram length.
-3. **Exact sets are small.** `exact` gives the finite set of strings a node
-   matches only up to `maxExact` (16) strings, and a character class only up
-   to `maxClass` (4) runes. A run that would cross past `maxExact` is flushed
+3. **Exact sets are small.** Cached exact summaries give the finite set of
+   strings a node matches only up to `maxExact` (16) strings, and a character
+   class only up to `maxClass` (4) runes. A run that would cross past `maxExact` is flushed
    and restarts. Anything larger is walked branch by branch, or required
    nothing. These fixed **enumeration limits** are independent of the query's
-   **DNF cap**, passed only to `Expr.Compile`. The basic walk uses one for
-   both enumeration limits; the rich walk always uses 16 and 4, regardless
+   **DNF cap**, passed only to `Expr.Compile`. The basic mode uses one for
+   both enumeration limits; the rich mode always uses 16 and 4, regardless
    of the DNF cap. Raising enumeration limits costs planning time on the
    query frontend.
 4. **Class runes are uppercased.** ASCII letters in a small class come back
@@ -56,8 +67,8 @@ change.
    lookup.
 5. **Runs are bounded; expressions stay factored.** A run never has more
    strings than its walk's exact-set limit. Flushing uses uncapped
-   `needle.And`/`needle.Or`, as does combining branches and the two walks.
-   Non-exact alternations survive even the basic walk. That walk preserves
+   `needle.And`/`needle.Or`, as does combining branches and the two modes.
+   Non-exact alternations survive even basic emission. That mode preserves
    plain text next to an alternation:
    `Needles("(a|b)verylongliteral").Compile(1)` gives {verylongliteral}.
 6. **Compile and prune only at the end.** `Needles` never calls `Compile`.
@@ -66,13 +77,15 @@ change.
    the DNF cap and prunes internally, returning `needle.Conjunctions`, a named
    `[][]string` with `String` for diagnostics (empty means nothing is required).
    Keeping redundant substrings until then lets a bounded result retain
-   requirements implied by every branch. There is no
-   public plan wrapper or exported `Prune`/`Collapse` operation. `Literals`
+   requirements implied by every branch. There is no public plan wrapper or
+   exported `Prune`/`Collapse` operation. `Literals`
    compiles because its result is final.
 7. **Defer text, not requirements.** `deferred_text.go` stores exact alternatives
    and runs as immutable ropes. Concatenation shares children and caches byte
    length and a compositional fingerprint; it never copies a growing prefix
-   or a growing fragment array. `flush` materializes each final literal once.
+   or a growing fragment array. `flush` materializes each final literal once
+   and sorts the final strings before creating the OR. Preserve this order:
+   bounded OR absorption can lose precision if absorbing literals arrive late.
    Singleton exact repeats share doubled subtrees. There is no new text
    budget or truncation: large adjacent captures still produce full literals.
 8. **Deduplication and repeat accounting are unchanged.** Deferred sets are
@@ -85,5 +98,22 @@ change.
    first** alternative, not the shortest or first-inserted one. Preserve the
    old check-before-append boundary for exact repeats: the final copy can
    cross `maxRepeatBytes`. Omitted or variable copies still break adjacency.
-   `deferred_text_test.go` covers these storage and boundary invariants;
-   leave the existing test and benchmark files to the parent workflow.
+9. **Exact failure is sticky.** Analyze each mode with its own intermediate
+   product/union checks; do not infer exactness from the final language alone.
+   In particular, a zero-count repeat still requires an exact child. A rich
+   singleton may coexist with a basic failure. Store nil for non-exact and
+   `{nil}` for the exact set containing the empty string. Stars and variable
+   zero-min repeats other than `{0,1}` need neither child analysis nor fallback
+   emission. Concat and alternate exact analysis stop at their first failure
+   for each mode. If contextual fallback later needs a skipped child, it must
+   request that child's summary, not read the cache as if it were complete.
+
+`analysis_reference_test.go` freezes the P2 walker from `072f4aa2ff` as a
+test-only oracle.
+`analysis_test.go` compares exact summaries and compiled results over a
+deterministic syntax/context/cap/mapping matrix, and covers nested non-exact
+nodes, optional-body short-circuiting, on-demand fallback, and deferred exact
+ancestors. Do not update parity expectations to
+accept a precision change as part of this optimization. `deferred_text_test.go`
+covers rope storage and boundary invariants. Leave the existing test and
+benchmark files to the parent workflow.
