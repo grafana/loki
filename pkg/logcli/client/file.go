@@ -239,6 +239,10 @@ func (l *limiter) MaxQuerySeries(_ string) int {
 	return l.n
 }
 
+func (l *limiter) MaxQueryIntermediateSeries(_ string) int {
+	return 0
+}
+
 func (l *limiter) MaxQueryRange(_ context.Context, _ string) time.Duration {
 	return 0 * time.Second
 }
