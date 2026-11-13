@@ -1,0 +1,35 @@
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}
+
+// AutoMQ exports its own job/instance labels, so honour them rather than
+// overwriting with the scrape job name.
+prometheus.scrape "automq" {
+  targets         = [{ __address__ = "automq:9090", job = "automq" }]
+  honor_labels    = true
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "loki" {
+  targets = [
+    { __address__ = "distributor:8001", job = "loki", instance = "distributor" },
+    { __address__ = "ingester-1:8002", job = "loki", instance = "ingester-1" },
+    { __address__ = "ingester-2:8003", job = "loki", instance = "ingester-2" },
+    { __address__ = "querier:8004", job = "loki", instance = "querier" },
+    { __address__ = "compactor:8006", job = "loki", instance = "compactor" },
+    { __address__ = "query-frontend:8007", job = "loki", instance = "query-frontend" },
+    { __address__ = "index-gateway:8008", job = "loki", instance = "index-gateway" },
+    { __address__ = "query-scheduler:8009", job = "loki", instance = "query-scheduler" },
+  ]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.scrape "mimir" {
+  targets         = [{ __address__ = "mimir:9009", job = "mimir", instance = "mimir" }]
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}
