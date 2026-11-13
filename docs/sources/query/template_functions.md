@@ -285,9 +285,8 @@ Examples:
 
 ### bytes
 
-Convert a humanized byte string to bytes using go-humanize. Durations can be turned into strings such as "3 days ago", numbers
-representing sizes like 82854982 into useful strings like, "83 MB" or
-"79 MiB"
+Convert a humanized byte string to a number of bytes.
+For example "83KB" would turn into 83000, and "83KiB" would turn into 84992.
 
 Signature: `bytes(string) string`
 
