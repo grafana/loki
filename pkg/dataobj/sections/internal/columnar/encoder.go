@@ -39,7 +39,11 @@ type Encoder struct {
 	tenant   string
 	sortInfo *datasetmd.SortInfo
 
-	data     *bytes.Buffer
+	// pageData holds the data of every committed page in section order. Flush
+	// copies it into one buffer of exactly dataLen bytes. A growing buffer
+	// would double in size and hold the old copy while it grows.
+	pageData [][]byte
+	dataLen  int
 	metadata *bytes.Buffer
 
 	dictionary       []string
@@ -120,42 +124,42 @@ func (enc *Encoder) initDictionary() {
 }
 
 // dataSize returns the current number of buffered data bytes.
-func (enc *Encoder) dataSize() int {
-	if enc.data == nil {
-		return 0
-	}
-	return enc.data.Len()
-}
+func (enc *Encoder) dataSize() int { return enc.dataLen }
 
-// appendColumn adds column data and metadata to enc. appendColumn must only be
-// called from the current child [ColumnEncoder] on Close or Discard. Discard
-// calls must pass nil for both data and metadata to denote a discard.
+// appendColumn adds the data of pages and the column metadata to enc.
+// appendColumn must only be called from the current child [ColumnEncoder] on
+// Close or Discard. Discard calls must pass nil for both pages and metadata to
+// denote a discard.
 //
-// numPages specifies how many pages were encoded in the column.
+// dataSize is the total length of the data of pages, in bytes.
 //
-// enc *must never* retain data or metadata beyond the call to appendColumn.
-func (enc *Encoder) appendColumn(numPages int, data, metadata []byte) error {
+// enc keeps references to the page data until the next Flush or Reset, so the
+// caller must not modify it before then. enc does not retain metadata beyond
+// the call to appendColumn.
+func (enc *Encoder) appendColumn(pages []*dataset.MemPage, dataSize int, metadata []byte) error {
 	if enc.curColumn == nil {
 		return errElementNoExist
 	}
 
-	if len(data) == 0 && len(metadata) == 0 {
+	if len(pages) == 0 && len(metadata) == 0 {
 		// Column was discarded.
 		enc.curColumn = nil
 		return nil
 	}
 
-	// Initialize enc.data and enc.metadata.
+	// Initialize enc.metadata.
 	enc.initBuffers()
 
 	// Update deferred fields now that we know their values.
-	enc.curColumn.PagesCount = uint64(numPages)
+	enc.curColumn.PagesCount = uint64(len(pages))
 	enc.curColumn.ColumnMetadataOffset = uint64(enc.metadata.Len())
 	enc.curColumn.ColumnMetadataLength = uint64(len(metadata))
 
-	// [bytes.Buffer.Write] never fails.
-	_, _ = enc.data.Write(data)
-	_, _ = enc.metadata.Write(metadata)
+	for _, p := range pages {
+		enc.pageData = append(enc.pageData, p.Data)
+	}
+	enc.dataLen += dataSize
+	_, _ = enc.metadata.Write(metadata) // [bytes.Buffer.Write] never fails.
 
 	enc.columns = append(enc.columns, enc.curColumn)
 	enc.curColumn = nil
@@ -163,11 +167,10 @@ func (enc *Encoder) appendColumn(numPages int, data, metadata []byte) error {
 }
 
 func (enc *Encoder) initBuffers() {
-	if enc.data != nil && enc.metadata != nil {
+	if enc.metadata != nil {
 		return
 	}
 
-	enc.data = bufpool.GetUnsized()
 	enc.metadata = bufpool.GetUnsized()
 
 	// Initialize the metadata buffer with the format version. Section
@@ -218,7 +221,11 @@ func (enc *Encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		Tenant:        enc.tenant,
 		ExtensionData: extensionBuffer.Bytes(),
 	}
-	return w.WriteSection(opts, enc.data.Bytes(), enc.metadata.Bytes())
+	data := make([]byte, 0, enc.dataLen)
+	for _, p := range enc.pageData {
+		data = append(data, p...)
+	}
+	return w.WriteSection(opts, data, enc.metadata.Bytes())
 }
 
 func (enc *Encoder) buildSectionMetadata() *datasetmd.SectionMetadata {
@@ -241,9 +248,9 @@ func (enc *Encoder) Reset() {
 	enc.tenant = ""
 	enc.sortInfo = nil
 
-	bufpool.PutUnsized(enc.data)
 	bufpool.PutUnsized(enc.metadata)
-	enc.data = nil
+	enc.pageData = nil
+	enc.dataLen = 0
 	enc.metadata = nil
 
 	enc.dictionary = nil
@@ -314,13 +321,6 @@ func (enc *ColumnEncoder) Commit() error {
 	}
 	enc.closed = true
 
-	columnData := bufpool.Get(enc.totalPageSize)
-	defer bufpool.PutUnsized(columnData)
-
-	for _, p := range enc.memPages {
-		_, _ = columnData.Write(p.Data) // [bytes.Buffer.Write] never fails.
-	}
-
 	metadata := enc.buildMetadata()
 
 	columnMetadata := bufpool.Get(protocodec.Size(metadata))
@@ -330,7 +330,7 @@ func (enc *ColumnEncoder) Commit() error {
 		return err
 	}
 
-	return enc.parent.appendColumn(len(enc.memPages), columnData.Bytes(), columnMetadata.Bytes())
+	return enc.parent.appendColumn(enc.memPages, enc.totalPageSize, columnMetadata.Bytes())
 }
 
 // Discard discards the column, discarding any data written to it. After Discard
@@ -341,7 +341,7 @@ func (enc *ColumnEncoder) Discard() error {
 	}
 	enc.closed = true
 
-	return enc.parent.appendColumn(0, nil, nil) // Notify parent of discard.
+	return enc.parent.appendColumn(nil, 0, nil) // Notify parent of discard.
 }
 
 // buildMetadata builds the metadata message for the column.
