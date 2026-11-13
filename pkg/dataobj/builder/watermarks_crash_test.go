@@ -53,27 +53,25 @@ type crashEnv struct {
 	// crashed is true after a hook crashed the builder.
 	crashed atomic.Bool
 
-	mtx       sync.Mutex
-	committed int64
+	committed atomic.Int64
+
 	// logObjectOf maps the path of an index object to the path of the log
-	// object it indexes.
-	logObjectOf map[string]string
+	// object it indexes. Flushes with concurrency above 1 write it in parallel.
+	logObjectOf sync.Map
 }
 
 func newCrashEnv() *crashEnv {
 	bucket := objstore.NewInMemBucket()
-	return &crashEnv{
-		bucket:      bucket,
-		idxBucket:   metastore.NewIndexBucket(bucket),
-		committed:   -1,
-		logObjectOf: make(map[string]string),
+	e := &crashEnv{
+		bucket:    bucket,
+		idxBucket: metastore.NewIndexBucket(bucket),
 	}
+	e.committed.Store(-1)
+	return e
 }
 
 func (e *crashEnv) resumeOffset() int64 {
-	e.mtx.Lock()
-	defer e.mtx.Unlock()
-	return e.committed + 1
+	return e.committed.Load() + 1
 }
 
 type recordingIndexer struct {
@@ -84,9 +82,7 @@ type recordingIndexer struct {
 func (r *recordingIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	res, err := r.inner.Index(ctx, obj, objPath)
 	if err == nil {
-		r.env.mtx.Lock()
-		r.env.logObjectOf[res.Path] = objPath
-		r.env.mtx.Unlock()
+		r.env.logObjectOf.Store(res.Path, objPath)
 	}
 	return res, err
 }
@@ -96,15 +92,11 @@ type hookedTOCWriter struct {
 	hooks crashHooks
 	env   *crashEnv
 
-	mtx    sync.Mutex
-	writes int
+	writes atomic.Int64
 }
 
 func (h *hookedTOCWriter) before() error {
-	h.mtx.Lock()
-	h.writes++
-	n := h.writes
-	h.mtx.Unlock()
+	n := int(h.writes.Inc())
 	if h.hooks.beforeTOCWrite != nil {
 		if err := h.hooks.beforeTOCWrite(n); err != nil {
 			h.env.crashed.Store(true)
@@ -126,23 +118,17 @@ type hookedCommitter struct {
 	hooks  crashHooks
 	cancel context.CancelFunc
 
-	mtx     sync.Mutex
-	commits int
+	commits atomic.Int64
 }
 
 func (h *hookedCommitter) Commit(_ context.Context, _ int32, offset int64) error {
-	h.mtx.Lock()
-	h.commits++
-	n := h.commits
-	h.mtx.Unlock()
+	n := int(h.commits.Inc())
 	if h.hooks.onCommit != nil && h.hooks.onCommit(n) {
 		h.env.crashed.Store(true)
 		h.cancel()
 		return context.Canceled
 	}
-	h.env.mtx.Lock()
-	h.env.committed = offset
-	h.env.mtx.Unlock()
+	h.env.committed.Store(offset)
 	if h.hooks.afterCommit != nil && h.hooks.afterCommit(n) {
 		h.env.crashed.Store(true)
 		h.cancel()
@@ -269,12 +255,10 @@ func (e *crashEnv) addLineCounts(t *testing.T, counts map[string]int, tenant str
 			pointer, err := res.Value()
 			require.NoError(t, err)
 
-			e.mtx.Lock()
-			logPath, ok := e.logObjectOf[pointer.Path]
-			e.mtx.Unlock()
+			logPath, ok := e.logObjectOf.Load(pointer.Path)
 			require.True(t, ok, "unknown index %s", pointer.Path)
 
-			obj, err := dataobj.FromBucket(ctx, e.bucket, logPath, 0)
+			obj, err := dataobj.FromBucket(ctx, e.bucket, logPath.(string), 0)
 			require.NoError(t, err)
 			for rec := range logs.Iter(ctx, obj) {
 				r, err := rec.Value()

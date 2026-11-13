@@ -79,15 +79,9 @@ type processor struct {
 	// and delay querying.
 	maxBuilderAge time.Duration
 
-	// firstAppend tracks the wall clock time of the first append to the data
-	// object builder. It is used to know if the builder has exceeded the
-	// maximum age. It must be reset after each flush.
-	firstAppend time.Time
-
 	// firstRecordProcessedAt tracks the wall clock time of the first record that
-	// the processor appended or dropped. It is used to commit the offset of
-	// dropped records when the builder stays empty for the maximum age. It must be
-	// reset after each flush.
+	// the processor appended or dropped. It is used to know if the builder has
+	// exceeded the maximum age. It must be reset after each flush.
 	firstRecordProcessedAt time.Time
 
 	// lastRecordProcessedAt tracks the wall clock time of the last record that
@@ -288,9 +282,6 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	}
 	p.metrics.sizeEstimate.Set(float64(p.builder.GetEstimatedSize()))
 
-	if res.Appended > 0 && p.firstAppend.IsZero() {
-		p.firstAppend = now
-	}
 	if p.firstRecordProcessedAt.IsZero() {
 		p.firstRecordProcessedAt = now
 	}
@@ -301,15 +292,9 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 }
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
-	if p.maxBuilderAge <= 0 {
-		return false
-	}
-	if p.builder.GetEstimatedSize() > 0 {
-		return !p.firstAppend.IsZero() && time.Since(p.firstAppend) > p.maxBuilderAge
-	}
-	// The builder is empty because the processor dropped every record. The flush
-	// has no builders and only commits the offset.
-	return !p.firstRecordProcessedAt.IsZero() && time.Since(p.firstRecordProcessedAt) > p.maxBuilderAge
+	return p.maxBuilderAge > 0 &&
+		!p.firstRecordProcessedAt.IsZero() &&
+		time.Since(p.firstRecordProcessedAt) > p.maxBuilderAge
 }
 
 func (p *processor) needsIdleFlush() bool {
@@ -335,7 +320,6 @@ func (p *processor) enqueueFlush(ctx context.Context, reason string) bool {
 
 	// Reset the state to prepare for building the next data objects. Reset
 	// drops the builders from p.builder, and the flush request keeps them.
-	p.firstAppend = time.Time{}
 	p.firstRecordProcessedAt = time.Time{}
 	p.lastRecordProcessedAt = time.Time{}
 	p.builder.Reset(p.lastOffset)

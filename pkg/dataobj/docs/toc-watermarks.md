@@ -4,8 +4,6 @@ A ToC watermark tells the dataobj-builder which Kafka records a ToC already hold
 The builder uses it to drop records that it read twice.
 Without it, a restart can put the same log lines in the index two times.
 
-All code links point to commit [`1cf84e6d26`](https://github.com/grafana/loki/tree/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a).
-
 ## The problem
 
 A ToC (table of contents) is a small object for one tenant and one 12-hour window.
@@ -49,23 +47,23 @@ A ToC never has the pointer without the watermark, and never has the watermark w
    The builder reads the watermark from the ToC in the bucket.
    It keeps the value in a cache.
    The cache is a plain LRU, so any entry can leave and the builder reads it again later.
-   See [`watermarkCache`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/builder/watermarks.go#L26).
+   See `watermarkCache` in `pkg/dataobj/builder/watermarks.go`.
 2. **Each record.**
    The builder compares the record offset with the watermark.
    It drops the record or appends it to the builder of its tenant and window.
-   See [`MultiObjectBuilder.Append`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/builder/multi_builder.go#L66).
+   See `MultiObjectBuilder.Append` in `pkg/dataobj/builder/multi_builder.go`.
 3. **Initial watermark.**
    The first record of a tenant and window decides the watermark of its builder.
    The builder keeps it as the *initial watermark* until its flush ends.
-   See [`WatermarkedBuilder`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/builder/multi_builder.go#L168).
+   See `WatermarkedBuilder` in `pkg/dataobj/builder/multi_builder.go`.
 4. **Flush.**
    The flush adds the index pointer and sets the watermark to the offset of the last record of the flush.
    It expects the ToC to hold the initial watermark of the builder.
    If it does not, the write fails.
-   See [`writeToC`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/builder/flush_committer.go#L236) and [`WriteEntryWithWatermark`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/metastore/toc_writer.go#L210).
+   See `writeToC` in `pkg/dataobj/builder/flush_committer.go` and `WriteEntryWithWatermark` in `pkg/dataobj/metastore/toc_writer.go`.
 5. **After a flush.**
    The cache stores the flush offset, so the next builder of the same tenant and window starts from it.
-   See [`MultiObjectBuilder.Reset`](https://github.com/grafana/loki/blob/1cf84e6d265d0bfe6cce362285ba37d3bd65a25a/pkg/dataobj/builder/multi_builder.go#L157).
+   See `MultiObjectBuilder.Reset` in `pkg/dataobj/builder/multi_builder.go`.
 
 When a write fails because the watermark is not the expected one, the builder stops and restarts.
 It reads the real watermarks again and goes on from the last commit.

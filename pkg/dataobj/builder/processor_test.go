@@ -59,7 +59,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 
 		// Since no records have been pushed, the first append time should be zero,
 		// and no flush should have occurred.
-		require.True(t, proc.firstAppend.IsZero())
+		require.True(t, proc.firstRecordProcessedAt.IsZero())
 		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Process a record containing some log lines. No flush should occur because
@@ -68,7 +68,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 
 		// The first append time should be set to the current time, but no flush
 		// should have occurred.
-		require.Equal(t, time.Now(), proc.firstAppend)
+		require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 		require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 		require.Equal(t, 0, flushCommitter.flushes)
 
@@ -80,7 +80,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 
 		// The last flushed time should be updated to the current time, and so should
 		// the first append time to reflect the start of the new data object.
-		require.Equal(t, time.Now(), proc.firstAppend)
+		require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 		require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 		require.NotEqual(t, proc.builder.GetEstimatedSize(), 0)
 		synctest.Wait()
@@ -91,7 +91,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 		expectedLastFlushed := time.Now()
 		time.Sleep(time.Minute)
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
-		require.Equal(t, expectedLastFlushed, proc.firstAppend)
+		require.Equal(t, expectedLastFlushed, proc.firstRecordProcessedAt)
 		require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 		require.Equal(t, 1, flushCommitter.flushes)
 	})
@@ -112,7 +112,7 @@ func TestProcessor_FlushesWhenBuilderFull(t *testing.T) {
 		// without flushing.
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
 		require.Equal(t, 0, flushCommitter.flushes)
-		require.Equal(t, time.Now(), proc.firstAppend)
+		require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 
 		// Mark the builder as full. The next record should trigger a flush
 		// before it is appended, starting a new data object.
@@ -122,12 +122,12 @@ func TestProcessor_FlushesWhenBuilderFull(t *testing.T) {
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
 
 		// Exactly one flush should have occurred, and the record should still
-		// have been appended afterwards, resetting firstAppend to the current
+		// have been appended afterwards, resetting firstRecordProcessedAt to the current
 		// time rather than the time of the first append.
 		synctest.Wait()
 		require.Equal(t, 1, flushCommitter.flushes)
-		require.NotEqual(t, flushedAt, proc.firstAppend)
-		require.Equal(t, time.Now(), proc.firstAppend)
+		require.NotEqual(t, flushedAt, proc.firstRecordProcessedAt)
+		require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 		require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 	})
 }
@@ -156,6 +156,7 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 		// Process a record containing some log lines. No flush should occur because
 		// when log lines are appended to the builder it resets the idle timeout.
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
+		require.False(t, proc.firstRecordProcessedAt.IsZero())
 		require.False(t, proc.lastRecordProcessedAt.IsZero())
 		require.False(t, proc.needsIdleFlush())
 		require.Equal(t, 0, flushCommitter.flushes)
@@ -215,7 +216,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			// Process a record containing some log lines. No flush should occur.
 			rec1 := newTestRecord(t, "tenant", time.Now())
 			require.NoError(t, proc.processRecord(ctx, rec1))
-			require.Equal(t, time.Now(), proc.firstAppend)
+			require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 			require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 			require.Equal(t, rec1.Offset, proc.lastOffset)
 
@@ -226,7 +227,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			require.Equal(t, 1, flushCommitter.flushes)
 
 			// enqueueFlush resets these fields when it sends the flush request.
-			require.True(t, proc.firstAppend.IsZero())
+			require.True(t, proc.firstRecordProcessedAt.IsZero())
 			require.True(t, proc.lastRecordProcessedAt.IsZero())
 		})
 	})
@@ -245,7 +246,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			// Process a record containing some log lines. No flush should occur.
 			rec := newTestRecord(t, "tenant", time.Now())
 			require.NoError(t, proc.processRecord(ctx, rec))
-			require.Equal(t, time.Now(), proc.firstAppend)
+			require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 			require.Equal(t, time.Now(), proc.lastRecordProcessedAt)
 			require.Equal(t, rec.Offset, proc.lastOffset)
 
@@ -260,7 +261,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// enqueueFlush reset these fields when it sent the flush request, before
 			// the flush failed.
-			require.True(t, proc.firstAppend.IsZero())
+			require.True(t, proc.firstRecordProcessedAt.IsZero())
 			require.True(t, proc.lastRecordProcessedAt.IsZero())
 		})
 	})
@@ -389,7 +390,7 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 			require.NoError(t, proc.processRecord(ctx, newRecord(t, 3)))
 			require.Equal(t, int64(3), proc.lastOffset)
 			require.Len(t, m.getBuilders(), 1)
-			require.Equal(t, time.Now(), proc.firstAppend)
+			require.Equal(t, time.Now(), proc.firstRecordProcessedAt)
 
 			flushCommitter.results <- nil
 			require.NoError(t, stop())

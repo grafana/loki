@@ -226,14 +226,13 @@ func TestProcessor_Watermarks(t *testing.T) {
 		process(10)
 		require.Empty(t, m.getBuilders())
 		require.Equal(t, int64(10), proc.lastOffset)
-		require.True(t, proc.firstAppend.IsZero())
+		require.False(t, proc.firstRecordProcessedAt.IsZero())
 		require.False(t, proc.lastRecordProcessedAt.IsZero())
 		require.Equal(t, 1.0, testutil.ToFloat64(proc.metrics.droppedRecords))
 
 		process(11)
 		require.Len(t, m.getBuilders(), 1)
 		require.Equal(t, int64(11), proc.lastOffset)
-		require.False(t, proc.firstAppend.IsZero())
 		require.Equal(t, 1.0, testutil.ToFloat64(proc.metrics.droppedRecords))
 	})
 

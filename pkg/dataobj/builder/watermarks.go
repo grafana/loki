@@ -29,7 +29,7 @@ type watermarkCache struct {
 	bucket    objstore.BucketReader
 	metrics   *WatermarkMetrics
 
-	mu sync.Mutex
+	entriesMu sync.Mutex
 	// entries holds a nil value for a ToC that has no row for the partition.
 	entries *lru.Cache[builderScope, *int64]
 }
@@ -58,9 +58,9 @@ func newWatermarkEntries(size int) *lru.Cache[builderScope, *int64] {
 // get returns the watermark of the scope. A scope that is not in the cache costs
 // one read of the ToC. The error of a failed read is never cached.
 func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, error) {
-	c.mu.Lock()
+	c.entriesMu.Lock()
 	value, ok := c.entries.Get(scope)
-	c.mu.Unlock()
+	c.entriesMu.Unlock()
 	if ok {
 		c.metrics.cacheLookups.WithLabelValues(lookupHit).Inc()
 		return value, nil
@@ -72,8 +72,8 @@ func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, e
 		return nil, err
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.entriesMu.Lock()
+	defer c.entriesMu.Unlock()
 	defer c.updateEntriesLocked()
 	// A set can land while the read runs, and the read can be older.
 	if existing, found, _ := c.entries.PeekOrAdd(scope, value); found {
@@ -85,8 +85,8 @@ func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, e
 // set stores that the watermark of the scope is at least offset. It never lowers
 // an entry.
 func (c *watermarkCache) set(scope builderScope, offset int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.entriesMu.Lock()
+	defer c.entriesMu.Unlock()
 	defer c.updateEntriesLocked()
 
 	if current, ok := c.entries.Peek(scope); ok && current != nil && *current >= offset {
@@ -130,7 +130,7 @@ func NewWatermarkMetrics(reg prometheus.Registerer) *WatermarkMetrics {
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"result"}),
 		cacheLookups: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_toc_watermark_cache_lookups_total",

@@ -202,7 +202,8 @@ func TestMultiObjectBuilder_AppendPropagatesFactoryError(t *testing.T) {
 
 func TestMultiObjectBuilder_Reset(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewMultiObjectBuilder(factory, math.MaxInt, newTestWatermarks())
+	watermarks := newTestWatermarks()
+	m := NewMultiObjectBuilder(factory, math.MaxInt, watermarks)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	require.NoError(t, appendToTestBuilder(m, "tenant", logproto.Stream{
@@ -212,10 +213,17 @@ func TestMultiObjectBuilder_Reset(t *testing.T) {
 	require.NotEmpty(t, m.getBuilders())
 	require.Positive(t, m.GetEstimatedSize())
 
-	m.Reset(0)
+	readsBefore := readSamples(t, watermarks, resultOK)
+	m.Reset(7)
 	require.Empty(t, m.getBuilders())
 	require.Equal(t, 0, m.GetEstimatedSize())
 	require.False(t, m.IsFull())
+
+	// The cache keeps the scope of the dropped builder at the flush offset.
+	watermark, err := watermarks.get(t.Context(), builderScope{tenant: "tenant", window: w1})
+	require.NoError(t, err)
+	require.Equal(t, int64(7), *watermark)
+	require.Equal(t, readsBefore, readSamples(t, watermarks, resultOK))
 }
 
 // truncatedWindow returns the TOC window that the builder's single tenant time
