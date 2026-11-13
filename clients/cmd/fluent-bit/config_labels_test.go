@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
@@ -80,7 +80,7 @@ func Test_externalLabelsFromFluentBitLabelsOption(t *testing.T) {
 					require.Contains(t, err.Error(), tt.errContain)
 				}
 				if tt.wantErrParseMatchers {
-					require.ErrorIs(t, err, logqlmodel.ErrParseMatchers)
+					require.ErrorIs(t, err, logqlerr.ErrParseMatchers)
 				}
 				return
 			}

@@ -33,9 +33,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -1067,6 +1067,38 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, toEncode.Limit, decoded.Limit)
 	require.Equal(t, toEncode.HintRanges, decoded.HintRanges)
 	require.Equal(t, "/loki/api/v1/query_range", decoded.Path)
+}
+
+func Test_codec_InstantRequestHintRangesRoundTrip(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	ts := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	toEncode := &LokiInstantRequest{
+		Query:     `sum(count_over_time({foo="bar"} |= "error" [5m]))`,
+		Limit:     100,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+		TimeTs:    ts,
+		// Hint ranges for an instant request sit in the lookback before TimeTs.
+		HintRanges: []logproto.HintTimeRange{
+			{Start: ts.Add(-4 * time.Minute), End: ts.Add(-3 * time.Minute)},
+			{Start: ts.Add(-2 * time.Minute), End: ts.Add(-time.Minute)},
+		},
+	}
+
+	encoded, err := DefaultCodec.EncodeRequest(ctx, toEncode)
+	require.NoError(t, err)
+	require.Len(t, encoded.URL.Query()["hintRanges"], 1)
+
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), encoded, nil)
+	require.NoError(t, err)
+	decoded := req.(*LokiInstantRequest)
+	require.Equal(t, toEncode.TimeTs, decoded.TimeTs)
+	require.Equal(t, toEncode.HintRanges, decoded.HintRanges)
+
+	// The querier reads the ranges through the params.
+	params, err := ParamsFromRequest(decoded)
+	require.NoError(t, err)
+	require.Equal(t, toEncode.HintRanges, params.GetHintRanges())
 }
 
 func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
@@ -2418,26 +2450,6 @@ var (
 				"requests": 0,
 				"downloadTime": 0,
 				"queryLengthServed": 0
-			},
-			"logResult": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0,
-				"queryLengthServed": 0
-			},
-			"taskResult": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0,
-				"queryLengthServed": 0
 			}
 		},
 		"summary": {
@@ -3030,7 +3042,7 @@ func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
 		require.NoError(t, json.Unmarshal(got["logline"], &logline))
 		require.ElementsMatch(t, []string{
 			"outcome", "hintStatus", "hintLookupTime", "hintRanges", "hintRangesDuration",
-			"skippedRequests", "narrowedRequests", "plannedChunks", "scannedChunks",
+			"skippedRequests", "narrowedRequests", "passthroughRequests", "plannedChunks", "scannedChunks",
 			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait", "hintWaitTime",
 		}, slices.Collect(maps.Keys(logline)), "every field is written, including zeros")
 		require.Equal(t, "tiny_data_skipped", logline["outcome"])
@@ -3179,12 +3191,13 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 
 func Benchmark_MergeResponses(b *testing.B) {
 	responses := make([]queryrangebase.Response, 100)
+	seriesData := generateSeries()
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",
 			Version:    1,
 			Statistics: stats.Result{},
-			Data:       generateSeries(),
+			Data:       seriesData,
 		}
 	}
 
@@ -3340,5 +3353,54 @@ func Test_codec_DetectedFieldsJSONRoundTrip(t *testing.T) {
 			require.NoError(t, json.Unmarshal(body, &clientResponse))
 			require.Equal(t, usage, clientResponse.Statistics)
 		})
+	}
+}
+
+func usageHeaderResponse(kind string, n int64) queryrangebase.Response {
+	statistics := stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: n}}}}
+	statistics.ComputeSummary(time.Second, 0, 0)
+	if kind == "fields" {
+		return &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Statistics: statistics}
+	}
+	if kind == "logs" {
+		return &LokiResponse{Status: "success", Direction: logproto.FORWARD, Limit: 100,
+			Statistics: statistics, Data: LokiData{ResultType: loghttp.ResultTypeStream, Result: []logproto.Stream{
+				{Labels: `{app="test"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: strings.Repeat("log line ", 256)}}},
+			}}}
+	}
+	return &LokiPromResponse{Statistics: statistics, Response: &queryrangebase.PrometheusResponse{
+		Status: "success", Data: queryrangebase.PrometheusData{ResultType: kind},
+	}}
+}
+
+func TestQueryUsageHeaderEncodings(t *testing.T) {
+	for _, tc := range []struct {
+		kind      string
+		path      string
+		encodings []string
+	}{
+		{"logs", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"vector", "/loki/api/v1/query", []string{JSONType, ProtobufType, ParquetType}},
+		{"matrix", "/loki/api/v1/query_range", []string{JSONType, ProtobufType, ParquetType}},
+		{"fields", "/loki/api/v1/detected_fields", []string{JSONType, ProtobufType}},
+	} {
+		// Zero covers a response with no newly scanned bytes, including cache hits.
+		// Values above 2^53 must retain integer precision in the header.
+		for _, n := range []int64{0, 9007199254740993} {
+			for _, accept := range tc.encodings {
+				t.Run(fmt.Sprintf("%s/%d/%s", tc.kind, n, accept), func(t *testing.T) {
+					response := usageHeaderResponse(tc.kind, n)
+					req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+					req.Header.Set("Accept", accept)
+					ctx := user.InjectOrgID(context.Background(), "test")
+
+					actual, err := DefaultCodec.EncodeResponse(ctx, req, response)
+					require.NoError(t, err)
+					defer actual.Body.Close()
+					require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(httpreq.LokiQueryBytesProcessedHeader))
+					require.Equal(t, strings.ToLower(accept), strings.ToLower(actual.Header.Get("Content-Type")))
+				})
+			}
+		}
 	}
 }

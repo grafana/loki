@@ -49,7 +49,7 @@ linters:
         sync-atomic:
           files:
             - "!**/pkg/logproto/extensions.go"
-            - "!**/pkg/logqlmodel/stats/context.go"
+            - "!**/pkg/logql/model/stats/context.go"
             - "!**/pkg/querier/stats/stats.go"
           deny:
             - pkg: sync/atomic$
@@ -116,7 +116,6 @@ linters:
       - .*.rl.go
       - .*.deepcopy.go
       - win_eventlog$
-      - operator
 issues:
   fix: true
 formatters:
@@ -136,4 +135,3 @@ formatters:
       - .*.rl.go
       - .*.deepcopy.go
       - win_eventlog$
-      - operator

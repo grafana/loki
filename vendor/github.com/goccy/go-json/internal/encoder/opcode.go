@@ -39,13 +39,15 @@ const (
 	NonEmptyInterfaceFlags OpFlags = 1 << 9
 	MapStringKeyFlags      OpFlags = 1 << 10 // the key of the map is a string, written by OpMapKey itself
 	TailRecursiveFlags     OpFlags = 1 << 11 // the recursive value is the last field of a value of its own type, encoded in its frame
-	InterfaceMapKeyFlags   OpFlags = 1 << 12 // the key of a map of an interface type, whose name is of its dynamic value ( see appendInterfaceMapKey )
-	MapKeyFlags            OpFlags = 1 << 13 // the key of a map, whose name is "" for a nil pointer, while a nil pointer value is null
+	InterfaceMapKeyFlags   OpFlags = 1 << 12 // the key of a map of an interface type, whose name is of its dynamic value, or of pointers, whose name is of what they lead to ( see appendInterfaceMapKey ): a key whose pointers end at nil has no name
+	MapKeyFlags            OpFlags = 1 << 13 // the key of a map, whose name is "" for a nil pointer of MarshalText and an error for another nil pointer, while a nil pointer value is null
+	StaticTypeFlags        OpFlags = 1 << 14 // the opcode of an interface encodes a value by the opcodes of its own type, as a value of interface{} would be, given the address of the value or, for a pointer type compiled to the value it points to, the pointer ( see InterfaceCode.static )
+	MarshalerFuncFlags     OpFlags = 1 << 15 // the marshaler of the opcode is a function of the v2 semantics ( see MarshalerCall.appendValue ), which is called where the one of a context is
 )
 
 type Opcode struct {
 	Op         OpType    // operation type
-	EmptyKind  EmptyKind // what makes the value of the field empty for omitempty, for the generic field opcode
+	EmptyKind  EmptyKind // what makes the value of the field empty for omitempty, for the generic field opcode and the ones of a marshaler
 	ZeroKind   ZeroKind  // what makes the value of the field zero for omitzero, for the generic field opcode
 	Idx        uint32    // offset to access ptr
 	Next       *Opcode   // next opcode
@@ -158,6 +160,27 @@ func (t OpType) ToStringOp() OpType {
 
 func (c *Opcode) ToFieldType(isString bool) OpType {
 	switch c.Op {
+	// the numbers which are JSON strings by the options of encoding/json/v2 ( see Compiler.stringifyNumbers ).
+	case OpIntString:
+		return OpStructFieldIntString
+	case OpIntPtrString:
+		return OpStructFieldIntPtrString
+	case OpUintString:
+		return OpStructFieldUintString
+	case OpUintPtrString:
+		return OpStructFieldUintPtrString
+	case OpFloat32String:
+		return OpStructFieldFloat32String
+	case OpFloat32PtrString:
+		return OpStructFieldFloat32PtrString
+	case OpFloat64String:
+		return OpStructFieldFloat64String
+	case OpFloat64PtrString:
+		return OpStructFieldFloat64PtrString
+	case OpNumberString:
+		return OpStructFieldNumberString
+	case OpNumberPtrString:
+		return OpStructFieldNumberPtrString
 	case OpInterface:
 		// the string option is not for a value of interface{}.
 		return OpStructFieldInterface
@@ -359,8 +382,8 @@ func copyToInterfaceOpcode(code *Opcode) *Opcode {
 }
 
 // setEndSlots decides the slots of the opcode which returns to the previous frame from its Idx:
-// Idx is for the opcode to return to, ElemIdx is for the offset of the previous frame and
-// Length is for the indent to restore.
+// Idx is for the opcode to return to, with the tail levels to restore in the other half of its slot, ElemIdx is
+// for the offset of the previous frame and Length is for the indent to restore.
 func (c *Opcode) setEndSlots() {
 	c.ElemIdx = c.Idx + slotSize + slotIntOffset
 	c.Length = c.Idx + 2*slotSize + slotIntOffset
@@ -570,7 +593,7 @@ func (c *Opcode) DumpDOT() string {
 				weight: 1,
 			})
 		}
-		if p := code.Jmp; p != nil {
+		if p := code.Jmp; p != nil && p.Code != nil {
 			edges = append(edges, edge{
 				from:   code,
 				to:     p.Code,

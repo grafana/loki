@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,15 +17,17 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -45,7 +46,8 @@ const (
 
 	tocFileName = "toc.toc"
 
-	// indexPrefetchBytes is how many bytes Sections reads up front from an index object.
+	// indexPrefetchBytes is how many bytes Sections reads up front from an index object. A cache hit
+	// replaces this read.
 	indexPrefetchBytes = 64 * 1024
 )
 
@@ -61,12 +63,47 @@ var (
 	errDifferentSectionStatistics = errors.New("the same section was found in multiple index objects with different statistics")
 )
 
+// ObjectMetastoreOption customizes an ObjectMetastore.
+type ObjectMetastoreOption func(*ObjectMetastore)
+
+// WithIndexMetadataCache serves the metadata region of index objects through cache, or the entire
+// object if it is tiny. A nil cache disables it.
+func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
+	return func(m *ObjectMetastore) { m.indexMetadataCache = cache }
+}
+
+// WithTOCResolverCache makes the ToC resolver of the metastore read through cache when it refreshes a ToC. A nil cache
+// disables it.
+func WithTOCResolverCache(cache *metadata.Cache) ObjectMetastoreOption {
+	return func(m *ObjectMetastore) { m.tocCache = cache }
+}
+
 // ObjectMetastore is a metastore that stores data objects in object storage.
+//
+// It is also a service that refreshes the ToCs it keeps in memory. Run it when the ToC resolver is enabled in the
+// config. With the resolver disabled, the service does nothing and the metastore reads every ToC from object storage.
 type ObjectMetastore struct {
+	services.Service
+
 	bucket      objstore.BucketReader
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
+
+	// tocResolver serves every ToC the metastore reads. It is never nil.
+	tocResolver *TOCResolver
+
+	// tocCache is the shared cache that tocResolver reads through when it refreshes a ToC. It is separate from
+	// indexMetadataCache because the resolver rejects a cached ToC that is too old, and indexMetadataCache accepts every
+	// cached value.
+	tocCache *metadata.Cache
+
+	// indexMetadataCache caches the metadata region of index objects. It is nil when no cache is
+	// configured.
+	//
+	// It must never serve a ToC. The writer rewrites a ToC at the same path, so a cached copy would go
+	// stale.
+	indexMetadataCache dataobj.MetadataCache
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -85,9 +122,9 @@ type DataobjSectionDescriptor struct {
 	Start     time.Time
 	End       time.Time
 
-	// AmbiguousPredicates are predicate names present both as a stream label in
-	// the section and in the LogQL query, and are therefore ambiguous. It is the
-	// deduped union across the section's streams.
+	// AmbiguousPredicates are the names of equality predicates present as a stream label in the
+	// section and as a label filter in the LogQL query, and are therefore ambiguous. Other
+	// predicate types report no name. It is the deduped union across the section's streams.
 	AmbiguousPredicates []string
 }
 
@@ -151,37 +188,39 @@ func dedupeStringSlice(s []string) []string {
 	return result
 }
 
-// NewSectionDescriptor creates a new section descriptor with the given pointer and labels.
-func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames []string) *DataobjSectionDescriptor {
-	deduped := dedupeStringSlice(ambiguousLabelNames)
+// newSectionDescriptor creates a section descriptor from the given row. It
+// removes duplicate ambiguous names.
+func newSectionDescriptor(row resolvedRow) *DataobjSectionDescriptor {
+	deduped := dedupeStringSlice(row.ambiguousNames)
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
-			ObjectPath: pointer.Path,
-			SectionIdx: pointer.Section,
+			ObjectPath: row.objectPath,
+			SectionIdx: row.sectionIndex,
 		},
-		StreamIDs:           []int64{pointer.StreamIDRef},
-		RowCount:            int(pointer.LineCount),
-		Size:                pointer.UncompressedSize,
-		Start:               pointer.StartTs,
-		End:                 pointer.EndTs,
+		StreamIDs:           []int64{row.streamID},
+		RowCount:            int(row.rowCount),
+		Size:                row.uncompressedSize,
+		Start:               time.Unix(0, row.minTimestamp),
+		End:                 time.Unix(0, row.maxTimestamp),
 		AmbiguousPredicates: deduped,
 	}
 	return obj
 }
 
-// Merge merges the given pointer and labels into an existing section's descriptor.
-func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls []string) {
-	d.StreamIDs = append(d.StreamIDs, pointer.StreamIDRef)
-	d.RowCount += int(pointer.LineCount)
-	d.Size += pointer.UncompressedSize
-	if pointer.StartTs.Before(d.Start) {
-		d.Start = pointer.StartTs
+// merge adds row to d. It appends the stream ID, sums the row count and size,
+// widens the time range, and adds the ambiguous names that d lacks.
+func (d *DataobjSectionDescriptor) merge(row resolvedRow) {
+	d.StreamIDs = append(d.StreamIDs, row.streamID)
+	d.RowCount += int(row.rowCount)
+	d.Size += row.uncompressedSize
+	if start := time.Unix(0, row.minTimestamp); start.Before(d.Start) {
+		d.Start = start
 	}
-	if pointer.EndTs.After(d.End) {
-		d.End = pointer.EndTs
+	if end := time.Unix(0, row.maxTimestamp); end.After(d.End) {
+		d.End = end
 	}
 
-	for _, lbl := range lbls {
+	for _, lbl := range row.ambiguousNames {
 		if !slices.Contains(d.AmbiguousPredicates, lbl) {
 			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
 		}
@@ -197,13 +236,13 @@ func (d *DataobjSectionDescriptor) sameStreamAndStatistics(other *DataobjSection
 		(d.Size == 0 || other.Size == 0 || d.Size == other.Size)
 }
 
-// DataobjSectionDescriptorWithIndex is a section descriptor with the path of the index object
-// that listed it.
+// DataobjSectionDescriptorWithIndex is a section descriptor with the index run that listed
+// it.
 type DataobjSectionDescriptorWithIndex struct {
 	*DataobjSectionDescriptor
 
-	// IndexPath is the path of the index object that listed the section.
-	IndexPath string
+	// IndexRun describes the index run that listed the section, for logs.
+	IndexRun string
 }
 
 // sortedIDs returns the IDs in ascending order. It returns ids itself when they already are, so
@@ -264,21 +303,27 @@ func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[stri
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+// NewObjectMetastore returns a metastore that reads tables of contents and index objects under [IndexStoragePrefix] in
+// b. It registers its metrics, and those of its ToC resolver, on reg. reg may be nil, and a registerer accepts one
+// metastore.
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, reg prometheus.Registerer, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	if cfg.IndexStoragePrefix != "" {
-		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
-	}
-
 	store := &ObjectMetastore{
-		bucket:      dataobj.NewInstrumentedBucketReader(b),
+		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
 		parallelism: 64,
 		logger:      logger,
-		metrics:     metrics,
+		metrics:     NewObjectMetastoreMetrics(reg),
 	}
+	for _, opt := range opts {
+		opt(store)
+	}
+
+	// The resolver reads the bucket of the metastore. Its cache keys carry the same index storage prefix.
+	store.tocResolver = NewTOCResolver(store.bucket, cfg.TOCResolver, store.tocCache, IndexStoragePrefix+"/", logger, reg)
+	store.Service = store.tocResolver.Service
 
 	return store
 }
@@ -332,10 +377,9 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	for i, path := range tablePaths {
 		g.Go(func() error {
 			var err error
+			// A missing ToC means the window holds no data, so listObjects returns no entries and no error.
 			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
-			// If the metastore object is not found, it means it's outside of any existing window
-			// and we can safely ignore it.
-			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
+			if err != nil {
 				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
 			}
 			return nil
@@ -349,19 +393,20 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	return dedupeAndSortEntries(objects), nil
 }
 
+// listObjects returns the entries of the ToC at path that overlap [sStart, sEnd] and belong to the tenant in ctx. A
+// missing ToC yields no entries.
 func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
-	var buf bytes.Buffer
-	objectReader, err := m.bucket.Get(ctx, path)
+	data, err := m.tocResolver.ReadTOC(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	defer objectReader.Close()
 
-	n, err := buf.ReadFrom(objectReader)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
+	// The resolver returns no bytes for a ToC that does not exist, which means the window holds no data.
+	if len(data) == 0 {
+		return nil, nil
 	}
-	object, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
+
+	object, err := decodeTableOfContents(data)
 	if err != nil {
 		return nil, fmt.Errorf("getting object from reader: %w", err)
 	}
@@ -369,9 +414,13 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 
 	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
 		entries = append(entries, IndexEntry{
-			Path:  indexPointer.Path,
-			Start: indexPointer.StartTs,
-			End:   indexPointer.EndTs,
+			Path:                indexPointer.Path,
+			Start:               indexPointer.StartTs,
+			End:                 indexPointer.EndTs,
+			ShardBuckets:        indexPointer.ShardBuckets,
+			TableOfContentsPath: path,
+			RunID:               indexPointer.RunID,
+			PostingKeys:         indexPointer.PostingKeys,
 		})
 	})
 	if err != nil {
@@ -458,7 +507,29 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// batch carries the deduplicated sections of one index object, or the error that ends the
+	// Read each index run with one reader, and only its index objects that can hold a posting
+	// that the request reads.
+	var (
+		toRead  []indexRun
+		skipped int
+	)
+	for _, run := range indexRuns(indexes.Indexes) {
+		kept, ok := run.withPostingsFor(req.Matchers, req.Predicates)
+		skipped += len(run.entries) - len(kept.entries)
+		if ok {
+			toRead = append(toRead, kept)
+		}
+	}
+	m.metrics.skippedIndexObjects.Observe(float64(skipped))
+
+	if len(toRead) == 0 {
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index object holds postings of the matchers")
+		span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		return
+	}
+
+	// batch carries the deduplicated sections of one index run, or the error that ends the
 	// resolution. A batch without an error holds at least one section.
 	type batch struct {
 		sections DataobjSectionDescriptors
@@ -470,10 +541,11 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	// The resolution runs in the background and never waits for the caller. So its duration excludes
 	// the time the caller spends on the batches.
 	//
-	// The channel holds one batch for each index object, so no send waits for the caller. The batches
-	// stay in memory until the caller receives them. The channel closes after the resolution ends.
+	// The channel holds one batch for each index run, so no send waits for the caller. The
+	// batches stay in memory until the caller receives them. The channel closes after the resolution
+	// ends.
 	readCtx, cancelReads := context.WithCancel(ctx)
-	batches := make(chan batch, len(indexes.Indexes))
+	batches := make(chan batch, len(toRead))
 
 	go func() {
 		defer close(batches)
@@ -507,7 +579,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		}
 
 		g.SetLimit(m.parallelism)
-		for _, indexEntry := range indexes.Indexes {
+		for _, run := range toRead {
 			g.Go(func() error {
 				// The caller cannot recover a panic on this goroutine, and the panic would end the
 				// process. End the resolution with an error instead. The deferred Unlock below runs
@@ -517,18 +589,18 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 						serverutil.RecordPanic()
 						level.Error(utillog.WithContext(ctx, m.logger)).Log(
 							"msg", "panic reading the sections of an index object",
-							"index", indexEntry.Path,
+							"index", run.String(),
 							"panic", panicked,
 							"stack", string(debug.Stack()),
 						)
 
 						mu.Lock()
 						defer mu.Unlock()
-						fail(fmt.Errorf("reading the sections of index object %q: %v", indexEntry.Path, panicked))
+						fail(fmt.Errorf("reading the sections of %s: %v", run, panicked))
 					}
 				}()
 
-				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry.Path)
+				sections, readRows, err := m.readIndexSections(readCtx, req, run)
 
 				mu.Lock()
 				defer mu.Unlock()
@@ -594,6 +666,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 			"duration", duration,
 			"tables", len(indexes.TableOfContentsPaths),
 			"indexes", len(indexes.Indexes),
+			"skipped_indexes", skipped,
 			"sections", uniqueSections,
 			"ratio", ratio,
 			"matchers", matchersToString(req.Matchers),
@@ -622,11 +695,11 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	}
 }
 
-// readIndexSections reads the sections that one index object lists. It returns them with the number
-// of rows the index reader resolved, before deduplication.
-func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, indexPath string) ([]DataobjSectionDescriptorWithIndex, int, error) {
+// readIndexSections reads the sections that one index run lists. It returns them with the
+// number of rows the index reader resolved, before deduplication.
+func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, run indexRun) ([]DataobjSectionDescriptorWithIndex, int, error) {
 	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-		IndexPath:       indexPath,
+		Indexes:         run.entries,
 		SectionsRequest: req,
 		PrefetchBytes:   indexPrefetchBytes,
 	})
@@ -638,12 +711,13 @@ func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsReq
 
 	sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
 	if err != nil {
-		return nil, 0, fmt.Errorf("collect sections of index object %q: %w", indexPath, err)
+		return nil, 0, fmt.Errorf("collect sections of %s: %w", run, err)
 	}
 
+	name := run.String()
 	sections := make([]DataobjSectionDescriptorWithIndex, 0, len(sectionsResp.SectionsResponse.Sections))
 	for _, section := range sectionsResp.SectionsResponse.Sections {
-		sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexPath})
+		sections = append(sections, DataobjSectionDescriptorWithIndex{section, name})
 	}
 
 	sp := reader.(statsProvider)
@@ -656,26 +730,67 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
+	if len(req.Indexes) == 0 {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one index object is required")
+	}
+
+	objects, err := m.openIndexObjects(ctx, req.Indexes, req.PrefetchBytes)
 	if err != nil {
-		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
+		return IndexSectionsReaderResponse{}, err
 	}
 
 	reader := newPostingsIndexSectionsReader(
 		m.logger,
-		idxObj,
+		objects,
 		req.SectionsRequest.Start,
 		req.SectionsRequest.End,
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
-		req.SectionsRequest.ShardBucketRange,
+		req.SectionsRequest.StreamHashRange,
 	)
 	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }
 
+// openIndexObjects opens the index objects of entries in parallel.
+//
+// A panic of an open becomes an error of that open. The caller can't recover a
+// panic on another goroutine, so the open logs the panic with its stack, and
+// counts it in the panic total.
+func (m *ObjectMetastore) openIndexObjects(ctx context.Context, entries []IndexEntry, prefetchBytes int64) ([]indexObject, error) {
+	objects := make([]indexObject, len(entries))
+	g, groupCtx := errgroup.WithContext(ctx)
+	for i, entry := range entries {
+		g.Go(func() (err error) {
+			defer func() {
+				if panicked := recover(); panicked != nil {
+					serverutil.RecordPanic()
+					level.Error(utillog.WithContext(ctx, m.logger)).Log(
+						"msg", "panic opening an index object",
+						"index", entry.Path,
+						"panic", panicked,
+						"stack", string(debug.Stack()),
+					)
+					err = fmt.Errorf("opening index object %s: panic: %v", entry.Path, panicked)
+				}
+			}()
+
+			obj, err := dataobj.FromBucket(groupCtx, m.bucket, entry.Path, prefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
+			if err != nil {
+				return fmt.Errorf("prepare obj %s: %w", entry.Path, err)
+			}
+			objects[i] = indexObject{obj: obj, shardBuckets: entry.ShardBuckets}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return objects, nil
+}
+
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
-	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionGetIndexes)
 	defer span.End()
 	start := time.Now()
 	defer func() {
@@ -722,6 +837,9 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	return resp, nil
 }
 
+// CollectSections reads every batch from req.Reader and merges the rows into
+// one descriptor per section. It returns an error when a non-empty batch is not
+// in postingsResultSchema.
 func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
 	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 
@@ -765,33 +883,32 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 }
 
 func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
-	numRows := int(rec.NumRows())
-	buf := make([]pointers.SectionPointer, numRows)
-	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
+	rows, err := resolvedRowsFromRecordBatch(rec)
 	if err != nil {
-		return fmt.Errorf("convert arrow record to section pointers: %w", err)
+		return fmt.Errorf("decode resolved rows: %w", err)
 	}
 
-	labelsColumn := pointers.InternalLabelsColumn(rec)
-	if labelsColumn == nil {
-		return fmt.Errorf("internal labels column not found")
-	}
-
-	for i := range num {
-		ptr := buf[i]
-		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
-
-		var ambiguousLabels []string
-		if !labelsColumn.IsNull(i) {
-			ambiguousLabels = strings.Split(labelsColumn.Value(i), ",")
-		}
-
+	for _, row := range rows {
+		key := SectionKey{ObjectPath: row.objectPath, SectionIdx: row.sectionIndex}
 		existing, ok := result[key]
 		if !ok {
-			result[key] = NewSectionDescriptor(ptr, ambiguousLabels)
+			result[key] = newSectionDescriptor(row)
 			continue
 		}
-		existing.Merge(ptr, ambiguousLabels)
+		existing.merge(row)
 	}
 	return nil
+}
+
+// IndexStoragePrefix is the object storage prefix of the index objects and the
+// tables of contents.
+const IndexStoragePrefix = "index/v0"
+
+// NewIndexBucket returns b scoped to [IndexStoragePrefix].
+//
+// Use it to write or read index objects and tables of contents without a
+// metastore. [NewObjectMetastore] adds the prefix itself, so pass it the
+// unwrapped bucket.
+func NewIndexBucket(b objstore.Bucket) objstore.Bucket {
+	return objstore.NewPrefixedBucket(b, IndexStoragePrefix)
 }

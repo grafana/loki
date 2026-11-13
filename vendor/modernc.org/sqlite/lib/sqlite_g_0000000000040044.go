@@ -183,7 +183,7 @@ func _exprListIsNoAffinity(tls *libc.TLS, pParse uintptr, pRow uintptr) (r int32
 	var ii int32
 	var pExpr uintptr
 	_, _ = ii, pExpr
-	if _exprListIsConstant(tls, pParse, pRow) == 0 {
+	if _sqlite3ExprListIsConstant(tls, pParse, pRow, 0) == 0 {
 		return 0
 	}
 	ii = 0
@@ -572,6 +572,18 @@ func _sessionAppendIdent(tls *libc.TLS, p uintptr, zStr uintptr, pRc uintptr) {
 	}
 }
 
+func _sqlite3ColumnDefault(tls *libc.TLS, v uintptr, pTab uintptr, i int32, iReg int32) {
+	var pCol uintptr
+	_ = pCol
+	pCol = (*TTable)(unsafe.Pointer(pTab)).FaCol + uintptr(i)*12
+	if (*TColumn)(unsafe.Pointer(pCol)).FiDflt != 0 {
+		_columnDefaultUncommonCase(tls, v, pTab, pCol)
+	}
+	if int32((*TColumn)(unsafe.Pointer(pCol)).Faffinity) == int32(SQLITE_AFF_REAL) {
+		_sqlite3VdbeAddOp1(tls, v, int32(OP_RealAffinity), iReg)
+	}
+}
+
 func _sqlite3DbStrNDup(tls *libc.TLS, db uintptr, z uintptr, n Tu64) (r uintptr) {
 	var zNew, v1 uintptr
 	_, _ = zNew, v1
@@ -694,62 +706,6 @@ func _sqlite3MatchEName(tls *libc.TLS, pItem uintptr, zCol uintptr, zTab uintptr
 // C documentation
 //
 //	/*
-//	** Run the parser and code generator recursively in order to generate
-//	** code for the SQL statement given onto the end of the pParse context
-//	** currently under construction.  Notes:
-//	**
-//	**   *  The final OP_Halt is not appended and other initialization
-//	**      and finalization steps are omitted because those are handling by the
-//	**      outermost parser.
-//	**
-//	**   *  Built-in SQL functions always take precedence over application-defined
-//	**      SQL functions.  In other words, it is not possible to override a
-//	**      built-in function.
-//	*/
-func _sqlite3NestedParse(tls *libc.TLS, pParse uintptr, zFormat uintptr, va uintptr) {
-	bp := tls.Alloc(80)
-	defer tls.Free(80)
-	var ap Tva_list
-	var db, zSql uintptr
-	var savedDbFlags Tu32
-	var _ /* saveBuf at bp+0 */ [76]int8
-	_, _, _, _ = ap, db, savedDbFlags, zSql
-	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-	savedDbFlags = (*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags
-	if (*TParse)(unsafe.Pointer(pParse)).FnErr != 0 {
-		return
-	}
-	if (*TParse)(unsafe.Pointer(pParse)).FeParseMode != 0 {
-		return
-	}
-	/* Nesting should only be of limited depth */
-	ap = va
-	zSql = _sqlite3VMPrintf(tls, db, zFormat, ap)
-	_ = ap
-	if zSql == uintptr(0) {
-		/* This can result either from an OOM or because the formatted string
-		 ** exceeds SQLITE_LIMIT_LENGTH.  In the latter case, we need to set
-		 ** an error */
-		if !((*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0) {
-			(*TParse)(unsafe.Pointer(pParse)).Frc = int32(SQLITE_TOOBIG)
-		}
-		(*TParse)(unsafe.Pointer(pParse)).FnErr = (*TParse)(unsafe.Pointer(pParse)).FnErr + 1
-		return
-	}
-	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested + 1
-	libc.Xmemcpy(tls, bp, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), 0, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
-	**(**Tu32)(__ccgo_up(db + 24)) |= uint32(DBFLAG_PreferBuiltin)
-	_sqlite3RunParser(tls, pParse, zSql)
-	(*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags = savedDbFlags
-	_sqlite3DbFree(tls, db, zSql)
-	libc.Xmemcpy(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), bp, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
-	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested - 1
-}
-
-// C documentation
-//
-//	/*
 //	** Compile the UTF-16 encoded SQL statement zSql into a statement handle.
 //	*/
 func _sqlite3Prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, prepFlags Tu32, ppStmt uintptr, pzTail uintptr) (r int32) {
@@ -763,7 +719,7 @@ func _sqlite3Prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, pr
 	rc = SQLITE_OK
 	**(**uintptr)(__ccgo_up(ppStmt)) = uintptr(0)
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) || zSql == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(149329))
+		return _sqlite3MisuseError(tls, int32(149874))
 	}
 	/* Make sure nBytes is non-negative and correct.  It should be the
 	 ** number of bytes until the end of the input buffer or until the first

@@ -19,15 +19,55 @@ type Tfpos_t = struct {
 // C documentation
 //
 //	/*
-//	** Return TRUE if the given SQL string ends in a semicolon.
+//	** Return zero if the given SQL string is complete - if all comments,
+//	** string and blob literals, and quoted identifiers have been closed and
+//	** if the entire string ends with ";" and possibly with ";END;" if the
+//	** string is a CREATE TRIGGER statement.  A non-zero return indicates
+//	** that the string is empty or incomplete.  Bits of the return value
+//	** indicate what is missing and is needed to close out the statement.
 //	**
 //	** Special handling is require for CREATE TRIGGER statements.
 //	** Whenever the CREATE TRIGGER keywords are seen, the statement
 //	** must end with ";END;".
 //	**
+//	** Let the return code be a value R.  R is split up into various
+//	** subfields, at byte boundaries:
+//	**
+//	**    R = 0xwwwwwwww00xxyyzz
+//	**
+//	** In other words, zz is the least significant byte, yy is the next
+//	** most significant byte, xx is the third byte, wwwwwwww is the upper
+//	** four bytes of the return value.
+//	**
+//	**   zz == SQLITE_OK       Input is complete
+//	**   zz == SQLITE_ERROR    Input is incomplete
+//	**   zz == SQLITE_EMPTY    Input contains only whitespace
+//	**   zz == SQLITE_MISUSE   Input is a NULL pointer
+//	**   zz != 0               New values for zz may be added in the future
+//	**
+//	**   yy == 0x01            Need a semicolon at the end
+//	**   yy == 0x02            Need "END" and a semicolon
+//	**   yy == 0x03            Need semicolon, "END", and semicolon
+//	**   yy != 0               New values for yy may be added in the future
+//	**
+//	**   xx == '\''            Incomplete string or blob literal
+//	**   xx == '"'             Incomplete quoted identifier
+//	**   xx == '`'             Incompelte MySQL-style quoted identifier
+//	**   xx == ']'             Incomplete SQLServer-style quoted identifer
+//	**   xx == '-'             Incomplete SQL-style comment
+//	**   xx == '/'             Incomplete C-style comment
+//	**   xx != 0               New values of xx may be added in the future
+//	**
+//	**   wwwwwwww              Interpret as a signed integer, the number
+//	**                         of unmatched "(".  Negative means there are
+//	**                         more ")" and "(".
+//	**
+//	**   ((R>>24)&0xff)!=0     New uses for the 4th byte may be added
+//	**                         in the future
+//	**
 //	** This implementation uses a state machine with 8 states:
 //	**
-//	**   (0) INVALID   We have not yet seen a non-whitespace character.
+//	**   (0) NOTHING   We have not yet seen a non-whitespace character.
 //	**
 //	**   (1) START     At the beginning or end of an SQL statement.  This routine
 //	**                 returns 1 if it ends in the START state and 0 if it ends
@@ -71,11 +111,13 @@ type Tfpos_t = struct {
 //	** to recognize the end of a trigger can be omitted.  All we have to do
 //	** is look for a semicolon that is not part of an string or comment.
 //	*/
-func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
-	var c, nId int32
-	var state, token Tu8
-	_, _, _, _ = c, nId, state, token
-	state = uint8(0) /* Value of the next token */
+func Xsqlite3_incomplete(tls *libc.TLS, zSql uintptr) (r Tsqlite3_int64) {
+	var c, nId, nParen int32
+	var pending, state, token Tu8
+	_, _, _, _, _, _ = c, nId, nParen, pending, state, token
+	state = uint8(0)   /* Value of the next token */
+	pending = uint8(0) /* unmatched structure character */
+	nParen = 0         /* Nested parentheses */
 	for **(**int8)(__ccgo_up(zSql)) != 0 {
 		switch int32(**(**int8)(__ccgo_up(zSql))) {
 		case int32(';'): /* A semicolon */
@@ -100,7 +142,8 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				zSql = zSql + 1
 			}
 			if int32(**(**int8)(__ccgo_up(zSql))) == 0 {
-				return 0
+				pending = uint8('/')
+				goto incomplete_finish
 			}
 			zSql = zSql + 1
 			token = uint8(tkWS)
@@ -113,7 +156,8 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				zSql = zSql + 1
 			}
 			if int32(**(**int8)(__ccgo_up(zSql))) == 0 {
-				return libc.BoolInt32(libc.Int32FromUint8(state) == int32(1))
+				pending = uint8('-')
+				goto incomplete_finish
 			}
 			token = uint8(tkWS)
 		case int32('['): /* Microsoft-style identifiers in [...] */
@@ -122,7 +166,8 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				zSql = zSql + 1
 			}
 			if int32(**(**int8)(__ccgo_up(zSql))) == 0 {
-				return 0
+				pending = uint8(']')
+				goto incomplete_finish
 			}
 			token = uint8(tkOTHER)
 		case int32('`'): /* Grave-accent quoted symbols used by MySQL */
@@ -136,8 +181,15 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				zSql = zSql + 1
 			}
 			if int32(**(**int8)(__ccgo_up(zSql))) == 0 {
-				return 0
+				pending = libc.Uint8FromInt32(c)
+				goto incomplete_finish
 			}
+			token = uint8(tkOTHER)
+		case int32('('):
+			nParen = nParen + 1
+			token = uint8(tkOTHER)
+		case int32(')'):
+			nParen = nParen - 1
 			token = uint8(tkOTHER)
 		default:
 			if libc.Int32FromUint8(_sqlite3CtypeMap[libc.Uint8FromInt8(**(**int8)(__ccgo_up(zSql)))])&int32(0x46) != 0 {
@@ -155,7 +207,7 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('c'):
 					fallthrough
 				case int32('C'):
-					if nId == int32(6) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25281, int32(6)) == 0 {
+					if nId == int32(6) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25423, int32(6)) == 0 {
 						token = uint8(tkCREATE)
 					} else {
 						token = uint8(tkOTHER)
@@ -163,13 +215,13 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('t'):
 					fallthrough
 				case int32('T'):
-					if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+21910, int32(7)) == 0 {
+					if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+22019, int32(7)) == 0 {
 						token = uint8(tkTRIGGER)
 					} else {
-						if nId == int32(4) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25288, int32(4)) == 0 {
+						if nId == int32(4) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25430, int32(4)) == 0 {
 							token = uint8(tkTEMP)
 						} else {
-							if nId == int32(9) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25293, int32(9)) == 0 {
+							if nId == int32(9) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25435, int32(9)) == 0 {
 								token = uint8(tkTEMP)
 							} else {
 								token = uint8(tkOTHER)
@@ -179,10 +231,10 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 				case int32('e'):
 					fallthrough
 				case int32('E'):
-					if nId == int32(3) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25303, int32(3)) == 0 {
+					if nId == int32(3) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25445, int32(3)) == 0 {
 						token = uint8(tkEND)
 					} else {
-						if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25307, int32(7)) == 0 {
+						if nId == int32(7) && Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+25449, int32(7)) == 0 {
 							token = uint8(tkEXPLAIN)
 						} else {
 							token = uint8(tkOTHER)
@@ -202,7 +254,16 @@ func Xsqlite3_complete(tls *libc.TLS, zSql uintptr) (r int32) {
 		state = **(**Tu8)(__ccgo_up(uintptr(unsafe.Pointer(&_trans)) + uintptr(state)*8 + uintptr(token)))
 		zSql = zSql + 1
 	}
-	return libc.BoolInt32(libc.Int32FromUint8(state) == int32(1))
+	goto incomplete_finish
+incomplete_finish:
+	;
+	if libc.Int32FromUint8(state) == 0 && libc.Int32FromUint8(pending) == 0 {
+		return int64(SQLITE_EMPTY)
+	}
+	if libc.Int32FromUint8(state) == int32(1) {
+		nParen = 0
+	}
+	return libc.Int64FromUint64(libc.Uint64FromInt32(nParen)<<libc.Int32FromInt32(32) | uint64(pending)<<libc.Int32FromInt32(16) | uint64(_statemap[state])<<libc.Int32FromInt32(8) | libc.BoolUint64(libc.Int32FromUint8(state) > int32(1) || libc.Int32FromUint8(pending) != 0))
 }
 
 // C documentation
@@ -217,8 +278,8 @@ var _aNanInfName = [5]TNanInfName{
 		Fn:      int8(3),
 		FeType:  int8(JSONB_FLOAT),
 		FnRepl:  int8(7),
-		FzMatch: __ccgo_ts + 26501,
-		FzRepl:  __ccgo_ts + 26505,
+		FzMatch: __ccgo_ts + 26660,
+		FzRepl:  __ccgo_ts + 26664,
 	},
 	1: {
 		Fc1:     int8('i'),
@@ -226,32 +287,32 @@ var _aNanInfName = [5]TNanInfName{
 		Fn:      int8(8),
 		FeType:  int8(JSONB_FLOAT),
 		FnRepl:  int8(7),
-		FzMatch: __ccgo_ts + 26513,
-		FzRepl:  __ccgo_ts + 26505,
+		FzMatch: __ccgo_ts + 26672,
+		FzRepl:  __ccgo_ts + 26664,
 	},
 	2: {
 		Fc1:     int8('n'),
 		Fc2:     int8('N'),
 		Fn:      int8(3),
 		FnRepl:  int8(4),
-		FzMatch: __ccgo_ts + 1695,
-		FzRepl:  __ccgo_ts + 1690,
+		FzMatch: __ccgo_ts + 1723,
+		FzRepl:  __ccgo_ts + 1718,
 	},
 	3: {
 		Fc1:     int8('q'),
 		Fc2:     int8('Q'),
 		Fn:      int8(4),
 		FnRepl:  int8(4),
-		FzMatch: __ccgo_ts + 26522,
-		FzRepl:  __ccgo_ts + 1690,
+		FzMatch: __ccgo_ts + 26681,
+		FzRepl:  __ccgo_ts + 1718,
 	},
 	4: {
 		Fc1:     int8('s'),
 		Fc2:     int8('S'),
 		Fn:      int8(4),
 		FnRepl:  int8(4),
-		FzMatch: __ccgo_ts + 26527,
-		FzRepl:  __ccgo_ts + 1690,
+		FzMatch: __ccgo_ts + 26686,
+		FzRepl:  __ccgo_ts + 1718,
 	},
 }
 
@@ -277,7 +338,7 @@ func _compare2pow63(tls *libc.TLS, zNum uintptr, incr int32) (r int32) {
 	_, _, _ = c, i, pow63
 	c = 0
 	/* 012345678901234567 */
-	pow63 = __ccgo_ts + 1815
+	pow63 = __ccgo_ts + 1839
 	i = 0
 	for {
 		if !(c == 0 && i < int32(18)) {
@@ -325,14 +386,14 @@ func _fts5SpecialMatch(tls *libc.TLS, pTab uintptr, pCsr uintptr, zQuery uintptr
 		n = n + 1
 	}
 	(*TFts5Cursor)(unsafe.Pointer(pCsr)).FePlan = int32(FTS5_PLAN_SPECIAL)
-	if n == int32(5) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+39843, z, n) {
+	if n == int32(5) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+40110, z, n) {
 		(*TFts5Cursor)(unsafe.Pointer(pCsr)).FiSpecial = int64(_sqlite3Fts5IndexReads(tls, (*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.FpIndex))
 	} else {
-		if n == int32(2) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+5676, z, n) {
+		if n == int32(2) && 0 == Xsqlite3_strnicmp(tls, __ccgo_ts+5734, z, n) {
 			(*TFts5Cursor)(unsafe.Pointer(pCsr)).FiSpecial = (*TFts5Cursor)(unsafe.Pointer(pCsr)).FiCsrId
 		} else {
 			/* An unrecognized directive. Return an error message. */
-			(*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.Fbase.FzErrMsg = Xsqlite3_mprintf(tls, __ccgo_ts+39849, libc.VaList(bp+8, n, z))
+			(*TFts5FullTable)(unsafe.Pointer(pTab)).Fp.Fbase.FzErrMsg = Xsqlite3_mprintf(tls, __ccgo_ts+40116, libc.VaList(bp+8, n, z))
 			rc = int32(SQLITE_ERROR)
 		}
 	}
@@ -350,10 +411,10 @@ func _getTempStore(tls *libc.TLS, z uintptr) (r int32) {
 	if int32(**(**int8)(__ccgo_up(z))) >= int32('0') && int32(**(**int8)(__ccgo_up(z))) <= int32('2') {
 		return int32(**(**int8)(__ccgo_up(z))) - int32('0')
 	} else {
-		if _sqlite3StrICmp(tls, z, __ccgo_ts+18020) == 0 {
+		if _sqlite3StrICmp(tls, z, __ccgo_ts+18105) == 0 {
 			return int32(1)
 		} else {
-			if _sqlite3StrICmp(tls, z, __ccgo_ts+19061) == 0 {
+			if _sqlite3StrICmp(tls, z, __ccgo_ts+19146) == 0 {
 				return int32(2)
 			} else {
 				return 0
@@ -390,7 +451,7 @@ func _jsonConvertTextToBlob(tls *libc.TLS, pParse uintptr, pCtx uintptr) (r int3
 			i = i + _json5Whitespace(tls, zJson+uintptr(i))
 			if **(**int8)(__ccgo_up(zJson + uintptr(i))) != 0 {
 				if pCtx != 0 {
-					Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26486, -int32(1))
+					Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26645, -int32(1))
 				}
 				_jsonParseReset(tls, pParse)
 				return int32(1)
@@ -403,7 +464,7 @@ func _jsonConvertTextToBlob(tls *libc.TLS, pParse uintptr, pCtx uintptr) (r int3
 			if (*TJsonParse)(unsafe.Pointer(pParse)).Foom != 0 {
 				Xsqlite3_result_error_nomem(tls, pCtx)
 			} else {
-				Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26486, -int32(1))
+				Xsqlite3_result_error(tls, pCtx, __ccgo_ts+26645, -int32(1))
 			}
 		}
 		_jsonParseReset(tls, pParse)
@@ -422,7 +483,7 @@ func _ofdInitOnce(tls *libc.TLS) {
 	var z uintptr
 	_ = z
 	if !(libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_ofdDecided))) != 0) {
-		z = libc.Xgetenv(tls, __ccgo_ts+3805)
+		z = libc.Xgetenv(tls, __ccgo_ts+3819)
 		libc.AtomicStorePInt32(uintptr(unsafe.Pointer(&_ofdEnabled)), libc.BoolInt32(z != uintptr(0) && int32(**(**int8)(__ccgo_up(z))) != 0 && int32(**(**int8)(__ccgo_up(z))) != int32('0')))
 		libc.AtomicStorePInt32(uintptr(unsafe.Pointer(&_ofdDecided)), int32(1))
 	}
@@ -446,13 +507,13 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 	var _ /* s at bp+8 */ int32
 	_, _ = ms, rScale
 	ms = float64(0)
-	if _getDigits(tls, zDate, __ccgo_ts+1204, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1224, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)
 	if int32(**(**int8)(__ccgo_up(zDate))) == int32(':') {
 		zDate = zDate + 1
-		if _getDigits(tls, zDate, __ccgo_ts+1212, libc.VaList(bp+24, bp+8)) != int32(1) {
+		if _getDigits(tls, zDate, __ccgo_ts+1232, libc.VaList(bp+24, bp+8)) != int32(1) {
 			return int32(1)
 		}
 		zDate = zDate + uintptr(2)
@@ -473,6 +534,9 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	} else {
 		**(**int32)(__ccgo_up(bp + 8)) = 0
+	}
+	if **(**int32)(__ccgo_up(bp)) == int32(24) && (**(**int32)(__ccgo_up(bp + 4)) != 0 || **(**int32)(__ccgo_up(bp + 8)) != 0 || ms != float64(0)) {
+		return int32(1)
 	}
 	(*TDateTime)(unsafe.Pointer(p)).FvalidJD = 0
 	libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 0, 0x1)
@@ -534,7 +598,7 @@ func _parseTimezone(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	}
 	zDate = zDate + 1
-	if _getDigits(tls, zDate, __ccgo_ts+1196, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1216, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)
@@ -569,18 +633,18 @@ zulu_time:
 func _parseYyyyMmDd(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 	bp := tls.Alloc(48)
 	defer tls.Free(48)
-	var neg, v1 int32
+	var mxD, neg, v1 int32
 	var _ /* D at bp+8 */ int32
 	var _ /* M at bp+4 */ int32
 	var _ /* Y at bp+0 */ int32
-	_, _ = neg, v1
+	_, _, _ = mxD, neg, v1
 	if int32(**(**int8)(__ccgo_up(zDate))) == int32('-') {
 		zDate = zDate + 1
 		neg = int32(1)
 	} else {
 		neg = 0
 	}
-	if _getDigits(tls, zDate, __ccgo_ts+1216, libc.VaList(bp+24, bp, bp+4, bp+8)) != int32(3) {
+	if _getDigits(tls, zDate, __ccgo_ts+1236, libc.VaList(bp+24, bp, bp+4, bp+8)) != int32(3) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(10)
@@ -588,7 +652,19 @@ func _parseYyyyMmDd(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		zDate = zDate + 1
 	}
 	if _parseHhMmSs(tls, zDate, p) == 0 {
-		/* We got the time */
+		if (*TDateTime)(unsafe.Pointer(p)).Fh == int32(24) {
+			mxD = _daysOfMonth(tls, **(**int32)(__ccgo_up(bp)), **(**int32)(__ccgo_up(bp + 4)))
+			(*TDateTime)(unsafe.Pointer(p)).Fh = 0
+			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) + 1
+			if **(**int32)(__ccgo_up(bp + 8)) > mxD {
+				**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - mxD
+				**(**int32)(__ccgo_up(bp + 4)) = **(**int32)(__ccgo_up(bp + 4)) + 1
+				if **(**int32)(__ccgo_up(bp + 4)) > int32(12) {
+					**(**int32)(__ccgo_up(bp + 4)) = int32(1)
+					**(**int32)(__ccgo_up(bp)) = **(**int32)(__ccgo_up(bp)) + 1
+				}
+			}
+		}
 	} else {
 		if int32(**(**int8)(__ccgo_up(zDate))) == 0 {
 			(*TDateTime)(unsafe.Pointer(p)).FvalidHMS = 0
@@ -631,7 +707,7 @@ func _rbuCreateVfs(tls *libc.TLS, p uintptr) {
 	var _ /* zRnd at bp+4 */ [64]int8
 	_ = pVfs
 	Xsqlite3_randomness(tls, int32(4), bp)
-	Xsqlite3_snprintf(tls, int32(64), bp+4, __ccgo_ts+34354, libc.VaList(bp+80, **(**int32)(__ccgo_up(bp))))
+	Xsqlite3_snprintf(tls, int32(64), bp+4, __ccgo_ts+34551, libc.VaList(bp+80, **(**int32)(__ccgo_up(bp))))
 	(*Tsqlite3rbu)(unsafe.Pointer(p)).Frc = Xsqlite3rbu_create_vfs(tls, bp+4, uintptr(0))
 	if (*Tsqlite3rbu)(unsafe.Pointer(p)).Frc == SQLITE_OK {
 		pVfs = Xsqlite3_vfs_find(tls, bp+4)
@@ -657,11 +733,11 @@ func _renameColumnParseError(tls *libc.TLS, pCtx uintptr, zWhen uintptr, pType u
 	zT = Xsqlite3_value_text(tls, pType)
 	zN = Xsqlite3_value_text(tls, pObject)
 	if **(**int8)(__ccgo_up(zWhen)) != 0 {
-		v1 = __ccgo_ts + 11569
+		v1 = __ccgo_ts + 11667
 	} else {
-		v1 = __ccgo_ts + 1704
+		v1 = __ccgo_ts + 1732
 	}
-	zErr = _sqlite3MPrintf(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, __ccgo_ts+11571, libc.VaList(bp+8, zT, zN, v1, zWhen, (*TParse)(unsafe.Pointer(pParse)).FzErrMsg))
+	zErr = _sqlite3MPrintf(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, __ccgo_ts+11669, libc.VaList(bp+8, zT, zN, v1, zWhen, (*TParse)(unsafe.Pointer(pParse)).FzErrMsg))
 	Xsqlite3_result_error(tls, pCtx, zErr, -int32(1))
 	_sqlite3DbFree(tls, (*TParse)(unsafe.Pointer(pParse)).Fdb, zErr)
 }
@@ -688,7 +764,7 @@ func _soundexFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	_, _, _, _, _, _ = code, i, j, prevcode, zIn, v3
 	zIn = Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv)))
 	if zIn == uintptr(0) {
-		zIn = __ccgo_ts + 1704
+		zIn = __ccgo_ts + 1732
 	}
 	i = 0
 	for {
@@ -734,7 +810,7 @@ func _soundexFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	} else {
 		/* IMP: R-64894-50321 The string "?000" is returned if the argument
 		 ** is NULL or contains no ASCII alphabetic characters. */
-		Xsqlite3_result_text(tls, context, __ccgo_ts+16622, int32(4), libc.UintptrFromInt32(0))
+		Xsqlite3_result_text(tls, context, __ccgo_ts+16707, int32(4), libc.UintptrFromInt32(0))
 	}
 }
 
@@ -754,7 +830,7 @@ func _sqlite3Fts5ParseSetDistance(tls *libc.TLS, pParse uintptr, pNear uintptr, 
 				}
 				c = **(**int8)(__ccgo_up((*TFts5Token)(unsafe.Pointer(p)).Fp + uintptr(i)))
 				if int32(c) < int32('0') || int32(c) > int32('9') {
-					_sqlite3Fts5ParseError(tls, pParse, __ccgo_ts+38634, libc.VaList(bp+8, (*TFts5Token)(unsafe.Pointer(p)).Fn, (*TFts5Token)(unsafe.Pointer(p)).Fp))
+					_sqlite3Fts5ParseError(tls, pParse, __ccgo_ts+38901, libc.VaList(bp+8, (*TFts5Token)(unsafe.Pointer(p)).Fn, (*TFts5Token)(unsafe.Pointer(p)).Fp))
 					return
 				}
 				if nNear < int32(214748363) {
@@ -795,9 +871,9 @@ func _sqlite3QuoteValue(tls *libc.TLS, pStr uintptr, pValue uintptr, bEscape int
 		 **    |
 		 **    | ,--- 17 precision guarantees round-trip
 		 **    v v                                       */
-		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+16587, libc.VaList(bp+8, Xsqlite3_value_double(tls, pValue)))
+		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+16672, libc.VaList(bp+8, Xsqlite3_value_double(tls, pValue)))
 	case int32(SQLITE_INTEGER):
-		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+1465, libc.VaList(bp+8, Xsqlite3_value_int64(tls, pValue)))
+		Xsqlite3_str_appendf(tls, pStr, __ccgo_ts+1493, libc.VaList(bp+8, Xsqlite3_value_int64(tls, pValue)))
 	case int32(SQLITE_BLOB):
 		zBlob = Xsqlite3_value_blob(tls, pValue)
 		nBlob = int64(Xsqlite3_value_bytes(tls, pValue))
@@ -826,13 +902,13 @@ func _sqlite3QuoteValue(tls *libc.TLS, pStr uintptr, pValue uintptr, bEscape int
 	case int32(SQLITE_TEXT):
 		zArg = Xsqlite3_value_text(tls, pValue)
 		if bEscape != 0 {
-			v2 = __ccgo_ts + 16595
+			v2 = __ccgo_ts + 16680
 		} else {
-			v2 = __ccgo_ts + 11953
+			v2 = __ccgo_ts + 12043
 		}
 		Xsqlite3_str_appendf(tls, pStr, v2, libc.VaList(bp+8, zArg))
 	default:
-		Xsqlite3_str_append(tls, pStr, __ccgo_ts+1705, int32(4))
+		Xsqlite3_str_append(tls, pStr, __ccgo_ts+1746, int32(4))
 		break
 	}
 }
@@ -867,7 +943,7 @@ func _unixGetTempname(tls *libc.TLS, nBuf int32, zBuf uintptr) (r int32) {
 		for cond := true; cond; cond = (*(*func(*libc.TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(2)].FpCurrent})))(tls, zBuf, 0) == 0 {
 			Xsqlite3_randomness(tls, int32(8), bp)
 			**(**int8)(__ccgo_up(zBuf + uintptr(nBuf-int32(2)))) = 0
-			Xsqlite3_snprintf(tls, nBuf, zBuf, __ccgo_ts+4069, libc.VaList(bp+16, zDir, **(**Tu64)(__ccgo_up(bp)), 0))
+			Xsqlite3_snprintf(tls, nBuf, zBuf, __ccgo_ts+4083, libc.VaList(bp+16, zDir, **(**Tu64)(__ccgo_up(bp)), 0))
 			if v2 = int32(**(**int8)(__ccgo_up(zBuf + uintptr(nBuf-int32(2))))) != 0; !v2 {
 				v1 = iLimit
 				iLimit = iLimit + 1
@@ -899,7 +975,7 @@ func _yy_syntax_error(tls *libc.TLS, yypParser uintptr, yymajor int32, _yyminor 
 	if **(**int8)(__ccgo_up((**(**TToken)(__ccgo_up(bp))).Fz)) != 0 {
 		_parserSyntaxError(tls, pParse, bp)
 	} else {
-		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+25228, 0)
+		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+25370, 0)
 	}
 	/************ End %syntax_error code ******************************************/
 	/* Suppress warning about unused %extra_argument variable */

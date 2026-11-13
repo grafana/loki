@@ -31,26 +31,28 @@ for all these query types.
 ### Instant query
 
 Instant queries can be executed using the function `instantQuery(query, limit)`
-on the `loki.Client` instance:
+on the `loki.Client` instance. `limit` is the maximum number of entries to
+return; pass `0` for no limit.
 
 **JavaScript example code fragment:**
 
 ```javascript
 export default () => {
-  client.instantQuery(`rate({app="my-app-name"} | logfmt | level="error" [5m])`);
+  client.instantQuery(`rate({app="my-app-name"} | logfmt | level="error" [5m])`, 100);
 }
 ```
 
 ### Range query
 
 Range queries can be executed using the function `rangeQuery(query, duration, limit)`
-on the `loki.Client` instance:
+on the `loki.Client` instance. `limit` is the maximum number of entries to
+return; pass `0` for no limit.
 
 **JavaScript example code fragment:**
 
 ```javascript
 export default () => {
-  client.rangeQuery(`{app="my-app-name"} | logfmt | level="error"`, "15m");
+  client.rangeQuery(`{app="my-app-name"} | logfmt | level="error"`, "15m", 100);
 }
 ```
 
@@ -82,14 +84,15 @@ export default () => {
 
 ### Series query
 
-Series queries can be executed using the function `seriesQuery(matcher, range)`
-on the `loki.Client` instance:
+Series queries can be executed using the function `seriesQuery(matchers, duration)`
+on the `loki.Client` instance. Pass the label matchers as a plain LogQL
+selector; the client adds the `match[]` query parameter automatically.
 
 **JavaScript example code fragment:**
 
 ```javascript
 export default () => {
-  client.seriesQuery(`match[]={app=~"loki-.*"}`, "10m");
+  client.seriesQuery(`{app=~"loki-.*"}`, "10m");
 }
 ```
 
@@ -127,10 +130,10 @@ function randomChoice(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-export default() {
+export default function() {
   let app = randomChoice(conf.labels.app);
   let namespace = randomChoice(conf.labels.namespace);
-  client.rangeQuery(`{app="${app}", namespace="${namespace}"} | logfmt | level="error"`, "15m");
+  client.rangeQuery(`{app="${app}", namespace="${namespace}"} | logfmt | level="error"`, "15m", 0);
 }
 ```
 
@@ -156,11 +159,11 @@ const queryTypeRatioConfig = [
     item: readLabels
   },
   {
-    ratio: 0.15,
+    ratio: 0.1,
     item: readLabelValues
   },
   {
-    ratio: 0.05,
+    ratio: 0.1,
     item: readSeries
   },
   {
@@ -177,8 +180,8 @@ const queryTypeRatioConfig = [
 This configuration would execute approximately
 
 - 10% labels requests
-- 15% label values requests
-- 5% requests for series
+- 10% label values requests
+- 10% requests for series
 - 50% range queries
 - 20% instant queries
 

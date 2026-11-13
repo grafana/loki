@@ -33,6 +33,11 @@ local setupValidationDeps = function(job) job {
 
 local validationJob = _validationJob();
 
+// testShards is the number of jobs the unit tests are split across. Each job
+// pays about a minute of setup and compiles the shared dependencies once, so a
+// few large shards use far fewer runners than many small ones.
+local testShards = 12;
+
 {
   local validationMakeStep = function(name, target)
     step.new(name)
@@ -41,25 +46,6 @@ local validationJob = _validationJob();
     + step.withWorkingDirectory('release'),
 
   // Test jobs
-  collectPackages: job.new(smallRunner)
-                   + job.withSteps([
-                     common.checkout,
-                     common.fixDubiousOwnership,
-                     step.new('gather packages')
-                     + step.withId('gather-tests')
-                     + step.withRun(|||
-                       echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
-                         | cut  -d / -f 2,3 \
-                         | uniq \
-                         | sort \
-                         | jq --raw-input --slurp --compact-output 'split("\n")[:-1]')" >> ${GITHUB_OUTPUT}
-                     |||),
-                   ])
-                   + job.withOutputs({
-                     packages: '${{ steps.gather-tests.outputs.packages }}',
-                   }),
-
   integration: validationJob
                + job.withSteps([
                  common.fetchReleaseRepo,
@@ -67,15 +53,18 @@ local validationJob = _validationJob();
                  validationMakeStep('integration', 'test-integration'),
                ]),
 
+  // Every shard lists the package groups of the checked out commit and takes
+  // every testShards-th entry, so all shards agree on the split without a
+  // separate job to compute it.
   testPackages: validationJob
-                + job.withNeeds(['collectPackages'])
                 + job.withStrategy({
                   matrix: {
-                    package: '${{fromJson(needs.collectPackages.outputs.packages)}}',
+                    shard: std.range(1, testShards),
                   },
                 })
                 + job.withEnv({
-                  MATRIX_PACKAGE: '${{ matrix.package }}',
+                  TEST_SHARD: '${{ matrix.shard }}',
+                  TEST_SHARDS: testShards,
                 })
                 + job.withSteps([
                   common.fetchReleaseRepo,
@@ -84,10 +73,21 @@ local validationJob = _validationJob();
                   step.new('install dependencies')
                   + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
                   + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
-                  step.new('test ${{ matrix.package }}')
+                  step.new('test shard ${{ matrix.shard }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                    packages=$(find . -path '*_test.go' -printf '%h\n' \
+                      | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
+                      | cut -d / -f 2,3 \
+                      | LC_ALL=C sort -u \
+                      | awk -v shard="${TEST_SHARD}" -v shards="${TEST_SHARDS}" '(NR - 1) % shards == shard - 1 { printf "./%s/... ", $0 }')
+                    if [ -z "${packages}" ]; then
+                      echo "No packages assigned to shard ${TEST_SHARD}"
+                      exit 0
+                    fi
+                    echo "Testing ${packages}"
+                    # shellcheck disable=SC2086 # packages is a space separated list
+                    gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ${packages}
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),

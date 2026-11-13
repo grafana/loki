@@ -35,8 +35,7 @@ func ecmaPropertySet(key string) *CharSet {
 		// both "a" and "A". Use the same folding as inline character sets.
 		// https://tc39.es/ecma262/#sec-runtime-semantics-compiletocharset
 		if flags[1] == 'i' {
-			set.addLowercase()
-			set.addCaseEquivalences()
+			set.addCaseEquivalences(ECMAScript | Unicode | IgnoreCase)
 		} else {
 			set.canonicalize()
 		}

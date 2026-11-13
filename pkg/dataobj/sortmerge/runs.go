@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -18,6 +17,11 @@ import (
 type RemappedSection struct {
 	Section *dataobj.Section
 	Remap   map[int64]int64
+
+	// DropStreamIDs holds local stream IDs whose records the section skips.
+	// Remap needs no entry for them. Records of any other stream must be in
+	// Remap, so a record of an unknown stream still fails the merge.
+	DropStreamIDs []int64
 }
 
 // Run is a sequence of sections sorted by global stream ID ascending, then
@@ -54,7 +58,6 @@ func MixedRunIterator(ctx context.Context, runs []Run) result.Seq[logs.Record] {
 		}})
 		tree := loser.New(sequences, maxValue, (*runSequence).At, logs.CompareForSortOrder(logs.SortStreamASC), (*runSequence).Close)
 		defer tree.Close()
-		sym := symbolizer.New(1024, 100_000)
 		for tree.Next() {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -65,7 +68,7 @@ func MixedRunIterator(ctx context.Context, runs []Run) result.Seq[logs.Record] {
 				return err
 			}
 			var record logs.Record
-			if err := logs.DecodeRow(seq.current.Columns(), row, &record, sym); err != nil {
+			if err := logs.DecodeRow(seq.current.Columns(), row, &record); err != nil {
 				return err
 			}
 			if !yield(record) {
@@ -224,7 +227,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize 
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, input.DropStreamIDs)
 	if err != nil {
 		return nil, err
 	}

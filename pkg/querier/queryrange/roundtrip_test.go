@@ -22,11 +22,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -221,6 +223,27 @@ func TestMetricsTripperware(t *testing.T) {
 	h := getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
+	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test that MaxQueryBytesRead counts the data that the splits of a range aggregation
+	// read again. The query splits at 08:00, and the 2h range vector makes the two splits
+	// read 8h of data, but the index stats cover 6h. 800 bytes scale to about 1066.
+	rangeReq := &LokiRequest{
+		Query:     `count_over_time({app="foo"} |= "foo"[2h])`,
+		Limit:     1000,
+		Step:      30000, // 30sec
+		StartTs:   testTime.Add(-4 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan:      testutil.MustPlan(`count_over_time({app="foo"} |= "foo"[2h])`),
+	}
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 800})
+	queryCount, queryHandler = counter()
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, rangeReq)
+	require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
@@ -934,7 +957,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 }
 
 func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
-	const storageLag = 3 * time.Hour
+	const (
+		storageLag  = 3 * time.Hour
+		shardingOn  = true
+		shardingOff = false
+		dataObjOn   = true
+	)
 
 	ctx := user.InjectOrgID(t.Context(), "1")
 	// The clock stands at 12:00 UTC, so that no range below crosses a UTC midnight. A stats request
@@ -961,10 +989,11 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		limits.tsdbShardingStrategy = func(context.Context, string) string { return logql.BoundedVersion.String() }
 	}
 
-	// newHandler builds the real middleware chain over a terminal handler that answers the index
-	// with 64 GiB, so the chunk logic shards a split into 128 shards and the data-object logic into
-	// 16 shards. The terminal handler answers a shards request with 1000 bounded shards.
-	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+	// newHandlerWithSharding builds the real middleware chain over a terminal handler that answers the
+	// index with 64 GiB. With sharding on, the chunk logic shards a split into 128 shards and the
+	// data-object logic into 16 shards. With sharding off, the chain does not shard. The terminal
+	// handler answers a shards request with 1000 bounded shards.
+	newHandlerWithSharding := func(t *testing.T, shardedQueries, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
 		t.Helper()
 
 		cfg := testConfig
@@ -972,7 +1001,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		cfg.CacheIndexStatsResults = false
 		cfg.CacheInstantMetricResults = false
 		cfg.MaxRetries = 0
-		cfg.ShardedQueries = true
+		cfg.ShardedQueries = shardedQueries
 		cfg.DataObjEnabled = dataObjEnabled
 		cfg.DataObjStorageLag = storageLag
 		cfg.now = func() time.Time { return now }
@@ -1003,6 +1032,10 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 			}
 		})
 		return tripperware.Wrap(terminal), requests, reg
+	}
+	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+		t.Helper()
+		return newHandlerWithSharding(t, shardingOn, dataObjEnabled, opts...)
 	}
 
 	rangeRequest := func(query string, start, end time.Time) *LokiRequest {
@@ -1045,6 +1078,33 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		require.NotEmpty(t, requests.rangeRequests())
 		for _, req := range requests.rangeRequests() {
 			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("marks the whole query as eligible when it holds a stream-first supported part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.Equal(t, testutil.MustPlan(query).AST.String(), req.Plan.AST.String())
+			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("does not mark the whole query as eligible when it holds no stream-first part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (avg_over_time({app="a"} | logfmt | unwrap n [1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.False(t, req.DataObjOptions.GetEligible())
 		}
 	})
 
@@ -1404,7 +1464,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// Raised in-process, so it carries the sentinel and is classified by errors.Is.
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxEntriesLimit,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxEntriesLimit,
 		server.FailureLimit, "max_entries",
 		http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)")
 	require.False(t, called)
@@ -1921,6 +1981,10 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 
 func (f fakeLimits) DataObjMaxBytesPerShard(_ string) uint64 {
 	return valid.DefaultDataObjMaxBytesPerShard
+}
+
+func (f fakeLimits) DataObjShardLayout(_ string) dataobjstreams.ShardLayout {
+	return dataobjstreams.DefaultShardLayout()
 }
 
 func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) string {

@@ -45,11 +45,6 @@ func (d *arrayDecoder) zeroFrom(p unsafe.Pointer, idx int) {
 
 func (d *arrayDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
-	depth++
-	if depth > maxDecodeNestingDepth {
-		return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
-	}
-
 	for {
 		switch buf[cursor] {
 		case ' ', '\n', '\t', '\r':
@@ -62,6 +57,11 @@ func (d *arrayDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 			cursor += 4
 			return cursor, nil
 		case '[':
+			// only an array nests its values one level deeper: null or another value at the limit is not too deep
+			depth++
+			if depth > maxDecodeNestingDepth {
+				return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
+			}
 			idx := 0
 			cursor++
 			cursor = skipWhiteSpace(buf, cursor)
@@ -99,7 +99,7 @@ func (d *arrayDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 				}
 			}
 		default:
-			return d.decodeOther(ctx, cursor, depth-1)
+			return d.decodeOther(ctx, cursor, depth)
 		}
 	}
 }

@@ -754,6 +754,13 @@ func (s *RunEndEncoded) Release() {
 func (s *RunEndEncoded) value() interface{} { return s.Value.value() }
 
 func (s *RunEndEncoded) Validate() (err error) {
+	if s.Value == nil {
+		if !s.Valid {
+			return nil
+		}
+		return fmt.Errorf("%w: non-null run-end-encoded scalar has no value", arrow.ErrInvalid)
+	}
+
 	if err = s.Value.Validate(); err != nil {
 		return
 	}

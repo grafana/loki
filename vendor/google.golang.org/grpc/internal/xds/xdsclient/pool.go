@@ -255,6 +255,15 @@ func (p *Pool) clientRefCountedClose(name string) {
 			}
 		}
 	}
+	// The allowed-services credentials are owned by the (pool-shared)
+	// bootstrap config and are released when the last reference to the
+	// client is dropped, following the same lifecycle as the xDS server
+	// credentials released above.
+	for _, svc := range client.bootstrapConfig.AllowedGRPCServices() {
+		for _, f := range svc.Cleanups() {
+			f()
+		}
+	}
 	p.mu.Unlock()
 
 	// This attempts to close the transport to the management server and could

@@ -18,9 +18,9 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -31,7 +31,7 @@ type failingBucket struct {
 	objstore.Bucket
 }
 
-func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader, _ ...objstore.ObjectUploadOption) error {
 	return errors.New("mock upload error")
 }
 
@@ -72,15 +72,42 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding postings, and no streams or pointers section.
+		// holding postings, and no streams section.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, idxObj.Sections().Count(postings.CheckSection), 1)
 		require.Zero(t, idxObj.Sections().Count(streams.CheckSection))
-		require.Zero(t, idxObj.Sections().Count(pointers.CheckSection))
 
 		// The index points back at the data object it was built from.
 		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
+	})
+
+	t.Run("should report the shard layout that a reader finds in the uploaded index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, _ := newTestSimpleIndexer(t, bucket)
+
+		layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:app"})
+		lr := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		lr.ForStream(`{app="foo"}`).Entry(10, `{}`, "hello")
+		lr.ForStream(`{app="bar"}`).Entry(20, `{}`, "world")
+		obj, closer := fixtures.DataObject(t,
+			fixtures.LogsSection(t, "tenant-0", lr.Logs()),
+			fixtures.StreamsSection(t, "tenant-0", lr.Streams(), fixtures.WithStreamsLayout(layout)),
+		)
+		t.Cleanup(func() { closer.Close() })
+
+		res, err := idx.Index(t.Context(), obj, "objects/test")
+		require.NoError(t, err)
+
+		got, ok := res.ShardBuckets.Layout()
+		require.True(t, ok)
+		require.Equal(t, layout.ShardLayout(), got)
+
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		want, err := indexobj.TenantShardBuckets(t.Context(), idxObj, "tenant-0")
+		require.NoError(t, err)
+		require.Equal(t, want, res.ShardBuckets)
 	})
 
 	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {

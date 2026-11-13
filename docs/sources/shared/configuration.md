@@ -973,6 +973,20 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
+  # The highest ApiVersions request version the Kafka client sends, from 1 to 4.
+  # The default of 4 keeps the client compatible with backends that close the
+  # connection on ApiVersions v5, such as WarpStream. 0 removes the cap, so the
+  # client sends v5.
+  # CLI flag: -kafka.api-versions-max-version
+  [api_versions_max_version: <int> | default = 4]
+
+  # The largest size, in bytes, that one fetched Kafka batch may decompress to.
+  # A bigger batch stops the client from reading its partition. The default of
+  # 2147483647 (2 GiB minus 1 byte) is the highest value allowed. 0 uses the
+  # Kafka client default of 1073741824 (1 GiB).
+  # CLI flag: -kafka.max-decompress-batch-bytes
+  [max_decompress_batch_bytes: <int> | default = 2147483647]
+
 dataobj:
   builder:
     logsobj_builder:
@@ -1092,15 +1106,44 @@ dataobj:
     [sha_prefix_size: <int> | default = 2]
 
   metastore:
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # for testing only.
-    # CLI flag: -dataobj-metastore.index-storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0"]
+    toc_resolver:
+      # Experimental: Keep the table of contents (ToC) that queries requested
+      # recently in memory. Refresh them in the background, so a query rarely
+      # reads them from object storage. It has no effect unless -dataobj.enabled
+      # is set. Only the querier module uses it.
+      # CLI flag: -dataobj-metastore.toc-resolver.enabled
+      [enabled: <boolean> | default = true]
 
-  # Caches the metadata of the data objects the querier reads. The cache is
-  # enabled when a backend is configured. Entries are keyed by object path, so
-  # the cache cannot differentiate entries between different buckets and
-  # clusters. Multiple installations must not share the same cache backend.
+      # How often the resolver refreshes the ToCs in memory. A query reads a ToC
+      # that is older than twice this interval from object storage. A refresh
+      # reads through the data object metadata cache when one is configured
+      # (-dataobj.metadata-cache.*). The refresh accepts a cached ToC that is at
+      # most half this interval old. The interval must be at least one second,
+      # and twice the interval must not exceed a tenth of -dataobj.storage-lag.
+      # CLI flag: -dataobj-metastore.toc-resolver.refresh-interval
+      [refresh_interval: <duration> | default = 1m]
+
+      # A ToC is refreshed while a query requested it within this time. The
+      # resolver drops a ToC that no query requested for longer. It must not be
+      # shorter than the refresh interval.
+      # CLI flag: -dataobj-metastore.toc-resolver.active-window
+      [active_window: <duration> | default = 5m]
+
+      # Size limit of the ToCs kept in memory. It must be positive. The resolver
+      # does not store a ToC that would take the size over the limit. When the
+      # size is over nine tenths of the limit, a refresh drops the least
+      # recently requested ToCs. It stops once the size is at most nine tenths
+      # of the limit.
+      # CLI flag: -dataobj-metastore.toc-resolver.max-memory-cache-bytes
+      [max_memory_cache_bytes: <int> | default = 64MB]
+
+  # Caches the metadata region of the log objects and index objects the querier
+  # reads, or the entire object if it is tiny. When the ToC resolver is enabled
+  # (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables
+  # of contents (ToCs) that the resolver refreshes. The cache is enabled when a
+  # backend is configured. Entries are keyed by object path, so the cache cannot
+  # differentiate entries between different buckets and clusters. Multiple
+  # installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
@@ -1120,6 +1163,21 @@ dataobj:
     # by the coordinator. 0 means unlimited.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Number of times the coordinator runs a failed compaction
+    # task again. 0 disables retries.
+    # CLI flag: -dataobj.compaction.task-max-retries
+    [task_max_retries: <int> | default = 3]
+
+    # Experimental: Shortest wait before the first retry of a failed compaction
+    # task. The wait grows exponentially with each retry, with jitter, up to
+    # task-retry-max-backoff.
+    # CLI flag: -dataobj.compaction.task-retry-min-backoff
+    [task_retry_min_backoff: <duration> | default = 10s]
+
+    # Experimental: Longest wait before a retry of a failed compaction task.
+    # CLI flag: -dataobj.compaction.task-retry-max-backoff
+    [task_retry_max_backoff: <duration> | default = 1m]
 
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
@@ -1148,10 +1206,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
-    # compaction starts only when a size level holds K runs, so a larger K
-    # leaves more overlapping runs per window. Separate from max-runs-per-task
-    # to scale independently. Must be at least 2.
+    # Experimental: Runs per planned log merge (K for log compaction), before
+    # logs.max-task-size splits it into tasks. Log compaction merges only groups
+    # of K runs from one size level, so a larger K leaves more overlapping runs
+    # per window. Separate from max-runs-per-task to scale independently. Must
+    # be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 
@@ -1160,6 +1219,22 @@ dataobj:
     # are skipped.
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
+
+    # Experimental: Maximum uncompressed input size of one LogMerge task. The
+    # planner splits a larger merge into tasks by stream sort prefix and never
+    # splits one sort prefix. A task exceeds the maximum in two cases: a sort
+    # prefix above it gets a task of its own, and the last task of a merge can
+    # take in a leftover of up to 10% of it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.logs.max-task-size
+    [logs_max_task_size: <int> | default = 0B]
+
+    # Experimental: Maximum uncompressed input of one stream sort prefix in a
+    # planned log merge. A merge writes all records of one sort prefix into one
+    # object, so this limits the size of the objects and the memory of a task.
+    # The planner skips a merge with a larger sort prefix and keeps its runs
+    # unmerged. 0 disables the check.
+    # CLI flag: -dataobj.compaction.logs.max-key-size
+    [logs_max_key_size: <int> | default = 100GiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -1187,6 +1262,30 @@ dataobj:
       # worker frame traffic.
       # CLI flag: -dataobj.compaction.scheduler.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    deletion_sweep:
+      # Experimental: Check each tenant once an hour. Scan the tenant
+      # directories of a tenant at most once every 23 hours for objects that no
+      # table of contents (ToC) file can reach, and store them in the deletion
+      # file list of the tenant. The sweep ignores objects outside the tenant
+      # directories. Only tenants with the dataobj_deletion_sweep_enabled limit
+      # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
+      # Requires dataobj compaction to be enabled.
+      # CLI flag: -dataobj.compaction.deletion-sweep.enabled
+      [enabled: <boolean> | default = false]
+
+      # Experimental: Maximum number of deletion sweeps that run at the same
+      # time, across all tenants. Each sweep lists the tenant directories and
+      # reads the table of contents (ToC) files and index objects of the tenant.
+      # CLI flag: -dataobj.compaction.deletion-sweep.max-concurrent-sweeps
+      [max_concurrent_sweeps: <int> | default = 4]
+
+      # Experimental: Log a summary and examples of the deletion candidates,
+      # instead of deleting them. A candidate is an object that no table of
+      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
+      # Only true is supported.
+      # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
+      [dry_run: <boolean> | default = true]
 
     worker:
       # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
@@ -1327,6 +1426,12 @@ ingest_limits:
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
+
+  # How often to evict the streams of ingestion policies with a
+  # limits_service_streams_expiry that have been idle for longer than that
+  # expiry.
+  # CLI flag: -ingest-limits.policies-custom-eviction-interval
+  [policies_custom_eviction_interval: <duration> | default = 1m]
 
   # Enable durability for stream sharding. Rate buckets are written to the
   # stream metadata topic and restored from it, which removes the warm-up period
@@ -1722,6 +1827,13 @@ ingest_limits_frontend_client:
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
 [tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
+
+# List of /config fields to expose via /loki/api/v1/exposed-config, addressed by
+# dot-separated path (e.g.
+# 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty
+# by default, meaning nothing is exposed.
+# CLI flag: -config.exposed-fields
+[exposed_fields: <list of strings> | default = []]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -3525,9 +3637,11 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
+  # Number of index gateway instances that own each key in the index gateway
+  # ring. It is the default for -index-gateway.shard-size, which can also be set
+  # per tenant. When -index-gateway.per-index-ownership.enabled is true, it is
+  # also the number of index gateways that own each (tenant, table) index, so
+  # index gateways and their clients must use the same value.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 
@@ -3846,6 +3960,12 @@ wal:
   # CLI flag: -ingester.wal-disk-full-threshold
   [disk_full_threshold: <float> | default = 0.9]
 
+  # Write WAL records as V4, which store the Kafka record timestamp. Older
+  # versions can't replay them. When disabled, records are written as V3 and V4
+  # timestamps are ignored on replay.
+  # CLI flag: -ingester.wal-record-v4-enabled
+  [record_v4_enabled: <boolean> | default = false]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards
@@ -4080,11 +4200,15 @@ discover_generic_fields:
 # CLI flag: -validation.discover-service-name
 [discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
-# Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name
-# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
-# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
-# 'fatal' (case insensitive).
+# Discover the log level of each entry during ingestion and add it to Structured
+# Metadata as detected_level, unless it is already present. The level is read
+# from the first stream label or Structured Metadata field whose name is in
+# log_level_fields (default: level, LEVEL, Level, log.level, severity, SEVERITY,
+# Severity, SeverityText, lvl, LVL, Lvl, severity_text, Severity_Text,
+# SEVERITY_TEXT). Otherwise it is derived from the OTLP severity number, or from
+# the log line: a JSON or logfmt field named in log_level_fields, then keywords.
+# Recognized values (case insensitive) are normalized to 'trace', 'debug',
+# 'info', 'warn', 'error', 'critical' or 'fatal'.
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
@@ -4133,10 +4257,6 @@ discover_generic_fields:
 # the stream is limited.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <int> | default = 15MB]
-
-# Maximum number of chunks that can be fetched in a single query.
-# CLI flag: -store.query-chunk-limit
-[max_chunks_per_query: <int> | default = 2000000]
 
 # Limit the maximum of unique series that is returned by a metric query. When
 # the limit is reached an error is returned.
@@ -4448,9 +4568,9 @@ shard_streams:
   # unchanged behavior), 'shadow' (ask the limits service and compare its answer
   # against the local rate store's; the local rate store still decides how
   # streams are sharded) or 'live' (shard streams with the count the limits
-  # service returns, falling back to the local rate store for streams it does
-  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
-  # to be enabled.
+  # service returns; a stream it gives no usable count for is written
+  # unsharded). Both 'shadow' and 'live' have no effect unless the ingest-limits
+  # service is enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
@@ -4520,6 +4640,15 @@ shard_streams:
 # compaction is a configuration error.
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
+# finds the objects of the tenant that no table of contents (ToC) file can
+# reach. An object that two sweeps, at least 23 hours apart, both find
+# unreachable is a deletion candidate. Sweeps log a summary and examples of the
+# candidates, and delete nothing. The sweep also needs
+# -dataobj.compaction.deletion-sweep.enabled.
+# CLI flag: -dataobj-compaction.deletion-sweep.enable
+[dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -5143,6 +5272,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Fail a query on max_query_series as soon as a range iterator
+  # or vector aggregation holds more series than the limit, where the query's
+  # output cannot be smaller. Logs Drilldown requests are exempt.
+  # CLI flag: -querier.engine.max-query-series-cutoff
+  [max_query_series_cutoff: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5885,9 +6020,9 @@ http_config:
 # CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# The S3 storage class which objects will use. Supported values are: STANDARD,
+# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+# with MinIO.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -6762,9 +6897,8 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
-  # FSX_ONTAP, AWS_BACKUP_WARM, AWS_BACKUP_LOW_COST_WARM
+  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+  # with MinIO.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
@@ -6890,8 +7024,8 @@ gcs:
   # CLI flag: -<prefix>.gcs.service-account
   [service_account: <string> | default = ""]
 
-  # The maximum size of the buffer that GCS client for a single PUT request. 0
-  # to disable buffering.
+  # The maximum size that the GCS client will attempt to send in a single
+  # request. 0 to use a default of 16MB.
   # CLI flag: -<prefix>.gcs.chunk-buffer-size
   [chunk_buffer_size: <int> | default = 0]
 
@@ -7334,10 +7468,8 @@ overrides:
   tenant1:
     ingestion_rate_mb: 10
     max_streams_per_user: 100000
-    max_chunks_per_query: 100000
   tenant2:
     max_streams_per_user: 1000000
-    max_chunks_per_query: 1000000
 
 multi_kv_config:
     mirror-enabled: false

@@ -31,8 +31,8 @@ func (b *PrefixedBucketClient) Close() error {
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *PrefixedBucketClient) Upload(ctx context.Context, name string, r io.Reader) (err error) {
-	err = b.bucket.Upload(ctx, b.fullName(name), r)
+func (b *PrefixedBucketClient) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) (err error) {
+	err = b.bucket.Upload(ctx, b.fullName(name), r, opts...)
 	return
 }
 
@@ -93,6 +93,14 @@ func (b *PrefixedBucketClient) Exists(ctx context.Context, name string) (bool, e
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *PrefixedBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
+}
+
+func (b *PrefixedBucketClient) IsConditionNotMetErr(err error) bool {
+	return b.bucket.IsConditionNotMetErr(err)
+}
+
+func (b *PrefixedBucketClient) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return b.bucket.SupportedObjectUploadOptions()
 }
 
 // Attributes returns attributes of the specified object.

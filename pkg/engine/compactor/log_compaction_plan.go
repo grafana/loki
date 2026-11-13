@@ -6,18 +6,29 @@ import (
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 // logCompactionPlan is the work that replaces one source index in one window.
-// Each task produces one artifact, and the swap replaces the source index with
-// one ToC entry per task.
+// The source index is an index run: one index object, or every index object
+// that shares a RunID. Each task produces one artifact, and the swap replaces
+// every index object of the run with one ToC entry per task.
 //
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
-	window      time.Time
-	sourceIndex indexEntry
-	tasks       []logCompactionTask
+	window         time.Time
+	sourceIndexRun indexRun
+	tasks          []logCompactionTask
+
+	// shardBuckets is the shard layout of the source index. Compaction never
+	// changes the layout of an object, so every artifact has this layout.
+	shardBuckets indexpointers.ShardBuckets
+
+	// singleObjectRuns is the number of log runs in the source index that
+	// hold exactly one object. Plans with no work also set it, so the gauge
+	// counts indexes that need no compaction.
+	singleObjectRuns int
 }
 
 // hasWork reports whether p dispatches any task.
@@ -52,9 +63,6 @@ type logTaskStats struct {
 }
 
 // physicalPlans returns one physical plan per task, in task order.
-//
-// Each call builds new plans with new node IDs. The scheduler requires unique
-// node IDs, so every execution of p must call physicalPlans again.
 func (p logCompactionPlan) physicalPlans(tenant string) []*physical.Plan {
 	plans := make([]*physical.Plan, len(p.tasks))
 	for i, task := range p.tasks {
@@ -69,6 +77,7 @@ func (p logCompactionPlan) tocEntries() []metastore.TableOfContentsEntry {
 	entries := make([]metastore.TableOfContentsEntry, len(p.tasks))
 	for i, task := range p.tasks {
 		entries[i] = task.tocEntry()
+		entries[i].ShardBuckets = p.shardBuckets
 	}
 	return entries
 }
@@ -82,7 +91,7 @@ type logCompactionTask interface {
 	// path.
 	tocEntry() metastore.TableOfContentsEntry
 
-	// logTaskStats returns the log data that the task reads. Its bytes are zero
+	// logStats returns the log data that the task reads. Its bytes are zero
 	// if the task reads no log data.
 	logStats() logTaskStats
 }
@@ -103,8 +112,16 @@ func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Pl
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
+// logStats returns the input bytes of the task's key range from the index
+// stats, so the tasks of a split merge add up to the bytes of the merge. If
+// the spec has no input bytes, it falls back to the size of the task's
+// sections.
 func (t logMergeTask) logStats() logTaskStats {
 	stats := logTaskStats{oldestTimestamp: t.entry.StartTime}
+	if t.spec.InputBytes > 0 {
+		stats.inputBytes = uint64(t.spec.InputBytes)
+		return stats
+	}
 	for _, run := range t.spec.Runs {
 		for _, section := range run.Sections {
 			stats.inputBytes += uint64(section.UncompressedSize)
@@ -116,17 +133,20 @@ func (t logMergeTask) logStats() logTaskStats {
 // indexFilterTask writes a new index that keeps only the rows of objectPaths
 // from the source index. It keeps log data without rewriting it.
 type indexFilterTask struct {
-	sourceIndexPath string
-	objectPaths     []string
-	entry           metastore.TableOfContentsEntry
+	// sourceIndexPaths are the paths of every index object of the source index
+	// run. A run splits postings across its index objects, so a filter over
+	// part of a run loses postings.
+	sourceIndexPaths []string
+	objectPaths      []string
+	entry            metastore.TableOfContentsEntry
 }
 
 func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan {
-	return buildIndexFilterPlan(tenant, t.sourceIndexPath, t.objectPaths)
+	return buildIndexFilterPlan(tenant, t.sourceIndexPaths, t.objectPaths)
 }
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// logTaskStats returns zero bytes, because the filter reads only the source
+// logStats returns zero bytes, because the filter reads only the source
 // index.
 func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }

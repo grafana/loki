@@ -7,13 +7,16 @@ import (
 	"reflect"
 	"strconv"
 	"unsafe"
+
+	"github.com/goccy/go-json/internal/jsonnum"
 )
 
 var (
 	// errStringOptionRest tells that the value of a string of the string option is followed by more bytes.
 	errStringOptionRest = errors.New("json: value followed by more bytes in a string of the string option")
-	// errMapKeyType is returned by the decoder of a key of a map which is not of the type of the keys, whose type
-	// error is recorded: the map decodes the value of the entry, and drops the entry, as encoding/json does.
+	// errMapKeyType is returned by the decoder of a key of a map which is not of the type of the keys, or which the
+	// UnmarshalText of the keys fails for, whose error is recorded: the map skips the value of the entry, and drops
+	// the entry, as encoding/json does.
 	errMapKeyType = errors.New("json: map key of another type")
 )
 
@@ -31,8 +34,8 @@ type wrappedStringDecoder struct {
 	numberKind reflect.Kind
 	// numberType is the type of the number, which typ is or points to.
 	numberType reflect.Type
-	// isJSONNumber is set for a json.Number, or a pointer to one, whose bytes are checked as encoding/json of the Go
-	// version checks them ( see stringOptionNumber ).
+	// isJSONNumber is set for a json.Number, or a pointer to one, whose bytes must be a number by the grammar of the
+	// numbers.
 	isJSONNumber bool
 }
 
@@ -54,12 +57,6 @@ func newWrappedStringDecoder(typ reflect.Type, dec Decoder, structName, fieldNam
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64:
-		if numberType.Implements(unmarshalJSONType) || reflect.PointerTo(numberType).Implements(unmarshalJSONType) ||
-			reflect.PointerTo(numberType).Implements(unmarshalJSONContextType) ||
-			reflect.PointerTo(numberType).Implements(unmarshalTextType) {
-			// a number decoded by its own unmarshaler
-			break
-		}
 		d.numberKind, d.numberType = numberType.Kind(), numberType
 	}
 	return d
@@ -71,7 +68,7 @@ func (d *wrappedStringDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 	start := cursor
 	if c := buf[cursor]; c != 'n' && isOtherValue(c, stringValue) {
 		// a value which is not in a string
-		if d.isPtrType && stringOptionUnquotedAllocates {
+		if d.isPtrType {
 			d.allocate(p)
 		}
 		return ctx.stringOptionUnquoted(cursor, depth, d.typ)
@@ -87,16 +84,21 @@ func (d *wrappedStringDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 		return c, nil
 	}
 	if d.isJSONNumber && !d.isMapKey {
-		if stringOptionNumber(bytes) {
+		if jsonnum.IsValid(bytes) {
 			*(*json.Number)(d.target(p)) = json.Number(ctx.makeString(bytes))
 			return c, nil
 		}
-		if !stringOptionNumberDecoded {
-			return d.stringError(ctx, start, c, bytes, p)
-		}
+		return d.stringError(ctx, start, c, bytes, p)
 	}
 	if d.numberKind != reflect.Invalid && len(bytes) > 0 {
 		if d.decodeNumber(bytes, p) {
+			return c, nil
+		}
+		if !d.isMapKey && string(bytes) == "null" {
+			// encoding/json decodes the string "null" as null: it leaves the number, and sets a pointer to nil
+			if d.isPtrType {
+				*(*unsafe.Pointer)(p) = nil
+			}
 			return c, nil
 		}
 		return d.stringError(ctx, start, c, bytes, p)
@@ -105,12 +107,14 @@ func (d *wrappedStringDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 		// encoding/json reads the bytes of the string as a value with nothing around it
 		return d.stringError(ctx, start, c, bytes, p)
 	}
-	// The value is decoded from a copy of its bytes, which nothing else uses: its strings may refer to it. A type
-	// error of it is the one of the string, which is made after it ( see stringOptionError ).
+	// The value is decoded from a copy of its bytes followed by a nul byte, which its strings refer to under
+	// NoCopyStringOption. A type error of it is the one of the string, which is made after it ( see
+	// stringOptionError ).
 	saved := ctx.typeError
 	ctx.typeError = nil
 	oldBuf, oldOrigin := ctx.Buf, ctx.origin
-	ctx.Buf, ctx.origin = NewInput(bytes), nil
+	ctx.Buf = NewInput(bytes)
+	ctx.origin = ctx.Buf
 	next, err := d.dec.Decode(ctx, 0, depth, p)
 	if err == nil && skipWhiteSpace(ctx.Buf, next) != int64(len(bytes)) {
 		// the value is followed by more bytes in the string
@@ -132,7 +136,7 @@ func (d *wrappedStringDecoder) stringError(ctx *RuntimeContext, start, end int64
 		ctx.keyTypeError(start, end, bytes, d.elemType())
 		return end, errMapKeyType
 	}
-	if d.isPtrType && stringOptionAllocates(bytes) {
+	if d.isPtrType {
 		d.allocate(p)
 	}
 	return ctx.stringOptionError(start, end, bytes, d.typ)
@@ -142,9 +146,6 @@ func (d *wrappedStringDecoder) stringError(ctx *RuntimeContext, start, end int64
 // the string option or of a key of a map, by strconv: a number which it fails, or which is out of the range of the
 // type, is not stored. It reports whether the number is stored.
 func (d *wrappedStringDecoder) decodeNumber(bytes []byte, p unsafe.Pointer) bool {
-	if !d.isMapKey && !stringOptionNumberStart(bytes[0]) {
-		return false
-	}
 	s := *(*string)(unsafe.Pointer(&bytes))
 	bits := int(d.numberType.Size() * 8)
 	switch d.numberKind {

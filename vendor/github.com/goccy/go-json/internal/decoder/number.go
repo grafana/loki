@@ -5,6 +5,7 @@ import (
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
+	"github.com/goccy/go-json/internal/jsonnum"
 )
 
 type numberDecoder struct {
@@ -47,50 +48,12 @@ func (d *numberDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsaf
 		// null, which is ignored
 		return c, nil
 	}
-	if !isValidNumber(bytes) {
+	if !jsonnum.IsValid(bytes) {
 		return ctx.numberStringError(start, c, jsonNumberType)
 	}
 	// a number in a string: its bytes end before the quote
 	d.op(p, json.Number(ctx.makeString(bytes)))
 	return c, nil
-}
-
-// isValidNumber reports whether b is a number by the grammar of the JSON numbers.
-func isValidNumber(b []byte) bool {
-	i := 0
-	if i < len(b) && b[i] == '-' {
-		i++
-	}
-	digits := func() int {
-		n := 0
-		for i < len(b) && b[i]-'0' <= 9 {
-			i++
-			n++
-		}
-		return n
-	}
-	switch {
-	case i < len(b) && b[i] == '0':
-		i++
-	case digits() == 0:
-		return false
-	}
-	if i < len(b) && b[i] == '.' {
-		i++
-		if digits() == 0 {
-			return false
-		}
-	}
-	if i < len(b) && (b[i] == 'e' || b[i] == 'E') {
-		i++
-		if i < len(b) && (b[i] == '+' || b[i] == '-') {
-			i++
-		}
-		if digits() == 0 {
-			return false
-		}
-	}
-	return i == len(b)
 }
 
 func (d *numberDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {

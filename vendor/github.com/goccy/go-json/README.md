@@ -2,7 +2,6 @@
 
 ![Go](https://github.com/goccy/go-json/workflows/Go/badge.svg)
 [![GoDoc](https://godoc.org/github.com/goccy/go-json?status.svg)](https://pkg.go.dev/github.com/goccy/go-json?tab=doc)
-[![codecov](https://codecov.io/gh/goccy/go-json/branch/master/graph/badge.svg)](https://codecov.io/gh/goccy/go-json)
 
 Fast JSON encoder/decoder compatible with encoding/json for Go
 
@@ -10,7 +9,8 @@ Fast JSON encoder/decoder compatible with encoding/json for Go
 
 # Features
 
-- Drop-in replacement of `encoding/json`: values are decoded and encoded, and errors are reported, as `encoding/json` of the Go version in use does, including Go 1.27, whose `encoding/json` is built on `encoding/json/v2`
+- Drop-in replacement of `encoding/json`. Values are decoded, and their errors are reported, as `encoding/json` of Go 1.27 (built on `encoding/json/v2`) does, on every Go version. Only the syntax errors of decoding and the reading of a stream token by token (`Token`, `More`, `InputOffset`, and `Decode` between calls of `Token`) follow the `encoding/json` the program is built with. Values are encoded as the `encoding/json` the program is built with encodes them, except for some behaviors of Go 1.27 that apply on every version, such as the limit of 10000 nested levels, map keys of pointer types, and the syntax errors of `MarshalJSON` output, `Compact` and `Indent`. The `MarshalJSONTo` and `UnmarshalJSONFrom` methods are called before `MarshalJSON` and `UnmarshalJSON`, as `encoding/json` of Go 1.27 calls them: the ones which take the `Encoder` and the `Decoder` of `github.com/goccy/go-json/jsontext` first, on every Go version, and the ones which take those of `encoding/json/jsontext` where the program is built with Go 1.27. As `encoding/json` does, they are given an encoder and a decoder with the options of `encoding/json` (`DefaultOptionsV1`), and the decoder with the ones of `DisallowUnknownFields` and `UseNumber` of a `Decoder`, so that `MarshalEncode` and `UnmarshalDecode` within the methods encode and decode as this package does; `UseNumber` is given only to the methods of `github.com/goccy/go-json/jsontext`, as `encoding/json` exports no option of it.
+- Drop-in replacement of `encoding/json/v2` and `encoding/json/jsontext` by `github.com/goccy/go-json/v2` and `github.com/goccy/go-json/jsontext`, with the API and behavior of those packages of Go 1.27 on Go 1.23 and later, with no need of `GOEXPERIMENT=jsonv2`. Their types are their own, not aliases of the ones of the standard library: replace both imports together, and declare `MarshalJSONTo` and `UnmarshalJSONFrom` methods with the `Encoder` and `Decoder` of `github.com/goccy/go-json/jsontext`, since methods taking the ones of `encoding/json/jsontext` are not called.
 - Fast ( See [Benchmark section](https://github.com/goccy/go-json#benchmarks) )
 - `MarshalOf` and `UnmarshalOf`, which take the value by its type and save the allocations `Marshal` and `Unmarshal` need for an `interface{}` argument
 - Flexible customization with options
@@ -31,6 +31,15 @@ Replace import statement from `encoding/json` to `github.com/goccy/go-json`
 ```
 -import "encoding/json"
 +import "github.com/goccy/go-json"
+```
+
+Code which uses `encoding/json/v2` or `encoding/json/jsontext` replaces them likewise
+
+```
+-import "encoding/json/v2"
++import "github.com/goccy/go-json/v2"
+-import "encoding/json/jsontext"
++import "github.com/goccy/go-json/jsontext"
 ```
 
 # JSON library comparison
@@ -357,7 +366,7 @@ Like the encoder, the decoder uses `typeptr` to call the decoder built for the t
 
 ### Decode a value without an allocation for the argument by `UnmarshalOf`
 
-`json.Unmarshal` receives an `interface{}` value, which makes the value escape to the heap. `json.UnmarshalOf[T]` receives the pointer by its type: it decodes into a value in the heap which is reused and copies the result to `*v`, so `v` may point to a variable on the stack of the caller, and a value without a pointer, slice or map to fill is decoded without an allocation.
+`json.Unmarshal` receives an `interface{}` value, which makes the value escape to the heap. `json.UnmarshalOf[T]` receives the pointer by its type: it decodes into a value in the heap which is reused and copies the result to `*v`, so `v` may point to a variable on the stack of the caller, and a value without a pointer, slice, map or string to fill is decoded without an allocation. With `json.DecodeNoCopyString()`, a string without an escape needs none either.
 
 ```go
 var v T
@@ -396,7 +405,7 @@ for {
 }
 ```
 
-`Unmarshal` copies the input once, into a buffer followed by the `NUL` character which the runtime context keeps from a call to the next, so the copy allocates nothing in most calls. The stream decoder ( `Decoder` ) reads until its buffer holds a whole value, puts the `NUL` character after it, and decodes it by the same decoders.
+`Unmarshal` copies the input once, into a buffer followed by the `NUL` character which the runtime context keeps from a call to the next, so the copy allocates nothing in most calls. The stream decoder ( `Decoder` ) puts the `NUL` character after the bytes it has read, and decodes a value that its buffer holds whole by the same decoders. An object decoded into a struct, a map or an `interface{}`, or an array decoded into a slice, an array or an `interface{}`, that its buffer does not hold whole, is decoded element by element, each element whole if the buffer holds it and element by element otherwise, so that the buffer holds one read and the longest token, whatever the size of the value. Any other object or array is read whole, such as one decoded into a type with an `UnmarshalJSON` method, or an array decoded into a struct.
 
 ### Use Boundary Check Elimination
 
@@ -426,9 +435,11 @@ A string is scanned a word ( eight bytes ) at a time: a few bit operations on th
 
 A string with an escape is decoded in the same pass as it is scanned from its first escape on: the runs of plain bytes between the escapes are moved at once, and the escapes are validated and decoded as they are met.
 
-### Strings copied into an arena, or referring to the input
+### Strings copied, or referring to the input
 
-A decoded string is a copy, as with `encoding/json`, so the input may be modified after the call. The short strings are copied into chunks of up to 16 KB shared by the strings of a runtime context, instead of an allocation for each. With the option `json.DecodeNoCopyString()`, a string without an escape refers to the input without a copy.
+A decoded string is a copy of its own, as with `encoding/json`, so the input may be modified after the call, and a kept string keeps alive nothing but its bytes. The stream decoder copies the strings out of its buffer too, so that it reuses the buffer in place when it reads more. With the option `json.DecodeNoCopyString()`, a string without an escape refers to the input without a copy, and keeps it alive: the data given to `Unmarshal`, or the buffer of the stream decoder which the value was read into, which the decoder doesn't reuse then.
+
+An earlier version copied the short strings into chunks of up to 16 KB shared by the strings of a runtime context, instead of an allocation for each: a small value kept out of a call kept a whole chunk alive, filled by the strings of other calls ( #775 ).
 
 ### Finding the field of a key by its words
 
@@ -448,11 +459,13 @@ To find the end of an object or an array without decoding it, as the stream deco
 
 ### Decoding `interface{}` values without reflection
 
-The values of an array or an object decoded into `interface{}` are pushed to a stack of the runtime context, and a `[]interface{}` or a `map[string]interface{}` is made of their number at the end: a map filled entry by entry grows and moves its entries several times on the way. The numbers and the strings are stored into `interface{}` values from slabs, instead of an allocation for each, and the empty arrays share one empty slice.
+The values of an array or an object decoded into `interface{}` are pushed to a stack of the runtime context, and a `[]interface{}` or a `map[string]interface{}` is made of their number at the end: a map filled entry by entry grows and moves its entries several times on the way. The empty arrays share one empty slice. A number or a string is stored into its `interface{}` value by itself, as with `encoding/json`: an earlier version stored them from slabs of a runtime context, which a kept value kept alive with the values of other calls ( #775 ).
 
-### Sizing slices and maps by the last value
+### Slices and maps of their own size
 
-The elements of an array are decoded directly into the slice, which is allocated for the length of the array the decoder decoded last, and a map is made for the number of the entries of the last object: the values of a type often have the same size. The zero values the entries of a map are decoded into are reused from a pool.
+The elements of an array are decoded directly into the slice, which grows as `append` grows it, and the elements of a long array into a buffer which becomes the slice, allocated once, of its length. The zero values the entries of a map are decoded into are reused from a pool.
+
+An earlier version allocated a new slice or map for the length which the decoder of its type decoded last: a small value kept the capacity which another call needed, and every goroutine wrote the length into the decoder they shared ( #775 ).
 
 ### Others
 

@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -48,6 +49,7 @@ type Builder struct {
 	indexPointers *indexpointers.Builder
 	stats         *stats.Builder
 	postings      *postings.Builder
+	watermarks    *watermarks.Builder
 
 	state builderState
 }
@@ -78,7 +80,8 @@ func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scrat
 		cfg:     cfg,
 		metrics: metrics,
 
-		builder: dataobj.NewBuilder(scratchStore),
+		// The watermarks section comes first so that a reader finds it in its first request.
+		builder: dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(watermarks.SectionType())),
 	}, nil
 }
 
@@ -92,6 +95,13 @@ func (b *Builder) getIndexPointersBuilder() *indexpointers.Builder {
 		b.indexPointers.SetTenant(b.tenant)
 	}
 	return b.indexPointers
+}
+
+func (b *Builder) getWatermarksBuilder() *watermarks.Builder {
+	if b.watermarks == nil {
+		b.watermarks = watermarks.NewBuilder(b.metrics.watermarks, b.tenant, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	}
+	return b.watermarks
 }
 
 // SetLayout sets the stream layout of the data objects that the index
@@ -215,7 +225,7 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
 
 	indexPointersBuilder := b.getIndexPointersBuilder()
-	indexPointersBuilder.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
+	indexPointersBuilder.Append(pointer)
 	b.state = builderStateDirty
 
 	if indexPointersBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
@@ -224,6 +234,23 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 		}
 	}
 
+	return nil
+}
+
+// AppendWatermark records the highest offset of a Kafka topic and partition
+// whose records the object holds. A second call for the same topic and
+// partition replaces the first value.
+//
+// AppendWatermark returns an error if the topic is empty, if the partition or
+// the watermark is negative, or if the watermark is lower than the one already
+// recorded for the topic and partition.
+func (b *Builder) AppendWatermark(topic string, partition int32, watermark int64) error {
+	if err := b.getWatermarksBuilder().Set(topic, partition, watermark); err != nil {
+		return err
+	}
+
+	b.metrics.appendsTotal.Inc()
+	b.state = builderStateDirty
 	return nil
 }
 
@@ -269,6 +296,9 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.postings != nil && b.postings.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.postings))
 	}
+	if b.watermarks != nil && b.watermarks.EstimatedSize() > 0 {
+		flushErrors = append(flushErrors, b.builder.Append(b.watermarks))
+	}
 
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
@@ -304,6 +334,14 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 				continue
 			}
 			errs = append(errs, b.metrics.indexPointers.Observe(ctx, indexPointerSection))
+
+		case watermarks.CheckSection(sec):
+			watermarksSection, err := watermarks.Open(ctx, sec)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, b.metrics.watermarks.Observe(ctx, watermarksSection))
 		}
 	}
 
@@ -316,6 +354,7 @@ func (b *Builder) Reset() {
 	b.indexPointers = nil
 	b.stats = nil
 	b.postings = nil
+	b.watermarks = nil
 	b.layout = nil
 	b.sortSchema = ""
 

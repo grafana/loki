@@ -2,7 +2,6 @@ package logsobj
 
 import (
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -17,7 +16,7 @@ type BuilderFactory struct {
 }
 
 // NewBuilderFactory validates the config, reports related metrics, and returns a factory that is prepared to create new
-// builders.
+// builders. It returns an error if overrides is nil.
 func NewBuilderFactory(
 	cfg BuilderBaseConfig,
 	scratchStore scratch.Store,
@@ -28,13 +27,10 @@ func NewBuilderFactory(
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	metrics.ObserveConfig(cfg)
-
-	if overrides != nil {
-		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
-	} else {
-		level.Info(logger).Log("msg", "no sort schema overrides at construction")
+	if overrides == nil {
+		return nil, errNilOverrides
 	}
+	metrics.ObserveConfig(cfg)
 
 	return &BuilderFactory{
 		cfg:          cfg,

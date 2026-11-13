@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 )
 
@@ -18,6 +19,7 @@ const (
 	labelAge     = "age"
 	labelReason  = "reason"
 	labelPhase   = "phase"
+	labelActor   = "actor"
 )
 
 // Values of the phase label of corruptIndexesTotal.
@@ -51,7 +53,8 @@ type coordinatorMetrics struct {
 	tenantLogCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
 
 	// indexesRemovedTotal counts source indexes removed by compaction
-	// (cumulative). Use with indexesAddedTotal to compute net reduction:
+	// (cumulative). The index objects of one index run count as one index.
+	// Use with indexesAddedTotal to compute net reduction:
 	// removed - added = net_reduction.
 	indexesRemovedTotal *prometheus.CounterVec // tenant
 
@@ -61,6 +64,9 @@ type coordinatorMetrics struct {
 	// tasksTotal counts compaction tasks of every kind that successful tenant
 	// cycles dispatched. The kinds are IndexMerge, LogMerge, and IndexFilter.
 	tasksTotal *prometheus.CounterVec // tenant
+
+	// taskAttemptsTotal counts attempts to run a compaction task.
+	taskAttemptsTotal *prometheus.CounterVec // actor, outcome=success|retry|failed|cancelled
 
 	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
 	// iteration (IndexMerge or LogMerge).
@@ -82,16 +88,29 @@ type coordinatorMetrics struct {
 	// phase of a tenant has not rewritten yet, by the age of their oldest data.
 	pendingLogBytes *prometheus.GaugeVec // tenant, age
 
-	// logMergeFailedIndexesTotal counts indexes that failed to plan or
+	// logMergeFailedIndexesTotal counts index runs that failed to plan or
 	// execute in a LogMerge phase.
 	logMergeFailedIndexesTotal *prometheus.CounterVec // tenant, reason
+
+	// indexMergeFailedGroupsTotal counts layout groups that failed in an
+	// IndexMerge phase.
+	indexMergeFailedGroupsTotal *prometheus.CounterVec // tenant
 
 	// corruptIndexesTotal counts each time a phase skips a corrupt index.
 	corruptIndexesTotal *prometheus.CounterVec // tenant, phase
 
+	// logMergeSkippedMergesTotal counts planned log merges that the planner
+	// skipped because a sort prefix was too large.
+	logMergeSkippedMergesTotal *prometheus.CounterVec // tenant
+
 	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
 	// planned every index in every window without an error.
 	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
+
+	// singleObjectLogRuns is the number of log runs of a tenant that hold
+	// exactly one object. It is summed over every index in every window, as of
+	// the last LogMerge phase that planned without an error.
+	singleObjectLogRuns *prometheus.GaugeVec // tenant
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -99,7 +118,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	return &coordinatorMetrics{
 		unconsolidatedBacklog: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_unconsolidated_index_backlog",
-			Help: "Per-tenant count of nonterminal index runs beyond one. Steady state: 0.",
+			Help: "Per-tenant count of nonterminal sorted runs of indexes beyond one. Steady state: 0.",
 		}, []string{labelTenant}),
 		oldestBacklogLogAgeSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_oldest_backlog_log_age_seconds",
@@ -107,25 +126,25 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant raw index count for the current ToC window. Bounded cardinality (1 series per tenant).",
+			Help: "Per-tenant index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
 		}, []string{labelTenant}),
 
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_cycles_total",
-			Help: "Total worker-loop phase iterations by outcome (compacted = ToC swap applied, converged = no work, failed = phase error).",
+			Help: "Total worker-loop phase iterations by outcome. compacted = ToC swap applied and no error. converged = no work. failed = phase error, also when another swap applied. Phases that shutdown or a tenant stop interrupted are not counted.",
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
-			Help: "Per-tenant index-compaction cycle outcomes. compacted = ToC swapped, converged = no true section overlap, failed = cycle returned error.",
+			Help: "Per-tenant index-compaction cycle outcomes. compacted = at least one ToC swap applied, also when another layout group failed. converged = no true section overlap. failed = the cycle returned an error and swapped nothing.",
 		}, []string{labelOutcome, labelTenant}),
 		tenantLogCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_log_cycles_total",
-			Help: "Per-tenant log-compaction cycle outcomes. compacted = ToC swapped, converged = no worthwhile section overlap, failed = cycle returned error.",
+			Help: "Per-tenant log-compaction cycle outcomes. compacted = at least one ToC swap applied, also when another index failed. converged = no worthwhile section overlap, or every planned merge has a sort prefix above logs.max-key-size. failed = the cycle returned an error and swapped nothing.",
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
-			Help: "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
+			Help: "Cumulative count of source indexes removed from the ToC by successful tenant cycles. The index objects of one run count as one index.",
 		}, []string{labelTenant}),
 		indexesAddedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_added_total",
@@ -135,6 +154,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_tasks_total",
 			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, IndexFilter) dispatched per tenant by successful tenant cycles.",
 		}, []string{labelTenant}),
+		taskAttemptsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_task_attempts_total",
+			Help: "Attempts to run a compaction task, by actor and outcome. success = the attempt returned a valid artifact, retry = the attempt failed and the task runs again, failed = the attempt failed and the task runs no more, because it has no retries left or the tenant worker stopped at shutdown or when the tenant stopped, cancelled = a failed sibling task cancelled the dispatch while the attempt ran or waited to retry.",
+		}, []string{labelActor, labelOutcome}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
 			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
@@ -157,24 +180,36 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}),
 		pendingLogBytes: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_pending_log_bytes",
-			Help: "Uncompressed log bytes that the current LogMerge phase of the tenant has not rewritten yet, summed over all compacted windows. The age label is the upper bound of the age of the oldest data in each task, measured when the phase plans. The buckets do not overlap: sum over age for the total. Set when the phase plans, and reduced after each index swap attempt that returns no error. Failed indexes stay counted until the next phase. Indexes that fail to plan are not counted. Data that the planner treats as converged counts as zero.",
+			Help: "Uncompressed log bytes that the current LogMerge phase of the tenant has not rewritten yet, summed over all compacted windows. The age label is the upper bound of the age of the oldest data in each task, measured when the phase plans. The buckets do not overlap: sum over age for the total. Set when the phase plans, and reduced after each index swap attempt that returns no error. Failed indexes stay counted until the next phase. Indexes that fail to plan are not counted. Data that the planner treats as converged counts as zero. This includes the runs of merges skipped for a sort prefix above logs.max-key-size; see loki_dataobj_compaction_log_merge_skipped_merges_total.",
 		}, []string{labelTenant, labelAge}),
 		logMergeFailedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
-			Help: "Indexes that failed to plan or execute in a LogMerge phase. reason = plan (planning failed), stale_plan (the ToC no longer lists the source index), or execute (any other execution failure).",
+			Help: "Index runs that failed to plan or execute in a LogMerge phase. An index object of no run counts as a run of its own. reason = plan (planning failed), stale_plan (the ToC no longer lists every index object of the run), or execute (any other execution failure).",
 		}, []string{labelTenant, labelReason}),
+		indexMergeFailedGroupsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_index_merge_failed_groups_total",
+			Help: "Layout groups that failed in an IndexMerge phase. The phase still compacts the other groups of the window.",
+		}, []string{labelTenant}),
 		corruptIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_corrupt_indexes_total",
 			Help: "Times a compaction phase skipped an index because its sections do not share one stream layout, or its layout cannot be read. Each phase that reads the index increments it again, so a nonzero rate means a corrupt index is still in the ToC.",
 		}, []string{labelTenant, labelPhase}),
+		logMergeSkippedMergesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_skipped_merges_total",
+			Help: "Planned log merges that the planner skipped because one stream sort prefix holds more than logs.max-key-size bytes. Each LogMerge phase that plans the index increments it again, so a nonzero rate means a window that stays less compacted.",
+		}, []string{labelTenant}),
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
 			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
 		}, []string{labelTenant}),
+		singleObjectLogRuns: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_single_object_log_runs",
+			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
+		}, []string{labelTenant}),
 	}
 }
 
-func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexEntry, now time.Time) {
+func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexpointers.IndexPointer, now time.Time) {
 	backlog := max(0, runs-1)
 	if converged {
 		backlog = 0
@@ -193,10 +228,10 @@ func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bo
 
 // oldestEnd returns the minimum End timestamp across entries, or the zero
 // time when entries is empty.
-func oldestEnd(entries []indexEntry) (oldest time.Time) {
+func oldestEnd(entries []indexpointers.IndexPointer) (oldest time.Time) {
 	for _, e := range entries {
-		if oldest.IsZero() || e.End.Before(oldest) {
-			oldest = e.End
+		if oldest.IsZero() || e.EndTs.Before(oldest) {
+			oldest = e.EndTs
 		}
 	}
 	return oldest
@@ -268,8 +303,11 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
+	m.singleObjectLogRuns.DeleteLabelValues(tenant)
 	m.logMergeFailedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.corruptIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.logMergeSkippedMergesTotal.DeleteLabelValues(tenant)
+	m.indexMergeFailedGroupsTotal.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)

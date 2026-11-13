@@ -17,7 +17,7 @@
     distOptionalTargets=[],
     distRunsOn='ubuntu-x64',
     dryRun=false,
-    golangCiLintVersion='v2.13.2',
+    golangCiLintVersion='v2.14.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -27,9 +27,12 @@
     skipArm=false,
     skipValidation=false,
     versioningStrategy='always-bump-patch',
+    goVersion='',
                     ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
     local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
+
+    assert goVersion != '' : 'goVersion required for Docker builds but not provided',
 
     name: 'create release PR',
     on: {
@@ -56,6 +59,7 @@
       SKIP_VALIDATION: skipValidation,
       VERSIONING_STRATEGY: versioningStrategy,
       GITHUB_APP: githubApp,
+      GO_VERSION: goVersion,
     } + if releaseAs != null then {
       RELEASE_AS: releaseAs,
     } else {},
@@ -175,7 +179,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v2.13.2',
+            default: 'v2.14.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -224,7 +228,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v2.13.2',
+            default: 'v2.14.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',

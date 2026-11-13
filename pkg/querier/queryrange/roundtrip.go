@@ -18,8 +18,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -960,6 +960,10 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		}
 	}
 
+	// The size limiter and the split middleware share one splitter, so that the limiter
+	// counts the same splits that run.
+	metricSplitter := newMetricQuerySplitter(cfg, limits, iqo)
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 		retryNextHandler := next
@@ -985,12 +989,12 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
+			newSplitQuerySizeLimiterMiddleware(engineOpts, log, limits, metricSplitter, statsHandler),
 		)
 
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(cfg, limits, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, metricSplitter, metrics.SplitByMetrics),
 		)
 
 		if cfg.CacheResults {

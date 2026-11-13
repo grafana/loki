@@ -13,10 +13,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -65,11 +65,16 @@ func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
 
 // Query constructs a Query
 func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
+	// we leave out logExecutingQuery here because the downstream query is logged by the
+	// engine that issued it and we don't need to propagate it down.
+	opts := queryOpts{maxQuerySeriesCutoff: ng.opts.MaxQuerySeriesCutoff}
+
 	return &query{
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		limits:    ng.limits,
+		opts:      opts,
 	}
 }
 
@@ -534,7 +539,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
-	isRootExpr bool,
+	nc NodeContext,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
@@ -756,7 +761,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
 		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
-		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, nc)
 	}
 }
 

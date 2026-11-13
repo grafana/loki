@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // createKafkaClient builds the consumer-group Kafka client.
@@ -39,10 +41,15 @@ import (
 //     enforces at-least-once. kgo's own auto-commit would commit positions
 //     of records that have only been fetched, not yet uploaded.
 //
-//   - kgo.ConsumeResetOffset(AtStart): for partitions with no committed
+//   - kgo.ConsumeStartOffset(AtStart): for partitions with no committed
 //     offset yet, start at the earliest available record rather than the
 //     end. Without this, a fresh consumer group would silently skip every
 //     record produced before the first member joined.
+//
+//   - kgo.ConsumeResetOffset(RewindOffset(0)): after data loss while
+//     consuming, resume at the first record stamped at or after the last one
+//     consumed, so only the lost records are skipped, as on franz-go < 1.22.
+//     The franz-go >= 1.22 default rewinds one minute and re-reads records.
 func (s *Service) createKafkaClient() (*kgo.Client, error) {
 	seedBrokers := strings.Split(s.cfg.Kafka.Address, ",")
 	for i := range seedBrokers {
@@ -66,11 +73,15 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 		kgo.ConsumeTopics(s.cfg.Kafka.Topic),
 		kgo.SessionTimeout(s.cfg.Kafka.SessionTimeout),
 		kgo.DisableAutoCommit(),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.ConsumeStartOffset(kgo.NewOffset().AtStart()),
+		kgo.ConsumeResetOffset(kgo.RewindOffset(0)),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsLostOrRevoked),
 		kgo.OnPartitionsLost(s.onPartitionsLostOrRevoked),
 	}
+
+	opts = append(opts, kafka.APIVersionsMaxVersionOpts(s.cfg.Kafka.APIVersionsMaxVersion)...)
+	opts = append(opts, kafka.MaxDecompressBatchBytesOpts(s.cfg.Kafka.MaxDecompressBatchBytes)...)
 
 	balancer := newCooperativeActiveStickyBalancer(s.partitionRing, log.With(s.logger, "component", "active-sticky-balancer"))
 	opts = append(opts, kgo.Balancers(balancer))

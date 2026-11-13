@@ -30,7 +30,7 @@ func _compare2pow63(tls *libc.TLS, zNum uintptr, incr int32) (r int32) {
 	_, _, _ = c, i, pow63
 	c = 0
 	/* 012345678901234567 */
-	pow63 = __ccgo_ts + 1813
+	pow63 = __ccgo_ts + 1837
 	i = 0
 	for {
 		if !(c == 0 && i < int32(18)) {

@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -175,6 +176,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		queryReadyNumDaysCfg int
 		queryReadinessLimits mockLimits
 		tableRangeToHandle   *config.TableRange
+		tenantFilter         TenantFilter
 
 		expectedQueryReadinessDoneForUsers map[string][]string
 	}{
@@ -274,6 +276,47 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				buildTableName(3): {"user2"},
 			},
 		},
+		{
+			name: "tenant filter by table, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			// user1 owns its index in tables 0 and 2, user2 in table 1.
+			tenantFilter: func(table string, tenants []string) ([]string, error) {
+				owner := map[string]string{
+					buildTableName(0): "user1",
+					buildTableName(1): "user2",
+					buildTableName(2): "user1",
+				}[table]
+				var out []string
+				for _, tenant := range tenants {
+					if tenant == owner {
+						out = append(out, tenant)
+					}
+				}
+				return out, nil
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user2"},
+				buildTableName(2): {"user1"},
+			},
+		},
+		{
+			name: "tenant filter owns nothing, common index: 1 day, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			queryReadyNumDaysCfg: 1,
+			tenantFilter: func(_ string, _ []string) ([]string, error) {
+				return nil, nil
+			},
+			// the common index is still kept query ready.
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): nil,
+				buildTableName(1): nil,
+			},
+		},
 		// includes limited table range
 		{
 			name:                 "common index: 20 days",
@@ -325,6 +368,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
+			tableManager.tenantFilter = tc.tenantFilter
 			if tc.tableRangeToHandle == nil {
 				tableManager.tableRangeToHandle = config.TableRange{
 					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
@@ -503,4 +547,102 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	tm.syncManager.Wait()
 	require.Equal(t, float64(1), testutil.ToFloat64(
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
+}
+
+type countingIndexStorageClient struct {
+	mockIndexStorageClient
+	listTablesCalls int
+}
+
+func (m *countingIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	m.listTablesCalls++
+	return m.mockIndexStorageClient.ListTables(ctx)
+}
+
+func TestTableManager_SkipInitialQueryReadiness(t *testing.T) {
+	tableRange := config.TableRange{Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{}}
+
+	for _, skipped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skipped=%t", skipped), func(t *testing.T) {
+			client := &countingIndexStorageClient{}
+			cfg := Config{
+				CacheDir:                  t.TempDir(),
+				SyncInterval:              time.Hour,
+				CacheTTL:                  time.Hour,
+				DownloadTimeout:           time.Minute,
+				Limits:                    &mockLimits{queryReadyIndexNumDaysDefault: 2},
+				SkipInitialQueryReadiness: skipped,
+			}
+			tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+				return openMockIndexFile(t, s), nil
+			}, client, nil, tableRange, nil, log.NewNopLogger())
+			require.NoError(t, err)
+			defer tm.Stop()
+
+			// query readiness runs at construction unless skipped.
+			wantCalls := 1
+			if skipped {
+				wantCalls = 0
+			}
+			require.Equal(t, wantCalls, client.listTablesCalls)
+
+			require.NoError(t, tm.EnsureQueryReadiness(context.Background()))
+			require.Equal(t, wantCalls+1, client.listTablesCalls)
+		})
+	}
+}
+
+// blockingIndexStorageClient blocks ListTables until its context is done.
+type blockingIndexStorageClient struct {
+	mockIndexStorageClient
+	listTablesCalls atomic.Int32
+	listing         chan struct{}
+}
+
+func (m *blockingIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	if m.listTablesCalls.Add(1) == 1 {
+		close(m.listing)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestTableManager_StopEndsQueryReadiness(t *testing.T) {
+	tableRange := config.TableRange{Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{}}
+	client := &blockingIndexStorageClient{listing: make(chan struct{})}
+	cfg := Config{
+		CacheDir:                  t.TempDir(),
+		SyncInterval:              time.Hour,
+		CacheTTL:                  time.Hour,
+		DownloadTimeout:           time.Minute,
+		Limits:                    &mockLimits{queryReadyIndexNumDaysDefault: 2},
+		SkipInitialQueryReadiness: true,
+	}
+	tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+		return openMockIndexFile(t, s), nil
+	}, client, nil, tableRange, nil, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// A run with a context that is never cancelled, as the preload's would be
+	// if the process stopped while it was still loading.
+	readinessErr := make(chan error, 1)
+	go func() { readinessErr <- tm.EnsureQueryReadiness(context.Background()) }()
+	<-client.listing
+
+	stopped := make(chan struct{})
+	go func() {
+		tm.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stop did not end the running query readiness")
+	}
+	require.ErrorIs(t, <-readinessErr, context.Canceled)
+
+	// Once stopped, query readiness does nothing.
+	require.ErrorIs(t, tm.EnsureQueryReadiness(context.Background()), context.Canceled)
+	require.Equal(t, int32(1), client.listTablesCalls.Load())
 }

@@ -14,6 +14,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com

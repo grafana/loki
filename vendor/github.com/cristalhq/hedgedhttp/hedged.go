@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -28,12 +28,14 @@ type Config struct {
 	// Default is zero which means no hedged requests will be made.
 	Upto int
 
-	// Delay before 2 consequitive hedged requests.
+	// Delay before 2 consecutive hedged requests.
 	Delay time.Duration
 
 	// Next returns the upto and delay for each HTTP that will be hedged.
 	// Default is nil which results in (Upto, Delay) result.
 	Next NextFn
+
+	_ struct{} // enforce explicit field names.
 }
 
 // NextFn represents a function that is called for each HTTP request for retrieving hedging options.
@@ -182,7 +184,7 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		timeout = ht.timeout
 	}
 
-	errOverall := &MultiError{}
+	errOverall := []error{}
 	resultCh := make(chan indexedResp, upto)
 	errorCh := make(chan error, upto)
 
@@ -200,7 +202,7 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	})
 
-	for sent := 0; len(errOverall.Errors) < upto; sent++ {
+	for sent := 0; len(errOverall) < upto; sent++ {
 		if sent < upto {
 			idx := sent
 			subReq, cancel := reqWithCtx(req, mainCtx, idx != 0)
@@ -232,17 +234,24 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 			} else {
 				ht.metrics.hedgedRequestWinsInc()
 			}
+
+			resp.Resp.Body = &bodyWithCancel{
+				ReadCloser: resp.Resp.Body,
+				cancel:     cancels[resultIdx],
+			}
 			return resp.Resp, nil
+
 		case mainCtx.Err() != nil:
 			ht.metrics.canceledByUserRoundTripsInc()
 			return nil, mainCtx.Err()
+
 		case err != nil:
-			errOverall.Errors = append(errOverall.Errors, err)
+			errOverall = append(errOverall, err)
 		}
 	}
 
 	// all request have returned errors
-	return nil, errOverall
+	return nil, errors.Join(errOverall...)
 }
 
 func waitResult(ctx context.Context, resultCh <-chan indexedResp, errorCh <-chan error, timeout time.Duration) (indexedResp, error) {
@@ -321,52 +330,6 @@ func runInPool(task func()) {
 	}
 }
 
-// MultiError is an error type to track multiple errors. This is used to
-// accumulate errors in cases and return them as a single "error".
-// Inspired by https://github.com/hashicorp/go-multierror
-type MultiError struct {
-	Errors        []error
-	ErrorFormatFn ErrorFormatFunc
-}
-
-func (e *MultiError) Error() string {
-	fn := e.ErrorFormatFn
-	if fn == nil {
-		fn = listFormatFunc
-	}
-	return fn(e.Errors)
-}
-
-func (e *MultiError) String() string {
-	return fmt.Sprintf("*%#v", e.Errors)
-}
-
-// ErrorOrNil returns an error if there are some.
-func (e *MultiError) ErrorOrNil() error {
-	switch {
-	case e == nil || len(e.Errors) == 0:
-		return nil
-	default:
-		return e
-	}
-}
-
-// ErrorFormatFunc is called by MultiError to return the list of errors as a string.
-type ErrorFormatFunc func([]error) string
-
-func listFormatFunc(es []error) string {
-	if len(es) == 1 {
-		return fmt.Sprintf("1 error occurred:\n\t* %s\n\n", es[0])
-	}
-
-	points := make([]string, len(es))
-	for i, err := range es {
-		points[i] = fmt.Sprintf("* %s", err)
-	}
-
-	return fmt.Sprintf("%d errors occurred:\n\t%s\n\n", len(es), strings.Join(points, "\n\t"))
-}
-
 var timerPool = sync.Pool{New: func() interface{} {
 	return time.NewTimer(time.Second)
 }}
@@ -384,4 +347,15 @@ func returnTimer(timer *time.Timer) {
 	default:
 	}
 	timerPool.Put(timer)
+}
+
+type bodyWithCancel struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *bodyWithCancel) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }

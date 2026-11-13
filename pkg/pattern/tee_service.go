@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -477,7 +476,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		}
 
 		// Skip streams that are already aggregated metrics or patterns to avoid loops
-		if lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel) {
+		if constants.IsPatternIngesterStream(lbls.Has) {
 			continue
 		}
 
@@ -492,7 +491,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		}
 
 		// A queued rate shard must not retain the other shards' entry storage.
-		if lbls.Has(ingester.ShardLbName) {
+		if lbls.Has(constants.StreamShardLabel) {
 			flat.Entries = slices.Clone(flat.Entries)
 		}
 

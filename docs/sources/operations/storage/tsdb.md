@@ -90,4 +90,4 @@ Loki also supports the following related per-tenant settings in `limits_config`:
 
 ### Index Caching not required
 
-TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) or your configured `max_query_lookback` under [limits_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). After that, we suggest running without an index cache (it isn't used in TSDB).
+TSDB is a compact and optimized format and the only index type Loki supports. Loki doesn't use or need an index cache for it.

@@ -476,7 +476,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	defer serverConn.Close()
 
 	expectedPlan := &physical.Plan{}
-	indexFilter := expectedPlan.Graph().Add(&physical.IndexFilter{NodeID: ulid.Make(), Tenant: "fake", SourceIndexPath: "index/0", ObjectPaths: []string{"obj1", "obj2"}})
+	indexFilter := expectedPlan.Graph().Add(&physical.IndexFilter{NodeID: ulid.Make(), Tenant: "fake", SourceIndexPaths: []string{"index/0"}, ObjectPaths: []string{"obj1", "obj2"}})
 	indexMerge := expectedPlan.Graph().Add(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "fake", ToCWindowStart: 100})
 	logMerge := expectedPlan.Graph().Add(&physical.LogMerge{NodeID: ulid.Make(), Tenant: "fake", ToCWindowStart: 100})
 

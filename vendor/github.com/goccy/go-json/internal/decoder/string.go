@@ -1,8 +1,6 @@
 package decoder
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math/bits"
 	"reflect"
@@ -11,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
+	"github.com/goccy/go-json/internal/jsonstring"
 )
 
 type stringDecoder struct {
@@ -71,35 +70,6 @@ func (d *stringDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([]
 	return [][]byte{bytes}, c, nil
 }
 
-var (
-	hexToInt = [256]int{
-		'0': 0,
-		'1': 1,
-		'2': 2,
-		'3': 3,
-		'4': 4,
-		'5': 5,
-		'6': 6,
-		'7': 7,
-		'8': 8,
-		'9': 9,
-		'A': 10,
-		'B': 11,
-		'C': 12,
-		'D': 13,
-		'E': 14,
-		'F': 15,
-		'a': 10,
-		'b': 11,
-		'c': 12,
-		'd': 13,
-		'e': 14,
-		'f': 15,
-	}
-)
-
-var runeErrBytes = []byte(string(utf8.RuneError))
-
 // stringInfo is what scanString found in a string.
 type stringInfo struct {
 	// firstEscape is the offset of the first backslash in the bytes of the string, or -1 if it has no escape:
@@ -122,18 +92,20 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 	return decodeLiteral(literal, info), next, nil
 }
 
-// unescapeLong returns the string of the literal, which has an escape and is too long for the arena: it is decoded
-// into the scratch bytes of the context, and copied, so that the bytes of the string are not zeroed before they are
-// written, and the buffer is not written.
-func (ctx *RuntimeContext) unescapeLong(literal []byte, info stringInfo) string {
+// unescapeString returns the string of the literal, which has an escape: it is decoded into the scratch bytes of the
+// context, and copied, so that the string has the bytes of its length only, which are not zeroed before they are
+// written, and the buffer is not written. A literal too long for the scratch bytes is decoded into bytes of its own,
+// which the string is.
+func (ctx *RuntimeContext) unescapeString(literal []byte, info stringInfo) string {
 	if len(literal) > maxUnescapeScratchSize {
 		decoded := decodeLiteral(literal, info)
 		return unsafe.String(unsafe.SliceData(decoded), len(decoded))
 	}
 	if cap(ctx.unescaped) < len(literal) {
-		ctx.unescaped = make([]byte, len(literal))
+		// twice as large as before, so that strings of growing lengths make few of them
+		ctx.unescaped = make([]byte, min(max(len(literal), 2*cap(ctx.unescaped)), maxUnescapeScratchSize))
 	}
-	n := unescapeTo(unsafe.Pointer(unsafe.SliceData(ctx.unescaped)), literal, info.firstEscape)
+	n := jsonstring.UnescapeTo(unsafe.Pointer(unsafe.SliceData(ctx.unescaped)), literal, info.firstEscape)
 	decoded := ctx.unescaped[:n]
 	if info.nonASCII && !utf8.Valid(decoded) {
 		return string(coerceUTF8(decoded))
@@ -147,7 +119,7 @@ func (ctx *RuntimeContext) unescapeLong(literal []byte, info stringInfo) string 
 func decodeLiteral(literal []byte, info stringInfo) []byte {
 	if info.firstEscape >= 0 {
 		out := make([]byte, len(literal))
-		literal = out[:unescapeTo(unsafe.Pointer(unsafe.SliceData(out)), literal, info.firstEscape)]
+		literal = out[:jsonstring.UnescapeTo(unsafe.Pointer(unsafe.SliceData(out)), literal, info.firstEscape)]
 	}
 	if info.nonASCII && !utf8.Valid(literal) {
 		literal = coerceUTF8(literal)
@@ -178,19 +150,8 @@ func (d *stringDecoder) decodeStringValue(ctx *RuntimeContext, cursor int64) (st
 	if literal == nil {
 		return "", next, false, nil
 	}
-	if info.firstEscape >= 0 && len(literal) <= maxArenaStringSize {
-		// an escaped string is decoded into the arena, out of the buffer, which is never written
-		dst := ctx.reserveArena(len(literal))
-		n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, info.firstEscape)
-		decoded := dst[:n]
-		if info.nonASCII && !utf8.Valid(decoded) {
-			return string(coerceUTF8(decoded)), next, true, nil
-		}
-		ctx.arena = ctx.arena[:len(ctx.arena)+n]
-		return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
-	}
 	if info.firstEscape >= 0 {
-		return ctx.unescapeLong(literal, info), next, true, nil
+		return ctx.unescapeString(literal, info), next, true, nil
 	}
 	if info.nonASCII {
 		literal = validLiteral(literal)
@@ -203,9 +164,9 @@ func (d *stringDecoder) decodeStringValue(ctx *RuntimeContext, cursor int64) (st
 // first one is met, a byte which is not ASCII: the words of a plain ASCII string are looked at for nothing more, and
 // its bytes are the string. An escape is validated where it is met, and a byte which is not ASCII makes the words
 // look past such bytes, so that any string is scanned once. The string is then decoded as decodeStringValue decodes
-// it: a short escaped string into the arena, a long one from where the words stop ( see decodeStringRest ). Where
-// the CPU has a SIMD scan, the words are looked at in the first 64 bytes only, after which a long string is scanned
-// by SIMD. An error in the string is a syntax error of the string.
+// it: an escaped string through the scratch bytes ( see unescapeString ), a long one from where the words stop ( see
+// decodeStringRest ). Where the CPU has a SIMD scan, the words are looked at in the first 64 bytes only, after which
+// a long string is scanned by SIMD. An error in the string is a syntax error of the string.
 func (d *stringDecoder) decodeStringField(ctx *RuntimeContext, start int64) (string, int64, bool, error) {
 	buf := ctx.Buf
 	b := (*sliceHeader)(unsafe.Pointer(&buf)).data
@@ -243,18 +204,7 @@ func (d *stringDecoder) decodeStringField(ctx *RuntimeContext, start int64) (str
 				}
 				return ctx.makeString(literal), next, true, nil
 			}
-			if len(literal) <= maxArenaStringSize {
-				// an escaped string is decoded into the arena, out of the buffer, which is never written
-				dst := ctx.reserveArena(len(literal))
-				n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, int(firstEscape))
-				decoded := dst[:n]
-				if nonASCII && !utf8.Valid(decoded) {
-					return string(coerceUTF8(decoded)), next, true, nil
-				}
-				ctx.arena = ctx.arena[:len(ctx.arena)+n]
-				return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
-			}
-			return ctx.unescapeLong(literal, stringInfo{firstEscape: int(firstEscape), nonASCII: nonASCII}), next, true, nil
+			return ctx.unescapeString(literal, stringInfo{firstEscape: int(firstEscape), nonASCII: nonASCII}), next, true, nil
 		case c == '\\':
 			if firstEscape < 0 {
 				firstEscape = cursor - start
@@ -337,19 +287,8 @@ func (d *stringDecoder) decodeString(ctx *RuntimeContext, cursor int64) (string,
 	if err != nil || literal == nil {
 		return "", next, false, err
 	}
-	if info.firstEscape >= 0 && len(literal) <= maxArenaStringSize {
-		// an escaped string is decoded into the arena, out of the buffer, which is never written
-		dst := ctx.reserveArena(len(literal))
-		n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, info.firstEscape)
-		decoded := dst[:n]
-		if info.nonASCII && !utf8.Valid(decoded) {
-			return string(coerceUTF8(decoded)), next, true, nil
-		}
-		ctx.arena = ctx.arena[:len(ctx.arena)+n]
-		return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
-	}
 	if info.firstEscape >= 0 {
-		return ctx.unescapeLong(literal, info), next, true, nil
+		return ctx.unescapeString(literal, info), next, true, nil
 	}
 	if info.nonASCII {
 		literal = validLiteral(literal)
@@ -549,152 +488,10 @@ func (d *stringDecoder) scanStringRest(buf, literal []byte, cursor int64, info s
 	}
 }
 
-var unescapeMap = [256]byte{
-	'"':  '"',
-	'\\': '\\',
-	'/':  '/',
-	'b':  '\b',
-	'f':  '\f',
-	'n':  '\n',
-	'r':  '\r',
-	't':  '\t',
-}
-
-func unsafeAdd(ptr unsafe.Pointer, offset int) unsafe.Pointer {
-	return unsafe.Add(ptr, offset)
-}
-
-// copyToBackslash copies the bytes from src up to the first backslash of the n bytes, or all of them, to dst, and
-// returns how many it copied: bytes.IndexByte and copy go by vectors. It is not inlined, so that unescapeTo keeps
-// its registers for the short runs, which most are.
-//
-//go:noinline
-func copyToBackslash(dst, src unsafe.Pointer, n int) int {
-	rest := unsafe.Slice((*byte)(src), n)
-	if i := bytes.IndexByte(rest, '\\'); i >= 0 {
-		n = i
-	}
-	copy(unsafe.Slice((*byte)(dst), n), rest[:n])
-	return n
-}
-
-// unescapeTo decodes the escapes of the bytes of an escaped string into out, which has room for as many bytes and
-// is not the bytes themselves, and returns the length of the result, which is at most the length of the bytes.
-//
-// first is the offset of the first backslash, which scanString found.
-func unescapeTo(out unsafe.Pointer, buf []byte, first int) int {
-	p := (*sliceHeader)(unsafe.Pointer(&buf)).data
-	end := unsafeAdd(p, len(buf))
-	// the bytes before the first escape, by words: a short string is not worth a call of memmove.
-	i := 0
-	for ; i+8 <= first; i += 8 {
-		*(*uint64)(unsafeAdd(out, i)) = *(*uint64)(unsafeAdd(p, i))
-	}
-	for ; i < first; i++ {
-		*(*byte)(unsafeAdd(out, i)) = *(*byte)(unsafeAdd(p, i))
-	}
-	src := unsafeAdd(p, first)
-	dst := unsafeAdd(out, first)
-	for src != end {
-		// The bytes up to the next backslash are copied eight at a time, from the words which are all in the
-		// string. A word is written whole, and the output goes on to its backslash: out has the length of buf, and
-		// is never ahead of the bytes read, so that a word written at dst ends before out does. A run longer than
-		// two words is looked through by bytes.IndexByte and moved by copy, which go by vectors.
-		for words := 0; *(*byte)(src) != '\\' && uintptr(src)+8 <= uintptr(end); words++ {
-			if words == 2 {
-				n := copyToBackslash(dst, src, int(uintptr(end)-uintptr(src)))
-				src = unsafeAdd(src, n)
-				dst = unsafeAdd(dst, n)
-				break
-			}
-			w := binary.LittleEndian.Uint64((*[8]byte)(src)[:])
-			binary.LittleEndian.PutUint64((*[8]byte)(dst)[:], w)
-			if backslash := firstByteMask(w, '\\'); backslash != 0 {
-				n := bits.TrailingZeros64(backslash) / 8
-				src = unsafeAdd(src, n)
-				dst = unsafeAdd(dst, n)
-				break
-			}
-			src = unsafeAdd(src, 8)
-			dst = unsafeAdd(dst, 8)
-		}
-		if src == end {
-			break
-		}
-		c := char(src, 0)
-		if c == '\\' {
-			escapeChar := char(src, 1)
-			if escapeChar != 'u' {
-				*(*byte)(dst) = unescapeMap[escapeChar]
-				src = unsafeAdd(src, 2)
-				dst = unsafeAdd(dst, 1)
-			} else {
-				v1 := hexToInt[char(src, 2)]
-				v2 := hexToInt[char(src, 3)]
-				v3 := hexToInt[char(src, 4)]
-				v4 := hexToInt[char(src, 5)]
-				code := rune((v1 << 12) | (v2 << 8) | (v3 << 4) | v4)
-				if code >= 0xd800 && code < 0xdc00 && uintptr(unsafeAdd(src, 11)) < uintptr(end) {
-					if char(src, 6) == '\\' && char(src, 7) == 'u' {
-						v1 := hexToInt[char(src, 8)]
-						v2 := hexToInt[char(src, 9)]
-						v3 := hexToInt[char(src, 10)]
-						v4 := hexToInt[char(src, 11)]
-						lo := rune((v1 << 12) | (v2 << 8) | (v3 << 4) | v4)
-						if lo >= 0xdc00 && lo < 0xe000 {
-							code = (code-0xd800)<<10 | (lo - 0xdc00) + 0x10000
-							src = unsafeAdd(src, 6)
-						}
-					}
-				}
-				var b [utf8.UTFMax]byte
-				n := utf8.EncodeRune(b[:], code)
-				switch n {
-				case 4:
-					*(*byte)(unsafeAdd(dst, 3)) = b[3]
-					fallthrough
-				case 3:
-					*(*byte)(unsafeAdd(dst, 2)) = b[2]
-					fallthrough
-				case 2:
-					*(*byte)(unsafeAdd(dst, 1)) = b[1]
-					fallthrough
-				case 1:
-					*(*byte)(unsafeAdd(dst, 0)) = b[0]
-				}
-				src = unsafeAdd(src, 6)
-				dst = unsafeAdd(dst, n)
-			}
-		} else {
-			*(*byte)(dst) = c
-			src = unsafeAdd(src, 1)
-			dst = unsafeAdd(dst, 1)
-		}
-	}
-	return int(uintptr(dst) - uintptr(out))
-}
-
-// firstByteMask returns the word which has the top bit of the first byte of w which is c, if it has one, and maybe
-// the top bits of bytes after it: a subtraction borrows from the next byte only at a byte which is c.
-func firstByteMask(w, c uint64) uint64 {
-	x := w ^ (c * lsb)
-	return (x - lsb) &^ x & msb
-}
-
 // coerceUTF8 returns a copy of the literal in which every byte of an invalid UTF-8 sequence
 // is replaced by utf8.RuneError, as encoding/json does.
 func coerceUTF8(literal []byte) []byte {
-	out := make([]byte, 0, len(literal)+2*utf8.UTFMax)
-	for i := 0; i < len(literal); {
-		r, size := utf8.DecodeRune(literal[i:])
-		if r == utf8.RuneError && size == 1 {
-			out = append(out, runeErrBytes...)
-		} else {
-			out = append(out, literal[i:i+size]...)
-		}
-		i += size
-	}
-	return out
+	return jsonstring.AppendValidUTF8(make([]byte, 0, len(literal)+2*utf8.UTFMax), literal)
 }
 
 // quoteChar formats c as a quoted character literal, as encoding/json does in its errors.

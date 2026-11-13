@@ -23,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -269,7 +270,7 @@ func TestGetStreamRates(t *testing.T) {
 
 func labelHashNoShard(l labels.Labels) uint64 {
 	buf := make([]byte, 256)
-	hash, _ := l.HashWithoutLabels(buf, ShardLbName)
+	hash, _ := l.HashWithoutLabels(buf, constants.StreamShardLabel)
 	return hash
 }
 
@@ -528,7 +529,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 	return result
 }
 
-var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
+var labelNames = []string{"app", "instance", "namespace", "user", "cluster", constants.StreamShardLabel}
 
 func makeRandomLabels() labels.Labels {
 	ls := labels.NewBuilder(labels.EmptyLabels())
@@ -695,6 +696,11 @@ func (t *testFilter) ShouldFilter(lbs labels.Labels) bool {
 
 func (t *testFilter) RequiredLabelNames() []string {
 	return []string{"log_stream"}
+}
+
+func (t *testFilter) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
 }
 
 func Test_ChunkFilter(t *testing.T) {
@@ -1898,6 +1904,50 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 	})
 }
 
+func TestMemoryStreamsMetric_PerPolicy(t *testing.T) {
+	cfg := defaultLimitsTestConfig()
+	cfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": {{Selector: `{app="billing"}`, Priority: 1}},
+		"debug":   {{Selector: `{app="debug"}`, Priority: 1}},
+	}
+	require.NoError(t, cfg.PolicyStreamMapping.Validate())
+
+	limits, err := validation.NewOverrides(cfg, nil)
+	require.NoError(t, err)
+
+	metrics := newIngesterMetrics(prometheus.NewPedanticRegistry(), constants.Loki)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantID := "loki"
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+	require.NoError(t, err)
+
+	now := time.Now().Add(-5 * time.Minute)
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="billing", n="0"}`, Entries: entries(1, now)},
+		{Labels: `{app="billing", n="1"}`, Entries: entries(1, now)},
+		{Labels: `{app="debug"}`, Entries: entries(1, now)},
+		{Labels: `{app="other"}`, Entries: entries(1, now)},
+	}}))
+
+	gauge := func(policy string) float64 {
+		return promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, policy))
+	}
+	require.Equal(t, 2.0, gauge("finance"))
+	require.Equal(t, 1.0, gauge("debug"))
+	require.Equal(t, 1.0, gauge(noPolicy))
+
+	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+		if s.policy == "finance" {
+			inst.removeStream(s)
+		}
+		return true, nil
+	}))
+
+	require.Equal(t, 0.0, gauge("finance"))
+	require.Equal(t, 1.0, gauge("debug"))
+	require.Equal(t, 1.0, gauge(noPolicy))
+}
+
 func TestMemoryStreamShardsMetric(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -1912,7 +1962,7 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 	require.NoError(t, err)
 
-	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams), "metric needs to be instatiated with zero value")
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)), "metric needs to be instatiated with zero value")
 	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards), "metric needs to be instantiated with zero value")
 
 	now := time.Now().Add(-5 * time.Minute)
@@ -1922,23 +1972,23 @@ func TestMemoryStreamShardsMetric(t *testing.T) {
 		{Labels: `{__stream_shard__="1", app="bar"}`, Entries: entries(1, now)},
 	}}))
 
-	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, noPolicy)))
 	require.Equal(t, 2.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
 
-	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)))
 	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 
 	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
-		if s.labels.Has(ShardLbName) {
+		if s.labels.Has(constants.StreamShardLabel) {
 			inst.removeStream(s)
 		}
 		return true, nil
 	}))
 
-	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID, noPolicy)))
 	require.Equal(t, 0.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
 
-	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams.For(noPolicy)))
 	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards))
 }
 
@@ -2084,6 +2134,55 @@ func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
 				require.Equal(t, 1, inst.ownedStreamsSvc.getPolicyStreamCount("debug"))
 				require.Equal(t, 8, inst.ownedStreamsSvc.getOwnedStreamCount())
 			}
+		})
+	}
+}
+
+// recordingWAL keeps a copy of what is logged to it.
+type recordingWAL struct {
+	noopWAL
+	ingestedAt []time.Time
+}
+
+func (w *recordingWAL) Log(rec *wal.Record) error {
+	w.ingestedAt = append(w.ingestedAt, rec.IngestedAt)
+	return nil
+}
+
+// The timestamp of the record a push comes from is stamped on the chunk and logged to the WAL, so
+// it is restored on replay. A push without one stamps nothing. The Kafka consumer validates the
+// timestamp before passing it, see TestConsumerPassesRecordTimestamp.
+func TestPushRecordTimestamp(t *testing.T) {
+	recordTime := time.UnixMilli(1_700_000_000_000)
+
+	for _, tc := range []struct {
+		name       string
+		recordTime time.Time
+	}{
+		{"record timestamp", recordTime},
+		{"no record timestamp", time.Time{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			tenantsRetention := retention.NewTenantsRetention(limits)
+
+			w := &recordingWAL{}
+			i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), w, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+			require.NoError(t, err)
+
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{{Labels: `{app="a"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))}},
+			}
+			require.NoError(t, i.PushWithTimestamp(context.Background(), TimestampedPush{PushRequest: req, IngestedAt: tc.recordTime}))
+
+			require.Len(t, w.ingestedAt, 1)
+			require.True(t, tc.recordTime.Equal(w.ingestedAt[0]), "WAL: got %s, want %s", w.ingestedAt[0], tc.recordTime)
+			require.NoError(t, i.forAllStreams(context.Background(), func(s *stream) error {
+				require.True(t, tc.recordTime.Equal(s.chunks[0].ingestedAt), "chunk: got %s, want %s", s.chunks[0].ingestedAt, tc.recordTime)
+				return nil
+			}))
 		})
 	}
 }

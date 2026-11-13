@@ -3,16 +3,18 @@ package dataobjread
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -32,7 +34,7 @@ func TestPlanner_Plan(t *testing.T) {
 	newTestPlanner := func(t *testing.T, ms metastore.Metastore) (*Planner, metastore.DataobjSectionDescriptors) {
 		t.Helper()
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		if ms == nil {
@@ -81,7 +83,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		ms := &fixedMetastore{descriptors: fixture.descriptors}
@@ -104,32 +106,42 @@ func TestPlanner_Plan(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		shard *QueryShard
-		want  *postings.ShardBucketRange
+		want  *streams.HashRange
 	}{
 		{
-			name:  "an unsharded query asks the metastore for no bucket range",
+			name:  "an unsharded query asks the metastore for no hash range",
 			shard: nil,
 			want:  nil,
 		},
 		{
-			name:  "a shard count of one restricts no stream, so the planner asks the metastore for no bucket range",
+			name:  "a shard count of one restricts no stream, so the planner asks the metastore for no hash range",
 			shard: NewQueryShard(powerOfTwoShard(0, 1)),
 			want:  nil,
 		},
 		{
-			name:  "the first of two shards asks the metastore for the lower half of the buckets",
+			name:  "the first of two shards asks the metastore for the lower half of the hashes",
 			shard: NewQueryShard(powerOfTwoShard(0, 2)),
-			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+			want:  &streams.HashRange{From: 0, To: 1<<63 - 1},
 		},
 		{
-			name:  "a shard count above the bucket count asks the metastore for the one bucket it falls in",
-			shard: NewQueryShard(powerOfTwoShard(5, streams.DefaultShardLayout().Buckets()*4)),
-			want:  &postings.ShardBucketRange{From: 1, To: 1},
+			name:  "the last of two shards asks the metastore for the upper half of the hashes",
+			shard: NewQueryShard(powerOfTwoShard(1, 2)),
+			want:  &streams.HashRange{From: 1 << 63, To: math.MaxUint64},
 		},
 		{
-			name:  "a bounded shard asks the metastore for the buckets it spans",
+			name:  "a bounded shard of the whole fingerprint space restricts no stream, so the planner asks the metastore for no hash range",
+			shard: NewQueryShard(boundedShard(0, math.MaxUint64)),
+			want:  nil,
+		},
+		{
+			name:  "one of many shards asks the metastore for the hashes of that shard",
+			shard: NewQueryShard(powerOfTwoShard(5, 128)),
+			want:  &streams.HashRange{From: 5 << 57, To: 6<<57 - 1},
+		},
+		{
+			name:  "a bounded shard asks the metastore for the hashes of its bounds",
 			shard: NewQueryShard(boundedShard(0, ^uint64(0)/2)),
-			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+			want:  &streams.HashRange{From: 0, To: ^uint64(0) / 2},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -141,13 +153,13 @@ func TestPlanner_Plan(t *testing.T) {
 			_, err := drainTasks(readPlanner.Plan(t.Context(), query))
 			require.NoError(t, err)
 
-			require.Equal(t, test.want, ms.gotRequest.ShardBucketRange)
+			require.Equal(t, test.want, ms.gotRequest.StreamHashRange)
 		})
 	}
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		// Claim a stream ID no object holds, which is the index and the object disagreeing.
@@ -164,7 +176,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a stream missing from a shard bucket-pruned read is taken as out of shard rather than an error", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		corrupted := *fixture.descriptors[0]
@@ -178,7 +190,7 @@ func TestPlanner_Plan(t *testing.T) {
 		// return is taken as out of shard.
 		query := plainQuery(t)
 		query.Shard = NewQueryShard(powerOfTwoShard(0, 2))
-		require.NotNil(t, query.Shard.buckets, "the shard should map to a bucket range")
+		require.NotNil(t, query.Shard.bucketRange(streams.DefaultShardLayout()), "the shard should map to a bucket range")
 
 		tasks, err := drainTasks(readPlanner.Plan(t.Context(), query))
 		require.NoError(t, err)
@@ -188,9 +200,68 @@ func TestPlanner_Plan(t *testing.T) {
 		}
 	})
 
+	t.Run("a stream the metastore lists but the object does not hold fails the query when the shard can hold every hash", func(t *testing.T) {
+		fixture := newObjectsFixture(t, fixtureStreams...)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
+		t.Cleanup(objects.release)
+
+		corrupted := *fixture.descriptors[0]
+		corrupted.StreamIDs = append([]int64{}, corrupted.StreamIDs...)
+		corrupted.StreamIDs = append(corrupted.StreamIDs, 9999)
+
+		ms := &fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{&corrupted}}
+		readPlanner := NewPlanner(ms, objects, nil)
+
+		query := plainQuery(t)
+		query.Shard = NewQueryShard(boundedShard(0, math.MaxUint64))
+		require.Nil(t, query.Shard.bucketRange(streams.DefaultShardLayout()), "the shard should map to no bucket range")
+
+		_, err := drainTasks(readPlanner.Plan(t.Context(), query))
+		require.EqualError(t, err, fmt.Sprintf("data object %q logs section %d: stream ID 9999 listed by the metastore is missing from the object's streams section", corrupted.ObjectPath, corrupted.SectionIdx))
+	})
+
+	for _, test := range []struct {
+		name                   string
+		buckets                uint32
+		wantMissingStreamError bool
+	}{
+		{
+			name:                   "a stream the metastore lists but the object does not hold fails the query when the object has one bucket, which the shard cannot prune",
+			buckets:                1,
+			wantMissingStreamError: true,
+		},
+		{
+			name:    "a stream the metastore lists but the object does not hold is taken as out of shard when the object has 8 buckets, which the shard prunes",
+			buckets: 8,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(test.buckets), []string{"label:app"})
+			bucket, path, _ := createTestStoredObject(t, objtest.Tenant, &layout, `{app="a"}`, `{app="b"}`)
+			objects := NewOpenObjects(bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
+			t.Cleanup(objects.release)
+
+			descriptor := &metastore.DataobjSectionDescriptor{
+				SectionKey: metastore.SectionKey{ObjectPath: path, SectionIdx: 0},
+				StreamIDs:  []int64{1, 2, 9999},
+			}
+			readPlanner := NewPlanner(&fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{descriptor}}, objects, nil)
+
+			query := plainQuery(t)
+			query.Shard = NewQueryShard(powerOfTwoShard(0, 2))
+			_, err := drainTasks(readPlanner.Plan(t.Context(), query))
+
+			if !test.wantMissingStreamError {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, fmt.Sprintf("data object %q logs section 0: stream ID 9999 listed by the metastore is missing from the object's streams section", path))
+		})
+	}
+
 	t.Run("a section the metastore lists with no stream fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		empty := *fixture.descriptors[0]
@@ -205,7 +276,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a section listed twice by the metastore fails the query rather than counting it twice", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		repeated := *fixture.descriptors[0]
@@ -221,7 +292,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("it plans the tasks of a batch before the metastore yields the next batch of the same object", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		laterSection := *fixture.descriptors[0]
@@ -245,7 +316,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a section that two batches list fails the query rather than counting it twice", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		repeated := *fixture.descriptors[0]
@@ -257,7 +328,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("aborting the iterator stops a running resolution and reports no error", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		laterSection := *fixture.descriptors[0]
@@ -288,7 +359,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("no task is planned when the access-control filter denies every stream", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		ms := &fixedMetastore{descriptors: fixture.descriptors}
@@ -327,6 +398,66 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 }
 
+func TestPlanner_Admits(t *testing.T) {
+	const (
+		hashInShard    = uint64(0)
+		hashOutOfShard = uint64(1) << 63
+	)
+	shard := NewQueryShard(powerOfTwoShard(0, 2))
+
+	tests := []struct {
+		name    string
+		shard   *QueryShard
+		buckets *shardBucketRange
+		hash    uint64
+		want    bool
+	}{
+		{
+			name:    "admits a stream of an unsharded query",
+			shard:   nil,
+			buckets: nil,
+			hash:    hashOutOfShard,
+			want:    true,
+		},
+		{
+			name:    "admits a stream inside the shard when the read pushed no bucket range down",
+			shard:   shard,
+			buckets: nil,
+			hash:    hashInShard,
+			want:    true,
+		},
+		{
+			name:    "rejects a stream outside the shard when the read pushed no bucket range down",
+			shard:   shard,
+			buckets: nil,
+			hash:    hashOutOfShard,
+			want:    false,
+		},
+		{
+			name:    "rejects a stream outside the shard when the bucket range is inexact",
+			shard:   shard,
+			buckets: &shardBucketRange{from: 0, to: 15, exact: false},
+			hash:    hashOutOfShard,
+			want:    false,
+		},
+		{
+			name:    "admits a stream without checking its hash when the bucket range is exact",
+			shard:   shard,
+			buckets: &shardBucketRange{from: 0, to: 15, exact: true},
+			hash:    hashOutOfShard,
+			want:    true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := (&Planner{}).admits(labels.EmptyLabels(), test.hash, test.shard, test.buckets)
+
+			require.Equal(t, test.want, got)
+		})
+	}
+}
+
 // TestPlanner_RecoversPanics asserts a panic on the planner's own goroutine fails the
 // query instead of the process. Nothing above the planner can recover it, because it runs on a
 // goroutine of its own.
@@ -335,7 +466,7 @@ func TestPlanner_RecoversPanics(t *testing.T) {
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})
-	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({app=~".+"}[1m])`)

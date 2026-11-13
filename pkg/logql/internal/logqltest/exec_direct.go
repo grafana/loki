@@ -6,12 +6,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -21,6 +20,7 @@ type directExecutionStack struct {
 	t          *testing.T
 	stackName  string
 	limits     logql.Limits
+	engineOpts logql.EngineOpts
 	newQuerier newScriptQuerierFunc
 	querier    logql.Querier
 
@@ -29,23 +29,28 @@ type directExecutionStack struct {
 	dataObjQueryStart time.Time
 }
 
-// newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
-func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}, newQuerier: newChunkQuerier}
+// newDirectTimestampFirstStack returns the direct stack in timestamp-first order, changed by opts.
+func newDirectTimestampFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
-// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.
-func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}, newQuerier: newChunkQuerier}
+// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled, changed
+// by opts.
+func newDirectStreamFirstStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
+	return &directExecutionStack{t: t, stackName: stackName, limits: execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries}, engineOpts: newEngineOpts(o), newQuerier: newChunkQuerier}
 }
 
-// newDirectDataObjStack returns the direct stack with stream-first execution enabled. The stack
-// reads all the data of stream-first queries from data objects.
-func newDirectDataObjStack(t *testing.T) *directExecutionStack {
+// newDirectDataObjStack returns the direct stack with stream-first execution enabled, changed by
+// opts. The stack reads all the data of stream-first queries from data objects.
+func newDirectDataObjStack(t *testing.T, stackName string, opts ...stackOption) *directExecutionStack {
+	o := newStackOptions(opts...)
 	return &directExecutionStack{
 		t:                 t,
-		stackName:         directDataObjStackName,
-		limits:            execLimits{streamFirstExecutionEnabled: true},
+		stackName:         stackName,
+		limits:            execLimits{streamFirstExecutionEnabled: true, maxQuerySeries: o.maxQuerySeries},
+		engineOpts:        newEngineOpts(o),
 		newQuerier:        newDataObjQuerierFunc(epoch),
 		dataObjQueryStart: epoch,
 	}
@@ -72,9 +77,7 @@ func (s *directExecutionStack) setStores(stores *scriptStores) {
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
-	var opts logql.EngineOpts
-	flagext.DefaultValues(&opts)
-	engine := logql.NewEngine(opts, s.querier, s.limits, log.NewNopLogger())
+	engine := logql.NewEngine(s.engineOpts, s.querier, s.limits, log.NewNopLogger())
 
 	start, end, step := cmd.getTimeRange()
 	params, err := logql.NewLiteralParams(

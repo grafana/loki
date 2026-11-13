@@ -65,14 +65,14 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 		labelValue:   obs.LabelValue,
 	}
 
-	tsNano := obs.Timestamp.UnixNano()
+	minTs, maxTs := obs.Time.Min().UTC(), obs.Time.Max().UTC()
+	minNano, maxNano := minTs.UnixNano(), maxTs.UnixNano()
 
-	ts := obs.Timestamp.UTC()
-	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
-		a.minTimestamp = ts
+	if a.minTimestamp.IsZero() || minTs.Before(a.minTimestamp) {
+		a.minTimestamp = minTs
 	}
-	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
-		a.maxTimestamp = ts
+	if a.maxTimestamp.IsZero() || maxTs.After(a.maxTimestamp) {
+		a.maxTimestamp = maxTs
 	}
 
 	entry, ok := a.entries[key]
@@ -84,8 +84,8 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 			ColumnName:     obs.ColumnName,
 			LabelValue:     obs.LabelValue,
 			bitmap:         memory.NewBitmap(nil, 0),
-			MinTimestamp:   tsNano,
-			MaxTimestamp:   tsNano,
+			MinTimestamp:   minNano,
+			MaxTimestamp:   maxNano,
 			MinShardBucket: obs.ShardBucket,
 			MaxShardBucket: obs.ShardBucket,
 		}
@@ -106,11 +106,11 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	}
 	entry.bitmap.Set(int(obs.StreamID), true)
 
-	if tsNano < entry.MinTimestamp {
-		entry.MinTimestamp = tsNano
+	if minNano < entry.MinTimestamp {
+		entry.MinTimestamp = minNano
 	}
-	if tsNano > entry.MaxTimestamp {
-		entry.MaxTimestamp = tsNano
+	if maxNano > entry.MaxTimestamp {
+		entry.MaxTimestamp = maxNano
 	}
 	if obs.ShardBucket < entry.MinShardBucket {
 		entry.MinShardBucket = obs.ShardBucket

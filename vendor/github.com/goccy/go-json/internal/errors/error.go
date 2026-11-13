@@ -85,10 +85,10 @@ type UnmarshalTypeError struct {
 	Offset int64        // error occurred after reading Offset bytes
 	Struct string       // name of the struct type containing the field, or of the root type ( see Error )
 	Field  string       // the full path from root node to the field
-	Err    error        // the cause of the error, which encoding/json of Go 1.27 reports, or nil
+	Err    error        // the cause of the error, or nil
 }
 
-// Error returns the message of encoding/json of the Go version ( see typeErrorMessage ).
+// Error returns the message of encoding/json of Go 1.27 ( see typeErrorMessage ).
 func (e *UnmarshalTypeError) Error() string {
 	return typeErrorMessage(e)
 }

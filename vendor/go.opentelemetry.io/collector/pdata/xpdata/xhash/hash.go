@@ -62,6 +62,14 @@ func WithString(s string) HashOption {
 	}
 }
 
+// WithUint64 adds a uint64 to the hash calculation. It produces the same hash as
+// WithValue(pcommon.NewValueInt(int64(v))), without converting v to int64 or allocating a pcommon.Value.
+func WithUint64(v uint64) HashOption {
+	return func(hw *hashWriter) {
+		hw.writeUint64(v)
+	}
+}
+
 // mapEntry is a key and its value collected from a pcommon.Map so that entries can be
 // sorted by key without looking each value up again.
 type mapEntry struct {
@@ -176,8 +184,7 @@ func (hw *hashWriter) writeValueHash(v pcommon.Value) {
 			hw.byteBuf = append(hw.byteBuf, valBoolFalse...)
 		}
 	case pcommon.ValueTypeInt:
-		hw.byteBuf = append(hw.byteBuf, valIntPrefix...)
-		hw.byteBuf = binary.LittleEndian.AppendUint64(hw.byteBuf, uint64(v.Int()))
+		hw.writeUint64(uint64(v.Int()))
 	case pcommon.ValueTypeDouble:
 		hw.byteBuf = append(hw.byteBuf, valDoublePrefix...)
 		hw.byteBuf = binary.LittleEndian.AppendUint64(hw.byteBuf, math.Float64bits(v.Double()))
@@ -198,6 +205,12 @@ func (hw *hashWriter) writeValueHash(v pcommon.Value) {
 	case pcommon.ValueTypeEmpty:
 		hw.byteBuf = append(hw.byteBuf, valEmpty...)
 	}
+}
+
+// writeUint64 writes v with the int prefix, so it hashes the same as an int value with the same bits.
+func (hw *hashWriter) writeUint64(v uint64) {
+	hw.byteBuf = append(hw.byteBuf, valIntPrefix...)
+	hw.byteBuf = binary.LittleEndian.AppendUint64(hw.byteBuf, v)
 }
 
 func (hw *hashWriter) writeString(s string) {

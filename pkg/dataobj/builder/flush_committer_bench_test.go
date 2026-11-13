@@ -142,7 +142,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		idxBucket    = objstore.NewPrefixedBucket(bucket, "index/")
 		offsets      = &mockCommitter{}
 	)
-	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, nil)
+	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		tocWriter = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
 	)
 	return &benchFlush{
-		committer: newFlushCommitter(flusher, offsets, indexer, tocWriter, 0, concurrency, logger, reg),
+		committer: newFlushCommitter(flusher, offsets, indexer, tocWriter, "test-topic", 0, concurrency, logger, reg),
 		factory:   factory,
 		bucket:    bucket,
 		offsets:   offsets,
@@ -214,7 +214,7 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 			}
 		}
 	}
-	return lb
+	return WatermarkedBuilder{logsBuilder: lb}
 }
 
 // newBenchTenants returns the tenants of one flush. The sizes follow a real
@@ -274,7 +274,7 @@ type benchBucket struct {
 	latency benchBucketLatency
 }
 
-func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader) error {
+func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader, _ ...objstore.ObjectUploadOption) error {
 	n, err := io.Copy(io.Discard, r)
 	if err != nil {
 		return err

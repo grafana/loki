@@ -85,19 +85,23 @@ func NewExtensionArrayWithStorage(dt arrow.ExtensionType, storage arrow.Array) a
 // NewExtensionData expects a data with a datatype of arrow.ExtensionType and
 // underlying data built for the storage array.
 func NewExtensionData(data arrow.ArrayData) ExtensionArray {
-	base := ExtensionArrayBase{}
-	base.refCount.Add(1)
-	base.setData(data.(*Data))
+	if data.DataType().ID() != arrow.EXTENSION {
+		panic("arrow/array: must use extension type to construct an extension array")
+	}
+	dtype, ok := data.DataType().(arrow.ExtensionType)
+	if !ok {
+		panic("arrow/array: DataType for ExtensionArray must implement arrow.ExtensionType")
+	}
 
 	// use the ExtensionType's ArrayType to construct the correctly typed object
 	// to use as the ExtensionArray interface. reflect.New returns a pointer to
 	// the newly created object.
-	arr := reflect.New(base.ExtensionType().ArrayType())
-	// set the embedded ExtensionArrayBase to the value we created above. We know
-	// that this field will exist because the interface requires embedding ExtensionArrayBase
-	// so we don't have to separately check, this will panic if called on an ArrayType
-	// that doesn't embed ExtensionArrayBase which is what we want.
-	arr.Elem().FieldByName("ExtensionArrayBase").Set(reflect.ValueOf(base))
+	arr := reflect.New(dtype.ArrayType())
+	// Initialize the embedded base in place so its atomic reference count is not
+	// copied after first use.
+	base := arr.Elem().FieldByName("ExtensionArrayBase").Addr().Interface().(*ExtensionArrayBase)
+	base.refCount.Add(1)
+	base.setData(data.(*Data))
 	return arr.Interface().(ExtensionArray)
 }
 
@@ -118,6 +122,10 @@ func (e *ExtensionArrayBase) String() string {
 
 func (e *ExtensionArrayBase) GetOneForMarshal(i int) interface{} {
 	return e.storage.GetOneForMarshal(i)
+}
+
+func (e *ExtensionArrayBase) ValueAsAny(i int) any {
+	return ValueAsAny(e.storage, i)
 }
 
 func (e *ExtensionArrayBase) MarshalJSON() ([]byte, error) {

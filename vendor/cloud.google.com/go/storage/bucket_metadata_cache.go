@@ -30,13 +30,6 @@ import (
 const (
 	defaultBucketMetadataCacheLimit = 10000
 	fetchBackgroundTimeout          = 10 * time.Second
-
-	// storageResourceNamePrefix is prepended to the bucket resource name emitted
-	// in the gcp.resource.destination.id span attribute. Cloud Trace's App Hub
-	// extractor only accepts full resource names of the form
-	// "//{service}/{path}"; a bare "projects/.../buckets/..." path is rejected
-	// as malformed and the span is silently dropped from App Hub enrichment.
-	storageResourceNamePrefix = "//storage.googleapis.com/"
 )
 
 type bucketMetadataFetcher interface {
@@ -135,7 +128,7 @@ func (c *bucketMetadataCache) fetchBackground(ctx context.Context, bucket string
 				} else {
 					if !hit {
 						c.lru.put(bucket, bucketMetadata{
-							resource:    fmt.Sprintf("%sprojects/_/buckets/%s", storageResourceNamePrefix, bucket),
+							resource:    fmt.Sprintf("projects/_/buckets/%s", bucket),
 							location:    "global",
 							placeholder: true,
 						})
@@ -160,11 +153,11 @@ func getMetadataFromAttrs(location, locationType, project, bucket string) (strin
 		finalLocation = strings.ToLower(location)
 	}
 	if strings.HasPrefix(project, "projects/") {
-		return storageResourceNamePrefix + project + "/buckets/" + bucket, finalLocation
+		return project + "/buckets/" + bucket, finalLocation
 	}
 	finalProject := "_"
 	if project != "0" && project != "" {
 		finalProject = project
 	}
-	return fmt.Sprintf("%sprojects/%s/buckets/%s", storageResourceNamePrefix, finalProject, bucket), finalLocation
+	return fmt.Sprintf("projects/%s/buckets/%s", finalProject, bucket), finalLocation
 }

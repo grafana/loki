@@ -21,7 +21,7 @@ There are two types of alerts in Grafana:
     These alert rules can query a wide range of backend data sources, including multiple data sources in a single alert rule. They support expression-based transformations, advanced alert conditions, images in notifications, handling of error and no data states, and more.
 - **Data-source-managed alerts:** These alert rules can only query Prometheus-based data sources such as Mimir, Loki, and Prometheus. The rules are stored in the data source.
 
-To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or follow this Learning Path.
+To learn more about Grafana managed alerts, you can refer to the [Alert and measure reliability documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or follow this Learning Path.
 
 {{< docs/learning-paths title="Create infrastructure alerts" url="https://grafana.com/docs/learning-paths/infrastructure-alerting/" >}}
 
@@ -38,11 +38,12 @@ Grafana Loki includes a component called the ruler. The ruler is responsible for
 This example configuration sources rules from a local disk. [Ruler storage](#ruler-storage) provides further details.
 
 ```yaml
+ruler_storage:
+  backend: local
+  local:
+    directory: /tmp/rules
+
 ruler:
-  storage:
-    type: local
-    local:
-      directory: /tmp/rules
   rule_path: /tmp/scratch
   alertmanager_url: http://localhost
   ring:
@@ -57,7 +58,7 @@ The Ruler's Prometheus compatibility further accentuates the marriage between me
 
 ### Black box monitoring
 
-We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. The Loki alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
+We don't always control the source code of applications we run. Load balancers and many other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. The Loki alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
 
 ### Event alerting
 
@@ -82,7 +83,7 @@ Another great use case is alerting on high cardinality sources. These are things
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
 {{< admonition type="note" >}}
-As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])`.
+As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m]))`.
 {{< /admonition >}}
 
 ## Alerting Rules
@@ -191,7 +192,7 @@ groups:
 With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
 to a Prometheus-compatible remote-write endpoint. They produce Prometheus metrics from log entries.
 
-At the time of writing, these are the compatible backends that support this:
+The following backends are compatible with remote-write:
 
 - [Prometheus](https://prometheus.io/docs/prometheus/latest/disabled_features/#remote-write-receiver) (`>=v2.25.0`):
   Prometheus is generally a pull-based system, but since `v2.25.0` has allowed for metrics to be written directly to it as well.
@@ -374,11 +375,16 @@ The [Cortex rules action](https://github.com/grafana/cortex-rules-action) introd
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation](../configure/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/). To shard rules across multiple Rulers, set `-ruler.enable-sharding` (`enable_sharding`) to `true` and configure the Ruler's ring. The ruler API (`-ruler.enable-api` / `enable_api`) is `true` by default and must remain enabled. This API registers the gRPC endpoint that Rulers use to exchange rule and alert state across the ring. From there the Rulers shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
 ```yaml
+ruler_storage:
+  backend: gcs
+  gcs:
+    bucket_name: <LOKI_RULES_BUCKET>
+
 ruler:
   alertmanager_url: <ALERTMANAGER_ENDPOINT>
   enable_alertmanager_v2: true # true by default since Loki 3.2.0
@@ -390,23 +396,26 @@ ruler:
         host: consul.loki-dev.svc.cluster.local:8500
       store: consul
   rule_path: /tmp/rules
-  storage:
-    gcs:
-      bucket_name: <LOKI_RULES_BUCKET>
 ```
+
+For details on how rules are distributed within a tenant (by group or by individual rule), refer to the [recording rules tuning documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/recording-rules/#tuning). For per-tenant shard sizing, refer to [shuffle sharding in the ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/shuffle-sharding/#shuffle-sharding-in-the-ruler).
 
 ## Ruler storage
 
-The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos` and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
+The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos`, `bos`, `alibabacloud`, and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
 The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 
 ```yaml
-  -ruler.storage.type=local
-  -ruler.storage.local.directory=/tmp/loki/rules
+  -ruler-storage.backend=local
+  -ruler-storage.local.directory=/tmp/loki/rules
 ```
+
+{{< admonition type="note" >}}
+Loki also accepts the older, deprecated `-ruler.storage.type` and `-ruler.storage.local.directory` flags (or the equivalent nested `ruler.storage` YAML block) for backward compatibility. New configurations should use the top-level `ruler_storage` block or its `-ruler-storage.*` flags shown here instead.
+{{< /admonition >}}
 
 With the above configuration, the Ruler would expect the following layout:
 
@@ -428,7 +437,7 @@ If Loki is started with `-auth.no-auth-tenant` set to a custom value, use that v
 
 The local backend reads and parses every non-hidden file in the tenant directory: there is no glob matching (unlike Prometheus' [`rule_file`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file)) and subdirectories are ignored. If the tenant directory does not exist, the Ruler keeps running but logs an error on every rule sync (`level=error msg="unable to list rules" ... unable to read rule dir ...`) and evaluates no rules until the directory is created.
 
-Note that `-ruler.storage.local.directory` is not the same as `rule_path`: the former is where the Ruler reads rule files from, while `rule_path` (default `/rules`) is a scratch directory where the Ruler writes temporary rule files during evaluation.
+Note that `-ruler-storage.local.directory` is not the same as `rule_path`: the former is where the Ruler reads rule files from, while `rule_path` (default `/rules`) is a scratch directory where the Ruler writes temporary rule files during evaluation.
 
 Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) but include LogQL expressions as specified earlier in this topic.
 
@@ -439,3 +448,10 @@ With larger deployments and complex rules, running a ruler in local evaluation m
 ## Metrics backends vs in-memory
 
 Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers.
+
+## Learn more
+
+To learn more about Grafana managed alerts, you can visit the [Grafana YouTube channel](https://www.youtube.com/@Grafana), where you can find videos like the following:
+
+- [Creating Alerts](https://www.youtube.com/watch?v=6W8Nu4b_PXM)
+- [Create and receive your first alert](https://www.youtube.com/watch?v=YVhKNbQNNss)

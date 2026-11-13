@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -8,13 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
@@ -286,7 +290,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		i := 0
 		it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+			tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, iteratorLimits{})
 		if err != nil {
 			panic(err)
 		}
@@ -416,6 +420,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 					tt.now.UnixNano(), // start
 					tt.now.UnixNano(), // end
 					0,                 // offset
+					iteratorLimits{},
 				)
 				require.NoError(t, err)
 
@@ -555,7 +560,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			func(t *testing.T) {
 				it, err := newTimestampFirstRangeVectorIterator(newfakePeekingSampleIterator(samples),
 					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset, iteratorLimits{})
 				require.NoError(t, err)
 
 				i := 0
@@ -583,7 +588,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	t.Run("batch iterator fails the query instead of skipping the series", func(t *testing.T) {
 		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
-			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0, iteratorLimits{})
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -593,7 +598,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	t.Run("streaming iterator fails the query instead of skipping the series", func(t *testing.T) {
 		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (5 * time.Second).Nanoseconds(),
-			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0, iteratorLimits{})
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -630,7 +635,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newTimestampFirstRangeVectorIterator(sampleIter(tt.negative),
 				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
-				3, 1, start, end, 0)
+				3, 1, start, end, 0, iteratorLimits{})
 			require.NoError(t, err)
 
 			//nolint:revive
@@ -817,6 +822,96 @@ func quantilesClose(want, got, epsilon float64) bool {
 	return diff/math.Max(math.Abs(want), math.Abs(got)) <= epsilon
 }
 
+// subMillisecondOffsets are range vector offsets for which the offset-adjusted
+// evaluation time is not a whole number of milliseconds. The logs volume
+// queries built by the Grafana Loki datasource use `offset 1ns`.
+var subMillisecondOffsets = []string{"1ns", "999µs", "1ms", "1s"}
+
+func offsetTestEngine(shards int) *QueryEngine {
+	streams := randomStreams(20, 130, shards, []string{"a"}, true)
+	return NewEngine(EngineOpts{}, NewMockQuerier(shards, streams), NoLimits, log.NewNopLogger())
+}
+
+func offsetTestParams(t *testing.T, query string, step time.Duration) Params {
+	t.Helper()
+	start := time.Unix(0, 0).Add(2 * time.Minute)
+	params, err := NewLiteralParams(query, start, start.Add(3*time.Minute), step, 0, logproto.FORWARD, 100, nil, nil)
+	require.NoError(t, err)
+	return params
+}
+
+// TestRangeVectorSampleTimestampWithOffset covers the sample timestamp of a
+// range aggregation with an offset. Loki reports the evaluation (step) time,
+// as Prometheus does, so a sub-millisecond offset must not shift the sample
+// back by a whole millisecond when the offset is truncated separately from
+// the step time.
+func TestRangeVectorSampleTimestampWithOffset(t *testing.T) {
+	engine := offsetTestEngine(2)
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	for _, offset := range subMillisecondOffsets {
+		t.Run(offset, func(t *testing.T) {
+			params := offsetTestParams(t, fmt.Sprintf(`sum(count_over_time({a=~".+"}[1m] offset %s))`, offset), time.Minute)
+			res, err := engine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+
+			matrix, ok := res.Data.(promql.Matrix)
+			require.True(t, ok, "expected a matrix, got %T", res.Data)
+			require.NotEmpty(t, matrix)
+			steps := map[int64]bool{}
+			for ts := params.Start(); !ts.After(params.End()); ts = ts.Add(params.Step()) {
+				steps[ts.UnixMilli()] = true
+			}
+			// Steps without log lines have no sample, so only check that
+			// the samples that exist sit on the step grid.
+			for _, sample := range matrix[0].Floats {
+				require.True(t, steps[sample.T], "sample timestamp %d is not a step timestamp", sample.T)
+			}
+		})
+	}
+}
+
+// TestShardedOffsetEquivalence checks that sharding a query with an offset does
+// not change its result. The downstream (per-shard) samples are matched
+// against the outer step timestamps, so a timestamp mismatch drops them and
+// the sharded result comes back empty.
+func TestShardedOffsetEquivalence(t *testing.T) {
+	const shards = 2
+	engine := offsetTestEngine(shards)
+	sharded := NewDownstreamEngine(EngineOpts{}, MockDownstreamer{engine}, NoLimits, log.NewNopLogger())
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	for _, offset := range subMillisecondOffsets {
+		t.Run(offset, func(t *testing.T) {
+			params := offsetTestParams(t, fmt.Sprintf(`sum(count_over_time({a=~".+"}[1m] offset %s))`, offset), time.Minute)
+			_, _, mapped, err := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(shards)), nilShardMetrics, nil).Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			unsharded, err := engine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+			shardedRes, err := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
+			require.NoError(t, err)
+
+			require.NotEmpty(t, unsharded.Data)
+			// Compare values only: the unsharded timestamps are asserted above.
+			require.Equal(t, sampleValues(t, unsharded.Data), sampleValues(t, shardedRes.Data))
+		})
+	}
+}
+
+func sampleValues(t *testing.T, data interface{}) []float64 {
+	t.Helper()
+	matrix, ok := data.(promql.Matrix)
+	require.True(t, ok, "expected a matrix, got %T", data)
+	var values []float64
+	for _, series := range matrix {
+		for _, sample := range series.Floats {
+			values = append(values, sample.F)
+		}
+	}
+	return values
+}
+
 func fpoints(values ...float64) []promql.FPoint {
 	points := make([]promql.FPoint, len(values))
 	for i, v := range values {
@@ -942,4 +1037,104 @@ func TestAvgOverTime(t *testing.T) {
 		require.InEpsilon(t, wantApprox, streaming, 1e-9)
 		require.Equal(t, batch, streaming, "batch and streaming implementations must agree")
 	})
+}
+
+// distinctSeriesIterator returns an iterator over n series, each with one sample at ts.
+func distinctSeriesIterator(n int, ts time.Time) iter.PeekingSampleIterator {
+	series := make([]iter.SampleIterator, 0, n)
+	for i := range n {
+		lbs := labels.FromStrings("app", "a", "id", fmt.Sprint(i))
+		series = append(series, iter.NewSeriesIterator(logproto.Series{
+			Labels:     lbs.String(),
+			Samples:    []logproto.Sample{{Timestamp: ts.UnixNano(), Hash: uint64(i), Value: 1}},
+			StreamHash: labels.StableHash(lbs),
+		}))
+	}
+	return iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator(series))
+}
+
+func TestRangeVectorIterator_ShouldStopLoadingAtSeriesLimit(t *testing.T) {
+	const (
+		numSeries = 10
+		maxSeries = 3
+	)
+	var (
+		start = time.Unix(10, 0)
+		end   = time.Unix(20, 0)
+		step  = 5 * time.Second
+	)
+	count := &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+
+	for name, tc := range map[string]struct {
+		build func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error)
+	}{
+		"batch": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits)
+				require.IsType(t, &batchRangeVectorIterator{}, rangeIt)
+				return rangeIt, err
+			},
+		},
+		"stream": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (2 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits)
+				require.IsType(t, &streamRangeVectorIterator{}, rangeIt)
+				return rangeIt, err
+			},
+		},
+		"first with timestamp": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newFirstWithTimestampIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits), nil
+			},
+		},
+		"last with timestamp": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newLastWithTimestampIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, limits), nil
+			},
+		},
+		"count distinct": {
+			build: func(it iter.PeekingSampleIterator, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newCountDistinctIterator(it, (10 * time.Second).Nanoseconds(), step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, false, limits), nil
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Run("fails on the series after the limit", func(t *testing.T) {
+				it := distinctSeriesIterator(numSeries, start.Add(-time.Second))
+				rangeIt, err := tc.build(it, iteratorLimits{maxSeries: maxSeries})
+				require.NoError(t, err)
+
+				require.False(t, rangeIt.Next())
+				require.Equal(t, logqlerr.NewSeriesLimitError(maxSeries), rangeIt.Error())
+				require.False(t, rangeIt.Next())
+
+				unread := 0
+				for _, _, ok := it.Peek(); ok; _, _, ok = it.Peek() {
+					unread++
+					it.Next()
+				}
+				require.Equal(t, numSeries-maxSeries, unread)
+			})
+
+			t.Run("loads every series at the limit", func(t *testing.T) {
+				rangeIt, err := tc.build(distinctSeriesIterator(maxSeries, start.Add(-time.Second)), iteratorLimits{maxSeries: maxSeries})
+				require.NoError(t, err)
+
+				require.True(t, rangeIt.Next())
+				_, vec := rangeIt.At()
+				require.Len(t, vec.SampleVector(), maxSeries)
+				require.NoError(t, rangeIt.Error())
+			})
+
+			t.Run("loads every series without a limit", func(t *testing.T) {
+				rangeIt, err := tc.build(distinctSeriesIterator(numSeries, start.Add(-time.Second)), iteratorLimits{})
+				require.NoError(t, err)
+
+				require.True(t, rangeIt.Next())
+				_, vec := rangeIt.At()
+				require.Len(t, vec.SampleVector(), numSeries)
+				require.NoError(t, rangeIt.Error())
+			})
+		})
+	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
@@ -97,6 +98,13 @@ func (a *Boolean) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *Boolean) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *Boolean) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -110,15 +118,84 @@ func (a *Boolean) MarshalJSON() ([]byte, error) {
 }
 
 func arrayEqualBoolean(left, right *Boolean) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+	if useScalarBooleanEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && left.Value(i) != right.Value(i) {
+				return false
+			}
 		}
-		if left.Value(i) != right.Value(i) {
+		return true
+	}
+
+	leftOffset := int64(left.Offset())
+	rightOffset := int64(right.Offset())
+	length := int64(left.Len())
+	if left.NullN() == 0 {
+		return booleanBitsEqual(left.values, right.values, leftOffset, rightOffset, length)
+	}
+
+	runs := bitutils.NewSetBitRunReader(left.NullBitmapBytes(), leftOffset, length)
+	for {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return true
+		}
+
+		leftStart := leftOffset + run.Pos
+		rightStart := rightOffset + run.Pos
+		if !booleanBitsEqual(left.values, right.values, leftStart, rightStart, run.Length) {
 			return false
 		}
 	}
-	return true
+}
+
+func booleanBitsEqual(left, right []byte, leftOffset, rightOffset, length int64) bool {
+	const scalarThreshold = 8
+	if length <= scalarThreshold {
+		for i := int64(0); i < length; i++ {
+			if bitutil.BitIsSet(left, int(leftOffset+i)) != bitutil.BitIsSet(right, int(rightOffset+i)) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Align corresponding runs before using BitmapEquals so its byte-aligned fast path
+	// can compare the bulk of the run without setting up bitmap word readers.
+	if leftOffset%8 == rightOffset%8 && leftOffset%8 != 0 {
+		prefix := int64(8) - leftOffset%8
+		if !booleanBitsEqual(left, right, leftOffset, rightOffset, prefix) {
+			return false
+		}
+		leftOffset += prefix
+		rightOffset += prefix
+		length -= prefix
+	}
+	return bitutil.BitmapEquals(left, right, leftOffset, rightOffset, length)
+}
+
+func useScalarBooleanEquality(values *Boolean) bool {
+	if values.NullN() == 0 {
+		return false
+	}
+
+	// Sampling avoids the run-reader overhead when valid values are highly fragmented.
+	const (
+		sampleRuns          = 8
+		minAverageRunLength = 16
+	)
+	runs := bitutils.NewSetBitRunReader(
+		values.NullBitmapBytes(), int64(values.Offset()), int64(values.Len()),
+	)
+	validValues := int64(0)
+	for range sampleRuns {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return false
+		}
+		validValues += run.Length
+	}
+	return validValues < sampleRuns*minAverageRunLength
 }
 
 var (

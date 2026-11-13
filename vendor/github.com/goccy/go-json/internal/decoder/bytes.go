@@ -23,9 +23,9 @@ func byteUnmarshalerSliceDecoder(typ reflect.Type, structName string, fieldName 
 	var unmarshalDecoder Decoder
 	switch {
 	case reflect.PointerTo(typ).Implements(unmarshalJSONType):
-		unmarshalDecoder = newUnmarshalJSONDecoder(reflect.PointerTo(typ), structName, fieldName)
+		unmarshalDecoder = newUnmarshalJSONDecoder(reflect.PointerTo(typ))
 	case reflect.PointerTo(typ).Implements(unmarshalTextType):
-		unmarshalDecoder = newUnmarshalTextDecoder(reflect.PointerTo(typ), structName, fieldName)
+		unmarshalDecoder = newUnmarshalTextDecoder(reflect.PointerTo(typ))
 	default:
 		unmarshalDecoder, _ = compileUint8(typ, structName, fieldName)
 	}

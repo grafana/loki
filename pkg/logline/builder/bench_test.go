@@ -293,7 +293,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		b.Fatal("no valid records to bench")
 	}
 
-	newBuilder := func(b *testing.B) *indexBuilder {
+	newBuilder := func(b *testing.B) *Builder {
 		cfg := Config{
 			Index: logline.IndexConfig{
 				Version:          "v3",
@@ -313,14 +313,14 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		return builder
 	}
 
-	// Full pipeline: pre-decoded streams through processStream
+	// Full pipeline: pre-decoded streams through ProcessStream
 	b.Run("process_only", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(totalBytes)
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded {
-				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.ProcessStream(&rec.stream, &rec.labels, rec.timestamp, RecordRef{})
 			}
 		}
 	})
@@ -347,12 +347,12 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 				if err != nil {
 					continue
 				}
-				_ = builder.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
+				_ = builder.ProcessStream(&stream, &parsedLabels, rec.timestamp, RecordRef{})
 			}
 		}
 	})
 
-	// Process + clear: measures ingest plus memory release. clear() discards
+	// Process + Clear: measures ingest plus memory release. Clear() discards
 	// the buffered pairs without finish()/merge, so this does NOT exercise the
 	// flush path — TestBuilderE2E measures prepareIndexes end to end.
 	b.Run("process_and_clear", func(b *testing.B) {
@@ -361,9 +361,9 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded {
-				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.ProcessStream(&rec.stream, &rec.labels, rec.timestamp, RecordRef{})
 			}
-			builder.clear()
+			builder.Clear()
 		}
 	})
 
@@ -384,7 +384,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			builder := newBuilder(b)
 			for _, rec := range decoded[:chunkSize] {
-				_ = builder.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+				_ = builder.ProcessStream(&rec.stream, &rec.labels, rec.timestamp, RecordRef{})
 			}
 		}
 	})
@@ -451,7 +451,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 			continue
 		}
 
-		newBld := func(b *testing.B) *indexBuilder {
+		newBld := func(b *testing.B) *Builder {
 			cfg := Config{
 				Index: logline.IndexConfig{
 					Version:          "v3",
@@ -481,7 +481,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 					if err != nil {
 						continue
 					}
-					_ = bld.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{})
+					_ = bld.ProcessStream(&stream, &parsedLabels, rec.timestamp, RecordRef{})
 				}
 			}
 		})
@@ -492,7 +492,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				bld := newBld(b)
 				for _, rec := range decoded {
-					_ = bld.processStream(&rec.stream, &rec.labels, rec.timestamp, recordRef{})
+					_ = bld.ProcessStream(&rec.stream, &rec.labels, rec.timestamp, RecordRef{})
 				}
 			}
 		})
@@ -538,7 +538,7 @@ func (s *e2ePeakSampler) stopPeak() uint64 {
 }
 
 // TestBuilderE2E is the end-to-end builder benchmark: it streams the captured
-// records through the real builder (decode → processStream) exactly as the
+// records through the real builder (decode → ProcessStream) exactly as the
 // service does, then runs prepareIndexes (the full flush-to-.lidx path), and
 // reports throughput, total allocations, and peak heap — at each requested
 // shard count. It only uses the builder's public surface, so implementations
@@ -640,8 +640,8 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		if derr != nil {
 			continue
 		}
-		if err := builder.processStream(&stream, &parsedLabels, rec.timestamp, recordRef{}); err != nil {
-			t.Fatalf("processStream: %v", err)
+		if err := builder.ProcessStream(&stream, &parsedLabels, rec.timestamp, RecordRef{}); err != nil {
+			t.Fatalf("ProcessStream: %v", err)
 		}
 	}
 	ingestSec := time.Since(istart).Seconds()
@@ -674,7 +674,7 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		float64(m1.TotalAlloc-m0.TotalAlloc)/(1<<30),
 		float64(peak)/(1<<20))
 
-	builder.clear()
+	builder.Clear()
 }
 
 // TestBuilderE2EFloor reports the resident heap floor held by the harness

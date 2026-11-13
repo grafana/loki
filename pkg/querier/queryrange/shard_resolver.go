@@ -16,8 +16,8 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlstats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -322,6 +322,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		return nil, nil, err
 	}
 
-	shards, chunkGroups := r.policy(tenantIDs, expr).boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
+	shards, chunkGroups := r.policy(tenantIDs, expr).boundedShards(tenantIDs, casted.Response.Shards, casted.Response.ChunkGroups)
 	return shards, chunkGroups, nil
 }

@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"io"
 	"strconv"
-	"unicode/utf8"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
+	"github.com/goccy/go-json/internal/jsonnum"
 )
 
 // The tokens of a stream as encoding/json of Go 1.27 reads them, by encoding/json/jsontext: a token or a value is
@@ -38,14 +38,9 @@ func (p *streamPeek) reset() {
 const countsScanned = false
 
 // invalidCharacter returns the syntax error of the character at the total offset, which the grammar doesn't
-// have where it is: encoding/json of Go 1.27 reports the rune there. The bytes of the rune are read if the buffer
-// ends in it, and the ones from at are kept for it.
+// have where it is: encoding/json of Go 1.27 reports the rune there, of the bytes which have been read, without a
+// read for the rest of it.
 func (s *Stream) invalidCharacter(at int64, where string) error {
-	cursor := s.TotalOffset()
-	s.cursor = min(cursor, at) - s.offset
-	for s.length-(at-s.offset) < utf8.UTFMax && !utf8.FullRune(s.buf[at-s.offset:s.length]) && s.read() {
-	}
-	s.cursor = cursor - s.offset
 	err := invalidCharacterError(s.buf[:s.length+1], at-s.offset, where)
 	return s.totalOffsetError(err)
 }
@@ -81,7 +76,7 @@ func (s *Stream) readDelim(start int64) (byte, error) {
 		if !s.skipWhiteSpace() {
 			// the next token is not known: a string, which follows any comma or colon, is taken for it
 			if s.needDelim('"') != delim {
-				return 0, s.delimError('"', at)
+				return 0, s.delimError('"', delim, at)
 			}
 			return 0, s.tokenEnd(start)
 		}
@@ -89,7 +84,7 @@ func (s *Stream) readDelim(start int64) (byte, error) {
 	c := s.buf[s.cursor]
 	if s.needDelim(c) != delim {
 		// the byte after the white spaces: the comma or the colon, or else the token
-		return 0, s.delimError(c, at)
+		return 0, s.delimError(c, delim, at)
 	}
 	switch {
 	case delim == ',' && s.tokenState == tokenArrayComma:
@@ -102,9 +97,10 @@ func (s *Stream) readDelim(start int64) (byte, error) {
 	return c, nil
 }
 
-// delimError returns the error of the byte c at the total offset at, which is not the comma or the colon which the
-// grammar has before a token which starts with next.
-func (s *Stream) delimError(next byte, at int64) error {
+// delimError returns the error of the byte at the total offset at, which is not the comma or the colon which the
+// grammar has before a token which starts with next: delim, the comma or the colon read there, or else the token. The
+// delimiter is not looked at in the buffer, which a read of the white space after it may have dropped it from.
+func (s *Stream) delimError(next, delim byte, at int64) error {
 	where := "looking for beginning of value"
 	switch s.needDelim(next) {
 	case ':':
@@ -116,7 +112,12 @@ func (s *Stream) delimError(next byte, at int64) error {
 			where = "after array element"
 		}
 	}
-	return s.invalidCharacter(at, where)
+	if delim == 0 {
+		return s.invalidCharacter(at, where)
+	}
+	err := invalidCharacterError([]byte{delim, nul}, 0, where)
+	err.Offset += at
+	return err
 }
 
 // tokenEnd returns the error of the end of the input before a token: io.EOF if what is left is white spaces,
@@ -125,7 +126,8 @@ func (s *Stream) tokenEnd(start int64) error {
 	if err := s.endError(); err != io.EOF {
 		return err
 	}
-	for i := start - s.offset; i < s.length; i++ {
+	// the bytes from start which a read dropped from the buffer are white spaces and a comma or a colon
+	for i := max(start-s.offset, 0); i < s.length; i++ {
 		switch s.buf[i] {
 		case ' ', '\t', '\n', '\r', ',', ':':
 		default:
@@ -216,10 +218,7 @@ func (s *Stream) valueStartMismatch(at int64) error {
 // of an object is waited for: the value is read first, as jsontext reads a value or a token, and its syntax error,
 // or the end of the input in it, is the error; else the name is not a string.
 func (s *Stream) memberNameError(at int64) error {
-	if _, err := s.scanValue(); err != nil {
-		return err
-	}
-	if err := s.valueSyntaxError(); err != nil {
+	if _, err := s.wholeEnd(0); err != nil {
 		return err
 	}
 	return errors.ErrSyntax("object member name must be a string", at+1)
@@ -383,14 +382,14 @@ func (s *Stream) More() bool {
 		if pos, ok = s.peekFrom(pos + 1); !ok {
 			// the next token is not known: a string, which follows any comma or colon, is taken for it
 			if s.needDelim('"') != delim {
-				return s.moreError(s.delimError('"', at))
+				return s.moreError(s.delimError('"', delim, at))
 			}
 			return s.moreAtEnd(start)
 		}
 		c = s.buf[pos]
 	}
 	if s.needDelim(c) != delim {
-		return s.moreError(s.delimError(c, at))
+		return s.moreError(s.delimError(c, delim, at))
 	}
 	return c != ']' && c != '}'
 }
@@ -450,16 +449,19 @@ func (s *Stream) tokenValue(c byte) (any, error) {
 			return nil, err
 		}
 		// the number ends where the grammar ends it, as 01 is 0 and 1, and is a number by the grammar
-		end = streamNumberEnd(s.buf, s.cursor, end)
-		literal := s.buf[s.cursor:end]
-		if !isValidNumber(literal) {
+		n, place := jsonnum.Scan(s.buf[s.cursor:end])
+		if place != jsonnum.Valid {
 			return nil, s.valueSyntaxError()
 		}
-		s.cursor = end
+		literal := s.buf[s.cursor : s.cursor+int64(n)]
+		s.cursor += int64(n)
 		if (s.Option.Flags & UseNumberOption) != 0 {
 			return json.Number(literal), nil
 		}
-		f64, err := strconv.ParseFloat(*(*string)(unsafe.Pointer(&literal)), 64)
+		f64, ok := jsonnum.ParseFloat(literal)
+		if !ok {
+			f64, err = strconv.ParseFloat(*(*string)(unsafe.Pointer(&literal)), 64)
+		}
 		if err != nil {
 			// a number out of the range of float64, which is read: a type error of the value, which Token
 			// returns after it

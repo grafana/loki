@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -133,7 +134,6 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery           int                `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
 	MaxQuerySeries              int                `yaml:"max_query_series" json:"max_query_series"`
 	MaxQueryLookback            model.Duration     `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength              model.Duration     `yaml:"max_query_length" json:"max_query_length"`
@@ -216,6 +216,7 @@ type Limits struct {
 	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled"`
 	DataObjIndexCompactionEnabled  bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
 	DataObjLogCompactionEnabled    bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
+	DataObjDeletionSweepEnabled    bool             `yaml:"dataobj_deletion_sweep_enabled" json:"dataobj_deletion_sweep_enabled" category:"experimental"`
 	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy"`
 	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by"`
 	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size"`
@@ -274,12 +275,20 @@ type Limits struct {
 	// DataObjShardFactor is the number of stream shard buckets in new data
 	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+
+	// TSDBShardedIndexShardFactor is the number of fingerprint-range files the
+	// compactor splits the tenant's sharded TSDB index copy into.
+	TSDBShardedIndexShardFactor int `yaml:"tsdb_sharded_index_shard_factor" json:"tsdb_sharded_index_shard_factor" category:"experimental" doc:"hidden"`
 }
 
 // ShardFactor is the number of shard buckets that data objects divide a
-// tenant's streams into. It must be a power of two. Zero means the default,
-// [streams.DefaultShardBuckets].
+// tenant's streams into. It must be a power of two up to [MaxShardFactor].
+// Zero means the default, [streams.DefaultShardBuckets].
 type ShardFactor uint32
+
+// MaxShardFactor is the largest [ShardFactor] that [ShardFactor.Validate]
+// accepts.
+const MaxShardFactor = 256
 
 // Layout returns the shard layout for f. Zero gives
 // [streams.DefaultShardLayout]. Layout returns an error if f is not a valid
@@ -291,19 +300,17 @@ func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 	return streams.ShardLayoutFromBuckets(uint32(f))
 }
 
-// Validate returns an error if f is not a supported shard factor.
-//
-// Validate accepts only the default factor. Readers assume the default layout
-// for every object, so objects with another factor give wrong query results.
+// Validate returns an error if f is not zero or a power of two up to
+// [MaxShardFactor].
 func (f ShardFactor) Validate() error {
-	layout, err := f.Layout()
-	if err != nil {
-		return err
+	// Layout accepts every power of two up to 65536, the limit of
+	// [streams.ShardLayout]. Check the maximum first, so that a larger factor
+	// reports MaxShardFactor and not that limit.
+	if f > MaxShardFactor {
+		return fmt.Errorf("shard factor %d is more than the maximum %d", f, MaxShardFactor)
 	}
-	if layout != streams.DefaultShardLayout() {
-		return fmt.Errorf("shard factor %d is not supported, only %d is", f, streams.DefaultShardBuckets)
-	}
-	return nil
+	_, err := f.Layout()
+	return err
 }
 
 // String implements flag.Value.
@@ -439,7 +446,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"k8s_job_name",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, fmt.Sprintf("Discover the log level of each entry during ingestion and add it to Structured Metadata as %s, unless it is already present. The level is read from the first stream label or Structured Metadata field whose name is in log_level_fields (default: %s). Otherwise it is derived from the OTLP severity number, or from the log line: a JSON or logfmt field named in log_level_fields, then keywords. Recognized values (case insensitive) are normalized to 'trace', 'debug', 'info', 'warn', 'error', 'critical' or 'fatal'.", constants.LevelLabel, strings.Join(DefaultAllowedLevelFields, ", ")))
 	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
 	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
@@ -460,8 +467,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
 	_ = l.PerStreamRateLimitBurst.Set(strconv.Itoa(defaultPerStreamBurstLimit))
 	f.Var(&l.PerStreamRateLimitBurst, "ingester.per-stream-rate-limit-burst", "Maximum burst bytes per stream, also expressible in human readable forms (1MB, 256KB, etc). This is how far above the rate limit a stream can 'burst' before the stream is limited.")
-
-	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
@@ -560,6 +565,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Deprecated: Whether to create blooms for the tenant.")
 	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
 	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
+	f.BoolVar(&l.DataObjDeletionSweepEnabled, "dataobj-compaction.deletion-sweep.enable", false, "Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep finds the objects of the tenant that no table of contents (ToC) file can reach. An object that two sweeps, at least 23 hours apart, both find unreachable is a deletion candidate. Sweeps log a summary and examples of the candidates, and delete nothing. The sweep also needs -dataobj.compaction.deletion-sweep.enabled.")
 	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Deprecated: Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
@@ -626,7 +632,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
-	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Only %d is supported.", streams.DefaultShardBuckets))
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
+	f.IntVar(&l.TSDBShardedIndexShardFactor, "limits.tsdb-sharded-index-shard-factor", 0, "Experimental: Number of fingerprint-range files the compactor splits the tenant's index into in the sharded_path_prefix of a schema period. 0 and 1 write a single file; larger values must be powers of two.")
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -771,6 +778,10 @@ func (l *Limits) Validate() error {
 		return fmt.Errorf("dataobj_shard_factor: %w", err)
 	}
 
+	if f := l.TSDBShardedIndexShardFactor; f < 0 || f&(f-1) != 0 {
+		return fmt.Errorf("tsdb_sharded_index_shard_factor must be 0, 1 or a power of two, got %d", f)
+	}
+
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
 		return errLogCompactionRequiresIndex
 	}
@@ -895,11 +906,6 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
-}
-
-// MaxChunksPerQuery returns the maximum number of chunks allowed per query.
-func (o *Overrides) MaxChunksPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
@@ -1222,6 +1228,12 @@ func (o *Overrides) CompactionPhases(userID string) (runIndex, runLog bool) {
 		l.DataObjLogCompactionEnabled
 }
 
+// DeletionSweepEnabled reports whether the dataobj deletion sweep runs for
+// the tenant.
+func (o *Overrides) DeletionSweepEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).DataObjDeletionSweepEnabled
+}
+
 func (o *Overrides) BloomPlanningStrategy(userID string) string {
 	return o.getOverridesForUser(userID).BloomPlanningStrategy
 }
@@ -1501,11 +1513,16 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
 		// Limits.Validate rejects invalid factors, so only unvalidated limits
-		// reach this branch. It does not log, because writers call
-		// ShardLayout once per record.
+		// reach this branch.
 		return streams.DefaultShardLayout()
 	}
 	return layout
+}
+
+// TSDBShardedIndexShardFactor returns the number of fingerprint-range files of
+// the sharded TSDB index copy for userID.
+func (o *Overrides) TSDBShardedIndexShardFactor(userID string) int {
+	return o.getOverridesForUser(userID).TSDBShardedIndexShardFactor
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

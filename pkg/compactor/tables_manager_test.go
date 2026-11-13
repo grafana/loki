@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 func TestTableManager_RunCompaction(t *testing.T) {
@@ -161,27 +162,27 @@ func TestTablesManager_TableLocking(t *testing.T) {
 					// retention should not timeout after first run since we won't be locking the table
 					if n == 1 && tc.retentionShouldTimeout {
 						require.ErrorIs(t, err, context.DeadlineExceeded)
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusFailure)))
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure)))
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusFailure, reasonIndex)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, reasonIndex)))
 						return
 					}
 					require.NoError(t, err)
 
 					if n > 1 && tc.applyRetention && tc.retentionShouldTimeout {
 						// this should be the first successful run if retention was expected to timeout out during first run
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 					} else {
 						// else it should have succeeded during all the n runs
 						if tc.applyRetention {
-							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 						} else {
-							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, "")))
 						}
 					}
 					if tc.applyRetention {
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, "")))
 					} else {
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 					}
 
 					// if the table was locked and compaction ran without retention then only locked table should have been skipped
@@ -215,6 +216,73 @@ func TestTablesManager_TableLocking(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+type listTablesErrClient struct {
+	storage.Client
+	err error
+}
+
+func (c listTablesErrClient) ListTables(context.Context) ([]string, error) {
+	return nil, c.err
+}
+
+func TestTablesManager_RunCompactionOperationTotal(t *testing.T) {
+	listErr := errors.New("RequestCanceled: request context canceled")
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	expiredCtx, cancelExpired := context.WithDeadline(context.Background(), time.Now())
+	defer cancelExpired()
+
+	for _, tc := range []struct {
+		name             string
+		ctx              context.Context
+		applyRetention   bool
+		expectedFailures float64
+	}{
+		{name: "compaction fails", ctx: context.Background(), expectedFailures: 1},
+		{name: "compaction canceled", ctx: canceledCtx},
+		{name: "compaction deadline exceeded", ctx: expiredCtx, expectedFailures: 1},
+		{name: "retention fails", ctx: context.Background(), applyRetention: true, expectedFailures: 1},
+		{name: "retention canceled", ctx: canceledCtx, applyRetention: true},
+		{name: "retention deadline exceeded", ctx: expiredCtx, applyRetention: true, expectedFailures: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			periodConfigs := []config.PeriodConfig{
+				{
+					From:       config.DayTime{Time: model.Time(0)},
+					IndexType:  "dummy",
+					ObjectType: "fs_01",
+					IndexTables: config.IndexPeriodicTableConfig{
+						PathPrefix: "index/",
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: indexTablePrefix,
+							Period: config.ObjectStorageIndexRequiredPeriod,
+						}},
+				},
+			}
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+			require.NoError(t, err)
+
+			compactor := setupTestCompactor(t, map[config.DayTime]client.ObjectClient{periodConfigs[0].From: objectClient}, periodConfigs, tempDir)
+			for from, sc := range compactor.tablesManager.storeContainers {
+				sc.indexStorageClient = listTablesErrClient{Client: sc.indexStorageClient, err: listErr}
+				compactor.tablesManager.storeContainers[from] = sc
+			}
+
+			err = compactor.tablesManager.runCompaction(tc.ctx, tc.applyRetention)
+			require.ErrorIs(t, err, listErr)
+
+			operationTotal := compactor.metrics.compactTablesOperationTotal
+			if tc.applyRetention {
+				operationTotal = compactor.metrics.applyRetentionOperationTotal
+			}
+			require.Equal(t, tc.expectedFailures, testutil.ToFloat64(operationTotal.WithLabelValues(statusFailure, reasonIndex)))
+			require.Equal(t, float64(0), testutil.ToFloat64(operationTotal.WithLabelValues(statusSuccess, "")))
 		})
 	}
 }
@@ -508,4 +576,18 @@ func (d *dummyStorageUpdatesIterator) Err() error {
 
 func (d *dummyStorageUpdatesIterator) ForEachSeries(_ func(_ string, _ map[string]deletion.Chunk, _ []string) error) error {
 	return nil
+}
+
+func TestFailureReason(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{err: fmt.Errorf("%w: %w", errShardedIndexCopy, errors.New("upload failed")), want: reasonShardedIndexCopy},
+		{err: errors.New("upload failed"), want: reasonIndex},
+	} {
+		t.Run(tc.err.Error(), func(t *testing.T) {
+			require.Equal(t, tc.want, failureReason(tc.err))
+		})
+	}
 }

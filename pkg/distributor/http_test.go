@@ -792,3 +792,44 @@ func TestOTLPPushHandlerValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDistributorMaxInflightBytesLimit(t *testing.T) {
+	validationLimits := &validation.Limits{}
+	flagext.DefaultValues(validationLimits)
+	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+	d := distributors[0]
+
+	newRequest := func() *http.Request {
+		body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q ] ] }]}`, time.Now().UnixNano(), strings.Repeat("a", 1025))
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+		req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
+		req.Header.Set("Content-Type", "application/json")
+		return req
+	}
+
+	bytesReceived := func() float64 {
+		return testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki))
+	}
+
+	rec := httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(1025), bytesReceived())
+
+	// Set the max inflight bytes to 1KB and simulate 1KB already inflight, the request should be rejected.
+	d.cfg.MaxInflightBytes = 1024
+	d.inflightBytes.Store(1024)
+	rec = httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), errServiceUnavailableMaxLoad.Error())
+	// The request was rejected before parsing, so its bytes must not be counted as received.
+	require.Equal(t, float64(1025), bytesReceived())
+
+	// Once the inflight bytes drop below the limit the request is accepted again.
+	d.inflightBytes.Store(0)
+	rec = httptest.NewRecorder()
+	d.PushHandler(rec, newRequest())
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(2050), bytesReceived())
+}

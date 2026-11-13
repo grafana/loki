@@ -45,7 +45,11 @@ func (t *RunEndEncodedType) String() string {
 }
 
 func (t *RunEndEncodedType) Fingerprint() string {
-	return typeFingerprint(t) + "{" + t.runEnds.Fingerprint() + ";" + t.values.Fingerprint() + ";}"
+	nullability := "N"
+	if t.ValueNullable {
+		nullability = "n"
+	}
+	return typeFingerprint(t) + "{" + t.runEnds.Fingerprint() + ";" + t.values.Fingerprint() + ";" + nullability + ";}"
 }
 
 func (t *RunEndEncodedType) RunEnds() DataType { return t.runEnds }

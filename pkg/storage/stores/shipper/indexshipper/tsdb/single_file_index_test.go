@@ -875,3 +875,8 @@ func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 func (f *filterAllFilterer) RequiredLabelNames() []string {
 	return nil
 }
+
+func (f *filterAllFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}

@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/encoder"
+	"github.com/goccy/go-json/internal/jsonstring"
 	"github.com/goccy/go-json/internal/runtime"
 )
 
@@ -82,13 +83,6 @@ func ptrToNPtr(p unsafe.Pointer, ptrNum uint8) unsafe.Pointer {
 	return p
 }
 
-func ptrToInterface(code *encoder.Opcode, p unsafe.Pointer) any {
-	return *(*any)(unsafe.Pointer(&emptyInterface{
-		typ: code.Type,
-		ptr: p,
-	}))
-}
-
 func appendInt(ctx *encoder.RuntimeContext, b []byte, p unsafe.Pointer, code *encoder.Opcode) []byte {
 	format := ctx.Option.ColorScheme.Int
 	b = append(b, format.Header...)
@@ -104,9 +98,9 @@ func appendUint(ctx *encoder.RuntimeContext, b []byte, p unsafe.Pointer, code *e
 }
 
 // appendFloat32 appends the float, or returns the error for one which is not finite as encoding/json does.
-func appendFloat32(ctx *encoder.RuntimeContext, b []byte, v float32) ([]byte, error) {
+func appendFloat32(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, v float32) ([]byte, error) {
 	if isInfOrNaN(float64(v)) {
-		return nil, errUnsupportedFloat(float64(v))
+		return nil, errUnsupportedFloat(ctx, code, float64(v))
 	}
 	format := ctx.Option.ColorScheme.Float
 	b = append(b, format.Header...)
@@ -124,7 +118,7 @@ func appendFloat64(ctx *encoder.RuntimeContext, b []byte, v float64) []byte {
 func appendString(ctx *encoder.RuntimeContext, b []byte, v string) []byte {
 	format := ctx.Option.ColorScheme.String
 	b = append(b, format.Header...)
-	b = encoder.AppendString(ctx, b, v)
+	b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, v)
 	return append(b, format.Footer...)
 }
 
@@ -139,6 +133,17 @@ func appendNumber(ctx *encoder.RuntimeContext, b []byte, n json.Number) ([]byte,
 	format := ctx.Option.ColorScheme.Int
 	b = append(b, format.Header...)
 	bb, err := encoder.AppendNumber(ctx, b, n)
+	if err != nil {
+		return nil, err
+	}
+	return append(bb, format.Footer...), nil
+}
+
+// appendNumberString is appendNumber of a json.Number of a field with the option string, which the caller quotes.
+func appendNumberString(ctx *encoder.RuntimeContext, b []byte, n json.Number) ([]byte, error) {
+	format := ctx.Option.ColorScheme.Int
+	b = append(b, format.Header...)
+	bb, err := encoder.AppendNumberString(ctx, b, n)
 	if err != nil {
 		return nil, err
 	}
@@ -178,19 +183,27 @@ func appendColon(_ *encoder.RuntimeContext, b []byte) []byte {
 	return append(b[:len(b)-2], ':', ' ')
 }
 
-func appendMapKeyValue(ctx *encoder.RuntimeContext, code *encoder.Opcode, b, key, value []byte) []byte {
+// mapKeyFooterLen returns the length of the codes of a color which end the names of the keys written by code, the
+// first opcode of the keys of a map: an integer is colored within its quotes, so its name is followed by the footer
+// of its format, which is not of the name ( see encoder.MapContext.SortEncodedKeys ).
+func mapKeyFooterLen(ctx *encoder.RuntimeContext, code *encoder.Opcode) int {
+	switch code.Op {
+	case encoder.OpIntString, encoder.OpIntPtrString:
+		return len(ctx.Option.ColorScheme.Int.Footer)
+	case encoder.OpUintString, encoder.OpUintPtrString:
+		return len(ctx.Option.ColorScheme.Uint.Footer)
+	}
+	return 0
+}
+
+// appendSortedMapKey appends the key of an entry of a sorted map, as it was encoded with a comma after it, and the
+// colon after it.
+func appendSortedMapKey(ctx *encoder.RuntimeContext, code *encoder.Opcode, b, key []byte) []byte {
 	b = appendIndent(ctx, b, code.Indent+1)
 	b = append(b, key...)
 	b[len(b)-2] = ':'
 	b[len(b)-1] = ' '
-	return append(b, value...)
-}
-
-func appendMapEnd(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte) []byte {
-	b = b[:len(b)-2]
-	b = append(b, '\n')
-	b = appendIndent(ctx, b, code.Indent)
-	return append(b, '}', ',', '\n')
+	return b
 }
 
 func appendArrayHead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte) []byte {
@@ -292,7 +305,7 @@ func appendScalar(ctx *encoder.RuntimeContext, b []byte, code *encoder.Opcode, p
 	case encoder.OpUint:
 		b = appendUint(ctx, b, p, code)
 	case encoder.OpFloat32:
-		bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+		bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +313,7 @@ func appendScalar(ctx *encoder.RuntimeContext, b []byte, code *encoder.Opcode, p
 	case encoder.OpFloat64:
 		v := ptrToFloat64(p)
 		if isInfOrNaN(v) {
-			return nil, errUnsupportedFloat(v)
+			return nil, errUnsupportedFloat(ctx, code, v)
 		}
 		b = appendFloat64(ctx, b, v)
 	case encoder.OpString:

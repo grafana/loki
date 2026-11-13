@@ -91,11 +91,11 @@ func _btreeCellSizeCheck(tls *libc.TLS, pPage uintptr) (r int32) {
 		}
 		pc = libc.Int32FromUint8(**(**Tu8)(__ccgo_up(data + uintptr(cellOffset+i*int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**Tu8)(__ccgo_up(data + uintptr(cellOffset+i*int32(2)) + 1)))
 		if pc < iCellFirst || pc > iCellLast {
-			return _sqlite3CorruptError(tls, int32(75842))
+			return _sqlite3CorruptError(tls, int32(75374))
 		}
 		sz = libc.Int32FromUint16((*(*func(*libc.TLS, uintptr, uintptr) Tu16)(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pPage)).FxCellSize})))(tls, pPage, data+uintptr(pc)))
 		if pc+sz > usableSize {
-			return _sqlite3CorruptError(tls, int32(75847))
+			return _sqlite3CorruptError(tls, int32(75379))
 		}
 		goto _1
 	_1:
@@ -160,7 +160,7 @@ func _btreePrevious(tls *libc.TLS, pCur uintptr) (r int32) {
 		(*TMemPage)(unsafe.Pointer(pPage)).FisInit = uint8(0)
 	}
 	if !((*TMemPage)(unsafe.Pointer(pPage)).FisInit != 0) {
-		return _sqlite3CorruptError(tls, int32(80092))
+		return _sqlite3CorruptError(tls, int32(79626))
 	}
 	if !((*TMemPage)(unsafe.Pointer(pPage)).Fleaf != 0) {
 		idx = libc.Int32FromUint16((*TBtCursor)(unsafe.Pointer(pCur)).Fix)
@@ -224,12 +224,12 @@ func _callCollNeeded(tls *libc.TLS, db uintptr, enc int32, zName uintptr) {
 //	** zero if the cell is less than or equal pIdxKey.  Return positive
 //	** if unknown.
 //	**
-//	**    Return value negative:     Cell at pCur[idx] less than pIdxKey
+//	**    Return value negative:     Cell at pPage[idx] less than pIdxKey
 //	**
-//	**    Return value is zero:      Cell at pCur[idx] equals pIdxKey
+//	**    Return value is zero:      Cell at pPage[idx] equals pIdxKey
 //	**
 //	**    Return value positive:     Nothing is known about the relationship
-//	**                               of the cell at pCur[idx] and pIdxKey.
+//	**                               of the cell at pPage[idx] and pIdxKey.
 //	**
 //	** This routine is part of an optimization.  It is always safe to return
 //	** a positive value as that will cause the optimization to be skipped.
@@ -296,7 +296,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 	if libc.Int32FromUint8(eType) == int32(PTRMAP_OVERFLOW2) {
 		/* The pointer is always the first 4 bytes of the page in this case.  */
 		if _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData) != iFrom {
-			return _sqlite3CorruptError(tls, int32(77530))
+			return _sqlite3CorruptError(tls, int32(77062))
 		}
 		_sqlite3Put4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData, iTo)
 	} else {
@@ -320,7 +320,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 				(*(*func(*libc.TLS, uintptr, uintptr, uintptr))(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pPage)).FxParseCell})))(tls, pPage, pCell, bp)
 				if uint32((**(**TCellInfo)(__ccgo_up(bp))).FnLocal) < (**(**TCellInfo)(__ccgo_up(bp))).FnPayload {
 					if pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize) > (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize) {
-						return _sqlite3CorruptError(tls, int32(77549))
+						return _sqlite3CorruptError(tls, int32(77081))
 					}
 					if iFrom == _sqlite3Get4byte(tls, pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize)-uintptr(4)) {
 						_sqlite3Put4byte(tls, pCell+uintptr((**(**TCellInfo)(__ccgo_up(bp))).FnSize)-uintptr(4), iTo)
@@ -329,7 +329,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 				}
 			} else {
 				if pCell+uintptr(4) > (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize) {
-					return _sqlite3CorruptError(tls, int32(77558))
+					return _sqlite3CorruptError(tls, int32(77090))
 				}
 				if _sqlite3Get4byte(tls, pCell) == iFrom {
 					_sqlite3Put4byte(tls, pCell, iTo)
@@ -343,7 +343,7 @@ func _modifyPagePointer(tls *libc.TLS, pPage uintptr, iFrom TPgno, iTo TPgno, eT
 		}
 		if i == nCell {
 			if libc.Int32FromUint8(eType) != int32(PTRMAP_BTREE) || _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr(libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(pPage)).FhdrOffset)+int32(8))) != iFrom {
-				return _sqlite3CorruptError(tls, int32(77570))
+				return _sqlite3CorruptError(tls, int32(77102))
 			}
 			_sqlite3Put4byte(tls, (*TMemPage)(unsafe.Pointer(pPage)).FaData+uintptr(libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(pPage)).FhdrOffset)+int32(8)), iTo)
 		}
@@ -379,10 +379,6 @@ func _moveToLeftmost(tls *libc.TLS, pCur uintptr) (r int32) {
 		rc = _moveToChild(tls, pCur, pgno)
 	}
 	return rc
-}
-
-func _readInt64(tls *libc.TLS, p uintptr) (r Ti64) {
-	return libc.Int64FromUint64(uint64(**(**Tu8)(__ccgo_up(p)))<<libc.Int32FromInt32(56) + uint64(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(48) + uint64(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(40) + uint64(**(**Tu8)(__ccgo_up(p + 3)))<<libc.Int32FromInt32(32) + uint64(**(**Tu8)(__ccgo_up(p + 4)))<<libc.Int32FromInt32(24) + uint64(**(**Tu8)(__ccgo_up(p + 5)))<<libc.Int32FromInt32(16) + uint64(**(**Tu8)(__ccgo_up(p + 6)))<<libc.Int32FromInt32(8) + uint64(**(**Tu8)(__ccgo_up(p + 7)))<<libc.Int32FromInt32(0))
 }
 
 // C documentation
@@ -461,13 +457,11 @@ func _setChildPtrmaps(tls *libc.TLS, pPage uintptr) (r int32) {
 //	**                  is larger than intKey.
 //	*/
 func _sqlite3BtreeTableMoveto(tls *libc.TLS, pCur uintptr, intKey Ti64, biasRight int32, pRes uintptr) (r int32) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
 	var c, idx, lwr, rc, upr int32
 	var chldPg TPgno
+	var nCellKey Ti64
 	var pCell, pPage, v3 uintptr
-	var _ /* nCellKey at bp+0 */ Ti64
-	_, _, _, _, _, _, _, _, _ = c, chldPg, idx, lwr, pCell, pPage, rc, upr, v3
+	_, _, _, _, _, _, _, _, _, _ = c, chldPg, idx, lwr, nCellKey, pCell, pPage, rc, upr, v3
 	/* If the cursor is already positioned at the point we are trying
 	 ** to move to, then just return without doing any work */
 	if libc.Int32FromUint8((*TBtCursor)(unsafe.Pointer(pCur)).FeState) == CURSOR_VALID && libc.Int32FromUint8((*TBtCursor)(unsafe.Pointer(pCur)).FcurFlags)&int32(BTCF_ValidNKey) != 0 {
@@ -529,19 +523,19 @@ func _sqlite3BtreeTableMoveto(tls *libc.TLS, pCur uintptr, intKey Ti64, biasRigh
 						break
 					}
 					if pCell >= (*TMemPage)(unsafe.Pointer(pPage)).FaDataEnd {
-						return _sqlite3CorruptError(tls, int32(79539))
+						return _sqlite3CorruptError(tls, int32(79073))
 					}
 				}
 			}
-			_sqlite3GetVarint(tls, pCell, bp)
-			if **(**Ti64)(__ccgo_up(bp)) < intKey {
+			nCellKey = _sqlite3VarintValue(tls, pCell)
+			if nCellKey < intKey {
 				lwr = idx + int32(1)
 				if lwr > upr {
 					c = -int32(1)
 					break
 				}
 			} else {
-				if **(**Ti64)(__ccgo_up(bp)) > intKey {
+				if nCellKey > intKey {
 					upr = idx - int32(1)
 					if lwr > upr {
 						c = +libc.Int32FromInt32(1)
@@ -555,7 +549,7 @@ func _sqlite3BtreeTableMoveto(tls *libc.TLS, pCur uintptr, intKey Ti64, biasRigh
 					} else {
 						v3 = pCur + 1
 						*(*Tu8)(unsafe.Pointer(v3)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v3))) | libc.Int32FromInt32(BTCF_ValidNKey))
-						(*TBtCursor)(unsafe.Pointer(pCur)).Finfo.FnKey = **(**Ti64)(__ccgo_up(bp))
+						(*TBtCursor)(unsafe.Pointer(pCur)).Finfo.FnKey = nCellKey
 						(*TBtCursor)(unsafe.Pointer(pCur)).Finfo.FnSize = uint16(0)
 						**(**int32)(__ccgo_up(pRes)) = 0
 						return SQLITE_OK
@@ -598,9 +592,10 @@ moveto_table_finish:
 // C documentation
 //
 //	/*
-//	** Read or write a four-byte big-endian integer value.
+//	** Read an unsigned 32-bit integer from an unaligned big-endian array of bytes.
 //	*/
 func _sqlite3Get4byte(tls *libc.TLS, p uintptr) (r Tu32) {
+	/* Test this limb using -DSQLITE_BYTEORDER=0 */
 	return uint32(**(**Tu8)(__ccgo_up(p)))<<int32(24) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(16)) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(8)) | uint32(**(**Tu8)(__ccgo_up(p + 3)))
 }
 

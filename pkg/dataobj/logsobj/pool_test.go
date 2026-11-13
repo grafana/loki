@@ -13,7 +13,7 @@ import (
 
 func TestSizedBuilderPool(t *testing.T) {
 	t.Run("Get returns the next builder, and nil when the pool is empty", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		pool := NewSizedBuilderPool([]*Builder{builder})
 		// The first call to [Get] should return the builder.
@@ -29,7 +29,7 @@ func TestSizedBuilderPool(t *testing.T) {
 	})
 
 	t.Run("Wait blocks until a builder is available", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(), log.NewNopLogger(), nil)
+		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		pool := NewSizedBuilderPool([]*Builder{builder})
 		// The first call to [Wait] should not block.

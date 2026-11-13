@@ -4,14 +4,9 @@ import (
 	"context"
 	"io"
 	"os"
-	"runtime"
-	"unsafe"
 
 	"github.com/goccy/go-json/internal/encoder"
-	"github.com/goccy/go-json/internal/encoder/vm"
-	"github.com/goccy/go-json/internal/encoder/vm_color"
-	"github.com/goccy/go-json/internal/encoder/vm_color_indent"
-	"github.com/goccy/go-json/internal/encoder/vm_indent"
+	"github.com/goccy/go-json/internal/encoder/run"
 )
 
 // An Encoder writes JSON values to an output stream.
@@ -73,9 +68,9 @@ func (e *Encoder) encodeWithOption(ctx *encoder.RuntimeContext, v any, optFuncs 
 		err error
 	)
 	if e.enabledIndent {
-		buf, err = encodeIndent(ctx, v, e.prefix, e.indentStr)
+		buf, err = run.EncodeIndent(ctx, v, e.prefix, e.indentStr)
 	} else {
-		buf, err = encode(ctx, v)
+		buf, err = run.Encode(ctx, v)
 	}
 	if err != nil {
 		return err
@@ -121,7 +116,7 @@ func marshalContext(ctx context.Context, v any, optFuncs ...EncodeOptionFunc) ([
 		optFunc(rctx.Option)
 	}
 
-	buf, err := encode(rctx, v)
+	buf, err := run.Encode(rctx, v)
 	if err != nil {
 		encoder.ReleaseRuntimeContext(rctx)
 		return nil, err
@@ -148,7 +143,7 @@ func marshal(v any, optFuncs ...EncodeOptionFunc) ([]byte, error) {
 		optFunc(ctx.Option)
 	}
 
-	buf, err := encode(ctx, v)
+	buf, err := run.Encode(ctx, v)
 	if err != nil {
 		encoder.ReleaseRuntimeContext(ctx)
 		return nil, err
@@ -175,7 +170,7 @@ func marshalIndent(v any, prefix, indent string, optFuncs ...EncodeOptionFunc) (
 		optFunc(ctx.Option)
 	}
 
-	buf, err := encodeIndent(ctx, v, prefix, indent)
+	buf, err := run.EncodeIndent(ctx, v, prefix, indent)
 	if err != nil {
 		encoder.ReleaseRuntimeContext(ctx)
 		return nil, err
@@ -187,103 +182,4 @@ func marshalIndent(v any, prefix, indent string, optFuncs ...EncodeOptionFunc) (
 
 	encoder.ReleaseRuntimeContext(ctx)
 	return copied, nil
-}
-
-func encode(ctx *encoder.RuntimeContext, v any) ([]byte, error) {
-	b := ctx.Buf[:0]
-	if v == nil {
-		b = encoder.AppendNull(ctx, b)
-		b = encoder.AppendComma(ctx, b)
-		return b, nil
-	}
-	header := (*emptyInterface)(unsafe.Pointer(&v))
-	typ := header.typ
-
-	typeptr := uintptr(typ)
-	codeSet, err := encoder.CompileToGetCodeSet(ctx, typeptr)
-	if err != nil {
-		return nil, err
-	}
-
-	p := ctx.ValueAddr(codeSet, header.ptr)
-	if p == nil {
-		// only a nil pointer has no address of the value.
-		b = encoder.AppendNull(ctx, b)
-		b = encoder.AppendComma(ctx, b)
-		return b, nil
-	}
-	ctx.Init(p, codeSet.CodeLength)
-
-	buf, err := encodeRunCode(ctx, b, codeSet)
-	// the VM refers to the value by uintptr.
-	runtime.KeepAlive(v)
-	if err != nil {
-		return nil, err
-	}
-	ctx.Buf = buf
-	return buf, nil
-}
-
-func encodeIndent(ctx *encoder.RuntimeContext, v any, prefix, indent string) ([]byte, error) {
-	b := ctx.Buf[:0]
-	if v == nil {
-		b = encoder.AppendNull(ctx, b)
-		b = encoder.AppendCommaIndent(ctx, b)
-		return b, nil
-	}
-	header := (*emptyInterface)(unsafe.Pointer(&v))
-	typ := header.typ
-
-	typeptr := uintptr(typ)
-	codeSet, err := encoder.CompileToGetCodeSet(ctx, typeptr)
-	if err != nil {
-		return nil, err
-	}
-
-	p := ctx.ValueAddr(codeSet, header.ptr)
-	if p == nil {
-		// only a nil pointer has no address of the value.
-		b = encoder.AppendNull(ctx, b)
-		b = encoder.AppendCommaIndent(ctx, b)
-		return b, nil
-	}
-	ctx.Init(p, codeSet.CodeLength)
-	buf, err := encodeRunIndentCode(ctx, b, codeSet, prefix, indent)
-	// the VM refers to the value by uintptr.
-	runtime.KeepAlive(v)
-
-	if err != nil {
-		return nil, err
-	}
-
-	ctx.Buf = buf
-	return buf, nil
-}
-
-func encodeRunCode(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]byte, error) {
-	if (ctx.Option.Flag & encoder.DebugOption) != 0 {
-		if (ctx.Option.Flag & encoder.ColorizeOption) != 0 {
-			return vm_color.DebugRun(ctx, b, codeSet)
-		}
-		return vm.DebugRun(ctx, b, codeSet)
-	}
-	if (ctx.Option.Flag & encoder.ColorizeOption) != 0 {
-		return vm_color.Run(ctx, b, codeSet)
-	}
-	return vm.Run(ctx, b, codeSet)
-}
-
-func encodeRunIndentCode(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet, prefix, indent string) ([]byte, error) {
-	ctx.Prefix = []byte(prefix)
-	ctx.IndentStr = []byte(indent)
-	if (ctx.Option.Flag & encoder.DebugOption) != 0 {
-		if (ctx.Option.Flag & encoder.ColorizeOption) != 0 {
-			return vm_color_indent.DebugRun(ctx, b, codeSet)
-		}
-		return vm_indent.DebugRun(ctx, b, codeSet)
-	}
-	if (ctx.Option.Flag & encoder.ColorizeOption) != 0 {
-		return vm_color_indent.Run(ctx, b, codeSet)
-	}
-	return vm_indent.Run(ctx, b, codeSet)
 }

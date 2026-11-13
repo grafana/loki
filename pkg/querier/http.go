@@ -27,9 +27,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -89,7 +90,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
 	// do not allow log selector expression (aka log query) as instant query
 	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
-		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+		return logqlmodel.Result{}, logqlerr.ErrUnsupportedSyntaxForInstantQuery
 	}
 
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
@@ -118,8 +119,8 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		return nil, err
 	}
 
-	if resp != nil && q.metricAggregationEnabled(ctx) {
-		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
+	if resp != nil && !req.Values {
+		resp.Values = slices.DeleteFunc(resp.Values, constants.IsInternalLabel)
 	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
@@ -291,7 +292,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep())*time.Millisecond, strconv.Itoa(status), statResult)
 
 	return resp, nil
 }
@@ -356,31 +357,14 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 }
 
 func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
-	for i := 0; i < len(resp.Series); i++ {
-		keys := make([]string, 0, len(resp.Series[i].Labels))
-		for _, label := range resp.Series[i].Labels {
-			keys = append(keys, label.Key)
-		}
-
-		if slices.Contains(keys, constants.AggregatedMetricLabel) || slices.Contains(keys, constants.PatternLabel) {
-			resp.Series = slices.Delete(resp.Series, i, i+1)
-			i--
-		}
-	}
-
+	resp.Series = slices.DeleteFunc(resp.Series, isPatternIngesterSeries)
 	return resp
 }
 
-func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
-	newLabels := make([]string, 0, len(labels))
-	for _, label := range labels {
-		if label == constants.AggregatedMetricLabel || label == constants.PatternLabel {
-			continue
-		}
-		newLabels = append(newLabels, label)
-	}
-
-	return newLabels
+func isPatternIngesterSeries(s logproto.SeriesIdentifier) bool {
+	return constants.IsPatternIngesterStream(func(name string) bool {
+		return slices.ContainsFunc(s.Labels, func(l logproto.SeriesIdentifier_LabelsEntry) bool { return l.Key == name })
+	})
 }
 
 func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
@@ -620,6 +604,11 @@ func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.De
 	resp, err := q.querier.DetectedLabels(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if resp != nil {
+		resp.DetectedLabels = slices.DeleteFunc(resp.DetectedLabels, func(l *logproto.DetectedLabel) bool {
+			return constants.IsInternalLabel(l.GetLabel())
+		})
 	}
 	return resp, nil
 }

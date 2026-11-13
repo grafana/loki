@@ -31,17 +31,22 @@ type Category struct {
 	Cat    string
 }
 
-// Keep the public Category representation unchanged. Shared ECMAScript sets
-// are immutable and can be retained when a character set is copied or merged.
+// Keep the public Category representation and serialized form unchanged.
+// Resolve membership data when constructing or deserializing a category so
+// matching does not need a name lookup. Both tables and ECMAScript sets are
+// immutable and can be shared when a character set is copied or merged.
 type charCategory struct {
 	Category
-	set *CharSet
+	set   *CharSet
+	table *unicode.RangeTable
 }
 
 func newCharCategory(category Category) charCategory {
 	ct := charCategory{Category: category}
 	if strings.HasPrefix(category.Cat, ecmaPropertyPrefix) {
 		ct.set = ecmaPropertySet(category.Cat)
+	} else if category.Cat != WordCategoryText && category.Cat != SpaceCategoryText {
+		ct.table, _ = lookupUnicodeCategory(category.Cat)
 	}
 	return ct
 }
@@ -88,26 +93,25 @@ var (
 	NotNewLineClass = getCharSetFromOldString([]rune{0x0a, 0x0b}, true)
 )
 
-var unicodeCategories = func() map[string]*unicode.RangeTable {
-	retVal := make(map[string]*unicode.RangeTable)
-	for k, v := range unicode.Scripts {
-		retVal[k] = v
+// lookupUnicodeCategory searches the source tables without building a merged
+// map at startup. Preserve the old map's overwrite precedence: generated
+// properties override Go properties, category aliases, categories, and scripts.
+func lookupUnicodeCategory(name string) (*unicode.RangeTable, bool) {
+	if table, ok := unicodeAliasCategories[name]; ok {
+		return table, true
 	}
-	for k, v := range unicode.Categories {
-		retVal[k] = v
+	if table, ok := unicode.Properties[name]; ok {
+		return table, true
 	}
-	// aliases are just pointers to the original keys
-	for k, v := range unicode.CategoryAliases {
-		retVal[k] = unicode.Categories[v]
+	if canonical, ok := unicode.CategoryAliases[name]; ok {
+		return unicode.Categories[canonical], true
 	}
-	for k, v := range unicode.Properties {
-		retVal[k] = v
+	if table, ok := unicode.Categories[name]; ok {
+		return table, true
 	}
-	for k, v := range unicodeAliasCategories {
-		retVal[k] = v
-	}
-	return retVal
-}()
+	table, ok := unicode.Scripts[name]
+	return table, ok
+}
 
 func getCharSetFromCategoryString(negateSet bool, negateCat bool, cats ...string) func() *CharSet {
 	if negateCat && negateSet {
@@ -416,7 +420,7 @@ func (c *CharSet) charInCategories(ch rune) bool {
 			} else if ct.Negate {
 				return true
 			}
-		} else if unicode.Is(unicodeCategories[ct.Cat], ch) {
+		} else if unicode.Is(ct.table, ch) {
 			// if we're in this unicode category then we're done
 			// if negate=true on this category then we "failed" our test
 			// otherwise we're good that we found it
@@ -448,7 +452,7 @@ func (c Category) String() string {
 		}
 		return "\\w"
 	}
-	if _, ok := unicodeCategories[c.Cat]; ok {
+	if _, ok := lookupUnicodeCategory(c.Cat); ok {
 
 		if c.Negate {
 			return "\\P{" + c.Cat + "}"
@@ -489,12 +493,47 @@ func IsWordChar(r rune) bool {
 	//return 'A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' || '0' <= r && r <= '9' || r == '_'
 }
 
+// IsECMAWordChar reports whether r is a letter, nonspacing mark, decimal
+// digit or connector punctuation. This is the classification that
+// Runner.IsECMABoundary keeps for existing generated code.
+//
+// Deprecated: IsECMAWordChar is not the ECMAScript word character set; use
+// IsECMAWordCharWithOptions.
 func IsECMAWordChar(r rune) bool {
 	return unicode.In(r,
 		unicode.Categories["L"], unicode.Categories["Mn"],
 		unicode.Categories["Nd"], unicode.Categories["Pc"])
 
 	//return 'A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' || '0' <= r && r <= '9' || r == '_'
+}
+
+// IsECMAWordCharWithOptions reports whether r is in the ECMAScript
+// WordCharacters that \w, \b and \B are defined by, for a \b or \B with the
+// given options: [A-Za-z0-9_], plus U+017F and U+212A (whose simple case folds
+// are 's' and 'k') with both IgnoreCase and Unicode.
+func IsECMAWordCharWithOptions(options RegexOptions, r rune) bool {
+	return 'A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' || '0' <= r && r <= '9' || r == '_' ||
+		(r == '\u017F' || r == '\u212A') && hasECMAWordCharExtras(options)
+}
+
+func hasECMAWordCharExtras(options RegexOptions) bool {
+	return options&(IgnoreCase|Unicode) == IgnoreCase|Unicode
+}
+
+// IsECMALineTerminator reports whether r is an ECMAScript LineTerminator:
+// LF, CR, LINE SEPARATOR or PARAGRAPH SEPARATOR.
+func IsECMALineTerminator(r rune) bool {
+	return r == '\n' || r == '\r' || r == '\u2028' || r == '\u2029'
+}
+
+// IsLineBreak reports whether r ends a line for the ^ and $ anchors in
+// Multiline mode. Only LF does, except in ECMAScript mode, where every
+// LineTerminator does.
+func IsLineBreak(options RegexOptions, r rune) bool {
+	if options&ECMAScript != 0 {
+		return IsECMALineTerminator(r)
+	}
+	return r == '\n'
 }
 
 func IsECMAIdentifierStartChar(r rune) bool {
@@ -688,7 +727,7 @@ func normalizeUnicodeCategoryAlias(catName string) string {
 }
 
 func canonicalUnicodeCatName(catName string) (string, bool) {
-	if _, ok := unicodeCategories[catName]; ok {
+	if _, ok := lookupUnicodeCategory(catName); ok {
 		return catName, true
 	}
 
@@ -716,7 +755,7 @@ func canonicalUnicodeCatName(catName string) (string, bool) {
 			return "", false
 		}
 		canonical := prop + "=" + value
-		if _, ok := unicodeCategories[canonical]; ok {
+		if _, ok := lookupUnicodeCategory(canonical); ok {
 			return canonical, true
 		}
 	}
@@ -745,7 +784,7 @@ func (c *CharSet) addCategory(categoryName string, negate, caseInsensitive bool)
 
 // Adds to the class any case-equivalence versions of characters already
 // in the class. Used for case-insensitivity.
-func (c *CharSet) addCaseEquivalences() {
+func (c *CharSet) addCaseEquivalences(options RegexOptions) {
 	// we already have all case equiv
 	if c.anything {
 		return
@@ -756,7 +795,7 @@ func (c *CharSet) addCaseEquivalences() {
 		// For a single range that's in the set, adds any additional ranges
 		// necessary to ensure that lowercase equivalents are also included.
 		for i := r.First; i <= r.Last; i++ {
-			equiv := tryFindCaseEquivalences(i)
+			equiv := tryFindCaseEquivalences(i, options)
 			for _, eq := range equiv {
 				c.ranges = append(c.ranges, SingleRange{First: eq, Last: eq})
 			}
@@ -767,20 +806,75 @@ func (c *CharSet) addCaseEquivalences() {
 
 // Performs a fast lookup which determines if a character is involved in case conversion, as well as
 // returns the OTHER characters that should be considered equivalent in case it does participate in case conversion.
-func tryFindCaseEquivalences(ch rune) []rune {
+func tryFindCaseEquivalences(ch rune, options RegexOptions) []rune {
 	newCh := unicode.SimpleFold(ch)
 	if newCh == ch {
 		// no case support
 		return nil
 	}
-	equiv := []rune{newCh}
-	for {
-		newCh = unicode.SimpleFold(newCh)
-		if newCh == ch {
-			return equiv
+	var equiv []rune
+	legacyECMA := options&ECMAScript != 0 && options&Unicode == 0
+	for ; newCh != ch; newCh = unicode.SimpleFold(newCh) {
+		if !legacyECMA || ecmaLegacyCase(ch) == ecmaLegacyCase(newCh) {
+			equiv = append(equiv, newCh)
 		}
-		equiv = append(equiv, newCh)
 	}
+	return equiv
+}
+
+// IsCaseEquivalent reports whether two runes match ignoring case. It uses
+// Unicode simple folding except in legacy ECMAScript mode, which uses
+// single-code-unit uppercase mappings. Only ECMAScript and Unicode in options
+// affect the comparison; callers decide whether IgnoreCase is enabled.
+func IsCaseEquivalent(a, b rune, options RegexOptions) bool {
+	if a == b {
+		return true
+	}
+	if options&ECMAScript != 0 && options&Unicode == 0 {
+		return ecmaLegacyCase(a) == ecmaLegacyCase(b)
+	}
+	for folded := unicode.SimpleFold(a); folded != a; folded = unicode.SimpleFold(folded) {
+		if folded == b {
+			return true
+		}
+	}
+	return false
+}
+
+// Legacy ECMAScript /i compares single UTF-16-unit uppercase mappings, not
+// Unicode simple folds. Non-ASCII characters must never map to ASCII.
+// https://tc39.es/ecma262/#sec-runtime-semantics-canonicalize-ch
+func ecmaLegacyCase(ch rune) rune {
+	// These Greek simple-fold pairs have multi-character full uppercase
+	// mappings (Greek letter + iota), so legacy /i keeps each character distinct.
+	// Other multi-character uppercase mappings do not share an uppercase value
+	// with another member of their simple-fold cycle (e.g. sharp s).
+	if ch > 0xffff || ch >= 0x1f80 && ch <= 0x1faf ||
+		ch == 0x1fb3 || ch == 0x1fbc || ch == 0x1fc3 || ch == 0x1fcc || ch == 0x1ff3 || ch == 0x1ffc {
+		return ch
+	}
+	upper := unicode.ToUpper(ch)
+	if ch >= 128 && upper < 128 {
+		return ch
+	}
+	return upper
+}
+
+func ecmaWordClass(options RegexOptions, negate bool) *CharSet {
+	if options&(Unicode|IgnoreCase) != Unicode|IgnoreCase {
+		if negate {
+			return NotECMAWordClass()
+		}
+		return ECMAWordClass()
+	}
+	set := ECMAWordClass().Copy()
+	set.addCaseEquivalences(options)
+	if negate {
+		// \W complements the case-closed word set, rather than folding the
+		// complement of the ASCII set (which would bring K and S back in).
+		set.ranges = appendECMAComplement(nil, set.ranges)
+	}
+	return &set
 }
 
 func (c *CharSet) addSubtraction(sub *CharSet) {
@@ -896,6 +990,16 @@ func (c *CharSet) canonicalize() {
 		c.ranges = append(c.ranges[:j], c.ranges[len(c.ranges):]...)
 	}
 
+	// A full range makes categories redundant without changing the set's polarity.
+	if !c.negate && c.sub == nil && len(c.ranges) == 1 &&
+		c.ranges[0].First == 0 && c.ranges[0].Last >= unicode.MaxRune {
+		c.makeAnything()
+	}
+}
+
+// simplify reduces a completed set. Unlike canonicalize, it may change the
+// set's polarity, so it must not run while class members are still being added.
+func (c *CharSet) simplify() {
 	// If the class now represents a single negated range, but does so by including every
 	// other character, invert it to produce a normalized form with a single range.  This
 	// is valuable for subsequent optimizations in most of the engines.
@@ -914,26 +1018,17 @@ func (c *CharSet) canonicalize() {
 			case 0:
 				// There's only one range in the list.  Does it include everything but the last char?
 				if c.ranges[0].Last == unicode.MaxRune-1 {
-					c.ranges[0] = SingleRange{unicode.MaxRune, unicode.MaxRune}
+					c.ranges = []SingleRange{{unicode.MaxRune, unicode.MaxRune}}
 					c.negate = true
 				}
 			case 1:
 				// Or everything but the first char?
 				if c.ranges[0].Last >= unicode.MaxRune {
-					c.ranges[0] = SingleRange{'\x00', '\x00'}
+					c.ranges = []SingleRange{{'\x00', '\x00'}}
 					c.negate = true
 				}
 			}
 		}
-	}
-
-	// If the class now has a range that includes everything, and if it doesn't have subtraction,
-	// we can remove all of its categories, as they're duplicative (the set already includes everything).
-	if !c.negate &&
-		c.sub == nil &&
-		len(c.ranges) == 1 && c.ranges[0].First == 0 && c.ranges[0].Last >= unicode.MaxRune {
-
-		c.makeAnything()
 	}
 
 	// If there's only a single character omitted from ranges, if there's no subtractor, and if there are categories,

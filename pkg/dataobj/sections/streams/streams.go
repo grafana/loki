@@ -8,14 +8,18 @@ import (
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "streams",
+	Namespace: format.SectionNamespace,
+	Kind:      format.StreamsSectionKind,
 	Version:   columnar.FormatVersion,
 }
+
+// SectionType returns the type of streams sections.
+func SectionType() dataobj.SectionType { return sectionType }
 
 // CheckSection returns true if section is a streams section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }

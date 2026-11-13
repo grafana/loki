@@ -13,16 +13,17 @@ import (
 func _fts5DoclistIterNext(tls *libc.TLS, pIter uintptr) {
 	bp := tls.Alloc(16)
 	defer tls.Free(16)
-	var p uintptr
-	var _ /* iDelta at bp+0 */ Ti64
+	var p, v1 uintptr
+	var _ /* iDelta at bp+0 */ Tu64
 	var _ /* nPos at bp+8 */ int32
-	_ = p
+	_, _ = p, v1
 	p = (*TFts5DoclistIter)(unsafe.Pointer(pIter)).FaPoslist + uintptr((*TFts5DoclistIter)(unsafe.Pointer(pIter)).FnSize) + uintptr((*TFts5DoclistIter)(unsafe.Pointer(pIter)).FnPoslist)
 	if p >= (*TFts5DoclistIter)(unsafe.Pointer(pIter)).FaEof {
 		(*TFts5DoclistIter)(unsafe.Pointer(pIter)).FaPoslist = uintptr(0)
 	} else {
 		p = p + uintptr(_sqlite3Fts5GetVarint(tls, p, bp))
-		**(**Ti64)(__ccgo_up(pIter + 8)) += **(**Ti64)(__ccgo_up(bp))
+		v1 = pIter + 8
+		*(*Ti64)(unsafe.Pointer(v1)) = Ti64(uint64(*(*Ti64)(unsafe.Pointer(v1))) + **(**Tu64)(__ccgo_up(bp)))
 		/* Read position list size */
 		if libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p)))&int32(0x80) != 0 {
 			(*TFts5DoclistIter)(unsafe.Pointer(pIter)).FnSize = _sqlite3Fts5GetVarint32(tls, p, bp+8)

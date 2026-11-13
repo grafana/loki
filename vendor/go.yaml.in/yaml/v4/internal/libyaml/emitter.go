@@ -30,30 +30,49 @@ type WriteHandler func(emitter *Emitter, buffer []byte) error
 // EmitterState represents the current state of the emitter.
 type EmitterState int
 
-// The emitter states.
+// Possible [EmitterState] values.  The transitions between these states are managed internally by the emitter.
 const (
-	// Expect STREAM-START.
+	// EMIT_STREAM_START_STATE expects STREAM-START.
 	EMIT_STREAM_START_STATE EmitterState = iota
 
-	EMIT_FIRST_DOCUMENT_START_STATE       // Expect the first DOCUMENT-START or STREAM-END.
-	EMIT_DOCUMENT_START_STATE             // Expect DOCUMENT-START or STREAM-END.
-	EMIT_DOCUMENT_CONTENT_STATE           // Expect the content of a document.
-	EMIT_DOCUMENT_END_STATE               // Expect DOCUMENT-END.
-	EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE   // Expect the first item of a flow sequence.
-	EMIT_FLOW_SEQUENCE_TRAIL_ITEM_STATE   // Expect the next item of a flow sequence, with the comma already written out
-	EMIT_FLOW_SEQUENCE_ITEM_STATE         // Expect an item of a flow sequence.
-	EMIT_FLOW_MAPPING_FIRST_KEY_STATE     // Expect the first key of a flow mapping.
-	EMIT_FLOW_MAPPING_TRAIL_KEY_STATE     // Expect the next key of a flow mapping, with the comma already written out
-	EMIT_FLOW_MAPPING_KEY_STATE           // Expect a key of a flow mapping.
-	EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE  // Expect a value for a simple key of a flow mapping.
-	EMIT_FLOW_MAPPING_VALUE_STATE         // Expect a value of a flow mapping.
-	EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE  // Expect the first item of a block sequence.
-	EMIT_BLOCK_SEQUENCE_ITEM_STATE        // Expect an item of a block sequence.
-	EMIT_BLOCK_MAPPING_FIRST_KEY_STATE    // Expect the first key of a block mapping.
-	EMIT_BLOCK_MAPPING_KEY_STATE          // Expect the key of a block mapping.
-	EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE // Expect a value for a simple key of a block mapping.
-	EMIT_BLOCK_MAPPING_VALUE_STATE        // Expect a value of a block mapping.
-	EMIT_END_STATE                        // Expect nothing.
+	// EMIT_FIRST_DOCUMENT_START_STATE expects the first DOCUMENT-START or STREAM-END.
+	EMIT_FIRST_DOCUMENT_START_STATE
+	// EMIT_DOCUMENT_START_STATE expects DOCUMENT-START.
+	EMIT_DOCUMENT_START_STATE
+	// EMIT_DOCUMENT_CONTENT_STATE expects the content of a document.
+	EMIT_DOCUMENT_CONTENT_STATE
+	// EMIT_DOCUMENT_END_STATE expects DOCUMENT-END.
+	EMIT_DOCUMENT_END_STATE
+	// EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE expects the first item of a flow sequence.
+	EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE
+	// EMIT_FLOW_SEQUENCE_TRAIL_ITEM_STATE expects the next item of a flow sequence, with the comma already written out.
+	EMIT_FLOW_SEQUENCE_TRAIL_ITEM_STATE
+	// EMIT_FLOW_SEQUENCE_ITEM_STATE expects an item of a flow sequence.
+	EMIT_FLOW_SEQUENCE_ITEM_STATE
+	// EMIT_FLOW_MAPPING_FIRST_KEY_STATE expects the first key of a flow mapping.
+	EMIT_FLOW_MAPPING_FIRST_KEY_STATE
+	// EMIT_FLOW_MAPPING_TRAIL_KEY_STATE expects the next key of a flow mapping, with the comma already written out
+	EMIT_FLOW_MAPPING_TRAIL_KEY_STATE
+	// EMIT_FLOW_MAPPING_KEY_STATE expects a key of a flow mapping.
+	EMIT_FLOW_MAPPING_KEY_STATE
+	// EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE expects a value for a simple key of a flow mapping.
+	EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE
+	// EMIT_FLOW_MAPPING_VALUE_STATE expects a value of a flow mapping.
+	EMIT_FLOW_MAPPING_VALUE_STATE
+	// EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE expects the first item of a block sequence.
+	EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE
+	// EMIT_BLOCK_SEQUENCE_ITEM_STATE expects an item of a block sequence.
+	EMIT_BLOCK_SEQUENCE_ITEM_STATE
+	// EMIT_BLOCK_MAPPING_FIRST_KEY_STATE expects the first key of a block mapping.
+	EMIT_BLOCK_MAPPING_FIRST_KEY_STATE
+	// EMIT_BLOCK_MAPPING_KEY_STATE expects the key of a block mapping.
+	EMIT_BLOCK_MAPPING_KEY_STATE
+	// EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE expects a value for a simple key of a block mapping.
+	EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE
+	// EMIT_BLOCK_MAPPING_VALUE_STATE expects a value of a block mapping.
+	EMIT_BLOCK_MAPPING_VALUE_STATE
+	// EMIT_END_STATE expects nothing.
+	EMIT_END_STATE
 )
 
 // Emitter holds all information about the current state of the emitter.
@@ -72,8 +91,9 @@ type Emitter struct {
 
 	// Emitter stuff
 
-	canonical       bool       // If the output is in the canonical style?
-	BestIndent      int        // The number of indentation spaces.
+	canonical bool // If the output is in the canonical style?
+	// BestIndent is the number of spaces to use for indentation.
+	BestIndent      int
 	best_width      int        // The preferred width of the output lines.
 	unicode         bool       // Allow unescaped non-ASCII characters?
 	line_break      LineBreak  // The preferred line break.
@@ -91,7 +111,9 @@ type Emitter struct {
 
 	indent int // The current indentation level.
 
-	CompactSequenceIndent bool // Is '- ' is considered part of the indentation for sequence elements?
+	// CompactSequenceIndent is true if the '- ' is considered part of the indentation for sequence elements.
+	CompactSequenceIndent bool
+	tabIndent             bool // Use tabs for structural indentation.
 
 	flow_level int // The current flow level.
 
@@ -104,7 +126,9 @@ type Emitter struct {
 	column     int  // The current column.
 	whitespace bool // If the last character was a whitespace?
 	indention  bool // If the last character was an indentation character (' ', '-', '?', ':')?
-	OpenEnded  bool // If an explicit document end is required?
+
+	// OpenEnded is true if an explicit document end is required.
+	OpenEnded bool
 
 	space_above bool // Is there's an empty line above?
 	foot_indent int  // The indent used to write the foot comment above, or -1 if none.
@@ -454,7 +478,9 @@ func (emitter *Emitter) emitDocumentStart(event *Event, first bool) error {
 			if err := emitter.writeIndicator([]byte("%YAML"), true, false, false); err != nil {
 				return err
 			}
-			if err := emitter.writeIndicator([]byte("1.1"), true, false, false); err != nil {
+			version := fmt.Sprintf("%d.%d", event.versionDirective.major,
+				event.versionDirective.minor)
+			if err := emitter.writeIndicator([]byte(version), true, false, false); err != nil {
 				return err
 			}
 			if err := emitter.writeIndent(); err != nil {
@@ -602,6 +628,11 @@ func (emitter *Emitter) emitFlowSequenceItem(event *Event, first, trail bool) er
 				return err
 			}
 		}
+		// Interior comments of an empty flow sequence are held as HeadComment
+		// on START; write them after '[' and before ']'.
+		if err := emitter.processHeadComment(); err != nil {
+			return err
+		}
 		emitter.flow_level--
 		emitter.indent = emitter.indents[len(emitter.indents)-1]
 		emitter.indents = emitter.indents[:len(emitter.indents)-1]
@@ -680,9 +711,9 @@ func (emitter *Emitter) emitFlowMappingKey(event *Event, first, trail bool) erro
 	}
 
 	if event.Type == MAPPING_END_EVENT {
-		if (emitter.canonical ||
-			len(emitter.HeadComment)+len(emitter.FootComment)+len(emitter.TailComment) > 0) &&
-			!first && !trail {
+		// Pending comments never require a separator here: foot comments are
+		// written after '}' and head/tail comments always start on a new line.
+		if emitter.canonical && !first && !trail {
 			if err := emitter.writeIndicator([]byte{','}, false, false, false); err != nil {
 				return err
 			}
@@ -942,7 +973,7 @@ func (emitter *Emitter) emitNode(event *Event,
 
 	switch event.Type {
 	case ALIAS_EVENT:
-		return emitter.emitAlias(event)
+		return emitter.emitAlias()
 	case SCALAR_EVENT:
 		return emitter.emitScalar(event)
 	case SEQUENCE_START_EVENT:
@@ -957,7 +988,7 @@ func (emitter *Emitter) emitNode(event *Event,
 }
 
 // Expect ALIAS.
-func (emitter *Emitter) emitAlias(event *Event) error {
+func (emitter *Emitter) emitAlias() error {
 	if err := emitter.processAnchor(); err != nil {
 		return err
 	}
@@ -998,6 +1029,14 @@ func (emitter *Emitter) emitSequenceStart(event *Event) error {
 	if err := emitter.processTag(); err != nil {
 		return err
 	}
+	if emitter.tabIndent && emitter.sequence_context &&
+		emitter.flow_level == 0 && !emitter.canonical &&
+		event.SequenceStyle() != FLOW_SEQUENCE_STYLE &&
+		!emitter.checkEmptySequence() && emitter.column > 0 {
+		if err := emitter.putLineBreak(); err != nil {
+			return err
+		}
+	}
 	if emitter.flow_level > 0 || emitter.canonical ||
 		event.SequenceStyle() == FLOW_SEQUENCE_STYLE ||
 		emitter.checkEmptySequence() {
@@ -1005,6 +1044,7 @@ func (emitter *Emitter) emitSequenceStart(event *Event) error {
 	} else {
 		emitter.state = EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE
 	}
+	emitter.holdEmptyFlowCollectionComment()
 	return nil
 }
 
@@ -1016,6 +1056,14 @@ func (emitter *Emitter) emitMappingStart(event *Event) error {
 	if err := emitter.processTag(); err != nil {
 		return err
 	}
+	if emitter.tabIndent && emitter.sequence_context &&
+		emitter.flow_level == 0 && !emitter.canonical &&
+		event.MappingStyle() != FLOW_MAPPING_STYLE &&
+		!emitter.checkEmptyMapping() && emitter.column > 0 {
+		if err := emitter.putLineBreak(); err != nil {
+			return err
+		}
+	}
 	if emitter.flow_level > 0 || emitter.canonical ||
 		event.MappingStyle() == FLOW_MAPPING_STYLE ||
 		emitter.checkEmptyMapping() {
@@ -1023,7 +1071,34 @@ func (emitter *Emitter) emitMappingStart(event *Event) error {
 	} else {
 		emitter.state = EMIT_BLOCK_MAPPING_FIRST_KEY_STATE
 	}
+	emitter.holdEmptyFlowCollectionComment()
 	return nil
+}
+
+// holdEmptyFlowCollectionComment keeps an interior comment of an otherwise-
+// empty flow collection from being flushed by the caller of emitNode.
+//
+// The parser attaches that comment as FootComment on the START event because
+// there is no key/value event to carry it. emitNode only switches state, so
+// the caller would write the foot comment before the matching END event
+// writes '{' or '['. Reclassify it as HeadComment so it is emitted inside
+// the collection after the opening indicator.
+func (emitter *Emitter) holdEmptyFlowCollectionComment() {
+	if len(emitter.FootComment) == 0 || len(emitter.HeadComment) != 0 {
+		return
+	}
+	var empty bool
+	switch emitter.events[emitter.events_head].Type {
+	case SEQUENCE_START_EVENT:
+		empty = emitter.checkEmptySequence()
+	case MAPPING_START_EVENT:
+		empty = emitter.checkEmptyMapping()
+	}
+	if !empty {
+		return
+	}
+	emitter.HeadComment = emitter.FootComment
+	emitter.FootComment = nil
 }
 
 // Check if the document content is an empty scalar.
@@ -1284,7 +1359,8 @@ func (emitter *Emitter) analyzeAnchor(anchor []byte, alias bool) error {
 		}
 	}
 	for i := 0; i < len(anchor); i += width(anchor[i]) {
-		if !isAnchorChar(anchor, i) {
+		if !isAnchorChar(anchor, i) ||
+			(isColon(anchor, i) && i+1 == len(anchor)) {
 			problem := "anchor value must contain valid characters only"
 			if alias {
 				problem = "alias value must contain valid characters only"
@@ -1445,9 +1521,6 @@ func (emitter *Emitter) analyzeScalar(value []byte) error {
 		emitter.scalar_data.flow_plain_allowed = false
 		emitter.scalar_data.block_plain_allowed = false
 	}
-	if trailing_space {
-		emitter.scalar_data.block_allowed = false
-	}
 	if break_space {
 		emitter.scalar_data.flow_plain_allowed = false
 		emitter.scalar_data.block_plain_allowed = false
@@ -1458,7 +1531,7 @@ func (emitter *Emitter) analyzeScalar(value []byte) error {
 		emitter.scalar_data.block_plain_allowed = false
 		emitter.scalar_data.single_quoted_allowed = false
 	}
-	if space_break || special_characters {
+	if special_characters {
 		emitter.scalar_data.block_allowed = false
 	}
 	if line_breaks {
@@ -1625,14 +1698,34 @@ func (emitter *Emitter) writeIndent() error {
 			return err
 		}
 	}
+	atLineStart := emitter.column == 0
 	for emitter.column < indent {
-		if err := emitter.put(' '); err != nil {
+		value := byte(' ')
+		width := 1
+		if emitter.tabIndent && atLineStart &&
+			emitter.column+emitter.BestIndent <= indent {
+			value = '\t'
+			width = emitter.BestIndent
+		}
+		if err := emitter.putIndent(value, width); err != nil {
 			return err
 		}
 	}
 	emitter.whitespace = true
 	emitter.space_above = false
 	emitter.foot_indent = -1
+	return nil
+}
+
+func (emitter *Emitter) putIndent(value byte, width int) error {
+	if emitter.buffer_pos+5 >= len(emitter.buffer) {
+		if err := emitter.flush(); err != nil {
+			return err
+		}
+	}
+	emitter.buffer[emitter.buffer_pos] = value
+	emitter.buffer_pos++
+	emitter.column += width
 	return nil
 }
 
@@ -1985,11 +2078,42 @@ func (emitter *Emitter) writeDoubleQuotedScalar(value []byte, allow_breaks bool)
 // writeBlockScalarHints writes the indentation and chomping indicators for
 // block scalars.
 func (emitter *Emitter) writeBlockScalarHints(value []byte) error {
-	if isSpace(value, 0) {
-		// https://github.com/yaml/go-yaml/issues/65
-		// isLineBreak(value, 0) removed as the linebreak will only
-		// write the indentation value.
-		indent_hint := []byte{'0' + byte(emitter.BestIndent)}
+	// A parser infers a block scalar's indentation from its first non-empty
+	// line, so an explicit indentation indicator is needed whenever that line
+	// begins with a space or a tab: the scanner accepts a tab in the
+	// indentation only once it is explicit. Leading line breaks only produce
+	// empty lines, which carry no indentation of their own, so skip past them
+	// first: this keeps the #65 behavior (no indicator when the first content
+	// line is not indented) while covering leading-blank-then-indented
+	// scalars.
+	// https://github.com/yaml/go-yaml/issues/65
+	// https://github.com/yaml/go-yaml/issues/76
+	// https://github.com/yaml/go-yaml/issues/383
+	i := 0
+	for i < len(value) && isLineBreak(value, i) {
+		i += width(value[i])
+	}
+	if i < len(value) && isBlank(value, i) {
+		// The indicator is the content's indentation relative to the parent
+		// node, not BestIndent: a block sequence item only adds 2 columns, so
+		// emitting BestIndent produces an unparsable document. It must also be
+		// a single digit 1..9, so clamp it to that range and align the actual
+		// content indentation to the clamped value; that keeps the document
+		// valid and round-trippable even when a caller requests a wider indent
+		// (e.g. SetIndent(10)).
+		// https://github.com/go-yaml/yaml/issues/1071
+		parent_indent := 0
+		if n := len(emitter.indents); n > 0 && emitter.indents[n-1] > 0 {
+			parent_indent = emitter.indents[n-1]
+		}
+		indent := emitter.indent - parent_indent
+		if indent < 1 {
+			indent = 1
+		} else if indent > 9 {
+			indent = 9
+		}
+		emitter.indent = parent_indent + indent
+		indent_hint := []byte{'0' + byte(indent)}
 		if err := emitter.writeIndicator(indent_hint, false, false, false); err != nil {
 			return err
 		}
@@ -2086,11 +2210,11 @@ func (emitter *Emitter) writeFoldedScalar(value []byte) error {
 	for i := 0; i < len(value); {
 		if isLineBreak(value, i) {
 			if !breaks && !leading_spaces && value[i] == '\n' {
-				k := 0
-				for isLineBreak(value, k) {
+				k := i
+				for k < len(value) && isLineBreak(value, k) {
 					k += width(value[k])
 				}
-				if !isBlankOrZero(value, k) {
+				if k < len(value) && !isBlankOrZero(value, k) {
 					if err := emitter.putLineBreak(); err != nil {
 						return err
 					}
@@ -2107,8 +2231,9 @@ func (emitter *Emitter) writeFoldedScalar(value []byte) error {
 				}
 				leading_spaces = isBlank(value, i)
 			}
-			if !breaks && isSpace(value, i) &&
-				!isSpace(value, i+1) &&
+			if !breaks && !leading_spaces && isSpace(value, i) &&
+				i+1 < len(value) && !isLineBreak(value, i+1) &&
+				!isBlank(value, i+1) &&
 				emitter.column > emitter.best_width {
 				if err := emitter.writeIndent(); err != nil {
 					return err

@@ -289,7 +289,7 @@ func _disableLookaside(tls *libc.TLS, pParse uintptr) {
 	_ = db
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
 	(*TParse)(unsafe.Pointer(pParse)).FdisableLookaside = (*TParse)(unsafe.Pointer(pParse)).FdisableLookaside + 1
-	libc.Xmemset(tls, pParse+256, 0, uint64(32))
+	libc.Xmemset(tls, pParse+240, 0, uint64(32))
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable = (*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable + 1
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.Fsz = uint16(0)
 }
@@ -920,7 +920,7 @@ func _jsonAppendRawNZ(tls *libc.TLS, p uintptr, zIn uintptr, N Tu32) {
 //	*/
 func _jsonBlobMakeEditable(tls *libc.TLS, pParse uintptr, nExtra Tu32) (r int32) {
 	var aOld uintptr
-	var nSize Tu32
+	var nSize Tu64
 	_, _ = aOld, nSize
 	if (*TJsonParse)(unsafe.Pointer(pParse)).Foom != 0 {
 		return 0
@@ -929,7 +929,7 @@ func _jsonBlobMakeEditable(tls *libc.TLS, pParse uintptr, nExtra Tu32) (r int32)
 		return int32(1)
 	}
 	aOld = (*TJsonParse)(unsafe.Pointer(pParse)).FaBlob
-	nSize = (*TJsonParse)(unsafe.Pointer(pParse)).FnBlob + nExtra
+	nSize = uint64((*TJsonParse)(unsafe.Pointer(pParse)).FnBlob + nExtra)
 	(*TJsonParse)(unsafe.Pointer(pParse)).FaBlob = uintptr(0)
 	if _jsonBlobExpand(tls, pParse, nSize) != 0 {
 		return 0
@@ -1672,6 +1672,58 @@ func _rtreeOpen(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) (r int32) {
 // C documentation
 //
 //	/*
+//	** Convert an sqlite3_value into an RtreeValue (presumably a float)
+//	** while taking care to round toward negative or positive, respectively.
+//	*/
+func _rtreeValueDown(tls *libc.TLS, v uintptr) (r TRtreeValue) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var d float64
+	var v1 uint32
+	var _ /* f at bp+0 */ float32
+	var _ /* x at bp+4 */ uint32
+	_, _ = d, v1
+	d = Xsqlite3_value_double(tls, v)
+	**(**float32)(__ccgo_up(bp)) = float32(d)
+	if float64(**(**float32)(__ccgo_up(bp))) > d {
+		libc.Xmemcpy(tls, bp+4, bp, uint64(4))
+		if **(**uint32)(__ccgo_up(bp + 4))&uint32(0x80000000) != uint32(0) {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) + uint32(1)
+		} else {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) - uint32(1)
+		}
+		**(**uint32)(__ccgo_up(bp + 4)) = v1
+		libc.Xmemcpy(tls, bp, bp+4, uint64(4))
+	}
+	return **(**float32)(__ccgo_up(bp))
+}
+
+func _rtreeValueUp(tls *libc.TLS, v uintptr) (r TRtreeValue) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var d float64
+	var v1 uint32
+	var _ /* f at bp+0 */ float32
+	var _ /* x at bp+4 */ uint32
+	_, _ = d, v1
+	d = Xsqlite3_value_double(tls, v)
+	**(**float32)(__ccgo_up(bp)) = float32(d)
+	if float64(**(**float32)(__ccgo_up(bp))) < d {
+		libc.Xmemcpy(tls, bp+4, bp, uint64(4))
+		if **(**uint32)(__ccgo_up(bp + 4))&uint32(0x80000000) != uint32(0) {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) - uint32(1)
+		} else {
+			v1 = **(**uint32)(__ccgo_up(bp + 4)) + uint32(1)
+		}
+		**(**uint32)(__ccgo_up(bp + 4)) = v1
+		libc.Xmemcpy(tls, bp, bp+4, uint64(4))
+	}
+	return **(**float32)(__ccgo_up(bp))
+}
+
+// C documentation
+//
+//	/*
 //	** Iterate through each expression in expression-list pEList. For each:
 //	**
 //	**   * TK_COLUMN,
@@ -1802,10 +1854,10 @@ func _sqlite3CollapseDatabaseArray(tls *libc.TLS, db uintptr) {
 		i = i + 1
 	}
 	(*Tsqlite3)(unsafe.Pointer(db)).FnDb = j
-	if (*Tsqlite3)(unsafe.Pointer(db)).FnDb <= int32(2) && (*Tsqlite3)(unsafe.Pointer(db)).FaDb != db+696 {
-		libc.Xmemcpy(tls, db+696, (*Tsqlite3)(unsafe.Pointer(db)).FaDb, libc.Uint64FromInt32(2)*libc.Uint64FromInt64(32))
+	if (*Tsqlite3)(unsafe.Pointer(db)).FnDb <= int32(2) && (*Tsqlite3)(unsafe.Pointer(db)).FaDb != db+704 {
+		libc.Xmemcpy(tls, db+704, (*Tsqlite3)(unsafe.Pointer(db)).FaDb, libc.Uint64FromInt32(2)*libc.Uint64FromInt64(32))
 		_sqlite3DbFree(tls, db, (*Tsqlite3)(unsafe.Pointer(db)).FaDb)
-		(*Tsqlite3)(unsafe.Pointer(db)).FaDb = db + 696
+		(*Tsqlite3)(unsafe.Pointer(db)).FaDb = db + 704
 	}
 }
 
@@ -1914,6 +1966,16 @@ func _sqlite3FixSrcList(tls *libc.TLS, pFix uintptr, pList uintptr) (r int32) {
 func _sqlite3Fts5BufferFree(tls *libc.TLS, pBuf uintptr) {
 	Xsqlite3_free(tls, (*TFts5Buffer)(unsafe.Pointer(pBuf)).Fp)
 	libc.Xmemset(tls, pBuf, 0, uint64(16))
+}
+
+func _sqlite3FuncAuth(tls *libc.TLS, pParse uintptr, pExpr uintptr) {
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
+	var _ /* w at bp+0 */ TWalker
+	libc.Xmemset(tls, bp, 0, uint64(48))
+	(**(**TWalker)(__ccgo_up(bp))).FxExprCallback = __ccgo_fp(_authFunctions)
+	(**(**TWalker)(__ccgo_up(bp))).FpParse = pParse
+	_sqlite3WalkExpr(tls, bp, pExpr)
 }
 
 // C documentation
@@ -2146,33 +2208,17 @@ func _sqlite3Utf16to8(tls *libc.TLS, db uintptr, z uintptr, nByte int32, enc Tu8
 // C documentation
 //
 //	/*
-//	** Add an opcode that includes the p4 value with a P4_INT64 or
-//	** P4_REAL type.
-//	*/
-func _sqlite3VdbeAddOp4Dup8(tls *libc.TLS, p uintptr, op int32, p1 int32, p2 int32, p3 int32, zP4 uintptr, p4type int32) (r int32) {
-	var p4copy uintptr
-	_ = p4copy
-	p4copy = _sqlite3DbMallocRawNN(tls, _sqlite3VdbeDb(tls, p), uint64(8))
-	if p4copy != 0 {
-		libc.Xmemcpy(tls, p4copy, zP4, uint64(8))
-	}
-	return _sqlite3VdbeAddOp4(tls, p, op, p1, p2, p3, p4copy, p4type)
-}
-
-// C documentation
-//
-//	/*
 //	** Create a new virtual database engine.
 //	*/
 func _sqlite3VdbeCreate(tls *libc.TLS, pParse uintptr) (r uintptr) {
 	var db, p uintptr
 	_, _ = db, p
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-	p = _sqlite3DbMallocRawNN(tls, db, uint64(304))
+	p = _sqlite3DbMallocRawNN(tls, db, uint64(312))
 	if p == uintptr(0) {
 		return uintptr(0)
 	}
-	libc.Xmemset(tls, p+136, 0, libc.Uint64FromInt64(304)-uint64(libc.UintptrFromInt32(0)+136))
+	libc.Xmemset(tls, p+136, 0, libc.Uint64FromInt64(312)-uint64(libc.UintptrFromInt32(0)+136))
 	(*TVdbe)(unsafe.Pointer(p)).Fdb = db
 	if (*Tsqlite3)(unsafe.Pointer(db)).FpVdbe != 0 {
 		(*TVdbe)(unsafe.Pointer((*Tsqlite3)(unsafe.Pointer(db)).FpVdbe)).FppVPrev = p + 16
@@ -2259,6 +2305,27 @@ func _sqlite3VdbeMemMove(tls *libc.TLS, pTo uintptr, pFrom uintptr) {
 // C documentation
 //
 //	/*
+//	** Deserialize the REAL number pointed to by buf and store it in pMem.
+//	*/
+func _sqlite3VdbeSerialGet7(tls *libc.TLS, buf uintptr, pMem uintptr) (r int32) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var _ /* x at bp+0 */ Tu64
+	/* EVIDENCE-OF: R-57343-49114 Value is a big-endian IEEE 754-2008 64-bit
+	 ** floating point number. */
+	**(**Tu64)(__ccgo_up(bp)) = _sqlite3Get8byte(tls, buf)
+	libc.Xmemcpy(tls, pMem, bp, uint64(8))
+	if **(**Tu64)(__ccgo_up(bp))&(libc.Uint64FromInt32(0x7ff)<<libc.Int32FromInt32(52)) == libc.Uint64FromInt32(0x7ff)<<libc.Int32FromInt32(52) && **(**Tu64)(__ccgo_up(bp))&(libc.Uint64FromInt32(1)<<libc.Int32FromInt32(52)-libc.Uint64FromInt32(1)) != uint64(0) {
+		(*TMem)(unsafe.Pointer(pMem)).Fflags = uint16(MEM_Null)
+		return int32(1)
+	}
+	(*TMem)(unsafe.Pointer(pMem)).Fflags = uint16(MEM_Real)
+	return 0
+}
+
+// C documentation
+//
+//	/*
 //	** Swap byte-code between two VDBE structures.
 //	**
 //	** This happens after pB was previously run and returned
@@ -2284,7 +2351,8 @@ func _sqlite3VdbeSwap(tls *libc.TLS, pA uintptr, pB uintptr) {
 	zTmp = (*TVdbe)(unsafe.Pointer(pA)).FzSql
 	(*TVdbe)(unsafe.Pointer(pA)).FzSql = (*TVdbe)(unsafe.Pointer(pB)).FzSql
 	(*TVdbe)(unsafe.Pointer(pB)).FzSql = zTmp
-	(*TVdbe)(unsafe.Pointer(pB)).Fexpmask = (*TVdbe)(unsafe.Pointer(pA)).Fexpmask
+	**(**Tu32)(__ccgo_up(pB + 284)) |= (*TVdbe)(unsafe.Pointer(pA)).Fexpmask
+	**(**Tu32)(__ccgo_up(pB + 288)) |= (*TVdbe)(unsafe.Pointer(pA)).Fsmimask
 	(*TVdbe)(unsafe.Pointer(pB)).FprepFlags = (*TVdbe)(unsafe.Pointer(pA)).FprepFlags
 	libc.Xmemcpy(tls, pB+212, pA+212, uint64(36))
 	**(**Tu32)(__ccgo_up(pB + 212 + 5*4)) = **(**Tu32)(__ccgo_up(pB + 212 + 5*4)) + 1
@@ -2685,4 +2753,35 @@ func _windowRemoveExprFromSelect(tls *libc.TLS, pSelect uintptr, pExpr uintptr) 
 		*(*uintptr)(unsafe.Pointer(bp + 40)) = pSelect
 		_sqlite3WalkExpr(tls, bp, pExpr)
 	}
+}
+
+// C documentation
+//
+//	/*
+//	** Analyze CHECK constraints on the source and destination tables and
+//	** return true if those CHECK constraints are compatible with the
+//	** xfer-optimization.
+//	**
+//	**    *  The pDest and pSrc tables must have identical CHECK constraints.
+//	**
+//	**    *  If the destination table, pDest, does not have an
+//	**       INTEGER PRIMARY KEY column, then no CHECK constraint may
+//	**       referenced the ROWID.  (See forum post 2026-05-11T13:15:57Z)
+//	*/
+func _xferCompatibleCheck(tls *libc.TLS, pDest uintptr, pSrc uintptr) (r int32) {
+	bp := tls.Alloc(48)
+	defer tls.Free(48)
+	var _ /* w at bp+0 */ TWalker
+	if _sqlite3ExprListCompare(tls, (*TTable)(unsafe.Pointer(pSrc)).FpCheck, (*TTable)(unsafe.Pointer(pDest)).FpCheck, -int32(1)) != 0 {
+		return 0
+	}
+	if int32((*TTable)(unsafe.Pointer(pDest)).FiPKey) < 0 {
+		libc.Xmemset(tls, bp, 0, uint64(48))
+		(**(**TWalker)(__ccgo_up(bp))).FxExprCallback = __ccgo_fp(_xferCheckRowid)
+		_sqlite3WalkExprList(tls, bp, (*TTable)(unsafe.Pointer(pDest)).FpCheck)
+		if (**(**TWalker)(__ccgo_up(bp))).FeCode != 0 {
+			return 0
+		}
+	}
+	return int32(1)
 }

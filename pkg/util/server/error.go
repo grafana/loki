@@ -16,7 +16,7 @@ import (
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -50,29 +50,29 @@ func ClassifyFailure(err error) (category, reason string) {
 		return FailureCanceled, "client_canceled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return FailureTimeout, "query_timeout"
-	case errors.Is(err, logqlmodel.ErrMaxQueryBytesRead):
+	case errors.Is(err, logqlerr.ErrMaxQueryBytesRead):
 		return FailureLimit, "max_query_bytes_read"
-	case errors.Is(err, logqlmodel.ErrQuerierTooManyBytes):
+	case errors.Is(err, logqlerr.ErrQuerierTooManyBytes):
 		return FailureLimit, "querier_too_large"
-	case errors.Is(err, logqlmodel.ErrIntervalLimit):
+	case errors.Is(err, logqlerr.ErrIntervalLimit):
 		return FailureLimit, "interval_limit"
-	case errors.Is(err, logqlmodel.ErrLimit):
+	case errors.Is(err, logqlerr.ErrLimit):
 		return FailureLimit, "series_limit"
-	case errors.Is(err, logqlmodel.ErrBlocked):
+	case errors.Is(err, logqlerr.ErrBlocked):
 		return FailureBlocked, "blocked_by_policy"
-	case errors.Is(err, logqlmodel.ErrParse), errors.Is(err, logqlmodel.ErrParseMatchers):
+	case errors.Is(err, logqlerr.ErrParse), errors.Is(err, logqlerr.ErrParseMatchers):
 		return FailureSyntax, "parse"
-	case errors.Is(err, logqlmodel.ErrPipeline):
+	case errors.Is(err, logqlerr.ErrPipeline):
 		return FailureSyntax, "pipeline"
-	case errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
+	case errors.Is(err, logqlerr.ErrUnsupportedSyntaxForInstantQuery):
 		return FailureSyntax, "unsupported_instant_query"
-	case errors.Is(err, logqlmodel.ErrMaxQueryParallelism):
+	case errors.Is(err, logqlerr.ErrMaxQueryParallelism):
 		return FailureThrottled, "max_query_parallelism"
 	// The two limits below are also matched by message in reasonForBadRequest,
 	// which must return the same category and reason.
-	case errors.Is(err, logqlmodel.ErrMaxQueryLength):
+	case errors.Is(err, logqlerr.ErrMaxQueryLength):
 		return FailureLimit, "max_query_length"
-	case errors.Is(err, logqlmodel.ErrMaxEntriesLimit):
+	case errors.Is(err, logqlerr.ErrMaxEntriesLimit):
 		return FailureLimit, "max_entries"
 	case errors.Is(err, user.ErrNoOrgID):
 		return FailureUserError, "no_org_id"
@@ -226,7 +226,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-	case errors.Is(err, logqlmodel.ErrIntervalLimit):
+	case errors.Is(err, logqlerr.ErrIntervalLimit):
 		return http.StatusBadRequest, err
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
@@ -241,12 +241,12 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 func isClientError(err error, queryErr *storage_errors.QueryError, userErr *UserError) bool {
 	return errors.As(err, queryErr) ||
 		errors.As(err, userErr) ||
-		errors.Is(err, logqlmodel.ErrLimit) ||
-		errors.Is(err, logqlmodel.ErrParse) ||
-		errors.Is(err, logqlmodel.ErrPipeline) ||
-		errors.Is(err, logqlmodel.ErrBlocked) ||
-		errors.Is(err, logqlmodel.ErrParseMatchers) ||
-		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
+		errors.Is(err, logqlerr.ErrLimit) ||
+		errors.Is(err, logqlerr.ErrParse) ||
+		errors.Is(err, logqlerr.ErrPipeline) ||
+		errors.Is(err, logqlerr.ErrBlocked) ||
+		errors.Is(err, logqlerr.ErrParseMatchers) ||
+		errors.Is(err, logqlerr.ErrUnsupportedSyntaxForInstantQuery) ||
 		errors.Is(err, user.ErrNoOrgID)
 }
 

@@ -41,6 +41,8 @@ Query-shape support and hint lookup for logline index lookups.
      characters so JSON/logfmt unescape cannot produce false negatives. The
      check runs per regex literal, so one non-verbatim run does not drop the
      others.
+   - Values are split at `/` and spaces, because JSON/logfmt decode `\/` to
+     `/` and replace U+FFFD and invalid UTF-8 with a space.
    - Bare `| json | field="literal"` can also match stream/SM labels of that
      name; that residual is accepted. We cannot tell parsed-field vs stream
      vs SM, so we do not re-escape needles — only values already in the line.
@@ -97,3 +99,22 @@ Query-shape support and hint lookup for logline index lookups.
       up to `maxSharedLookupAttempts` times, and the retry runs under its own
       context. Retries are counted in
       `logline_hint_cache_singleflight_retries_total`.
+15. **v5 ranges come from the footer's layout, one per document shard**
+    - v5 indexes have no document table. `rangesForCells` maps each matching
+      cell to its bucket's range and its document shard through
+      `logline.DocumentLayout`. Other ranges (v3/v4 documents, `MatchesAll`,
+      passthrough) have zero shard bits and cover every stream.
+    - `NormalizeRanges` merges ranges only within one document shard.
+      `intersectRanges` intersects two shards' ranges only when one shard holds
+      the other, and keeps the narrower shard.
+    - `logproto.HintTimeRange` has no shard, so `QueryHints` returns the time
+      union, and the query frontend (adapter, hint cache, dry run) sees only
+      times. `ProvideHints` keeps the shards, and correctness checks them per
+      stream.
+    - `checkLayoutDay` requires the footer's day to be the meta's date. A
+      mismatch fails the lookup, so the query runs without hints instead of
+      getting ranges on the wrong day.
+    - The interval and shard bits are not compared with `meta.json`. Metas
+      reach the provider through `logproto.IndexMeta`, which carries only the
+      date (inside the index ID), and ranges take both values from the footer.
+      The v5 merge guard is where `meta.json` must agree with the footer.

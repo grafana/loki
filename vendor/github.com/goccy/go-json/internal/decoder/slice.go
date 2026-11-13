@@ -3,7 +3,6 @@ package decoder
 import (
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
@@ -18,10 +17,7 @@ type sliceDecoder struct {
 	// bufPool holds the buffers into which the elements of a long array are decoded before its length is known
 	// ( see decodeLong ). A buffer in the pool has only zero values, so that an element is decoded into a zero
 	// value.
-	bufPool sync.Pool
-	// lastLen is the length of the array which the decoder decoded last, which an empty slice is allocated for,
-	// up to inPlaceSliceLength: the arrays of a kind are often of a length. It is only a hint, for any goroutine.
-	lastLen    atomic.Int32
+	bufPool    sync.Pool
 	structName string
 	fieldName  string
 	// typ is the type of the slice, which the type errors report.
@@ -93,38 +89,65 @@ func (d *sliceDecoder) grow(dst *sliceHeader, length, n int) {
 //go:noinline
 func (d *sliceDecoder) decodeLong(ctx *RuntimeContext, cursor, depth int64, dst *sliceHeader, n int) (int64, error) {
 	buf := ctx.Buf
+	elems := d.takeBuf(dst, n)
+	idx := n
+	for {
+		ep := d.bufElem(elems, idx)
+		c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
+		if err != nil {
+			d.storeBuf(dst, elems, idx+1, idx+1)
+			return 0, err
+		}
+		cursor = skipWhiteSpace(buf, c)
+		switch buf[cursor] {
+		case ']':
+			d.storeBuf(dst, elems, idx+1, idx+1)
+			return cursor + 1, nil
+		case ',':
+			idx++
+		default:
+			d.storeBuf(dst, elems, idx+1, idx+1)
+			return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
+		}
+		cursor++
+	}
+}
+
+// takeBuf takes a buffer of the pool, which the n elements decoded into the slice at dst are copied to.
+func (d *sliceDecoder) takeBuf(dst *sliceHeader, n int) *sliceBuf {
 	elems := d.bufPool.Get().(*sliceBuf)
 	d.growBuf(elems, 0, 2*n)
 	elems.hdr.len = n
 	head := *dst
 	head.len = n
 	reflect.Copy(d.sliceValue(&elems.hdr), d.sliceValue(&head))
-	idx := n
-	for {
-		d.growBuf(elems, idx, idx+1)
-		ep := unsafe.Add(elems.hdr.data, uintptr(idx)*d.size)
-		c, err := d.valueDecoder.Decode(ctx, cursor, depth, ep)
-		if err != nil {
-			d.store(dst, elems, idx+1)
-			d.releaseBuf(elems, idx+1)
-			return 0, err
-		}
-		cursor = skipWhiteSpace(buf, c)
-		switch buf[cursor] {
-		case ']':
-			d.store(dst, elems, idx+1)
-			d.releaseBuf(elems, idx+1)
-			d.lastLen.Store(int32(min(idx+1, inPlaceSliceLength)))
-			return cursor + 1, nil
-		case ',':
-			idx++
-		default:
-			d.store(dst, elems, idx+1)
-			d.releaseBuf(elems, idx+1)
-			return 0, errors.ErrInvalidCharacter(buf[cursor], "slice", cursor)
-		}
-		cursor++
+	return elems
+}
+
+// bufElem returns the element of the buffer at idx, which follows the elements decoded into it. The buffer doubles,
+// so that the slice which it becomes ( see storeBuf ) leaves little garbage.
+func (d *sliceDecoder) bufElem(elems *sliceBuf, idx int) unsafe.Pointer {
+	if idx >= elems.hdr.cap {
+		d.growBuf(elems, idx, 2*idx+1)
 	}
+	return unsafe.Add(elems.hdr.data, uintptr(idx)*d.size)
+}
+
+// storeBuf stores the n elements of the buffer into the slice at dst, and puts the buffer back to the pool, with its
+// first used elements, which were decoded into, whole or in part, cleared. The buffer becomes the slice, which has no
+// room for the elements, instead of a copy of them: a long slice is not allocated twice, and the pool doesn't keep a
+// buffer of its size. A buffer which the pool had from a longer slice, more than the doubling up to the elements ( with
+// the rounding of its size ) leaves, is copied from instead, so that the slice keeps no more room than that.
+func (d *sliceDecoder) storeBuf(dst *sliceHeader, elems *sliceBuf, n, used int) {
+	if dst.cap < n && elems.hdr.cap < 3*n {
+		*dst = elems.hdr
+		dst.len = n
+		elems.hdr = sliceHeader{}
+		d.bufPool.Put(elems)
+		return
+	}
+	d.store(dst, elems, n)
+	d.releaseBuf(elems, used)
 }
 
 // growBuf makes the capacity of the buffer n or more, keeping its first length elements.
@@ -158,11 +181,6 @@ func (d *sliceDecoder) store(dst *sliceHeader, buf *sliceBuf, n int) {
 
 func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
-	depth++
-	if depth > maxDecodeNestingDepth {
-		return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
-	}
-
 	for {
 		switch buf[cursor] {
 		case ' ', '\n', '\t', '\r':
@@ -176,6 +194,11 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 			*(*sliceHeader)(p) = sliceHeader{}
 			return cursor, nil
 		case '[':
+			// only an array nests its values one level deeper: null or another value at the limit is not too deep
+			depth++
+			if depth > maxDecodeNestingDepth {
+				return 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
+			}
 			cursor++
 			cursor = skipWhiteSpace(buf, cursor)
 			dst := (*sliceHeader)(p)
@@ -192,12 +215,6 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 			// decoded into, the ones after its length too, as encoding/json does. The elements beyond its capacity
 			// and inPlaceSliceLength are decoded into a buffer ( see decodeLong ).
 			limit := max(dst.cap, inPlaceSliceLength)
-			if dst.cap == 0 {
-				// the length of the last array, which an array of the kind is likely to have
-				if n := int(d.lastLen.Load()); n > 0 {
-					d.grow(dst, 0, min(n, inPlaceSliceLength))
-				}
-			}
 			idx := 0
 			for {
 				if idx == limit {
@@ -214,7 +231,6 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 				switch buf[cursor] {
 				case ']':
 					dst.len = idx + 1
-					d.lastLen.Store(int32(idx + 1))
 					cursor++
 					return cursor, nil
 				case ',':
@@ -226,7 +242,7 @@ func (d *sliceDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 				cursor++
 			}
 		default:
-			return d.decodeOther(ctx, cursor, depth-1)
+			return d.decodeOther(ctx, cursor, depth)
 		}
 	}
 }
@@ -244,11 +260,6 @@ func (d *sliceDecoder) decodeOther(ctx *RuntimeContext, cursor, depth int64) (in
 
 func (d *sliceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
 	buf := ctx.Buf
-	depth++
-	if depth > maxDecodeNestingDepth {
-		return nil, 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
-	}
-
 	ret := [][]byte{}
 	for {
 		switch buf[cursor] {
@@ -262,6 +273,10 @@ func (d *sliceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][
 			cursor += 4
 			return [][]byte{nullbytes}, cursor, nil
 		case '[':
+			depth++
+			if depth > maxDecodeNestingDepth {
+				return nil, 0, errors.ErrExceededMaxDepth(buf[cursor], cursor)
+			}
 			cursor++
 			cursor = skipWhiteSpace(buf, cursor)
 			if buf[cursor] == ']' {
@@ -276,13 +291,21 @@ func (d *sliceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][
 				}
 				if found {
 					if child != nil {
-						oldPath := ctx.Option.Path.node
+						node := ctx.Option.Path.node
 						ctx.Option.Path.node = child
 						paths, c, err := d.valueDecoder.DecodePath(ctx, cursor, depth)
+						ctx.Option.Path.node = node
+						if _, mismatch := err.(*errors.PathError); mismatch {
+							if _, all := node.(*PathIndexAllNode); all {
+								// the rest of the path after [*] does not fit the element, so it selects nothing
+								// in it
+								paths = nil
+								c, err = skipValue(buf, cursor, depth)
+							}
+						}
 						if err != nil {
 							return nil, 0, err
 						}
-						ctx.Option.Path.node = oldPath
 						ret = append(ret, paths...)
 						cursor = c
 					} else {

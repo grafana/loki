@@ -346,7 +346,8 @@ type PathNode interface {
 	Field(fieldName string) (PathNode, bool, error)
 	Get(src, dst reflect.Value) error
 	chain(PathNode) PathNode
-	target() bool
+	// single reports whether Get of the path from the node on gives one value: no node of it is [*] or .., whose Get
+	// gives a slice of all the values they select.
 	single() bool
 }
 
@@ -359,12 +360,71 @@ func (n *BasePathNode) chain(node PathNode) PathNode {
 	return node
 }
 
-func (n *BasePathNode) target() bool {
-	return n.child == nil
+func (n *BasePathNode) single() bool {
+	return n.child == nil || n.child.single()
 }
 
-func (n *BasePathNode) single() bool {
-	return true
+// pathValue returns the value which v holds through pointers and interfaces, followed in a loop, or the zero Value if
+// one of them is nil: null, which has no member or element. It returns an error if a pointer leads back to itself
+// ( see pointerVisits ).
+func pathValue(v reflect.Value) (reflect.Value, error) {
+	var pointers pointerVisits
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return reflect.Value{}, nil
+		}
+		if v.Kind() == reflect.Ptr {
+			if err := pointers.follow(v); err != nil {
+				return reflect.Value{}, err
+			}
+		}
+		v = v.Elem()
+	}
+	return v, nil
+}
+
+// pathTypeName names the type of v, a value from pathValue, in an error.
+func pathTypeName(v reflect.Value) string {
+	if !v.IsValid() {
+		return "null"
+	}
+	return v.Type().String()
+}
+
+// isPathField reports whether a path selects field, of a struct, by its name: whether the JSON object of the struct
+// has the field and its value can be read. An unexported field has not, nor a field tagged "-".
+func isPathField(field reflect.StructField) bool {
+	return field.IsExported() && !runtime.IsIgnoredStructField(field)
+}
+
+// isUnsupportedValue reports whether err, of Get, is that the value cannot be gone through, as it holds itself or is
+// nested too deep ( see visits ): [*] and .. report it, where they leave out a value in which the rest of the path
+// selects nothing.
+func isUnsupportedValue(err error) bool {
+	_, ok := err.(*errors.UnsupportedValueError)
+	return ok
+}
+
+// mapKeyName returns the name which key, of a map, is in its JSON object, if it is of a string kind, or an interface
+// which holds one. A path selects no other key by a name.
+func mapKeyName(key reflect.Value) (string, bool) {
+	if key.Kind() == reflect.Interface {
+		key = key.Elem()
+	}
+	if key.Kind() != reflect.String {
+		return "", false
+	}
+	return key.String(), true
+}
+
+// appendPathValue appends v, which Get of the path from child on gave, to values: the values in v one by one if that
+// path gives a slice of them ( see PathNode.single ).
+func appendPathValue(values []any, v any, child PathNode) []any {
+	if child == nil || child.single() {
+		return append(values, v)
+	}
+	selected, _ := v.([]any)
+	return append(values, selected...)
 }
 
 type PathSelectorNode struct {
@@ -391,13 +451,17 @@ func (n *PathSelectorNode) Field(fieldName string) (PathNode, bool, error) {
 }
 
 func (n *PathSelectorNode) Get(src, dst reflect.Value) error {
-	switch src.Type().Kind() {
+	src, err := pathValue(src)
+	if err != nil {
+		return err
+	}
+	switch src.Kind() {
 	case reflect.Map:
 		iter := src.MapRange()
 		for iter.Next() {
-			key, ok := iter.Key().Interface().(string)
+			key, ok := mapKeyName(iter.Key())
 			if !ok {
-				return fmt.Errorf("invalid map key type %T", src.Type().Key())
+				continue
 			}
 			child, found, err := n.Field(key)
 			if err != nil {
@@ -412,7 +476,10 @@ func (n *PathSelectorNode) Get(src, dst reflect.Value) error {
 		}
 	case reflect.Struct:
 		typ := src.Type()
-		for i := 0; i < typ.Len(); i++ {
+		for i := 0; i < typ.NumField(); i++ {
+			if !isPathField(typ.Field(i)) {
+				continue
+			}
 			tag := runtime.StructTagFromField(typ.Field(i))
 			child, found, err := n.Field(tag.Key)
 			if err != nil {
@@ -425,14 +492,8 @@ func (n *PathSelectorNode) Get(src, dst reflect.Value) error {
 				return AssignValue(src.Field(i), dst)
 			}
 		}
-	case reflect.Ptr:
-		return n.Get(src.Elem(), dst)
-	case reflect.Interface:
-		return n.Get(reflect.ValueOf(src.Interface()), dst)
-	case reflect.Float64, reflect.String, reflect.Bool:
-		return AssignValue(src, dst)
 	}
-	return fmt.Errorf("failed to get %s value from %s", n.selector, src.Type())
+	return fmt.Errorf("failed to get %s value from %s", n.selector, pathTypeName(src))
 }
 
 func (n *PathSelectorNode) String() string {
@@ -467,20 +528,20 @@ func (n *PathIndexNode) Field(fieldName string) (PathNode, bool, error) {
 }
 
 func (n *PathIndexNode) Get(src, dst reflect.Value) error {
-	switch src.Type().Kind() {
+	src, err := pathValue(src)
+	if err != nil {
+		return err
+	}
+	switch src.Kind() {
 	case reflect.Array, reflect.Slice:
-		if src.Len() > n.selector {
+		if n.selector >= 0 && n.selector < src.Len() {
 			if n.child != nil {
 				return n.child.Get(src.Index(n.selector), dst)
 			}
 			return AssignValue(src.Index(n.selector), dst)
 		}
-	case reflect.Ptr:
-		return n.Get(src.Elem(), dst)
-	case reflect.Interface:
-		return n.Get(reflect.ValueOf(src.Interface()), dst)
 	}
-	return fmt.Errorf("failed to get [%d] value from %s", n.selector, src.Type())
+	return fmt.Errorf("failed to get [%d] value from %s", n.selector, pathTypeName(src))
 }
 
 func (n *PathIndexNode) String() string {
@@ -509,8 +570,16 @@ func (n *PathIndexAllNode) Field(fieldName string) (PathNode, bool, error) {
 	return nil, false, &errors.PathError{}
 }
 
+func (n *PathIndexAllNode) single() bool {
+	return false
+}
+
 func (n *PathIndexAllNode) Get(src, dst reflect.Value) error {
-	switch src.Type().Kind() {
+	src, err := pathValue(src)
+	if err != nil {
+		return err
+	}
+	switch src.Kind() {
 	case reflect.Array, reflect.Slice:
 		var arr []any
 		for i := 0; i < src.Len(); i++ {
@@ -518,25 +587,22 @@ func (n *PathIndexAllNode) Get(src, dst reflect.Value) error {
 			rv := reflect.ValueOf(&v)
 			if n.child != nil {
 				if err := n.child.Get(src.Index(i), rv); err != nil {
-					return err
+					if isUnsupportedValue(err) {
+						return err
+					}
+					// the rest of the path selects nothing in the element
+					continue
 				}
 			} else {
 				if err := AssignValue(src.Index(i), rv); err != nil {
 					return err
 				}
 			}
-			arr = append(arr, v)
+			arr = appendPathValue(arr, v, n.child)
 		}
-		if err := AssignValue(reflect.ValueOf(arr), dst); err != nil {
-			return err
-		}
-		return nil
-	case reflect.Ptr:
-		return n.Get(src.Elem(), dst)
-	case reflect.Interface:
-		return n.Get(reflect.ValueOf(src.Interface()), dst)
+		return AssignValue(reflect.ValueOf(arr), dst)
 	}
-	return fmt.Errorf("failed to get all value from %s", src.Type())
+	return fmt.Errorf("failed to get all value from %s", pathTypeName(src))
 }
 
 func (n *PathIndexAllNode) String() string {
@@ -553,12 +619,9 @@ type PathRecursiveNode struct {
 }
 
 func newPathRecursiveNode(selector string) *PathRecursiveNode {
-	node := newPathSelectorNode(selector)
 	return &PathRecursiveNode{
-		BasePathNode: &BasePathNode{
-			child: node,
-		},
-		selector: selector,
+		BasePathNode: &BasePathNode{},
+		selector:     selector,
 	}
 }
 
@@ -573,92 +636,103 @@ func (n *PathRecursiveNode) Index(_ int) (PathNode, bool, error) {
 	return n, true, nil
 }
 
-func valueToSliceValue(v any) []any {
-	rv := reflect.ValueOf(v)
-	ret := []any{}
-	if rv.Type().Kind() == reflect.Slice || rv.Type().Kind() == reflect.Array {
-		for i := 0; i < rv.Len(); i++ {
-			ret = append(ret, rv.Index(i).Interface())
-		}
-		return ret
-	}
-	return []any{v}
+func (n *PathRecursiveNode) single() bool {
+	return false
 }
 
+// Get assigns to dst a slice of the values which the name of n has at any depth of src, in the members of objects
+// and the elements of arrays, with the rest of the path applied to each of them: a value in which the rest finds
+// nothing adds nothing.
 func (n *PathRecursiveNode) Get(src, dst reflect.Value) error {
-	if n.child == nil {
-		return fmt.Errorf("failed to get by recursive path ..%s", n.selector)
+	var values []any
+	if err := n.collect(src, &values, &visits{}); err != nil {
+		return err
 	}
-	var arr []any
-	switch src.Type().Kind() {
+	return AssignValue(reflect.ValueOf(values), dst)
+}
+
+// collect appends to values what Get selects in v.
+func (n *PathRecursiveNode) collect(v reflect.Value, values *[]any, seen *visits) error {
+	v, err := pathValue(v)
+	if err != nil {
+		return err
+	}
+	switch v.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
+	default:
+		return nil
+	}
+	if err := seen.enter(v); err != nil {
+		return err
+	}
+	defer seen.leave(v)
+	return n.collectContents(v, values, seen)
+}
+
+// collectContents is collect of v, an object or an array: a map, a struct, a slice or an array.
+func (n *PathRecursiveNode) collectContents(v reflect.Value, values *[]any, seen *visits) error {
+	switch v.Kind() {
 	case reflect.Map:
-		iter := src.MapRange()
+		iter := v.MapRange()
 		for iter.Next() {
-			key, ok := iter.Key().Interface().(string)
-			if !ok {
-				return fmt.Errorf("invalid map key type %T", src.Type().Key())
-			}
-			child, found, err := n.Field(key)
-			if err != nil {
-				return err
-			}
-			if found {
-				var v any
-				rv := reflect.ValueOf(&v)
-				_ = child.Get(iter.Value(), rv)
-				arr = append(arr, valueToSliceValue(v)...)
-			} else {
-				var v any
-				rv := reflect.ValueOf(&v)
-				_ = n.Get(iter.Value(), rv)
-				if v != nil {
-					arr = append(arr, valueToSliceValue(v)...)
+			if key, ok := mapKeyName(iter.Key()); ok && key == n.selector {
+				var err error
+				if *values, err = n.appendSelected(*values, iter.Value()); err != nil {
+					return err
 				}
 			}
+			if err := n.collect(iter.Value(), values, seen); err != nil {
+				return err
+			}
 		}
-		_ = AssignValue(reflect.ValueOf(arr), dst)
-		return nil
 	case reflect.Struct:
-		typ := src.Type()
-		for i := 0; i < typ.Len(); i++ {
-			tag := runtime.StructTagFromField(typ.Field(i))
-			child, found, err := n.Field(tag.Key)
-			if err != nil {
-				return err
+		typ := v.Type()
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			if !isPathField(field) {
+				continue
 			}
-			if found {
-				var v any
-				rv := reflect.ValueOf(&v)
-				_ = child.Get(src.Field(i), rv)
-				arr = append(arr, valueToSliceValue(v)...)
-			} else {
-				var v any
-				rv := reflect.ValueOf(&v)
-				_ = n.Get(src.Field(i), rv)
-				if v != nil {
-					arr = append(arr, valueToSliceValue(v)...)
+			tag := runtime.StructTagFromField(field)
+			if tag.Key == n.selector {
+				var err error
+				if *values, err = n.appendSelected(*values, v.Field(i)); err != nil {
+					return err
 				}
 			}
-		}
-		_ = AssignValue(reflect.ValueOf(arr), dst)
-		return nil
-	case reflect.Array, reflect.Slice:
-		for i := 0; i < src.Len(); i++ {
-			var v any
-			rv := reflect.ValueOf(&v)
-			_ = n.Get(src.Index(i), rv)
-			if v != nil {
-				arr = append(arr, valueToSliceValue(v)...)
+			collect := n.collect
+			if field.Anonymous && field.Type.Kind() == reflect.Struct && !tag.IsTaggedKey {
+				// a struct embedded by its value, with no name in its tag, is a part of the object of v, as Marshal
+				// writes it, not a level
+				collect = n.collectContents
+			}
+			if err := collect(v.Field(i), values, seen); err != nil {
+				return err
 			}
 		}
-		_ = AssignValue(reflect.ValueOf(arr), dst)
-		return nil
-	case reflect.Ptr:
-		return n.Get(src.Elem(), dst)
-	case reflect.Interface:
-		return n.Get(reflect.ValueOf(src.Interface()), dst)
+	default:
+		for i := 0; i < v.Len(); i++ {
+			if err := n.collect(v.Index(i), values, seen); err != nil {
+				return err
+			}
+		}
 	}
-	return fmt.Errorf("failed to get %s value from %s", n.selector, src.Type())
+	return nil
+}
+
+// appendSelected appends to values v, a value of the name of n, with the rest of the path applied to it: nothing if
+// the rest selects nothing in it.
+func (n *PathRecursiveNode) appendSelected(values []any, v reflect.Value) ([]any, error) {
+	if n.child == nil {
+		return append(values, v.Interface()), nil
+	}
+	var selected any
+	if err := n.child.Get(v, reflect.ValueOf(&selected)); err != nil {
+		if isUnsupportedValue(err) {
+			return nil, err
+		}
+		return values, nil
+	}
+	return appendPathValue(values, selected, n.child), nil
 }
 
 func (n *PathRecursiveNode) String() string {

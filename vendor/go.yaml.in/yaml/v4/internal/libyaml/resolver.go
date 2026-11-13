@@ -54,7 +54,7 @@ func (r *Resolver) Resolve(n *Node) {
 				n.Tag = strTag
 			} else {
 				// Plain scalars: resolve type from value
-				n.Tag, _ = resolve("", n.Value)
+				n.Tag, _ = resolve("", n.Value, r.formatError())
 			}
 		}
 
@@ -89,7 +89,7 @@ func (r *Resolver) Resolve(n *Node) {
 // tag and the corresponding Go value (int, float, bool, [time.Time], etc.).
 // If the tag is already specified and non-resolvable, it returns the input
 // unchanged.
-func resolve(tag string, in string) (rtag string, out any) {
+func resolve(tag string, in string, formatter func(*LoadError) string) (rtag string, out any) {
 	tag = shortTag(tag)
 	if !resolvableTag(tag) {
 		return tag, in
@@ -106,6 +106,10 @@ func resolve(tag string, in string) (rtag string, out any) {
 					rtag = floatTag
 					out = float64(v)
 					return
+				case uint64:
+					rtag = floatTag
+					out = float64(v)
+					return
 				case int:
 					rtag = floatTag
 					out = float64(v)
@@ -116,6 +120,7 @@ func resolve(tag string, in string) (rtag string, out any) {
 		Fail(formatResolverError(
 			fmt.Sprintf("cannot construct %s `%s` as a %s", shortTag(rtag), in, shortTag(tag)),
 			Mark{},
+			formatter,
 		))
 	}()
 
@@ -166,7 +171,7 @@ func resolve(tag string, in string) (rtag string, out any) {
 					return intTag, intv
 				}
 			}
-			uintv, err := strconv.ParseUint(plain, 0, 64)
+			uintv, err := strconv.ParseUint(strings.TrimPrefix(plain, "+"), 0, 64)
 			if err == nil {
 				return intTag, uintv
 			}
@@ -311,11 +316,19 @@ func parseTimestamp(s string) (time.Time, bool) {
 }
 
 // formatResolverError creates a LoadError for resolver-stage errors.
-func formatResolverError(message string, mark Mark) *LoadError {
+func (r *Resolver) formatError() func(*LoadError) string {
+	if r == nil || r.opts == nil {
+		return nil
+	}
+	return r.opts.FormatLoadError
+}
+
+func formatResolverError(message string, mark Mark, formatter func(*LoadError) string) *LoadError {
 	return &LoadError{
-		Stage:   ResolverStage,
-		Mark:    mark,
-		Message: message,
+		Stage:     ResolverStage,
+		Mark:      mark,
+		Message:   message,
+		formatter: formatter,
 	}
 }
 

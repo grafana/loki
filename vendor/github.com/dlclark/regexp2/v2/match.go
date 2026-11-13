@@ -14,26 +14,26 @@ import (
 type Match struct {
 	Group //embeded group 0
 
-	regex       *Regexp
-	otherGroups []Group
-
-	// input to the match
-	textpos   int
-	textstart int
-
-	capcount   int
+	// Keep pointers and slices ahead of scalar state to shorten the portion
+	// of each match that the garbage collector must scan.
+	regex      *Regexp
 	sparseCaps map[int]int
+	// landmarks holds the required landmark searches that found this match.
+	landmarks   *requiredLandmarkState
+	otherGroups []Group
 
 	// output from the match
 	matches    [][]int
 	matchcount []int
 
-	// whether we've done any balancing with this match.  If we
-	// have done balancing, we'll need to do extra work in Tidy().
-	balancing bool
+	// input to the match
+	textpos   int
+	textstart int
+	capcount  int
 
-	// landmarks holds the required landmark searches that found this match.
-	landmarks *requiredLandmarkState
+	// whether we've done any balancing with this match. If we have, full
+	// matches need capture-history compaction in tidy.
+	balancing bool
 }
 
 // Group is an explicit or implit (group 0) matched group within the pattern
@@ -453,7 +453,7 @@ func (m *Match) populateOtherGroups() {
 	if m.otherGroups == nil {
 		m.otherGroups = make([]Group, len(m.matchcount)-1)
 		for i := 0; i < len(m.otherGroups); i++ {
-			m.otherGroups[i] = newGroup(m.regex.GroupNameFromNumber(i+1), m.text, m.matches[i+1], m.matchcount[i+1])
+			m.otherGroups[i] = newGroup(m.regex.groupNameFromSlot(i+1), m.text, m.matches[i+1], m.matchcount[i+1])
 		}
 	}
 }

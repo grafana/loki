@@ -164,6 +164,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
+		OutputLevel: 2,
 	}
 
 	plan := buildLogMergePlan("t1", window, task)
@@ -176,6 +177,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
+	require.Equal(t, uint32(2), node.OutputLevel)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
@@ -186,4 +188,21 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.NoError(t, err, "plan must have exactly one root node")
 
 	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
+}
+
+func TestBuildDeletionSweepPlan(t *testing.T) {
+	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
+		root, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.IsType(t, &physical.DeletionSweep{}, root)
+		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
+	})
+
+	t.Run("mints a fresh NodeID for every build", func(t *testing.T) {
+		n1, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		n2, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.NotEqual(t, n1.ID(), n2.ID())
+	})
 }

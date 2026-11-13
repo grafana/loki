@@ -177,6 +177,9 @@ const _XOPEN_PATH_MAX = 1024
 
 type exception = Texception
 
+/* Work around a bug in older Microsoft compilers
+** Forum post 2026-04-10T06:33:11z */
+
 type idtype_t = Tidtype_t
 
 type kauth_cred_t = Tkauth_cred_t

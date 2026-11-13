@@ -19,9 +19,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	logql_stats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -205,6 +205,12 @@ func RecordRangeAndInstantQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"dataobj_sections_resolution_max_time", stats.DataobjSectionsResolutionMaxTime(),
+		"dataobj_logs_compacted_objects_count", stats.Querier.Store.Dataobj.LogsCompactedObjectsCount,
+		"dataobj_logs_uncompacted_objects_count", stats.Querier.Store.Dataobj.LogsUncompactedObjectsCount,
+		"dataobj_index_compacted_objects_count", stats.Querier.Store.Dataobj.IndexCompactedObjectsCount,
+		"dataobj_index_uncompacted_objects_count", stats.Querier.Store.Dataobj.IndexUncompactedObjectsCount,
+		"dataobj_logs_downloaded_bytes", stats.Querier.Store.Dataobj.LogsDownloadedBytes,
+		"dataobj_index_downloaded_bytes", stats.Querier.Store.Dataobj.IndexDownloadedBytes,
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
@@ -232,11 +238,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
-		"cache_task_result_req", stats.Caches.TaskResult.EntriesRequested,
-		"cache_task_result_hit", stats.Caches.TaskResult.EntriesFound,
-		"cache_task_result_bytes", stats.Caches.TaskResult.BytesReceived,
-		"cache_task_result_download_time", stats.Caches.TaskResult.CacheDownloadTime(),
-		"cache_task_result_query_length_served", stats.Caches.TaskResult.CacheQueryLengthServed(),
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -538,6 +539,7 @@ func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []int
 		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
 		"logline_skipped_requests", l.SkippedRequests,
 		"logline_narrowed_requests", l.NarrowedRequests,
+		"logline_passthrough_requests", l.PassthroughRequests,
 		"logline_object_requests", l.ObjectRequests,
 		"logline_io_bytes", util.HumanizeBytes(uint64(l.IOBytes)),
 		"logline_io_wait", time.Duration(l.IOWait),

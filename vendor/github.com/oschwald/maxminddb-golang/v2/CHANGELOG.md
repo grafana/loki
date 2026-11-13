@@ -1,5 +1,21 @@
 # Changes
 
+## 2.9.0 - 2026-10-31
+
+- Improved lookup and decoding performance:
+  - Reduced IPv6 search-tree traversal overhead.
+  - Reduced integer, database pointer, and map key decoding overhead.
+  - Reduced reflection overhead when decoding records into structs.
+  - Reduced reflection overhead for scalar values read through database
+    pointers or decoded into Go pointer fields.
+  - Reduced slice decoding overhead and temporary allocations when growing or
+    shrinking slices.
+  - Reduced struct field matching and access overhead, including scalar fields
+    in embedded structs.
+- Reflection decoding now enforces the 512-level depth limit for scalar values,
+  including in `DecodePath`. Some scalar values at depth 513 were previously
+  accepted.
+
 ## 2.8.0 - 2026-10-11
 
 - String caching now uses buckets to improve concurrent decoding. On 64-bit

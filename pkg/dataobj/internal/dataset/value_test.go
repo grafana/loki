@@ -126,6 +126,50 @@ func TestEmptyNil_CompareValues(t *testing.T) {
 	})
 }
 
+func TestValue_AppendBinary(t *testing.T) {
+	prefix := []byte("prefix")
+
+	t.Run("keeps the prefix and appends the MarshalBinary encoding for each type", func(t *testing.T) {
+		values := []dataset.Value{
+			dataset.Int64Value(-1234),
+			dataset.Uint64Value(1234),
+			dataset.BinaryValue([]byte("hello, world!")),
+		}
+		for _, v := range values {
+			expect, err := v.MarshalBinary()
+			require.NoError(t, err)
+
+			buf := append([]byte(nil), prefix...)
+			actual, err := v.AppendBinary(buf)
+			require.NoError(t, err)
+			require.Equal(t, prefix, actual[:len(prefix)], "type %s", v.Type())
+			require.Equal(t, expect, actual[len(prefix):], "type %s", v.Type())
+		}
+	})
+
+	t.Run("returns the buffer unchanged for a NULL value", func(t *testing.T) {
+		var v dataset.Value
+		buf := append([]byte(nil), prefix...)
+
+		actual, err := v.AppendBinary(buf)
+		require.NoError(t, err)
+		require.Equal(t, prefix, actual)
+	})
+
+	t.Run("overwrites the previous encoding when the buffer is reused from zero length", func(t *testing.T) {
+		buf, err := dataset.BinaryValue([]byte("a longer first value")).AppendBinary(nil)
+		require.NoError(t, err)
+
+		second := dataset.Int64Value(7)
+		actual, err := second.AppendBinary(buf[:0])
+		require.NoError(t, err)
+
+		expect, err := second.MarshalBinary()
+		require.NoError(t, err)
+		require.Equal(t, expect, actual)
+	})
+}
+
 func TestValue_MarshalBinary(t *testing.T) {
 	t.Run("Null", func(t *testing.T) {
 		var expect dataset.Value

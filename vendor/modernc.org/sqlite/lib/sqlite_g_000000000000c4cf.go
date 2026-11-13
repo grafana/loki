@@ -63,6 +63,54 @@ func _binaryCompareP5(tls *libc.TLS, pExpr1 uintptr, pExpr2 uintptr, jumpIfNull 
 	return aff
 }
 
+// C documentation
+//
+//	/*
+//	** The most recently coded instruction was an OP_Column to retrieve the
+//	** i-th column of table pTab. This routine sets the P4 parameter of the
+//	** OP_Column to the default value, if any.
+//	**
+//	** The default value of a column is specified by a DEFAULT clause in the
+//	** column definition. This was either supplied by the user when the table
+//	** was created, or added later to the table definition by an ALTER TABLE
+//	** command. If the latter, then the row-records in the table btree on disk
+//	** may not contain a value for the column and the default value, taken
+//	** from the P4 parameter of the OP_Column instruction, is returned instead.
+//	** If the former, then all row-records are guaranteed to include a value
+//	** for the column and the P4 value is not required.
+//	**
+//	** Column definitions created by an ALTER TABLE command may only have
+//	** literal default values specified: a number, null or a string. (If a more
+//	** complicated default expression value was provided, it is evaluated
+//	** when the ALTER TABLE is executed and one of the literal values written
+//	** into the sqlite_schema table.)
+//	**
+//	** Therefore, the P4 parameter is only required if the default value for
+//	** the column is a literal number, string or null. The sqlite3ValueFromExpr()
+//	** function is capable of transforming these types of expressions into
+//	** sqlite3_value objects.
+//	**
+//	** If column as REAL affinity and the table is an ordinary b-tree table
+//	** (not a virtual table) then the value might have been stored as an
+//	** integer.  In that case, add an OP_RealAffinity opcode to make sure
+//	** it has been converted into REAL.
+//	*/
+func _columnDefaultUncommonCase(tls *libc.TLS, v uintptr, pTab uintptr, pCol uintptr) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var enc Tu8
+	var pParse uintptr
+	var _ /* pValue at bp+0 */ uintptr
+	_, _ = enc, pParse
+	**(**uintptr)(__ccgo_up(bp)) = uintptr(0)
+	enc = (*Tsqlite3)(unsafe.Pointer(_sqlite3VdbeDb(tls, v))).Fenc
+	pParse = _sqlite3VdbeParser(tls, v)
+	_sqlite3ValueFromExpr(tls, _sqlite3VdbeDb(tls, v), _sqlite3ColumnExprAuth(tls, pTab, pCol, pParse), enc, libc.Uint8FromInt8((*TColumn)(unsafe.Pointer(pCol)).Faffinity), bp)
+	if **(**uintptr)(__ccgo_up(bp)) != 0 {
+		_sqlite3VdbeAppendP4(tls, v, **(**uintptr)(__ccgo_up(bp)), -int32(11))
+	}
+}
+
 func _fts5AsciiAddExceptions(tls *libc.TLS, p uintptr, zArg uintptr, bTokenChars int32) {
 	var i int32
 	_ = i
@@ -142,12 +190,6 @@ func _fts5AsciiTokenize(tls *libc.TLS, pTokenizer uintptr, pCtx uintptr, iUnused
 
 /**************************************************************************
 ** Start of unicode61 tokenizer implementation.
- */
-
-/*
-** The following two macros - READ_UTF8 and WRITE_UTF8 - have been copied
-** from the sqlite3 source file utf.c. If this file is compiled as part
-** of the amalgamation, they are not required.
  */
 
 // C documentation
@@ -1243,7 +1285,7 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 	}
 	/* The super-journal page number must never be used as a pointer map page */
 	if key == uint32(0) {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74719))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74248))
 		return
 	}
 	iPtrmap = _ptrmapPageno(tls, pBt, key)
@@ -1256,12 +1298,12 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 		/* The first byte of the extra data is the MemPage.isInit byte.
 		 ** If that byte is set, it means this page is also being used
 		 ** as a btree page. */
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74732))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74261))
 		goto ptrmap_exit
 	}
 	offset = libc.Int32FromUint32(libc.Uint32FromInt32(5) * (key - iPtrmap - libc.Uint32FromInt32(1)))
 	if offset < 0 {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74737))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74266))
 		goto ptrmap_exit
 	}
 	pPtrmap = _sqlite3PagerGetData(tls, **(**uintptr)(__ccgo_up(bp)))
@@ -1808,7 +1850,7 @@ func _sqlite3GetUInt32(tls *libc.TLS, z uintptr, pI uintptr) (r int32) {
 			break
 		}
 		v = v*uint64(10) + libc.Uint64FromInt8(**(**int8)(__ccgo_up(z + uintptr(i)))) - uint64('0')
-		if v > uint64(4294967296) {
+		if v > uint64(4294967295) {
 			**(**Tu32)(__ccgo_up(pI)) = uint32(0)
 			return 0
 		}
@@ -1919,10 +1961,16 @@ func _sqlite3IndexedExprLookup(tls *libc.TLS, pParse uintptr, pExpr uintptr, tar
 			goto _1
 		}
 		v = (*TParse)(unsafe.Pointer(pParse)).FpVdbe
-		if (*TIndexedExpr)(unsafe.Pointer(p)).FbMaybeNullRow != 0 {
-			/* If the index is on a NULL row due to an outer join, then we
-			 ** cannot extract the value from the index.  The value must be
-			 ** computed using the original expression. */
+		if (*TIndexedExpr)(unsafe.Pointer(p)).FbMaybeNullRow != 0 || _sqlite3ExprIsConstant(tls, pParse, pExpr) != 0 {
+			/* The value of pExpr should be computed from the original expression,
+			 ** not from the index, if either:
+			 **
+			 **    1.   The index might be on a NULL row due to an outer join.
+			 **
+			 **    2.   The expression is a constant.  This prevents an attempt to
+			 **         use an index value outside of the loop that positions the
+			 **         index.  (Bug 2026-10-11T19:26:40Z).
+			 */
 			addr = _sqlite3VdbeCurrentAddr(tls, v)
 			_sqlite3VdbeAddOp3(tls, v, int32(OP_IfNullRow), (*TIndexedExpr)(unsafe.Pointer(p)).FiIdxCur, addr+int32(3), target)
 			_sqlite3VdbeAddOp3(tls, v, int32(OP_Column), (*TIndexedExpr)(unsafe.Pointer(p)).FiIdxCur, (*TIndexedExpr)(unsafe.Pointer(p)).FiIdxCol, target)
@@ -2095,7 +2143,7 @@ func _sqlite3VdbeMemFromBtree(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32
 		return int32(SQLITE_NOMEM)
 	}
 	if uint64(amt)+uint64(offset) > libc.Uint64FromInt64(_sqlite3BtreeMaxRecordSize(tls, pCur)) {
-		return _sqlite3CorruptError(tls, int32(87509))
+		return _sqlite3CorruptError(tls, int32(87082))
 	}
 	v1 = _sqlite3VdbeMemClearAndResize(tls, pMem, libc.Int32FromUint32(amt+uint32(1)))
 	rc = v1

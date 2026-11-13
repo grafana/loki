@@ -133,8 +133,8 @@ const (
 	// ifaceValuePointee is a pointer to a value which is not an interface value: the value is decoded into what it
 	// points to, as a value of the pointer type, whose unmarshalers are used.
 	ifaceValuePointee
-	// ifaceValueKept is a value of an interface type with methods which is not a pointer: it is kept, and can be
-	// decoded from null only, which sets the interface value to nil.
+	// ifaceValueKept is a value of an interface type with methods which is not a pointer: nothing is decoded into it,
+	// and the interface value is set to nil ( see decodeKept ).
 	ifaceValueKept
 )
 
@@ -145,7 +145,7 @@ type ifaceValueDecoder struct {
 	// dec is the decoder of a pointer of ifaceValuePointee.
 	dec Decoder
 	// textType is the pointer type of ifaceValuePointee which implements encoding.TextUnmarshaler: a value which
-	// is not a string is a type error of the interface value ( see ifaceTextUnmarshalerKindError ).
+	// is not a string is a type error of the value it points to ( see textUnmarshalerKindError ).
 	textType reflect.Type
 }
 
@@ -187,7 +187,7 @@ func (d *interfaceDecoder) decodeValue(ctx *RuntimeContext, cursor, depth int64,
 			return cursor + 4, nil
 		}
 		if v.textType != nil && isOtherValue(buf[cursor], stringValue) {
-			return ctx.ifaceTextUnmarshalerKindError(cursor, depth, d.typ, v.textType)
+			return ctx.textUnmarshalerKindError(cursor, depth, v.textType)
 		}
 		return v.dec.Decode(ctx, cursor, depth, ptr)
 	}
@@ -195,8 +195,8 @@ func (d *interfaceDecoder) decodeValue(ctx *RuntimeContext, cursor, depth int64,
 }
 
 // decodeKept decodes the value at cursor into the interface value at p of an interface type with methods, whose
-// value is not decoded into: null sets it to nil, and any other value is a type error, which keeps it, as
-// encoding/json does.
+// value is not decoded into: null sets it to nil, and any other value is a type error at the start of the value,
+// which sets it to nil too, as encoding/json does.
 func (d *interfaceDecoder) decodeKept(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
 	cursor = skipWhiteSpace(buf, cursor)
@@ -207,7 +207,13 @@ func (d *interfaceDecoder) decodeKept(ctx *RuntimeContext, cursor, depth int64, 
 		*(*[2]unsafe.Pointer)(p) = [2]unsafe.Pointer{}
 		return cursor + 4, nil
 	}
-	return ctx.keptInterfaceTypeError(cursor, depth, d.typ, p)
+	*(*[2]unsafe.Pointer)(p) = [2]unsafe.Pointer{}
+	first := ctx.typeError == nil
+	next, err := ctx.skipTypeError(cursor, depth, d.typ)
+	if err == nil && first {
+		ctx.typeError.atStart = true
+	}
+	return next, err
 }
 
 // nonEmptyInterface is the layout of a value of an interface type with methods: the itab of the type it holds,
@@ -238,8 +244,8 @@ func (d *interfaceDecoder) decodeWithMethods(ctx *RuntimeContext, cursor, depth 
 
 // decodeFloatSlow decodes the number at cursor into the interface{} at p, which the fast parse doesn't: a number
 // which is not valid by the grammar is a syntax error, and a number out of the range of a float64 is a type error,
-// after which the decoding goes on ( see floatRangeErrorOfInterface ). It is not inlined, so that the decoding of
-// the values of interface{} keeps the size it had.
+// after which the decoding goes on, which stores 0, as encoding/json does from Go 1.27.2. It is not inlined, so
+// that the decoding of the values of interface{} keeps the size it had.
 //
 //go:noinline
 func decodeFloatSlow(ctx *RuntimeContext, cursor int64, p unsafe.Pointer) (int64, error) {
@@ -252,10 +258,10 @@ func decodeFloatSlow(ctx *RuntimeContext, cursor int64, p unsafe.Pointer) (int64
 	f, parseErr := strconv.ParseFloat(*(*string)(unsafe.Pointer(&b)), 64)
 	// a number of the grammar which ParseFloat fails is out of the range of float64
 	if inRange := parseErr == nil; !inRange {
-		ctx.floatRangeErrorOfInterface(cursor, end, f, p)
-		return end, nil
+		ctx.numberTypeError(cursor, end, float64Type)
+		f = 0
 	}
-	**(**any)(unsafe.Pointer(&p)) = ctx.boxFloat(f)
+	**(**any)(unsafe.Pointer(&p)) = f
 	return end, nil
 }
 
@@ -281,20 +287,20 @@ func (d *interfaceDecoder) decodeEmptyInterface(ctx *RuntimeContext, cursor, dep
 			return d.numberDecoder.Decode(ctx, cursor, depth, p)
 		}
 		if f, next, ok := parseFloatFast(buf, cursor); ok && validEndNumberChar[buf[next]] {
-			**(**any)(unsafe.Pointer(&p)) = ctx.boxFloat(f)
+			**(**any)(unsafe.Pointer(&p)) = f
 			return next, nil
 		}
 		return decodeFloatSlow(ctx, cursor, p)
 	case '"':
 		if end := plainStringEnd(buf, cursor+1); end >= 0 {
-			**(**any)(unsafe.Pointer(&p)) = ctx.boxString(ctx.makeString(buf[cursor+1 : end]))
+			**(**any)(unsafe.Pointer(&p)) = ctx.makeString(buf[cursor+1 : end])
 			return end + 1, nil
 		}
 		s, c, _, err := d.stringDecoder.decodeString(ctx, cursor)
 		if err != nil {
 			return 0, err
 		}
-		**(**any)(unsafe.Pointer(&p)) = ctx.boxString(s)
+		**(**any)(unsafe.Pointer(&p)) = s
 		return c, nil
 	case 't':
 		if err := validateTrue(buf, cursor); err != nil {
@@ -416,6 +422,10 @@ func decodeNewStringAnyMap(ctx *RuntimeContext, d *interfaceDecoder, cursor, dep
 				m[entries[i].key] = entries[i].value
 			}
 			ctx.popEntries(base)
+			if len(m) != len(entries) && ctx.Option.V2 != 0 {
+				// a name which the object has twice, which the semantics of v2 reject or merge
+				return nil, 0, errV2DuplicateName
+			}
 			return m, cursor + 1, nil
 		case ',':
 			cursor++
@@ -500,11 +510,8 @@ func NewPathDecoder() Decoder {
 	return ifaceDecoder
 }
 
-var (
-	truebytes  = []byte("true")
-	falsebytes = []byte("false")
-)
-
+// DecodePath returns the values of the rest of the path, which is not empty: the object or the array decodes them,
+// and any other value, which has no member or element, has none.
 func (d *interfaceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
 	buf := ctx.Buf
 	cursor = skipWhiteSpace(buf, cursor)
@@ -513,28 +520,10 @@ func (d *interfaceDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) 
 		return d.mapDecoder.DecodePath(ctx, cursor, depth)
 	case '[':
 		return d.sliceDecoder.DecodePath(ctx, cursor, depth)
-	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		return d.floatDecoder.DecodePath(ctx, cursor, depth)
-	case '"':
-		return d.stringDecoder.DecodePath(ctx, cursor, depth)
-	case 't':
-		if err := validateTrue(buf, cursor); err != nil {
-			return nil, 0, err
-		}
-		cursor += 4
-		return [][]byte{truebytes}, cursor, nil
-	case 'f':
-		if err := validateFalse(buf, cursor); err != nil {
-			return nil, 0, err
-		}
-		cursor += 5
-		return [][]byte{falsebytes}, cursor, nil
-	case 'n':
-		if err := validateNull(buf, cursor); err != nil {
-			return nil, 0, err
-		}
-		cursor += 4
-		return [][]byte{nullbytes}, cursor, nil
 	}
-	return nil, cursor, errors.ErrInvalidBeginningOfValue(buf[cursor], cursor)
+	end, err := skipValue(buf, cursor, depth)
+	if err != nil {
+		return nil, 0, err
+	}
+	return nil, end, nil
 }

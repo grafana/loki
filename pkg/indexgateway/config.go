@@ -71,6 +71,9 @@ type Config struct {
 
 	// MaxConcurrentQueueTimeout bounds how long a request waits for a free slot before rejection.
 	MaxConcurrentQueueTimeout time.Duration `yaml:"max_concurrent_queue_timeout" category:"experimental"`
+
+	// PerIndexOwnership gives each (tenant, table) index its own owners in the ring.
+	PerIndexOwnership PerIndexOwnershipConfig `yaml:"per_index_ownership" category:"experimental" doc:"hidden"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -79,6 +82,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxConcurrent, "index-gateway.max-concurrent", 0, "Experimental: Maximum number of index gateway RPCs that can execute concurrently. When the limit is reached, additional requests wait up to -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot becomes free in that time, the index gateway rejects the request with an HTTP 503 status. Clients retry the request against another index gateway replica. 0 disables admission control. A recommended starting value when enabling this setting is 200.")
 	f.DurationVar(&cfg.MaxConcurrentQueueTimeout, "index-gateway.max-concurrent-queue-timeout", 5*time.Second, "Experimental: Maximum time a request waits for a free slot when the index gateway is already executing -index-gateway.max-concurrent requests. If no slot becomes free in that time, the index gateway rejects the request. Bursts shorter than this timeout are absorbed without errors. Clients retry rejected requests against other replicas. When every replica is saturated, a request can wait up to this long per replica, so prefer a low value. 0 means requests wait indefinitely, bounded only by the request's own timeout. Only used when -index-gateway.max-concurrent is greater than 0.")
 
+	cfg.PerIndexOwnership.RegisterFlagsWithPrefix("index-gateway.per-index-ownership.", f)
+
 	// Ring
 	skipFlags := []string{
 		"index-gateway.ring.num-tokens",
@@ -86,12 +91,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 	cfg.Ring.RegisterFlagsWithPrefix("index-gateway.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.Ring.NumTokens, "index-gateway.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
-	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
+	// ReplicationFactor defines how many Index Gateway instances own each ring key.
 	//
 	// Whenever the store queries the ring key-value store for the Index Gateway instance responsible for tenant X,
 	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
-	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Number of index gateway instances that own each key in the index gateway ring. It is the default for -index-gateway.shard-size, which can also be set per tenant. When -index-gateway.per-index-ownership.enabled is true, it is also the number of index gateways that own each (tenant, table) index, so index gateways and their clients must use the same value.")
 }
 
 func (cfg *Config) Validate() error {
@@ -103,6 +108,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxConcurrentQueueTimeout < 0 {
 		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
+	}
+	if err := cfg.PerIndexOwnership.Validate(cfg.Mode); err != nil {
+		return err
 	}
 	return nil
 }

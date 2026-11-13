@@ -35,6 +35,38 @@ func TestBloomAggregator_TimeRange(t *testing.T) {
 	require.True(t, gotMax.IsZero(), "after Reset max must be zero")
 }
 
+func TestBloomAggregator_Observe(t *testing.T) {
+	values := []string{"a", "b", "a", "c", "b", "a"}
+	observe := func(t *testing.T, estimatedCardinality uint) *bloomPostingEntry {
+		t.Helper()
+		a := newBloomAggregator()
+		a.PrepareColumn("/a", 0, "svc", estimatedCardinality, 0)
+		for i, value := range values {
+			require.NoError(t, a.Observe(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: value, StreamID: int64(i + 1), Timestamp: time.Unix(1, 0)}))
+		}
+		return a.entries[bloomPostingKey{objectPath: "/a", sectionIndex: 0, columnName: "svc"}]
+	}
+	distinctFilter := func(estimatedCardinality uint) *bloom.BloomFilter {
+		filter := bloom.NewWithEstimates(estimatedCardinality, 1.0/128.0)
+		for _, value := range []string{"a", "b", "c"} {
+			filter.Add([]byte(value))
+		}
+		return filter
+	}
+
+	t.Run("builds the same filter as adding each distinct value once when values repeat", func(t *testing.T) {
+		entry := observe(t, 3)
+		require.NotNil(t, entry.added, "a low-cardinality column must track added values")
+		require.True(t, entry.bloomFilter.Equal(distinctFilter(3)))
+	})
+
+	t.Run("adds every value to the filter of a high-cardinality column", func(t *testing.T) {
+		entry := observe(t, maxAddedValues+1)
+		require.Nil(t, entry.added, "a high-cardinality column must not track added values")
+		require.True(t, entry.bloomFilter.Equal(distinctFilter(maxAddedValues+1)))
+	})
+}
+
 func TestBloomAggregator_PrepareColumn(t *testing.T) {
 	t.Run("sizes the bloom filter of a column with no estimated values for one value", func(t *testing.T) {
 		a := newBloomAggregator()

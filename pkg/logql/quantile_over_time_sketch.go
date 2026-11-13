@@ -187,6 +187,7 @@ func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 func newQuantileSketchIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
 ) RangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
@@ -207,6 +208,7 @@ func newQuantileSketchIterator(
 		agg:      nil,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		limits:   limits,
 	}
 	return &quantileSketchBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
@@ -261,7 +263,7 @@ type quantileSketchBatchRangeVectorIterator struct {
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
 	at := make([]ProbabilisticQuantileSample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	for _, series := range r.window {
 		at = append(at, ProbabilisticQuantileSample{
 			F:      r.agg(series.Floats),

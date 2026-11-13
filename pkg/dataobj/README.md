@@ -58,7 +58,7 @@ reader resolve every section's layout with one read from offset 0.
 2. **Encoder** - Low-level encoding of sections and metadata
 3. **Decoder** - Low-level decoding of sections from object storage
 4. **SectionReader** - Interface for reading data/metadata from sections
-5. **Section Implementations** - Specific section types (logs, streams, pointers, etc.)
+5. **Section Implementations** - Specific section types (logs, streams, postings, etc.)
 
 ---
 
@@ -330,14 +330,13 @@ Stores stream metadata and statistics in logs objects.
 - `rows` (uint64): Number of log records
 - `uncompressed_size` (uint64): Uncompressed data size
 
-### 3. Pointers Section
+### 3. Pointers Section (legacy)
 
 **Namespace**: `github.com/grafana/loki`
 **Kind**: `pointers`
-**Location**: `pkg/dataobj/sections/pointers/`
 
-Used in older index objects to point to other objects that contain logs, via stream or predicate lookup.
-The index builder no longer writes this section, and the compactor skips it.
+Older index objects hold this section. It points to objects that contain logs, via a stream or predicate lookup.
+The index builder does not write it, and Loki has no code to read it.
 
 **Columns:**
 - `path` (binary): Path to data object in object storage

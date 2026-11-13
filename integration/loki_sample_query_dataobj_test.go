@@ -131,6 +131,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 			"-querier.dataobj-query-start-time="+dataObjQueryStart,
 			"-dataobj.enabled=true",
 			"-dataobj.storage-lag=0s",
+			"-dataobj-metastore.toc-resolver.enabled=false",
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
@@ -168,6 +169,19 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	expectedSums := map[string]float64{
 		labels.FromMap(streamLabels("a")).String(): 60,
 		labels.FromMap(streamLabels("b")).String(): 3,
+	}
+
+	// Each expected rate is the matching count or sum above, divided by the 3600 seconds in [1h].
+	const rateQuery = `sum by (job, app) (rate({job="dataobjit"}[1h]))`
+	expectedRates := map[string]float64{
+		labels.FromMap(streamLabels("a")).String(): 3.0 / 3600,
+		labels.FromMap(streamLabels("b")).String(): 2.0 / 3600,
+	}
+
+	const rateUnwrapQuery = `sum by (job, app) (rate({job="dataobjit"} | logfmt | unwrap n [1h]))`
+	expectedUnwrapRates := map[string]float64{
+		labels.FromMap(streamLabels("a")).String(): 60.0 / 3600,
+		labels.FromMap(streamLabels("b")).String(): 3.0 / 3600,
 	}
 
 	// runCountQuery and valuesOf return plain errors, not require, so the Eventually loops below can
@@ -248,10 +262,31 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
 	})
 
+	t.Run("a rate query served by the chunk store returns the expected rates and reads chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedRates, rates, 1e-12)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query with an unwrap served by the chunk store returns the expected rates and reads chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateUnwrapQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedUnwrapRates, rates, 1e-12)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
+
 	tQuerier.AddFlags(
 		"-dataobj.enabled=true",
 		"-querier.dataobj-query-start-time="+dataObjQueryStart,
 		"-dataobj.storage-lag=0s",
+		"-dataobj-metastore.toc-resolver.enabled=false",
 		"-dataobj.metadata-cache.embedded-cache.enabled=true",
 	)
 	require.NoError(t, tQuerier.Restart())
@@ -273,7 +308,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		return reflect.DeepEqual(counts, expectedCounts)
 	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
-	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
+	t.Run("a query served by data objects returns the complete expected result, reports dataobj stats, and reads no chunks and no second-stage rows", func(t *testing.T) {
 		resp, err := runCountQuery()
 		require.NoError(t, err)
 
@@ -285,17 +320,30 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedBytes)
 		require.Positive(t, store.Dataobj.SectionsResolutionMaxTime)
+		require.Positive(t, store.Dataobj.LogsUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.LogsCompactedObjectsCount, "only the builder writes objects in this cluster")
+		require.Positive(t, store.Dataobj.IndexUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.IndexCompactedObjectsCount, "only the builder writes objects in this cluster")
 		require.Zero(t, store.Dataobj.PostFilterRows)
 		require.Zero(t, store.Chunk.DecompressedLines)
 	})
 
-	t.Run("a further query served by data objects hits the metadata cache because it opens the same object again", func(t *testing.T) {
+	t.Run("a further query served by data objects hits the metadata cache for log objects and index objects because it opens the same objects again", func(t *testing.T) {
 		_, err := runCountQuery()
 		require.NoError(t, err)
 
 		metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
 		require.NoError(t, err)
-		require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics))
+
+		families, err := parseMetricFamilies(metrics)
+		require.NoError(t, err)
+		hits := func(kind string) float64 {
+			series := dskit_metrics.FindMetricsInFamilyMatchingLabels(families["loki_dataobj_metadata_cache_hits_total"], "kind", kind)
+			require.Len(t, series, 1, "series of the %s kind", kind)
+			return series[0].GetCounter().GetValue()
+		}
+		require.Positive(t, hits("logs"))
+		require.Positive(t, hits("index"))
 	})
 
 	t.Run("a sum_over_time query served by data objects returns the same sums as the chunk store and reads no chunks", func(t *testing.T) {
@@ -305,6 +353,32 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		sums, err := valuesOf(resp)
 		require.NoError(t, err)
 		require.Equal(t, expectedSums, sums)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query served by data objects returns the same rates as the chunk store and reads no chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedRates, rates, 1e-12)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a rate query with an unwrap served by data objects returns the same rates as the chunk store and reads no chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, rateUnwrapQuery)
+		require.NoError(t, err)
+
+		rates, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.InDeltaMapValues(t, expectedUnwrapRates, rates, 1e-12)
 
 		store := resp.Data.Statistics.Querier.Store
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)

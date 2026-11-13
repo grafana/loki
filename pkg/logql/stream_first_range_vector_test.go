@@ -12,12 +12,13 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -48,11 +49,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			offset := sec(rnd.Int63n(3)) * 5
 			expr := mustRangeAggregation(t, fmt.Sprintf(queryFormat, time.Duration(selRange)))
 
-			want, err := newTimestampFirstRangeVectorIterator(newTimestampOrderedIterator(input), expr, selRange, step, start, end, offset)
+			want, err := newTimestampFirstRangeVectorIterator(newTimestampOrderedIterator(input), expr, selRange, step, start, end, offset, iteratorLimits{})
 			require.NoError(t, err)
 
 			rnd.Shuffle(len(input), func(i, j int) { input[i], input[j] = input[j], input[i] })
-			got, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), expr, selRange, step, start, end, offset, byApp, 0, false)
+			got, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), expr, step, start, end, offset, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, drainRangeVector(t, want), drainRangeVector(t, got), "seed %d", seed)
@@ -67,7 +68,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 				{foo, sec(1)}, {foo, sec(10)}, {foo, sec(11)}, {foo, sec(20)}, {bar, sec(15)},
 			}
 
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{
@@ -79,7 +80,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		t.Run("excludes a sample on the window start and includes one on the window end", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(10)}, {foo, sec(20)}}
 
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(20), sec(20), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(20), sec(20), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{20_000: {foo: 1}}, drainRangeVector(t, it))
@@ -88,7 +89,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		t.Run("evaluates an instant query as one step", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}, {foo, sec(9)}, {bar, sec(1)}}
 
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, 0, sec(10), sec(10), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 2, bar: 1}}, drainRangeVector(t, it))
@@ -97,7 +98,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		t.Run("reports steps at their unshifted timestamp when the query has an offset", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}}
 
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), 0, sec(20), sec(20), sec(10), byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, 0, sec(20), sec(20), sec(10), byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{20_000: {foo: 1}}, drainRangeVector(t, it))
@@ -106,7 +107,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		t.Run("emits no sample for a window without samples", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}}
 
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			steps := 0
@@ -136,7 +137,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 				{foo, sec(1), 1}, {foo, sec(10), 2}, {foo, sec(11), 4}, {foo, sec(20), 8}, {bar, sec(15), 16},
 			}
 			sumOver20s := mustRangeAggregation(t, `sum_over_time({app="foo"} | logfmt | unwrap n [20s])`)
-			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), sumOver20s, sec(20), sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), sumOver20s, sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{
@@ -148,7 +149,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("sums the sample values of an instant query as one step", func(t *testing.T) {
 			input := []valuedSample{{foo, sec(5), 1.5}, {foo, sec(9), 2.25}, {bar, sec(1), -3}}
-			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, 0, sec(10), sec(10), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 3.75, bar: -3}}, drainRangeVector(t, it))
@@ -156,7 +157,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("emits a zero for a window whose sample values sum to zero", func(t *testing.T) {
 			input := []valuedSample{{foo, sec(5), 5}, {foo, sec(6), -5}}
-			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, 0, sec(10), sec(10), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 0}}, drainRangeVector(t, it))
@@ -164,7 +165,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("keeps the sum of the windows after a huge sample value exact", func(t *testing.T) {
 			input := []valuedSample{{foo, sec(5), 1e16}, {foo, sec(15), 1.5}, {foo, sec(25), 0.1}}
-			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			require.Equal(t, map[int64]map[string]float64{
@@ -178,7 +179,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input := []valuedSample{
 				{foo, sec(5), math.NaN()}, {foo, sec(15), 2}, {foo, sec(25), math.Inf(1)}, {foo, sec(35), 4},
 			}
-			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), sec(10), sec(10), sec(40), 0, byApp, 0, false)
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), sec(10), sec(40), 0, byApp, 0, false)
 			require.NoError(t, err)
 
 			got := drainRangeVector(t, it)
@@ -193,11 +194,126 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		})
 	})
 
+	t.Run("rate", func(t *testing.T) {
+		query := mustRangeAggregation(t, `rate({app="foo"}[10s])`)
+
+		t.Run("divides the count of each window by the range in seconds over a range query", func(t *testing.T) {
+			input := []labeledSample{
+				{foo, sec(1)}, {foo, sec(10)}, {foo, sec(11)}, {foo, sec(20)}, {bar, sec(15)},
+			}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{
+				10_000: {foo: 0.2},
+				20_000: {foo: 0.2, bar: 0.1},
+			}, drainRangeVector(t, it))
+		})
+
+		t.Run("divides by the range and not by the step when the windows overlap", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(5)}, {foo, sec(15)}}
+			overlapping := mustRangeAggregation(t, `rate({app="foo"}[20s])`)
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), overlapping, sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{
+				10_000: {foo: 0.05},
+				20_000: {foo: 0.1},
+				30_000: {foo: 0.05},
+			}, drainRangeVector(t, it))
+		})
+
+		t.Run("excludes a sample on the window start and includes one on the window end", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(10)}, {foo, sec(20)}}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), query, sec(10), sec(20), sec(20), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{20_000: {foo: 0.1}}, drainRangeVector(t, it))
+		})
+
+		t.Run("evaluates an instant query as one step", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(5)}, {foo, sec(9)}, {bar, sec(1)}}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), query, 0, sec(10), sec(10), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 0.2, bar: 0.1}}, drainRangeVector(t, it))
+		})
+
+		t.Run("reports steps at their unshifted timestamp and divides by the range alone when the query has an offset", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(5)}}
+			withOffset := mustRangeAggregation(t, `rate({app="foo"}[10s] offset 10s)`)
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), withOffset, 0, sec(20), sec(20), sec(10), byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{20_000: {foo: 0.1}}, drainRangeVector(t, it))
+		})
+
+		t.Run("emits no sample for a window without samples", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(5)}}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 0.1}}, drainRangeVector(t, it))
+		})
+
+		t.Run("emits no sample when the range is zero", func(t *testing.T) {
+			input := []labeledSample{{foo, sec(5)}, {foo, sec(10)}}
+			zeroRange := mustRangeAggregation(t, `rate({app="foo"}[0s])`)
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), zeroRange, sec(5), sec(5), sec(10), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Empty(t, drainRangeVector(t, it))
+		})
+
+		t.Run("matches the timestamp-first iterator on random input in random order", func(t *testing.T) {
+			matchesTimestampFirst(t, `rate({app="foo"}[%s])`)
+		})
+	})
+
+	t.Run("rate with an unwrap", func(t *testing.T) {
+		query := mustRangeAggregation(t, `rate({app="foo"} | logfmt | unwrap n [20s])`)
+
+		t.Run("divides the sum of the sample values of each window by the range in seconds over a range query", func(t *testing.T) {
+			input := []valuedSample{
+				{foo, sec(1), 1}, {foo, sec(10), 2}, {foo, sec(11), 4}, {foo, sec(20), 8}, {bar, sec(15), 16},
+			}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, sec(10), sec(10), sec(30), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{
+				10_000: {foo: 0.15},
+				20_000: {foo: 0.75, bar: 0.8},
+				30_000: {foo: 0.6, bar: 0.8},
+			}, drainRangeVector(t, it))
+		})
+
+		t.Run("emits a zero for a window whose sample values sum to zero", func(t *testing.T) {
+			input := []valuedSample{{foo, sec(5), 5}, {foo, sec(6), -5}}
+
+			it, err := newStreamFirstRangeVectorIterator(t.Context(), newValuedSampleIterator(input), query, 0, sec(10), sec(10), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.Equal(t, map[int64]map[string]float64{10_000: {foo: 0}}, drainRangeVector(t, it))
+		})
+
+		t.Run("matches the timestamp-first iterator on random input in random order", func(t *testing.T) {
+			matchesTimestampFirst(t, `rate({app="foo"} | logfmt | unwrap n [%s])`)
+		})
+	})
+
 	t.Run("fails when the input fails", func(t *testing.T) {
 		readErr := errors.New("read failed")
 		input := failingSampleIterator{SampleIterator: newLabeledSampleIterator([]labeledSample{{foo, sec(5)}}), err: readErr}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -207,7 +323,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("fails with the cancellation error the input reports", func(t *testing.T) {
 		input := failingSampleIterator{SampleIterator: newLabeledSampleIterator([]labeledSample{{foo, sec(5)}}), err: context.Canceled}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -217,18 +333,18 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("fails when a new series exceeds the series limit", func(t *testing.T) {
 		input := []labeledSample{{foo, sec(5)}, {bar, sec(6)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.ErrorIs(t, it.Error(), logqlmodel.ErrLimit)
-		require.EqualError(t, it.Error(), logqlmodel.NewSeriesLimitError(1).Error())
+		require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
+		require.EqualError(t, it.Error(), logqlerr.NewSeriesLimitError(1).Error())
 	})
 
 	t.Run("ignores a series without samples in any window when enforcing the series limit", func(t *testing.T) {
 		input := []labeledSample{{bar, sec(50)}, {foo, sec(5)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 1}}, drainRangeVector(t, it))
@@ -237,7 +353,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("fails when the labels of a series do not parse", func(t *testing.T) {
 		input := []labeledSample{{foo, sec(4)}, {`{app=`, sec(5)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
@@ -249,11 +365,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{foo, sec(5)}, {`{__error__="JSONParserErr", app="bar"}`, sec(6)}}
 
-		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		var pipelineErr *logqlmodel.PipelineError
+		var pipelineErr *logqlerr.PipelineError
 		require.ErrorAs(t, it.Error(), &pipelineErr)
 		require.Empty(t, md.Warnings())
 	})
@@ -266,11 +382,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
 		)
 
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, maxSeries, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("fails with the pipeline error and not the limit error when a series over the limit carries an error label", func(t *testing.T) {
@@ -281,11 +397,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
 		)
 
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, maxSeries, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("fails with the pipeline error when the query has no series limit and the series that carries an error label falls in an existing output series", func(t *testing.T) {
@@ -296,11 +412,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
 		)
 
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, noSeriesLimit, false)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, noSeriesLimit, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(errored).Error())
 	})
 
 	t.Run("stops reading at the first of many series that carry an error label and fall in one output series", func(t *testing.T) {
@@ -308,17 +424,17 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		for i := range input {
 			input[i] = labeledSample{labels: fmt.Sprintf(`{__error__="SampleExtractionErr", app="foo", n="%d"}`, i), timestamp: sec(5)}
 		}
-		var read int
+		var read atomic.Int64
 		counted := iter.NewPeekingSampleIterator(&countingSampleIterator{SampleIterator: newLabeledSampleIterator(input), count: &read})
 
 		const maxSeries = 2
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), counted, countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), counted, countOverTime, 0, sec(10), sec(10), 0, byApp, maxSeries, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
 		firstErrored := labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo", "n", "0")
-		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(firstErrored).Error())
-		require.Less(t, read, 10)
+		require.EqualError(t, it.Error(), logqlerr.NewPipelineErr(firstErrored).Error())
+		require.Less(t, read.Load(), int64(10))
 	})
 
 	t.Run("keeps the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
@@ -327,7 +443,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input   = []labeledSample{{foo, sec(5)}, {errored, sec(6)}}
 		)
 
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, true)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 0, true)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 1, errored: 1}}, drainRangeVector(t, it))
@@ -336,7 +452,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("ignores a series that carries an error label and has no sample in any window", func(t *testing.T) {
 		input := []labeledSample{{`{__error__="JSONParserErr", app="bar"}`, sec(50)}, {foo, sec(5)}}
 
-		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 1}}, drainRangeVector(t, it))
@@ -347,7 +463,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{foo, sec(5)}, {bar, sec(6)}, {foo, sec(7)}}
 
-		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 2}}, drainRangeVector(t, it))
@@ -357,7 +473,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("counts series that differ only in a label the sum drops as one output series", func(t *testing.T) {
 		input := []labeledSample{{`{app="foo", pod="1"}`, sec(5)}, {`{app="foo", pod="2"}`, sec(6)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {`{app="foo", pod="1"}`: 1, `{app="foo", pod="2"}`: 1}}, drainRangeVector(t, it))
@@ -366,7 +482,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("counts the same output series of two tenants once", func(t *testing.T) {
 		input := []labeledSample{{`{__tenant_id__="a", app="foo"}`, sec(5)}, {`{__tenant_id__="b", app="foo"}`, sec(6)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {`{__tenant_id__="a", app="foo"}`: 1, `{__tenant_id__="b", app="foo"}`: 1}}, drainRangeVector(t, it))
@@ -376,11 +492,11 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		withoutPod := &syntax.Grouping{Groups: []string{"pod"}, Without: true}
 		input := []labeledSample{{`{app="foo", pod="1"}`, sec(5)}, {`{app="bar", pod="1"}`, sec(6)}}
 
-		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, withoutPod, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, withoutPod, 1, false)
 		require.NoError(t, err)
 
 		require.False(t, it.Next())
-		require.ErrorIs(t, it.Error(), logqlmodel.ErrLimit)
+		require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
 	})
 
 	t.Run("keeps a series of an output series it already has when a Logs Drilldown request reached the series limit", func(t *testing.T) {
@@ -388,21 +504,20 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{`{__tenant_id__="a", app="foo"}`, sec(5)}, {`{__tenant_id__="a", app="bar"}`, sec(6)}, {`{__tenant_id__="b", app="foo"}`, sec(7)}}
 
-		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
+		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
 		require.Equal(t, map[int64]map[string]float64{10_000: {`{__tenant_id__="a", app="foo"}`: 1, `{__tenant_id__="b", app="foo"}`: 1}}, drainRangeVector(t, it))
 	})
 
-	t.Run("rejects a range aggregation other than count_over_time and sum_over_time", func(t *testing.T) {
-		_, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(nil), mustRangeAggregation(t, `rate({app="foo"}[10s])`), sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
-		require.ErrorContains(t, err, "rate")
+	t.Run("rejects a range aggregation without a stream-first accumulator", func(t *testing.T) {
+		_, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(nil), mustRangeAggregation(t, `rate_counter({app="foo"} | logfmt | unwrap n [10s])`), 0, sec(10), sec(10), 0, byApp, 0, false)
+		require.EqualError(t, err, fmt.Sprintf(syntax.UnsupportedErr, "rate_counter"))
 	})
 }
 
 func TestStreamFirstRangeVectorIterator_windowRange(t *testing.T) {
 	sec := func(s int64) int64 { return s * int64(time.Second) }
-	countOverTime := mustRangeAggregation(t, `count_over_time({app="foo"}[10s])`)
 
 	for _, tc := range []struct {
 		name                               string
@@ -479,7 +594,9 @@ func TestStreamFirstRangeVectorIterator_windowRange(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(nil), countOverTime, tc.selRange, tc.step, tc.start, tc.end, tc.offset, &syntax.Grouping{}, 0, false)
+			countOverTime := mustRangeAggregation(t, fmt.Sprintf(`count_over_time({app="foo"}[%dms])`, time.Duration(tc.selRange).Milliseconds()))
+
+			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(nil), countOverTime, tc.step, tc.start, tc.end, tc.offset, &syntax.Grouping{}, 0, false)
 			require.NoError(t, err)
 
 			lo, hi, ok := it.(*streamFirstRangeVectorIterator).windowRange(tc.ts)

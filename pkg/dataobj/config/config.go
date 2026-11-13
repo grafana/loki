@@ -19,8 +19,11 @@ type Config struct {
 	// Uploader is shared by every target that uploads data objects.
 	Uploader  uploader.Config  `yaml:"uploader"`
 	Metastore metastore.Config `yaml:"metastore"`
-	// MetadataCache caches the metadata of data objects. It is enabled when a backend is configured.
-	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata of the data objects the querier reads. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// MetadataCache caches the metadata region of log objects and index objects, or the entire object
+	// if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), it also
+	// holds the tables of contents (ToCs) that the resolver refreshes. It is enabled when a backend is
+	// configured.
+	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -57,13 +60,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 }
 
-func (cfg *Config) Validate() error {
+// Validate returns an error when the config is not valid. kafkaIngestionEnabled says whether the
+// process consumes Kafka. Only then does Validate check Builder, because only the Kafka builder
+// reads it and its topic has no default.
+func (cfg *Config) Validate(kafkaIngestionEnabled bool) error {
 	if !cfg.Enabled {
 		// Do not validate configuration if disabled.
 		return nil
 	}
-	if err := cfg.Builder.Validate(); err != nil {
-		return err
+	if kafkaIngestionEnabled {
+		if err := cfg.Builder.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := cfg.Uploader.Validate(); err != nil {
 		return err

@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/encoder"
+	"github.com/goccy/go-json/internal/jsonstring"
 	"github.com/goccy/go-json/internal/runtime"
 )
 
@@ -14,9 +15,9 @@ var (
 	appendInt           = encoder.AppendInt
 	appendUint          = encoder.AppendUint
 	appendFloat64       = encoder.AppendFloat64
-	appendString        = encoder.AppendString
 	appendByteSlice     = encoder.AppendByteSlice
 	appendNumber        = encoder.AppendNumber
+	appendNumberString  = encoder.AppendNumberString
 	appendStructEnd     = encoder.AppendStructEndIndent
 	appendIndent        = encoder.AppendIndent
 	errUnsupportedFloat = encoder.ErrUnsupportedFloat
@@ -73,9 +74,9 @@ func isInfOrNaN(v float64) bool {
 }
 
 // appendFloat32 appends the float, or returns the error for one which is not finite as encoding/json does.
-func appendFloat32(ctx *encoder.RuntimeContext, b []byte, v float32) ([]byte, error) {
+func appendFloat32(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, v float32) ([]byte, error) {
 	if isInfOrNaN(float64(v)) {
-		return nil, errUnsupportedFloat(float64(v))
+		return nil, errUnsupportedFloat(ctx, code, float64(v))
 	}
 	return encoder.AppendFloat32(ctx, b, v), nil
 }
@@ -94,13 +95,6 @@ func ptrToNPtr(p unsafe.Pointer, ptrNum uint8) unsafe.Pointer {
 		p = *(*unsafe.Pointer)(p)
 	}
 	return p
-}
-
-func ptrToInterface(code *encoder.Opcode, p unsafe.Pointer) any {
-	return *(*any)(unsafe.Pointer(&emptyInterface{
-		typ: code.Type,
-		ptr: p,
-	}))
 }
 
 func appendBool(_ *encoder.RuntimeContext, b []byte, v bool) []byte {
@@ -126,19 +120,18 @@ func appendColon(_ *encoder.RuntimeContext, b []byte) []byte {
 	return append(b[:len(b)-2], ':', ' ')
 }
 
-func appendMapKeyValue(ctx *encoder.RuntimeContext, code *encoder.Opcode, b, key, value []byte) []byte {
+// mapKeyFooterLen returns the length of the codes of a color which end the names of the keys written by code: none
+// without colors.
+func mapKeyFooterLen(_ *encoder.RuntimeContext, _ *encoder.Opcode) int { return 0 }
+
+// appendSortedMapKey appends the key of an entry of a sorted map, as it was encoded with a comma after it, and the
+// colon after it.
+func appendSortedMapKey(ctx *encoder.RuntimeContext, code *encoder.Opcode, b, key []byte) []byte {
 	b = appendIndent(ctx, b, code.Indent+1)
 	b = append(b, key...)
 	b[len(b)-2] = ':'
 	b[len(b)-1] = ' '
-	return append(b, value...)
-}
-
-func appendMapEnd(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte) []byte {
-	b = b[:len(b)-2]
-	b = append(b, '\n')
-	b = appendIndent(ctx, b, code.Indent)
-	return append(b, '}', ',', '\n')
+	return b
 }
 
 func appendArrayHead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte) []byte {
@@ -229,7 +222,7 @@ func appendScalar(ctx *encoder.RuntimeContext, b []byte, code *encoder.Opcode, p
 	case encoder.OpUint:
 		b = appendUint(ctx, b, p, code)
 	case encoder.OpFloat32:
-		bb, err := appendFloat32(ctx, b, ptrToFloat32(p))
+		bb, err := appendFloat32(ctx, code, b, ptrToFloat32(p))
 		if err != nil {
 			return nil, err
 		}
@@ -237,11 +230,11 @@ func appendScalar(ctx *encoder.RuntimeContext, b []byte, code *encoder.Opcode, p
 	case encoder.OpFloat64:
 		v := ptrToFloat64(p)
 		if isInfOrNaN(v) {
-			return nil, errUnsupportedFloat(v)
+			return nil, errUnsupportedFloat(ctx, code, v)
 		}
 		b = appendFloat64(ctx, b, v)
 	case encoder.OpString:
-		b = appendString(ctx, b, ptrToString(p))
+		b, _ = jsonstring.AppendQuoted(encoder.StringEscaper(ctx), b, ptrToString(p))
 	case encoder.OpBool:
 		b = appendBool(ctx, b, ptrToBool(p))
 	case encoder.OpBytes:

@@ -8,6 +8,9 @@ import (
 	"github.com/grafana/dskit/middleware"
 )
 
+// LokiQueryBytesProcessedHeader is the response header for the processed byte count from query statistics.
+const LokiQueryBytesProcessedHeader = "X-Loki-Query-Bytes-Processed"
+
 type headerContextKey struct{}
 
 var (

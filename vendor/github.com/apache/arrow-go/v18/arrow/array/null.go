@@ -84,6 +84,10 @@ func (a *Null) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *Null) ValueAsAny(i int) any {
+	return nil
+}
+
 func (a *Null) MarshalJSON() ([]byte, error) {
 	return json.Marshal(make([]interface{}, a.Len()))
 }

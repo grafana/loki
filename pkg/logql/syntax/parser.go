@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 )
 
 const (
@@ -60,7 +60,7 @@ type parser struct {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -70,25 +70,25 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-// parseExprWithoutValidation parses a string and returns an Expr, skipping the
+// ParseExprWithoutValidation parses a string and returns an Expr, skipping the
 // semantic validation done by ParseExpr.
 //
 // The parse itself is inlined here rather than living on the parser type: parts
 // of LogQL parsing panic deliberately and rely on the recover below, so there
 // must be no way to invoke them without it.
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
-		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
+		return nil, logqlerr.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if errors.Is(err, logqlmodel.ErrParse) {
+				if errors.Is(err, logqlerr.ErrParse) {
 					return
 				}
-				err = logqlmodel.NewParseError(err.Error(), 0, 0)
+				err = logqlerr.NewParseError(err.Error(), 0, 0)
 			}
 		}
 	}()
@@ -124,15 +124,15 @@ func validateExpr(expr Expr) error {
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
 	default:
-		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
+		return logqlerr.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
 }
 
 // ValidateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func ValidateMatchers(matchers []*labels.Matcher) error {
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	_, matchers = syntaxutil.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
-		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
+		return logqlerr.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
 	return nil
 }
@@ -148,7 +148,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	if validate {
 		expr, err = ParseExpr(input)
 	} else {
-		expr, err = parseExprWithoutValidation(input)
+		expr, err = ParseExprWithoutValidation(input)
 	}
 
 	if err != nil {
@@ -156,7 +156,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, logqlmodel.ErrParseMatchers
+		return nil, logqlerr.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
@@ -256,14 +256,14 @@ func validateLogSelectorExpression(expr LogSelectorExpr) error {
 // This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
 func validateSortGrouping(grouping *Grouping) error {
 	if grouping != nil && len(grouping.Groups) > 0 {
-		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+		return logqlerr.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
 	}
 	return nil
 }
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}

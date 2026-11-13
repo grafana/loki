@@ -293,7 +293,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 					break
 				}
 
-				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
+				if status > 0 && !util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
 					break
 				}

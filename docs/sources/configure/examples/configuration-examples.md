@@ -1,9 +1,12 @@
 ---
-title: Configuration
-description: Loki Configuration Examples and Snippets
+title: Legacy configuration examples
+menuTitle: Legacy examples
+description: Loki configuration examples and snippets using the legacy (pre-Thanos, non-default) storage clients.
 weight:  100
 ---
-# Configuration
+# Legacy configuration examples
+
+These examples configure Loki's legacy, non-default storage clients. Since Loki 4.0, Loki uses the Thanos-based storage clients by default (the `use_thanos_objstore` setting defaults to `true`). For the current default storage client configuration, refer to [Configuration examples for using Thanos-based storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/).
 
 ## 1-Local-Configuration-Example.yaml
 
@@ -36,6 +39,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   filesystem:
     directory: /tmp/loki/chunks
 
@@ -74,6 +78,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
@@ -92,6 +97,7 @@ storage_config:
 # instance role by changing the `storage_config` section.
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   aws:
     s3: s3://region/bucket_name
       
@@ -130,6 +136,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
@@ -159,6 +166,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
@@ -194,6 +202,8 @@ schema_config:
     # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
     # using daily periodic tables and chunks on filesystem.
     # The index tables will be prefixed with "index_".
+    # NOTE: `store: boltdb-shipper` is deprecated and scheduled for removal in Loki 4.0.
+    # This entry is kept only to illustrate migrating an existing boltdb-shipper period to tsdb.
     - from: "2018-04-15"
       store: boltdb-shipper
       object_store: filesystem
@@ -234,6 +244,7 @@ schema_config:
         period: 24h
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
@@ -263,6 +274,7 @@ storage_config:
 # This partial configuration uses S3 for chunk storage and a KMS CMK for encryption.
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
     sse:
@@ -280,6 +292,7 @@ storage_config:
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   aws:
     bucketnames: bucket_name1, bucket_name2
     endpoint: s3.endpoint.com
@@ -422,6 +435,7 @@ memberlist:
 
 # This partial configuration uses Azure for chunk storage
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   azure:
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
     account_key: <azure_blob_access_key>
@@ -445,6 +459,7 @@ storage_config:
 
 # This partial configuration uses Azure for chunk storage and a service principal for authentication
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   azure:
     use_service_principal: true
     # Azure tenant ID used to authenticate through Azure OAuth

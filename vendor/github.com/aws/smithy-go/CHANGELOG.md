@@ -1,3 +1,44 @@
+# Release (2026-11-09)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.9
+  * **Bug Fix**: Fix schema serde serializing struct members marked with the SDK-internal NoSerialize trait.
+  * **Bug Fix**: Fix unions inside lists and maps being serialized with the wrong element names or keys under schema serde for awsQuery and XML protocols.
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.2.2](aws-http-auth/CHANGELOG.md#v122-2026-11-09)
+  * **Bug Fix**: Sort canonical query parameters after URI-encoding them, as required by SigV4.
+
+# Release (2026-11-03)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.8
+  * **Bug Fix**: Preserve the exact value of numbers in JSON codec instead of automatically parsing to float64.
+
+# Release (2026-10-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.7
+  * **Bug Fix**: Fix a panic or `EOF` error when deserializing a JSON union that contains a member not modeled by the client and whose value is not `null`.
+  * **Bug Fix**: Log the underlying error when dumping an HTTP request or response for logging fails
+
+# Release (2026-10-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.6
+  * **Bug Fix**: Enforce event stream header key value length limit instead of truncating
+  * **Bug Fix**: Retain the value in a list with the zero value when encountering a null entry on a dense list. This matches how legacy code-generated JSON deserializers behaved.
+
 # Release (2026-10-09)
 
 ## General Highlights

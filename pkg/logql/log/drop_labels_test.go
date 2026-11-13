@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_DropLabels(t *testing.T) {
@@ -42,7 +42,7 @@ func Test_DropLabels(t *testing.T) {
 			"drop by __error__",
 			[]NamedLabelMatcher{
 				{
-					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
+					labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errJSON),
 					"",
 				},
 				{
@@ -65,7 +65,7 @@ func Test_DropLabels(t *testing.T) {
 			"drop with wrong __error__ value",
 			[]NamedLabelMatcher{
 				{
-					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+					labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errLogfmt),
 					"",
 				},
 			},
@@ -78,15 +78,15 @@ func Test_DropLabels(t *testing.T) {
 			labels.FromStrings("app", "foo",
 				"namespace", "prod",
 				"pod_uuid", "foo",
-				logqlmodel.ErrorLabel, errJSON,
-				logqlmodel.ErrorDetailsLabel, "json error",
+				logqlerr.ErrorLabel, errJSON,
+				logqlerr.ErrorDetailsLabel, "json error",
 			),
 		},
 		{
 			"drop by __error_details__",
 			[]NamedLabelMatcher{
 				{
-					labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, "expecting json.*"),
+					labels.MustNewMatcher(labels.MatchRegexp, logqlerr.ErrorDetailsLabel, "expecting json.*"),
 					"",
 				},
 				{
@@ -109,7 +109,7 @@ func Test_DropLabels(t *testing.T) {
 			"drop labels with names and matcher",
 			[]NamedLabelMatcher{
 				{
-					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
+					labels.MustNewMatcher(labels.MatchEqual, logqlerr.ErrorLabel, errJSON),
 					"",
 				},
 				{

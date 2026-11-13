@@ -68,8 +68,9 @@ type Client struct {
 	prsPool prsPool // for sinks to reuse []promisedNumberedRecord
 
 	controllerIDMu xsync.Mutex
+	rebootstrapMu  xsync.Mutex // serializes rebootstrapMisrouted
 	controllerID   int32
-	clusterID      *string // we piggy back updating clusterID
+	clusterID      atomic.Pointer[string] // we piggy back updating clusterID
 
 	// The following two ensure that we only have one fetchBrokerMetadata
 	// at once. This avoids unnecessary broker metadata requests and
@@ -83,6 +84,10 @@ type Client struct {
 	producer producer
 	consumer consumer
 	id2t     atomic.Value // map[[16]byte]string
+
+	// sawPreferredReplica is set once any broker returns a preferred read
+	// replica, which only a rack aware replica selector does; see BalanceRacks.
+	sawPreferredReplica atomic.Bool
 
 	metrics metrics
 
@@ -177,8 +182,14 @@ func validateCfg(opts ...Opt) (cfg, []hostport, error) {
 			return cfg, nil, err
 		}
 	}
-	if cfg.decompressor == nil {
-		cfg.decompressor = DefaultDecompressor(cfg.pools...)
+	// Our own default is bounded at MaxDecompressBatchBytes. A default
+	// decompressor the user built is bounded at math.MaxInt32; rebuild it
+	// with our bound.
+	switch d := cfg.decompressor.(type) {
+	case nil:
+		cfg.decompressor = newDecompressor(cfg.maxDecompressBatchBytes, cfg.pools...)
+	case *decompressor:
+		cfg.decompressor = newDecompressor(cfg.maxDecompressBatchBytes, d.pools...)
 	}
 
 	return cfg, seeds, nil
@@ -302,6 +313,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxBrokerWriteBytes}
 	case namefn(BrokerMaxReadBytes):
 		return []any{cfg.maxBrokerReadBytes}
+	case namefn(MaxDecompressBatchBytes):
+		return []any{cfg.maxDecompressBatchBytes}
 	case namefn(MetadataMaxAge):
 		return []any{cfg.metadataMaxAge}
 	case namefn(MetadataMinAge):
@@ -343,6 +356,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.compression}
 	case namefn(WithCompressor):
 		return []any{cfg.compressor}
+	case namefn(StreamingCompression):
+		return []any{cfg.streamCompression}
 	case namefn(ProducerBatchMaxBytes):
 		return []any{cfg.maxRecordBatchBytes("")}
 	case namefn(ProducerBatchMaxBytesFn):
@@ -353,6 +368,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxBufferedBytes}
 	case namefn(RecordPartitioner):
 		return []any{cfg.partitioner}
+	case namefn(RackAwarePartitioning):
+		return []any{cfg.rackAwarePartitioning}
 	case namefn(ProduceRequestTimeout):
 		return []any{cfg.produceTimeout}
 	case namefn(RecordRetries):
@@ -411,6 +428,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.maxConcurrentFetches}
 	case namefn(Rack):
 		return []any{cfg.rack}
+	case namefn(BalanceRacks):
+		return []any{cfg.balanceRacks}
 	case namefn(KeepRetryableFetchErrors):
 		return []any{cfg.keepRetryableFetchErrors}
 	case namefn(DisableFetchCRCValidation):
@@ -428,6 +447,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.autocommitMarks}
 	case namefn(Balancers):
 		return []any{cfg.balancers}
+	case namefn(ServerSideBalancer):
+		return []any{cfg.serverSideBalancer}
 	case namefn(BlockRebalanceOnPoll):
 		return []any{cfg.blockRebalanceOnPoll}
 	case namefn(ConsumerGroup):
@@ -528,10 +549,15 @@ func NewClient(opts ...Opt) (*Client, error) {
 	}
 
 	if cfg.setResetOffset && !cfg.setStartOffset {
-		cfg.startOffset = cfg.resetOffset
+		if cfg.resetOffset.at != atRewind { // a rewind cannot start a partition
+			cfg.startOffset = cfg.resetOffset
+		}
 	} else if cfg.setStartOffset && !cfg.setResetOffset {
-		cfg.resetOffset = cfg.startOffset
-	} // else they are both set (keep) or both unset (defaults)
+		// Only the noReset flag carries: AtCommitted documents that it opts
+		// into NoResetOffset. The reset offset itself stays the default, so
+		// a start offset of AtStart does not re-read the log on every loss.
+		cfg.resetOffset.noReset = cfg.startOffset.noReset
+	}
 
 	ctx := context.Background()
 
@@ -698,6 +724,9 @@ func (cl *Client) Ping(ctx context.Context) error {
 // still exists on the broker, this function will at most only temporarily
 // remove the topic from the client and the topic will be re-discovered.
 //
+// Purging a topic and adding it back is also how to resume after a topic was
+// deleted and recreated; see the README for more details.
+//
 // For admin requests, this deletes the topic from the cached metadata map for
 // sharded requests. Metadata for sharded admin requests is only cached for
 // MetadataMinAge anyway, but the map is not cleaned up once the metadata
@@ -721,28 +750,25 @@ func (cl *Client) PurgeTopicsFromClient(topics ...string) {
 		wg.Wait()
 
 		cl.metaCache.mu.Lock()
-		var purgedIDs [][16]byte
 		for _, t := range topics {
 			if ct, ok := cl.metaCache.topics[t]; ok {
-				var zeroID [16]byte
-				if ct.id != zeroID {
+				if ct.id != noID {
 					delete(cl.metaCache.byID, ct.id)
-					purgedIDs = append(purgedIDs, ct.id)
 				}
 				delete(cl.metaCache.topics, t)
 			}
 		}
 		cl.metaCache.mu.Unlock()
 
-		if len(purgedIDs) > 0 {
-			old := cl.id2tMap()
-			merged := make(map[[16]byte]string, len(old))
-			maps.Copy(merged, old)
-			for _, id := range purgedIDs {
-				delete(merged, id)
+		// Drop the purged names from id2t.
+		old := cl.id2tMap()
+		merged := make(map[[16]byte]string, len(old))
+		for id, name := range old {
+			if !slices.Contains(topics, name) {
+				merged[id] = name
 			}
-			cl.id2t.Store(merged)
 		}
+		cl.id2t.Store(merged)
 	})
 }
 
@@ -840,7 +866,11 @@ func (c *connTimeouter) timeouts(req kmsg.Request) (r, w time.Duration) {
 		return def + millis(t.timeout), def
 	case *fetchRequest:
 		return def + millis(t.maxWait), def
+	case *kmsg.ListOffsetsRequest:
+		return def + millis(t.TimeoutMillis), def
 	case *kmsg.FetchRequest:
+		return def + millis(t.MaxWaitMillis), def
+	case *kmsg.ShareFetchRequest:
 		return def + millis(t.MaxWaitMillis), def
 
 	// Join and sync can take a long time. Sync has no notion of
@@ -1170,17 +1200,57 @@ func (cl *Client) updateMetadataBrokers(resp *kmsg.MetadataResponse) {
 	if resp.ControllerID >= 0 {
 		cl.controllerID = resp.ControllerID
 	}
+	cl.controllerIDMu.Unlock()
 	// Clone ClusterID so cl.clusterID owns its own *string, independent
 	// of the broker response. Readers (dups in RequestCachedMetadata)
 	// would otherwise race a user mutating *resp.ClusterID on a
 	// previously-returned cl.Request(MetadataRequest) response.
-	cl.clusterID = nil
+	var clusterID *string
 	if resp.ClusterID != nil {
 		s := *resp.ClusterID
-		cl.clusterID = &s
+		clusterID = &s
 	}
-	cl.controllerIDMu.Unlock()
+	cl.clusterID.Store(clusterID)
 	cl.updateBrokers(resp.Brokers)
+}
+
+// rebootstrapMisrouted is called when broker b answered REBOOTSTRAP_REQUIRED
+// to an ApiVersions request that named the cluster and node we expected
+// (KIP-1242): the address our metadata has for b belongs to a different
+// broker or cluster, so every discovered broker is suspect. We drop them all
+// so that the next metadata request goes to a seed, after giving
+// OnRebootstrapRequired a chance to replace the seeds, and refresh metadata
+// now. Requests in flight to discovered brokers fail with errChosenBrokerDead
+// and retry once metadata rediscovers the cluster.
+//
+// Unlike a REBOOTSTRAP_REQUIRED metadata response, this rebootstraps even
+// without OnRebootstrapRequired: the mapping we hold is actively wrong, and
+// going back to the seeds is the only way to repair it.
+func (cl *Client) rebootstrapMisrouted(b *broker, clusterID string) {
+	cl.rebootstrapMu.Lock()
+	defer cl.rebootstrapMu.Unlock()
+
+	// Every connection that was mid-init when the first one rebootstrapped
+	// is answered the same way; once the first wipe finishes, its broker
+	// is already dead.
+	if b.dead.Load() {
+		return
+	}
+	cl.cfg.logger.Log(LogLevelWarn, "broker rejected our connection with REBOOTSTRAP_REQUIRED: the address we have for this node belongs to a different broker or cluster; dropping all discovered brokers and rebootstrapping from the seeds",
+		"broker", logID(b.meta.NodeID),
+		"addr", b.addr,
+		"cluster_id", clusterID,
+	)
+	if fn := cl.cfg.onRebootstrapRequired; fn != nil {
+		seeds, err := fn()
+		if err != nil || len(seeds) == 0 {
+			cl.cfg.logger.Log(LogLevelError, "OnRebootstrapRequired returned an error or no seeds, keeping the current seeds", "err", err)
+		} else if err := cl.UpdateSeedBrokers(seeds...); err != nil {
+			cl.cfg.logger.Log(LogLevelError, "unable to use the seeds from OnRebootstrapRequired, keeping the current seeds", "err", err)
+		}
+	}
+	cl.updateBrokers(nil)
+	cl.triggerUpdateMetadataNow("rebootstrap required after a misrouted connection")
 }
 
 // updateBrokers is called with the broker portion of every metadata response.
@@ -1290,8 +1360,9 @@ func (cl *Client) brokerRacks() map[int32]string {
 // safe. The CloseAllowingRebalance function exists a shortcut to opt into
 // allowing rebalance while closing.
 //
-// If you are using static membership, CloseAllowingRebalance will NOT send a
-// leave group request. See InstanceID for more details.
+// If you are using static membership, CloseAllowingRebalance does not send a
+// leave group request, except for one specific case noted in the [InstanceID]
+// docs.
 func (cl *Client) CloseAllowingRebalance() {
 	cl.AllowRebalance()
 	cl.Close()
@@ -1299,8 +1370,8 @@ func (cl *Client) CloseAllowingRebalance() {
 
 // Close leaves any group and closes all connections and goroutines. This
 // function waits for the group to be left. If you want to force leave a group
-// immediately and ensure a speedy shutdown you can use LeaveGroupContext first
-// (and then Close will be immediate).
+// immediately and ensure a speedy shutdown you can use LeaveGroupContext with a
+// canceled context first (and then Close will be immediate).
 //
 // If you are group consuming and have overridden the default
 // OnPartitionsRevoked, you must manually commit offsets before closing the
@@ -1313,8 +1384,8 @@ func (cl *Client) CloseAllowingRebalance() {
 // notification of revoked partitions. If you want to automatically allow
 // rebalancing, use CloseAllowingRebalance.
 //
-// If you are using static membership, Close will NOT send a leave group
-// request. See InstanceID for more details.
+// If you are using static membership, Close does not send a leave group
+// request, except for one specific case noted in the [InstanceID] docs.
 func (cl *Client) Close() {
 	cl.close(cl.ctx)
 }
@@ -1505,9 +1576,9 @@ func (cl *Client) Request(ctx context.Context, req kmsg.Request) (kmsg.Response,
 }
 
 // RequestCachedMetadata returns a metadata response, using any cached topic
-// data possible. Any topic with data cached longer than 'limit' has its
-// metadata updated before being returned. If limit is zero or less,
-// MetadataMinAge is used (default 5s).
+// data possible. Any topic with data cached longer than 'limit', or whose
+// cached leader no longer exists, triggers a cache update. If limit is zero
+// or less, MetadataMinAge is used (default 5s).
 //
 // This function is useful if you run a lot of functions that internally
 // fetch metadata to execute. As an example, many functions in the kadm
@@ -1527,7 +1598,6 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 	// Resolve IDs from the cache and the main metadata loop's id2t
 	// map under one lock, then fall back to a broker fetch for any
 	// truly unresolved IDs.
-	var zeroID [16]byte
 	var unresolvedIDs [][16]byte
 	if len(req.Topics) > 0 {
 		id2t := cl.id2tMap()
@@ -1537,7 +1607,7 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 				topics = append(topics, *t.Topic)
 				continue
 			}
-			if t.TopicID == zeroID {
+			if t.TopicID == noID {
 				cl.metaCache.mu.Unlock()
 				return nil, errors.New("unable to request cached metadata with a missing topic name and zero topic ID")
 			}
@@ -1629,12 +1699,29 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 	}
 	cl.brokersMu.RUnlock()
 
+	resp.ClusterID = dups(cl.clusterID.Load())
 	cl.controllerIDMu.Lock()
-	resp.ClusterID = dups(cl.clusterID)
 	resp.ControllerID = cl.controllerID
 	cl.controllerIDMu.Unlock()
 
+	// While we run, another metadata update (the metadata loop, a Ping) can
+	// remove a topic's leader from cl.brokers before the copy above. We add
+	// that leader from the brokers the topic was cached with.
+	known := make(map[int32]bool, len(resp.Brokers))
+	for _, b := range resp.Brokers {
+		known[b.NodeID] = true
+	}
 	for _, t := range cached {
+		for _, p := range t.t.Partitions {
+			if known[p.Leader] {
+				continue
+			}
+			if b, ok := t.brokers[p.Leader]; ok {
+				b.Rack = dups(b.Rack)
+				resp.Brokers = append(resp.Brokers, b)
+				known[p.Leader] = true
+			}
+		}
 		resp.Topics = append(resp.Topics, dupt(t.t))
 	}
 	for _, t := range idErrTopics {
@@ -1892,12 +1979,22 @@ func (cl *Client) shardedRequest(ctx context.Context, req kmsg.Request) ([]Respo
 		return shards(cl.handleCoordinatorReq(ctx, t)), nil
 
 	case *kmsg.ApiVersionsRequest:
-		// As of v3, software name and version are required.
-		// If they are missing, we use the config options.
-		if t.ClientSoftwareName == "" && t.ClientSoftwareVersion == "" {
+		// As of v3, software name and version are required. If they are
+		// missing, we use the config options. As of v5, NodeID pairs
+		// with ClusterID and defaults to -1; a zero value literal has 0,
+		// which a broker rejects as a node named without a cluster. We
+		// unset NodeID whenever ClusterID is unset.
+		noSoftware := t.ClientSoftwareName == "" && t.ClientSoftwareVersion == ""
+		noCluster := t.ClusterID == nil && t.NodeID != -1
+		if noSoftware || noCluster {
 			dup := *t
-			dup.ClientSoftwareName = cl.cfg.softwareName
-			dup.ClientSoftwareVersion = cl.cfg.softwareVersion
+			if noSoftware {
+				dup.ClientSoftwareName = cl.cfg.softwareName
+				dup.ClientSoftwareVersion = cl.cfg.softwareVersion
+			}
+			if noCluster {
+				dup.NodeID = -1
+			}
 			req = &dup
 		}
 	}
@@ -1986,7 +2083,7 @@ func (cl *Client) controller(ctx context.Context) (b *broker, err error) {
 	}
 
 	defer func() {
-		if ec := (*errUnknownController)(nil); errors.As(err, &ec) {
+		if ec, ok := errors.AsType[*errUnknownController](err); ok {
 			cl.forgetControllerID(ec.id)
 		}
 	}()
@@ -2912,7 +3009,7 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 				var errIsFromResp bool
 				if err == nil {
 					err = sharder.onResp(myIssue.req, resp) // perform some potential cleanup, and potentially receive an error to retry
-					if ke := (*kerr.Error)(nil); errors.As(err, &ke) {
+					if _, ok := errors.AsType[*kerr.Error](err); ok {
 						errIsFromResp = true
 					}
 				}
@@ -3043,10 +3140,11 @@ func firstErrMerger(sresps []ResponseShard, merge func(kresp kmsg.Response)) err
 }
 
 type cachedMetaTopic struct {
-	id   [16]byte
-	t    kmsg.MetadataResponseTopic
-	ps   map[int32]kmsg.MetadataResponseTopicPartition
-	when time.Time
+	id      [16]byte
+	t       kmsg.MetadataResponseTopic
+	ps      map[int32]kmsg.MetadataResponseTopicPartition
+	when    time.Time
+	brokers map[int32]kmsg.MetadataResponseBroker // shared by all topics from one response
 }
 
 // For NOT_LEADER_FOR_PARTITION:
@@ -3077,13 +3175,12 @@ func (cl *Client) maybeDeleteCachedMeta(unknownTopic bool, ts ...string) (should
 	now := time.Now()
 	cl.metaCache.mu.Lock()
 	defer cl.metaCache.mu.Unlock()
-	var zeroID [16]byte
 	for _, t := range ts {
 		ct, exists := cl.metaCache.topics[t]
 		if exists && (min == 0 || now.Sub(ct.when) > min) {
 			shouldRetry = true
 			delete(cl.metaCache.topics, t)
-			if ct.id != zeroID {
+			if ct.id != noID {
 				delete(cl.metaCache.byID, ct.id)
 			}
 		}
@@ -3108,20 +3205,6 @@ func (cl *Client) resolveTopicMeta(ctx context.Context, topics []string, useCach
 
 	all := topics == nil
 
-	// All-topics: return a copy of the cache if fresh.
-	if all && useCache {
-		cl.metaCache.mu.Lock()
-		if cl.metaCache.topics != nil && time.Since(cl.metaCache.allAt) < limit {
-			cached := make(map[string]cachedMetaTopic, len(cl.metaCache.topics))
-			for k, v := range cl.metaCache.topics {
-				cached[k] = v
-			}
-			cl.metaCache.mu.Unlock()
-			return cached, nil
-		}
-		cl.metaCache.mu.Unlock()
-	}
-
 	// No-topics: just need brokers/controller. The main metadata loop
 	// maintains both; we only fetch if we have no broker info yet.
 	if !all && len(topics) == 0 {
@@ -3133,33 +3216,68 @@ func (cl *Client) resolveTopicMeta(ctx context.Context, topics []string, useCach
 		}
 	}
 
-	// Specific topics: check cache for individual topics.
-	var results map[string]cachedMetaTopic
-	needed := topics
-	if len(topics) > 0 && useCache {
+	var brokers map[int32]bool
+	if useCache {
+		cl.brokersMu.RLock()
+		brokers = make(map[int32]bool, len(cl.brokers))
+		for _, b := range cl.brokers {
+			brokers[b.meta.NodeID] = true
+		}
+		cl.brokersMu.RUnlock()
+	}
+
+	// All-topics: return a copy of the cache if fresh.
+	if all && useCache {
+		var cached map[string]cachedMetaTopic
 		cl.metaCache.mu.Lock()
-		if len(cl.metaCache.topics) > 0 {
-			results = make(map[string]cachedMetaTopic)
-			needed = topics[:0]
-			for _, t := range topics {
-				tcached, exists := cl.metaCache.topics[t]
-				if exists && time.Since(tcached.when) < limit {
-					results[t] = tcached
-				} else {
-					needed = append(needed, t)
-				}
+		if cl.metaCache.topics != nil && time.Since(cl.metaCache.allAt) < limit {
+			cached = make(map[string]cachedMetaTopic, len(cl.metaCache.topics))
+			for k, v := range cl.metaCache.topics {
+				cached[k] = v
 			}
 		}
 		cl.metaCache.mu.Unlock()
-		if results != nil && len(needed) == 0 {
+		if cached != nil && !leaderGone(cached, brokers) {
+			return cached, nil
+		}
+	}
+
+	// Specific topics: return the cache if every topic is fresh. Otherwise,
+	// we fetch every topic asked for, so all come from one response.
+	if len(topics) > 0 && useCache {
+		results := make(map[string]cachedMetaTopic, len(topics))
+		cl.metaCache.mu.Lock()
+		for _, t := range topics {
+			tcached, exists := cl.metaCache.topics[t]
+			if !exists || time.Since(tcached.when) >= limit {
+				results = nil
+				break
+			}
+			results[t] = tcached
+		}
+		cl.metaCache.mu.Unlock()
+		if results != nil && !leaderGone(results, brokers) {
 			return results, nil
 		}
 	}
-	if results == nil {
-		results = make(map[string]cachedMetaTopic)
-	}
-	_, _, err := cl.fetchMetadataByName(ctx, all, needed, true, results) // prune: yes; our caller wants only these cached
+	results := make(map[string]cachedMetaTopic)
+	_, _, err := cl.fetchMetadataByName(ctx, all, topics, true, results) // prune: yes; our caller wants only these cached
 	return results, err
+}
+
+// Returns if any cached partition's leader no longer exists in the client.
+func leaderGone(cached map[string]cachedMetaTopic, brokers map[int32]bool) bool {
+	for _, ct := range cached {
+		for _, p := range ct.t.Partitions {
+			if brokers[p.Leader] {
+				continue
+			}
+			if _, listed := ct.brokers[p.Leader]; listed {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // storeCachedMeta caches the fetched metadata in the Client, and
@@ -3196,7 +3314,18 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 		cl.metaCache.byID = make(map[[16]byte]string)
 	}
 	when := time.Now()
-	var zeroID [16]byte
+
+	// RequestCachedMetadata may return a leader that left cl.brokers.
+	brokers := make(map[int32]kmsg.MetadataResponseBroker, len(meta.Brokers))
+	for _, b := range meta.Brokers {
+		if b.Rack != nil {
+			rack := *b.Rack
+			b.Rack = &rack
+		}
+		b.UnknownTags = kmsg.Tags{}
+		brokers[b.NodeID] = b
+	}
+
 	var stored int
 	for _, topic := range meta.Topics {
 		if topic.Topic == nil {
@@ -3227,22 +3356,23 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 			p.OfflineReplicas = slices.Clone(p.OfflineReplicas)
 		}
 		t := cachedMetaTopic{
-			id:   topic.TopicID,
-			t:    topic,
-			ps:   make(map[int32]kmsg.MetadataResponseTopicPartition),
-			when: when,
+			id:      topic.TopicID,
+			t:       topic,
+			ps:      make(map[int32]kmsg.MetadataResponseTopicPartition),
+			when:    when,
+			brokers: brokers,
 		}
 		// A recreated topic comes back under a new ID. Delete the old
 		// ID's mapping when overwriting the entry, else byID accumulates
 		// stale IDs forever and resolves IDs that no longer exist.
-		if old, ok := cl.metaCache.topics[topicName]; ok && old.id != topic.TopicID && old.id != zeroID {
+		if old, ok := cl.metaCache.topics[topicName]; ok && old.id != topic.TopicID && old.id != noID {
 			delete(cl.metaCache.byID, old.id)
 		}
 		cl.metaCache.topics[topicName] = t
 		for _, partition := range topic.Partitions {
 			t.ps[partition.Partition] = partition
 		}
-		if topic.TopicID != zeroID {
+		if topic.TopicID != noID {
 			cl.metaCache.byID[topic.TopicID] = topicName
 		}
 
@@ -3265,7 +3395,7 @@ func (cl *Client) storeCachedMeta(req *kmsg.MetadataRequest, meta *kmsg.Metadata
 			}
 			if when.Sub(ct.when) > cl.cfg.metadataMinAge {
 				delete(cl.metaCache.topics, topic)
-				if ct.id != zeroID {
+				if ct.id != noID {
 					delete(cl.metaCache.byID, ct.id)
 				}
 			}
@@ -3422,6 +3552,7 @@ func (cl *listOffsetsSharder) shard(ctx context.Context, kreq kmsg.Request, _ er
 		r := kmsg.NewPtrListOffsetsRequest()
 		r.ReplicaID = req.ReplicaID
 		r.IsolationLevel = req.IsolationLevel
+		r.TimeoutMillis = req.TimeoutMillis
 		return r
 	}
 
@@ -3597,11 +3728,11 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 	var resolving bool
 	for _, g := range req.Groups {
 		for _, t := range g.Topics {
-			if t.Topic == "" && t.TopicID != ([16]byte{}) {
+			if t.Topic == "" && t.TopicID != noID {
 				unresolvedIDs = append(unresolvedIDs, t.TopicID)
 				resolving = true
 			}
-			if t.Topic != "" && t.TopicID == ([16]byte{}) {
+			if t.Topic != "" && t.TopicID == noID {
 				unresolvedNames = append(unresolvedNames, t.Topic)
 				resolving = true
 			}
@@ -3632,13 +3763,13 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 			g := &req.Groups[i]
 			for j := range g.Topics {
 				t := &g.Topics[j]
-				if t.Topic == "" && t.TopicID != ([16]byte{}) {
+				if t.Topic == "" && t.TopicID != noID {
 					t.Topic = cl.metaCache.byID[t.TopicID]
 					if t.Topic == "" {
 						t.Topic = id2t[t.TopicID]
 					}
 				}
-				if t.TopicID == ([16]byte{}) && t.Topic != "" {
+				if t.TopicID == noID && t.Topic != "" {
 					if ct, ok := cl.metaCache.topics[t.Topic]; ok {
 						t.TopicID = ct.id
 					} else if ct, ok := nameMeta[t.Topic]; ok {
@@ -3679,7 +3810,7 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 
 	for _, group := range req.Groups {
 		berr := coordinators[group.Group]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -3688,7 +3819,7 @@ func (cl *offsetFetchSharder) shard(ctx context.Context, kreq kmsg.Request, last
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -3760,10 +3891,10 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 	for i := range resp.Groups {
 		for j := range resp.Groups[i].Topics {
 			t := &resp.Groups[i].Topics[j]
-			if t.Topic == "" && t.TopicID != ([16]byte{}) {
+			if t.Topic == "" && t.TopicID != noID {
 				unresolvedIDs = append(unresolvedIDs, t.TopicID)
 			}
-			if t.TopicID == ([16]byte{}) && t.Topic != "" {
+			if t.TopicID == noID && t.Topic != "" {
 				unresolvedNames = append(unresolvedNames, t.Topic)
 			}
 		}
@@ -3786,7 +3917,7 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 		for i := range resp.Groups {
 			for j := range resp.Groups[i].Topics {
 				t := &resp.Groups[i].Topics[j]
-				if t.Topic == "" && t.TopicID != ([16]byte{}) {
+				if t.Topic == "" && t.TopicID != noID {
 					t.Topic = cl.metaCache.byID[t.TopicID]
 					if t.Topic == "" && resp.Version >= 10 {
 						for k := range t.Partitions {
@@ -3796,11 +3927,11 @@ func (cl *offsetFetchSharder) onResp(kreq kmsg.Request, kresp kmsg.Response) err
 						}
 					}
 				}
-				if t.TopicID == ([16]byte{}) && t.Topic != "" {
+				if t.TopicID == noID && t.Topic != "" {
 					if ct, ok := cl.metaCache.topics[t.Topic]; ok {
 						t.TopicID = ct.id
 					}
-					if t.TopicID == ([16]byte{}) && resp.Version >= 10 {
+					if t.TopicID == noID && resp.Version >= 10 {
 						for k := range t.Partitions {
 							if t.Partitions[k].ErrorCode == 0 {
 								t.Partitions[k].ErrorCode = kerr.UnknownTopicOrPartition.Code
@@ -3993,7 +4124,7 @@ func (cl *describeGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _
 
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -4002,7 +4133,7 @@ func (cl *describeGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -4419,7 +4550,7 @@ func (cl *addPartitionsToTxnSharder) shard(ctx context.Context, kreq kmsg.Reques
 
 	for _, txn := range req.Transactions {
 		berr := coordinators[txn.TransactionalID]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -4429,7 +4560,7 @@ func (cl *addPartitionsToTxnSharder) shard(ctx context.Context, kreq kmsg.Reques
 			} else {
 				brokerReq.Transactions = append(brokerReq.Transactions, txn)
 			}
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], txn)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, txn})
@@ -5155,7 +5286,7 @@ func (cl *deleteGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _ e
 
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5164,7 +5295,7 @@ func (cl *deleteGroupsSharder) shard(ctx context.Context, kreq kmsg.Request, _ e
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -5416,7 +5547,7 @@ func (cl *describeTransactionsSharder) shard(ctx context.Context, kreq kmsg.Requ
 
 	for _, txnID := range req.TransactionalIDs {
 		berr := coordinators[txnID]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5425,7 +5556,7 @@ func (cl *describeTransactionsSharder) shard(ctx context.Context, kreq kmsg.Requ
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.TransactionalIDs = append(brokerReq.TransactionalIDs, txnID)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], txnID)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, txnID})
@@ -5551,7 +5682,7 @@ func (cl *consumerGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Req
 	}
 	for _, group := range req.Groups {
 		berr := coordinators[group]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5560,7 +5691,7 @@ func (cl *consumerGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Req
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, group)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], group)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, group})
@@ -5633,7 +5764,7 @@ func (cl *shareGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Reques
 	}
 	for _, groupID := range req.GroupIDs {
 		berr := coordinators[groupID]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5642,7 +5773,7 @@ func (cl *shareGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Reques
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.GroupIDs = append(brokerReq.GroupIDs, groupID)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], groupID)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, groupID})
@@ -5718,7 +5849,7 @@ func (cl *describeShareGroupOffsetsSharder) shard(ctx context.Context, kreq kmsg
 	}
 	for _, g := range req.Groups {
 		berr := coordinators[g.GroupID]
-		var ke *kerr.Error
+		ke, isKerr := errors.AsType[*kerr.Error](berr.err)
 		switch {
 		case berr.err == nil:
 			brokerReq := brokerReqs[berr.b.meta.NodeID]
@@ -5727,7 +5858,7 @@ func (cl *describeShareGroupOffsetsSharder) shard(ctx context.Context, kreq kmsg
 				brokerReqs[berr.b.meta.NodeID] = brokerReq
 			}
 			brokerReq.Groups = append(brokerReq.Groups, g)
-		case errors.As(berr.err, &ke):
+		case isKerr:
 			kerrs[ke] = append(kerrs[ke], g)
 		default:
 			unkerrs = append(unkerrs, unkerr{berr.err, g.GroupID})

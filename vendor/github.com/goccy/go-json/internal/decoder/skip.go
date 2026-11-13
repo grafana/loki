@@ -54,7 +54,7 @@ const (
 // skipGrammarFast skips the objects and the arrays which are open, level of them whose kinds are the bits of
 // objects, from cursor, where it resumes, by skipFast, which returns for what it doesn't do: a string with an
 // escape, a number which is not an integer, a byte which is not valid, which is done here, or an object or an array
-// deeper than 64 levels, which the rest of the value is skipped by skipGrammar for.
+// deeper than skipLevels levels, which the rest of the value is skipped by skipGrammar for.
 func skipGrammarFast(buf []byte, cursor, nesting, level int64, objects uint64, resume skipResume) (int64, error) {
 	var ev skipEvent
 	cursor, level, objects, resume, ev = skipFast(buf, cursor, level, objects, resume, skipMaxLevel(nesting))
@@ -64,10 +64,14 @@ func skipGrammarFast(buf []byte, cursor, nesting, level int64, objects uint64, r
 	return skipGrammarEvent(buf, cursor, nesting, level, objects, resume, ev)
 }
 
+// skipLevels is the number of the levels of objects and arrays which skipFast follows at most, by the bits of a
+// uint64 ( see skipFast ).
+const skipLevels = 64
+
 // skipMaxLevel returns the number of the levels of objects and arrays which skipFast opens at most, for a value
 // nested nesting levels deep.
 func skipMaxLevel(nesting int64) int64 {
-	return min(maxDecodeNestingDepth-nesting, 64)
+	return min(maxDecodeNestingDepth-nesting, skipLevels)
 }
 
 // skipGrammarEvent does what skipFast stopped for at cursor, ev, and resumes it, up to the end of the value.
@@ -90,7 +94,7 @@ func skipGrammarEvent(buf []byte, cursor, nesting, level int64, objects uint64, 
 			}
 			cursor = end
 		case skipDeep:
-			// the value at cursor opens the level 64, or the limit of the nesting
+			// the value at cursor opens the level after skipLevels, or the limit of the nesting
 			return skipGrammar(buf, cursor, nesting, level, objects, skipValueStart)
 		default:
 			return 0, skipFastError(buf, cursor, level, objects, resume)

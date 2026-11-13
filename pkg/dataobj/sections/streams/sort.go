@@ -56,6 +56,14 @@ func NewSortPrefix(shardBucket uint32, schemaValues []string) SortPrefix {
 	return SortPrefix{ShardBucket: shardBucket, SchemaKey: EncodeSchemaKey(schemaValues)}
 }
 
+// MinSortPrefix returns the lowest sort prefix. No stream sorts below it.
+func MinSortPrefix() SortPrefix { return SortPrefix{} }
+
+// SortPrefixLimit returns a sort prefix above the prefix of every stream in
+// every [ShardLayout]. It is not the prefix of any stream: its shard bucket is
+// one past the highest bucket of the largest layout.
+func SortPrefixLimit() SortPrefix { return SortPrefix{ShardBucket: 1 << maxShardBits} }
+
 // Compare reports the order of a and b by shard bucket, then schema key.
 func (a SortPrefix) Compare(b SortPrefix) int {
 	return cmp.Or(

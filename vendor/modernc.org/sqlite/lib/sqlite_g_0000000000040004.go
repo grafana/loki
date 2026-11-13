@@ -20,7 +20,7 @@ func _fts5ConfigSkipLiteral(tls *libc.TLS, pIn uintptr) (r uintptr) {
 	case int32('n'):
 		fallthrough
 	case int32('N'):
-		if Xsqlite3_strnicmp(tls, __ccgo_ts+1688, p, int32(4)) == 0 {
+		if Xsqlite3_strnicmp(tls, __ccgo_ts+1716, p, int32(4)) == 0 {
 			p = p + 4
 		} else {
 			p = uintptr(0)
@@ -193,6 +193,6 @@ func _timediffFunc(tls *libc.TLS, context uintptr, NotUsed1 int32, argv uintptr)
 	_clearYMD_HMS_TZ(tls, bp)
 	_computeYMD_HMS(tls, bp)
 	_sqlite3StrAccumInit(tls, bp+96, uintptr(0), uintptr(0), 0, int32(100))
-	Xsqlite3_str_appendf(tls, bp+96, __ccgo_ts+1483, libc.VaList(bp+128, int32(sign), Y, M, (**(**TDateTime)(__ccgo_up(bp))).FD-int32(1), (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm, (**(**TDateTime)(__ccgo_up(bp))).Fs))
-	_sqlite3ResultStrAccum(tls, context, bp+96)
+	Xsqlite3_str_appendf(tls, bp+96, __ccgo_ts+1511, libc.VaList(bp+128, int32(sign), Y, M, (**(**TDateTime)(__ccgo_up(bp))).FD-int32(1), (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm, (**(**TDateTime)(__ccgo_up(bp))).Fs))
+	Xsqlite3_result_str(tls, context, bp+96, int32(SQLITE_XFER))
 }

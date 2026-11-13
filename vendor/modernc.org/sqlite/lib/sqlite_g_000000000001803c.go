@@ -46,7 +46,10 @@ const __clang_minor__ = 1
 
 const __clang_patchlevel__ = 7
 
-type dl_info = Tdl_info
+type float_t = Tfloat_t
+
+/* Work around a bug in older Microsoft compilers
+** Forum post 2026-04-10T06:33:11z */
 
 type t__blkcnt_t = int64
 
