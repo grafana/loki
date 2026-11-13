@@ -112,7 +112,11 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// Build a chain of filters to apply on the chunk to remove data requested for deletion.
 		var filterFuncs []filter.Func
 		for _, req := range deleteRequests {
-			filterFunc, err := req.FilterFunction(chks[0].Metric)
+			filterFunc, err := req.FilterFunction(retention.Chunk{
+				ChunkID: chunkID,
+				From:    chk.From,
+				Through: chk.Through,
+			}, tableInterval, chks[0].Metric)
 			if err != nil {
 				return err
 			}

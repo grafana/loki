@@ -476,7 +476,7 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 }
 
 func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, _ model.Time) (bool, filter.Func) {
-	return d.currentBatch.expired(userID, chk, lbls, func(request *deleteRequest) bool {
+	return d.currentBatch.expired(userID, chk, lbls, retention.ExtractIntervalFromTableName(tableName), func(request *deleteRequest) bool {
 		return d.isSeriesProcessed(buildProcessedSeriesKey(request.RequestID, request.StartTime, request.EndTime, seriesID, tableName))
 	})
 }
