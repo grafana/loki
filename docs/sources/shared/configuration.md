@@ -3637,9 +3637,11 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
+  # Number of index gateway instances that own each key in the index gateway
+  # ring. It is the default for -index-gateway.shard-size, which can also be set
+  # per tenant. When -index-gateway.per-index-ownership.enabled is true, it is
+  # also the number of index gateways that own each (tenant, table) index, so
+  # index gateways and their clients must use the same value.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 

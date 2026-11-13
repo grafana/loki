@@ -5,6 +5,8 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -36,4 +38,40 @@ func TestConfig_Validate(t *testing.T) {
 			require.ErrorContains(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestConfig_ForPeriod(t *testing.T) {
+	unsharded := config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{PathPrefix: "index/"}}
+	sharded := config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{PathPrefix: "index/", ShardedPathPrefix: "index_sharded/"}}
+	filterTenants := func(_ string, tenants []string) ([]string, error) { return tenants, nil }
+
+	t.Run("without per-index ownership every period reads path_prefix", func(t *testing.T) {
+		for _, p := range []config.PeriodConfig{unsharded, sharded} {
+			cfg, prefix := Config{}.ForPeriod(p)
+			require.Equal(t, "index/", prefix)
+			require.False(t, cfg.PerIndexOwnership)
+		}
+	})
+
+	owning := Config{
+		PerIndexOwnership:         true,
+		TenantFilter:              filterTenants,
+		SkipInitialQueryReadiness: true,
+	}
+
+	t.Run("with per-index ownership a sharded period reads the sharded copy with the filters", func(t *testing.T) {
+		cfg, prefix := owning.ForPeriod(sharded)
+		require.Equal(t, "index_sharded/", prefix)
+		require.True(t, cfg.PerIndexOwnership)
+		require.NotNil(t, cfg.TenantFilter)
+		require.True(t, cfg.SkipInitialQueryReadiness)
+	})
+
+	t.Run("with per-index ownership another period reads path_prefix without the filters", func(t *testing.T) {
+		cfg, prefix := owning.ForPeriod(unsharded)
+		require.Equal(t, "index/", prefix)
+		require.False(t, cfg.PerIndexOwnership)
+		require.Nil(t, cfg.TenantFilter)
+		require.False(t, cfg.SkipInitialQueryReadiness)
+	})
 }
