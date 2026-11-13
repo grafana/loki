@@ -301,8 +301,13 @@ func newFileIterator(
 
 	streams := map[uint64]*logproto.Stream{}
 
-	processLine := func(line string) {
-		ts := time.Now()
+	// Timestamps follow input order (line i gets base+i ns), independent of
+	// the order lines are processed in, so results are ordered correctly for
+	// both directions.
+	base := time.Now()
+
+	processLine := func(i int, line string) {
+		ts := base.Add(time.Duration(i))
 		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line, labels.EmptyLabels())
 		if !matches {
 			return
@@ -325,12 +330,12 @@ func newFileIterator(
 	}
 
 	if params.Direction == logproto.FORWARD {
-		for _, line := range lines {
-			processLine(line)
+		for i, line := range lines {
+			processLine(i, line)
 		}
 	} else {
 		for i := len(lines) - 1; i >= 0; i-- {
-			processLine(lines[i])
+			processLine(i, lines[i])
 		}
 	}
 
