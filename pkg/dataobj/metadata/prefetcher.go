@@ -130,10 +130,10 @@ const (
 // RegisterFlagsWithPrefix registers the flags of the config under prefix.
 func (c *PrefetcherConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Experimental: Serve the metadata of log objects from separate cache items, so a query reads only the metadata it needs.")
-	f.StringVar(&c.Compression, prefix+"compression", compressionZstd, "The codec of the cache items. Supported values are: zstd, none.")
+	f.StringVar(&c.Compression, prefix+"compression", compressionZstd, fmt.Sprintf("The codec of the cache items. Supported values are: %q, %q. With %q, the cache items stay uncompressed.", compressionZstd, compressionNone, compressionNone))
 	f.Float64Var(&c.MinCompressionRatio, prefix+"min-compression-ratio", 1.5, "A cache item stays uncompressed when compression shrinks it by less than this ratio.")
 	f.IntVar(&c.HeadBytes, prefix+"head-bytes", 256*1024, "Size in bytes of the first object storage read of an object whose metadata is not cached. The header and the file metadata of the object must fit in it, or the prefetcher skips the object. The minimum is 16 KiB.")
-	f.IntVar(&c.MaxRegionBytes, prefix+"max-region-bytes", 4*1024*1024, fmt.Sprintf("The largest metadata region, in bytes, that the prefetcher handles. The metadata region of an object is the part of the object from its start to the end of the metadata of all sections. The prefetcher skips an object with a larger region, and a query reads the metadata of that object directly. When the metadata cache has a maximum item size, this value plus %s must not exceed it.", humanize.IBytes(cacheItemOverheadBytes)))
+	f.IntVar(&c.MaxRegionBytes, prefix+"max-region-bytes", 4*1024*1024, fmt.Sprintf("The largest metadata region, in bytes, that the prefetcher handles. The metadata region of an object is the part of the object from its start to the end of the metadata of all sections. The prefetcher skips an object with a larger region, and a query reads the metadata of that object directly. When the metadata cache has a maximum item size (-dataobj.metadata-cache.memcached.max-item-size, where 0 means no maximum), this value plus %s must not exceed it.", humanize.IBytes(cacheItemOverheadBytes)))
 	f.DurationVar(&c.LoadTimeout, prefix+"load-timeout", 5*time.Second, "The time limit of the load that follows a cache miss.")
 }
 
