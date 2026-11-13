@@ -2,9 +2,9 @@ package metadata
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"math"
-	"math/rand/v2"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
@@ -15,7 +15,7 @@ func TestCacheItem(t *testing.T) {
 	var (
 		codec            = CacheItemCodec{Zstd: true, MinRatio: 1.5}
 		compressible     = bytes.Repeat([]byte("metadata "), 2000)
-		incompress       = randomBytes(8 * 1024)
+		incompress       = randomBytes(t, 8*1024)
 		maxRawSize       = int64(1 << 20)
 		key              = "dataobj-prefetcher/v1/10:objects/ab#core"
 		encoder, decoder = newTestZstd(t)
@@ -166,11 +166,12 @@ func newTestZstd(t *testing.T) (*zstd.Encoder, *zstd.Decoder) {
 	return encoder, decoder
 }
 
-func randomBytes(n int) []byte {
-	rng := rand.New(rand.NewPCG(1, 2))
+// randomBytes returns n bytes that no codec compresses.
+func randomBytes(t *testing.T, n int) []byte {
+	t.Helper()
+
 	out := make([]byte, n)
-	for i := range out {
-		out[i] = byte(rng.IntN(256))
-	}
+	_, err := rand.Read(out)
+	require.NoError(t, err)
 	return out
 }

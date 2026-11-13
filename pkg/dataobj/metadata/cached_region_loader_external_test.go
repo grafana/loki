@@ -76,6 +76,19 @@ func TestCachedRegionLoader(t *testing.T) {
 		require.Equal(t, regionLoaderMetrics{requests: 1, storageSuccesses: 1, storageDurations: 1, stores: 1}, gatherRegionLoaderMetrics(t, reg))
 	})
 
+	for name, size := range map[string]int64{"a negative": -1, "a zero": 0} {
+		t.Run("ignores "+name+" region size hint and loads the region with a head read and a tail read", func(t *testing.T) {
+			l, _ := newRegionLoader(t, newFakeCache(), obj.metadataRegionEnd)
+			req := obj.request(metadata.PrefetchSet{})
+
+			got, err := l.Load(t.Context(), req, metadata.WithRegionSizeHint(size))
+
+			require.NoError(t, err)
+			require.Equal(t, region, got)
+			require.Equal(t, []readCall{{0, headBytes}, {headBytes, obj.metadataRegionEnd - headBytes}}, source(req).calls())
+		})
+	}
+
 	t.Run("reads the region from the cache when object storage is slow, and does not write it again", func(t *testing.T) {
 		l, reg := newRegionLoader(t, newFakeCache(), obj.metadataRegionEnd)
 		req := obj.request(metadata.PrefetchSet{})

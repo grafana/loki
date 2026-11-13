@@ -43,6 +43,12 @@ const (
 	codecNone byte = 0
 	codecZstd byte = 1
 
+	// versionAndCodecBytes is the size of the version and the codec at the start of a cache item.
+	versionAndCodecBytes = 2
+
+	// checksumBytes is the size of the CRC32 of the raw bytes in a cache item.
+	checksumBytes = 4
+
 	// minCompressBytes is the smallest raw size that a cache item compresses.
 	minCompressBytes = 4096
 
@@ -105,7 +111,9 @@ func encodeCacheItem(raw []byte, key string, codec CacheItemCodec, encoder *zstd
 		}
 	}
 
-	out := make([]byte, 0, 2+binary.MaxVarintLen64+4+binary.MaxVarintLen64+len(key)+len(payload))
+	// The raw size and the key length are uvarints. Count each at its longest, so the buffer never grows.
+	maxEnvelopeBytes := versionAndCodecBytes + binary.MaxVarintLen64 + checksumBytes + binary.MaxVarintLen64
+	out := make([]byte, 0, maxEnvelopeBytes+len(key)+len(payload))
 	out = append(out, cacheItemVersion, codecType)
 	out = binary.AppendUvarint(out, uint64(len(raw)))
 	out = binary.LittleEndian.AppendUint32(out, crc32.ChecksumIEEE(raw))
@@ -122,7 +130,7 @@ func encodeCacheItem(raw []byte, key string, codec CacheItemCodec, encoder *zstd
 // cacheItemVersion. It returns another error when the cache item is malformed or corrupt, or when
 // its raw size is above maxRawSize.
 func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decoder *zstd.Decoder) ([]byte, error) {
-	if len(stored) < 2 {
+	if len(stored) < versionAndCodecBytes {
 		return nil, errors.New("cache item is truncated")
 	}
 	if stored[0] != cacheItemVersion {
@@ -130,15 +138,15 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 	}
 	codecType := stored[1]
 
-	rawSize, n := binary.Uvarint(stored[2:])
+	rawSize, n := binary.Uvarint(stored[versionAndCodecBytes:])
 	if n <= 0 || rawSize > uint64(maxRawSize) {
 		return nil, errors.New("invalid cache item size")
 	}
-	rest := stored[2+n:]
-	if len(rest) < 4 {
+	rest := stored[versionAndCodecBytes+n:]
+	if len(rest) < checksumBytes {
 		return nil, errors.New("cache item is truncated")
 	}
-	wantCRC, rest := binary.LittleEndian.Uint32(rest), rest[4:]
+	wantCRC, rest := binary.LittleEndian.Uint32(rest), rest[checksumBytes:]
 
 	keyLength, n := binary.Uvarint(rest)
 	if n <= 0 || keyLength > uint64(len(rest)-n) {

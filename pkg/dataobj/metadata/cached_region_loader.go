@@ -53,9 +53,14 @@ func newLoadOptions(opts []LoadOption) loadOptions {
 // WithRegionSizeHint tells the loader the size of the region, as the file metadata of the object
 // implies it. The region starts at offset 0, so the size is the whole range.
 //
-// With the size, the loader reads the region from object storage in one read, and not in two.
+// With the size, the loader reads the region from object storage in one read, and not in two. The
+// loader ignores a size that is not positive, and then works as it does without a hint.
 func WithRegionSizeHint(size int64) LoadOption {
-	return func(o *loadOptions) { o.regionSize = &size }
+	return func(o *loadOptions) {
+		if size > 0 {
+			o.regionSize = &size
+		}
+	}
 }
 
 // CachedRegionLoader loads the whole metadata region of a data object: the bytes from offset 0 to the
@@ -169,6 +174,9 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 //
 // When object storage answers, the loader writes the region item, so the next load of the object
 // can read the region from the cache.
+//
+// The caller must not modify the region. When the cache answers with an item that is not compressed,
+// the region aliases a buffer that the cache owns.
 func (l *CachedRegionLoader) Load(ctx context.Context, req PrefetchRequest, opts ...LoadOption) (region []byte, err error) {
 	start := time.Now()
 	l.loadRequests.Inc()
