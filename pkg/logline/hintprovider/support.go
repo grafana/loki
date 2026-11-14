@@ -63,7 +63,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.C
 	}
 	for _, filter := range syntax.ExtractLabelFiltersBeforeParser(expr) {
 		if filter != nil {
-			clauses = append(clauses, p.labelFilter(filter.LabelFilterer, p.keep))
+			clauses = append(clauses, p.labelFilter(filter.LabelFilterer, false))
 		}
 	}
 	clauses = append(clauses, p.postParserClauses(expr)...)
@@ -85,26 +85,39 @@ func (p planner) keep(s string) (string, bool) {
 	return upperASCII(s), true
 }
 
-// keepVerbatim is keep for values compared after a parser, which must also
-// appear as they are in the ingested line.
-func (p planner) keepVerbatim(s string) (string, bool) {
+// keepVerbatim keeps only fragments that remain verbatim after parser decoding.
+func (p planner) keepVerbatim(s string) []string {
 	if !IsVerbatimLineLiteral(s) {
-		return "", false
+		return nil
 	}
-	return p.keep(s)
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == ' ' })
+	kept := parts[:0]
+	for _, part := range parts {
+		if len(part) >= p.ngramLength {
+			kept = append(kept, upperASCII(part))
+		}
+	}
+	return kept
 }
 
 // literal is the needle of a filter that requires s.
-func (p planner) literal(s string, keep func(string) (string, bool)) needle.Expr {
-	if s, ok := keep(s); ok {
+func (p planner) literal(s string, postParser bool) needle.Expr {
+	if postParser {
+		return needle.AllOf(p.keepVerbatim(s)...)
+	}
+	if s, ok := p.keep(s); ok {
 		return needle.Lit(s)
 	}
 	return needle.True()
 }
 
 // regex is the needle of a filter that requires a match of pattern.
-func (p planner) regex(pattern string, keep func(string) (string, bool)) needle.Expr {
-	return regexliteral.Needles(pattern).Map(keep)
+func (p planner) regex(pattern string, postParser bool) needle.Expr {
+	e := regexliteral.Needles(pattern)
+	if postParser {
+		return e.MapAll(p.keepVerbatim)
+	}
+	return e.Map(p.keep)
 }
 
 // lineFilterStage mirrors LineFilterExpr.Filter. Every node on the Left chain
@@ -154,9 +167,9 @@ func (p planner) lineFilter(f syntax.LineFilter) needle.Expr {
 	}
 	switch f.Ty {
 	case logql_log.LineMatchEqual:
-		return p.literal(f.Match, p.keep)
+		return p.literal(f.Match, false)
 	case logql_log.LineMatchRegexp:
-		return p.regex(f.Match, p.keep)
+		return p.regex(f.Match, false)
 	default:
 		// Negative and pattern filters.
 		return needle.True()
@@ -165,11 +178,11 @@ func (p planner) lineFilter(f syntax.LineFilter) needle.Expr {
 
 // labelFilter is the needle of a label filterer. and combines children with
 // AND, or with OR.
-func (p planner) labelFilter(filter logql_log.LabelFilterer, keep func(string) (string, bool)) needle.Expr {
+func (p planner) labelFilter(filter logql_log.LabelFilterer, postParser bool) needle.Expr {
 	switch f := filter.(type) {
 	case *logql_log.BinaryLabelFilter:
-		left := p.labelFilter(f.Left, keep)
-		right := p.labelFilter(f.Right, keep)
+		left := p.labelFilter(f.Left, postParser)
+		right := p.labelFilter(f.Right, postParser)
 		if f.And {
 			return needle.And(left, right)
 		}
@@ -177,13 +190,13 @@ func (p planner) labelFilter(filter logql_log.LabelFilterer, keep func(string) (
 
 	case *logql_log.LineFilterLabelFilter:
 		// Usual leaf after ParseExpr for | foo="bar" / | foo=~"...".
-		return p.matcher(f.Matcher, keep)
+		return p.matcher(f.Matcher, postParser)
 
 	case *logql_log.StringLabelFilter:
 		// Same LogQL as above. NewStringLabelFilter usually returns
 		// LineFilterLabelFilter instead of StringLabelFilter, this is the
 		// rare fallback form.
-		return p.matcher(f.Matcher, keep)
+		return p.matcher(f.Matcher, postParser)
 
 	default:
 		// Numeric, duration, bytes, IP, noop, and other filterers.
@@ -191,17 +204,17 @@ func (p planner) labelFilter(filter logql_log.LabelFilterer, keep func(string) (
 	}
 }
 
-func (p planner) matcher(m *labels.Matcher, keep func(string) (string, bool)) needle.Expr {
+func (p planner) matcher(m *labels.Matcher, postParser bool) needle.Expr {
 	if m == nil || !UsableLabelName(m.Name) {
 		return needle.True()
 	}
 	switch m.Type {
 	case labels.MatchEqual:
-		return p.literal(m.Value, keep)
+		return p.literal(m.Value, postParser)
 	case labels.MatchRegexp:
 		// Label regexes are anchored, but the value is looked up as a
 		// substring of the indexed text, so required literals still apply.
-		return p.regex(m.Value, keep)
+		return p.regex(m.Value, postParser)
 	default:
 		return needle.True()
 	}
@@ -288,7 +301,7 @@ func (p planner) postParserWindow(stages syntax.MultiStageExpr) []needle.Expr {
 			if !windowOpen || s == nil {
 				continue
 			}
-			out = append(out, p.labelFilter(s.LabelFilterer, p.keepVerbatim))
+			out = append(out, p.labelFilter(s.LabelFilterer, true))
 
 		case *syntax.LineFilterExpr:
 			// |= "..." does not extract or derive labels.

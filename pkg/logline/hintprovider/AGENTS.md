@@ -48,7 +48,8 @@ Query-shape support and hint lookup for logline index lookups.
      The check runs per regex literal, so one non-verbatim run does not drop
      the others.
    - Values are split at `/` and spaces, because JSON/logfmt decode `\/` to
-     `/` and replace U+FFFD and invalid UTF-8 with a space.
+     `/` and replace U+FFFD and invalid UTF-8 with a space. `MapAll` keeps each
+     literal's fragments ANDed within its original OR branch, before capping.
    - Bare `| json | field="literal"` can also match stream/SM labels of that
      name; that residual is accepted. We cannot tell parsed-field vs stream
      vs SM, so we do not re-escape needles — only values already in the line.

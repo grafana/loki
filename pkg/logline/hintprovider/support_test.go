@@ -1045,6 +1045,13 @@ func TestSupportedQuery_Or(t *testing.T) {
 		// Post-parser filters.
 		{"post-parser or", `{app="foo"} | json | x="abcdef" or y="ghijkl"`, 64, `{"ABCDEF"} or {"GHIJKL"}`},
 		{"post-parser or with a non-verbatim branch", `{app="foo"} | json | x="abcdef" or y="ghi\"jkl"`, 64, "TRUE"},
+		{"post-parser slash fragments stay in their or branches", `{app="foo"} | json | x="alphaone/betaone" or y="alphatwo/betatwo"`, 4, `{"ALPHAONE", "BETAONE"} or {"ALPHATWO", "BETATWO"}`},
+		{"post-parser regex fragments stay in their or branches", `{app="foo"} | json | x=~"alphaone/betaone|alphatwo/betatwo"`, 4, `{"ALPHAONE", "BETAONE"} or {"ALPHATWO", "BETATWO"}`},
+		{"post-parser splitting precedes the cap", `{app="foo"} | json | x="alphalong/betalong" or y="alphalong betalong"`, 1, `{"ALPHALONG", "BETALONG"}`},
+		{"post-parser splitting keeps all fragments by default", `{app="foo"} | json | x="alphalong/betalong"`, 0, `{"ALPHALONG", "BETALONG"}`},
+		{"post-parser all-short fragments make an or unconstrained", `{app="foo"} | json | x="tiny/a" or y="alphalong/betalong"`, 4, "TRUE"},
+		{"post-parser checks the whole literal before splitting", `{app="foo"} | json | x="alphalong/ghi\"jkl"`, 4, "TRUE"},
+		{"pre-parser values are not split", `{app="foo"} | x="alphalong/betalong"`, 4, `{"ALPHALONG/BETALONG"}`},
 
 		// maxConjunctions.
 		{
