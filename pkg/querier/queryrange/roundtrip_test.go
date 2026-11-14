@@ -1786,7 +1786,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				Plan:      testutil.MustPlan(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
-			expectedShardStats: 20, // range query with a [1h] range vector resolves shards over 5 sharded subqueries * 4 shards each
+			expectedShardStats: 12, // 3 time splits * 4 row shards
 		},
 		{
 			name: "range query not split",

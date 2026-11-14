@@ -23,10 +23,11 @@ type IndexStatsSplitter struct {
 	cacheKeyLimits
 }
 
-// GenerateCacheKey generates a cache key based on the userID, Request and interval.
+// GenerateCacheKey generates a cache key based on the userID, Request and its exact time range, so
+// cached stats are only reused for the same range instead of being extrapolated from a wider one.
 func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
-	return fmt.Sprintf("indexStats:%s", cacheKey)
+	return fmt.Sprintf("indexStats:%s:%d:%d", cacheKey, r.GetStart().UnixMilli(), r.GetEnd().UnixMilli())
 }
 
 type IndexStatsExtractor struct{}
