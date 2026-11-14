@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -611,10 +612,10 @@ func TestSupportedQuery(t *testing.T) {
 			expected:    []string{"BARBAZQUX", "GHIJKL"},
 		},
 		{
-			name:        "keeps post-parser regex literal also contained in a line filter literal",
+			name:        "prunes post-parser regex literal contained in a line filter literal",
 			query:       `{app="foo"} |= "xbarbazquxy" | json | foo=~".*barbazqux.*"`,
 			ngramLength: 6,
-			expected:    []string{"XBARBAZQUXY", "BARBAZQUX"},
+			expected:    []string{"XBARBAZQUXY"},
 		},
 		{
 			name:        "rejects post-parser regex label filter with only short literals",
@@ -827,7 +828,7 @@ func TestSupportedQuery(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			got := SupportedQuery(expr, tc.ngramLength)
+			got := literals(t, SupportedQuery(expr, tc.ngramLength))
 			if tc.expected == nil {
 				require.Nil(t, got)
 				return
@@ -973,7 +974,18 @@ func TestSupportedQuery_UppercaseDedupe(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
-			require.ElementsMatch(t, tc.want, SupportedQuery(expr, 6))
+			require.ElementsMatch(t, tc.want, literals(t, SupportedQuery(expr, 6)))
 		})
 	}
+}
+
+// literals returns the one conjunction SupportedQuery builds, or nil when it
+// is True.
+func literals(t *testing.T, conjs needle.Conjunctions) []string {
+	t.Helper()
+	require.LessOrEqual(t, len(conjs), 1, "%v", conjs)
+	if len(conjs) == 0 {
+		return nil
+	}
+	return conjs[0]
 }
