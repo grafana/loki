@@ -156,6 +156,65 @@ func TestCacheItem(t *testing.T) {
 	})
 }
 
+func TestMarshalPrefetchedRanges(t *testing.T) {
+	ranges := PrefetchedRanges{
+		{Offset: 0, Data: []byte("header")},
+		{Offset: 100, Data: []byte("section")},
+		{Offset: 500, Data: nil},
+	}
+	columnNames := map[string]struct{}{"trace_id": {}, "level": {}}
+
+	t.Run("decodes the ranges and the column names it encoded", func(t *testing.T) {
+		gotRanges, gotColumnNames, err := unmarshalPrefetchedRanges(marshalPrefetchedRanges(ranges, columnNames))
+
+		require.NoError(t, err)
+		require.Len(t, gotRanges, len(ranges))
+		for i := range ranges {
+			require.Equal(t, ranges[i].Offset, gotRanges[i].Offset)
+			require.Equal(t, string(ranges[i].Data), string(gotRanges[i].Data))
+		}
+		require.Equal(t, columnNames, gotColumnNames)
+	})
+
+	t.Run("rejects prefetched ranges cut at any length, without panicking", func(t *testing.T) {
+		encoded := marshalPrefetchedRanges(ranges, columnNames)
+
+		for n := range len(encoded) {
+			_, _, err := unmarshalPrefetchedRanges(encoded[:n])
+			require.Error(t, err, "cut at %d bytes", n)
+		}
+	})
+
+	t.Run("rejects a column name length that wraps around, without panicking", func(t *testing.T) {
+		// No ranges, one column name, and a name length of the largest uint64.
+		encoded := binary.AppendUvarint(nil, 0)
+		encoded = binary.AppendUvarint(encoded, 1)
+		encoded = binary.AppendUvarint(encoded, math.MaxUint64)
+
+		_, _, err := unmarshalPrefetchedRanges(encoded)
+
+		require.Error(t, err)
+	})
+
+	t.Run("rejects a range length that runs past the end, without panicking", func(t *testing.T) {
+		// One range at offset 0, a length of the largest uint64, and 4 bytes of data.
+		encoded := binary.AppendUvarint(nil, 1)
+		encoded = binary.AppendUvarint(encoded, 0)
+		encoded = binary.AppendUvarint(encoded, math.MaxUint64)
+		encoded = append(encoded, "data"...)
+
+		_, _, err := unmarshalPrefetchedRanges(encoded)
+
+		require.Error(t, err)
+	})
+
+	t.Run("rejects prefetched ranges with trailing bytes", func(t *testing.T) {
+		_, _, err := unmarshalPrefetchedRanges(append(marshalPrefetchedRanges(ranges, columnNames), 0))
+
+		require.Error(t, err)
+	})
+}
+
 func newTestZstd(t *testing.T) (*zstd.Encoder, *zstd.Decoder) {
 	t.Helper()
 

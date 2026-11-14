@@ -72,6 +72,19 @@ func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64
 	return sr.rr.ReadRange(ctx, absoluteOffset, length)
 }
 
+// PrefetchedMetadataRange returns a range of the metadata region of the section from memory, with
+// no copy. It returns false when the range is not prefetched. The caller must not modify the slice.
+func (sr *sectionReader) PrefetchedMetadataRange(offset, length int64) ([]byte, bool) {
+	metadataRegion := sr.sec.GetLayout().GetMetadata()
+	prefetched, ok := sr.rr.(interface {
+		Prefetched(offset, length int64) ([]byte, bool)
+	})
+	if !ok || metadataRegion == nil || offset < 0 || length < 0 || offset+length > int64(metadataRegion.Length) {
+		return nil, false
+	}
+	return prefetched.Prefetched(sr.startOff+int64(metadataRegion.Offset)+offset, length)
+}
+
 func (sr *sectionReader) DataSize() int64 {
 	dataRegion := sr.sec.GetLayout().GetData()
 	if dataRegion == nil {
