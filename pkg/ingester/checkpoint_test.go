@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -808,6 +809,9 @@ func TestCheckpointCleanupOldCheckpointsAtStartup(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
+	// A WAL directory written by a real checkpointing ingester must look healthy to the stale check.
+	require.NoError(t, checkStaleCheckpoint(walDir))
+
 	// Phase 2: Manually create a very old checkpoint that should have been deleted
 	// This simulates the scenario where repeated checkpoint failures prevented normal cleanup.
 	// In a healthy system, when newer checkpoints complete, checkpoint.000000 would be deleted
@@ -948,4 +952,85 @@ func TestCheckpointCleanupStaleTmpDirectoriesAtStartup(t *testing.T) {
 
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+}
+
+func writeTestSegments(t *testing.T, dir string, firstIdx, lastIdx int) {
+	t.Helper()
+	for i := firstIdx; i <= lastIdx; i++ {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("%08d", i)), nil, 0o640))
+	}
+}
+
+func TestCheckStaleCheckpoint(t *testing.T) {
+	const noSegments = -1
+	for _, tc := range []struct {
+		name        string
+		checkpoints []string
+		firstSeg    int
+		lastSeg     int // noSegments for none
+		stale       bool
+	}{
+		{name: "no checkpoint", lastSeg: 3},
+		{name: "healthy: checkpoint is first segment - 1", checkpoints: []string{"checkpoint.000004"}, firstSeg: 5, lastSeg: 8},
+		{name: "healthy: truncation failed, segments below checkpoint remain", checkpoints: []string{"checkpoint.000004"}, firstSeg: 0, lastSeg: 8},
+		{name: "checkpoint and no segments", checkpoints: []string{"checkpoint.000020"}, lastSeg: noSegments, stale: true},
+		{name: "checkpoint above all segments", checkpoints: []string{"checkpoint.000020"}, firstSeg: 0, lastSeg: 3, stale: true},
+		{name: "checkpoint equals last segment", checkpoints: []string{"checkpoint.000008"}, firstSeg: 5, lastSeg: 8, stale: true},
+		{name: "gap between checkpoint and first segment", checkpoints: []string{"checkpoint.000004"}, firstSeg: 9, lastSeg: 12, stale: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, c := range tc.checkpoints {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, c), 0o750))
+			}
+			if tc.lastSeg != noSegments {
+				writeTestSegments(t, dir, tc.firstSeg, tc.lastSeg)
+			}
+
+			err := checkStaleCheckpoint(dir)
+			if !tc.stale {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, errStaleCheckpoint)
+
+			// The check must not remove anything.
+			for _, c := range tc.checkpoints {
+				require.DirExists(t, filepath.Join(dir, c))
+			}
+		})
+	}
+}
+
+// Failures to run the check must not look like a stale checkpoint, or they'd be logged as one.
+func TestCheckStaleCheckpointNonSequentialSegments(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.000001"), 0o750))
+	writeTestSegments(t, dir, 0, 0)
+	writeTestSegments(t, dir, 5, 5)
+
+	err := checkStaleCheckpoint(dir)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, errStaleCheckpoint)
+}
+
+// A stale checkpoint is only logged: startup must neither fail nor delete anything. The check has to
+// run before newWAL, which creates segment 5 here and would make the directory look healthy.
+func TestIngesterNewLogsStaleCheckpoint(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, "checkpoint.000004"), 0o750))
+	writeTestSegments(t, walDir, 0, 4)
+
+	var logs bytes.Buffer
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewLogfmtLogger(&logs), nil, mockReadRingWithOneActiveIngester(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, i)
+
+	require.Contains(t, logs.String(), "stale WAL checkpoint found")
+	require.DirExists(t, filepath.Join(walDir, "checkpoint.000004"))
 }
