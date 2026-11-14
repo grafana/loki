@@ -181,6 +181,81 @@ func TestMap(t *testing.T) {
 	}
 }
 
+func TestMapAll(t *testing.T) {
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == ' ' })
+	}
+	drop := func(s string) []string {
+		if strings.HasPrefix(s, "drop") {
+			return nil
+		}
+		return split(s)
+	}
+	for _, tc := range []struct {
+		name string
+		expr Expr
+		f    func(string) []string
+		want string
+	}{
+		{"true", True(), split, "TRUE"},
+		{"split literal", Lit("/api/order first"), split, `{"api", "first", "order"}`},
+		{
+			"OR preserves segment correlation", Or(Lit("/api/order first"), Lit("/batch/job second")), split,
+			`{"api", "first", "order"} or {"batch", "job", "second"}`,
+		},
+		{"multiple leaves in AllOf", AllOf("left/alpha", "right/beta"), split, `{"alpha", "beta", "left", "right"}`},
+		{"duplicate segments", Lit("alpha/alpha beta"), split, `{"alpha", "beta"}`},
+		{"nil output", Lit("drop"), func(string) []string { return nil }, "TRUE"},
+		{"empty output", Lit("drop"), func(string) []string { return []string{} }, "TRUE"},
+		{"only empty strings", Lit("drop"), func(string) []string { return []string{"", ""} }, "TRUE"},
+		{"empty strings ignored", Lit("abc"), func(string) []string { return []string{"", "abc", "", "abc"} }, `{"abc"}`},
+		{"dropped leaf is AND identity", AllOf("drop", "keep/token"), drop, `{"keep", "token"}`},
+		{"dropped OR leaf absorbs", Or(Lit("drop"), Lit("keep/token")), drop, "TRUE"},
+		{"dropped whole OR branch absorbs", Or(AllOf("drop/first", "drop/second"), Lit("keep/token")), drop, "TRUE"},
+		{
+			"empty strings absorb an OR branch", Or(Lit("drop"), Lit("keep/token")),
+			func(s string) []string {
+				if s == "drop" {
+					return []string{"", ""}
+				}
+				return split(s)
+			},
+			"TRUE",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.expr.MapAll(tc.f).Compile(64).String())
+		})
+	}
+
+	var zero Expr
+	calls := 0
+	mapped := zero.MapAll(func(string) []string {
+		calls++
+		return []string{"unexpected"}
+	})
+	require.Zero(t, calls)
+	require.Equal(t, "TRUE", mapped.Compile(1).String())
+}
+
+var benchmarkMappedExpr Expr
+
+func BenchmarkMapCompactLiterals(b *testing.B) {
+	for _, count := range []int{1, 1000} {
+		b.Run(fmt.Sprintf("literals=%d", count), func(b *testing.B) {
+			lits := make([]string, count)
+			for i := range lits {
+				lits[i] = fmt.Sprintf("literal_%06d", i)
+			}
+			e := AllOf(lits...)
+			b.ReportAllocs()
+			for b.Loop() {
+				benchmarkMappedExpr = e.Map(func(s string) (string, bool) { return s, true })
+			}
+		})
+	}
+}
+
 func TestCompileCollapse(t *testing.T) {
 	for _, tc := range []struct {
 		name string

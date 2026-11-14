@@ -102,6 +102,39 @@ func combine(op operator, xs []Expr) Expr {
 // under the caller's lookup semantics (for example a shorter or case-folded
 // literal).
 func (e Expr) Map(f func(string) (string, bool)) Expr {
+	return e.mapLiterals(func(lits []string) Expr {
+		mapped := make([]string, 0, len(lits))
+		for _, lit := range lits {
+			if s, ok := f(lit); ok {
+				mapped = append(mapped, s)
+			}
+		}
+		return AllOf(mapped...)
+	})
+}
+
+// MapAll replaces each literal with the conjunction of f's non-empty results.
+// No non-empty results replaces that leaf with TRUE; an OR branch that becomes
+// TRUE makes its whole OR TRUE. Mapping precedes compilation: it does not
+// expand, collapse, prune or cap the tree, and never modifies its receiver.
+//
+// Callback output is copied before the next callback, so f may reuse its slice.
+// Shared nodes are mapped once and their mapped output is reused.
+// For soundness, the original literal must imply every returned requirement
+// under the caller's lookup semantics.
+func (e Expr) MapAll(f func(string) []string) Expr {
+	return e.mapLiterals(func(lits []string) Expr {
+		mapped := make([]string, 0, len(lits))
+		for _, lit := range lits {
+			mapped = append(mapped, f(lit)...)
+		}
+		return AllOf(mapped...)
+	})
+}
+
+// mapLiterals shares traversal and DAG memoization between leaf mappings.
+// f receives each compact literal conjunction as a read-only slice.
+func (e Expr) mapLiterals(f func([]string) Expr) Expr {
 	if e.root == nil {
 		return e
 	}
@@ -125,13 +158,7 @@ func (e Expr) Map(f func(string) (string, bool)) Expr {
 		case n == nil:
 			result = True()
 		case n.op == literals:
-			mapped := make([]string, 0, len(n.lits))
-			for _, lit := range n.lits {
-				if s, ok := f(lit); ok {
-					mapped = append(mapped, s)
-				}
-			}
-			result = AllOf(mapped...)
+			result = f(n.lits)
 		case fr.next < len(n.children):
 			child := n.children[fr.next]
 			fr.next++

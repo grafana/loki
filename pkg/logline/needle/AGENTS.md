@@ -2,7 +2,8 @@
 
 Pure Boolean requirements over literals a log line must contain. Do not import
 other logline packages. Callers own n-gram length, case folding and index
-versions, and apply those lookup semantics with `Expr.Map` before compilation.
+versions, and apply those lookup semantics with `Expr.Map` or `Expr.MapAll`
+before compilation.
 
 ## API
 
@@ -11,8 +12,11 @@ versions, and apply those lookup semantics with `Expr.Map` before compilation.
 - `True`, `Lit`, `AllOf`, `And(...Expr)` and `Or(...Expr)` construct expressions
   without a cap or DNF expansion. Constructors remove identical node operands.
   `AllOf` stores a compact AND of leaves, retaining contained literals.
-- `Expr.Map` rewrites leaves before lowering. Shared nodes are mapped once and
-  their mapped output is reused. It does not collapse or prune.
+- `Expr.Map` rewrites leaves before lowering; `Expr.MapAll` maps each leaf to
+  the AND of its non-empty output strings, preserving OR branch correlation.
+  No non-empty outputs means TRUE, including OR absorption. Callback slices
+  are copied before reuse. Both methods share compact-node DAG traversal,
+  reuse mapped shared nodes, and do not expand, cap, collapse or prune.
 - `Expr.Compile(maxConjunctions int) Conjunctions` bounds lowering and prunes at
   the end. It returns caller-owned, sorted and normalized conjunctions: all
   literals of at least one conjunction must be present. A nil or zero-length
@@ -27,7 +31,7 @@ versions, and apply those lookup semantics with `Expr.Map` before compilation.
 ## Compiler rules
 
 1. **No false negatives.** Every exact match must satisfy the compiled plan.
-   Collapse only weakens requirements. Map callbacks must return requirements
+   Collapse only weakens requirements. Mapping callbacks must return requirements
    implied under the caller's lookup semantics. There is no FALSE: rejected or
    empty mapped leaves mean TRUE. TRUE absorbs OR and is an AND identity.
    Both zero-operand constructors return TRUE.
