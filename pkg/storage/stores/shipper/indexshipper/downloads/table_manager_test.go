@@ -646,3 +646,5 @@ func TestTableManager_StopEndsQueryReadiness(t *testing.T) {
 	require.ErrorIs(t, tm.EnsureQueryReadiness(context.Background()), context.Canceled)
 	require.Equal(t, int32(1), client.listTablesCalls.Load())
 }
+
+func (m *mockTable) DropNotOwned(_ context.Context, _ TenantFilter) error { return nil }
