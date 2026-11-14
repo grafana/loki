@@ -1279,14 +1279,20 @@ func Test_detectLevelFromLogLine(t *testing.T) {
 		level string
 	}{
 		{word: "trace", level: constants.LogLevelTrace},
+		{word: "trc", level: constants.LogLevelTrace},
 		{word: "debug", level: constants.LogLevelDebug},
+		{word: "dbg", level: constants.LogLevelDebug},
 		{word: "info", level: constants.LogLevelInfo},
+		{word: "inf", level: constants.LogLevelInfo},
 		{word: "warn", level: constants.LogLevelWarn},
+		{word: "wrn", level: constants.LogLevelWarn},
 		{word: "warning", level: constants.LogLevelWarn},
 		{word: "error", level: constants.LogLevelError},
 		{word: "err", level: constants.LogLevelError},
 		{word: "fatal", level: constants.LogLevelFatal},
+		{word: "ftl", level: constants.LogLevelFatal},
 		{word: "critical", level: constants.LogLevelCritical},
+		{word: "crit", level: constants.LogLevelCritical},
 		{word: "unknown", level: constants.LogLevelUnknown},
 	} {
 		tests := []struct {
