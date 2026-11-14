@@ -57,6 +57,9 @@ type IndexSet interface {
 	Evict() error
 }
 
+// indexSetFileFilter is a FileFilter bound to one table and user.
+type indexSetFileFilter func(files []storage.IndexFile) ([]storage.IndexFile, error)
+
 // indexSet is a collection of multiple files created for a same table by various ingesters.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type indexSet struct {
@@ -67,6 +70,7 @@ type indexSet struct {
 	logger            log.Logger
 	maxConcurrent     int
 	downloadTimeout   time.Duration
+	fileFilter        indexSetFileFilter
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -469,6 +473,16 @@ func (t *indexSet) checkStorageForUpdates(ctx context.Context, lock, bypassListC
 	files, err = t.baseIndexSet.ListFiles(ctx, t.tableName, t.userID, bypassListCache)
 	if err != nil {
 		return
+	}
+
+	// Only filter once the index set is query ready, i.e. preloaded because
+	// this instance owns it. An index set downloaded lazily to serve a query
+	// keeps every file, since that query may need any of them.
+	if t.fileFilter != nil && t.queryReady.Load() {
+		files, err = t.fileFilter(files)
+		if err != nil {
+			return nil, nil, fmt.Errorf("filter index files of table %s for user %s: %w", t.tableName, t.userID, err)
+		}
 	}
 
 	listedDBs := make(map[string]struct{}, len(files))
