@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -313,21 +312,20 @@ type IndexInfo struct {
 }
 
 func IndexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []IndexInfo) {
-	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
-	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
-	for cur := start; cur <= end; cur++ {
-		cfg := tableRanges.ConfigForTableNumber(cur)
-		if cfg != nil {
-			tsdbFormat, _ := cfg.TSDBFormat() // Ignoring error, as any valid period config should return valid format.
-			res = append(res, IndexInfo{
-				BucketStart: model.TimeFromUnixNano(cur * int64(config.ObjectStorageIndexRequiredPeriod)),
-				Prefix:      cfg.IndexTables.Prefix + strconv.Itoa(int(cur)),
-				TsdbFormat:  tsdbFormat,
-			})
+	for _, table := range tableRanges.IndexTablesFor(from, through) {
+		// Any valid period config has a valid format, so the error is not returned.
+		tsdbFormat, err := table.Config.TSDBFormat()
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to get TSDB format for index table", "table", table.Name, "err", err)
 		}
+		res = append(res, IndexInfo{
+			BucketStart: table.Start,
+			Prefix:      table.Name,
+			TsdbFormat:  tsdbFormat,
+		})
 	}
 	if len(res) == 0 {
-		level.Warn(util_log.Logger).Log("err", "could not find config for table(s) from: %d, through %d", start, end)
+		level.Warn(util_log.Logger).Log("err", "could not find config for table(s)", "from", from, "through", through)
 	}
 	return
 }
