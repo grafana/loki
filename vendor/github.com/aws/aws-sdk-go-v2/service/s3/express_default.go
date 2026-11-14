@@ -101,24 +101,24 @@ func (p *defaultS3ExpressCredentialsProvider) Retrieve(ctx context.Context, buck
 	}
 	creds, ok := p.cache.Get(key)
 	if !ok || creds.Expired() {
-		return p.awaitDoChanRetrieve(ctx, key)
+		return p.awaitDoChanRetrieve(ctx, key, v4creds)
 	}
 
 	if creds.Expires.Sub(sdk.NowTime()) <= p.refreshWindow {
-		p.doChanRetrieve(ctx, key)
+		p.doChanRetrieve(ctx, key, v4creds)
 	}
 
 	return *creds, nil
 }
 
-func (p *defaultS3ExpressCredentialsProvider) doChanRetrieve(ctx context.Context, key cacheKey) <-chan singleflight.Result {
+func (p *defaultS3ExpressCredentialsProvider) doChanRetrieve(ctx context.Context, key cacheKey, v4creds aws.Credentials) <-chan singleflight.Result {
 	return p.sf.DoChan(key.Slug(), func() (any, error) {
-		return p.retrieve(ctx, key)
+		return p.retrieve(ctx, key, v4creds)
 	})
 }
 
-func (p *defaultS3ExpressCredentialsProvider) awaitDoChanRetrieve(ctx context.Context, key cacheKey) (aws.Credentials, error) {
-	ch := p.doChanRetrieve(ctx, key)
+func (p *defaultS3ExpressCredentialsProvider) awaitDoChanRetrieve(ctx context.Context, key cacheKey, v4creds aws.Credentials) (aws.Credentials, error) {
+	ch := p.doChanRetrieve(ctx, key, v4creds)
 
 	select {
 	case r := <-ch:
@@ -128,9 +128,15 @@ func (p *defaultS3ExpressCredentialsProvider) awaitDoChanRetrieve(ctx context.Co
 	}
 }
 
-func (p *defaultS3ExpressCredentialsProvider) retrieve(ctx context.Context, key cacheKey) (aws.Credentials, error) {
+func (p *defaultS3ExpressCredentialsProvider) retrieve(ctx context.Context, key cacheKey, v4creds aws.Credentials) (aws.Credentials, error) {
+	// The credentials that build the cache key must be the ones that sign
+	// CreateSession.
 	resp, err := p.client.CreateSession(ctx, &CreateSessionInput{
 		Bucket: aws.String(key.Bucket),
+	}, func(o *Options) {
+		o.Credentials = aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+			return v4creds, nil
+		})
 	})
 	if err != nil {
 		return aws.Credentials{}, err
