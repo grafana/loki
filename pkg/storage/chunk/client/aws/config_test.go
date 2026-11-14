@@ -76,7 +76,7 @@ func urlValue(s string) flagext.URLValue {
 
 func TestS3ClientOptions(t *testing.T) {
 
-	t.Run("s3 schema with region as hostname", func(t *testing.T) {
+	t.Run("s3 scheme with region as hostname", func(t *testing.T) {
 		cfg := S3Config{
 			S3: urlValue("s3://us-east-0/bucket"),
 		}
@@ -88,7 +88,7 @@ func TestS3ClientOptions(t *testing.T) {
 		require.Nil(t, opts.BaseEndpoint)
 	})
 
-	t.Run("https schema with region as hostname", func(t *testing.T) {
+	t.Run("https scheme with region as hostname", func(t *testing.T) {
 		cfg := S3Config{
 			S3: urlValue("https://us-east-0/bucket"),
 		}
@@ -100,9 +100,10 @@ func TestS3ClientOptions(t *testing.T) {
 		require.Nil(t, opts.BaseEndpoint)
 	})
 
-	t.Run("s3 schema with endpoint hostname", func(t *testing.T) {
+	t.Run("s3 scheme with endpoint hostname insecure", func(t *testing.T) {
 		cfg := S3Config{
-			S3: urlValue("s3://s3.us-east-0.amazonaws.com/bucket"),
+			Insecure: true,
+			S3:       urlValue("s3://s3.us-east-0.amazonaws.com/bucket"),
 		}
 		fn, _ := s3ClientConfigFunc(cfg, hedging.Config{}, false)
 		opts := s3.Options{}
@@ -112,7 +113,19 @@ func TestS3ClientOptions(t *testing.T) {
 		require.Equal(t, "http://s3.us-east-0.amazonaws.com", *opts.BaseEndpoint)
 	})
 
-	t.Run("https schema with endpoint hostname", func(t *testing.T) {
+	t.Run("s3 scheme with endpoint hostname secure", func(t *testing.T) {
+		cfg := S3Config{
+			S3: urlValue("s3://s3.us-east-0.amazonaws.com/bucket"),
+		}
+		fn, _ := s3ClientConfigFunc(cfg, hedging.Config{}, false)
+		opts := s3.Options{}
+		fn(&opts)
+
+		require.Equal(t, InvalidAWSRegion, opts.Region) // it is still required to set region explicitly
+		require.Equal(t, "https://s3.us-east-0.amazonaws.com", *opts.BaseEndpoint)
+	})
+
+	t.Run("https scheme with endpoint hostname", func(t *testing.T) {
 		cfg := S3Config{
 			S3: urlValue("https://s3.us-east-0.amazonaws.com/bucket"),
 		}
