@@ -171,7 +171,7 @@ func TestBuildMetricQuery(t *testing.T) {
 	require.Equal(t, hintQueryTypeMetricRange, got.queryType)
 	require.Equal(t, "9fA81cD2Ef0077aa", got.needle)
 	require.NotNil(t, got.expr)
-	require.False(t, hintprovider.SupportedMetricQuery(got.expr, 6).IsTrue())
+	require.NotEmpty(t, hintprovider.SupportedMetricQuery(got.expr, 6))
 }
 
 func TestPickJSONField(t *testing.T) {
