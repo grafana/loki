@@ -1841,6 +1841,26 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			),
 			map[string]string{"app": "foo_sm"},
 		},
+		{
+			"rename to a key also in the line, source first",
+			[]byte(`code=200 status=500`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
+		{
+			"rename to a key also in the line, source last",
+			[]byte(`status=500 code=200`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
