@@ -60,6 +60,11 @@ var _ queryrangebase.Middleware = Tracer{}
 // Wrap implements the queryrangebase.Middleware
 func (t Tracer) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		switch r.(type) {
+		case *LokiRequest, *LokiInstantRequest:
+			return next.Do(ctx, r)
+		}
+
 		route := DefaultCodec.Path(r)
 		route = middleware.MakeLabelValue(route)
 		ctx, span := tracer.Start(ctx, route)
