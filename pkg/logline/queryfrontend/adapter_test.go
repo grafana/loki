@@ -224,7 +224,7 @@ func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
 
 func newAdapterTestProvider(t *testing.T, indexStore *store.Store, maxParallel int) *hintprovider.LoglineHintProvider {
 	t.Helper()
-	provider, err := hintprovider.NewLoglineHintProvider(indexStore, 6, maxParallel, nil, log.NewNopLogger(), nil)
+	provider, err := hintprovider.NewLoglineHintProvider(indexStore, 6, maxParallel, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	return provider
 }

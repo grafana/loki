@@ -27,6 +27,8 @@ type LoglineHintProvider struct {
 	store       *store.Store
 	ngramLength int
 	maxParallel int
+	// maxConjunctions is the local planning cap, sent explicitly with lookups.
+	maxConjunctions int
 	// queryMultipleObserver is optional and receives one callback per
 	// QueryMultiple call with termination reason and term batches processed.
 	queryMultipleObserver func(reason string, termBatchesProcessed int)
@@ -39,7 +41,7 @@ type LoglineHintProvider struct {
 
 func NewLoglineHintProvider(
 	indexStore *store.Store,
-	ngramLength, maxParallel int,
+	ngramLength, maxParallel, maxConjunctions int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
 	cacheReg prometheus.Registerer,
@@ -61,6 +63,7 @@ func NewLoglineHintProvider(
 		store:                 indexStore,
 		ngramLength:           ngramLength,
 		maxParallel:           maxParallel,
+		maxConjunctions:       max(maxConjunctions, 1),
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
@@ -97,8 +100,8 @@ func (p *LoglineHintProvider) queryRanges(
 		req = &logproto.LoglineIndexRequest{}
 	}
 
-	ngramLength, maxParallel := p.lookupParams(req)
-	filters := SupportedQuery(expr, ngramLength)
+	ngramLength, maxParallel, maxConjunctions := p.lookupParams(req)
+	filters := SupportedQuery(expr, ngramLength, maxConjunctions)
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
@@ -133,8 +136,9 @@ func timeUnion(ranges []HintTimeRange) []HintTimeRange {
 	return NormalizeRanges(out)
 }
 
-func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
+func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel, maxConjunctions int) {
 	ngramLength, maxParallel = p.ngramLength, p.maxParallel
+	maxConjunctions = max(int(req.MaxConjunctions), 1)
 	if req.NgramLength > 0 {
 		ngramLength = int(req.NgramLength)
 	}
@@ -152,12 +156,13 @@ func (p *LoglineHintProvider) PlanHints(
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
 	plan := HintPlan{
-		Stats:       stats,
-		NgramLength: int32(p.ngramLength),
-		MaxParallel: int32(p.maxParallel),
+		Stats:           stats,
+		NgramLength:     int32(p.ngramLength),
+		MaxParallel:     int32(p.maxParallel),
+		MaxConjunctions: int32(p.maxConjunctions),
 	}
 
-	filters := SupportedQuery(expr, p.ngramLength)
+	filters := SupportedQuery(expr, p.ngramLength, p.maxConjunctions)
 	if len(filters) == 0 {
 		return plan, ErrUnsupported
 	}
@@ -203,7 +208,7 @@ func (p *LoglineHintProvider) ProvideHints(
 	if err != nil || len(plan.Indexes) == 0 {
 		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
 	}
-	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
+	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan))
 	if err != nil {
 		return nil, plan.Stats, err
 	}
@@ -211,15 +216,16 @@ func (p *LoglineHintProvider) ProvideHints(
 }
 
 func loglineIndexRequest(
-	expr syntax.Expr, from, through model.Time, plan HintPlan, ngram, parallel int,
+	expr syntax.Expr, from, through model.Time, plan HintPlan,
 ) *logproto.LoglineIndexRequest {
 	return &logproto.LoglineIndexRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     ToProtoIndexMetas(plan.Indexes),
-		NgramLength: int32(ngram),
-		MaxParallel: int32(parallel),
+		From:            from,
+		Through:         through,
+		Expr:            expr.String(),
+		Indexes:         ToProtoIndexMetas(plan.Indexes),
+		NgramLength:     plan.NgramLength,
+		MaxParallel:     plan.MaxParallel,
+		MaxConjunctions: plan.MaxConjunctions,
 	}
 }
 

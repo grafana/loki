@@ -176,7 +176,7 @@ func TestSupportedMetricQuery(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			got := literals(t, SupportedMetricQuery(expr, ngramLength))
+			got := literals(t, SupportedMetricQuery(expr, ngramLength, 1))
 			if tc.expected == nil {
 				require.Nil(t, got)
 				return
