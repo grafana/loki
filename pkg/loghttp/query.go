@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
@@ -95,102 +94,6 @@ func unescapeJSONString(b []byte) string {
 	}
 
 	return string(bU)
-}
-
-// PushRequest models a log stream push but is unmarshalled to proto push format.
-type PushRequest struct {
-	Streams []LogProtoStream `json:"streams"`
-}
-
-// LogProtoStream is used to unmarshal JSON for push requests.
-// This lets us run code focused on that task rather than the more general code for query responses.
-type LogProtoStream logproto.Stream
-
-func init() {
-	json.RegisterTypeDecoderFunc("loghttp.LogProtoStream", decodeLogProtoStream)
-}
-
-func decodeLogProtoStream(ptr unsafe.Pointer, iter *json.Iterator) { //#nosec G103 -- jsoniter decoder signature; ptr always points to a LogProtoStream -- nosemgrep: use-of-unsafe-block
-	s := (*LogProtoStream)(ptr)
-	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
-		switch key {
-		case "stream":
-			if iter.WhatIsNext() != json.ObjectValue {
-				iter.ReportError("reading Stream", "stream must be an object")
-				return
-			}
-			labels := make(LabelSet)
-			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
-				if iter.WhatIsNext() == json.StringValue {
-					labels[k] = iter.ReadString()
-				} else {
-					// Keep the raw text of non-string values (e.g. "null", "5"), as jsonparser did.
-					labels[k] = string(iter.SkipAndReturnBytes())
-				}
-			}
-			s.Labels = labels.String()
-		case "values":
-			for iter.ReadArray() {
-				if iter.WhatIsNext() == json.NilValue {
-					iter.Skip()
-					continue
-				}
-				s.Entries = append(s.Entries, logproto.Entry{})
-				decodeLogProtoEntry(iter, &s.Entries[len(s.Entries)-1])
-				if iter.Error != nil {
-					return
-				}
-			}
-		default:
-			iter.ReportError("reading Stream", "found unknown field: "+key)
-			return
-		}
-		if iter.Error != nil {
-			return
-		}
-	}
-}
-
-// decodeLogProtoEntry reads a [timestamp, line, structuredMetadata?] array into e.
-func decodeLogProtoEntry(iter *json.Iterator, e *logproto.Entry) {
-	for i := 0; iter.ReadArray(); i++ {
-		switch i {
-		case 0: // timestamp
-			if iter.WhatIsNext() != json.StringValue {
-				iter.ReportError("reading Entry", "timestamp must be a string")
-				return
-			}
-			ts, err := jsonparser.ParseInt(iter.ReadStringAsSlice())
-			if err != nil {
-				iter.ReportError("reading Entry", err.Error())
-				return
-			}
-			e.Timestamp = time.Unix(0, ts)
-		case 1: // line
-			if iter.WhatIsNext() != json.StringValue {
-				iter.ReportError("reading Entry", "line must be a string")
-				return
-			}
-			e.Line = iter.ReadString()
-		case 2: // structuredMetadata
-			if iter.WhatIsNext() != json.ObjectValue {
-				iter.ReportError("reading Entry", "structured metadata must be an object")
-				return
-			}
-			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
-				if iter.WhatIsNext() != json.StringValue {
-					iter.ReportError("reading Entry", "structured metadata value must be a string")
-					return
-				}
-				e.StructuredMetadata = append(e.StructuredMetadata, logproto.LabelAdapter{Name: k, Value: iter.ReadString()})
-			}
-		default:
-			iter.Skip()
-		}
-		if iter.Error != nil {
-			return
-		}
-	}
 }
 
 // ResultType holds the type of the result
