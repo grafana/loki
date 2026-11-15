@@ -2090,7 +2090,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.16.0
 ## explicit; go 1.26.0
 golang.org/x/time/rate
-# google.golang.org/api v0.312.0
+# google.golang.org/api v0.313.0
 ## explicit; go 1.26.0
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport
