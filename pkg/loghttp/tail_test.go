@@ -76,7 +76,8 @@ func TestDroppedStreamJSON(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			data, err := json.Marshal(&tc.in)
 			require.NoError(t, err)
-			require.JSONEq(t, tc.expected, string(data))
+			// Labels are marshalled in consistent order now.
+			require.Equal(t, tc.expected, string(data))
 
 			var out DroppedStream
 			require.NoError(t, json.Unmarshal(data, &out))
@@ -88,5 +89,7 @@ func TestDroppedStreamJSON(t *testing.T) {
 	var out DroppedStream
 	require.Error(t, json.Unmarshal([]byte(`{"timestamp":42}`), &out))
 	require.Error(t, json.Unmarshal([]byte(`{"labels":{"a":"b"}}`), &out))
+	// Parsing is more lenient now
+	require.NoError(t, json.Unmarshal([]byte(`{"timestamp":"1","labels":null,"extra":[1]}`), &out))
 	require.Nil(t, out.Labels)
 }

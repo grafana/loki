@@ -1,18 +1,22 @@
 package loghttp
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
+	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
-
-	json "github.com/json-iterator/go"
 
 	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/util/json"
 )
 
 const (
@@ -33,35 +37,66 @@ type DroppedStream struct {
 
 // MarshalJSON implements json.Marshaller
 func (s *DroppedStream) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Timestamp string   `json:"timestamp"`
-		Labels    LabelSet `json:"labels,omitempty"`
-	}{
-		Timestamp: fmt.Sprintf("%d", s.Timestamp.UnixNano()),
-		Labels:    s.Labels,
-	})
+	buf := bytes.NewBuffer(make([]byte, 0, 64))
+	if err := s.MarshalJSONTo(jsontext.NewEncoder(buf, jsontext.AllowInvalidUTF8(true))); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil // the encoder terminates top-level values with a newline
+}
+
+// MarshalJSONTo implements json.MarshalerTo, writing directly to enc.
+func (s *DroppedStream) MarshalJSONTo(enc *jsontext.Encoder) error {
+	e := json.Latching(enc)
+	e.Tokens(jsontext.BeginObject, jsontext.String("timestamp"), jsontext.String(strconv.FormatInt(s.Timestamp.UnixNano(), 10)))
+	if len(s.Labels) > 0 {
+		e.Tokens(jsontext.String("labels"), jsontext.BeginObject)
+		for _, k := range slices.Sorted(maps.Keys(s.Labels)) {
+			e.Tokens(jsontext.String(k), jsontext.String(s.Labels[k]))
+		}
+		e.Tokens(jsontext.EndObject)
+	}
+	e.Tokens(jsontext.EndObject)
+	return e.Err()
 }
 
 // UnmarshalJSON implements json.UnMarshaller
 func (s *DroppedStream) UnmarshalJSON(data []byte) error {
-	unmarshal := struct {
-		Timestamp string   `json:"timestamp"`
-		Labels    LabelSet `json:"labels,omitempty"`
-	}{}
+	d := json.GetDecoder(data)
+	defer d.Release()
 
-	err := json.Unmarshal(data, &unmarshal)
-
+	var (
+		timestamp string
+		labels    LabelSet
+	)
+	err := d.EachField(func(key []byte) error {
+		switch string(key) {
+		case "timestamp":
+			if d.PeekKind() != jsontext.KindString {
+				return errors.New("dropped stream: timestamp must be a string")
+			}
+			var err error
+			timestamp, err = d.ReadScalar()
+			return err
+		case "labels":
+			if d.PeekKind() == jsontext.KindNull {
+				return d.SkipValue()
+			}
+			return labels.decode(d)
+		default:
+			return d.SkipValue()
+		}
+	})
 	if err != nil {
 		return err
 	}
 
-	t, err := strconv.ParseInt(unmarshal.Timestamp, 10, 64)
+	t, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
 		return err
 	}
 
 	s.Timestamp = time.Unix(0, t)
-	s.Labels = unmarshal.Labels
+	s.Labels = labels
 
 	return nil
 }
