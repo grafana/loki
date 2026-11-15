@@ -3,11 +3,9 @@ package loghttp
 import (
 	"encoding/json/v2"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/grafana/jsonparser"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -171,90 +169,6 @@ func TestUnmarshalEscapingIssue(t *testing.T) {
 
 	// Check the value after double marshaling/unmarshaling
 	t.Logf("Value after second unmarshal: %#v", reUnmarshaled.StructuredMetadata.Get("message"))
-}
-
-func TestParseStringWithNewlines(t *testing.T) {
-	// Test how jsonparser.ParseString handles newlines in JSON strings
-	// This should help identify exactly where the issue is occurring
-
-	// Original JSON with a newline - similar to what we'd receive in a push request
-	jsonObj := `{"message":"a\nb\nc"}`
-
-	// Parse the JSON using jsonparser
-	value, dataType, _, err := jsonparser.Get([]byte(jsonObj), "message")
-	require.NoError(t, err)
-	require.Equal(t, jsonparser.String, dataType)
-
-	// Now parse the string value
-	parsedStr, err := jsonparser.ParseString(value)
-	require.NoError(t, err)
-
-	// Log the value to see what it actually contains
-	t.Logf("Parsed string via jsonparser: %#v", parsedStr)
-
-	// Check the raw bytes to really see what's going on
-	bytes := []byte(parsedStr)
-	t.Logf("Raw bytes: %v", bytes)
-
-	// Verify the correct parsing of the newline
-	require.Equal(t, "a\nb\nc", parsedStr, "Should properly parse newlines")
-}
-
-func TestObjectEachHandlingOfNewlines(t *testing.T) {
-	// Test how jsonparser.ObjectEach handles newlines in our specific context
-	// This simulates what happens in the Entry.UnmarshalJSON method
-
-	// JSON object similar to what we'd receive in a push request
-	jsonObj := `{"message":"a\nb\nc"}`
-
-	// Parse using ObjectEach like we do in the UnmarshalJSON method
-	var parsedValue string
-	err := jsonparser.ObjectEach([]byte(jsonObj), func(_ []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
-		if dataType == jsonparser.String {
-			parsedStr, err := jsonparser.ParseString(value)
-			if err != nil {
-				return err
-			}
-			parsedValue = parsedStr
-		}
-		return nil
-	})
-	require.NoError(t, err)
-
-	// Log the parsed value
-	t.Logf("Parsed value via ObjectEach: %#v", parsedValue)
-
-	// Verify proper parsing of newlines
-	require.Equal(t, "a\nb\nc", parsedValue)
-}
-
-// Write a custom test showing the different ways escaping can happen
-func TestDifferentEscapingMethods(t *testing.T) {
-	// Original string with actual newlines
-	original := "a\nb\nc"
-
-	// Test jsonparser's Unescape
-	escapedBytes := []byte(`a\nb\nc`)
-	var buf [1024]byte
-	unescaped, err := jsonparser.Unescape(escapedBytes, buf[:])
-	require.NoError(t, err)
-	jsonparserResult := string(unescaped)
-	t.Logf("jsonparser.Unescape result: %#v", jsonparserResult)
-
-	// Test standard Go JSON unmarshaling
-	var goResult string
-	err = json.Unmarshal([]byte(`"a\nb\nc"`), &goResult)
-	require.NoError(t, err)
-	t.Logf("go json.Unmarshal result: %#v", goResult)
-
-	// Test the strings.Replace approach
-	replaced := strings.ReplaceAll(string(escapedBytes), `\n`, "\n")
-	t.Logf("strings.Replace result: %#v", replaced)
-
-	// Compare the results
-	require.Equal(t, original, jsonparserResult)
-	require.Equal(t, original, goResult)
-	require.Equal(t, original, replaced)
 }
 
 func benchmarkEntries(n int, withMetadata bool) []Entry {
