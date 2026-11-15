@@ -1,6 +1,8 @@
 package loghttp
 
 import (
+	stdjson "encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,8 +11,6 @@ import (
 
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
-	"github.com/grafana/jsonparser"
-	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/json"
 )
 
 var (
@@ -36,9 +37,6 @@ type QueryStatus string
 const (
 	QueryStatusSuccess = "success"
 	QueryStatusFail    = "fail"
-	// How much stack space to allocate for unescaping JSON strings; if a string longer
-	// than this needs to be escaped, it will result in a heap allocation
-	unescapeStackBufSize = 64
 )
 
 // Volume HTTP defaults and validation duplicated here so pkg/loghttp stays free of
@@ -60,40 +58,48 @@ type QueryResponse struct {
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
-	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return q.decode(d)
+}
+
+func (q *QueryResponse) decode(d *json.Decoder) error {
+	return d.EachField(func(key []byte) error {
 		switch string(key) {
 		case "status":
-			q.Status = string(value)
+			status, err := d.ReadScalar()
+			if err != nil {
+				return err
+			}
+			q.Status = status
 		case "warnings":
+			if d.PeekKind() == jsontext.KindNull {
+				q.Warnings = nil
+				return d.SkipValue()
+			}
 			var warnings []string
-			if _, err := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-				if dataType == jsonparser.String {
-					warnings = append(warnings, unescapeJSONString(value))
+			if err := d.EachElement(func() error {
+				if d.PeekKind() != jsontext.KindString {
+					return d.SkipValue()
 				}
+				w, err := d.ReadScalar()
+				warnings = append(warnings, w)
+				return err
 			}); err != nil {
 				return err
 			}
-
 			q.Warnings = warnings
 		case "data":
 			var responseData QueryResponseData
-			if err := responseData.UnmarshalJSON(value); err != nil {
+			if err := responseData.decode(d); err != nil {
 				return err
 			}
 			q.Data = responseData
+		default:
+			return d.SkipValue()
 		}
 		return nil
 	})
-}
-
-func unescapeJSONString(b []byte) string {
-	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
-	bU, err := jsonparser.Unescape(b, stackbuf[:])
-	if err != nil {
-		return ""
-	}
-
-	return string(bU)
 }
 
 // ResultType holds the type of the result
@@ -135,19 +141,20 @@ func (Matrix) Type() ResultType { return ResultTypeMatrix }
 type Streams []Stream
 
 func (ss *Streams) UnmarshalJSON(data []byte) error {
-	var parseError error
-	_, err := jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return ss.decode(d)
+}
+
+func (ss *Streams) decode(d *json.Decoder) error {
+	return d.EachElement(func() error {
 		var stream Stream
-		if err := stream.UnmarshalJSON(value); err != nil {
-			parseError = err
-			return
+		if err := stream.decode(d); err != nil {
+			return err
 		}
 		*ss = append(*ss, stream)
+		return nil
 	})
-	if parseError != nil {
-		return parseError
-	}
-	return err
 }
 
 func (s Streams) ToProto() []logproto.Stream {
@@ -184,89 +191,139 @@ type Stream struct {
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return s.decode(d)
+}
+
+func (s *Stream) decode(d *json.Decoder) error {
 	if s.Labels == nil {
 		s.Labels = LabelSet{}
 	}
 	if len(s.Entries) > 0 {
 		s.Entries = s.Entries[:0]
 	}
-	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
+	return d.EachField(func(key []byte) error {
 		switch string(key) {
 		case "stream":
-			if err := s.Labels.UnmarshalJSON(value); err != nil {
+			v, err := d.ReadValue()
+			if err != nil {
 				return err
 			}
+			return s.Labels.UnmarshalJSON(v)
 		case "values":
-			if ty == jsonparser.Null {
-				return nil
+			if d.PeekKind() == jsontext.KindNull {
+				return d.SkipValue()
 			}
-			var parseError error
-			_, err := jsonparser.ArrayEach(value, func(value []byte, ty jsonparser.ValueType, _ int, _ error) {
-				if ty == jsonparser.Null {
-					return
+			return d.EachElement(func() error {
+				if d.PeekKind() == jsontext.KindNull {
+					return d.SkipValue()
 				}
 				var entry Entry
-				if err := entry.UnmarshalJSON(value); err != nil {
-					parseError = err
-					return
+				if err := entry.decode(d); err != nil {
+					return err
 				}
 				s.Entries = append(s.Entries, entry)
+				return nil
 			})
-			if parseError != nil {
-				return parseError
-			}
-			return err
+		default:
+			return d.SkipValue()
 		}
-		return nil
 	})
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
-	resultType, err := jsonparser.GetString(data, "resultType")
-	if err != nil {
-		return err
-	}
-	q.ResultType = ResultType(resultType)
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return q.decode(d)
+}
 
-	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, _ int) error {
+func (q *QueryResponseData) decode(d *json.Decoder) error {
+	var (
+		haveType  bool
+		deferred  jsontext.Value // "result", if it came before "resultType"
+		hasResult bool
+	)
+	err := d.EachField(func(key []byte) error {
 		switch string(key) {
-		case "result":
-			switch q.ResultType {
-			case ResultTypeStream:
-				ss := Streams{}
-				if err := ss.UnmarshalJSON(value); err != nil {
-					return err
-				}
-				q.Result = ss
-			case ResultTypeMatrix:
-				var m Matrix
-				if err = json.Unmarshal(value, &m); err != nil {
-					return err
-				}
-				q.Result = m
-			case ResultTypeVector:
-				var v Vector
-				if err = json.Unmarshal(value, &v); err != nil {
-					return err
-				}
-				q.Result = v
-			case ResultTypeScalar:
-				var v Scalar
-				if err = json.Unmarshal(value, &v); err != nil {
-					return err
-				}
-				q.Result = v
-			default:
-				return fmt.Errorf("unknown type: %s", q.ResultType)
-			}
-		case "stats":
-			if err := json.Unmarshal(value, &q.Statistics); err != nil {
+		case "resultType":
+			resultType, err := d.ReadScalar()
+			if err != nil {
 				return err
 			}
+			q.ResultType = ResultType(resultType)
+			haveType = true
+		case "result":
+			if haveType {
+				return q.decodeResult(d)
+			}
+			v, err := d.ReadValue()
+			if err != nil {
+				return err
+			}
+			deferred, hasResult = v.Clone(), true
+		case "stats":
+			return unmarshalValue(d, &q.Statistics)
+		default:
+			return d.SkipValue()
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if !haveType {
+		return errors.New("resultType not found")
+	}
+	if hasResult {
+		rd := json.GetDecoder(deferred)
+		defer rd.Release()
+		return q.decodeResult(rd)
+	}
+	return nil
+}
+
+// unmarshalValue reads the next value and decodes it into v with encoding/json.
+func unmarshalValue(d *json.Decoder, v any) error {
+	raw, err := d.ReadValue()
+	if err != nil {
+		return err
+	}
+	return stdjson.Unmarshal(raw, v)
+}
+
+// decodeResult reads the "result" value according to q.ResultType.
+func (q *QueryResponseData) decodeResult(d *json.Decoder) error {
+	switch q.ResultType {
+	case ResultTypeStream:
+		ss := Streams{}
+		if err := ss.decode(d); err != nil {
+			return err
+		}
+		q.Result = ss
+	case ResultTypeMatrix:
+		var m Matrix
+		if err := unmarshalValue(d, &m); err != nil {
+			return err
+		}
+		q.Result = m
+	case ResultTypeVector:
+		var v Vector
+		if err := unmarshalValue(d, &v); err != nil {
+			return err
+		}
+		q.Result = v
+	case ResultTypeScalar:
+		var v Scalar
+		if err := unmarshalValue(d, &v); err != nil {
+			return err
+		}
+		q.Result = v
+	default:
+		return fmt.Errorf("unknown type: %s", q.ResultType)
+	}
+	return nil
 }
 
 // Scalar is a single timestamp/float with no labels
