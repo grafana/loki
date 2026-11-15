@@ -1,14 +1,13 @@
 package loghttp
 
 import (
+	"encoding/json/v2"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/grafana/jsonparser"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -59,7 +58,7 @@ func TestEntryMarshalUnmarshalJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Marshal the entry to JSON
-			data, err := jsoniter.Marshal(tt.entry)
+			data, err := json.Marshal(tt.entry)
 			require.NoError(t, err)
 
 			// Verify the marshaled data matches our expected format
@@ -67,7 +66,7 @@ func TestEntryMarshalUnmarshalJSON(t *testing.T) {
 
 			// Unmarshal the JSON back to an entry
 			var unmarshaledEntry Entry
-			err = jsoniter.Unmarshal(data, &unmarshaledEntry)
+			err = json.Unmarshal(data, &unmarshaledEntry)
 			require.NoError(t, err)
 
 			// Verify the values match
@@ -87,7 +86,7 @@ func TestEntryRoundTripWithNewlines(t *testing.T) {
 	}
 
 	// First marshal to JSON
-	data, err := jsoniter.Marshal(original)
+	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
 	// Verify the string representation contains the correct escape sequences
@@ -99,26 +98,22 @@ func TestEntryRoundTripWithNewlines(t *testing.T) {
 
 	// Now unmarshal back to an Entry
 	var decoded Entry
-	err = jsoniter.Unmarshal(data, &decoded)
+	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
 	// Verify the structured metadata value still has actual newlines
 	require.Equal(t, "a\nb\nc", decoded.StructuredMetadata.Get("message"))
 }
 
-func TestEntryJsoniterEncoding(t *testing.T) {
-	// This test specifically checks if newlines in structured metadata are properly encoded using jsoniter
+func TestEntryJSONEncoding(t *testing.T) {
+	// This test specifically checks if newlines in structured metadata are properly encoded
 	entry := Entry{
 		Timestamp:          time.Unix(0, 123456789012345),
 		Line:               "test line",
 		StructuredMetadata: labels.FromStrings("message", "a\nb\nc"),
 	}
 
-	// Use the custom jsoniter instance that has our extension registered
-	// This instance uses our custom encoder/decoder
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
-	// Marshal the entry using jsoniter
+	// Marshal the entry
 	data, err := json.Marshal(entry)
 	require.NoError(t, err)
 
@@ -137,40 +132,6 @@ func TestEntryJsoniterEncoding(t *testing.T) {
 	require.Equal(t, "a\nb\nc", decoded.StructuredMetadata.Get("message"))
 }
 
-func TestEntryEncoderSpecifically(t *testing.T) {
-	// Test the specific EntryEncoder.Encode method directly
-	entry := Entry{
-		Timestamp:          time.Unix(0, 123456789012345),
-		Line:               "test line",
-		StructuredMetadata: labels.FromStrings("message", "a\nb\nc"),
-	}
-
-	// Create a jsoniter stream
-	stream := jsoniter.NewStream(jsoniter.ConfigDefault, nil, 256)
-
-	// Create an EntryEncoder
-	encoder := EntryEncoder{}
-
-	// Encode the entry to the stream
-	encoder.Encode(unsafePtr(&entry), stream)
-
-	// Get the bytes from the stream
-	data := stream.Buffer()
-
-	// Convert to string for examination
-	jsonStr := string(data)
-	t.Logf("Directly encoded JSON: %s", jsonStr)
-
-	// Check if newlines are properly escaped (should be \n, not \\n)
-	require.Contains(t, jsonStr, `"message":"a\n`)
-	require.NotContains(t, jsonStr, `"message":"a\\n`)
-}
-
-// Helper to get unsafe pointer to entry
-func unsafePtr(e *Entry) unsafe.Pointer {
-	return unsafe.Pointer(e)
-}
-
 func TestUnmarshalEscapingIssue(t *testing.T) {
 	// Test the unmarshaling of JSON that contains newlines in structured metadata
 	// This emulates the real issue where a client sends JSON with newlines
@@ -181,7 +142,7 @@ func TestUnmarshalEscapingIssue(t *testing.T) {
 
 	// Unmarshal this to an Entry
 	var entry Entry
-	err := jsoniter.Unmarshal([]byte(inputJSON), &entry)
+	err := json.Unmarshal([]byte(inputJSON), &entry)
 	require.NoError(t, err)
 
 	// Print the actual value of StructuredMetadata for debugging
@@ -197,7 +158,7 @@ func TestUnmarshalEscapingIssue(t *testing.T) {
 	t.Logf("String bytes: %v", actualBytes)
 
 	// Now marshal it back and see if it maintains proper escaping
-	marshaled, err := jsoniter.Marshal(entry)
+	marshaled, err := json.Marshal(entry)
 	require.NoError(t, err)
 
 	// Print the marshaled JSON for inspection
@@ -205,7 +166,7 @@ func TestUnmarshalEscapingIssue(t *testing.T) {
 
 	// Now unmarshal the JSON again
 	var reUnmarshaled Entry
-	err = jsoniter.Unmarshal(marshaled, &reUnmarshaled)
+	err = json.Unmarshal(marshaled, &reUnmarshaled)
 	require.NoError(t, err)
 
 	// Check the value after double marshaling/unmarshaling
@@ -217,10 +178,10 @@ func TestParseStringWithNewlines(t *testing.T) {
 	// This should help identify exactly where the issue is occurring
 
 	// Original JSON with a newline - similar to what we'd receive in a push request
-	json := `{"message":"a\nb\nc"}`
+	jsonObj := `{"message":"a\nb\nc"}`
 
 	// Parse the JSON using jsonparser
-	value, dataType, _, err := jsonparser.Get([]byte(json), "message")
+	value, dataType, _, err := jsonparser.Get([]byte(jsonObj), "message")
 	require.NoError(t, err)
 	require.Equal(t, jsonparser.String, dataType)
 
@@ -282,7 +243,7 @@ func TestDifferentEscapingMethods(t *testing.T) {
 
 	// Test standard Go JSON unmarshaling
 	var goResult string
-	err = jsoniter.Unmarshal([]byte(`"a\nb\nc"`), &goResult)
+	err = json.Unmarshal([]byte(`"a\nb\nc"`), &goResult)
 	require.NoError(t, err)
 	t.Logf("go json.Unmarshal result: %#v", goResult)
 
@@ -316,7 +277,7 @@ func BenchmarkEntriesMarshal(b *testing.B) {
 			entries := benchmarkEntries(1000, withMetadata)
 			b.ReportAllocs()
 			for b.Loop() {
-				_, err := jsoniter.Marshal(entries)
+				_, err := json.Marshal(entries)
 				require.NoError(b, err)
 			}
 		})
@@ -327,7 +288,7 @@ func BenchmarkEntriesMarshal(b *testing.B) {
 func BenchmarkStreamUnmarshal(b *testing.B) {
 	for _, withMetadata := range []bool{false, true} {
 		b.Run("metadata="+strconv.FormatBool(withMetadata), func(b *testing.B) {
-			values, err := jsoniter.Marshal(benchmarkEntries(1000, withMetadata))
+			values, err := json.Marshal(benchmarkEntries(1000, withMetadata))
 			require.NoError(b, err)
 			data := []byte(`{"stream":{"app":"foo"},"values":` + string(values) + `}`)
 			var s Stream

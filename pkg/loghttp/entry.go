@@ -1,20 +1,17 @@
 package loghttp
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
-	"unsafe"
 
-	"github.com/grafana/jsonparser"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/modern-go/reflect2"
 	"github.com/prometheus/prometheus/model/labels"
-)
 
-func init() {
-	jsoniter.RegisterExtension(&jsonExtension{})
-}
+	"github.com/grafana/loki/v3/pkg/util/json"
+)
 
 // Entry represents a log entry.  It includes a log message and the time it occurred at.
 type Entry struct {
@@ -24,241 +21,145 @@ type Entry struct {
 	Parsed             labels.Labels
 }
 
+// UnmarshalJSON decodes an entry from [ "<ts>", "<line>", {structured metadata}? ].
 func (e *Entry) UnmarshalJSON(data []byte) error {
-	var (
-		i          int
-		parseError error
-	)
-	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
-		// assert that both items in array are of type string
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return e.decode(d)
+}
+
+// decode reads an entry from the next value in d.
+func (e *Entry) decode(d *json.Decoder) error {
+	dec := d.Decoder
+
+	if tok, err := dec.ReadToken(); err != nil {
+		return err
+	} else if tok.Kind() != jsontext.KindBeginArray {
+		return errors.New("entry: expected array")
+	}
+	for i := 0; dec.PeekKind() != jsontext.KindEndArray; i++ {
 		switch i {
 		case 0: // timestamp
-			if t != jsonparser.String {
-				parseError = jsonparser.MalformedStringError
-				return
-			}
-			ts, err := jsonparser.ParseInt(value)
+			b, err := d.ReadString("entry: timestamp must be a string")
 			if err != nil {
-				parseError = err
-				return
+				return err
+			}
+			ts, err := strconv.ParseInt(string(b), 10, 64)
+			if err != nil {
+				return err
 			}
 			e.Timestamp = time.Unix(0, ts)
-		case 1: // value
-			if t != jsonparser.String {
-				parseError = jsonparser.MalformedStringError
-				return
-			}
-			v, err := jsonparser.ParseString(value)
+		case 1: // line
+			b, err := d.ReadString("entry: line must be a string")
 			if err != nil {
-				parseError = err
-				return
+				return err
 			}
-			e.Line = v
+			e.Line = string(b)
 		case 2: // structured metadata
-			if t != jsonparser.Object {
-				parseError = jsonparser.MalformedObjectError
-				return
+			if err := e.readMetadata(d); err != nil {
+				return err
 			}
-
-			// Here we deserialize entries for both query responses and push requests.
-			//
-			// For push requests, we accept structured metadata as the third object in the entry array. E.g.:
-			// [ "<ts>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
-			//
-			// For query responses, we accept structured metadata and parsed labels in the third object in the entry array. E.g.:
-			// [ "<ts>", "<log line>", { "structuredMetadata": {"trace_id": "0242ac120002", "user_id": "superUser123"}, "parsed": {"msg": "text"}}]
-			//
-			// Therefore, we need to check if the third object contains the "structuredMetadata" or "parsed" fields. If it does,
-			// we deserialize the inner objects into the structured metadata and parsed labels respectively.
-			// If it doesn't, we deserialize the object into the structured metadata labels.
-			structuredMetadataBuilder := labels.NewScratchBuilder(0)
-			var parsed labels.Labels
-
-			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType == jsonparser.Object {
-					if string(key) == "structuredMetadata" {
-						lbls, err := parseLabels(value)
-						if err != nil {
-							return err
-						}
-
-						structuredMetadataBuilder.Reset()
-						lbls.Range(func(l labels.Label) {
-							structuredMetadataBuilder.Add(l.Name, l.Value)
-						})
-					}
-					if string(key) == "parsed" {
-						lbls, err := parseLabels(value)
-						if err != nil {
-							return err
-						}
-						parsed = lbls
-					}
-					return nil
-				}
-				if dataType == jsonparser.String || t != jsonparser.Number {
-					// Use ParseString to properly decode escape sequences like \n
-					val, err := jsonparser.ParseString(value)
-					if err != nil {
-						return err
-					}
-					structuredMetadataBuilder.Add(string(key), val)
-					return nil
-				}
-				return fmt.Errorf("could not parse structured metadata or parsed fileds")
-			}); err != nil {
-				parseError = err
-				return
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
 			}
-
-			structuredMetadataBuilder.Sort()
-			e.StructuredMetadata = structuredMetadataBuilder.Labels()
-			e.Parsed = parsed
 		}
-		i++
-	})
-	if parseError != nil {
-		return parseError
 	}
+	_, err := dec.ReadToken() // consume the closing ']'
 	return err
 }
 
-func parseLabels(data []byte) (labels.Labels, error) {
-	labelsBuilder := labels.NewScratchBuilder(0)
-
-	err := jsonparser.ObjectEach(data, func(key []byte, value []byte, t jsonparser.ValueType, _ int) error {
-		if t != jsonparser.String && t != jsonparser.Number {
-			return fmt.Errorf("could not parse label value. Expected string or number, got %s", t)
+// readMetadata reads the third element of the entry array.
+//
+// Here we deserialize entries for both query responses and push requests.
+//
+// For push requests, we accept structured metadata as the third object in the entry array. E.g.:
+// [ "<ts>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
+//
+// For query responses, we accept structured metadata and parsed labels in the third object in the entry array. E.g.:
+// [ "<ts>", "<log line>", { "structuredMetadata": {"trace_id": "0242ac120002", "user_id": "superUser123"}, "parsed": {"msg": "text"}}]
+//
+// Therefore, we need to check if the third object contains the "structuredMetadata" or "parsed" fields. If it does,
+// we deserialize the inner objects into the structured metadata and parsed labels respectively.
+// If it doesn't, we deserialize the object into the structured metadata labels.
+func (e *Entry) readMetadata(d *json.Decoder) error {
+	if d.PeekKind() != jsontext.KindBeginObject {
+		return errors.New("entry: structured metadata must be an object")
+	}
+	structuredMetadataBuilder := labels.NewScratchBuilder(0)
+	var parsed labels.Labels
+	err := d.EachField(func(key []byte) error {
+		if d.PeekKind() == jsontext.KindBeginObject {
+			switch string(key) {
+			case "structuredMetadata":
+				structuredMetadataBuilder.Reset()
+				return readLabelsInto(d, &structuredMetadataBuilder)
+			case "parsed":
+				parsedBuilder := labels.NewScratchBuilder(0)
+				if err := readLabelsInto(d, &parsedBuilder); err != nil {
+					return err
+				}
+				parsedBuilder.Sort()
+				parsed = parsedBuilder.Labels()
+				return nil
+			default:
+				return d.SkipValue()
+			}
 		}
+		// Deliberately lenient: any non-object value is kept as its raw text.
+		name := string(key) // copy: reading the value reuses the buffer
+		val, err := d.ReadScalar()
+		if err != nil {
+			return fmt.Errorf("could not parse structured metadata or parsed fields: %w", err)
+		}
+		structuredMetadataBuilder.Add(name, val)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	structuredMetadataBuilder.Sort()
+	e.StructuredMetadata = structuredMetadataBuilder.Labels()
+	e.Parsed = parsed
+	return nil
+}
 
-		val, err := jsonparser.ParseString(value)
+// readLabelsInto reads an object whose values are strings or numbers, adding each member to b.
+// The caller is responsible for sorting b.
+func readLabelsInto(d *json.Decoder, b *labels.ScratchBuilder) error {
+	return d.EachField(func(key []byte) error {
+		name := string(key) // copy: reading the value reuses the buffer
+		if k := d.PeekKind(); k != jsontext.KindString && k != jsontext.KindNumber {
+			return fmt.Errorf("could not parse label value. Expected string or number, got %s", k)
+		}
+		val, err := d.ReadScalar()
 		if err != nil {
 			return err
 		}
-
-		labelsBuilder.Add(string(key), val)
+		b.Add(name, val)
 		return nil
 	})
-
-	labelsBuilder.Sort()
-	return labelsBuilder.Labels(), err
 }
 
-type jsonExtension struct {
-	jsoniter.DummyExtension
-}
-
-type sliceEntryDecoder struct{}
-
-func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
-	*((*[]Entry)(ptr)) = (*((*[]Entry)(ptr)))[:0]
-	iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
-		i := 0
-		var ts time.Time
-		var line string
-		structuredMetadataBuilder := labels.NewScratchBuilder(0)
-		ok := iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
-			var ok bool
-			switch i {
-			case 0:
-				ts, ok = readTimestamp(iter)
-				i++
-				return ok
-			case 1:
-				line = iter.ReadString()
-				i++
-				if iter.Error != nil {
-					return false
-				}
-				return true
-			case 2:
-				iter.ReadMapCB(func(iter *jsoniter.Iterator, labelName string) bool {
-					labelValue := iter.ReadString()
-					structuredMetadataBuilder.Add(labelName, labelValue)
-					return true
-				})
-				i++
-				if iter.Error != nil {
-					return false
-				}
-				return true
-			default:
-				iter.ReportError("error reading entry", "array must have at least 2 and up to 3 values")
-				return false
-			}
-		})
-		if ok {
-			structuredMetadataBuilder.Sort()
-
-			*((*[]Entry)(ptr)) = append(*((*[]Entry)(ptr)), Entry{
-				Timestamp:          ts,
-				Line:               line,
-				StructuredMetadata: structuredMetadataBuilder.Labels(),
-			})
-			return true
-		}
-		return false
-	})
-}
-
-func readTimestamp(iter *jsoniter.Iterator) (time.Time, bool) {
-	s := iter.ReadString()
-	if iter.Error != nil {
-		return time.Time{}, false
-	}
-	t, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		iter.ReportError("error reading entry timestamp", err.Error())
-		return time.Time{}, false
-
-	}
-	return time.Unix(0, t), true
-}
-
-type EntryEncoder struct{}
-
-func (EntryEncoder) IsEmpty(_ unsafe.Pointer) bool {
-	// we don't omit-empty with log entries.
-	return false
-}
-
-func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	e := *((*Entry)(ptr))
-	stream.WriteArrayStart()
-	stream.WriteRaw(`"`)
-	stream.WriteRaw(strconv.FormatInt(e.Timestamp.UnixNano(), 10))
-	stream.WriteRaw(`"`)
-	stream.WriteMore()
-	stream.WriteStringWithHTMLEscaped(e.Line)
+// MarshalJSON encodes the entry as [ "<ts>", "<line>", {structured metadata}? ].
+// The structured metadata object is omitted when empty.
+func (e Entry) MarshalJSON() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, len(e.Line)+64))
+	// Escape <, > and & (Loki has done this since 2019); replace invalid UTF-8 rather than fail.
+	enc := jsontext.NewEncoder(buf, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true))
+	_ = enc.WriteToken(jsontext.BeginArray)
+	_ = enc.WriteToken(jsontext.String(strconv.FormatInt(e.Timestamp.UnixNano(), 10)))
+	_ = enc.WriteToken(jsontext.String(e.Line))
 	if !e.StructuredMetadata.IsEmpty() {
-		stream.WriteMore()
-		stream.WriteObjectStart()
-
-		var i int
-		e.StructuredMetadata.Range(func(lbl labels.Label) {
-			if i > 0 {
-				stream.WriteMore()
-			}
-			stream.WriteObjectField(lbl.Name)
-			stream.WriteStringWithHTMLEscaped(lbl.Value)
-
-			i++
+		_ = enc.WriteToken(jsontext.BeginObject)
+		e.StructuredMetadata.Range(func(l labels.Label) {
+			_ = enc.WriteToken(jsontext.String(l.Name))
+			_ = enc.WriteToken(jsontext.String(l.Value))
 		})
-		stream.WriteObjectEnd()
+		_ = enc.WriteToken(jsontext.EndObject)
 	}
-	stream.WriteArrayEnd()
-}
-
-func (e *jsonExtension) CreateDecoder(typ reflect2.Type) jsoniter.ValDecoder {
-	if typ == reflect2.TypeOf([]Entry{}) {
-		return sliceEntryDecoder{}
+	if err := enc.WriteToken(jsontext.EndArray); err != nil {
+		return nil, err
 	}
-	return nil
-}
-
-func (e *jsonExtension) CreateEncoder(typ reflect2.Type) jsoniter.ValEncoder {
-	if typ == reflect2.TypeOf(Entry{}) {
-		return EntryEncoder{}
-	}
-	return nil
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil // the encoder terminates top-level values with a newline
 }
