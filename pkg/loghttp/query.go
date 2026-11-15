@@ -206,11 +206,7 @@ func (s *Stream) decode(d *json.Decoder) error {
 	return d.EachField(func(key []byte) error {
 		switch string(key) {
 		case "stream":
-			v, err := d.ReadValue()
-			if err != nil {
-				return err
-			}
-			return s.Labels.UnmarshalJSON(v)
+			return s.Labels.decode(d)
 		case "values":
 			if d.PeekKind() == jsontext.KindNull {
 				return d.SkipValue()
