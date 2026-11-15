@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
@@ -987,6 +988,11 @@ type testDataObjStore struct {
 	// chunkStore counts what the store delegated, so a test can tell a served query from a
 	// passed-through one.
 	chunkStore *chunkStoreSpy
+
+	// bucket holds the objects of the store.
+	bucket objstore.Bucket
+	// runFiles are the index objects of the runs, if the store splits its indexes into runs.
+	runFiles []objtest.RunFile
 }
 
 type testStoreOptions struct {
@@ -997,6 +1003,18 @@ type testStoreOptions struct {
 	metadataCache    dataobj.MetadataCache
 	registerer       prometheus.Registerer
 	compactedLayout  bool
+	overrides        logsobj.TenantOverrides
+	indexRunParts    int
+}
+
+// withIndexRuns splits every index into a run of at most parts index objects.
+func withIndexRuns(parts int) testStoreOption {
+	return func(o *testStoreOptions) { o.indexRunParts = parts }
+}
+
+// withTenantOverrides sets the sort schema and the shard layout of the objects.
+func withTenantOverrides(overrides logsobj.TenantOverrides) testStoreOption {
+	return func(o *testStoreOptions) { o.overrides = overrides }
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -1048,6 +1066,9 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	if options.compactedLayout {
 		builderOpts = append(builderOpts, objtest.WithCompactedLayout())
 	}
+	if options.overrides != nil {
+		builderOpts = append(builderOpts, objtest.WithTenantOverrides(options.overrides))
+	}
 
 	builder := objtest.NewBuilder(t, builderOpts...)
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
@@ -1059,6 +1080,11 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 		}
 	}
 	builder.Close()
+
+	var runFiles []objtest.RunFile
+	if options.indexRunParts > 0 {
+		runFiles = builder.SplitIndexesIntoRuns(options.indexRunParts)
+	}
 
 	var storeOpts []DataObjStoreOption
 	if options.filterer != nil {
@@ -1078,7 +1104,7 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
 	require.NoError(t, err)
 
-	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore, bucket: location.Bucket, runFiles: runFiles}
 }
 
 // selectSamples runs a stream-first metric query and returns its samples as a set.
