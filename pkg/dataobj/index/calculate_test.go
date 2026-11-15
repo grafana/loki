@@ -352,7 +352,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
 		postingsBuilder.SetTenant(tenant)
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: time.Unix(10, 0).UTC(),
+			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(time.Unix(10, 0).UTC()),
 		})
 		obj, closer := fixtures.DataObject(t, postingsBuilder)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })

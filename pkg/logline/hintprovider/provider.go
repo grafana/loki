@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -53,8 +54,25 @@ type HintPlan struct {
 type HintTimeRange struct {
 	Start time.Time
 	End   time.Time
+	// DocumentShard and DocumentShardBits limit the range to the streams of
+	// one document shard (logline.DocumentShard). Zero bits is one shard, so
+	// the range covers every stream.
+	DocumentShard     uint32
+	DocumentShardBits uint8
 	// Source is optional provider-specific provenance for diagnostics.
 	Source string
+}
+
+// MatchesFingerprint reports whether h covers the stream with fingerprint fp
+// (logline.StreamFingerprint).
+func (h HintTimeRange) MatchesFingerprint(fp uint64) bool {
+	return logline.DocumentShard(fp, uint(h.DocumentShardBits)) == h.DocumentShard
+}
+
+// documentShardKey identifies h's document shard. Ranges merge and intersect
+// only within one.
+func (h HintTimeRange) documentShardKey() uint64 {
+	return uint64(h.DocumentShardBits)<<32 | uint64(h.DocumentShard)
 }
 
 // IsPassthrough returns true for synthetic hint ranges that represent time

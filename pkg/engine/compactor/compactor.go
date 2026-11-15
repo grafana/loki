@@ -22,8 +22,12 @@ import (
 // constructs as enabled — Bucket and MetastoreWriter are unconditionally
 // required.
 type PlannerParams struct {
-	Config          Config
-	Bucket          objstore.Bucket                  // required
+	Config Config
+	// Bucket is the index storage.
+	Bucket objstore.Bucket // required
+	// DataBucket is the root of the data object storage. It is required if
+	// the deletion sweep is enabled.
+	DataBucket      objstore.BucketReader
 	MetastoreWriter *metastore.TableOfContentsWriter // required
 	Limits          Limits                           // required
 	Logger          log.Logger
@@ -63,6 +67,9 @@ func New(params PlannerParams) (*Planner, error) {
 	if params.Limits == nil {
 		return nil, errors.New("dataobj compaction planner: limits is required")
 	}
+	if params.Config.DeletionSweep.Enabled && params.DataBucket == nil {
+		return nil, errors.New("dataobj compaction planner: data bucket is required when the deletion sweep is enabled")
+	}
 
 	sched, err := newScheduler(
 		params.Config.Scheduler,
@@ -76,6 +83,7 @@ func New(params PlannerParams) (*Planner, error) {
 		params.Config,
 		log.With(logger, "component", "dataobj-compaction-coordinator"),
 		params.Bucket,
+		params.DataBucket,
 		sched.inner,
 		params.MetastoreWriter,
 		params.Registerer,

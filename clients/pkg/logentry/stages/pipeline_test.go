@@ -371,9 +371,7 @@ pipeline_stages:
 	p, err := newPipelineFromConfig(cfg, "test")
 	require.NoError(t, err)
 
-	e1 := p.Wrap(c)
-	e2 := util.AddLabelsMiddleware(model.LabelSet{"bar": "foo"}).Wrap(e1)
-	entryhandler := util.AddLabelsMiddleware(model.LabelSet{"foo": "bar"}).Wrap(e2)
+	entryhandler := p.Wrap(c)
 
 	var wg sync.WaitGroup
 	parallelism := 10
@@ -383,14 +381,14 @@ pipeline_stages:
 		go func(i int) {
 			defer wg.Done()
 			entryhandler.Chan() <- util.Entry{
-				Labels: make(model.LabelSet),
+				Labels: model.LabelSet{"foo": "bar", "bar": "foo"},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
 					Line:      fmt.Sprintf(`{app:"%d", `, 5),
 				},
 			}
 			entryhandler.Chan() <- util.Entry{
-				Labels: make(model.LabelSet),
+				Labels: model.LabelSet{"foo": "bar", "bar": "foo"},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
 					Line:      fmt.Sprintf(` message:"%s"}`, time.Now()),
@@ -402,8 +400,6 @@ pipeline_stages:
 
 	wg.Wait()
 	entryhandler.Stop()
-	e2.Stop()
-	e1.Stop()
 	c.Stop()
 	t.Log(c.Received())
 }

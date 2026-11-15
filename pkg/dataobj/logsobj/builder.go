@@ -35,6 +35,9 @@ import (
 // no buffered data to flush.
 var (
 	ErrBuilderEmpty = errors.New("builder empty")
+
+	// ErrFlushDropDuplicates is returned by [Builder.Flush] when DropDuplicates is set.
+	ErrFlushDropDuplicates = errors.New("flush does not support DropDuplicates, use FlushAndSort")
 )
 
 // BuilderBaseConfig configures a data object builder.
@@ -81,8 +84,9 @@ type BuilderBaseConfig struct {
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
-	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during Flush.
+	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	// Flush returns an error if DropDuplicates is set.
 	DropDuplicates bool `yaml:"-"`
 }
 
@@ -211,7 +215,10 @@ const (
 //
 // NewBuilder also returns an error if overrides is nil, so a caller cannot forget to set it. Use
 // [NoTenantOverrides] to give every tenant the default layout.
-func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
+//
+// NewBuilder passes opts to the underlying [dataobj.Builder], after its own
+// options.
+func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides, opts ...dataobj.BuilderOption) (*Builder, error) {
 	if overrides == nil {
 		return nil, errNilOverrides
 	}
@@ -228,7 +235,7 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		scratch:    scratchStore,
 		overrides:  overrides,
 		labelCache: labelCache,
-		builder:    dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(streams.SectionType())),
+		builder:    dataobj.NewBuilder(scratchStore, append([]dataobj.BuilderOption{dataobj.WithPrioritySections(streams.SectionType())}, opts...)...),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]streams.Layout),
@@ -485,8 +492,18 @@ func (b *Builder) TimeRanges() []dataobj.TimeRange {
 // release the object's backing scratch storage; reads of the object fail once
 // it is closed. If an error is returned the closer is always nil.
 //
+// Flush returns [ErrFlushDropDuplicates] if DropDuplicates is set and the
+// builder is not empty. The logs sections drop duplicates after the streams
+// section counted them, so the stream stats would be wrong. Use
+// [Builder.FlushAndSort] instead.
+//
 // Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
+	if b.cfg.DropDuplicates && b.state != builderStateEmpty {
+		b.Reset()
+		b.metrics.flushFailures.Inc()
+		return nil, nil, ErrFlushDropDuplicates
+	}
 	return b.flush(true)
 }
 
@@ -646,15 +663,10 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 		}
 
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), streamsSection.NumRows())
+		numStreams := streamsSection.NumRows()
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
-		}
-
-		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
-		sb.SetLayout(layout)
-		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
-			return nil, nil, err
 		}
 
 		logsIter, err := mergeAndRemapLogsIter(ctx, sections, remappedStreams)
@@ -662,6 +674,8 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
 		}
 
+		// drainLogsIter drops duplicates itself, so lb must not drop any.
+		// Otherwise the stream totals would count records that lb drops.
 		lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
 			PageSizeHint:     int(b.cfg.TargetPageSize),
 			PageMaxRowCount:  b.cfg.MaxPageRows,
@@ -669,11 +683,18 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
-			DropDuplicates:   b.cfg.DropDuplicates,
+			DropDuplicates:   false,
 		})
 		lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+		totals, err := b.drainLogsIter(ctx, logsIter, lb, tenant, numStreams)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
+		sb.SetLayout(layout)
+		if err := b.buildStreamSection(ctx, tenant, streamIter, totals, sb); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -736,32 +757,50 @@ func (b *Builder) Reset() {
 // drainLogsIter consumes iter, appending each record to lb and flushing
 // completed sections to b.builder whenever the section size target is exceeded.
 // It appends the final (possibly partial) section after the iterator is exhausted.
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string) error {
+//
+// If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
+// yield the records of each stream and timestamp together, as
+// [logs.DuplicateTracker] requires.
+//
+// drainLogsIter returns the totals of the appended records. The stream IDs of
+// the records must be in [1, numStreams].
+func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, numStreams int) (streamTotals, error) {
+	var (
+		totals     = newStreamTotals(numStreams)
+		duplicates logs.DuplicateTracker
+	)
 	for rec := range iter {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 		val, err := rec.Value()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if b.cfg.DropDuplicates && duplicates.IsDuplicate(val) {
+			continue
+		}
+		totals.add(val)
 		lb.Append(val)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := b.builder.Append(lb); err != nil {
-				return err
+				return nil, err
 			}
 			lb.Reset()
 			lb.SetTenant(tenant)
 		}
 	}
-	return b.builder.Append(lb)
+	return totals, b.builder.Append(lb)
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
 // streams.Builder, and adds it to the sections accumulator. sb must be empty.
-func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) error {
+//
+// The rows and uncompressed size of each stream come from totals, not from
+// iter, because the sort can drop duplicates that iter still counts.
+func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], totals streamTotals, sb *streams.Builder) error {
 	sb.SetTenant(tenant)
 
 	for res := range iter {
@@ -774,9 +813,34 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 		if err != nil {
 			return err
 		}
+		totals.apply(&stream)
 		sb.AppendValue(stream)
 	}
 	return b.builder.Append(sb)
+}
+
+// streamTotals holds the rows and uncompressed size of the records of each
+// stream. The stream ID is the index, so index 0 is unused.
+type streamTotals []streamTotal
+
+type streamTotal struct {
+	rows int
+	size int64
+}
+
+func newStreamTotals(numStreams int) streamTotals {
+	return make(streamTotals, numStreams+1)
+}
+
+func (t streamTotals) add(rec logs.Record) {
+	t[rec.StreamID].rows++
+	t[rec.StreamID].size += rec.UncompressedSize()
+}
+
+// apply sets the rows and uncompressed size of s to the totals of its stream.
+func (t streamTotals) apply(s *streams.Stream) {
+	s.Rows = t[s.ID].rows
+	s.UncompressedSize = t[s.ID].size
 }
 
 type mappedStream struct {

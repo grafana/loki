@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
@@ -67,6 +68,7 @@ func TestInstancePushQuery(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -89,7 +91,7 @@ func TestInstancePushQuery(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, time.Now(), fakePartition)
 	require.NoError(t, err)
 	for i := 0; i <= 30; i++ {
 		foo := "bar"
@@ -108,7 +110,7 @@ func TestInstancePushQuery(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, time.Now(), fakePartition)
 		require.NoError(t, err)
 	}
 
@@ -130,7 +132,7 @@ func TestInstancePushQuery(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, time.Now(), fakePartition)
 	require.NoError(t, err)
 
 	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
@@ -160,7 +162,7 @@ func TestIngesterPushInternal(t *testing.T) {
 	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(ring.ReplicationSet{Instances: []ring.InstanceDesc{{Id: "localhost", Addr: "ingester0"}}}, nil)
 
-	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{metricAggregationEnabled: true}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -189,7 +191,8 @@ func TestIngesterPushInternal(t *testing.T) {
 	inst, ok := ing.getInstanceByID("foo")
 	require.True(t, ok)
 	counts := map[string]uint64{}
-	for lvl, m := range inst.aggMetricsByStreamAndLevel[`{service_name="checkout"}`] {
+	// Ingester.Push aggregates pushes that do not come from Kafka under fakePartition.
+	for lvl, m := range inst.aggMetrics[fakePartition].metrics[`{service_name="checkout"}`] {
 		counts[lvl] = m.count
 	}
 	require.Equal(t, map[string]uint64{constants.LogLevelError: 2, constants.LogLevelInfo: 1}, counts)
@@ -209,7 +212,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		labels.Label{Name: "service_name", Value: "baz_service"},
 	)
 
-	setup := func(now time.Time) (*instance, *mockEntryWriter) {
+	setup := func(t *testing.T, now time.Time) (*instance, *mockEntryWriter) {
 		ingesterID := "foo"
 		replicationSet := ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -235,16 +238,17 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			log.NewNopLogger(),
 			newIngesterMetrics(nil, "test"),
 			drain.DefaultConfig(),
-			&fakeLimits{},
+			&fakeLimits{metricAggregationEnabled: true},
 			&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			10*time.Second,
 			0.99,
 		)
 		require.NoError(t, err)
 
-		err = inst.Push(context.Background(), &push.PushRequest{
+		err = inst.Push(t.Context(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),
@@ -292,9 +296,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, now, fakePartition)
 		for i := 0; i < 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
+			err = inst.Push(t.Context(), &push.PushRequest{
 				Streams: []push.Stream{
 					{
 						Labels: lbs.String(),
@@ -327,7 +331,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						},
 					},
 				},
-			})
+			}, now, fakePartition)
 			require.NoError(t, err)
 		}
 		require.NoError(t, err)
@@ -337,42 +341,46 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 
 	t.Run("accumulates bytes and count for each stream and level on every push", func(t *testing.T) {
 		now := time.Now()
-		inst, _ := setup(now)
+		inst, _ := setup(t, now)
 
-		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
+		require.Len(t, inst.aggMetrics[fakePartition].metrics, 3)
 
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes)
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes)
-		require.Equal(t, uint64(17), inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetrics[fakePartition].metrics[lbs.String()]["info"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetrics[fakePartition].metrics[lbs2.String()]["error"].bytes)
+		require.Equal(t, uint64(17), inst.aggMetrics[fakePartition].metrics[lbs3.String()]["error"].bytes)
 
 		require.Equal(
 			t,
 			uint64(31),
-			inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].count,
+			inst.aggMetrics[fakePartition].metrics[lbs.String()]["info"].count,
 		)
 		require.Equal(
 			t,
 			uint64(31),
-			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].count,
+			inst.aggMetrics[fakePartition].metrics[lbs2.String()]["error"].count,
 		)
 		require.Equal(
 			t,
 			uint64(1),
-			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].count,
+			inst.aggMetrics[fakePartition].metrics[lbs3.String()]["error"].count,
 		)
 	})
 
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
 		now := model.Now()
-		inst, mockWriter := setup(now.Time())
-		inst.Downsample(now)
+		inst, mockWriter := setup(t, now.Time())
+		// Entries are written at the start of the bucket, once the bucket has been
+		// idle for a sample period.
+		bucket := inst.aggMetrics[fakePartition]
+		start := model.TimeFromUnixNano(bucket.start.UnixNano())
+		inst.Downsample(bucket.lastObserved.Add(10 * time.Second))
 
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(14+(15*30)),
 				uint64(31),
 				lbs,
@@ -388,9 +396,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(14+(15*30)),
 				uint64(31),
 				lbs2,
@@ -406,9 +414,9 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
-			now.Time(),
+			start.Time(),
 			aggregation.AggregatedMetricEntry(
-				now,
+				start,
 				uint64(17),
 				uint64(1),
 				lbs3,
@@ -421,7 +429,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			},
 		)
 
-		require.Equal(t, 0, len(inst.aggMetricsByStreamAndLevel))
+		require.Empty(t, inst.aggMetrics)
 	})
 }
 
@@ -471,6 +479,7 @@ func TestInstancePushSkipsInternalStreams(t *testing.T) {
 				nil,
 				nil,
 				aggregation.NewMetrics(nil),
+				10*time.Second,
 				0.99,
 			)
 			require.NoError(t, err)
@@ -481,7 +490,7 @@ func TestInstancePushSkipsInternalStreams(t *testing.T) {
 					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
 				}},
 			}
-			err = inst.Push(t.Context(), &req)
+			err = inst.Push(t.Context(), &req, time.Now(), fakePartition)
 			if tc.expectedErr {
 				require.Error(t, err)
 			} else {
@@ -569,6 +578,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -591,7 +601,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, time.Now(), fakePartition)
 	require.NoError(t, err)
 
 	// Verify patterns exist before shutdown
@@ -651,6 +661,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		10*time.Second,
 		0.99,
 	)
 	require.NoError(t, err)
@@ -673,7 +684,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, time.Now(), fakePartition)
 	require.NoError(t, err)
 
 	// To isolate that the WriteEntry was called during flush
@@ -924,7 +935,7 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 						},
 					},
 				},
-			})
+			}, time.Now(), fakePartition)
 			require.NoError(t, err)
 		}
 
@@ -942,7 +953,7 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 						},
 					},
 				},
-			})
+			}, time.Now(), fakePartition)
 			require.NoError(t, err)
 		}
 
@@ -960,7 +971,7 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 						},
 					},
 				},
-			})
+			}, time.Now(), fakePartition)
 			require.NoError(t, err)
 		}
 
@@ -1075,6 +1086,7 @@ func TestInstancePushOwnership(t *testing.T) {
 				nil,
 				nil,
 				aggregation.NewMetrics(nil),
+				10*time.Second,
 				0.99,
 			)
 			require.NoError(t, err)
@@ -1084,7 +1096,7 @@ func TestInstancePushOwnership(t *testing.T) {
 					Labels:  `{service_name="svc"}`,
 					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
 				}},
-			})
+			}, time.Now(), fakePartition)
 			if tc.expectedErr {
 				require.Error(t, err)
 			} else {
@@ -1093,4 +1105,201 @@ func TestInstancePushOwnership(t *testing.T) {
 			require.Equal(t, tc.expectedStreams, inst.streams.Len())
 		})
 	}
+}
+
+func TestInstanceObserveWindows(t *testing.T) {
+	const period = 10 * time.Second
+	var (
+		window0 = time.Unix(1_700_000_000, 0).Truncate(period)
+		window1 = window0.Add(period)
+		lbs     = labels.New(labels.Label{Name: "service_name", Value: "svc"})
+	)
+	lines := func(n int) []logproto.Entry {
+		entries := make([]logproto.Entry, n)
+		for i := range entries {
+			entries[i] = logproto.Entry{Timestamp: window0, Line: "0123456789"}
+		}
+		return entries
+	}
+	setup := func(t *testing.T) (*instance, *mockEntryWriter) {
+		w := &mockEntryWriter{}
+		w.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		inst, err := newInstance(
+			"foo",
+			log.NewNopLogger(),
+			newIngesterMetrics(nil, "test"),
+			drain.DefaultConfig(),
+			&fakeLimits{},
+			allStreamsOwner{},
+			w,
+			w,
+			aggregation.NewMetrics(nil),
+			period,
+			0.99,
+		)
+		require.NoError(t, err)
+		return inst, w
+	}
+	ctx := t.Context()
+
+	t.Run("same window is added to the open bucket", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second), fakePartition)
+		inst.Observe(ctx, lbs.String(), lines(3), window0.Add(9*time.Second), fakePartition)
+
+		w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		require.Equal(t, uint64(5), inst.aggMetrics[fakePartition].metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+
+	t.Run("newer window writes the open bucket first", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second), fakePartition)
+		inst.Observe(ctx, lbs.String(), lines(3), window1.Add(time.Second), fakePartition)
+
+		// The first window is written with its own start as the timestamp.
+		w.AssertNumberOfCalls(t, "WriteEntry", 1)
+		w.AssertCalled(t, "WriteEntry",
+			window0,
+			aggregation.AggregatedMetricEntry(model.TimeFromUnixNano(window0.UnixNano()), 20, 2, lbs),
+			labels.New(labels.Label{Name: constants.AggregatedMetricLabel, Value: "svc"}),
+			[]logproto.LabelAdapter{{Name: constants.LevelLabel, Value: constants.LogLevelUnknown}},
+		)
+
+		// The open bucket holds only the entries of the newer window.
+		b := inst.aggMetrics[fakePartition]
+		require.Equal(t, window1, b.start)
+		require.Equal(t, uint64(3), b.metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+
+	t.Run("older window is added to the open bucket", func(t *testing.T) {
+		inst, w := setup(t)
+		inst.Observe(ctx, lbs.String(), lines(2), window1.Add(time.Second), fakePartition)
+		inst.Observe(ctx, lbs.String(), lines(3), window0.Add(time.Second), fakePartition)
+
+		w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		b := inst.aggMetrics[fakePartition]
+		require.Equal(t, window1, b.start)
+		require.Equal(t, uint64(5), b.metrics[lbs.String()][constants.LogLevelUnknown].count)
+	})
+
+	t.Run("partitions are aggregated into separate buckets", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx := t.Context()
+			const (
+				lagging = fakePartition     // consuming records from window0
+				current = fakePartition + 1 // consuming records from window1
+			)
+			inst, w := setup(t)
+			inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second), lagging)
+			inst.Observe(ctx, lbs.String(), lines(3), window1.Add(time.Second), current)
+
+			// A record in a newer window for one partition does not complete the
+			// bucket of the other partition.
+			w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			require.Len(t, inst.aggMetrics, 2)
+			require.Equal(t, window0, inst.aggMetrics[lagging].start)
+			require.Equal(t, uint64(2), inst.aggMetrics[lagging].metrics[lbs.String()][constants.LogLevelUnknown].count)
+			require.Equal(t, window1, inst.aggMetrics[current].start)
+			require.Equal(t, uint64(3), inst.aggMetrics[current].metrics[lbs.String()][constants.LogLevelUnknown].count)
+
+			// The lagging partition catches up to window1. Only its own bucket is
+			// written, with its own start, and the other partition is untouched.
+			inst.Observe(ctx, lbs.String(), lines(1), window1.Add(2*time.Second), lagging)
+			w.AssertNumberOfCalls(t, "WriteEntry", 1)
+			w.AssertCalled(t, "WriteEntry",
+				window0,
+				aggregation.AggregatedMetricEntry(model.TimeFromUnixNano(window0.UnixNano()), 20, 2, lbs),
+				labels.New(labels.Label{Name: constants.AggregatedMetricLabel, Value: "svc"}),
+				[]logproto.LabelAdapter{{Name: constants.LevelLabel, Value: constants.LogLevelUnknown}},
+			)
+			require.Equal(t, window1, inst.aggMetrics[lagging].start)
+			require.Equal(t, uint64(1), inst.aggMetrics[lagging].metrics[lbs.String()][constants.LogLevelUnknown].count)
+			require.Equal(t, uint64(3), inst.aggMetrics[current].metrics[lbs.String()][constants.LogLevelUnknown].count)
+
+			// Downsample writes the bucket of each partition that has been idle for
+			// a sample period.
+			time.Sleep(period)
+			inst.Downsample(time.Now())
+			w.AssertNumberOfCalls(t, "WriteEntry", 3)
+			require.Empty(t, inst.aggMetrics)
+		})
+	})
+
+	t.Run("downsample does not write a bucket that is still being observed", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx := t.Context()
+			inst, w := setup(t)
+			// The records are from window0, but the wall clock has moved on, as when a
+			// backlog is replayed.
+			inst.Observe(ctx, lbs.String(), lines(2), window0.Add(time.Second), fakePartition)
+			time.Sleep(20 * time.Second)
+			inst.Observe(ctx, lbs.String(), lines(3), window0.Add(2*time.Second), fakePartition)
+
+			// The window ended long ago in record time, but the bucket was observed 9s
+			// ago, which is less than a sample period.
+			time.Sleep(9 * time.Second)
+			inst.Downsample(time.Now())
+			w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			require.Len(t, inst.aggMetrics, 1)
+			require.Equal(t, uint64(5), inst.aggMetrics[fakePartition].metrics[lbs.String()][constants.LogLevelUnknown].count)
+
+			// Once it has been idle for a sample period it is written once, as a
+			// single entry with the totals of both calls.
+			time.Sleep(time.Second)
+			inst.Downsample(time.Now())
+			w.AssertNumberOfCalls(t, "WriteEntry", 1)
+			w.AssertCalled(t, "WriteEntry",
+				window0,
+				aggregation.AggregatedMetricEntry(model.TimeFromUnixNano(window0.UnixNano()), 50, 5, lbs),
+				labels.New(labels.Label{Name: constants.AggregatedMetricLabel, Value: "svc"}),
+				[]logproto.LabelAdapter{{Name: constants.LevelLabel, Value: constants.LogLevelUnknown}},
+			)
+			require.Empty(t, inst.aggMetrics)
+		})
+	})
+}
+
+func TestInstancePushAggregationDisabled(t *testing.T) {
+	const period = 10 * time.Second
+	window0 := time.Unix(1_700_000_000, 0).Truncate(period)
+	window1 := window0.Add(period)
+	lbs := labels.New(labels.Label{Name: "service_name", Value: "svc"})
+
+	w := &mockEntryWriter{}
+	w.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		drain.DefaultConfig(),
+		&fakeLimits{metricAggregationEnabled: false},
+		allStreamsOwner{},
+		w,
+		w,
+		aggregation.NewMetrics(nil),
+		period,
+		0.99,
+	)
+	require.NoError(t, err)
+
+	pushAt := func(now time.Time) {
+		err := inst.Push(t.Context(), &push.PushRequest{
+			Streams: []push.Stream{{
+				Labels:  lbs.String(),
+				Entries: []push.Entry{{Timestamp: now, Line: "ts=1 msg=hello"}},
+			}},
+		}, now, fakePartition)
+		require.NoError(t, err)
+	}
+
+	// Pushes in two windows must not be tracked, so the second push does not
+	// write the first window as it would if aggregation was enabled.
+	pushAt(window0.Add(time.Second))
+	pushAt(window1.Add(time.Second))
+	require.Empty(t, inst.aggMetrics)
+	w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	// Downsample has nothing to write either.
+	inst.Downsample(window1.Add(time.Hour))
+	w.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

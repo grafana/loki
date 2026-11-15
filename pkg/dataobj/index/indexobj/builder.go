@@ -80,7 +80,8 @@ func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scrat
 		cfg:     cfg,
 		metrics: metrics,
 
-		builder: dataobj.NewBuilder(scratchStore),
+		// The watermarks section comes first so that a reader finds it in its first request.
+		builder: dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(watermarks.SectionType())),
 	}, nil
 }
 
@@ -224,7 +225,7 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
 
 	indexPointersBuilder := b.getIndexPointersBuilder()
-	indexPointersBuilder.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
+	indexPointersBuilder.Append(pointer)
 	b.state = builderStateDirty
 
 	if indexPointersBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {

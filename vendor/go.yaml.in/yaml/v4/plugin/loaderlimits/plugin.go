@@ -16,14 +16,14 @@
 //	)
 //
 //	// Default limits
-//	loader := yaml.NewLoader(data, yaml.WithPlugin(loaderlimits.New()))
+//	loader, err := yaml.NewLoader(reader, yaml.WithPlugin(loaderlimits.New()))
 //
 //	// Disable alias checking (e.g. for 11,000 programmatic aliases)
-//	loader := yaml.NewLoader(data,
+//	loader, err := yaml.NewLoader(reader,
 //	    yaml.WithPlugin(loaderlimits.New(loaderlimits.AliasNone())))
 //
 //	// Custom depth limit
-//	loader := yaml.NewLoader(data,
+//	loader, err := yaml.NewLoader(reader,
 //	    yaml.WithPlugin(loaderlimits.New(loaderlimits.DepthValue(50))))
 //
 // # Third-Party Plugins
@@ -34,7 +34,7 @@
 //	type StrictLimit struct{}
 //	func (s *StrictLimit) CheckDepth(depth int, ctx *yaml.DepthContext) error { ... }
 //	func (s *StrictLimit) CheckAlias(aliasCount, constructCount int) error { ... }
-//	yaml.NewLoader(data, yaml.WithPlugin(&StrictLimit{}))
+//	yaml.NewLoader(reader, yaml.WithPlugin(&StrictLimit{}))
 package loaderlimits
 
 import (

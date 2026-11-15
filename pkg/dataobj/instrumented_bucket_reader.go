@@ -137,6 +137,12 @@ func (rc *instrumentedReadCloser) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// ObjectSize returns the size that the wrapped body reports. Without it, [objstore.TryToGetSize] fails on every body
+// that the instrumented reader returns.
+func (rc *instrumentedReadCloser) ObjectSize() (int64, error) {
+	return objstore.TryToGetSize(rc.inner)
+}
+
 func (rc *instrumentedReadCloser) Close() error {
 	if rc.n > 0 {
 		rc.region.Record(StatObjectBytesDownloaded.Observe(rc.n))

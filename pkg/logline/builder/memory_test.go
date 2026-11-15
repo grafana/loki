@@ -27,9 +27,10 @@ func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 	const batch = 64
 	cellsPerDay := uint64((24 * 60 * 60 * 1000) / 100) // 100ms interval, time-only
 	b := newPostingsBuffer(postingsBufferConfig{
-		bufferPairs:    batch,
-		spillWatermark: 0.75,
-		cellsPerDay:    cellsPerDay,
+		bufferPairs:        batch,
+		spillWatermark:     0.75,
+		cellsPerDay:        cellsPerDay,
+		trackDocumentTicks: true,
 	})
 
 	bufferBytes := uint64(2*batch*8 + 2*batch*4) // keys+keyBuf, docs+docBuf
@@ -58,13 +59,15 @@ func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 
 	// Sharded buffers additionally count the shard-reorder scratch (1 B/pair),
 	// which exists only after the first sharded spill allocates it lazily.
-	bs := newPostingsBuffer(postingsBufferConfig{
-		bufferPairs:    batch,
-		spillWatermark: 0.75,
-		cellsPerDay:    cellsPerDay,
-		shardCount:     2,
-		shardFn:        func(ngram [8]byte, count int) int { return int(ngram[0]) % count },
-	})
+	shardedCfg := postingsBufferConfig{
+		bufferPairs:        batch,
+		spillWatermark:     0.75,
+		cellsPerDay:        cellsPerDay,
+		shardCount:         2,
+		shardFn:            func(ngram [8]byte, count int) int { return int(ngram[0]) % count },
+		trackDocumentTicks: true,
+	}
+	bs := newPostingsBuffer(shardedCfg)
 	require.Equal(t, bufferBytes, bs.residentBytes(), "scratch must not count before it is allocated")
 	bs.appendPair([8]byte{'a'}, 1) // shard 1 (0x61 % 2)
 	bs.appendPair([8]byte{'b'}, 2) // shard 0 (0x62 % 2)
@@ -78,4 +81,15 @@ func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 	// releaseSortBuffers drops the scratch along with the sort buffers.
 	bs.releaseSortBuffers()
 	require.Equal(t, 2*bitsetBytes, bs.residentBytes())
+
+	// A v5 buffer has no document table to seed, so the same spill allocates
+	// no bitsets.
+	shardedCfg.trackDocumentTicks = false
+	v5 := newPostingsBuffer(shardedCfg)
+	v5.appendPair([8]byte{'a'}, 1)
+	v5.appendPair([8]byte{'b'}, 2)
+	v5.sortedHead = 2
+	v5.shardSortAndTrack(v5.sortedHead)
+	require.Empty(t, v5.refTicks)
+	require.Equal(t, bufferBytes+uint64(cap(v5.shardScratch)), v5.residentBytes())
 }

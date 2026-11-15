@@ -30,6 +30,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	m.singleObjectLogRuns.WithLabelValues("acme").Set(3)
 	m.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonPlan).Inc()
 	m.logMergeSkippedMergesTotal.WithLabelValues("acme").Inc()
+	m.indexMergeFailedGroupsTotal.WithLabelValues("acme").Inc()
 
 	// A second tenant that must survive.
 	m.unconsolidatedBacklog.WithLabelValues("other").Set(7)
@@ -53,6 +54,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 2, testutil.CollectAndCount(m.pendingLogBytes))
 	require.Equal(t, 1, testutil.CollectAndCount(m.lastPlanTimestampSeconds))
 	require.Equal(t, 1, testutil.CollectAndCount(m.singleObjectLogRuns))
+	require.Equal(t, 1, testutil.CollectAndCount(m.indexMergeFailedGroupsTotal))
 
 	m.deleteTenant("acme")
 
@@ -68,6 +70,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 0, testutil.CollectAndCount(m.singleObjectLogRuns))
 	require.Equal(t, 0, testutil.CollectAndCount(m.logMergeFailedIndexesTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.logMergeSkippedMergesTotal))
+	require.Equal(t, 0, testutil.CollectAndCount(m.indexMergeFailedGroupsTotal))
 
 	// The other tenant and the non-tenant metric are untouched.
 	require.Equal(t, 1, testutil.CollectAndCount(m.unconsolidatedBacklog), "only the surviving tenant remains")

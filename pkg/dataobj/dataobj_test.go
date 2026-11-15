@@ -13,7 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
@@ -356,7 +356,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, bigMeta, gotMeta)
 	})
 
-	// maxItemBytes is a custom limit, not metadatacache.Cache's default, so this also proves MaxItemBytes
+	// maxItemBytes is a custom limit, not metadata.Cache's default, so this also proves MaxItemBytes
 	// is genuinely plumbed through fetchExtendedMetadataRegion, not just the built-in default.
 	t.Run("a metadata region above the cache size cap still caches the file metadata but not the oversized section's metadata", func(t *testing.T) {
 		ctx := context.Background()
@@ -591,10 +591,10 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		noOption, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
 		require.NoError(t, err)
 
-		// typedNil is *metadatacache.Cache, the real concrete type callers pass, not a test-only
+		// typedNil is *metadata.Cache, the real concrete type callers pass, not a test-only
 		// stand-in: this proves WithMetadataCache's typed-nil normalization covers it specifically,
 		// rather than panicking on first use the way a direct method call on it would.
-		var typedNil *metadatacache.Cache
+		var typedNil *metadata.Cache
 		typedNilCache, err := dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(typedNil))
 		require.NoError(t, err)
 
@@ -624,7 +624,7 @@ func (b *countingBucket) GetRange(ctx context.Context, name string, off, length 
 func (b *countingBucket) reset() { b.getRanges.Store(0); b.rangeBytes.Store(0) }
 
 // onlyCachedBlob returns the single blob stored in memoryCache, failing the test if there isn't exactly one.
-// metadatacache.Cache prefixes and versions its keys internally, so tests read the cache back this
+// metadata.Cache prefixes and versions its keys internally, so tests read the cache back this
 // way instead of assuming a literal key.
 func onlyCachedBlob(t *testing.T, memoryCache cache.MockCache) []byte {
 	t.Helper()
@@ -744,6 +744,6 @@ func (b *truncatedHeadBucket) GetRange(ctx context.Context, name string, off, le
 	}{io.LimitReader(rc, b.limit), rc}, nil
 }
 
-func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadatacache.Cache {
-	return metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)
 }

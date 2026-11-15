@@ -60,13 +60,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 }
 
-func (cfg *Config) Validate() error {
+// Validate returns an error when the config is not valid. kafkaIngestionEnabled says whether the
+// process consumes Kafka. Only then does Validate check Builder, because only the Kafka builder
+// reads it and its topic has no default.
+func (cfg *Config) Validate(kafkaIngestionEnabled bool) error {
 	if !cfg.Enabled {
 		// Do not validate configuration if disabled.
 		return nil
 	}
-	if err := cfg.Builder.Validate(); err != nil {
-		return err
+	if kafkaIngestionEnabled {
+		if err := cfg.Builder.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := cfg.Uploader.Validate(); err != nil {
 		return err

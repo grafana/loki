@@ -62,7 +62,6 @@ max_line_size: 60
 max_line_size_truncate: true
 max_streams_per_user: 70
 max_global_streams_per_user: 80
-max_chunks_per_query: 90
 max_query_series: 100
 max_query_lookback: 110s
 max_query_length: 120s
@@ -105,7 +104,6 @@ volume_max_series: 10001
   "max_line_size_truncate": true,
   "max_streams_per_user": 70,
   "max_global_streams_per_user": 80,
-  "max_chunks_per_query": 90,
   "max_query_series": 100,
   "max_query_lookback": "110s",
   "max_query_length": "120s",
@@ -832,6 +830,25 @@ policy_override_limits:
 	require.Equal(t, float64(2*bytesInMB), rateBytes)
 }
 
+func TestLimits_PolicyChunkIdlePeriodYAML(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	setDefaultLimitsForYAML(t, defaults)
+
+	var l Limits
+	require.NoError(t, yaml.Unmarshal([]byte(`
+policy_override_limits:
+  backfill:
+    chunk_idle_period: 5m
+`), &l))
+	require.NoError(t, l.Validate())
+
+	overrides := &Overrides{defaultLimits: &l}
+	idle, ok := overrides.PolicyChunkIdlePeriod("tenant1", "backfill")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, idle)
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)
@@ -1538,6 +1555,30 @@ func TestShardFactor_Set(t *testing.T) {
 		require.Error(t, f.Set("4294967296"))
 		require.Zero(t, f, "a failed set must not change the value")
 	})
+}
+
+func TestLimits_TSDBShardedIndexShardFactor(t *testing.T) {
+	for _, tc := range []struct {
+		factor int
+		err    bool
+	}{
+		{factor: 0},
+		{factor: 1},
+		{factor: 8},
+		{factor: 6, err: true},
+		{factor: -2, err: true},
+	} {
+		t.Run(fmt.Sprintf("factor=%d", tc.factor), func(t *testing.T) {
+			var l Limits
+			l.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+			l.TSDBShardedIndexShardFactor = tc.factor
+			if tc.err {
+				require.ErrorContains(t, l.Validate(), "tsdb_sharded_index_shard_factor")
+				return
+			}
+			require.NoError(t, l.Validate())
+		})
+	}
 }
 
 func TestLimits_DataObjShardFactor(t *testing.T) {

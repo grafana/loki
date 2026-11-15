@@ -2,7 +2,7 @@
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@84115a2e9d807167f054d106c81f5e9f3230387e"
     "with":
-      "build_image": "golang:1.27.3"
+      "build_image": "golang:1.27.4"
       "golang_ci_lint_version": "v2.14.0"
       "release_lib_ref": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "skip_validation": false
@@ -10,7 +10,7 @@
   "logql-analyzer-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.27.3"
+      "GO_VERSION": "1.27.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "RELEASE_REPO": "grafana/loki"
@@ -148,7 +148,7 @@
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.27.3"
+      "GO_VERSION": "1.27.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "RELEASE_REPO": "grafana/loki"
@@ -286,7 +286,7 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.27.3"
+      "GO_VERSION": "1.27.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "RELEASE_REPO": "grafana/loki"
@@ -424,7 +424,7 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.27.3"
+      "GO_VERSION": "1.27.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "RELEASE_REPO": "grafana/loki"
@@ -562,7 +562,7 @@
   "loki-query-tee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.27.3"
+      "GO_VERSION": "1.27.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "84115a2e9d807167f054d106c81f5e9f3230387e"
       "RELEASE_REPO": "grafana/loki"

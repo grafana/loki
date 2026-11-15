@@ -44,15 +44,7 @@ type streamSelector struct {
 }
 
 func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time, bucketRange *postings.ShardBucketRange) *streamSelector {
-	// Only an equality can prune a section, because a bloom filter proves that a value is absent
-	// and nothing else.
-	var equal []*labels.Matcher
-	for _, p := range predicates {
-		if p != nil && p.Type == labels.MatchEqual {
-			equal = append(equal, p)
-		}
-	}
-	return &streamSelector{matchers: matchers, equalPredicates: equal, start: start, end: end, bucketRange: bucketRange}
+	return &streamSelector{matchers: matchers, equalPredicates: equalityPredicates(predicates), start: start, end: end, bucketRange: bucketRange}
 }
 
 func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
@@ -493,7 +485,7 @@ func (s *streamSelector) refAdmitsPredicates(streamLabels map[string]struct{}, b
 
 // splitFiltersAndMatchers splits matchers into filters (empty-matching, also
 // select streams lacking the label name) and matchers (value-selecting, seed the
-// result). Mirrors LogQL's syntaxutil.SplitFiltersAndMatchers, treating a `.*` regex as
+// result). Mirrors LogQL's syntax.SplitFiltersAndMatchers, treating a `.*` regex as
 // a value-selecting matcher.
 func (s *streamSelector) splitFiltersAndMatchers() (filters, matchers []*labels.Matcher) {
 	for _, m := range s.matchers {
@@ -510,7 +502,7 @@ func (s *streamSelector) splitFiltersAndMatchers() (filters, matchers []*labels.
 }
 
 // isFilter reports whether a matcher is treated as a filter: one that also
-// matches streams lacking its label name. Mirrors syntaxutil.SplitFiltersAndMatchers: a
+// matches streams lacking its label name. Mirrors syntax.SplitFiltersAndMatchers: a
 // matcher that matches "" is a filter, except a `.*` regex which selects every
 // stream and is a value-selecting matcher.
 func isFilter(m *labels.Matcher) bool {

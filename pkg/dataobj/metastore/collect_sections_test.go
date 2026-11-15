@@ -125,7 +125,7 @@ func TestIndexSectionsReader_RequiresSelector(t *testing.T) {
 
 	m := newTestObjectMetastore(objstore.NewInMemBucket())
 	_, err := m.IndexSectionsReader(context.Background(), IndexSectionsReaderRequest{
-		IndexPath: "does-not-matter",
+		Indexes: []IndexEntry{{Path: "does-not-matter"}},
 		SectionsRequest: SectionsRequest{
 			Start:    time.Now().Add(-time.Hour),
 			End:      time.Now(),

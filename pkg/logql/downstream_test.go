@@ -27,6 +27,36 @@ var (
 	nilRangeMetrics = NewRangeMapperMetrics(nil)
 )
 
+func TestDownstreamEngine_Query_ShouldOnlyPropagateMaxQuerySeriesCutoff(t *testing.T) {
+	tests := map[string]struct {
+		opts     EngineOpts
+		expected queryOpts
+	}{
+		"the executing query is never logged, even when the options ask for it": {
+			opts:     EngineOpts{LogExecutingQuery: true},
+			expected: queryOpts{logExecutingQuery: false},
+		},
+		"max query series cutoff is propagated": {
+			opts:     EngineOpts{MaxQuerySeriesCutoff: true},
+			expected: queryOpts{maxQuerySeriesCutoff: true},
+		},
+		"max query series cutoff is off by default": {
+			opts:     EngineOpts{},
+			expected: queryOpts{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ng := NewDownstreamEngine(tc.opts, MockDownstreamer{}, NoLimits, log.NewNopLogger())
+
+			q, ok := ng.Query(context.Background(), LiteralParams{}).(*query)
+			require.True(t, ok)
+			require.Equal(t, tc.expected, q.opts)
+		})
+	}
+}
+
 func TestMappingEquivalence(t *testing.T) {
 	var (
 		shards   = 3

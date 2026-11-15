@@ -13,13 +13,21 @@ func resolveExpressCredentials(o *Options) {
 	}
 }
 
-// Config finalizer: if we're using the default S3Express implementation, grab
-// a reference to the client for its CreateSession API, and the underlying
-// sigv4 credentials provider for cache keying.
+// Config finalizer: if we're using the default S3Express implementation, bind
+// a new provider to the client for its CreateSession API, and the underlying
+// sigv4 credentials provider for cache keying. Only the session cache is
+// shared with the original provider, which may belong to another client whose
+// options were copied into this one.
 func finalizeExpressCredentials(o *Options, c *Client) {
 	if p, ok := o.ExpressCredentials.(*defaultS3ExpressCredentialsProvider); ok {
-		p.client = c
-		p.v4creds = o.Credentials
+		bound := &defaultS3ExpressCredentialsProvider{
+			client:        c,
+			cache:         p.cache,
+			refreshWindow: p.refreshWindow,
+			v4creds:       o.Credentials,
+		}
+		o.ExpressCredentials = bound
+		c.options.ExpressCredentials = bound
 	}
 }
 

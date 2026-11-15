@@ -508,6 +508,74 @@ func Test_ServiceDetection(t *testing.T) {
 	})
 }
 
+func BenchmarkParseLokiRequest(b *testing.B) {
+	now := time.Now()
+
+	for _, size := range []struct{ numStreams, entriesPerStream int }{
+		{100, 1},
+		{1, 100},
+		{10, 100},
+	} {
+		numStreams, entriesPerStream := size.numStreams, size.entriesPerStream
+
+		req := &logproto.PushRequest{}
+		var jsonStreams []string
+		for s := 0; s < numStreams; s++ {
+			lbls := fmt.Sprintf(`{app="app-%d", cluster="dev", namespace="ns-%d", buzz="bar", env="us-central2", container="query-frontend"}`, s, s%10)
+			jbls := fmt.Sprintf(`{"app": "app-%d", "cluster": "dev", "namespace": "ns-%d", "buzz":"bar", "env": "us-central2", "container": "query-frontend"}`, s, s%10)
+			stream := logproto.Stream{Labels: lbls}
+			var values []string
+			for e := 0; e < entriesPerStream; e++ {
+				ts := now.Add(-time.Duration(e) * time.Millisecond)
+				line := fmt.Sprintf("level=info msg=\"benchmark log line\" stream=%d entry=%d", s, e)
+				stream.Entries = append(stream.Entries, logproto.Entry{
+					Timestamp: ts,
+					Line:      line,
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(
+						labels.FromStrings("trace_id", fmt.Sprintf("trace-%d-%d", s, e)),
+					),
+				})
+				values = append(values, fmt.Sprintf(`["%d", %q, {"trace_id": "trace-%d-%d"}]`, ts.UnixNano(), line, s, e))
+			}
+			req.Streams = append(req.Streams, stream)
+			jsonStreams = append(jsonStreams, fmt.Sprintf(`{"stream": %s, "values": [%s]}`, jbls, strings.Join(values, ",")))
+		}
+
+		for _, tc := range []struct {
+			name        string
+			contentType string
+			body        []byte
+		}{
+			{
+				name:        "protobuf",
+				contentType: "application/x-protobuf",
+				body:        []byte(snappyString(marshalProto(req))),
+			},
+			{
+				name:        "json",
+				contentType: "application/json",
+				body:        []byte(fmt.Sprintf(`{"streams": [%s]}`, strings.Join(jsonStreams, ","))),
+			},
+		} {
+			b.Run(fmt.Sprintf("%s/streams=%d/entries=%d", tc.name, numStreams, entriesPerStream), func(b *testing.B) {
+				limits := &fakeLimits{enabled: true}
+				streamResolver := newMockStreamResolver("fake", limits)
+				body := bytes.NewReader(tc.body)
+				request := httptest.NewRequest("POST", "/loki/api/v1/push", body)
+				request.Header.Add("Content-Type", tc.contentType)
+
+				for b.Loop() {
+					body.Reset(tc.body)
+					_, _, err := ParseLokiRequest("fake", request, limits, nil, 100<<20, 100<<20, nil, streamResolver, util_log.Logger)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func BenchmarkRetentionPeriodToString(b *testing.B) {
 	testCases := []struct {
 		name            string

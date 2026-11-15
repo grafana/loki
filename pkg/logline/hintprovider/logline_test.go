@@ -669,6 +669,18 @@ func TestNormalizeRanges(t *testing.T) {
 			},
 		},
 		{
+			name: "document shards kept apart",
+			input: []HintTimeRange{
+				{Start: t0.Add(5 * m), End: t0.Add(15 * m), DocumentShard: 3, DocumentShardBits: 5},
+				{Start: t0, End: t0.Add(10 * m)},
+				{Start: t0.Add(10 * m), End: t0.Add(20 * m), DocumentShard: 3, DocumentShardBits: 5},
+			},
+			expected: []HintTimeRange{
+				{Start: t0, End: t0.Add(10 * m)},
+				{Start: t0.Add(5 * m), End: t0.Add(20 * m), DocumentShard: 3, DocumentShardBits: 5},
+			},
+		},
+		{
 			name: "unsorted input",
 			input: []HintTimeRange{
 				{

@@ -1284,7 +1284,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki](../../operations/meta-monitoring/)
+[Loki meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/)
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.

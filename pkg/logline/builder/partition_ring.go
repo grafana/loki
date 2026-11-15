@@ -38,7 +38,7 @@ const partitionRingName = "logline-builder-partitions"
 type PartitionRingWatcher struct {
 	services.Service
 
-	kvCfg   kv.Config
+	client  kv.Client
 	ringKey string
 	logger  log.Logger
 	reg     prometheus.Registerer
@@ -48,34 +48,37 @@ type PartitionRingWatcher struct {
 
 // NewPartitionRingWatcher returns a watcher over the partition ring stored at
 // ringKey in the given KV store.
-func NewPartitionRingWatcher(kvCfg kv.Config, ringKey string, logger log.Logger, reg prometheus.Registerer) *PartitionRingWatcher {
+//
+// The KV client is built here, during module init, like every dskit ring.
+// Building the memberlist KV registers metrics that panic when scraped before
+// it finishes, and /metrics is already served by the time starting runs.
+func NewPartitionRingWatcher(kvCfg kv.Config, ringKey string, logger log.Logger, reg prometheus.Registerer) (*PartitionRingWatcher, error) {
+	client, err := kv.NewClient(
+		kvCfg,
+		ring.GetPartitionRingCodec(),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("logline_", reg), partitionRingName+"-watcher"),
+		log.With(logger, "component", "partition-ring-kv"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create partition ring kv client: %w", err)
+	}
+
 	svc := &PartitionRingWatcher{
-		kvCfg:   kvCfg,
+		client:  client,
 		ringKey: ringKey,
 		logger:  logger,
 		reg:     reg,
 	}
 	svc.Service = services.NewBasicService(svc.starting, svc.running, svc.stopping).WithName("builder-partition-ring")
-	return svc
+	return svc, nil
 }
 
-// starting builds the KV client and the partition-ring watcher. The watcher
-// must reach Running before this service does, so the balancer never sees a
-// missing watcher.
+// starting builds the partition-ring watcher. The watcher must reach Running
+// before this service does, so the balancer never sees a missing watcher.
 func (s *PartitionRingWatcher) starting(ctx context.Context) error {
 	reg := prometheus.WrapRegistererWithPrefix("logline_", s.reg)
 
-	client, err := kv.NewClient(
-		s.kvCfg,
-		ring.GetPartitionRingCodec(),
-		kv.RegistererWithKVName(reg, partitionRingName+"-watcher"),
-		log.With(s.logger, "component", "partition-ring-kv"),
-	)
-	if err != nil {
-		return fmt.Errorf("create partition ring kv client: %w", err)
-	}
-
-	s.watcher = ring.NewPartitionRingWatcher(partitionRingName, s.ringKey, client, log.With(s.logger, "component", "partition-ring"), reg)
+	s.watcher = ring.NewPartitionRingWatcher(partitionRingName, s.ringKey, s.client, log.With(s.logger, "component", "partition-ring"), reg)
 
 	s.watcher.WithDelegate(newPartitionRingMetrics(reg, partitionRingName))
 	if err := s.watcher.StartAsync(ctx); err != nil {

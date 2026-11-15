@@ -24,7 +24,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -921,6 +921,11 @@ func (f denyAppFilterer) ShouldFilter(streamLabels labels.Labels) bool {
 
 func (f denyAppFilterer) RequiredLabelNames() []string { return []string{"app"} }
 
+func (f denyAppFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 // denyEverythingFilterer denies every stream.
 type denyEverythingFilterer struct{}
 
@@ -929,6 +934,11 @@ func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { ret
 func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
 
 // fixedMetastore yields the descriptors a test supplies as one batch from every SectionsStream
 // call. A test uses it for an object that no real index can describe, such as one that holds two
@@ -1287,7 +1297,7 @@ func TestDataObjStore_RepeatedMetadataFilter(t *testing.T) {
 	})
 }
 
-// metadataCacheSpy wraps a metadatacache.Cache over an in-memory mock backend. It records the key of
+// metadataCacheSpy wraps a metadata.Cache over an in-memory mock backend. It records the key of
 // each call and counts the loads.
 type metadataCacheSpy struct {
 	inner dataobj.MetadataCache
@@ -1298,7 +1308,7 @@ type metadataCacheSpy struct {
 }
 
 func newMetadataCacheSpy() *metadataCacheSpy {
-	return &metadataCacheSpy{inner: metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)}
+	return &metadataCacheSpy{inner: metadata.NewCache(cache.NewMockCache(), 0, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)}
 }
 
 func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {
