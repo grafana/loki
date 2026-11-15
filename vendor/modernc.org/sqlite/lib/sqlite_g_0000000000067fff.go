@@ -8,32 +8,6 @@ import (
 	"modernc.org/libc"
 )
 
-const M_1_PI = 0
-
-const M_2_PI = 0
-
-const M_2_SQRTPI = 0
-
-const M_E = 0
-
-const M_LN10 = 0
-
-const M_LN2 = 0
-
-const M_LOG10E = 0
-
-const M_LOG2E = 0
-
-const M_PI = 3.141592653589793
-
-const M_PI_2 = 0
-
-const M_PI_4 = 0
-
-const M_SQRT1_2 = 0
-
-const M_SQRT2 = 0
-
 // C documentation
 //
 //	/*

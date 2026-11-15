@@ -175,13 +175,13 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				data, err := block.Uncompress(f, size.Get(), nil, false)
+				buf, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
 					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
 				} else {
-					c <- data
+					c <- buf
 				}
 			}()
 		}
@@ -222,6 +222,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			if f.Descriptor.Flags.ContentChecksum() {
 				_, _ = f.checksum.Write(buf)
 			}
+			f.size += uint64(len(buf))
 			if leg {
 				cum += uint32(len(buf))
 			}
@@ -243,7 +244,12 @@ func (b *FrameDataBlock) init(f *Frame) *FrameDataBlock {
 		b = new(FrameDataBlock)
 	}
 	b.Close(f) // return any buffer still held; noop if already closed
-	buf := f.BlockSizeIndex().Get()
+	var buf []byte
+	if f.isLegacy() {
+		buf = lz4block.GetLegacy()
+	} else {
+		buf = f.BlockSizeIndex().Get()
+	}
 	b.Data = buf
 	b.data = buf
 	return b
@@ -283,6 +289,8 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	switch level {
 	case lz4block.Fast:
 		n, _ = lz4block.CompressBlock(src, data)
+	case lz4block.CCompatFast:
+		n, _ = lz4block.CompressBlockCCompat(src, data)
 	default:
 		n, _ = lz4block.CompressBlockHC(src, data, level)
 	}
@@ -308,6 +316,7 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 	if f.Descriptor.Flags.ContentChecksum() {
 		_, _ = f.checksum.Write(b.src)
 	}
+	f.size += uint64(len(b.src))
 	buf := f.buf[:]
 	binary.LittleEndian.PutUint32(buf, uint32(b.Size))
 	if _, err := dst.Write(buf[:4]); err != nil {
@@ -330,8 +339,13 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, error) {
 	x, err := f.readUint32(src)
 	if err != nil {
-		return 0, err
+		if f.isLegacy() {
+			// Legacy frames have no end mark: they end with the source.
+			return 0, err
+		}
+		return 0, unexpectedEOF(err)
 	}
+	var read int // bytes of block data already read
 	if f.isLegacy() {
 		switch x {
 		case frameMagicLegacy:
@@ -340,8 +354,15 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 		case cum:
 			// Only works in non concurrent mode, for concurrent mode
 			// it is handled separately.
-			// Linux kernel format appends the total uncompressed size at the end.
-			return 0, lz4errors.ErrEndOfStream
+			// Linux kernel format appends the total uncompressed size at
+			// the end. A block whose compressed size happens to be the
+			// same is told apart by having data after it.
+			if _, err := io.ReadFull(src, f.buf[:1]); err == io.EOF {
+				return 0, lz4errors.ErrEndOfStream
+			} else if err != nil {
+				return x, err
+			}
+			read = 1
 		}
 	} else if x == 0 {
 		// Marker for end of stream.
@@ -350,17 +371,20 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 	b.Size = DataBlockSize(x)
 
 	size := b.Size.size()
-	if size > cap(b.data) {
+	if size > cap(b.data) || size < read {
 		return x, lz4errors.ErrOptionInvalidBlockSize
 	}
 	b.data = b.data[:size]
-	if _, err := io.ReadFull(src, b.data); err != nil {
-		return x, err
+	if read > 0 {
+		b.data[0] = f.buf[0]
+	}
+	if _, err := io.ReadFull(src, b.data[read:]); err != nil {
+		return x, unexpectedEOF(err)
 	}
 	if f.Descriptor.Flags.BlockChecksum() {
 		sum, err := f.readUint32(src)
 		if err != nil {
-			return 0, err
+			return 0, unexpectedEOF(err)
 		}
 		b.Checksum = sum
 	}
@@ -369,6 +393,10 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 
 func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byte, error) {
 	if b.Size.Uncompressed() {
+		if len(b.data) > len(dst) {
+			// Only legacy blocks can be larger than the block size.
+			return nil, lz4errors.ErrInvalidSourceShortBuffer
+		}
 		n := copy(dst, b.data)
 		dst = dst[:n]
 	} else {
@@ -384,8 +412,11 @@ func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byt
 			return nil, err
 		}
 	}
-	if sum && f.Descriptor.Flags.ContentChecksum() {
-		_, _ = f.checksum.Write(dst)
+	if sum {
+		if f.Descriptor.Flags.ContentChecksum() {
+			_, _ = f.checksum.Write(dst)
+		}
+		f.size += uint64(len(dst))
 	}
 	return dst, nil
 }

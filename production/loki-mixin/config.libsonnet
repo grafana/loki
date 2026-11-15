@@ -48,11 +48,6 @@
       enabled: true,
     },
 
-    promtail: {
-      // Whether or not to include promtail specific dashboards
-      enabled: true,
-    },
-
     thanos: {
       // Whether or not to include thanos specific dashboards
       enabled: true,
@@ -62,7 +57,7 @@
       // Whether or not to include memcached in the operational dashboard
       memcached: true,
       // Whether or not to include consul in the operational dashboard
-      consul: true,
+      consul: false,
       // Whether or not to include gcs in the operational dashboard
       gcs: true,
       // Whether or not to include s3 in the operational dashboard
@@ -70,9 +65,6 @@
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
     },
-
-    // Enable TSDB specific dashboards
-    tsdb: true,
 
     // Tunes histogram recording rules to aggregate over this interval.
     // Set to at least twice the scrape interval; otherwise, recording rules will output no data.

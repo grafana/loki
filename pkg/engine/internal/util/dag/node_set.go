@@ -12,10 +12,6 @@ func (s nodeSet[N]) Add(node N) {
 	s[node] = struct{}{}
 }
 
-// Remove removes the given node from the set. If node is not in the set, Remove
-// is a no-op.
-func (s nodeSet[N]) Remove(node N) { delete(s, node) }
-
 // Contains returns true if the given node is in the set.
 func (s nodeSet[N]) Contains(node N) bool {
 	_, ok := s[node]

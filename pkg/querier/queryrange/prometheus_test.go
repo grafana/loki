@@ -30,7 +30,6 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -56,6 +55,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"sectionsResolutionMaxTime": 0,
 				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0,
 				"wireBytesTransferred": 0
@@ -75,7 +75,6 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
-			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunkFetchFailures": 0,
 			"chunk" :{
@@ -101,6 +100,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"sectionsResolutionMaxTime": 0,
 				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0,
 				"wireBytesTransferred": 0
@@ -187,26 +187,6 @@ var emptyStats = `"stats": {
 			"requests": 0,
 			"downloadTime": 0,
 			"queryLengthServed": 0
-		},
-		"logResult": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
-		},
-		"taskResult": {
-			"entriesFound": 0,
-			"entriesRequested": 0,
-			"entriesStored": 0,
-			"bytesReceived": 0,
-			"bytesSent": 0,
-			"requests": 0,
-			"downloadTime": 0,
-			"queryLengthServed": 0
 		}
 	},
 	"summary": {
@@ -216,7 +196,9 @@ var emptyStats = `"stats": {
 		"queueTime": 0,
 		"splits": 0,
 		"shards": 0,
+		"streamFirstQueries": 0,
 		"subqueries": 0,
+		"timestampFirstQueries": 0,
 		"totalBytesProcessed":0,
 		"totalEntriesReturned":0,
 		"totalLinesProcessed":0,

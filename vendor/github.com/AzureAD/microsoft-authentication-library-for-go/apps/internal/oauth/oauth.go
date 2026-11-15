@@ -311,8 +311,9 @@ func isWaitDeviceCodeErr(err error) bool {
 		return false
 	}
 	var dCErr deviceCodeError
-	defer c.Resp.Body.Close()
 	body, err := io.ReadAll(c.Resp.Body)
+	// A close error can't change the result after the response body has been consumed.
+	_ = c.Resp.Body.Close()
 	if err != nil {
 		return false
 	}

@@ -10,10 +10,6 @@ const TIMER_ABSTIME = 1
 
 const _XOPEN_SOURCE = 600
 
-const __FLT_MIN__ = 0
-
-const __LDBL_MIN__ = 0
-
 var _aMap = [5]uint8{
 	0: uint8(SQLITE_ROLLBACK),
 	1: uint8(SQLITE_ABORT),

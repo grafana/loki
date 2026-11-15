@@ -15,9 +15,19 @@
   ignorePaths: [
     'vendor/**',
   ],
+  // Renovate reads the root release tags (v0.4.0, v3.x) as versions of the nested
+  // pkg/push module. Go needs pkg/push/vX.Y.Z tags, so these versions do not resolve
+  // for modules that import Loki.
+  //
+  // Use ignoreDeps, not a packageRule with 'enabled: false'. The self-hosted runner
+  // sets force.enabled to true, and that overrides 'enabled: false' in every packageRule.
+  ignoreDeps: [
+    'github.com/grafana/loki/pkg/push',
+  ],
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
+    'release-4.0.0', // in-flight release
     'release-3.7.x', // Update when a new release is out, 2 minors, 1 major.
     'release-3.6.x', // Also ensure to update the 'packageRules' section to match
   ],
@@ -90,8 +100,6 @@
         'gomod',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: '{{packageName}}',
@@ -116,8 +124,6 @@
         'github.com/aws/aws-sdk-go-v2/**',
       ],
       matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
         '!pkg/push/go.mod',
       ],
       groupName: 'aws-sdk-go-v2',
@@ -132,14 +138,35 @@
       enabled: true,
     },
     {
+      // Pin franz-go to 1.21.x; warpstream does not yet support the Kafka protocols
+      // introduced in later versions. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go',
+      ],
+      allowedVersions: '~1.21.0',
+      enabled: true,
+    },
+    {
+      // Pin kadm to 1.18.x, matching the franz-go pin above. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go/pkg/kadm',
+      ],
+      allowedVersions: '~1.18.0',
+      enabled: true,
+    },
+    {
+      // Pin kmsg to 1.13.x, matching the franz-go pin above. See #24790.
+      matchPackageNames: [
+        'github.com/twmb/franz-go/pkg/kmsg',
+      ],
+      allowedVersions: '~1.13.0',
+      enabled: true,
+    },
+    {
       // Track prometheus via pseudo-versions only (closest to main); do not switch to a tagged release and stick to that major.
-      // Scoped to main branch only and excludes operator files to avoid overriding their disabled update rules.
+      // Scoped to main branch only.
       matchPackageNames: ['github.com/prometheus/prometheus'],
       matchBaseBranches: ['main'],
-      matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
-      ],
       allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
       enabled: true,
       digest: {
@@ -152,10 +179,6 @@
       // prevents Renovate from bumping its pseudo-version pin.
       matchPackageNames: ['github.com/grafana/dskit'],
       matchBaseBranches: ['main'],
-      matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
-      ],
       allowedVersions: '/^v[0-9]+\\.[0-9]+\\.[0-9]+-0\\.\\d{14}-[a-f0-9]+$/',
       enabled: true,
       digest: {
@@ -188,13 +211,6 @@
       enabled: false,
     },
     {
-      // Disable updates driven by Kustomize, used by the operator
-      matchManagers: [
-        'kustomize',
-      ],
-      enabled: false,
-    },
-    {
       // Disable certain npm updates for compatibility reasons
       matchManagers: [
         'npm',
@@ -219,44 +235,17 @@
       enabled: false,
     },
     {
-      // Disable operator updates
-      matchFileNames: [
-        'operator/go.mod',
-        'operator/api/loki/go.mod',
-      ],
-      enabled: false,
-    },
-    {
       // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
-      enabled: false,
-    },
-    {
-      // Do not bump github.com/grafana/loki/pkg/push in any go.mod.
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/grafana/loki/pkg/push'],
       enabled: false,
     },
     {
       // Release branches take security updates only. 'vulnerabilityAlerts' is merged after
       // packageRules, so disabling everything here still lets security PRs through.
       matchBaseBranches: [
+        'release-4.0.0',
         'release-3.7.x',
         'release-3.6.x',
-      ],
-      enabled: false,
-    },
-    {
-      // Final config for the operator on release branches, which ships from its own
-      // release train. Note this cannot suppress operator security PRs the way it once
-      // claimed to: 'vulnerabilityAlerts' is merged after packageRules, so no rule here
-      // can hold back a security update.
-      matchBaseBranches: [
-        'release-3.7.x',
-        'release-3.6.x',
-      ],
-      matchFileNames: [
-        'operator/**',
       ],
       enabled: false,
     },

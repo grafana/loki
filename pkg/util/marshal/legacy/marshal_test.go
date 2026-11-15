@@ -11,7 +11,7 @@ import (
 
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 )
 
 // covers responses from /api/prom/query
@@ -73,7 +73,6 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
-						"queryUsedV2Engine": false,
 				 		"pipelineWrapperFilteredLines": 0,
 						"chunkFetchFailures": 0,
 						"chunk" :{
@@ -99,6 +98,7 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
+							"sectionsResolutionMaxTime": 0,
 							"totalPageDownloadTime": 0,
 							"totalRowsAvailable": 0,
 							"wireBytesTransferred": 0
@@ -118,7 +118,6 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
-						"queryUsedV2Engine": false,
 		                "pipelineWrapperFilteredLines": 0,
 						"chunkFetchFailures": 0,
 						"chunk" :{
@@ -144,6 +143,7 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
+							"sectionsResolutionMaxTime": 0,
 							"totalPageDownloadTime": 0,
 							"totalRowsAvailable": 0,
 							"wireBytesTransferred": 0
@@ -230,26 +230,6 @@ var queryTests = []struct {
 						"requests": 0,
 						"downloadTime": 0,
 						"queryLengthServed": 0
-					},
-					"logResult": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0,
-						"queryLengthServed": 0
-					},
-					"taskResult": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0,
-						"queryLengthServed": 0
 					}
 				},
 				"summary": {
@@ -259,7 +239,9 @@ var queryTests = []struct {
 					"queueTime": 0,
                     "shards": 0,
                     "splits": 0,
+					"streamFirstQueries": 0,
 					"subqueries": 0,
+					"timestampFirstQueries": 0,
 					"totalBytesProcessed": 0,
                     "totalEntriesReturned": 0,
 					"totalLinesProcessed": 0,

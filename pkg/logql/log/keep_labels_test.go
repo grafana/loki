@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_KeepLabels(t *testing.T) {
@@ -100,12 +100,14 @@ func Test_KeepLabels(t *testing.T) {
 				"namespace", "prod",
 				"env", "prod",
 				"pod_uuid", "foo",
-				logqlmodel.PreserveErrorLabel, "true",
+				logqlerr.ErrorLabel, "JSONParserErr",
+				logqlerr.ErrorDetailsLabel, "Malformed JSON error",
 			),
 			labels.FromStrings(
 				"app", "foo",
 				"namespace", "prod",
-				logqlmodel.PreserveErrorLabel, "true",
+				logqlerr.ErrorLabel, "JSONParserErr",
+				logqlerr.ErrorDetailsLabel, "Malformed JSON error",
 			),
 		},
 	} {

@@ -17,6 +17,7 @@
 package array
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -140,6 +141,7 @@ type editPoint struct {
 type quadraticSpaceMyersDiff struct {
 	base         arrow.Array
 	target       arrow.Array
+	valueEqual   func(baseIndex, targetIndex int) bool
 	finishIndex  int
 	editCount    int
 	endpointBase []int
@@ -154,6 +156,7 @@ func newQuadraticSpaceMyersDiff(base, target arrow.Array) *quadraticSpaceMyersDi
 	d := &quadraticSpaceMyersDiff{
 		base:         base,
 		target:       target,
+		valueEqual:   newDiffValueEqual(base, target),
 		finishIndex:  -1,
 		editCount:    0,
 		endpointBase: []int{},
@@ -177,7 +180,82 @@ func (d *quadraticSpaceMyersDiff) valuesEqual(baseIndex, targetIndex int) bool {
 	if baseNull || targetNull {
 		return baseNull && targetNull
 	}
+	if d.valueEqual != nil {
+		return d.valueEqual(baseIndex, targetIndex)
+	}
 	return SliceEqual(d.base, int64(baseIndex), int64(baseIndex+1), d.target, int64(targetIndex), int64(targetIndex+1))
+}
+
+func newDiffValueEqual(base, target arrow.Array) func(baseIndex, targetIndex int) bool {
+	switch base.DataType().ID() {
+	case arrow.BOOL:
+		return makeDiffValueEqual[bool](base, target)
+	case arrow.INT8:
+		return makeDiffValueEqual[int8](base, target)
+	case arrow.INT16:
+		return makeDiffValueEqual[int16](base, target)
+	case arrow.INT32:
+		return makeDiffValueEqual[int32](base, target)
+	case arrow.INT64:
+		return makeDiffValueEqual[int64](base, target)
+	case arrow.UINT8:
+		return makeDiffValueEqual[uint8](base, target)
+	case arrow.UINT16:
+		return makeDiffValueEqual[uint16](base, target)
+	case arrow.UINT32:
+		return makeDiffValueEqual[uint32](base, target)
+	case arrow.UINT64:
+		return makeDiffValueEqual[uint64](base, target)
+	case arrow.DATE32:
+		return makeDiffValueEqual[arrow.Date32](base, target)
+	case arrow.DATE64:
+		return makeDiffValueEqual[arrow.Date64](base, target)
+	case arrow.TIME32:
+		return makeDiffValueEqual[arrow.Time32](base, target)
+	case arrow.TIME64:
+		return makeDiffValueEqual[arrow.Time64](base, target)
+	case arrow.TIMESTAMP:
+		return makeDiffValueEqual[arrow.Timestamp](base, target)
+	case arrow.DURATION:
+		return makeDiffValueEqual[arrow.Duration](base, target)
+	case arrow.STRING, arrow.LARGE_STRING:
+		return makeDiffValueEqual[string](base, target)
+	case arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY:
+		return makeDiffBytesEqual(base, target)
+	default:
+		return nil
+	}
+}
+
+func makeDiffValueEqual[T interface {
+	arrow.ValueType
+	comparable
+}](base, target arrow.Array) func(int, int) bool {
+	left, ok := base.(arrow.TypedArray[T])
+	if !ok {
+		return nil
+	}
+	right, ok := target.(arrow.TypedArray[T])
+	if !ok {
+		return nil
+	}
+	return func(baseIndex, targetIndex int) bool {
+		return left.Value(baseIndex) == right.Value(targetIndex)
+	}
+}
+
+func makeDiffBytesEqual(base, target arrow.Array) func(int, int) bool {
+	left, ok := base.(arrow.TypedArray[[]byte])
+	if !ok {
+		return nil
+	}
+	right, ok := target.(arrow.TypedArray[[]byte])
+	if !ok {
+		return nil
+	}
+	return func(baseIndex, targetIndex int) bool {
+		return bytes.Equal(left.Value(baseIndex), right.Value(targetIndex))
+	}
 }
 
 // increment the position within base and target (the elements skipped in this way were

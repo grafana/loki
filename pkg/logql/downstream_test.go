@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -26,6 +26,36 @@ var (
 	nilShardMetrics = NewShardMapperMetrics(nil)
 	nilRangeMetrics = NewRangeMapperMetrics(nil)
 )
+
+func TestDownstreamEngine_Query_ShouldOnlyPropagateMaxQuerySeriesCutoff(t *testing.T) {
+	tests := map[string]struct {
+		opts     EngineOpts
+		expected queryOpts
+	}{
+		"the executing query is never logged, even when the options ask for it": {
+			opts:     EngineOpts{LogExecutingQuery: true},
+			expected: queryOpts{logExecutingQuery: false},
+		},
+		"max query series cutoff is propagated": {
+			opts:     EngineOpts{MaxQuerySeriesCutoff: true},
+			expected: queryOpts{maxQuerySeriesCutoff: true},
+		},
+		"max query series cutoff is off by default": {
+			opts:     EngineOpts{},
+			expected: queryOpts{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ng := NewDownstreamEngine(tc.opts, MockDownstreamer{}, NoLimits, log.NewNopLogger())
+
+			q, ok := ng.Query(context.Background(), LiteralParams{}).(*query)
+			require.True(t, ok)
+			require.Equal(t, tc.expected, q.opts)
+		})
+	}
+}
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -1002,12 +1032,12 @@ func (d partialResultDownstreamer) Downstream(_ context.Context, _ []DownstreamQ
 
 // TestDownstreamEvaluator_KeepsCompletedShardUsageOnError covers a single
 // Downstream call where one shard completed and another failed: the completed
-// shard's usage must still reach the partial collector, since the engine drops
+// shard's usage must still reach the discarded-work context, since the engine drops
 // the results along with the error.
 func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
 	const shardABytes = 4096
 
-	partial, ctx := stats.NewPartialContext(context.Background())
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 
 	ev := DownstreamEvaluator{Downstreamer: partialResultDownstreamer{
 		// Shard A completed; shard B failed and contributed no result.
@@ -1022,5 +1052,5 @@ func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
 	res, err := ev.Downstream(ctx, []DownstreamQuery{{}, {}}, nil)
 	require.Error(t, err)
 	require.Nil(t, res)
-	require.Equal(t, int64(shardABytes), partial.Result().Querier.Store.Chunk.DecompressedBytes)
+	require.Equal(t, int64(shardABytes), discardedWork.Result().Querier.Store.Chunk.DecompressedBytes)
 }

@@ -62,6 +62,17 @@ type ClusterOptions struct {
 	// Allows routing read-only commands to the closest master or slave node.
 	// It automatically enables ReadOnly.
 	RouteByLatency bool
+	// RouteByLatencyTolerance widens RouteByLatency from "the single fastest node" to
+	// "any node within this much of the fastest", round-robining between them.
+	//
+	// RouteByLatency alone takes a strict minimum, so when several nodes are equally
+	// close - replicas sharing an availability zone, say - every client picks the same
+	// one and the others take no read traffic. Latency is estimated from ten pings and
+	// refreshed at most every 10s, so a difference well inside the noise can decide the
+	// whole read load for the next interval.
+	//
+	// Zero keeps the strict-minimum behaviour. Has no effect unless RouteByLatency is set.
+	RouteByLatencyTolerance time.Duration
 	// Allows routing read-only commands to the random master or slave node.
 	// It automatically enables ReadOnly.
 	RouteRandomly bool
@@ -115,7 +126,10 @@ type ClusterOptions struct {
 	ContextTimeoutEnabled bool
 
 	// MaxConcurrentDials is the maximum number of concurrent connection creation goroutines.
-	// If <= 0, defaults to PoolSize. If > PoolSize, it will be capped at PoolSize.
+	// If <= 0, each node's pool defaults it to that node's PoolSize. If > PoolSize, it
+	// is capped at PoolSize. Note: ClusterOptions itself leaves the field un-normalized
+	// (introspecting it after init still reports the zero value); resolution happens in
+	// each node's Options so the pipeline pool can widen its own dial cap.
 	MaxConcurrentDials int
 
 	PoolFIFO              bool
@@ -234,11 +248,12 @@ func (opt *ClusterOptions) init() {
 	if opt.PoolSize == 0 {
 		opt.PoolSize = 5 * runtime.GOMAXPROCS(0)
 	}
-	if opt.MaxConcurrentDials <= 0 {
-		opt.MaxConcurrentDials = opt.PoolSize
-	} else if opt.MaxConcurrentDials > opt.PoolSize {
-		opt.MaxConcurrentDials = opt.PoolSize
-	}
+	// Do NOT normalize MaxConcurrentDials here. clientOptions() copies this value
+	// into each node's Options, and the per-node Options.init() normalizes it for
+	// the node's main pool. Setting it here would make the per-node init treat an
+	// unset value as explicit (maxConcurrentDialsSet), which makes the pipeline
+	// pool inherit the node PoolSize as its dial cap instead of widening to
+	// PipelinePoolSize, and so serializes pipeline dials.
 	if opt.ReadBufferSize == 0 {
 		opt.ReadBufferSize = proto.DefaultBufferSize
 	}
@@ -379,6 +394,7 @@ func setupClusterQueryParams(u *url.URL, o *ClusterOptions) (*ClusterOptions, er
 	o.MaxRedirects = q.int("max_redirects")
 	o.ReadOnly = q.bool("read_only")
 	o.RouteByLatency = q.bool("route_by_latency")
+	o.RouteByLatencyTolerance = q.duration("route_by_latency_tolerance")
 	o.RouteRandomly = q.bool("route_randomly")
 	o.MaxRetries = q.int("max_retries")
 	o.MinRetryBackoff = q.duration("min_retry_backoff")
@@ -394,6 +410,11 @@ func setupClusterQueryParams(u *url.URL, o *ClusterOptions) (*ClusterOptions, er
 	o.MinIdleConns = q.int("min_idle_conns")
 	o.MaxIdleConns = q.int("max_idle_conns")
 	o.MaxActiveConns = q.int("max_active_conns")
+	// Pipeline pool (per node, created by default): allow URL opt-out
+	// (pipeline_pool_size=-1) / tuning, else rejected as unexpected options.
+	o.PipelinePoolSize = q.int("pipeline_pool_size")
+	o.PipelineReadBufferSize = q.int("pipeline_read_buffer_size")
+	o.PipelineWriteBufferSize = q.int("pipeline_write_buffer_size")
 	o.PoolTimeout = q.duration("pool_timeout")
 	o.ConnMaxLifetime = q.duration("conn_max_lifetime")
 	if q.has("conn_max_lifetime_jitter") {
@@ -509,11 +530,22 @@ func newClusterNodeWithNodeAddress(clOpt *ClusterOptions, addr, nodeAddress stri
 	opt := clOpt.clientOptions()
 	opt.Addr = addr
 	opt.NodeAddress = nodeAddress
+	// The default value 0 never reaches this point: ClusterOptions.init
+	// already sets ReadTimeout to 5s and WriteTimeout to ReadTimeout.
+	// So a 0 here can only come from -1.
+	// ClusterOptions.init maps -1 (no timeout) to 0, which Options.init
+	// would turn into the 5s default.
+	if opt.ReadTimeout == 0 {
+		opt.ReadTimeout = -1
+	}
+	if opt.WriteTimeout == 0 {
+		opt.WriteTimeout = -1
+	}
 	node := clusterNode{
 		Client: clOpt.NewClient(opt),
 	}
 
-	node.latency.Store(math.MaxUint32)
+	node.latency.Store(unmeasuredNodeLatencyMicros)
 	if clOpt.RouteByLatency {
 		go node.updateLatency()
 	}
@@ -530,6 +562,14 @@ func (n *clusterNode) Close() error {
 }
 
 const maximumNodeLatency = 1 * time.Minute
+
+// Latency held by a node from creation until its first probe completes. Deliberately distinct
+// from maximumNodeLatency, which marks a node whose pings all failed - the two must stay
+// separable, so this is compared for equality rather than as a ">= huge" threshold.
+const (
+	unmeasuredNodeLatencyMicros uint32 = math.MaxUint32
+	unmeasuredNodeLatency              = time.Duration(unmeasuredNodeLatencyMicros) * time.Microsecond
+)
 
 func (n *clusterNode) updateLatency() {
 	const numProbe = 10
@@ -812,6 +852,13 @@ type clusterSlot struct {
 	start int
 	end   int
 	nodes []*clusterNode
+
+	// Round-robin cursor over the nodes inside the RouteByLatencyTolerance band. Latency
+	// decides only which nodes are in the band; within it they are treated as equally close
+	// and picked in turn, so this does not order them. Per slot on purpose: a counter shared
+	// across slots is advanced by the other slots between two visits to this one, so with a
+	// regular interleaving each slot keeps landing on the same candidate index.
+	latencyBandNodeCursor atomic.Uint32
 }
 
 type clusterState struct {
@@ -995,14 +1042,27 @@ func (c *clusterState) slotClosestNode(slot int) (*clusterNode, error) {
 	// setting the max possible duration as zerovalue for minlatency
 	minLatency = time.Duration(math.MaxInt64)
 
+	minNonFailingLatency := time.Duration(math.MaxInt64)
+
 	for _, n := range nodes {
-		if closestNode == nil || n.Latency() < minLatency {
+		// Sampled once: Latency() reads an atomic the background probe writes, so two
+		// reads in one iteration can disagree.
+		latency := n.Latency()
+
+		if closestNode == nil || latency < minLatency {
 			closestNode = n
-			minLatency = n.Latency()
-			if !n.Failing() {
-				closestNonFailingNode = n
-				allNodesFailing = false
-			}
+			minLatency = latency
+		}
+
+		// Tracked independently of the minimum above. Nesting this inside that branch
+		// meant a healthy node was only ever considered when it was also the outright
+		// fastest - so a failing node with lower latency (a refused connection fails
+		// fast, and often has the lowest measured latency of the slot) hid every
+		// healthy node behind it, and the slot fell through to the all-failing path.
+		if !n.Failing() && (closestNonFailingNode == nil || latency < minNonFailingLatency) {
+			closestNonFailingNode = n
+			minNonFailingLatency = latency
+			allNodesFailing = false
 		}
 	}
 
@@ -1012,6 +1072,147 @@ func (c *clusterState) slotClosestNode(slot int) (*clusterNode, error) {
 	}
 
 	// if all nodes are failing, we will pick the temporarily failing node with lowest latency
+	if minLatency < maximumNodeLatency && closestNode != nil {
+		internal.Logger.Printf(context.TODO(), "redis: all nodes are marked as failed, picking the temporarily failing node with lowest latency")
+		return closestNode, nil
+	}
+
+	// If all nodes are having the maximum latency(all pings are failing) - return a random node across the cluster
+	internal.Logger.Printf(context.TODO(), "redis: pings to all nodes are failing, picking a random node across the cluster")
+	return c.nodes.Random()
+}
+
+// slotNodeWithinLatency picks from the healthy nodes whose latency is within tolerance of the
+// fastest one, rotating across them so equally-close nodes share the read traffic. Used only
+// when RouteByLatencyTolerance is set; slotClosestNode keeps the strict-minimum behaviour and
+// is left untouched for everyone else.
+func (c *clusterState) slotNodeWithinLatency(slot int, tolerance time.Duration) (*clusterNode, error) {
+	entry := c.slotEntry(slot)
+	if entry == nil || len(entry.nodes) == 0 {
+		return c.nodes.Random()
+	}
+	nodes := entry.nodes
+
+	// Latency and health are sampled once per node. The background probe updates them
+	// concurrently, so re-reading would let the candidate set disagree with the minimum it
+	// is compared against - and could leave that set empty.
+	type sample struct {
+		node    *clusterNode
+		latency time.Duration
+	}
+
+	var (
+		healthy            = make([]sample, 0, len(nodes))
+		closestNode        *clusterNode
+		closestHealthyNode *clusterNode
+		minLatency         = time.Duration(math.MaxInt64)
+		minHealthyLatency  = time.Duration(math.MaxInt64)
+		anyHealthyMeasured bool
+	)
+
+	for _, n := range nodes {
+		latency := n.Latency()
+		if latency < minLatency {
+			closestNode, minLatency = n, latency
+		}
+
+		if n.Failing() {
+			continue
+		}
+
+		healthy = append(healthy, sample{node: n, latency: latency})
+
+		// Derived from the latency just captured, not from a second read of the node.
+		// updateLatency publishes the latency and its timestamp as two separate stores, so
+		// reading the timestamp here could observe a probe that landed after the latency
+		// above was sampled - marking the set measured while every sampled latency is still
+		// a sentinel, which is exactly the case this guards.
+		if latency != unmeasuredNodeLatency {
+			anyHealthyMeasured = true
+		}
+
+		// Tracked separately: a healthy node that is not the outright fastest must still be
+		// preferred over a failing one.
+		if latency < minHealthyLatency {
+			closestHealthyNode, minHealthyLatency = n, latency
+		}
+	}
+
+	if closestHealthyNode != nil {
+		// Until the first probe lands, every node still holds the sentinel latency stored by
+		// newClusterNodeWithNodeAddress, so every difference is zero and any positive tolerance
+		// would admit the whole slot - scattering startup reads across distant zones instead of
+		// preserving locality. Keep strict selection until at least one measurement exists; a
+		// mix needs no special case, since an unmeasured node's sentinel latency puts it far
+		// outside the band of any measured one.
+		if !anyHealthyMeasured {
+			return closestHealthyNode, nil
+		}
+
+		candidates := make([]*clusterNode, 0, len(healthy))
+		for _, s := range healthy {
+			// Subtraction rather than minHealthyLatency+tolerance, which would overflow for
+			// a very large tolerance. Always true for closestHealthyNode, so candidates is
+			// never empty here.
+			if s.latency-minHealthyLatency <= tolerance {
+				candidates = append(candidates, s.node)
+			}
+		}
+
+		// Drop nodes that are still loading, matching slotSlaveNode. Checked here rather than
+		// in the pass above so Loading() - which can cost a Ping when the node is not known
+		// loaded - is only paid for nodes actually eligible for this read. Widening the
+		// candidate set is what makes this matter: under a strict minimum a loading replica
+		// has to be the fastest to be picked, within a tolerance band it merely has to be
+		// close, and a replica is loading precisely after the full resync that a too-small
+		// replication backlog causes.
+		ready := candidates[:0]
+		for _, n := range candidates {
+			if !n.Loading() {
+				ready = append(ready, n)
+			}
+		}
+
+		if len(ready) == 0 {
+			// Every node inside the band is loading. closestHealthyNode is itself in the band,
+			// so returning it hands back a node we just observed loading. Widen the search to
+			// the healthy nodes outside the band and take the closest ready one - which in a
+			// multi-AZ layout is typically the master, still serving while the local replicas
+			// reload together after a resync. Only reached in this exceptional case, so the
+			// extra Loading() calls are off the hot path, and the latency comparison is
+			// evaluated first so most of them are skipped.
+			var (
+				fallback        *clusterNode
+				fallbackLatency = time.Duration(math.MaxInt64)
+			)
+			for _, s := range healthy {
+				if s.latency-minHealthyLatency <= tolerance {
+					continue // in the band, already known to be loading
+				}
+				if s.latency < fallbackLatency && !s.node.Loading() {
+					fallback, fallbackLatency = s.node, s.latency
+				}
+			}
+			if fallback != nil {
+				return fallback, nil
+			}
+
+			// Nothing is ready anywhere. Return the closest healthy node so the caller still
+			// gets a node to retry against, which is what this path did before the filter.
+			return closestHealthyNode, nil
+		}
+
+		if len(ready) == 1 {
+			return ready[0], nil
+		}
+
+		// Reduced in the unsigned domain: the cursor wraps, and on 32-bit builds converting a
+		// value past 2^31 to int before the modulo would make the index negative.
+		return ready[(entry.latencyBandNodeCursor.Add(1)-1)%uint32(len(ready))], nil
+	}
+
+	// Every node is failing. Fall back to the least-slow one, so a transient failure does
+	// not take the slot down.
 	if minLatency < maximumNodeLatency && closestNode != nil {
 		internal.Logger.Printf(context.TODO(), "redis: all nodes are marked as failed, picking the temporarily failing node with lowest latency")
 		return closestNode, nil
@@ -1062,7 +1263,7 @@ func (c *clusterState) slotShardPickerSlaveNode(slot int, shardPicker routing.Sh
 	return nodes[0], nil
 }
 
-func (c *clusterState) slotNodes(slot int) []*clusterNode {
+func (c *clusterState) slotEntry(slot int) *clusterSlot {
 	i := sort.Search(len(c.slots), func(i int) bool {
 		return c.slots[i].end >= slot
 	})
@@ -1071,6 +1272,13 @@ func (c *clusterState) slotNodes(slot int) []*clusterNode {
 	}
 	x := c.slots[i]
 	if slot >= x.start && slot <= x.end {
+		return x
+	}
+	return nil
+}
+
+func (c *clusterState) slotNodes(slot int) []*clusterNode {
+	if x := c.slotEntry(slot); x != nil {
 		return x.nodes
 	}
 	return nil
@@ -1519,38 +1727,52 @@ func (c *ClusterClient) ForEachShard(
 // PoolStats returns accumulated connection pool stats.
 func (c *ClusterClient) PoolStats() *PoolStats {
 	var acc PoolStats
+	var pipe pool.Stats
+	havePipe := false
 
 	state, _ := c.state.Get(context.TODO())
 	if state == nil {
 		return &acc
 	}
 
+	foldNode := func(client *Client) {
+		s := client.connPool.Stats()
+		acc.Hits += s.Hits
+		acc.Misses += s.Misses
+		acc.Timeouts += s.Timeouts
+		acc.WaitCount += s.WaitCount
+		acc.WaitDurationNs += s.WaitDurationNs
+
+		acc.TotalConns += s.TotalConns
+		acc.IdleConns += s.IdleConns
+		acc.StaleConns += s.StaleConns
+
+		// The dedicated pipeline pool is now created per node by default; fold its
+		// stats into acc.PipelineStats so cluster monitoring reflects it too.
+		if pp := client.getPipelinePool(); pp != nil {
+			ps := pp.Stats()
+			pipe.Hits += ps.Hits
+			pipe.Misses += ps.Misses
+			pipe.Timeouts += ps.Timeouts
+			pipe.WaitCount += ps.WaitCount
+			pipe.WaitDurationNs += ps.WaitDurationNs
+			pipe.TotalConns += ps.TotalConns
+			pipe.IdleConns += ps.IdleConns
+			pipe.StaleConns += ps.StaleConns
+			havePipe = true
+		}
+	}
+
 	for _, node := range state.Masters {
-		s := node.Client.connPool.Stats()
-		acc.Hits += s.Hits
-		acc.Misses += s.Misses
-		acc.Timeouts += s.Timeouts
-		acc.WaitCount += s.WaitCount
-		acc.WaitDurationNs += s.WaitDurationNs
-
-		acc.TotalConns += s.TotalConns
-		acc.IdleConns += s.IdleConns
-		acc.StaleConns += s.StaleConns
+		foldNode(node.Client)
 	}
-
 	for _, node := range state.Slaves {
-		s := node.Client.connPool.Stats()
-		acc.Hits += s.Hits
-		acc.Misses += s.Misses
-		acc.Timeouts += s.Timeouts
-		acc.WaitCount += s.WaitCount
-		acc.WaitDurationNs += s.WaitDurationNs
-
-		acc.TotalConns += s.TotalConns
-		acc.IdleConns += s.IdleConns
-		acc.StaleConns += s.StaleConns
+		foldNode(node.Client)
 	}
 
+	if havePipe {
+		acc.PipelineStats = &pipe
+	}
 	return &acc
 }
 
@@ -1652,7 +1874,7 @@ func (c *ClusterClient) AutoPipeline() (*AutoPipeliner, error) {
 //
 // EXPERIMENTAL: this API is subject to change, use with caution.
 func (c *ClusterClient) AutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
-	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.autopipeliner, &c.autopipelinerClosed, nil, config,
+	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.autopipeliner, &c.autopipelinerClosed, nil, nil, "", config,
 		func() *AutoPipelineOptions {
 			if c.opt.AutoPipelineOptions != nil {
 				return c.opt.AutoPipelineOptions
@@ -1745,7 +1967,7 @@ func (c *ClusterClient) AsyncAutoPipeline() (*AutoPipeliner, error) {
 //
 // EXPERIMENTAL: this API is subject to change, use with caution.
 func (c *ClusterClient) AsyncAutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
-	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.asyncAutopipeliner, &c.autopipelinerClosed, nil, config,
+	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.asyncAutopipeliner, &c.autopipelinerClosed, nil, nil, "", config,
 		func() *AutoPipelineOptions {
 			if c.opt.AutoPipelineOptions != nil {
 				return c.opt.AutoPipelineOptions
@@ -2963,6 +3185,9 @@ func (c *ClusterClient) cmdNodeWithShardPicker(
 
 func (c *ClusterClient) slotReadOnlyNode(state *clusterState, slot int) (*clusterNode, error) {
 	if c.opt.RouteByLatency {
+		if c.opt.RouteByLatencyTolerance > 0 {
+			return state.slotNodeWithinLatency(slot, c.opt.RouteByLatencyTolerance)
+		}
 		return state.slotClosestNode(slot)
 	}
 	if c.opt.RouteRandomly {

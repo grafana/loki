@@ -23,11 +23,10 @@ type sink struct {
 	cl     *Client // our owning client, for cfg, metadata triggering, context, etc.
 	nodeID int32   // the node ID of the broker this sink belongs to
 
-	// inflightSem controls the number of concurrent produce requests.  We
-	// start with a limit of 1, which covers Kafka v0.11.0. On the first
-	// response, we check what version was set in the request. If it is at
-	// least 4, which 1.0 introduced, we upgrade the sem size.
-	inflightSem    atomic.Value
+	// inflightSem controls the number of concurrent produce requests. When
+	// idempotent, we start with a limit of 1, which covers Kafka v0.11.0,
+	// and raise it to 5 in firstRespCheck if the broker supports it.
+	inflightSem    chan struct{}
 	produceVersion atomic.Int32 // negative is unset, positive is version
 
 	drainState workLoop
@@ -66,11 +65,15 @@ func (cl *Client) newSink(nodeID int32) *sink {
 		nodeID: nodeID,
 	}
 	s.produceVersion.Store(-1)
-	maxInflight := 1
 	if cl.cfg.disableIdempotency {
-		maxInflight = cl.cfg.maxProduceInflight
+		s.inflightSem = make(chan struct{}, cl.cfg.maxProduceInflight)
+	} else {
+		// We fill four of five slots now; firstRespCheck frees them.
+		s.inflightSem = make(chan struct{}, 5)
+		for range 4 {
+			s.inflightSem <- struct{}{}
+		}
 	}
-	s.inflightSem.Store(make(chan struct{}, maxInflight))
 	return s
 }
 
@@ -289,6 +292,7 @@ func (s *sink) clearBackoff() {
 // This function is harmless if there are no records that need draining.
 // We rely on that to not worry about accidental triggers of this function.
 func (s *sink) drain() {
+	growStack()
 	again := true
 	for again {
 		// We merge before waiting on an inflight sem slot. When we
@@ -304,7 +308,7 @@ func (s *sink) drain() {
 		// good option needed.
 		s.mergeBacklogs()
 
-		sem := s.inflightSem.Load().(chan struct{})
+		sem := s.inflightSem
 		select {
 		case sem <- struct{}{}:
 		case <-s.cl.ctx.Done():
@@ -610,6 +614,7 @@ func (s *sink) doSequenced(
 
 // Ensures that all request responses are processed in order.
 func (s *sink) handleSeqResps(wait *seqResp) {
+	growStack()
 	var more bool
 start:
 	<-wait.done
@@ -783,27 +788,29 @@ func (s *sink) issueTxnReq(
 }
 
 // firstRespCheck is effectively a sink.Once. On the first response, if the
-// used request version is at least 4, we upgrade our inflight sem.
+// used request version is at least 4, we raise our inflight limit.
 //
 // Starting on version 4, Kafka allowed five inflight requests while
-// maintaining idempotency. Before, only one was allowed.
+// maintaining idempotency: the broker remembers the last five batches per
+// producer and partition to deduplicate retries, and each request carries at
+// most one batch per partition. Before, only one was allowed.
 //
-// We go through an atomic because drain can be waiting on the sem (with
-// capacity one). We store four here, meaning new drain loops will load the
-// higher capacity sem without read/write pointer racing a current loop.
-//
-// This logic does mean that we will never use the full potential 5 in flight
-// outside of a small window during the store, but some pages in the Kafka
-// confluence basically show that more than two in flight has marginal benefit
-// anyway (although that may be due to their Java API).
+// Some pages in the Kafka confluence show that more than two in flight has
+// marginal benefit (although that may be due to their Java API):
 //
 //	https://cwiki.apache.org/confluence/display/KAFKA/An+analysis+of+the+impact+of+max.in.flight.requests.per.connection+and+acks+on+Producer+performance
 //	https://issues.apache.org/jira/browse/KAFKA-5494
+//
+// The sem has capacity five with four slots filled from the start; we free
+// them here. Only one request is in flight until we do, so this runs once,
+// and the sem can never admit more than five.
 func (s *sink) firstRespCheck(idempotent bool, version int16) {
 	if s.produceVersion.Load() < 0 {
 		s.produceVersion.Store(int32(version))
 		if idempotent && version >= 4 {
-			s.inflightSem.Store(make(chan struct{}, 4))
+			for range 4 {
+				<-s.inflightSem
+			}
 		}
 	}
 }
@@ -829,6 +836,24 @@ func (s *sink) handleReqClientErr(req *produceRequest, err error) {
 
 	case errors.Is(err, ErrClientClosed):
 		s.cl.failBufferedRecords(ErrClientClosed)
+
+	case errors.Is(err, errBrokerTooOld), errors.Is(err, errUnknownRequestKey):
+		// The broker cannot take any produce request we can build
+		// (e.g., we are pinned below Kafka 4.0's minimum produce
+		// version), and retrying cannot change that. We never wrote
+		// the request, so we fail what we can fail safely; anything
+		// that may have been produced by an earlier attempt goes
+		// through the normal retry path.
+		s.cl.cfg.logger.Log(LogLevelError, "broker cannot handle any produce request we can issue, failing records", "broker", logID(s.nodeID), "err", err)
+		req.batches.eachOwnerLocked(func(batch seqRecBatch) {
+			if !batch.isOwnersFirstBatch() || batch.owner.sink != s {
+				return
+			}
+			if !batch.unsureIfProduced || s.cl.cfg.disableIdempotency || s.cl.cfg.allowIdempotentProduceCancellation {
+				batch.owner.failAllRecords(err)
+			}
+		})
+		s.handleRetryBatches(req.batches, nil, req.backoffSeq, true, false, "produce request failed with a version error")
 	}
 }
 
@@ -1048,6 +1073,10 @@ func (s *sink) handleReqRespBatch(
 	// (regardless of the partition being canceled or moving to a
 	// different sink).
 	batch.canFailFromLoadErrs = true
+	reqID, reqEpoch := producerID, producerEpoch
+	if batch.pinned {
+		producerID, producerEpoch = batch.pid, batch.epoch
+	}
 
 	// If the response was from a timeout, or the record was written but
 	// not to enough replicas, we actually do not know whether the record
@@ -1143,6 +1172,10 @@ func (s *sink) handleReqRespBatch(
 		// txn coordinator requests, which have PRODUCER_FENCED vs
 		// TRANSACTION_TIMED_OUT.
 
+		// The broker rejected the batch, so it renumbers under the new
+		// epoch rather than resending under its old one (see tryAddBatch).
+		batch.pinned = false
+
 		if batch.owner.lastAckedOffset >= 0 && rp.LogStartOffset > batch.owner.lastAckedOffset {
 			s.cl.cfg.logger.Log(LogLevelInfo, "partition prefix truncation to after our last produce caused the broker to forget us; no loss occurred, bumping producer epoch and resetting sequence numbers",
 				"broker", logID(s.nodeID),
@@ -1168,7 +1201,8 @@ func (s *sink) handleReqRespBatch(
 				"producer_epoch", producerEpoch,
 				"err", err,
 			)
-			s.cl.failProducerID(producerID, producerEpoch, err)
+			// A pinned batch's epoch can be behind the one we must stop.
+			s.cl.failProducerID(reqID, reqEpoch, err)
 
 			s.cl.finishBatch(batch.recBatch, producerID, producerEpoch, rp.BaseOffset, err)
 			if debug {
@@ -1656,12 +1690,6 @@ func (recBuf *recBuf) bufferRecord(pr promisedRec, abortOnNewBatch bool) bool {
 	recBuf.mu.Lock()
 	defer recBuf.mu.Unlock()
 
-	// We truncate to milliseconds to avoid some accumulated rounding error
-	// problems (see IBM/sarama#1455)
-	if pr.Timestamp.IsZero() {
-		pr.Timestamp = time.Now()
-	}
-	pr.Timestamp = pr.Timestamp.Truncate(time.Millisecond)
 	pr.Partition = recBuf.partition // set now, for the hook below
 
 	if recBuf.abandoned != nil {
@@ -1855,6 +1883,9 @@ func (recBuf *recBuf) checkUnknownFailLimit(err error) bool {
 //   - if batch fails fatally when producing
 func (recBuf *recBuf) failAllRecords(err error) {
 	recBuf.lockedStopLinger()
+	// All pins in a recBuf share one ID and epoch: only the reset in
+	// tryAddBatch moves a recBuf to a new epoch, and it clears every pin.
+	pid, epoch := int64(-1), int16(-1)
 	for _, batch := range recBuf.batches {
 		// We need to guard our clearing of records against a
 		// concurrent produceRequest's write, which can have this batch
@@ -1864,6 +1895,9 @@ func (recBuf *recBuf) failAllRecords(err error) {
 		// modifications to this batch because the recBuf is already
 		// locked.
 		batch.mu.Lock()
+		if batch.pinned {
+			pid, epoch = batch.pid, batch.epoch
+		}
 		records := batch.records
 		batch.records = nil
 		batch.releaseStream()
@@ -1877,6 +1911,15 @@ func (recBuf *recBuf) failAllRecords(err error) {
 	recBuf.resetBatchDrainIdx()
 	recBuf.buffered.Store(0)
 	recBuf.batches = nil
+
+	// A batch we wrote may be on the broker. If our next batch reused its
+	// sequence under the same epoch, the broker would ack it as a
+	// duplicate without writing it, so we bump the epoch. If the epoch
+	// already moved past the batch's, failing is a no-op: this partition
+	// resets when it stages its next batch.
+	if pid >= 0 {
+		recBuf.cl.failProducerID(pid, epoch, errReloadProducerID)
+	}
 }
 
 // clearFailing clears a buffer's failing state if it is failing.
@@ -1950,6 +1993,14 @@ type recBatch struct {
 	// set this bool to true. There could be a concurrent request about to
 	// be written. See more comments below where this is used.
 	isFailingFromLoadErr bool
+	// Set when a request first writes this batch for a non-transactional
+	// idempotent producer, with the producer ID and epoch it wrote. From
+	// then on, the broker may have the batch, and it dedupes only within
+	// an epoch, so every resend writes the same ID, epoch, and sequence
+	// (see tryAddBatch).
+	pinned bool
+	pid    int64
+	epoch  int16
 
 	wireLength   int32 // tracks total size this batch would currently encode as, including length prefix
 	v1wireLength int32 // same as wireLength, but for message set v1
@@ -2237,7 +2288,10 @@ func (p *produceRequest) tryAddBatch(produceVersion int32, recBuf *recBuf, batch
 				return false
 			}
 		}
-		if recBuf.needSeqReset {
+		// The broker checks epochs per partition, so a pinned first
+		// batch resends under its epoch and sequence, and the reset
+		// waits for the first batch that is not pinned.
+		if recBuf.needSeqReset && !batch.pinned {
 			recBuf.cl.cfg.logger.Log(LogLevelDebug, "resetting produce sequence numbers to 0 for new producer epoch",
 				"topic", recBuf.topic,
 				"partition", recBuf.partition,
@@ -2245,6 +2299,15 @@ func (p *produceRequest) tryAddBatch(produceVersion int32, recBuf *recBuf, batch
 			recBuf.needSeqReset = false
 			recBuf.seq = 0
 			recBuf.batch0Seq = 0
+			// Batch 0 was never written, or the broker rejected it
+			// and handleReqRespBatch cleared its pin. The broker
+			// takes sequences only in order, so it has no later
+			// batch either, and every batch renumbers. Nothing is
+			// in flight (see createReq), so no write can pin a
+			// batch while we clear the pins.
+			for _, b := range recBuf.batches {
+				b.pinned = false
+			}
 		}
 	}
 
@@ -2892,11 +2955,20 @@ func (p *produceRequest) AppendTo(dst []byte) []byte {
 			// the same monotonicity criterion, or it must move out of
 			// AppendTo (see tries, moved to handleReqResp).
 			batch.canFailFromLoadErrs = false // we are going to write this batch: the response status is now unknown
+			// Pinning happens once, so a retried AppendTo writes the
+			// same producer ID and epoch.
+			id, epoch := p.producerID, p.producerEpoch
+			if p.idempotent() && p.txnID == nil {
+				if !batch.pinned {
+					batch.pinned, batch.pid, batch.epoch = true, id, epoch
+				}
+				id, epoch = batch.pid, batch.epoch
+			}
 			var pmetrics ProduceBatchMetrics
 			if p.version < 3 {
 				dst, pmetrics = batch.appendToAsMessageSet(dst, uint8(p.version), p.compressor)
 			} else {
-				dst, pmetrics = batch.appendTo(dst, p.version, p.producerID, p.producerEpoch, p.txnID != nil, p.compressor)
+				dst, pmetrics = batch.appendTo(dst, p.version, id, epoch, p.txnID != nil, p.compressor)
 			}
 			batch.mu.Unlock()
 			tmetrics[partition] = pmetrics

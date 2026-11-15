@@ -1,6 +1,17 @@
 ## Changelog
 
 
+## v2.40.0
+
+- support testing/synctest (thanks @alexluong)
+- fix RENAME panic (thanks @gianzanuz)
+- fix SetError() (thanks @WillAbides)
+- fix LPOST COUNT (thanks @akezwang)
+- support ZMPOP and BZMPOP (thanks @Lephiziel)
+- fix HRANDFIELD (thanks @anuththedev)
+- support LMPOP (thanks @LuisFigueroaG)
+
+
 ## v2.39.0
 
 - support GEOSEARCH (thanks @fl4metf)

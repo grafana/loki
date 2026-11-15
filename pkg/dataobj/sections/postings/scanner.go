@@ -37,8 +37,32 @@ type ScannerReaders struct {
 	LabelNames   *Reader
 }
 
+// ShardBucketRange is an inclusive range of shard buckets. From must not
+// exceed To.
+type ShardBucketRange struct {
+	From, To uint32
+}
+
 // NewScannerReaders creates the readers needed to scan sec. The returned
 // readers must be opened before they are passed to [NewScanner].
+//
+// predicates may be of any matcher type. Bloom lookups use only the equality
+// predicates, and their names must be distinct. The stream label lookup uses
+// every predicate name.
+//
+// A non-nil bucketRange limits the matcher and filter readers to the label
+// rows whose bucket range overlaps it.
+//
+// A scan with these readers keeps every matching stream inside the range. It
+// can also return streams outside the range, for two reasons:
+//
+//  1. A row whose bucket range overlaps the range can hold streams outside it.
+//  2. A filter such as env!="dev" also matches a stream that lacks the label.
+//     If the range skips the row env="dev", the streams of that row look like
+//     they lack env. They pass the filter, and they lie outside the range.
+//
+// NewScannerReaders returns an error when From exceeds To, or when a label row
+// of sec has no bucket range.
 func NewScannerReaders(
 	sec *Section,
 	matchers []CompiledMatcher,
@@ -46,6 +70,7 @@ func NewScannerReaders(
 	predicates []*labels.Matcher,
 	labelStats dataset.RowReaderStatsTracker,
 	bloomStats dataset.RowReaderStatsTracker,
+	bucketRange *ShardBucketRange,
 ) (*ScannerReaders, error) {
 	readers := &ScannerReaders{}
 
@@ -54,20 +79,36 @@ func NewScannerReaders(
 	valueCol := sectionColumn(sec, ColumnTypeLabelValue)
 	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
 
+	bucketPredicate, err := shardBucketPredicate(sec, bucketRange)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only the MatchLabels and LabelStreams readers prune, because they select streams. Bloom
+	// rows have no bucket range, and the label-name reader only feeds section admission.
+	withBucketRange := func(p Predicate) Predicate {
+		if bucketPredicate == nil {
+			return p
+		}
+		return AndPredicate{Left: p, Right: bucketPredicate}
+	}
+
 	if len(matchers) > 0 && kindCol != nil && nameCol != nil && valueCol != nil {
-		readers.MatchLabels = newScannerReader(sec, matchLabelsPredicate(kindCol, nameCol, valueCol, matchers), labelStats)
+		readers.MatchLabels = newScannerReader(sec, withBucketRange(matchLabelsPredicate(kindCol, nameCol, valueCol, matchers)), labelStats)
 	}
 	if len(filters) > 0 && kindCol != nil && nameCol != nil {
-		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
+		readers.LabelStreams = newScannerReader(sec, withBucketRange(labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters))), labelStats)
 	}
 
-	if len(predicates) > 0 && kindCol != nil && nameCol != nil && bloomCol != nil {
-		if err := validateMatcherNames(predicates); err != nil {
-			return nil, err
-		}
-
-		readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, predicates), bloomStats)
+	equal := equalPredicates(predicates)
+	if err := validateMatcherNames(equal); err != nil {
+		return nil, err
+	}
+	if len(predicates) > 0 && kindCol != nil && nameCol != nil {
 		readers.LabelNames = newScannerReader(sec, matcherLabelNamesPredicate(kindCol, nameCol, predicates), nil)
+		if len(equal) > 0 && bloomCol != nil {
+			readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, equal), bloomStats)
+		}
 	}
 
 	return readers, nil
@@ -81,12 +122,70 @@ func newScannerReader(sec *Section, pred Predicate, statsTracker dataset.RowRead
 	})
 }
 
+// shardBucketPredicate keeps the label rows whose [min, max] bucket range
+// overlaps r. The package has only strict comparisons, and buckets are
+// integers. So the predicate writes min <= r.To as min < r.To+1 and
+// max >= r.From as max > r.From-1. The sums use int64, so r.To+1 cannot
+// overflow and r.From-1 cannot wrap below zero.
+//
+// It returns a nil predicate when r is nil. It also returns one when sec holds
+// no label row, because there is nothing to prune.
+//
+// It returns an error when From exceeds To, or when a label row has no
+// bucket range.
+func shardBucketPredicate(sec *Section, r *ShardBucketRange) (Predicate, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if r.From > r.To {
+		return nil, fmt.Errorf("invalid shard bucket range [%d, %d]", r.From, r.To)
+	}
+
+	// Only label rows have a label value, so the label value count is the label row count. A
+	// section with only bloom rows has none, and nothing to prune.
+	//
+	// To guarantee consistency, we ensure that every postings row has both the min and max shard
+	// bucket. If any of these values is null, then max would sort below every value, so the
+	// predicate would silently drop that row.
+	var labelRows uint64
+	if col := sectionColumn(sec, ColumnTypeLabelValue); col != nil {
+		labelRows = col.inner.Metadata().ValuesCount
+	}
+	if labelRows == 0 {
+		return nil, nil
+	}
+
+	minCol, err := sectionColumnWithRowsCheck(sec, ColumnTypeMinShardBucket, labelRows)
+	if err != nil {
+		return nil, fmt.Errorf("prune by shard bucket range: %w", err)
+	}
+	maxCol, err := sectionColumnWithRowsCheck(sec, ColumnTypeMaxShardBucket, labelRows)
+	if err != nil {
+		return nil, fmt.Errorf("prune by shard bucket range: %w", err)
+	}
+
+	return AndPredicate{
+		Left:  LessThanPredicate{Column: minCol, Value: scalar.NewInt64Scalar(int64(r.To) + 1)},
+		Right: GreaterThanPredicate{Column: maxCol, Value: scalar.NewInt64Scalar(int64(r.From) - 1)},
+	}, nil
+}
+
 func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
 	byName := make(map[string][]int, len(cms))
 	for i, cm := range cms {
 		byName[cm.matcher.Name] = append(byName[cm.matcher.Name], i)
 	}
 	return byName
+}
+
+func equalPredicates(predicates []*labels.Matcher) []*labels.Matcher {
+	var out []*labels.Matcher
+	for _, m := range predicates {
+		if m.Type == labels.MatchEqual {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func validateMatcherNames(matchers []*labels.Matcher) error {
@@ -373,30 +472,38 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 	return out
 }
 
-// MatcherHits scans the section against [matchers]. The first return is the
-// per-section (name,value) bloom hits. The second is the per-section set of
-// matcher names that occur as a stream label. Returns nil maps when the section
-// lacks the required columns.
-func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
-	if len(matchers) == 0 {
+// MatcherHits scans the section against [predicates]. The first return is the
+// per-section (name,value) bloom hits of the equality predicates. The second is
+// the per-section set of predicate names, of any matcher type, that occur as a
+// stream label. Returns nil maps when the section lacks the kind or name column.
+// A section without a bloom column has no bloom hits but still reports stream
+// label names.
+func (s *Scanner) MatcherHits(ctx context.Context, predicates []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+	if len(predicates) == 0 {
 		return nil, nil, nil
 	}
 
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	bloomCol := sectionColumn(s.sec, ColumnTypeBloomFilter)
-	if kindCol == nil || nameCol == nil || bloomCol == nil {
+	if kindCol == nil || nameCol == nil {
 		return nil, nil, nil
 	}
-	if s.readers == nil || s.readers.BloomMatches == nil || s.readers.LabelNames == nil {
+	if s.readers == nil || s.readers.LabelNames == nil {
 		return nil, nil, errors.New("matcher hits readers not provided")
 	}
 
-	// The bloom match predicate assumes no two matchers will match on the same
-	// name, which is validated when the scanner readers are created.
-	byName := make(map[string]*labels.Matcher, len(matchers))
-	for _, p := range matchers {
-		byName[p.Name] = p
+	// Bloom lookups use only equality predicates, and their names are distinct.
+	// The scanner readers check this when they are created. Other predicate types
+	// are skipped here.
+	byName := make(map[string]*labels.Matcher, len(predicates))
+	for _, p := range predicates {
+		if p.Type == labels.MatchEqual {
+			byName[p.Name] = p
+		}
+	}
+	if len(byName) > 0 && bloomCol != nil && s.readers.BloomMatches == nil {
+		return nil, nil, errors.New("matcher hits bloom reader not provided")
 	}
 
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
@@ -498,4 +605,19 @@ func sectionColumn(sec *Section, ct ColumnType) *Column {
 		}
 	}
 	return nil
+}
+
+// sectionColumnWithRowsCheck returns the section's column of the given type. It
+// returns an error when the section lacks the column. It also returns an error
+// when the column does not hold a value for exactly the given number of rows. A
+// NULL is not a value.
+func sectionColumnWithRowsCheck(sec *Section, ct ColumnType, rows uint64) (*Column, error) {
+	col := sectionColumn(sec, ct)
+	if col == nil {
+		return nil, fmt.Errorf("postings section has no %s column", ct)
+	}
+	if values := col.inner.Metadata().ValuesCount; values != rows {
+		return nil, fmt.Errorf("postings section %s column holds %d values for %d rows", ct, values, rows)
+	}
+	return col, nil
 }

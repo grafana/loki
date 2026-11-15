@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -173,8 +174,22 @@ func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bo
 	return &seriesResponse, nil
 }
 
-// LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
+// LiveTailQueryConn uses /loki/api/v1/tail to set up a websocket connection and returns it.
 func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+	return c.LiveTailQueryConnContext(context.Background(), queryStr, delayFor, limit, start, quiet)
+}
+
+// LiveTailQueryConnContext uses /loki/api/v1/tail to set up a websocket connection and returns it.
+// Canceling ctx interrupts connection setup but does not close an established connection.
+// The caller must close the returned connection when it is no longer needed.
+func (c *DefaultClient) LiveTailQueryConnContext(
+	ctx context.Context,
+	queryStr string,
+	delayFor time.Duration,
+	limit int,
+	start time.Time,
+	quiet bool,
+) (*websocket.Conn, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	if delayFor != 0 {
@@ -183,7 +198,7 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duratio
 	params.SetInt("limit", int64(limit))
 	params.SetInt("start", start.UnixNano())
 
-	return c.wsConnect(tailPath, params.Encode(), quiet)
+	return c.wsConnect(ctx, tailPath, params.Encode(), quiet)
 }
 
 func (c *DefaultClient) GetOrgID() string {
@@ -699,7 +714,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	return h, nil
 }
 
-func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet bool) (*websocket.Conn, error) {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return nil, err
@@ -723,8 +738,30 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		return nil, err
 	}
 
+	dialCtx, cancelDial := context.WithCancel(ctx)
+	defer cancelDial()
+	stopWatching := func() {}
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
+		NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+			// DialContext alone does not interrupt a blocked HTTP upgrade read
+			// when a context without a deadline is canceled.
+			done := make(chan struct{})
+			stop := context.AfterFunc(ctx, func() {
+				_ = conn.Close()
+				close(done)
+			})
+			stopWatching = func() {
+				if !stop() {
+					<-done
+				}
+			}
+			return conn, nil
+		},
 	}
 
 	if c.ProxyURL != "" {
@@ -733,7 +770,15 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		}
 	}
 
-	conn, resp, err := ws.Dial(us, h)
+	conn, resp, err := ws.DialContext(dialCtx, us, h)
+	// Transfer ownership only after any cancellation callback has finished.
+	stopWatching()
+	if ctx.Err() != nil {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return nil, ctx.Err()
+	}
 	if err != nil {
 		if resp == nil {
 			return nil, err

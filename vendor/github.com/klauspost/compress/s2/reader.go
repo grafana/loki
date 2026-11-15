@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"runtime"
 	"sync"
@@ -212,7 +211,7 @@ func (r *Reader) skippable(tmp []byte, n int, allowEOF bool, id uint8) (ok bool)
 		if r.err != nil {
 			return false
 		}
-		_, r.err = io.CopyBuffer(ioutil.Discard, rd, tmp)
+		_, r.err = io.CopyBuffer(io.Discard, rd, tmp)
 		return r.err == nil
 	}
 	if rs, ok := r.r.(io.ReadSeeker); ok {
@@ -752,8 +751,8 @@ func (r *Reader) Skip(n int64) error {
 					r.err = err
 					return r.err
 				}
-				if crc(r.decoded[:dLen]) != checksum {
-					r.err = ErrCorrupt
+				if !r.ignoreCRC && crc(r.decoded[:dLen]) != checksum {
+					r.err = ErrCRC
 					return r.err
 				}
 			} else {
@@ -772,7 +771,7 @@ func (r *Reader) Skip(n int64) error {
 				return r.err
 			}
 			if !r.ensureBufferSize(chunkLen) {
-				if r.err != nil {
+				if r.err == nil {
 					r.err = ErrUnsupported
 				}
 				return r.err
@@ -794,11 +793,9 @@ func (r *Reader) Skip(n int64) error {
 			if !r.readFull(r.decoded[:n2], false) {
 				return r.err
 			}
-			if int64(n2) < n {
-				if crc(r.decoded[:n2]) != checksum {
-					r.err = ErrCorrupt
-					return r.err
-				}
+			if !r.ignoreCRC && crc(r.decoded[:n2]) != checksum {
+				r.err = ErrCRC
+				return r.err
 			}
 			r.i, r.j = 0, n2
 			continue

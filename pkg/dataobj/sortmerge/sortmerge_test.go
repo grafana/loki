@@ -13,21 +13,19 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = logsobj.BuilderConfig{
-	BuilderBaseConfig: logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		TargetObjectSize:        1 << 20, // 1 MiB
-		TargetSectionSize:       8 << 10, // 8 KiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	},
+var testBuilderConfig = logsobj.BuilderBaseConfig{
+	TargetPageSize:          2048,
+	TargetObjectSize:        1 << 20, // 1 MiB
+	TargetSectionSize:       8 << 10, // 8 KiB
+	BufferSize:              2048 * 8,
+	SectionStripeMergeLimit: 2,
 }
 
 const testTenant = "test"
@@ -36,23 +34,24 @@ type schemaOverrides []string
 
 func (s schemaOverrides) SortSchemaLabels(_ string) []string { return s }
 
-// buildSchemaObject builds a schema-sorted (SortSchemaASC) in-memory object for
-// the given per-label entries. Labels may be appended out of sort-key order to
-// exercise stream-ID remapping.
+func (s schemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
+
+// buildSchemaObject builds a sorted in-memory object for the given per-label
+// entries. Each object assigns its own stream IDs, so merging several objects
+// exercises stream-ID remapping.
 func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]push.Entry) (*dataobj.Object, func()) {
 	t.Helper()
 
-	cfg := testBuilderConfig
-	cfg.AppendOrderedEnabled = true
-
-	b, err := logsobj.NewBuilder(cfg, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
+	b, err := logsobj.NewBuilder(testBuilderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
 	require.NoError(t, err)
 
 	for lbls, entries := range byLabel {
 		require.NoError(t, b.Append(testTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	return obj, func() { _ = closer.Close() }
 }
@@ -83,7 +82,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 				require.NoError(t, err)
 				schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
-				key := streams.NewSortKey(stream.Labels, schemaKey)
+				key := streams.DefaultShardLayout().NewSortKey(stream.Labels, schemaKey)
 
 				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, key: key})
 			}
@@ -160,7 +159,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	for i, section := range sections {
 		runs[i] = sortmerge.Run{{Section: section, Remap: remaps[i]}}
 	}
-	iter := sortmerge.MixedRunIterator(ctx, runs, sortSchema)
+	iter := sortmerge.MixedRunIterator(ctx, runs)
 
 	var (
 		count int

@@ -76,6 +76,11 @@ type groupConsumer struct {
 	// the next session revokes everything before consuming.
 	protocolDowngraded bool
 
+	// Set when a classic session revokes what it lost and queues the
+	// rejoin that lets the group assign it, and cleared once we join
+	// again. leave reads it only after manage returns.
+	rejoinOwed bool
+
 	// Fetching ensures we continue fetching offsets across cooperative
 	// rebalance if an offset fetch returns early due to an immediate
 	// rebalance. See the large comment on adjustCooperativeFetchOffsets
@@ -84,20 +89,6 @@ type groupConsumer struct {
 	// This is modified only in that function, or in the manage loop on a
 	// hard error once the heartbeat/fetch has returned.
 	fetching map[string]map[int32]struct{}
-
-	// onFetchedMu ensures we do not call onFetched nor adjustOffsets
-	// concurrent with onRevoked.
-	//
-	// The group session itself ensures that OnPartitions functions are
-	// serial, but offset fetching is concurrent with heartbeating and can
-	// finish before or after heartbeating has already detected a revoke.
-	// To make user lives easier, we guarantee that offset fetch callbacks
-	// cannot be concurrent with onRevoked with this mu. If fetch callbacks
-	// are present, we hook this mu into onRevoked, and we grab it in the
-	// locations fetch callbacks are called. We only have to worry about
-	// onRevoked because fetching offsets occurs after onAssigned, and
-	// onLost happens after fetching offsets is done.
-	onFetchedMu xsync.Mutex
 
 	// leader is whether we are the leader right now. This is set to false
 	//
@@ -252,8 +243,9 @@ func (cl *Client) LeaveGroup() {
 // be left. This is necessary to allow you to safely issue one final
 // offset commit in OnPartitionsRevoked. If you have overridden the
 // default revoke, you must manually commit offsets before leaving the
-// group. If you have configured the group with an InstanceID, this
-// does not leave the group.
+// group. If you have configured the group with an InstanceID, this does
+// not leave the group, except for one specific case noted in the
+// [InstanceID] docs.
 //
 // For next-gen (KIP-848) consumer groups, the leave is a final
 // heartbeat with MemberEpoch -1; with an InstanceID configured the
@@ -291,21 +283,18 @@ func (cl *Client) LeaveGroupContext(ctx context.Context) error {
 	if c.g == nil && c.s == nil {
 		return nil
 	}
-	var immediate bool
-	if ctx == nil {
-		var cancel func()
-		ctx, cancel = context.WithCancel(context.Background())
-		cancel()
-		immediate = true
+	immediate := ctx == nil
+	if immediate {
+		ctx = cl.ctx
 	}
 
 	if c.s != nil {
 		go c.s.leave(ctx)
+		if immediate {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
-			if immediate {
-				return nil
-			}
 			return ctx.Err()
 		case <-c.s.left:
 			return c.s.leaveErr
@@ -321,11 +310,11 @@ func (cl *Client) LeaveGroupContext(ctx context.Context) error {
 		c.unaddRebalance()
 	}()
 
+	if immediate {
+		return nil
+	}
 	select {
 	case <-ctx.Done():
-		if immediate {
-			return nil
-		}
 		return ctx.Err()
 	case <-c.g.left:
 		return c.g.leaveErr
@@ -421,15 +410,6 @@ func (c *consumer) initGroup() {
 				}
 				user(ctx, cl, dup)
 			}
-		}
-	}
-
-	if g.cfg.onFetched != nil || g.cfg.adjustOffsetsBeforeAssign != nil {
-		revoked := g.cfg.onRevoked
-		g.cfg.onRevoked = func(ctx context.Context, cl *Client, m map[string][]int32) {
-			g.onFetchedMu.Lock()
-			defer g.onFetchedMu.Unlock()
-			revoked(ctx, cl, m)
 		}
 	}
 
@@ -581,6 +561,7 @@ func (g *groupConsumer) manage() {
 		}
 		err := g.joinAndSync(joinWhy)
 		if err == nil {
+			g.rejoinOwed = false
 			if joinWhy, err = g.setupAssignedAndHeartbeat(g.cfg.heartbeatInterval, g.heartbeatFn()); err != nil {
 				if errors.Is(err, kerr.RebalanceInProgress) {
 					err = nil
@@ -641,7 +622,18 @@ func (g *groupConsumer) leave(ctx context.Context) {
 		}
 
 		if g.cfg.instanceID != nil {
-			return
+			if !g.rejoinOwed {
+				return
+			}
+			// The group assigns what we revoked only once we
+			// rejoin. A static member that closes first and
+			// restarts gets its old assignment back with no
+			// rebalance, so we leave to let the group assign it.
+			g.cfg.logger.Log(LogLevelWarn, "leaving group as a static member: we revoked partitions in a cooperative rebalance and are closing before the rejoin that lets the group assign them; our restart joins as a new member",
+				"group", g.cfg.group,
+				"member_id", memberID,
+				"instance_id", *g.cfg.instanceID,
+			)
 		}
 
 		g.cfg.logger.Log(LogLevelInfo, "leaving group",
@@ -655,6 +647,7 @@ func (g *groupConsumer) leave(ctx context.Context) {
 		req.MemberID = memberID
 		member := kmsg.NewLeaveGroupRequestMember()
 		member.MemberID = memberID
+		member.InstanceID = g.cfg.instanceID
 		member.Reason = kmsg.StringPtr("client leaving group per normal operation")
 		req.Members = append(req.Members, member)
 
@@ -768,9 +761,6 @@ const (
 // Lastly, for cooperative consumers, this must selectively delete what was
 // lost from the uncommitted map.
 func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leaving bool) {
-	g.c.waitAndAddRebalance()
-	defer g.c.unaddRebalance()
-
 	if !g.cooperative.Load() || leaving { // stage == revokeThisSession if not cooperative
 		// If we are an eager consumer, we stop fetching all of our
 		// current partitions as we will be revoking them.
@@ -908,13 +898,14 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 		// them. 848 has no second join; the server reconciles through
 		// heartbeats, and the session that called us already handled
 		// the diff, so a bounce would rebuild an identical session
-		// and re-arm the heartbeat timer at a full interval, delaying
-		// the heartbeat that acks our revocation. For 848, prerevoke
-		// instead forces an immediate heartbeat.
+		// and reset the heartbeat timer to a full interval, delaying
+		// the heartbeat that acks our revocation. For 848, the
+		// heartbeat loop instead heartbeats once prerevoke is done.
 		g.mu.Lock()
 		is848 := g.is848
 		g.mu.Unlock()
 		if !is848 {
+			g.rejoinOwed = true
 			defer g.rejoin("after revoking what we lost from a rebalance")
 		}
 	}
@@ -950,6 +941,9 @@ type assignRevokeSession struct {
 	prerevokeDone chan struct{}
 	assignDone    chan struct{}
 	revokeDone    chan struct{}
+
+	cancelFetch context.CancelFunc
+	fetchDone   chan struct{}
 }
 
 func newAssignRevokeSession() *assignRevokeSession {
@@ -957,6 +951,7 @@ func newAssignRevokeSession() *assignRevokeSession {
 		prerevokeDone: make(chan struct{}),
 		assignDone:    make(chan struct{}),
 		revokeDone:    make(chan struct{}),
+		fetchDone:     make(chan struct{}),
 	}
 }
 
@@ -968,7 +963,6 @@ func (s *assignRevokeSession) prerevoke(g *groupConsumer, lost map[string][]int3
 	// very first concurrent heartbeat sends keepalive.
 	g.mu.Lock()
 	g848 := g.g848
-	is848 := g.is848 // g848 stays non-nil after a fallback to classic; is848 is what tracks the protocol
 	g.mu.Unlock()
 	if g848 != nil {
 		g848.prerevoking.Store(true)
@@ -976,40 +970,16 @@ func (s *assignRevokeSession) prerevoke(g *groupConsumer, lost map[string][]int3
 	go func() {
 		defer close(s.prerevokeDone)
 		if g.cooperative.Load() && len(lost) > 0 {
+			g.c.waitAndAddRebalance()
 			g.revoke(revokeLastSession, lost, false)
+			g.c.unaddRebalance()
 		}
 		// Now that prerevoke is complete, clear prerevoking so
-		// subsequent heartbeats resume sending full requests.
+		// subsequent heartbeats resume sending full requests. For 848,
+		// the heartbeat loop heartbeats as soon as prerevokeDone
+		// closes, acking any revocation right away.
 		if g848 != nil {
 			g848.prerevoking.Store(false)
-		}
-		// If we revoked, ack the revocation to the server right away
-		// rather than waiting out the heartbeat timer: the server
-		// cannot give the revoked partitions to other members until
-		// it sees a heartbeat without them (prerevoking was cleared
-		// above, so the heartbeat will not be a keepalive). The Java
-		// client acks the same way the moment revocation callbacks
-		// complete.
-		//
-		// The send must be best effort, not blocking. If the
-		// heartbeat loop exits on a fatal error before consuming our
-		// send, nothing reads heartbeatForceCh again until the next
-		// session begins, but the next session cannot begin until we
-		// return: setupAssignedAndHeartbeat waits on assignDone,
-		// which waits on prerevokeDone, which closes only when this
-		// goroutine exits. A blocking send would deadlock the manage
-		// loop. If the send is missed, the regular heartbeat timer
-		// acks within one interval.
-		//
-		// We force even when nothing was lost: a session (re)entry
-		// with only added partitions also owes the server an ack,
-		// since the next full heartbeat's Topics is what reports the
-		// new assignment as owned.
-		if is848 {
-			select {
-			case g.heartbeatForceCh <- func(error) {}:
-			default:
-			}
 		}
 	}()
 	return s.prerevokeDone
@@ -1051,10 +1021,19 @@ func (s *assignRevokeSession) assign(g *groupConsumer, newAssigned map[string][]
 // This may not run before returning from the heartbeat loop: if we encounter a
 // fatal error, we return before revoking so that we can instead call onLost in
 // the manage loop.
+//
+// Before revoking, this waits for AllowRebalance (BlockRebalanceOnPoll) so
+// onRevoked does not run while polled records are processed, then cancels
+// fetchOffsets and waits for it to return so it cannot assign partitions this
+// revoke takes away.
 func (s *assignRevokeSession) revoke(g *groupConsumer, leaving bool) <-chan struct{} {
 	go func() {
 		defer close(s.revokeDone)
 		<-s.assignDone
+		g.c.waitAndAddRebalance()
+		defer g.c.unaddRebalance()
+		s.cancelFetch()
+		<-s.fetchDone
 		g.revoke(revokeThisSession, nil, leaving)
 	}()
 	return s.revokeDone
@@ -1115,6 +1094,7 @@ func (g *groupConsumer) setupAssignedAndHeartbeat(initialHb time.Duration, hbfn 
 	// This will continue until the heartbeat errors, the group is killed,
 	// or the fetch offsets below errors.
 	ctx, cancel := context.WithCancel(g.ctx)
+	s.cancelFetch = cancel
 	go func() {
 		defer cancel() // potentially kill offset fetching
 		g.cfg.logger.Log(LogLevelInfo, "beginning heartbeat loop", "group", g.cfg.group)
@@ -1130,8 +1110,7 @@ func (g *groupConsumer) setupAssignedAndHeartbeat(initialHb time.Duration, hbfn 
 	// The difference between fetchDone and fetchErrCh is that fetchErrCh
 	// can kill heartbeating, or signal it to continue, while fetchDone
 	// is specifically used for this function's return.
-	fetchDone := make(chan struct{})
-	defer func() { <-fetchDone }()
+	defer func() { <-s.fetchDone }()
 
 	// Before we fetch offsets, we wait for the user's onAssign callback to
 	// be done. This ensures a few things:
@@ -1165,12 +1144,12 @@ func (g *groupConsumer) setupAssignedAndHeartbeat(initialHb time.Duration, hbfn 
 
 	if len(added) > 0 {
 		go func() {
-			defer close(fetchDone)
+			defer close(s.fetchDone)
 			defer close(fetchErrCh)
 			fetchErrCh <- g.fetchOffsets(ctx, added)
 		}()
 	} else {
-		close(fetchDone)
+		close(s.fetchDone)
 		close(fetchErrCh)
 	}
 
@@ -1225,6 +1204,14 @@ func (g *groupConsumer) heartbeat(initialHb time.Duration, fetchErrCh <-chan err
 		cooperativeFastCheck = time.After(500 * time.Millisecond)
 	}
 
+	// For 848, we heartbeat as soon as prerevoke finishes rather than
+	// waiting out the heartbeat timer: the server cannot give partitions
+	// we revoked to other members until it sees a heartbeat without them.
+	var prerevokeDone <-chan struct{}
+	if is848 {
+		prerevokeDone = s.prerevokeDone
+	}
+
 	var revoked <-chan struct{}
 	var heartbeat, didRevoke, stopHeartbeating bool
 	var rejoinWhy string
@@ -1241,6 +1228,9 @@ func (g *groupConsumer) heartbeat(initialHb time.Duration, fetchErrCh <-chan err
 		heartbeat = false
 		select {
 		case <-cooperativeFastCheck:
+			heartbeat = true
+		case <-prerevokeDone:
+			prerevokeDone = nil
 			heartbeat = true
 		case <-timer.C:
 			heartbeat = true
@@ -1385,6 +1375,10 @@ func (g *groupConsumer) heartbeat(initialHb time.Duration, fetchErrCh <-chan err
 			// If the err is context.Canceled, the group is being
 			// left and we revoke everything.
 			revoked = s.revoke(g, errors.Is(err, context.Canceled))
+			// The revoke cancels fetchOffsets; ignore the resulting
+			// context.Canceled, which manage would treat as leaving
+			// the group.
+			fetchErrCh = nil
 		}
 
 		// We always save the latest error; generally this should be
@@ -1451,7 +1445,8 @@ func (g *groupConsumer) rejoin(why string) {
 //     session-end revoke concurrently with live heartbeats, the one
 //     interleaving where a completing heartbeat's nowAssigned store is
 //     lost to revoke's read-modify-write. Instead force an immediate
-//     heartbeat (best effort, must not block; see prerevoke): the next
+//     heartbeat (best effort: we hold g.mu, and the heartbeat loop may not
+//     be running, e.g. between sessions): the next
 //     request rebuilds the subscription from live state, and if the force
 //     is missed the heartbeat timer sends within one interval.
 func (g *groupConsumer) signalSubscriptionChange(why string) {
@@ -2231,44 +2226,16 @@ start:
 	// built the request.
 	//
 	// wanted reports whether a topic in the response is one we actually
-	// want to assign. Normally this is our subscription snapshot
-	// (groupTopics). `added` (what we built the request from) can diverge
-	// from that snapshot, but the meaning of the divergence differs by
-	// protocol, so we only trust `added` for 848:
-	//
-	//   - Classic: the client drives its own subscription (g.using feeds
-	//     JoinGroup, and g.using never leads g.tps because g.tps is stored
-	//     before findNewAssignments runs), so an assigned topic stays in
-	//     g.tps -- unless it is purged after assignment. That purge is
-	//     either an explicit PurgeTopicsFromConsuming/PurgeTopicsFromClient
-	//     call (e.g. #1355, where it overlapped AddConsumeTopics) or the
-	//     automatic regex missing-topic purge. In every case the topic is
-	//     being removed, so dropping it is correct; the nil guard above
-	//     just stops #1355's crash, and the drop here is the right result.
-	//
-	//   - 848: the server resolves the regex itself and can assign a live,
-	//     newly-created topic via heartbeat before our metadata loop has
-	//     added it to g.tps. Dropping it leaves the partition without a
-	//     cursor while the server believes we own it (we echoed its id
-	//     back), so it never re-sends -- stranding the topic. It is in
-	//     `added` (we requested it), so we keep it.
-	//
-	// `added` is precisely "what we requested", so a topic a buggy broker
-	// invents (neither subscribed nor requested) is still dropped -- the
-	// #1271 protection.
-	g.mu.Lock()
-	is848 := g.is848
-	g.mu.Unlock()
-	wanted := func(topic string) bool {
-		if groupTopics.hasTopic(topic) {
-			return true
-		}
-		if is848 {
-			_, ok := added[topic]
-			return ok
-		}
-		return false
-	}
+	// want to assign: one in our subscription snapshot. An assigned topic
+	// stays in g.tps unless it is purged after assignment, either by an
+	// explicit PurgeTopicsFromConsuming/PurgeTopicsFromClient call (e.g.
+	// #1355, where it overlapped AddConsumeTopics) or by the automatic
+	// regex missing-topic purge. In every case the topic is being removed,
+	// so dropping it is correct; the nil guard above just stops #1355's
+	// crash, and the drop here is the right result. For 848, a regex
+	// topic the broker assigns before our metadata has loaded it does not
+	// reach here: handleResp holds it as unresolved until it is in g.tps.
+	wanted := groupTopics.hasTopic
 	for fetchedTopic, topicOffsets := range offsets {
 		if !wanted(fetchedTopic) {
 			delete(offsets, fetchedTopic)
@@ -2352,17 +2319,13 @@ start:
 	}
 
 	if g.cfg.onFetched != nil {
-		g.onFetchedMu.Lock()
 		err = g.cfg.onFetched(ctx, g.cl, resp)
-		g.onFetchedMu.Unlock()
 		if err != nil {
 			return err
 		}
 	}
 	if g.cfg.adjustOffsetsBeforeAssign != nil {
-		g.onFetchedMu.Lock()
 		offsets, err = g.cfg.adjustOffsetsBeforeAssign(ctx, offsets)
-		g.onFetchedMu.Unlock()
 		if err != nil {
 			return err
 		}
@@ -2696,7 +2659,15 @@ func (g *groupConsumer) updateCommitted(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	if req.Generation != g.memberGen.generation() {
+	// A response from a prior session must not touch this session's
+	// offsets. In 848, the member epoch bumps whenever the group epoch
+	// does, even if our assignment is unchanged, so an epoch mismatch does
+	// not mean a new session: we would drop a successful commit and not
+	// forward head, and the next autocommit would rewind a manual commit.
+	// A member reset either picks a new member ID or clears uncommitted,
+	// which the nil check below catches.
+	memberID, generation := g.memberGen.load()
+	if g.is848 && req.MemberID != memberID || !g.is848 && req.Generation != generation {
 		return
 	}
 	if g.uncommitted == nil {
@@ -3712,10 +3683,12 @@ func (g *groupConsumer) commit(
 		// KIP-848 STALE_MEMBER_EPOCH is expected under rebalance
 		// churn: the heartbeat loop needs to observe the new epoch
 		// (via the paired HB response on the same connection) before
-		// we can rebuild the commit. Retry up to 10 times (each
-		// attempt sleeps 500ms between STALE responses) so that
-		// auto-commit before a rebalance does not surface a benign
-		// STALE to the user.
+		// we can rebuild the commit. After a STALE response we sleep
+		// 500ms and retry only if our epoch changed meanwhile, up to
+		// 10 times, so that auto-commit before a rebalance does not
+		// surface a benign STALE to the user. If the epoch did not
+		// change, retrying would fail the same way, and we return
+		// the STALE.
 		//
 		// On gen change, filter req.Topics down to partitions we
 		// still own before retrying so we do not race the new owner's

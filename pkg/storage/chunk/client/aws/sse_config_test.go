@@ -6,7 +6,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	objstores3 "github.com/thanos-io/objstore/providers/s3"
+
+	buckets3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
 func TestNewSSEParsedConfig(t *testing.T) {
@@ -17,15 +19,15 @@ func TestNewSSEParsedConfig(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		params      s3.SSEConfig
+		params      buckets3.SSEConfig
 		expected    *SSEParsedConfig
 		expectedErr error
 		errContains string
 	}{
 		{
 			name: "Test SSE encryption with SSES3 type",
-			params: s3.SSEConfig{
-				Type: s3.SSES3,
+			params: buckets3.SSEConfig{
+				Type: objstores3.SSES3,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseS3Type,
@@ -33,8 +35,8 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without context",
-			params: s3.SSEConfig{
-				Type:     s3.SSEKMS,
+			params: buckets3.SSEConfig{
+				Type:     objstores3.SSEKMS,
 				KMSKeyID: kmsKeyID,
 			},
 			expected: &SSEParsedConfig{
@@ -44,8 +46,8 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type with context",
-			params: s3.SSEConfig{
-				Type:                 s3.SSEKMS,
+			params: buckets3.SSEConfig{
+				Type:                 objstores3.SSEKMS,
 				KMSKeyID:             kmsKeyID,
 				KMSEncryptionContext: kmsEncryptionContext,
 			},
@@ -57,23 +59,23 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test invalid SSE type",
-			params: s3.SSEConfig{
+			params: buckets3.SSEConfig{
 				Type: "invalid",
 			},
 			expectedErr: errors.New("SSE type is empty or invalid"),
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without KMS Key ID",
-			params: s3.SSEConfig{
-				Type:     s3.SSEKMS,
+			params: buckets3.SSEConfig{
+				Type:     objstores3.SSEKMS,
 				KMSKeyID: "",
 			},
 			expectedErr: errors.New("KMS key id must be passed when SSE-KMS encryption is selected"),
 		},
 		{
 			name: "Test SSE with invalid KMS encryption context JSON",
-			params: s3.SSEConfig{
-				Type:                 s3.SSEKMS,
+			params: buckets3.SSEConfig{
+				Type:                 objstores3.SSEKMS,
 				KMSKeyID:             kmsKeyID,
 				KMSEncryptionContext: `INVALID_JSON`,
 			},

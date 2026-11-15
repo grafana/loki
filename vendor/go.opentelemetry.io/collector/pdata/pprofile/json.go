@@ -26,7 +26,9 @@ func (*JSONMarshaler) MarshalProfiles(pd Profiles) ([]byte, error) {
 	}
 
 	// Convert strings to references for efficient transmission
-	convertProfilesToReferences(pdToUse)
+	if err := convertProfilesToReferences(pdToUse); err != nil {
+		return nil, err
+	}
 
 	dest := json.BorrowStream(nil)
 	defer json.ReturnStream(dest)
@@ -65,7 +67,9 @@ func (u *JSONUnmarshaler) UnmarshalProfiles(buf []byte) (Profiles, error) {
 
 	// Resolve all string_value_ref and key_ref to their actual strings
 	// so the pdata API works transparently
-	resolveProfilesReferences(pd)
+	if err := resolveProfilesReferences(pd); err != nil {
+		return Profiles{}, err
+	}
 
 	return pd, nil
 }

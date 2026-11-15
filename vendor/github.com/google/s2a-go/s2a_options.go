@@ -145,6 +145,17 @@ type ClientOptions struct {
 	// peer certificate chain.
 	VerificationMode VerificationModeType
 
+	// NextProtos is the list of ALPN protocols offered during the TLS
+	// handshake. If empty, HTTP/2 ("h2") is offered.
+	//
+	// This is only consulted when building a tls.Config for an HTTP client,
+	// via NewTLSClientConfigFactory or NewS2ADialTLSContextFunc. It is ignored
+	// by NewClientCreds, because the gRPC transport requires HTTP/2.
+	//
+	// Set this when the connection will not speak HTTP/2, for example
+	// []string{"http/1.1"} for an HTTP/1.1 client.
+	NextProtos []string
+
 	// Optional fallback after dialing with S2A fails.
 	FallbackOpts *FallbackOptions
 

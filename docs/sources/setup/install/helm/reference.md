@@ -782,7 +782,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.metrics.image.pullPolicy` | string |  | `"IfNotPresent"` |
 | `gateway.metrics.image.registry` | string |  | `"ghcr.io"` |
 | `gateway.metrics.image.repository` | string |  | `"jkroepke/access-log-exporter"` |
-| `gateway.metrics.image.tag` | string |  | `"0.4.13"` |
+| `gateway.metrics.image.tag` | string |  | `"0.4.21"` |
 | `gateway.metrics.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `gateway.metrics.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `gateway.metrics.resizePolicy` | list | Container resize policy for the gateway metrics exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -2099,7 +2099,7 @@ Section for configuring optional Helm test
 | Key | Type | Description | Default |
 | --- | --- | --- | --- |
 | `test.annotations` | object | Additional annotations for test pods | `{}` |
-| `test.canaryServiceAddress` | string | Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus | `"http://{{ include \"loki-canary.fullname\" $ }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics"` |
+| `test.canaryServiceAddress` | string | Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus | `"http://{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"canary\") }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics"` |
 | `test.hostUsers` | string | Use the host's user namespace in test pods | `nil` |
 | `test.image.digest` | string | Overrides the image tag with an image digest | `nil` |
 | `test.image.pullPolicy` | string | Docker image pull policy | `"IfNotPresent"` |

@@ -35,6 +35,34 @@ n-gram extraction pipeline at build time.
 `IndexReader`, `StreamingIndexWriter`, `IndexWriter`, `IndexHeader`, `IndexWriteConfig`,
 `CachedReaderState`.
 
+## Postings encodings
+
+Each file records its postings encoding (low nibble of the header flags) and its block
+compression (`PostingsCompression`) independently. Readers choose the decoder per file,
+so compaction can mix sources of different encodings.
+
+Every compression mode is checksummed, so a corrupted block fails to load instead of
+decoding to wrong postings:
+
+- `1`: zstd frames. zstd's own checksum covers them.
+- `2`: uncompressed. Each block is followed by the little-endian xxh3-64 of its bytes.
+- `0` and anything else is rejected.
+
+| Encoding | Value | Blocks |
+|---|---|---|
+| `PostingsEncodingFastDeltaVarIntBlocked` | 4 | zstd (default) |
+| `PostingsEncodingFastEliasFanoBlocked` | 5 | uncompressed + xxh3, payload layout in `elias_fano.go` |
+
+- **Readers first.** Every reader must be deployed with support for an encoding before
+  any production writer emits it, and must keep that support while such indexes are
+  within retention. A writer only emits a non-default encoding when its caller sets
+  `format.WriterConfig.Encoding`.
+- **Frozen layouts.** `TestEliasFanoGolden` pins the Elias-Fano bytes and
+  `TestUncompressedBlockFraming` pins the checksummed block framing. If either fails, revert.
+- **bitpack contract.** Elias-Fano packs unmasked docIDs into reused buffers and relies
+  on `parquet-go/bitpack` masking, overwriting and staying in bounds. `TestBitpackContract`
+  pins this; if it fails after a bitpack upgrade, do not take the upgrade.
+
 ## Performance rules
 
 Zero-alloc on the hot paths, buffer reuse, radix sort, roaring pool. Benchmark any

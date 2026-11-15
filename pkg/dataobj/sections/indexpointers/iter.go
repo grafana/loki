@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"time"
-	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // Iter iterates over indexpointers in the provided decoder. All indexpointers sections are
@@ -51,7 +52,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:           dset,
-			Columns:           columns,
+			ProjectedColumns:  columns,
 			PrefetchAllOnOpen: true,
 		})
 		defer r.Close()
@@ -59,8 +60,6 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 		if err := r.Open(ctx); err != nil {
 			return err
 		}
-
-		sym := symbolizer.New(128, 1024)
 
 		var rows [1024]dataset.Row
 		for {
@@ -73,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 			var pointer IndexPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(section.Columns(), row, &pointer, sym); err != nil {
+				if err := decodeRow(section.Columns(), row, &pointer); err != nil {
 					return err
 				}
 
@@ -100,10 +99,12 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 // determine the column type. The list of columns must match the columns used
 // to create the row.
 //
-// The sym argument is used for reusing label values between calls to
-// decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+// decodeRow copies the path, so the pointer does not point into the buffers of
+// row. A path is unique within a section, so a symbol table would not save
+// memory.
+func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error {
 	*pointer = IndexPointer{}
+	var minPostingKey, maxPostingKey []byte
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 		switch column.Type {
@@ -116,11 +117,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 				return fmt.Errorf("nil or zero value for %s", column.Type)
 			}
 
-			if sym != nil {
-				pointer.Path = sym.Get(unsafeString(columnValue.Binary()))
-			} else {
-				pointer.Path = string(columnValue.Binary())
-			}
+			pointer.Path = string(columnValue.Binary())
 
 		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
@@ -144,19 +141,44 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 
 			pointer.EndTs = time.Unix(0, columnValue.Int64())
 
-		case ColumnTypeFileSize:
+		case ColumnTypeRunID:
+			if columnValue.IsNil() {
+				continue
+			}
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
+			runID, err := RunIDFromValue(columnValue.Int64())
+			if err != nil {
+				return err
+			}
+			pointer.RunID = runID
 
-			pointer.FileSize = uint64(columnValue.Int64())
+		case ColumnTypeMinPostingKey, ColumnTypeMaxPostingKey:
+			if columnValue.IsNil() {
+				continue
+			}
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			if column.Type == ColumnTypeMinPostingKey {
+				minPostingKey = columnValue.Binary()
+			} else {
+				maxPostingKey = columnValue.Binary()
+			}
 
-		case ColumnTypeUncompressedLogsSize:
+		case ColumnTypeShardBuckets:
+			if columnValue.IsNil() {
+				continue
+			}
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-
-			pointer.UncompressedLogsSize = uint64(columnValue.Int64())
+			buckets, err := ShardBucketsFromCount(columnValue.Int64())
+			if err != nil {
+				return err
+			}
+			pointer.ShardBuckets = buckets
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
@@ -165,9 +187,55 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 		}
 	}
 
+	keys, err := PostingKeysFromBounds(minPostingKey, maxPostingKey)
+	if err != nil {
+		return err
+	}
+	pointer.PostingKeys = keys
 	return nil
 }
 
-func unsafeString(data []byte) string {
-	return unsafe.String(unsafe.SliceData(data), len(data))
+// PostingKeysFromBounds returns the posting key range of a pointer from its
+// encoded bounds, as the min_posting_key and max_posting_key columns store
+// them. A nil bound is a null value. It returns the zero KeyRange if both bounds
+// are nil, and an error if only one bound is nil. The range does not borrow
+// memory from the bounds.
+func PostingKeysFromBounds(minEncoded, maxEncoded []byte) (postings.KeyRange, error) {
+	switch {
+	case minEncoded == nil && maxEncoded == nil:
+		return postings.KeyRange{}, nil
+	case minEncoded == nil || maxEncoded == nil:
+		return postings.KeyRange{}, fmt.Errorf("posting key range has only one bound: min=%t max=%t", minEncoded != nil, maxEncoded != nil)
+	}
+
+	keys, err := postings.DecodeKeyRange(minEncoded, maxEncoded)
+	if err != nil {
+		return postings.KeyRange{}, fmt.Errorf("decoding %s and %s: %w", ColumnTypeMinPostingKey, ColumnTypeMaxPostingKey, err)
+	}
+	return keys, nil
+}
+
+// RunIDFromValue returns the run ID with the given value, as the run_id column
+// stores it. It returns an error if value is not positive, because writers store
+// no value for the zero RunID.
+func RunIDFromValue(value int64) (RunID, error) {
+	if value <= 0 {
+		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunID, value)
+	}
+	return RunID(value), nil
+}
+
+// ShardBucketsFromCount returns the ShardBuckets with the given bucket count,
+// as the shard_buckets column stores it. It returns an error if buckets is not
+// a valid bucket count. A valid count is never zero, so the result is never
+// the zero ShardBuckets.
+func ShardBucketsFromCount(buckets int64) (ShardBuckets, error) {
+	if buckets <= 0 || buckets > math.MaxUint32 {
+		return ShardBuckets{}, fmt.Errorf("invalid %s value %d", ColumnTypeShardBuckets, buckets)
+	}
+	layout, err := streams.ShardLayoutFromBuckets(uint32(buckets))
+	if err != nil {
+		return ShardBuckets{}, fmt.Errorf("invalid %s value: %w", ColumnTypeShardBuckets, err)
+	}
+	return NewShardBuckets(layout), nil
 }

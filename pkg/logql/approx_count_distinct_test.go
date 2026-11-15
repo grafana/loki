@@ -2,18 +2,21 @@ package logql
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -54,6 +57,67 @@ func TestCountDistinctSketchVectorMerge(t *testing.T) {
 	}
 	require.Equal(t, uint64(3), byVersion["1"])
 	require.Equal(t, uint64(1), byVersion["2"])
+}
+
+func TestCountDistinctSketchVectorStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and surfaces the error when the inner evaluator succeeds but carries an error", func(t *testing.T) {
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}, err: innerErr}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+
+	t.Run("reports no error when the inner evaluator succeeds cleanly", func(t *testing.T) {
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.True(t, ok)
+		require.NoError(t, ev.Error())
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call the inner evaluator again", func(t *testing.T) {
+		calls := 0
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}, err: innerErr, onNext: func() error { calls++; return nil }}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+}
+
+func TestCountDistinctSketchVectorStepEvaluator_Close(t *testing.T) {
+	t.Run("delegates to the inner evaluator", func(t *testing.T) {
+		closes := 0
+		inner := &fakeEvaluator{onClose: func() { closes++ }}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		require.NoError(t, ev.Close())
+		require.Equal(t, 1, closes)
+	})
+
+	t.Run("returns the error from closing the inner evaluator", func(t *testing.T) {
+		closeErr := errors.New("failed to close inner evaluator")
+		inner := &fakeEvaluator{closeErr: closeErr}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		require.ErrorIs(t, ev.Close(), closeErr)
+	})
 }
 
 func TestCountDistinctSketchMatrixMerge(t *testing.T) {
@@ -166,7 +230,8 @@ func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params)
+	missingMerge := &CountDistinctSketchEvalExpr{}
+	_, err = ev.NewStepEvaluator(context.Background(), nil, missingMerge, params, RootContext(missingMerge, 0))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -427,12 +492,12 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch, 0))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
@@ -468,12 +533,12 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, RootContext(sketch, 0))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stepEv.Close() })
 
@@ -590,4 +655,34 @@ func TestApproxCountDistinctShardedRange(t *testing.T) {
 		require.InDelta(t, localMatrix[0].Floats[i].F, shardedMatrix[0].Floats[i].F, 0.01)
 		require.InDelta(t, 3, localMatrix[0].Floats[i].F, 0.01)
 	}
+}
+
+func TestCountDistinctSketchExpr_ShouldNotFailEarlyOnSeriesLimit(t *testing.T) {
+	const (
+		numGroups = 10
+		maxSeries = 3
+	)
+	now := time.Unix(100, 0)
+	streams := make([]logproto.Stream, 0, numGroups)
+	for i := range numGroups {
+		streams = append(streams, logproto.Stream{
+			Labels:  fmt.Sprintf(`{job="devices", version="%d"}`, i),
+			Entries: []logproto.Entry{{Timestamp: now.Add(-10 * time.Second), Line: `mac="aa:bb"`}},
+		})
+	}
+	params, err := NewLiteralParams(
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
+		now, now, 0, 0, logproto.FORWARD, 1000, nil, nil,
+	)
+	require.NoError(t, err)
+	parsed, ok := params.GetExpression().(*syntax.LabelAggregationExpr)
+	require.True(t, ok)
+	sketchParams := ParamsWithExpressionOverride{
+		Params:             params,
+		ExpressionOverride: syntax.NewCountDistinctSketchFromLabelAggregation(parsed),
+	}
+
+	eng := NewEngine(EngineOpts{MaxQuerySeriesCutoff: true}, NewMockQuerier(1, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+	_, err = eng.Query(sketchParams).Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.NoError(t, err)
 }

@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/compute/metadata"
@@ -41,11 +42,15 @@ const (
 	reasonUndetermined             = "undetermined"
 	reasonInternalError            = "internal_error"
 
-	directPathDisableEnvVar = "GOOGLE_CLOUD_DISABLE_DIRECT_PATH"
+	directPathDisableEnvVar                   = "GOOGLE_CLOUD_DISABLE_DIRECT_PATH"
+	enableDirectPathXdsOverInterconnectEnvVar = "GOOGLE_CLOUD_ENABLE_DIRECT_PATH_XDS_OVER_INTERCONNECT"
+	directPathInterconnectInfix               = "-direct."
 
 	defaultKey             = "default"
 	serviceAccountTokenKey = "instance/service-accounts/default/token"
 )
+
+var onGCE = metadata.OnGCE
 
 // directPathDiagnostic evaluates the provided options and environment to determine
 // why gRPC DirectPath (high-throughput VPC routing) is not being utilized.
@@ -84,40 +89,61 @@ func directPathDiagnostic(ctx context.Context, opts ...option.ClientOption) stri
 		return reasonCustomHTTPClient
 	}
 
-	if !metadata.OnGCE() {
+	if reason := credsDiagnostic(res); reason != "" {
+		return reason
+	}
+	if interconnectRequested(res, endpoint) {
+		return reasonUndetermined
+	}
+	if !onGCE() {
 		return reasonNotOnGCE
 	}
-
-	return authDiagnostic(res)
+	return gceAuthDiagnostic()
 }
 
-func authDiagnostic(res *internaloption.UnsafeResolver) string {
+func credsDiagnostic(res *internaloption.UnsafeResolver) string {
 	if res.ResolvedWithoutAuthentication() {
 		return reasonNoAuth
 	}
 	if res.ResolvedWithAPIKeyIsCustom() {
 		return reasonAPIKey
 	}
+	return ""
+}
 
-	// Verify that a default service account is attached.
+func gceAuthDiagnostic() string {
 	if _, err := metadata.Email(defaultKey); err != nil {
 		return reasonNotDefaultServiceAccount
 	}
-
-	// Verify that a token can be fetched.
 	if _, err := metadata.Get(serviceAccountTokenKey); err != nil {
 		return reasonTokenFetchError
 	}
-
 	return reasonUndetermined
+}
+
+// interconnectRequested mirrors auth/grpctransport.isDirectPathXdsOverInterconnectUsed
+// so the diagnostic matches the transport's decision. Keep the two in sync.
+func interconnectRequested(res *internaloption.UnsafeResolver, endpoint string) bool {
+	if v, ok := os.LookupEnv(enableDirectPathXdsOverInterconnectEnvVar); ok {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return res.ResolvedEnableDirectPathXdsOverInterconnect() ||
+		strings.Contains(endpoint, directPathInterconnectInfix) ||
+		strings.Contains(endpoint, "force-xds")
 }
 
 func isDirectPathCompatible(endpoint string) bool {
 	if endpoint == "" {
 		return false
 	}
-	// DirectPath requires no scheme or the dns:/// scheme specifically.
-	if strings.Contains(endpoint, "://") && !strings.HasPrefix(endpoint, "dns:///") {
+	// DirectPath requires no scheme, dns:///, or google-c2p:///.
+	// Note: prepareDirectPathMetadata only attaches diagnostics when the target does not
+	// start with google-c2p:///, but we permit it here for consistency with auth.checkDirectPathEndPoint.
+	if strings.Contains(endpoint, "://") &&
+		!strings.HasPrefix(endpoint, "dns:///") &&
+		!strings.HasPrefix(endpoint, directPathEndpointPrefix) {
 		return false
 	}
 	return true

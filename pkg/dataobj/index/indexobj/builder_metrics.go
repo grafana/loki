@@ -8,29 +8,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
 // BuilderMetrics provides instrumentation for a [Builder].
 type BuilderMetrics struct {
-	pointers      *pointers.Metrics
 	indexPointers *indexpointers.Metrics
-	streams       *streams.Metrics
 	postings      *postings.Metrics
 	stats         *stats.Metrics
+	watermarks    *watermarks.Metrics
 	dataobj       *dataobj.Metrics
 
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
-	appendTime     prometheus.Histogram
-	appendFailures prometheus.Counter
-	appendsTotal   prometheus.Counter
+	appendsTotal prometheus.Counter
 
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
@@ -48,10 +44,9 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 
 	m := &BuilderMetrics{
 		indexPointers: indexpointers.NewMetrics(),
-		pointers:      pointers.NewMetrics(),
-		streams:       streams.NewMetrics(),
 		postings:      postings.NewMetrics(),
 		stats:         stats.NewMetrics(),
+		watermarks:    watermarks.NewMetrics(reg),
 		dataobj:       dataobj.NewMetrics(),
 		targetPageSize: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_page_size_bytes",
@@ -63,22 +58,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 			Name: "loki_indexobj_config_target_object_size_bytes",
 
 			Help: "Configured target object size in bytes.",
-		}),
-
-		appendTime: factory.NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_indexobj_append_time_seconds",
-
-			Help: "Time taken appending a set of log lines in a stream to a data object.",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-
-		appendFailures: factory.NewCounter(prometheus.CounterOpts{
-			Name: "loki_indexobj_append_failures_total",
-			Help: "Total number of append failures",
 		}),
 
 		appendsTotal: factory.NewCounter(prometheus.CounterOpts{
@@ -129,8 +108,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 	if reg != nil {
 		if err := errors.Join(
 			m.indexPointers.Register(reg),
-			m.pointers.Register(reg),
-			m.streams.Register(reg),
 			m.postings.Register(reg),
 			m.stats.Register(reg),
 			m.dataobj.Register(reg),

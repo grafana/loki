@@ -10,6 +10,7 @@ import (
 )
 
 func createAzureMLAuthRequest(ctx context.Context, id ID, resource string) (*http.Request, error) {
+	// #nosec G704 -- MSI_ENDPOINT is supplied by the Azure ML managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, os.Getenv(msiEndpointEnvVar), nil)
 	if err != nil {
 		return nil, err

@@ -45,7 +45,7 @@ func createBatchID() (string, error) {
 // x-ms-date: Thu, 14 Jun 2018 16:46:54 GMT
 // Authorization: SharedKey account:<redacted>
 // Content-Length: 0
-func buildSubRequest(req *policy.Request) []byte {
+func buildSubRequest(req *policy.Request) ([]byte, error) {
 	var batchSubRequest strings.Builder
 	blobPath := req.Raw().URL.EscapedPath()
 	if len(req.Raw().URL.RawQuery) > 0 {
@@ -59,12 +59,18 @@ func buildSubRequest(req *policy.Request) []byte {
 			continue
 		}
 		if len(v) > 0 {
+			if strings.ContainsAny(k, "\r\n") {
+				return nil, fmt.Errorf("invalid CR/LF in batch subrequest header name %q", k)
+			}
+			if strings.ContainsAny(v[0], "\r\n") {
+				return nil, fmt.Errorf("invalid CR/LF in batch subrequest header value for %q", k)
+			}
 			fmt.Fprintf(&batchSubRequest, "%v: %v%v", k, v[0], httpNewline)
 		}
 	}
 
 	fmt.Fprint(&batchSubRequest, httpNewline)
-	return []byte(batchSubRequest.String())
+	return []byte(batchSubRequest.String()), nil
 }
 
 // CreateBatchRequest creates a new batch request using the sub-requests present in the BlobBatchBuilder.
@@ -118,7 +124,11 @@ func CreateBatchRequest(bb *BlobBatchBuilder) ([]byte, string, error) {
 			return nil, "", err
 		}
 
-		_, err = partWriter.Write(buildSubRequest(req))
+		subReqBytes, err := buildSubRequest(req)
+		if err != nil {
+			return nil, "", err
+		}
+		_, err = partWriter.Write(subReqBytes)
 		if err != nil {
 			return nil, "", err
 		}

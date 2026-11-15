@@ -21,6 +21,10 @@ type termJob struct {
 type readerResult struct {
 	reader logline.Reader
 	meta   store.Meta
+	// layout maps a v5 reader's document IDs to time; hasLayout is false for
+	// v3 and v4 readers, which map them through Documents.
+	layout    format.DocumentLayout
+	hasLayout bool
 
 	result               format.Bitmap
 	done                 bool
@@ -111,8 +115,9 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []store.Meta,
 	stats *QueryStats,
+	ngramLength, maxParallel int,
 ) (map[shardKey][]HintTimeRange, error) {
-	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
+	jobs, metasByID, err := buildTermJobs(filters, overlapping, ngramLength)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +126,7 @@ func (p *LoglineHintProvider) executeQuery(
 		return byShard, nil
 	}
 
-	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats)
+	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats, maxParallel)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +134,7 @@ func (p *LoglineHintProvider) executeQuery(
 
 	state := newQueryExecutionState(readersByID)
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 
 	for _, job := range jobs {
 		if !state.shouldEnqueue(job.readerID) {
@@ -194,7 +199,11 @@ func (p *LoglineHintProvider) executeQuery(
 			if res.result.MatchesAll {
 				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
-				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				if res.hasLayout {
+					ranges = rangesForCells(res.meta, res.layout, res.result.Roaring.ToArray())
+				} else {
+					ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				}
 			}
 			if len(ranges) == 0 {
 				continue
@@ -222,6 +231,12 @@ func buildTermJobs(
 	jobs := make([]termJob, 0, len(filters)*len(overlapping))
 	metasByID := make(map[string]store.Meta, len(overlapping))
 
+	// Filters are ANDed, so a filter that yields no terms under a version
+	// constrains nothing there and drops out. For example, v4 emits no term for
+	// a number shorter than 9 digits. hasTerms records, per index version,
+	// whether any filter is left to narrow it.
+	hasTerms := make(map[string]bool)
+
 	for _, filter := range filters {
 		// Per-version cache: each unique index version is extracted at most once
 		// per filter. The common case (all blocks share the current index version)
@@ -236,9 +251,7 @@ func buildTermJobs(
 				if err != nil {
 					return nil, nil, fmt.Errorf("block %s: %w", meta.ID(), err)
 				}
-				if len(ngrams) == 0 {
-					return nil, nil, ErrUnsupported
-				}
+				hasTerms[meta.Version] = hasTerms[meta.Version] || len(ngrams) > 0
 				orderedNgrams = orderUncorrelated(ngrams)
 				ngramsByVersion[meta.Version] = orderedNgrams
 			}
@@ -257,6 +270,14 @@ func buildTermJobs(
 			}
 		}
 	}
+
+	// A version that no filter can narrow leaves its blocks unconstrained, so
+	// the whole query passes through to a full Loki scan.
+	for _, ok := range hasTerms {
+		if !ok {
+			return nil, nil, ErrUnconstrained
+		}
+	}
 	return jobs, metasByID, nil
 }
 
@@ -264,6 +285,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 	ctx context.Context,
 	metasByID map[string]store.Meta,
 	stats *QueryStats,
+	maxParallel int,
 ) (map[string]*readerResult, error) {
 	readersByID := make(map[string]*readerResult, len(metasByID))
 	if len(metasByID) == 0 {
@@ -272,7 +294,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 	for readerID, meta := range metasByID {
 		g.Go(func() error {
 			if gCtx.Err() != nil {
@@ -287,11 +309,20 @@ func (p *LoglineHintProvider) openReadersForMetas(
 			if err != nil {
 				return fmt.Errorf("open index %s: %w", meta.ID(), err)
 			}
+			layout, hasLayout := logline.DocumentLayout(indexReader)
+			if hasLayout {
+				if err := checkLayoutDay(meta, layout); err != nil {
+					_ = indexReader.Close()
+					return fmt.Errorf("index %s: %w", meta.ID(), err)
+				}
+			}
 			mu.Lock()
 			readersByID[readerID] = &readerResult{
-				reader: indexReader,
-				meta:   meta,
-				result: format.Bitmap{MatchesAll: true},
+				reader:    indexReader,
+				meta:      meta,
+				layout:    layout,
+				hasLayout: hasLayout,
+				result:    format.Bitmap{MatchesAll: true},
 			}
 			mu.Unlock()
 			return nil
@@ -371,5 +402,39 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 		})
 	}
 
+	return ranges
+}
+
+// checkLayoutDay requires a v5 footer's day to be the index's meta.json date.
+// Only the day can be checked: metas reach the provider through
+// logproto.IndexMeta, which keeps the date in the index ID but carries no
+// document interval or shard bits. Ranges take both from the footer.
+func checkLayoutDay(meta store.Meta, layout format.DocumentLayout) error {
+	if got := layout.DayStart.UTC().Format(time.DateOnly); got != meta.Date {
+		return fmt.Errorf("footer day %s differs from meta date %s", got, meta.Date)
+	}
+	return nil
+}
+
+// rangesForCells converts matching v5 cells to ranges, one per cell, each
+// limited to the cell's document shard.
+func rangesForCells(meta store.Meta, layout format.DocumentLayout, cells []uint32) []HintTimeRange {
+	ranges := make([]HintTimeRange, 0, len(cells))
+	for _, cell := range cells {
+		start, end := layout.TimeRange(cell)
+		ranges = append(ranges, HintTimeRange{
+			Start:             start,
+			End:               end,
+			DocumentShard:     layout.Shard(cell),
+			DocumentShardBits: layout.ShardBits,
+			Source: fmt.Sprintf(
+				"index=%s,doc=%d,min=%s,max=%s",
+				meta.ID(),
+				cell,
+				start.Format(time.RFC3339Nano),
+				end.Format(time.RFC3339Nano),
+			),
+		})
+	}
 	return ranges
 }

@@ -8,14 +8,13 @@ import (
 	"github.com/go-kit/log"
 )
 
-// Config holds common configuration for all commands
+// Config holds the flags of the compare command
 type Config struct {
-	Bucket string
-	OrgID  string
-	Start  string
-	End    string
-	Query  string
-	Limit  int
+	OrgID string
+	Start string
+	End   string
+	Query string
+	Limit int
 }
 
 // ParsedConfig holds parsed time values
@@ -45,11 +44,10 @@ func parseTimeConfig(cfg *Config) (*ParsedConfig, error) {
 	}, nil
 }
 
-// Global variables for bucket and org ID (used by storage functions)
+// Global variables for the org ID sent with every query and the logger
 var (
-	orgID              string
-	indexStoragePrefix string
-	logger             log.Logger
+	orgID  string
+	logger log.Logger
 )
 
 func init() {

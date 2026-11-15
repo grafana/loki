@@ -97,8 +97,8 @@ func readDataset(t *testing.T, obj *dataobj.Object) []dataset.Row {
 	require.NoError(t, err)
 
 	reader := dataset.NewRowReader(dataset.RowReaderOptions{
-		Dataset: dset,
-		Columns: dset.Columns(),
+		Dataset:          dset,
+		ProjectedColumns: dset.Columns(),
 	})
 	require.NoError(t, reader.Open(t.Context()))
 

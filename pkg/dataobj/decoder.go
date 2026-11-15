@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -19,9 +20,8 @@ import (
 // would exceed the cache's size limit, or a section's type or layout is invalid or overflows.
 var errCannotCacheMetadata = errors.New("cannot cache data-object metadata region")
 
-// logsSectionType duplicates an identity pkg/dataobj/sections/logs owns, to avoid an import cycle; the
-// kind string is part of the on-disk format, not an internal detail that could drift.
-var logsSectionType = SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"}
+// logsSectionType is the type of the logs sections, without a version.
+var logsSectionType = SectionType{Namespace: format.SectionNamespace, Kind: format.LogsSectionKind}
 
 // minimumPrefetchBytes is the minimum number of bytes to prefetch before
 // decoding.
@@ -35,8 +35,9 @@ type decoder struct {
 
 	prefetchedRangeReader rangeReader
 
-	// metadataCache, when set, serves the metadata region so a warm cache avoids re-reading the
-	// metadata from object storage on every open. metadataKey identifies the object in the cache.
+	// metadataCache, when set, serves the metadata region, or the entire object if it is tiny, so a warm
+	// cache avoids re-reading it from object storage on every open. metadataKey identifies the object
+	// in the cache.
 	metadataCache MetadataCache
 	metadataKey   string
 
@@ -62,13 +63,13 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 		return nil, err
 	}
 	d.setPrefetchedBytes(0, buf)
-	d.startOff = int64(8) + int64(metadataSize)
+	d.startOff = format.HeaderSize + int64(metadataSize)
 	return md, nil
 }
 
 // metadataViaCache serves the metadata region from the cache (loading it on a miss), then decodes the
-// file metadata from it. It prefetches whatever region was cached, so a later section-metadata read
-// falling inside that region is served from memory instead of a fresh read from object storage.
+// file metadata from it. It prefetches whatever was cached, so a later read inside it is served from
+// memory instead of a fresh read from object storage.
 func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error) {
 	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.metadataKey, d.fetchExtendedMetadataRegion)
 	if err != nil {
@@ -79,7 +80,7 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 		return nil, err
 	}
 
-	md, metadataSize, decodeErr := d.decodeMetadataRegion(blob)
+	md, metadataSize, decodeErr := d.decodeHeaderAndFileMetadata(blob)
 	if decodeErr != nil {
 		level.Warn(d.logger).Log("msg", "cached data-object metadata region did not decode; falling back to a direct read",
 			"key", d.metadataKey, "blob_bytes", len(blob), "err", decodeErr)
@@ -87,30 +88,32 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 	}
 
 	d.setPrefetchedBytes(0, blob)
-	d.startOff = int64(8) + int64(metadataSize)
+	d.startOff = format.HeaderSize + int64(metadataSize)
 	return md, nil
 }
 
-// decodeMetadataRegion decodes the file metadata from a cached metadata region and returns the
-// file metadata size from the header (which the caller uses to compute startOff). A non-nil error
-// means the blob is too short or does not decode, so the caller can fall back and report why.
-func (d *decoder) decodeMetadataRegion(blob []byte) (md *filemd.Metadata, metadataSize uint64, err error) {
+// decodeHeaderAndFileMetadata decodes the header and the file metadata from blob, the first bytes of
+// the object, and returns the file metadata size from the header (which the caller uses to compute
+// startOff). A non-nil error means the blob is too short or does not decode, so the caller can fall
+// back and report why.
+func (d *decoder) decodeHeaderAndFileMetadata(blob []byte) (md *filemd.Metadata, metadataSize uint64, err error) {
 	header, err := d.header(blob)
 	if err != nil {
 		return nil, 0, fmt.Errorf("scanning header: %w", err)
 	}
-	if uint64(len(blob)) < header.MetadataSize+8 {
-		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+8)
+	if uint64(len(blob)) < header.MetadataSize+format.HeaderSize {
+		return nil, 0, fmt.Errorf("blob is shorter than the file metadata: have %d bytes, need at least %d", len(blob), header.MetadataSize+format.HeaderSize)
 	}
-	md, err = decodeFileMetadata(bytes.NewReader(blob[8:]))
+	md, err = decodeFileMetadata(bytes.NewReader(blob[format.HeaderSize:]))
 	if err != nil {
 		return nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 	}
 	return md, header.MetadataSize, nil
 }
 
-// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata plus, per
-// extendedMetadataRegionEnd, every non-logs section's own metadata.
+// fetchExtendedMetadataRegion reads the metadata region its caller should cache: the file metadata
+// plus, per extendedMetadataRegionEnd, every non-logs section's own metadata. A tiny object is
+// returned whole.
 //
 // extendedMetadataRegionEnd already wraps its own error in errCannotCacheMetadata, so metadataViaCache
 // falls back to a direct read instead of failing the open.
@@ -123,14 +126,28 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 	// MaxItemBytes is the cache backend's own size limit: asking upfront, before extending the region
 	// with further reads or allocations, avoids doing that work for a region the backend would reject
 	// anyway. MetadataCache guarantees a positive value, so there is nothing to default here.
-	startOff := int64(8) + int64(metadataSize)
+	startOff := format.HeaderSize + int64(metadataSize)
 	regionEnd, err := d.extendedMetadataRegionEnd(md, startOff, d.metadataCache.MaxItemBytes())
 	if err != nil {
 		return nil, err
 	}
 
-	// Return a right-sized copy, not a slice of buf. The copy is cached and kept as the prefetched
-	// window, so it outlives buf. A slice would pin buf's larger backing array.
+	// A read shorter than the prefetch window that ends with the trailer magic fetched the entire
+	// object: it is tiny. Cache all of it, unless it exceeds MaxItemBytes. The metadata region alone
+	// would send every section data read of a warm open back to object storage. That costs more than
+	// no cache.
+	//
+	// The magic check rejects a truncated read, such as a connection that drops mid-body. Without it,
+	// the cache would keep the truncated prefix, and every warm open would reuse it.
+	//
+	// Return a right-sized copy, not a slice of buf. The copy outlives buf, and a slice would pin its
+	// larger backing array.
+	bufLen := int64(len(buf))
+	fetchedEntireObject := bufLen < d.effectivePrefetchBytes() && bytes.HasSuffix(buf, magic)
+	if fetchedEntireObject && bufLen <= d.metadataCache.MaxItemBytes() {
+		return bytes.Clone(buf), nil
+	}
+
 	if int64(len(buf)) >= regionEnd {
 		return bytes.Clone(buf[:regionEnd]), nil
 	}
@@ -167,14 +184,16 @@ func (d *decoder) fetchExtendedMetadataRegion(ctx context.Context) ([]byte, erro
 //	                         |----------------------|  extended up to maxBytes (non-logs sections only)
 //
 // Every section's metadata sits in one contiguous block, followed by every section's data in a
-// second block. The cached blob is always the prefix [0, regionEnd), so section data is never
-// cached, however large maxBytes is. A logs section's own metadata is never what grows the region,
-// but it can still be included incidentally if it comes before an included non-logs section.
+// second block. The returned end never reaches the data block, however large maxBytes is. A logs
+// section's own metadata is never what grows the region, but it can still be included incidentally
+// if it comes before an included non-logs section. Listing every non-logs section type in [WithPrioritySections] prevents this, because then all logs
+// metadata follows all non-logs metadata. Objects built without that option can have logs metadata
+// first.
 //
 // A non-logs section that alone would exceed maxBytes is skipped rather than aborting the whole
 // extension, so the result is the largest offset achievable. This depends only on each section's own
-// layout offset, not its position in md.Sections, since sections are not guaranteed to be listed in
-// on-disk offset order.
+// layout offset, not its position in md.Sections, because the file format does not require
+// md.Sections to be in offset order.
 //
 // maxBytes also guards against a corrupt layout driving a huge allocation in fetchExtendedMetadataRegion.
 // Only startOff itself exceeding maxBytes fails outright, since then nothing is left to cache, not
@@ -238,16 +257,16 @@ func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata,
 	}
 
 	var md *filemd.Metadata
-	if header.MetadataSize+8 <= uint64(len(buf)) {
+	if header.MetadataSize+format.HeaderSize <= uint64(len(buf)) {
 		// Optimistic read was successful, so we can decode the metadata from
 		// the buffer.
-		md, err = decodeFileMetadata(bytes.NewReader(buf[8:]))
+		md, err = decodeFileMetadata(bytes.NewReader(buf[format.HeaderSize:]))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 		}
 	} else {
 		// Optimistic read was too small, so we need to read the metadata fully.
-		rc, err := d.rr.ReadRange(ctx, int64(8), int64(header.MetadataSize))
+		rc, err := d.rr.ReadRange(ctx, format.HeaderSize, int64(header.MetadataSize))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("getting metadata: %w", err)
 		}
@@ -297,7 +316,7 @@ type header struct {
 }
 
 func (d *decoder) header(headData []byte) (header, error) {
-	off := min(int64(len(headData)), 8)
+	off := min(int64(len(headData)), format.HeaderSize)
 
 	br := bytes.NewReader(headData[:off])
 

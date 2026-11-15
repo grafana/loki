@@ -56,8 +56,9 @@ type Chunk struct {
 	encoded []byte
 }
 
-// NewChunk creates a new chunk
-func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c Data, from, through model.Time) Chunk {
+// NewChunk creates a new chunk. ingestedAt is the chunk's ingestion timestamp, or zero if it has
+// none. Chunks rewritten from an existing one should keep its ingestedAt.
+func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c Data, from, through, ingestedAt model.Time) Chunk {
 	return Chunk{
 		ChunkRef: logproto.ChunkRef{
 			Fingerprint: uint64(fp),
@@ -65,9 +66,10 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c Data,
 			From:        from,
 			Through:     through,
 		},
-		Metric:   metric,
-		Encoding: c.Encoding(),
-		Data:     c,
+		Metric:     metric,
+		IngestedAt: ingestedAt,
+		Encoding:   c.Encoding(),
+		Data:       c,
 	}
 }
 

@@ -55,8 +55,6 @@ func TestIter_ForwardCompatUnknownColumn(t *testing.T) {
 		require.Equal(t, want.Path, got[i].Path)
 		require.Equal(t, want.StartTs.UnixNano(), got[i].StartTs.UnixNano())
 		require.Equal(t, want.EndTs.UnixNano(), got[i].EndTs.UnixNano())
-		require.Zero(t, got[i].FileSize)
-		require.Zero(t, got[i].UncompressedLogsSize)
 	}
 }
 

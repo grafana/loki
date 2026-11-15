@@ -54,6 +54,22 @@ func copyUTF8Array(dst []Row, columnIndex int, src *columnar.UTF8) int {
 	return src.Len()
 }
 
+// copyUTF8Value copies element i of src into dst and reuses the buffer of dst, so dst does not
+// alias src. A null element zeroes dst.
+func copyUTF8Value(dst *Value, src *columnar.UTF8, i int) {
+	if src.IsNull(i) {
+		dst.Zero()
+		return
+	}
+
+	srcBuf := src.Get(i)
+	dstBuf := slicegrow.GrowToCap(dst.Buffer(), len(srcBuf))
+	dstBuf = dstBuf[:len(srcBuf)]
+	copy(dstBuf, srcBuf)
+
+	*dst = BinaryValue(dstBuf)
+}
+
 // copyInt64Array copies values from src into dst. Returns the amount of copied
 // rows.
 //

@@ -91,10 +91,12 @@ func (c *bucketMetadataCache) evict(bucket string) {
 	c.lru.evict(bucket)
 }
 
-func (c *bucketMetadataCache) fetchBackground(bucket string) {
+func (c *bucketMetadataCache) fetchBackground(ctx context.Context, bucket string) {
 	if c == nil || c.fetcher == nil {
 		return
 	}
+
+	detachedCtx := context.WithoutCancel(ctx)
 
 	go func() {
 		defer func() {
@@ -107,8 +109,8 @@ func (c *bucketMetadataCache) fetchBackground(bucket string) {
 		}()
 
 		c.muSF.Do(bucket, func() (interface{}, error) {
-			// Perform the call with context.Background and a timeout so it runs outside request context lifetime but is bounded.
-			ctx, cancel := context.WithTimeout(context.Background(), fetchBackgroundTimeout)
+			// Perform the call with detached context and a timeout so it runs outside request context lifetime but is bounded, preserving trace context.
+			ctx, cancel := context.WithTimeout(detachedCtx, fetchBackgroundTimeout)
 			defer cancel()
 			resource, location, err := c.fetcher.fetchBucketMetadata(ctx, bucket)
 

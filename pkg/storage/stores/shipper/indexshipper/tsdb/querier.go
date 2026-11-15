@@ -58,6 +58,9 @@ type IndexReader interface {
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)
 
+	// ShardPostings restricts an existing postings list to a shard candidate range.
+	ShardPostings(index.Postings, index.FingerprintFilter) index.Postings
+
 	// NewSeriesScan returns a scan over the series of one pass over a postings
 	// list. The caller owns the returned scan and must Close it.
 	NewSeriesScan() index.SeriesScan

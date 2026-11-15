@@ -135,7 +135,7 @@ func (p Proc) NewStatus() (ProcStatus, error) {
 	return s, nil
 }
 
-func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintBytes uint64) error {
+func (s *ProcStatus) fillStatus(k, vString string, vUint, vUintBytes uint64) error {
 	switch k {
 	case "Tgid":
 		s.TGID = int(vUint)
@@ -261,7 +261,6 @@ func calcCpusAllowedList(cpuString string) []uint64 {
 			cpu, _ := strconv.ParseUint(l[0], 10, 64)
 			g = append(g, cpu)
 		}
-
 	}
 
 	slices.Sort(g)

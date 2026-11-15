@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/integration/cluster"
 	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -49,6 +50,7 @@ func buildLBACPolicyHeaders(tenantID string, policies []types.LabelPolicy) []str
 // newPolicy builds a LabelPolicy fixture from a selector string, panicking on
 // malformed input.
 func newPolicy(selector string) types.LabelPolicy {
+	//nolint:forbidigo // parses a matcher selector with regexes, not a plain label set
 	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(selector)
 	if err != nil {
 		panic(err)
@@ -173,7 +175,7 @@ var (
 
 func clusterAll(t *testing.T) *cluster.Component {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
@@ -187,7 +189,7 @@ func clusterAll(t *testing.T) *cluster.Component {
 
 func clusterAllLBAC(t *testing.T) *cluster.Component {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
@@ -201,7 +203,7 @@ func clusterAllLBAC(t *testing.T) *cluster.Component {
 
 func clusterAllLBACAggregation(t *testing.T) *cluster.Component {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())

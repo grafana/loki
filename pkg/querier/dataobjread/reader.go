@@ -16,8 +16,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -31,7 +32,7 @@ const (
 	DefaultReadBatchSize = 1024
 )
 
-// LogRecord is one decoded log line with the identity the sample layer needs.
+// LogRecord is one decoded log entry with the identity the sample layer needs.
 type LogRecord struct {
 	streamHash   uint64
 	streamLabels labels.Labels
@@ -39,13 +40,14 @@ type LogRecord struct {
 	// timestamp is nanoseconds since the Unix epoch.
 	timestamp int64
 
+	// line is nil when nothing reads the line after the read, and for an empty line.
 	line     []byte
 	metadata labels.Labels
 }
 
-// LogReader runs a read plan and yields decoded log lines in batches.
+// LogReader runs a read plan and yields decoded log records in batches.
 //
-// One row reader scans each planned section, matching all of its streams together and reading
+// One row reader scans each planned section, matching all of its streams together and returning
 // only the planned columns. The planner rejects a section it was given twice, so no section is
 // scanned twice.
 //
@@ -59,7 +61,7 @@ type LogRecord struct {
 // data-object tier is never deduplicated against another source.
 //
 // The records in flight do not grow with the sample count. The plan does grow with the stream
-// count: every queued task references its object's decoded streams, one label set each.
+// count: every queued task references the decoded streams of its object, one label set each.
 //
 // Next and At are for the single consumer goroutine only. Err and Close are safe to call from
 // another one.
@@ -70,7 +72,7 @@ type LogReader struct {
 	// tasks are the section reads to run.
 	tasks *TaskIterator
 
-	// capture and statsCtx carry the dataset reader's byte accounting. capture is nil when the
+	// capture and statsCtx carry the statistics the query records. capture is nil when the
 	// caller installed none.
 	capture  *xcap.Capture
 	statsCtx *stats.Context
@@ -271,7 +273,7 @@ func (r *LogReader) Next() bool {
 		// A failed scan is terminal, so stop instead of returning the batches queued before it.
 		// Checked once per batch, not per record, to keep the per-sample path cheap.
 		if err := r.Err(); err != nil {
-			// Stop the planner too: it must not keep resolving objects for a query that has
+			// Stop the planner too: it must not keep planning objects for a query that has
 			// already failed.
 			r.tasks.Abort(err)
 			return false
@@ -345,8 +347,17 @@ func (r *LogReader) Close() error {
 	return r.Err()
 }
 
-// recordStats folds the data-object byte and row counts into the query stats. It does nothing
+// recordStats adds the figures of the capture to the query stats and to the metrics. It does nothing
 // when no capture was installed.
+//
+// The query stats get:
+//   - the decompressed row and byte counts
+//   - the section resolution time
+//   - the counts of logs objects and of index objects opened
+//   - the downloaded bytes of logs objects and of index objects
+//
+// The metrics get the object-store requests and the downloaded bytes. Only the metrics count the
+// table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
 		return
@@ -356,9 +367,42 @@ func (r *LogReader) recordStats() {
 	r.statsCtx.AddPostPredicateDecompressedBytes(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowBytes))
 	r.statsCtx.AddPrePredicateDecompressedRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowsRead))
 	r.statsCtx.AddPostFilterRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead))
+	r.statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(xcap.ValueFromRegion[int64](r.capture, metastore.RegionSections, metastore.StatMetastoreSectionsDuration)))
+
+	// End first: it freezes the set of regions the code below reads. Every goroutine that recorded
+	// into them has stopped, so the counts are final.
 	r.capture.End()
 
-	// Clear the capture so a repeated Close does not count the same bytes twice.
+	r.metrics.Record(r.capture)
+
+	// statsFrom sums the downloaded bytes and the opened objects of the regions whose root region
+	// belongs to one of the wanted components.
+	statsFrom := func(wanted ...string) (downloadedBytes, compactedObjects, uncompactedObjects int64) {
+		for root, tree := range r.capture.RootRegions() {
+			if !slices.Contains(wanted, componentForRootRegion(root.Name())) {
+				continue
+			}
+			for _, region := range tree {
+				if region.Name() != metastore.RegionGetIndexes {
+					downloadedBytes += regionInt64(region, dataobj.StatObjectBytesDownloaded)
+				}
+				compactedObjects += regionInt64(region, dataobj.StatObjectsOpenedCompacted)
+				uncompactedObjects += regionInt64(region, dataobj.StatObjectsOpenedUncompacted)
+			}
+		}
+		return downloadedBytes, compactedObjects, uncompactedObjects
+	}
+
+	logsBytes, logsCompacted, logsUncompacted := statsFrom(componentStreamsReader, componentLogsReader)
+	indexBytes, indexCompacted, indexUncompacted := statsFrom(componentMetastore)
+	r.statsCtx.AddDataobjLogsCompactedObjectsCount(logsCompacted)
+	r.statsCtx.AddDataobjLogsUncompactedObjectsCount(logsUncompacted)
+	r.statsCtx.AddDataobjIndexCompactedObjectsCount(indexCompacted)
+	r.statsCtx.AddDataobjIndexUncompactedObjectsCount(indexUncompacted)
+	r.statsCtx.AddDataobjLogsDownloadedBytes(logsBytes)
+	r.statsCtx.AddDataobjIndexDownloadedBytes(indexBytes)
+
+	// Clear the capture so a repeated Close does not count the same figures twice.
 	r.capture = nil
 }
 

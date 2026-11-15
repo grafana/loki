@@ -67,6 +67,18 @@ func (h *HashTable[T]) Reset(cap uint64) {
 	h.entries = make([]entry[T], h.cap)
 }
 
+func (h *HashTable[T]) Truncate(size uint64) {
+	truncated := NewHashTable[T](size)
+	h.VisitEntries(func(e *entry[T]) {
+		if uint64(e.payload.memoIdx) >= size {
+			return
+		}
+		entry, _ := truncated.Lookup(e.h, func(T) bool { return false })
+		truncated.Insert(entry, e.h, e.payload.val, e.payload.memoIdx)
+	})
+	*h = *truncated
+}
+
 func (h *HashTable[T]) CopyValues(out []T) {
 	h.CopyValuesSubset(0, out)
 }
@@ -188,6 +200,19 @@ func (t *Table[T]) TypeTraits() TypeTraits { return typeTraits[T]{} }
 func (t *Table[T]) Reset() {
 	t.tbl.Reset(32)
 	t.nullIdx = KeyNotFound
+}
+
+func (t *Table[T]) Truncate(size int) {
+	if size < 0 {
+		panic("cannot truncate a memo table to a negative size")
+	}
+	if size >= t.Size() {
+		return
+	}
+	t.tbl.Truncate(uint64(size))
+	if t.nullIdx >= int32(size) {
+		t.nullIdx = KeyNotFound
+	}
 }
 
 func (t *Table[T]) Size() int {

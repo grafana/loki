@@ -2,11 +2,13 @@ package limits
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -339,6 +341,41 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 	require.Equal(t, metadata1, toProduce)
 }
 
+func TestUsageStore_MarkProduced(t *testing.T) {
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	metadata := []*proto.StreamMetadata{{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}}
+
+	// An unknown stream is not tracked just because a record was produced for
+	// it elsewhere, and the caller is told so.
+	require.False(t, s.markProduced("tenant", metadata[0], clock.Now()))
+	var tracked int
+	for range s.TenantActiveStreams("tenant") {
+		tracked++
+	}
+	require.Equal(t, 0, tracked)
+
+	// A stream marked as produced is not produced again within the produce
+	// interval, and is produced again once it has passed.
+	toProduce, _, _, err := s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, metadata, toProduce)
+	clock.Advance(time.Minute)
+	require.True(t, s.markProduced("tenant", metadata[0], clock.Now()))
+	toProduce, _, _, err = s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Empty(t, toProduce)
+	clock.Advance(time.Minute + time.Second)
+	toProduce, _, _, err = s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, metadata, toProduce)
+}
+
 func TestUsageStore_Evict(t *testing.T) {
 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -391,6 +428,35 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 		actual = append(actual, stream.hash)
 	}
 	require.ElementsMatch(t, expected, actual)
+}
+
+func TestUsageStore_Collect(t *testing.T) {
+	limits := &mockLimitsWithPolicy{
+		policyLimits: map[string]int{"high-priority": 10},
+	}
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, limits, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	// Two streams without a policy, one of which is outside the active window,
+	// and one stream in a policy with its own stream limit.
+	s.setForTests("tenant", streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()})
+	s.setForTests("tenant", streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-time.Hour).UnixNano()})
+	s.setForTests("tenant", streamUsage{hash: 0x3, lastSeenAt: clock.Now().UnixNano(), policy: "high-priority"})
+
+	require.NoError(t, testutil.CollectAndCompare(s, strings.NewReader(`
+# HELP loki_ingest_limits_active_streams The current number of active streams per tenant and policy.
+# TYPE loki_ingest_limits_active_streams gauge
+loki_ingest_limits_active_streams{policy="",tenant="tenant"} 1
+loki_ingest_limits_active_streams{policy="high-priority",tenant="tenant"} 1
+# HELP loki_ingest_limits_streams The current number of streams per tenant and policy, including streams outside the active window.
+# TYPE loki_ingest_limits_streams gauge
+loki_ingest_limits_streams{policy="",tenant="tenant"} 2
+loki_ingest_limits_streams{policy="high-priority",tenant="tenant"} 1
+`),
+		"loki_ingest_limits_active_streams",
+		"loki_ingest_limits_streams",
+	))
 }
 
 func TestUsageStore_PolicyBasedStreamLimits(t *testing.T) {

@@ -1,0 +1,45 @@
+# helm-test build workflow.
+#
+# Compiles the `loki-helm-test` binary whenever a PR touches its source or the
+# Go module. The source is behind the `helm_test` build tag, so the regular Go
+# CI never compiles it, and helm-ci runs the published image rather than the
+# PR's code.
+
+name: helm-test-build
+
+on:
+  pull_request:
+    paths:
+      - "production/helm/loki/src/helm-test/**"
+      - "go.mod"
+      - "go.sum"
+      - "vendor/**"
+      - "Makefile"
+      - "crosscompile.mk"
+      - ".github/workflows/helm-test-build.yml"
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build:
+    name: Build helm-test
+    runs-on: ubuntu-x64
+    timeout-minutes: 15
+    permissions:
+      contents: read # Needed so we can clone this repository.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build helm-test
+        run: make BUILD_IN_CONTAINER=false helm-test

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
 	"github.com/grafana/loki/v3/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 // mode=EvalModeLocal tests that rules are evaluated locally with an embedded query engine
@@ -77,7 +78,7 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 	t.Cleanup(server1.Close)
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())

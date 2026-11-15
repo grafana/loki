@@ -1,11 +1,9 @@
 package limits
 
 import (
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -32,29 +30,22 @@ func newTestMaxLimits(defaults validation.Limits, tenants map[string]*validation
 	if err != nil {
 		panic(err)
 	}
-	m := &maxLimits{
-		inner:          ov,
-		retentionGauge: prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_retention"}),
-	}
-	m.recompute()
-	return m
+	return NewMaxLimits(ov, prometheus.NewRegistry()).(*maxLimits)
 }
 
-func TestLoadRuntimeConfig_LenientLimitOverrides(t *testing.T) {
-	validation.SetDefaultLimitsForYAMLUnmarshalling(validation.Limits{})
+func TestMaxLimits_RetentionPeriod_FollowsTenantChanges(t *testing.T) {
+	defaults := validation.Limits{}
+	defaults.RetentionPeriod = model.Duration(7 * 24 * time.Hour)
 
-	actual, err := loadRuntimeConfig(log.NewNopLogger())(strings.NewReader(`
-overrides:
-  tenant-a:
-    tsdb_max_bytes_per_shard: 256MB
-    split_queries_by_interval: 30m
-    logline_mode: live
-`))
-	require.NoError(t, err)
+	tenants := map[string]*validation.Limits{
+		"a": {RetentionPeriod: model.Duration(14 * 24 * time.Hour)},
+	}
+	m := newTestMaxLimits(defaults, tenants)
+	require.Equal(t, 14*24*time.Hour, m.RetentionPeriod())
 
-	cfg := actual.(*runtimeConfigValues)
-	require.Equal(t, 256<<20, cfg.TenantLimits["tenant-a"].TSDBMaxBytesPerShard.Val())
-	require.Equal(t, 30*time.Minute, time.Duration(cfg.TenantLimits["tenant-a"].QuerySplitDuration))
+	// A runtime config reload changes the tenant limits in place.
+	tenants["b"] = &validation.Limits{RetentionPeriod: model.Duration(30 * 24 * time.Hour)}
+	require.Equal(t, 30*24*time.Hour, m.RetentionPeriod())
 }
 
 func TestMaxLimits_RetentionPeriod_MaxAcrossTenants(t *testing.T) {
@@ -119,11 +110,7 @@ func TestMaxLimits_NilTenantLimits(t *testing.T) {
 	ov, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	m := &maxLimits{
-		inner:          ov,
-		retentionGauge: prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_retention"}),
-	}
-	m.recompute()
+	m := NewMaxLimits(ov, prometheus.NewRegistry())
 
 	require.Equal(t, 14*24*time.Hour, m.RetentionPeriod())
 }

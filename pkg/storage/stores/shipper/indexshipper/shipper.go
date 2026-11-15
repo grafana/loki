@@ -36,9 +36,6 @@ const (
 	ModeReadOnly = Mode("RO")
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly = Mode("WO")
-	// ModeDisabled is a no-op implementation which does nothing & does not error.
-	// It's used by the blockbuilder which handles index operations independently.
-	ModeDisabled = Mode("NO")
 
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
@@ -88,6 +85,8 @@ type IndexShipper interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
+	// EnsureQueryReadiness downloads the missing indexes this IndexShipper owns
+	EnsureQueryReadiness(ctx context.Context) error
 	Stop()
 }
 
@@ -104,12 +103,28 @@ type Config struct {
 	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
 	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
 
-	// Temporary experimental feature
-	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
-
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
+
+	PerIndexOwnership         bool                   `yaml:"-"`
+	TenantFilter              downloads.TenantFilter `yaml:"-"`
+	SkipInitialQueryReadiness bool                   `yaml:"-"`
+}
+
+// ForPeriod returns the config and the object storage path prefix of the
+// index store of schema period p.
+func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
+	if !cfg.PerIndexOwnership {
+		return cfg, p.IndexTables.PathPrefix
+	}
+	if p.IndexTables.ShardedPathPrefix != "" {
+		return cfg, p.IndexTables.ShardedPathPrefix
+	}
+	cfg.PerIndexOwnership = false
+	cfg.TenantFilter = nil
+	cfg.SkipInitialQueryReadiness = false
+	return cfg, p.IndexTables.PathPrefix
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -120,7 +135,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
-	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -165,10 +179,6 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.IndexGatewayClientConfig.Validate(); err != nil {
 		return fmt.Errorf("shipper.index-gateway-client: %w", err)
-	}
-
-	if err := cfg.ShadowIndexGatewayClientConfig.Validate(); err != nil {
-		return fmt.Errorf("shipper.shadow-index-gateway-client: %w", err)
 	}
 
 	return nil
@@ -221,11 +231,7 @@ type indexShipper struct {
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(prefix string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
-	switch cfg.Mode {
-	case ModeDisabled:
-		return Noop{}, nil
-	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
-	default:
+	if cfg.Mode != ModeReadOnly && cfg.Mode != ModeWriteOnly && cfg.Mode != ModeReadWrite {
 		return nil, fmt.Errorf("invalid mode: %v", cfg.Mode)
 	}
 	shipper := indexShipper{
@@ -269,6 +275,8 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			DownloadTimeout:   s.cfg.DownloadTimeout,
 			Limits:            limits,
+
+			SkipInitialQueryReadiness: s.cfg.SkipInitialQueryReadiness,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
@@ -336,6 +344,13 @@ func (s *indexShipper) TriggerSync() bool {
 	return false
 }
 
+func (s *indexShipper) EnsureQueryReadiness(ctx context.Context) error {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.EnsureQueryReadiness(ctx)
+	}
+	return nil
+}
+
 func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
 	if s.downloadsManager != nil {
 		return s.downloadsManager.SyncStatus()
@@ -366,7 +381,8 @@ func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback
 func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) FlushIndexes(_ context.Context) error { return nil }
-func (Noop) TriggerSync() bool                    { return false }
-func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
-func (Noop) Stop()                                {}
+func (Noop) FlushIndexes(_ context.Context) error         { return nil }
+func (Noop) TriggerSync() bool                            { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus            { return indexstore.SyncStatus{} }
+func (Noop) EnsureQueryReadiness(_ context.Context) error { return nil }
+func (Noop) Stop()                                        {}

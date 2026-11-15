@@ -219,6 +219,10 @@ var (
 	// that the broker cannot handle the request to-be-issued request.
 	errBrokerTooOld = errors.New("broker is too old; the broker has already indicated it will not know how to handle the request")
 
+	// A response is larger than BrokerMaxReadBytes. For fetches, this is
+	// a record batch too large for the client to ever read.
+	errResponseTooLarge = errors.New("response exceeds BrokerMaxReadBytes")
+
 	// Returned when trying to call group functions when the client is not
 	// assigned a group.
 	errNotGroup = errors.New("invalid group function call when not assigned a group")

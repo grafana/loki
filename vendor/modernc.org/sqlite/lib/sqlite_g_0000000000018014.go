@@ -4,9 +4,13 @@
 
 package sqlite3
 
+const __INTMAX_C_SUFFIX__ = "LL"
+
 const __INTMAX_FMTd__ = "lld"
 
 const __INTMAX_FMTi__ = "lli"
+
+const __UINTMAX_C_SUFFIX__ = "ULL"
 
 const __UINTMAX_FMTX__ = "llX"
 
