@@ -1,6 +1,7 @@
 package loghttp
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -367,4 +368,47 @@ func TestFullPushApiFlow(t *testing.T) {
 	// 11. Final verification
 	require.Equal(t, "a\nb\nc", reUnmarshaled.StructuredMetadata[0].Value,
 		"After round-trip marshaling, structured metadata should still contain actual newlines")
+}
+
+func benchmarkEntries(n int, withMetadata bool) []Entry {
+	entries := make([]Entry, n)
+	for i := range entries {
+		entries[i] = Entry{
+			Timestamp: time.Unix(0, 1723986725000000000+int64(i)),
+			Line:      `level=info ts=2024-08-18T13:12:05Z caller=main.go:42 msg="request <done>" path=/api/v1/push status=204`,
+		}
+		if withMetadata {
+			entries[i].StructuredMetadata = labels.FromStrings("trace_id", "0242ac120002", "user_id", "superUser123", "message", "a\nb")
+		}
+	}
+	return entries
+}
+
+func BenchmarkEntriesMarshal(b *testing.B) {
+	for _, withMetadata := range []bool{false, true} {
+		b.Run("metadata="+strconv.FormatBool(withMetadata), func(b *testing.B) {
+			entries := benchmarkEntries(1000, withMetadata)
+			b.ReportAllocs()
+			for b.Loop() {
+				_, err := jsoniter.Marshal(entries)
+				require.NoError(b, err)
+			}
+		})
+	}
+}
+
+// BenchmarkStreamUnmarshal decodes entries the way query responses do, via Stream.UnmarshalJSON.
+func BenchmarkStreamUnmarshal(b *testing.B) {
+	for _, withMetadata := range []bool{false, true} {
+		b.Run("metadata="+strconv.FormatBool(withMetadata), func(b *testing.B) {
+			values, err := jsoniter.Marshal(benchmarkEntries(1000, withMetadata))
+			require.NoError(b, err)
+			data := []byte(`{"stream":{"app":"foo"},"values":` + string(values) + `}`)
+			var s Stream
+			b.ReportAllocs()
+			for b.Loop() {
+				require.NoError(b, s.UnmarshalJSON(data))
+			}
+		})
+	}
 }
