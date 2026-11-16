@@ -60,7 +60,7 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/01/unreachable"}}, readFileList(t, bucket, "a"))
 	})
 
-	t.Run("stores the list and logs the missing index objects when a ToC points to an index object that lifecycle rules removed", func(t *testing.T) {
+	t.Run("stores the list and logs the missing index objects when a ToC points to an index object that no longer exists", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "objects/tenants/a/00/reachable", notADataObject, old)
 		bucket.put(t, "objects/tenants/a/01/only-in-expired-index", notADataObject, old)

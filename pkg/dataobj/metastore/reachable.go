@@ -77,8 +77,8 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 //
 // A missing ToC is not an error. A missing index object that a ToC points to
 // is not an error either. The index builder stores an index object before it
-// adds it to a ToC, so lifecycle rules of the object storage removed it. No
-// query can read the objects that it referenced. ReachableObjects returns
+// adds it to a ToC, so a process outside Loki removed it. No query can read
+// the objects that it referenced. ReachableObjects returns
 // the index object itself as reachable, and counts it in the stats.
 //
 // ReachableObjects reads only the stats sections of an index object. It
@@ -86,8 +86,7 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // other type in the stats. Queries read the postings sections only, and the
 // index builder computes the postings and the stats from the same rows. So a
 // section that is not a stats section references no log object that a query
-// can read. Old index objects, for example, hold streams and pointers
-// sections that no query reads.
+// can read.
 //
 // ReachableObjects returns an error, and no paths, if it cannot read a ToC or
 // an index object for another reason. It also returns an error for other
