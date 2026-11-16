@@ -143,6 +143,74 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	require.Equal(t, pageReaderTestStrings[4:], actual)
 }
 
+func Test_pageReader_ReadAfterError(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+
+	t.Run("returns the rest of the page when a read to the end of the page retries after a decoder error", func(t *testing.T) {
+		var alloc memory.Allocator
+
+		pr := newPageReader(buildPage(t, opts, pageReaderTestStrings), opts.Type.Physical, opts.Compression)
+		t.Cleanup(func() { require.NoError(t, pr.Close()) })
+
+		first, err := pr.Read(t.Context(), &alloc, 2)
+		require.NoError(t, err)
+		require.Equal(t, pageReaderTestStrings[:2], convertToStrings(t, first))
+
+		pr.valuesDec = &failOnceValueDecoder{valueDecoder: pr.valuesDec}
+
+		_, err = pr.Read(t.Context(), &alloc, len(pageReaderTestStrings))
+		require.EqualError(t, err, "injected decode error")
+
+		rest, err := pr.Read(t.Context(), &alloc, len(pageReaderTestStrings))
+		require.NoError(t, err)
+		require.Equal(t, pageReaderTestStrings[2:], convertToStrings(t, rest))
+
+		_, err = pr.Read(t.Context(), &alloc, len(pageReaderTestStrings))
+		require.ErrorIs(t, err, io.EOF)
+	})
+
+	t.Run("returns the same rows when a read in the middle of a page with nulls retries after a decoder error", func(t *testing.T) {
+		var alloc memory.Allocator
+
+		page := buildPageWithNulls(t, opts, []Value{
+			BinaryValue([]byte("a")),
+			BinaryValue([]byte("b")),
+			{},
+			BinaryValue([]byte("c")),
+			BinaryValue([]byte("d")),
+			{},
+			BinaryValue([]byte("e")),
+			BinaryValue([]byte("f")),
+			BinaryValue([]byte("g")),
+			BinaryValue([]byte("h")),
+		})
+		pr := newPageReader(page, opts.Type.Physical, opts.Compression)
+		t.Cleanup(func() { require.NoError(t, pr.Close()) })
+
+		first, err := pr.Read(t.Context(), &alloc, 2)
+		require.NoError(t, err)
+		require.Equal(t, []string{"a", "b"}, convertToStrings(t, first))
+
+		pr.valuesDec = &failOnceValueDecoder{valueDecoder: pr.valuesDec}
+
+		_, err = pr.Read(t.Context(), &alloc, 4)
+		require.EqualError(t, err, "injected decode error")
+
+		retried, err := pr.Read(t.Context(), &alloc, 4)
+		require.NoError(t, err)
+		require.Equal(t, []string{"", "c", "d", ""}, convertToStrings(t, retried))
+
+		rest, err := pr.Read(t.Context(), &alloc, 100)
+		require.NoError(t, err)
+		require.Equal(t, []string{"e", "f", "g", "h"}, convertToStrings(t, rest))
+	})
+}
+
 func Test_pageReader_statsStability(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
@@ -185,6 +253,36 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	page, err := b.Flush()
 	require.NoError(t, err)
 	return page
+}
+
+func buildPageWithNulls(t *testing.T, opts BuilderOptions, in []Value) *MemPage {
+	t.Helper()
+
+	b, err := newPageBuilder(opts)
+	require.NoError(t, err)
+
+	for _, v := range in {
+		require.True(t, b.Append(v))
+	}
+
+	page, err := b.Flush()
+	require.NoError(t, err)
+	return page
+}
+
+// failOnceValueDecoder fails its first Decode call with an error, without
+// reading any value, and then behaves like the decoder it wraps.
+type failOnceValueDecoder struct {
+	valueDecoder
+	failed bool
+}
+
+func (d *failOnceValueDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	if !d.failed {
+		d.failed = true
+		return nil, errors.New("injected decode error")
+	}
+	return d.valueDecoder.Decode(alloc, count)
 }
 
 func readPage(alloc *memory.Allocator, pr *pageReader, batchSize int) (columnar.Array, error) {

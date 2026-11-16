@@ -41,8 +41,21 @@ func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression data
 // At the end of the page, Read returns nil, io.EOF.
 //
 // If there was an error reading the page, Read returns the error with
-// no array.
+// no array. The next call to Read retries the same rows.
 func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
+	arr, err := pr.read(ctx, alloc, count)
+	if err != nil && !errors.Is(err, io.EOF) {
+		// An error can stop a read after the presence decoder moved but before the
+		// value decoder did. The decoders then no longer match pageRow, so a retry
+		// reads the wrong values or returns io.EOF while rows remain. Mark the
+		// reader as not ready: the retry then reopens the page and starts from
+		// its first row.
+		pr.ready = false
+	}
+	return arr, err
+}
+
+func (pr *pageReader) read(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
 	// We need to initialize our readers before we can read from the page.
 	//
 	// If we've seeked backwards and our page row is now ahead of the row we want
