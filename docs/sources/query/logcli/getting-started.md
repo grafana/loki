@@ -2102,6 +2102,10 @@ Batching lets you query for a results set that is larger than this server-side l
 Query metadata is output to `stderr` for each batch.
 To suppress the output of the query metadata, set the `--quiet` option on the `logcli query` command line.
 
+If Loki returns warnings with the results, for example because the results are partial, logcli outputs them to `stderr`.
+If several batches of a query return the same warning, logcli outputs it once.
+The `--quiet` option doesn't suppress warnings.
+
 ## logcli example queries
 
 Here are some examples of logcli.
