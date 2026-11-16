@@ -56,16 +56,20 @@ Query-shape support and hint lookup for logline index lookups.
 6. **Hint cache keys are day-aligned and keyed on needles**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
    - Logical format: `logline:2:<tenant>:<key>:<min-date>:<YYYY-MM-DD>`.
-   - `<key>` is `needleKey(expr, ngramLength)`: the sorted needles `SupportedQuery`
-     extracts, plus the n-gram length. Queries with the same needles share an
-     entry whatever else they contain. A metric query shares with the log query
+   - `<key>` is `needleKey(expr, ngramLength, maxConjunctions)`: the needle sets
+     `SupportedQuery` compiles (`needle.Conjunctions`, already sorted and
+     normalized, formatted by its `String`), plus the n-gram length. Queries with
+     the same needle sets share an entry whatever else they contain. A metric query shares with the log query
      it wraps, and Grafana's logs volume query, which appends `| drop __error__`,
      shares with its log query. Stream matchers are not part of the key.
    - With no needles or no single log selector, or when the delegate reports no
      n-gram length (`NgramLength()`, like `MinDate()`), the key is `expr.String()`.
+   - `maxConjunctions` is not a field of the key. It decides which sets the key
+     holds, so the delegate reports the value its lookups use
+     (`MaxConjunctions()`, invariant 18), and the key is computed with it.
    - **Everything the lookup reads must be in the key.** The delegate is asked
      about the expression as written, so equal keys give equal hints only while
-     the lookup reads nothing but the needles and the n-gram length. If it starts
+     the lookup reads nothing but the needle sets and the n-gram length. If it starts
      to read anything else, such as stream matchers, other pipeline stages or new
      config, add that to `needleKey` and bump `hintCacheGeneration`.
      `TestNeedleKey_EqualKeysGetEqualHints` fails when equal keys stop giving

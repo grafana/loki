@@ -220,6 +220,13 @@ func TestFrontendHintAdapter_NgramLength(t *testing.T) {
 	require.Equal(t, 6, adapter.NgramLength())
 }
 
+func TestFrontendHintAdapter_MaxConjunctions(t *testing.T) {
+	provider, err := hintprovider.NewLoglineHintProvider(newAdapterTestStore(t), 6, 32, 3, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	adapter := &frontendHintAdapter{inner: provider}
+	require.Equal(t, 3, adapter.MaxConjunctions())
+}
+
 func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
 	t.Helper()
 	expr, err := syntax.ParseExpr(query)

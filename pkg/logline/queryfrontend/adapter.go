@@ -23,6 +23,8 @@ func (a *frontendHintAdapter) MinDate() time.Time { return a.inner.MinDate() }
 
 func (a *frontendHintAdapter) NgramLength() int { return a.inner.NgramLength() }
 
+func (a *frontendHintAdapter) MaxConjunctions() int { return a.inner.MaxConjunctions() }
+
 func (a *frontendHintAdapter) ProvideHints(
 	ctx context.Context,
 	tenant string,

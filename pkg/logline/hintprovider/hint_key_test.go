@@ -34,9 +34,15 @@ const (
 
 // --- 1. The key builder ---
 
+// needleKeyOf is the key with one needle set, the frontend's default.
 func needleKeyOf(t *testing.T, query string, ngram int) string {
 	t.Helper()
-	k, ok := needleKey(mustParseExpr(t, query), ngram)
+	return needleKeyWith(t, query, ngram, 1)
+}
+
+func needleKeyWith(t *testing.T, query string, ngram, maxConjunctions int) string {
+	t.Helper()
+	k, ok := needleKey(mustParseExpr(t, query), ngram, maxConjunctions)
 	require.True(t, ok, query)
 	return k
 }
@@ -87,13 +93,32 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 	}{
 		"no needles":       {`{app="api"}`, 6},
 		"no n-gram length": {keyTestLogQuery, 0},
-		"binary operation": {`count_over_time({app="api"} |= "timeout" [5m]) / count_over_time({app="api"} |= "timeout" [5m])`, 6},
+		// With one needle set, an or shares no needle across its branches.
+		"or without a shared needle": {`{app="api"} |= "timeout" or "failure"`, 6},
+		"binary operation":           {`count_over_time({app="api"} |= "timeout" [5m]) / count_over_time({app="api"} |= "timeout" [5m])`, 6},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram)
+			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram, 1)
 			require.False(t, ok)
 		})
 	}
+}
+
+// With more needle sets allowed, an or is keyed on its branches, so it no longer
+// shares a key with the query of the needle every branch has, and the limit
+// itself is part of what the key holds.
+func TestNeedleKey_OrSets(t *testing.T) {
+	const ngram = 6
+	or := `{app="api"} |= "timeout" or "failure"`
+
+	two := needleKeyWith(t, or, ngram, 2)
+	require.Equal(t, two, needleKeyWith(t, `{app="web"} |= "failure" or "timeout"`, ngram, 2), "branch order")
+	require.Equal(t, two, needleKeyWith(t, `sum(count_over_time({app="api"} |= "timeout" or "failure" [5m]))`, ngram, 2))
+	require.NotEqual(t, two, needleKeyWith(t, `{app="api"} |= "timeout"`, ngram, 2))
+	// Three branches over the limit collapse to the needles they share: none.
+	_, ok := needleKey(mustParseExpr(t, `{app="api"} |= "timeout" or "failure" or "denied"`), ngram, 2)
+	require.False(t, ok)
+	require.Equal(t, two, needleKeyWith(t, or, ngram, 3), "the same sets at any limit that fits them")
 }
 
 // The adapter sends expr.String() and the querier looks up the needles of the
@@ -107,14 +132,15 @@ func TestNeedleKey_SurvivesReparse(t *testing.T) {
 		`{app="api"} |= "a,b:c\"d\\e"`,
 		`{app="api"} |= "\xff\xfetimeout"`,
 		`{app="api"} |= "timeout" |= "failure" or "error"`,
+		`{app="api"} |~ "(timeout|failure) retry"`,
 		`{app="api"} |= "timeout" | (level="critical" or level="warning") and region="us-east"`,
 		`{app="api"} |= "timeout" | json | msg="failure" | line_format "{{.msg}}" | logfmt | other="ignored"`,
 	} {
 		expr := mustParseExpr(t, q)
 		for _, n := range []int{3, 6} {
-			key, ok := needleKey(expr, n)
+			key, ok := needleKey(expr, n, 2)
 			require.True(t, ok, q)
-			reparsed, ok := needleKey(mustParseExpr(t, expr.String()), n)
+			reparsed, ok := needleKey(mustParseExpr(t, expr.String()), n, 2)
 			require.True(t, ok, q)
 			require.Equal(t, key, reparsed, q)
 		}
@@ -134,6 +160,8 @@ type ngramDelegate struct {
 }
 
 func (d *ngramDelegate) NgramLength() int { return d.n }
+
+func (d *ngramDelegate) MaxConjunctions() int { return 1 }
 
 func (d *ngramDelegate) ProvideHints(
 	ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time,
@@ -248,7 +276,7 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			provider, err := NewLoglineHintProvider(tc.store, ngram, 0, nil, log.NewNopLogger(), nil)
+			provider, err := NewLoglineHintProvider(tc.store, ngram, 0, 1, nil, log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			hints := func(query string) []HintTimeRange {
 				h, _, err := provider.ProvideHints(context.Background(), "test-tenant", mustParseExpr(t, query),

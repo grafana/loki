@@ -247,6 +247,15 @@ func (p *LoglineHintProvider) NgramLength() int {
 	return p.ngramLength
 }
 
+// MaxConjunctions returns the most needle sets a query is planned into, so the
+// hint cache can key on the needles a lookup uses.
+func (p *LoglineHintProvider) MaxConjunctions() int {
+	if p == nil {
+		return 0
+	}
+	return p.maxConjunctions
+}
+
 func (p *LoglineHintProvider) openIndexReader(
 	ctx context.Context,
 	meta store.Meta,
