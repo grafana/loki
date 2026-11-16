@@ -528,6 +528,7 @@ func BenchmarkLogReader(b *testing.B) {
 	for _, query := range []string{
 		`bytes_over_time({app=~".+"}[1m])`,
 		`count_over_time({app=~".+"} |= "error" [1m])`,
+		`count_over_time({app=~".+"} |= "error" | logfmt [1m])`,
 	} {
 		b.Run(query, func(b *testing.B) {
 			fixture := newReaderFixture(b, query, streams...)
