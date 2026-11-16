@@ -79,7 +79,7 @@ type FieldError interface {
 	// validation was an alias, this will return the
 	// alias name and not the underlying tag that failed.
 	//
-	// eg. alias "iscolor": "hexcolor|rgb|rgba|hsl|hsla"
+	// eg. alias "iscolor": "hexcolor|rgb|rgba|hsl|hsla|cmyk"
 	// will return "iscolor"
 	Tag() string
 
@@ -87,8 +87,8 @@ type FieldError interface {
 	// alias the actual tag within the alias will be returned.
 	// If an 'or' validation fails the entire or will be returned.
 	//
-	// eg. alias "iscolor": "hexcolor|rgb|rgba|hsl|hsla"
-	// will return "hexcolor|rgb|rgba|hsl|hsla"
+	// eg. alias "iscolor": "hexcolor|rgb|rgba|hsl|hsla|cmyk"
+	// will return "hexcolor|rgb|rgba|hsl|hsla|cmyk"
 	ActualTag() string
 
 	// Namespace returns the namespace for the field error, with the tag

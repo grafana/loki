@@ -56,7 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	b, err := logsobj.NewBuilder(cfg, scr, logsobj.NewBuilderMetrics(), gokitlog.NewNopLogger(), nil)
+	b, err := logsobj.NewBuilder(cfg, scr, logsobj.NewBuilderMetrics(), gokitlog.NewNopLogger(), logsobj.NoTenantOverrides{})
 	if err != nil {
 		log.Fatal(err)
 	}

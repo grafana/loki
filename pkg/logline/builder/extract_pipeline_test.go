@@ -60,15 +60,15 @@ func waitForGoroutineBaseline(t *testing.T, baseline int, msg string) {
 	require.LessOrEqual(t, runtime.NumGoroutine(), baseline, msg)
 }
 
-// feedInChunks streams entries through processStream in small per-call chunks
+// feedInChunks streams entries through ProcessStream in small per-call chunks
 // so pipeline mode scatters items across the competing workers (a single call
 // is one queue item and would land on one worker).
-func feedInChunks(t *testing.T, b *indexBuilder, entries []logproto.Entry, chunk int) {
+func feedInChunks(t *testing.T, b *Builder, entries []logproto.Entry, chunk int) {
 	t.Helper()
 	for start := 0; start < len(entries); start += chunk {
 		end := min(start+chunk, len(entries))
 		s := logproto.Stream{Entries: entries[start:end]}
-		require.NoError(t, b.processStream(&s, nil, time.Now(), recordRef{}))
+		require.NoError(t, b.ProcessStream(&s, nil, time.Now(), RecordRef{}))
 	}
 }
 
@@ -99,7 +99,7 @@ func TestBuilder_RoundTrip_ExtractThreads(t *testing.T) {
 				cfg.ExtractThreads = workers
 				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 				require.NoError(t, err)
-				defer b.clear()
+				defer b.Clear()
 
 				feedInChunks(t, b, entries, 1)
 
@@ -119,44 +119,51 @@ func TestBuilder_RoundTrip_ExtractThreads(t *testing.T) {
 // for every merge_threads that Validate accepts at that shard count.
 // Identical output for every N proves mergeShard concurrency does not
 // change which postings land in which file.
+//
+// Run for every version because each concurrent shardMerger owns its own
+// per-day state: v5 opens one writer per (day, shard) with that day's
+// DayStart and its own cell bitset, so a leak across merge threads would
+// misnumber cells rather than fail.
 func TestBuilder_RoundTrip_MergeThreads(t *testing.T) {
 	entries := pipelineTestEntries(120)
 
-	extractFn, err := logline.ExtractorForVersion("v3")
-	require.NoError(t, err)
+	for _, version := range logline.AllVersions() {
+		extractFn, err := logline.ExtractorForVersion(version)
+		require.NoError(t, err)
 
-	for _, shardCount := range []int{1, 4} {
-		shardFn := shard.Noop
-		if shardCount > 1 {
-			shardFn, err = shard.New("murmur3_mix")
-			require.NoError(t, err)
-		}
-		want := referenceRanges(entries, extractFn, shardFn, shardCount)
-
-		threads := []int{1}
-		if shardCount >= 2 {
-			threads = append(threads, 2)
-		}
-		if shardCount >= 4 {
-			threads = append(threads, 4)
-		}
-		for _, n := range threads {
-			t.Run(fmt.Sprintf("shard%d_merge%d", shardCount, n), func(t *testing.T) {
-				cfg := roundTripConfig(t, shardCount, 32)
-				cfg.MergeThreads = n
-				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+		for _, shardCount := range []int{1, 4} {
+			shardFn := shard.Noop
+			if shardCount > 1 {
+				shardFn, err = shard.New("murmur3_mix")
 				require.NoError(t, err)
-				defer b.clear()
+			}
+			want := referenceRanges(entries, extractFn, shardFn, shardCount)
 
-				feedInChunks(t, b, entries, 1)
+			threads := []int{1}
+			if shardCount >= 2 {
+				threads = append(threads, 2)
+			}
+			if shardCount >= 4 {
+				threads = append(threads, 4)
+			}
+			for _, n := range threads {
+				t.Run(fmt.Sprintf("%s/shard%d_merge%d", version, shardCount, n), func(t *testing.T) {
+					cfg := roundTripConfigForVersion(t, version, shardCount, 32)
+					cfg.MergeThreads = n
+					b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+					require.NoError(t, err)
+					defer b.Clear()
 
-				files, err := b.prepareIndexes()
-				require.NoError(t, err)
-				require.Equal(t, sortedKeys(want), fileKeys(files), "(date,shard) file set mismatch")
+					feedInChunks(t, b, entries, 1)
 
-				require.Equal(t, want, termRangesByFile(t, files),
-					"merge_threads=%d output must equal the reference", n)
-			})
+					files, err := b.prepareIndexes()
+					require.NoError(t, err)
+					require.Equal(t, sortedKeys(want), fileKeys(files), "(date,shard) file set mismatch")
+
+					require.Equal(t, want, termRangesByFile(t, files),
+						"merge_threads=%d output must equal the reference", n)
+				})
+			}
 		}
 	}
 }
@@ -172,7 +179,7 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 	// Serial reference over identical input.
 	ctl, err := newIndexBuilder(roundTripConfig(t, 4, 32), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer ctl.clear()
+	defer ctl.Clear()
 	feedInChunks(t, ctl, entries, 5)
 	ctlFiles, err := ctl.prepareIndexes()
 	require.NoError(t, err)
@@ -184,7 +191,7 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 	cfg.ExtractThreads = 3
 	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
-	defer b.clear()
+	defer b.Clear()
 
 	// Enqueue everything and flush immediately: with 100 queued items and a
 	// 32-pair buffer the workers are guaranteed to still be mid-pipeline when
@@ -246,10 +253,10 @@ func TestBuilder_ExtractPipelineDrainBarrier(t *testing.T) {
 }
 
 // TestBuilder_ExtractPipelineWorkerErrorPropagates verifies the failure
-// contract: a worker spill error surfaces on the main path (processStream
+// contract: a worker spill error surfaces on the main path (ProcessStream
 // fails fast, exactly like a serial spill error failing running()), a
 // subsequent prepareIndexes reports the same latched error, and no worker
-// goroutine outlives clear().
+// goroutine outlives Clear().
 func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	baseline := runtime.NumGoroutine()
 
@@ -264,16 +271,16 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	require.NoError(t, os.WriteFile(b.runDir, []byte("not a directory"), 0o644))
 
 	entries := pipelineTestEntries(10)
-	poison := recordRef{valid: true, partition: 7, offset: 99, tenantID: "t"}
+	poison := RecordRef{Valid: true, Partition: 7, Offset: 99, TenantID: "t"}
 	var streamErr error
 	require.Eventually(t, func() bool {
 		s := logproto.Stream{Entries: entries}
-		if err := b.processStream(&s, nil, time.Now(), poison); err != nil {
+		if err := b.ProcessStream(&s, nil, time.Now(), poison); err != nil {
 			streamErr = err
 			return true
 		}
 		return false
-	}, 10*time.Second, 5*time.Millisecond, "worker spill failure must surface through processStream")
+	}, 10*time.Second, 5*time.Millisecond, "worker spill failure must surface through ProcessStream")
 	require.ErrorContains(t, streamErr, "not a directory")
 	require.ErrorContains(t, streamErr, "partition=7 offset=99")
 
@@ -284,8 +291,8 @@ func TestBuilder_ExtractPipelineWorkerErrorPropagates(t *testing.T) {
 	require.Contains(t, err.Error(), "extract pipeline")
 	require.Contains(t, err.Error(), "partition=7 offset=99")
 
-	b.clear()
-	waitForGoroutineBaseline(t, baseline, "no worker goroutine may outlive clear()")
+	b.Clear()
+	waitForGoroutineBaseline(t, baseline, "no worker goroutine may outlive Clear()")
 }
 
 // TestService_ExtractThreadsFlushCommit drives the real service flush path

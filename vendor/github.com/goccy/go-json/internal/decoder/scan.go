@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"math/bits"
 	"unsafe"
-
-	"github.com/goccy/go-json/internal/errors"
 )
 
 const (
@@ -78,12 +76,11 @@ func gatherMask(m uint64) uint64 {
 // The bytes are scanned a block at a time, by their masks ( scanMasks ): the quotes which are not
 // escaped toggle whether the bytes are inside a string, which a prefix xor of the quote mask tells
 // for every byte at once, and the brackets outside strings count the depth. The bytes are looked at
-// one by one only in a block where the value may end or the nesting may get too deep.
+// one by one only in a block where the value may end. The depth is not limited here: the decoding
+// of the value checks it.
 type compoundScanner struct {
 	// depth is the number of the brackets opened but not closed.
-	depth int64
-	// maxDepth is the depth beyond which the nesting is too deep.
-	maxDepth int64
+	depth    int64
 	inString bool
 	// escaped is whether the next byte is escaped by the backslash before it.
 	escaped bool
@@ -92,13 +89,13 @@ type compoundScanner struct {
 // scan scans buf[pos:lim] and returns the position after the bracket which closes the value, or,
 // when the value doesn't end before lim, the position it stopped at and false.
 // A whole block is read at once where the capacity of the buffer has room for it.
-func (sc *compoundScanner) scan(buf []byte, pos, lim int64) (int64, bool, error) {
+func (sc *compoundScanner) scan(buf []byte, pos, lim int64) (int64, bool) {
 	const evenBits = 0x5555555555555555
 	// A short value ends within a few bytes, which are looked at one by one: that costs less
 	// than the masks of a whole block.
-	pos, found, err := sc.scanBytes(buf, pos, min(pos+shortScanLength, lim))
-	if found || err != nil {
-		return pos, found, err
+	pos, found := sc.scanBytes(buf, pos, min(pos+shortScanLength, lim))
+	if found {
+		return pos, found
 	}
 	depth := sc.depth
 	var inString, prevEscaped uint64
@@ -157,8 +154,8 @@ func (sc *compoundScanner) scan(buf []byte, pos, lim int64) (int64, bool, error)
 		closing := m.closing & outside
 		opens := int64(bits.OnesCount64(open))
 		closes := int64(bits.OnesCount64(closing))
-		if closes < depth && depth+opens <= sc.maxDepth {
-			// the value can't end in this block, nor go too deep
+		if closes < depth {
+			// the value can't end in this block
 			depth += opens - closes
 			pos += scanBlockSize
 			continue
@@ -167,27 +164,24 @@ func (sc *compoundScanner) scan(buf []byte, pos, lim int64) (int64, bool, error)
 			i := bits.TrailingZeros64(brackets)
 			if open&(1<<uint(i)) != 0 {
 				depth++
-				if depth > sc.maxDepth {
-					return 0, false, errors.ErrExceededMaxDepth(buf[pos+int64(i)], pos+int64(i))
-				}
 			} else {
 				depth--
 				if depth == 0 {
-					return pos + int64(i) + 1, true, nil
+					return pos + int64(i) + 1, true
 				}
 			}
 		}
 		pos += scanBlockSize
 	}
 	sc.depth, sc.inString, sc.escaped = depth, inString != 0, prevEscaped != 0
-	return lim, false, nil
+	return lim, false
 }
 
 // scanBytes scans buf[pos:end] one byte at a time, as scan does by blocks.
 // A byte after a backslash is neither a quote nor a bracket, wherever it is.
-func (sc *compoundScanner) scanBytes(buf []byte, pos, end int64) (int64, bool, error) {
+func (sc *compoundScanner) scanBytes(buf []byte, pos, end int64) (int64, bool) {
 	if pos >= end {
-		return pos, false, nil
+		return pos, false
 	}
 	depth, inString := sc.depth, sc.inString
 	if sc.escaped {
@@ -218,13 +212,10 @@ func (sc *compoundScanner) scanBytes(buf []byte, pos, end int64) (int64, bool, e
 			pos++
 		case '{', '[':
 			depth++
-			if depth > sc.maxDepth {
-				return 0, false, errors.ErrExceededMaxDepth(c, pos-1)
-			}
 		case '}', ']':
 			depth--
 			if depth == 0 {
-				return pos, true, nil
+				return pos, true
 			}
 		}
 	}
@@ -234,5 +225,5 @@ func (sc *compoundScanner) scanBytes(buf []byte, pos, end int64) (int64, bool, e
 		pos = end
 	}
 	sc.depth, sc.inString, sc.escaped = depth, inString, escaped
-	return pos, false, nil
+	return pos, false
 }

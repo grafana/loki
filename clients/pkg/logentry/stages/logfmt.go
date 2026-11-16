@@ -1,13 +1,9 @@
 package stages
 
 import (
-	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/go-logfmt/logfmt"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
@@ -59,11 +55,10 @@ func validateLogfmtConfig(c *LogfmtConfig) (map[string]string, error) {
 type logfmtStage struct {
 	cfg            *LogfmtConfig
 	inverseMapping map[string]string
-	logger         log.Logger
 }
 
 // newLogfmtStage creates a new logfmt pipeline stage from a config.
-func newLogfmtStage(logger log.Logger, config interface{}) (Stage, error) {
+func newLogfmtStage(config interface{}) (Stage, error) {
 	cfg, err := parseLogfmtConfig(config)
 	if err != nil {
 		return nil, err
@@ -79,7 +74,6 @@ func newLogfmtStage(logger log.Logger, config interface{}) (Stage, error) {
 	return toStage(&logfmtStage{
 		cfg:            cfg,
 		inverseMapping: inverseMapping,
-		logger:         log.With(logger, "component", "stage", "type", "logfmt"),
 	}), nil
 }
 
@@ -100,17 +94,11 @@ func (j *logfmtStage) Process(_ model.LabelSet, extracted map[string]interface{}
 
 	if j.cfg.Source != nil {
 		if _, ok := extracted[*j.cfg.Source]; !ok {
-			if Debug {
-				level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
-			}
 			return
 		}
 
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
-			if Debug {
-				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]))
-			}
 			return
 		}
 
@@ -118,35 +106,16 @@ func (j *logfmtStage) Process(_ model.LabelSet, extracted map[string]interface{}
 	}
 
 	if input == nil {
-		if Debug {
-			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
-		}
 		return
 	}
 	decoder := logfmt.NewDecoder(strings.NewReader(*input))
-	extractedEntriesCount := 0
 	for decoder.ScanRecord() {
 		for decoder.ScanKeyval() {
 			mapKey, ok := j.inverseMapping[string(decoder.Key())]
 			if ok {
 				extracted[mapKey] = string(decoder.Value())
-				extractedEntriesCount++
 			}
 		}
-	}
-
-	if decoder.Err() != nil {
-		if Debug {
-			level.Debug(j.logger).Log("msg", "failed to decode logfmt", "err", decoder.Err())
-		}
-		return
-	}
-
-	if Debug {
-		if extractedEntriesCount != len(j.inverseMapping) {
-			level.Debug(j.logger).Log("msg", fmt.Sprintf("found only %d out of %d configured mappings in logfmt stage", extractedEntriesCount, len(j.inverseMapping)))
-		}
-		level.Debug(j.logger).Log("msg", "extracted data debug in logfmt stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
 

@@ -94,11 +94,13 @@ func DecodeFieldPriorityFirstWin() DecodeOptionFunc {
 
 // DecodeNoCopyString makes the decoded strings refer to the input instead of copies of their bytes,
 // as sonic does by default: a string which has no escape is not copied. Then the input must not be
-// modified while the decoded strings are used.
+// modified while the decoded strings are used, and a decoded string keeps the input alive: the data
+// given to Unmarshal, whole, or, with a Decoder, which has the bytes of its reader in its buffer only,
+// the buffer which the value was read into, which the Decoder doesn't reuse then. A program which keeps
+// a few values out of many inputs keeps all of those inputs alive so.
 //
 // By default, a decoded string is a copy, as with encoding/json: the input may be modified or reused
-// after the call. The copies of the short strings share buffers of up to 16 KB, so a decoded string keeps
-// at most 16 KB alive with it.
+// after the call, and a decoded string keeps alive no memory but its own.
 func DecodeNoCopyString() DecodeOptionFunc {
 	return func(opt *DecodeOption) {
 		opt.Flags |= decoder.NoCopyStringOption

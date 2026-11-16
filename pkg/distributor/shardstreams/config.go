@@ -21,8 +21,8 @@ const (
 
 	// LimitsServiceStreamShardingModeLive shards streams with the shard count
 	// the ingest-limits service returns. The local rate store's count is still
-	// computed, both for comparison and as the fallback for streams the
-	// service does not answer for.
+	// computed, for comparison. A stream the service gives no usable count
+	// for is written unsharded.
 	LimitsServiceStreamShardingModeLive = "live"
 )
 
@@ -44,7 +44,7 @@ type Config struct {
 	// LimitsServiceStreamShardingMode controls whether the ingest-limits
 	// service is asked for a shard count as well, and whether its answer is
 	// used.
-	LimitsServiceStreamShardingMode string `yaml:"limits_service_stream_sharding_mode" json:"limits_service_stream_sharding_mode" doc:"description=Experimental. Whether the ingest-limits service is asked for a shard count for this tenant, and whether its answer is used. One of 'disabled' (default, unchanged behavior), 'shadow' (ask the limits service and compare its answer against the local rate store's; the local rate store still decides how streams are sharded) or 'live' (shard streams with the count the limits service returns, falling back to the local rate store for streams it does not answer for). Both 'shadow' and 'live' require the ingest-limits service to be enabled."`
+	LimitsServiceStreamShardingMode string `yaml:"limits_service_stream_sharding_mode" json:"limits_service_stream_sharding_mode" doc:"description=Experimental. Whether the ingest-limits service is asked for a shard count for this tenant, and whether its answer is used. One of 'disabled' (default, unchanged behavior), 'shadow' (ask the limits service and compare its answer against the local rate store's; the local rate store still decides how streams are sharded) or 'live' (shard streams with the count the limits service returns; a stream it gives no usable count for is written unsharded). Both 'shadow' and 'live' have no effect unless the ingest-limits service is enabled."`
 
 	// LimitsServiceStreamShardingRateWindow is the window the ingest-limits
 	// service averages this tenant's stream rates over when deciding shard

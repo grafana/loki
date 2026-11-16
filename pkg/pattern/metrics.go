@@ -1,23 +1,20 @@
 package pattern
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type ingesterMetrics struct {
-	flushQueueLength              prometheus.Gauge
-	patternsDiscardedTotal        *prometheus.CounterVec
-	patternsDetectedTotal         *prometheus.CounterVec
-	linesSkipped                  *prometheus.CounterVec
-	tokensPerLine                 *prometheus.HistogramVec
-	statePerLine                  *prometheus.HistogramVec
-	metricSamples                 *prometheus.CounterVec
-	kafkaRecordsTotal             prometheus.Counter
-	kafkaRecordsFailed            prometheus.Counter
-	kafkaConsumerLagHighWatermark prometheus.Summary
+	flushQueueLength       prometheus.Gauge
+	patternsDiscardedTotal *prometheus.CounterVec
+	patternsDetectedTotal  *prometheus.CounterVec
+	linesSkipped           *prometheus.CounterVec
+	tokensPerLine          *prometheus.HistogramVec
+	statePerLine           *prometheus.HistogramVec
+	metricSamples          *prometheus.CounterVec
+	kafkaRecordsTotal      prometheus.Counter
+	kafkaRecordsFailed     prometheus.Counter
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -73,12 +70,6 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		kafkaRecordsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_pattern_ingester_kafka_records_failed_total",
 			Help: "The total number of records consumed from Kafka that failed to be decoded or pushed.",
-		}),
-		kafkaConsumerLagHighWatermark: promauto.With(r).NewSummary(prometheus.SummaryOpts{
-			Name:       "loki_pattern_ingester_kafka_consumer_lag_high_watermark_seconds",
-			Help:       "The highest consumer lag in the last 1 minute, measured as the age of a record from Kafka when it is consumed.",
-			Objectives: map[float64]float64{1.0: 0.1},
-			MaxAge:     time.Minute,
 		}),
 	}
 }

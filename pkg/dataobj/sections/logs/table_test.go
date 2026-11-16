@@ -415,3 +415,40 @@ func Test_table_backfillMetadata(t *testing.T) {
 
 	require.Equal(t, expected, rows, "Rows should match expected data with proper backfill")
 }
+
+func TestSplitMetadata(t *testing.T) {
+	t.Run("groups values by key in first-seen key order and row order", func(t *testing.T) {
+		records := []Record{
+			{Metadata: labels.FromStrings("b", "1")},
+			{Metadata: labels.FromStrings("a", "1", "b", "2")},
+			{Metadata: labels.EmptyLabels()},
+			{Metadata: labels.FromStrings("a", "", "c", "1")},
+		}
+		keys, cells := splitMetadata(records)
+		require.Equal(t, []string{"b", "a", "c"}, keys)
+		require.Equal(t, [][]metadataCell{
+			{{row: 0, value: "1"}, {row: 1, value: "2"}},
+			{{row: 1, value: "1"}, {row: 3, value: ""}},
+			{{row: 3, value: "1"}},
+		}, cells)
+	})
+
+	t.Run("keeps only the last value when a record repeats a key", func(t *testing.T) {
+		sb := labels.NewScratchBuilder(3)
+		sb.Add("k", "a")
+		sb.Add("k", "b")
+		sb.Add("z", "1")
+		keys, cells := splitMetadata([]Record{{Metadata: sb.Labels()}, {Metadata: labels.FromStrings("k", "c")}})
+		require.Equal(t, []string{"k", "z"}, keys)
+		require.Equal(t, [][]metadataCell{
+			{{row: 0, value: "b"}, {row: 1, value: "c"}},
+			{{row: 0, value: "1"}},
+		}, cells)
+	})
+
+	t.Run("returns no keys when records have no metadata", func(t *testing.T) {
+		keys, cells := splitMetadata([]Record{{}, {}})
+		require.Empty(t, keys)
+		require.Empty(t, cells)
+	})
+}

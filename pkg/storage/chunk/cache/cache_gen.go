@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 )
 
 type contextKey int

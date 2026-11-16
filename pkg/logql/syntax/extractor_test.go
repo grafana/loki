@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_Extractor(t *testing.T) {
@@ -204,7 +204,7 @@ func TestCountDistinctSketchExprValidatesMatchers(t *testing.T) {
 		Left:     newMatcherExpr(nil),
 		Interval: time.Hour,
 	}, &Grouping{Groups: []string{"version"}})
-	require.Equal(t, logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0), validateSampleExpr(invalid))
+	require.Equal(t, logqlerr.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0), validateSampleExpr(invalid))
 
 	valid := NewCountDistinctSketchExpr("mac", &LogRangeExpr{
 		Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),

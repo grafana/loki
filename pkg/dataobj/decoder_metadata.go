@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
@@ -33,8 +34,8 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read file format version: %w", err)
-	} else if gotVersion != fileFormatVersion {
-		return nil, fmt.Errorf("unexpected file format version: got=%d want=%d", gotVersion, fileFormatVersion)
+	} else if gotVersion != format.FileFormatVersion {
+		return nil, fmt.Errorf("unexpected file format version: got=%d want=%d", gotVersion, format.FileFormatVersion)
 	}
 
 	var md filemd.Metadata

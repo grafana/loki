@@ -84,6 +84,13 @@ func (a *Float16) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *Float16) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *Float16) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i, v := range a.values {

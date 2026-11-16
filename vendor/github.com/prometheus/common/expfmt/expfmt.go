@@ -25,16 +25,20 @@ import (
 // Constants to assemble the Content-Type values for the different wire
 // protocols.
 const (
-	TextVersion   = "0.0.4"
-	ProtoType     = `application/vnd.google.protobuf`
-	ProtoProtocol = `io.prometheus.client.MetricFamily`
-	ProtoFmt      = ProtoType + "; proto=" + ProtoProtocol + ";"
+	TextVersion = "0.0.4"
+	//nolint:revive // Allow for underscores.
+	TextVersion_1_0_0 = "1.0.0"
+	ProtoType         = `application/vnd.google.protobuf`
+	ProtoProtocol     = `io.prometheus.client.MetricFamily`
+	ProtoFmt          = ProtoType + "; proto=" + ProtoProtocol + ";"
 
 	OpenMetricsType = `application/openmetrics-text`
 	//nolint:revive // Allow for underscores.
 	OpenMetricsVersion_0_0_1 = "0.0.1"
 	//nolint:revive // Allow for underscores.
 	OpenMetricsVersion_1_0_0 = "1.0.0"
+	//nolint:revive // Allow for underscores.
+	OpenMetricsVersion_2_0_0_rc = "2.0.0-rc"
 	//nolint:revive // Allow for underscores.
 	OpenMetricsVersion_2_0_0 = "2.0.0"
 )
@@ -49,13 +53,17 @@ const (
 type Format string
 
 const (
-	FmtUnknown      Format = `<unknown>`
-	FmtText         Format = `text/plain; version=` + TextVersion + `; charset=utf-8`
+	FmtUnknown Format = `<unknown>`
+	FmtText    Format = `text/plain; version=` + TextVersion + `; charset=utf-8`
+	//nolint:revive // Allow for underscores.
+	FmtText_1_0_0   Format = `text/plain; version=` + TextVersion_1_0_0 + `; charset=utf-8`
 	FmtProtoDelim   Format = ProtoFmt + ` encoding=delimited`
 	FmtProtoText    Format = ProtoFmt + ` encoding=text`
 	FmtProtoCompact Format = ProtoFmt + ` encoding=compact-text`
 	//nolint:revive // Allow for underscores.
 	FmtOpenMetrics_2_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_2_0_0 + `; charset=utf-8`
+	//nolint:revive // Allow for underscores.
+	FmtOpenMetrics_2_0_0_rc Format = OpenMetricsType + `; version=` + OpenMetricsVersion_2_0_0_rc + `; charset=utf-8`
 	//nolint:revive // Allow for underscores.
 	FmtOpenMetrics_1_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_1_0_0 + `; charset=utf-8`
 	//nolint:revive // Allow for underscores.
@@ -85,7 +93,7 @@ const (
 // NewFormat generates a new Format from the type provided. Mostly used for
 // tests, most Formats should be generated as part of content negotiation in
 // encode.go. If a type has more than one version, the latest stable version will be
-// returned.
+// returned, except that TypeTextPlain retains version 0.0.4 for compatibility.
 func NewFormat(t FormatType) Format {
 	switch t {
 	case TypeProtoCompact:
@@ -106,20 +114,27 @@ func NewFormat(t FormatType) Format {
 // NewOpenMetricsFormat generates a new OpenMetrics format matching the
 // specified version number.
 //
-// Note: OpenMetrics version 2.0.0 is experimental and encode-only (supporting
+// Note: OpenMetrics versions 2.0.0-rc and 2.0.0 are experimental (supporting
 // counter, gauge, summary, untyped, histogram, and gaugehistogram metric types).
 func NewOpenMetricsFormat(version string) (Format, error) {
-	if version == OpenMetricsVersion_0_0_1 {
+	switch version {
+	case OpenMetricsVersion_0_0_1:
 		return FmtOpenMetrics_0_0_1, nil
-	}
-	if version == OpenMetricsVersion_1_0_0 {
+	case OpenMetricsVersion_1_0_0:
 		return FmtOpenMetrics_1_0_0, nil
-	}
-	if version == OpenMetricsVersion_2_0_0 {
-		// OpenMetrics 2.0.0 is experimental and encode-only.
+	case OpenMetricsVersion_2_0_0_rc:
+		// OpenMetrics 2.0.0-rc is experimental.
+		return FmtOpenMetrics_2_0_0_rc, nil
+	case OpenMetricsVersion_2_0_0:
+		// OpenMetrics 2.0.0 is experimental.
 		return FmtOpenMetrics_2_0_0, nil
+	default:
+		return FmtUnknown, errors.New("unknown open metrics version string")
 	}
-	return FmtUnknown, errors.New("unknown open metrics version string")
+}
+
+func isOpenMetrics20Version(v string) bool {
+	return v == OpenMetricsVersion_2_0_0 || v == OpenMetricsVersion_2_0_0_rc
 }
 
 // Version returns the version parameter without validating whether it is supported.
@@ -173,7 +188,7 @@ func (f Format) FormatType() FormatType {
 		if !ok {
 			return TypeTextPlain
 		}
-		if v == TextVersion {
+		if v == TextVersion || v == TextVersion_1_0_0 {
 			return TypeTextPlain
 		}
 		return TypeUnknown

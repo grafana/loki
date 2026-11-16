@@ -14,10 +14,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/format"
 	schedulerapi "github.com/grafana/loki/v3/pkg/logline/scheduler/api"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
@@ -1102,4 +1104,62 @@ func TestDeleteEligibleIndexes_ZeroRetention(t *testing.T) {
 	exists, err := bucket.Exists(context.Background(), oldMeta.MetaPath())
 	require.NoError(t, err)
 	require.True(t, exists, "zero retention means keep forever — index should not be deleted")
+}
+
+// TestService_RebuildPlanner_ReportsUnreadableIndexes pins the operator-visible
+// half of the unreadable-index handling: the gauge and the warning. An index
+// this binary cannot read is excluded from compaction permanently, so if this
+// wiring breaks the exclusion becomes invisible — the index count simply never
+// goes down and nothing says why.
+func TestService_RebuildPlanner_ReportsUnreadableIndexes(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	s, err := store.NewStore(bucket, store.Config{MinDate: "0001-01-01"}, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	reg := prometheus.NewRegistry()
+	var logs bytes.Buffer
+	cfg := testConfig(t, 8)
+	svc, err := New(s, stubLimits{}, cfg, log.NewLogfmtLogger(&logs), reg)
+	require.NoError(t, err)
+	js, err := newJobStore(cfg.Compaction.JobStateDir, log.NewNopLogger())
+	require.NoError(t, err)
+	svc.jobs = js
+
+	v5Meta := func(hash string, footerVersion uint32) store.Meta {
+		return store.Meta{
+			Date:             "2024-01-01",
+			Hash:             hash,
+			Version:          "v5",
+			DocumentInterval: 16 * time.Second,
+			MinLogTs:         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			MaxLogTs:         time.Date(2024, 1, 1, 23, 59, 59, 0, time.UTC),
+			MinRecordTs:      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			MaxRecordTs:      time.Date(2024, 1, 1, 23, 59, 59, 0, time.UTC),
+			IndexHeader:      &format.HeaderInfo{Version: footerVersion},
+		}
+	}
+	// Two readable footer-5 indexes that should still pair, and two footer-4
+	// ones written before day-relative cells that never can.
+	uploadMeta(t, bucket, v5Meta("1111111111111111", 5))
+	uploadMeta(t, bucket, v5Meta("2222222222222222", 5))
+	uploadMeta(t, bucket, v5Meta("3333333333333333", 4))
+	uploadMeta(t, bucket, v5Meta("4444444444444444", 4))
+	pollStore(t, s)
+
+	svc.rebuildPlanner(s.Snapshot())
+
+	require.Equal(t, 2.0, testutil.ToFloat64(svc.metrics.indexesUnreadable))
+	require.Contains(t, logs.String(), "cannot read their format")
+	require.Contains(t, logs.String(), "unreadable=2")
+	// The readable pair must still be planned — one bad index must not stall
+	// compaction for the rest.
+	require.Len(t, svc.planner.Groups(), 1)
+
+	// Once the unreadable ones are gone the gauge must fall back to zero,
+	// rather than latching at its high-water mark.
+	require.NoError(t, bucket.Delete(context.Background(), v5Meta("3333333333333333", 4).MetaPath()))
+	require.NoError(t, bucket.Delete(context.Background(), v5Meta("4444444444444444", 4).MetaPath()))
+	pollStore(t, s)
+	svc.rebuildPlanner(s.Snapshot())
+	require.Zero(t, testutil.ToFloat64(svc.metrics.indexesUnreadable))
 }

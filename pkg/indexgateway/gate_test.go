@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -238,7 +238,7 @@ func TestQueryGate_ValidationRejectsBeforeGate(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := call()
-			require.ErrorIs(t, err, logqlmodel.ErrParse)
+			require.ErrorIs(t, err, logqlerr.ErrParse)
 		})
 	}
 }
