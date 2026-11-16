@@ -36,6 +36,9 @@ import (
 //   - skip post-parser values with `"`, `\`, or control bytes. The same
 //     filter can match a parsed field, a stream label, or SM, so we cannot
 //     assume the raw line used JSON/logfmt escapes.
+//   - split post-parser values at `/` and spaces. JSON and logfmt decode `\/`
+//     to `/`, and replace U+FFFD and invalid UTF-8 with a space, so the line
+//     may only hold the parts between them.
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
@@ -247,7 +250,7 @@ func literalsFromPostParserWindow(stages syntax.MultiStageExpr) []string {
 			}
 			for _, lit := range collectLabelFilterLiterals(s.LabelFilterer) {
 				if IsVerbatimLineLiteral(lit) {
-					out = append(out, lit)
+					out = append(out, strings.FieldsFunc(lit, func(r rune) bool { return r == '/' || r == ' ' })...)
 				}
 			}
 

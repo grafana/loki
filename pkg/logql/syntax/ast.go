@@ -2263,7 +2263,8 @@ func (e *BinOpExpr) String() string {
 				group = fmt.Sprintf("%s (%s)", group, strings.Join(e.Opts.VectorMatching.Include, ","))
 			}
 
-			if e.Opts.VectorMatching.On || e.Opts.VectorMatching.MatchingLabels != nil {
+			// group_left and group_right are only valid after on or ignoring, so they keep an empty ignoring ().
+			if e.Opts.VectorMatching.On || e.Opts.VectorMatching.MatchingLabels != nil || e.Opts.VectorMatching.Card != CardOneToOne {
 				on := OpOn
 				if !e.Opts.VectorMatching.On {
 					on = OpIgnoring
