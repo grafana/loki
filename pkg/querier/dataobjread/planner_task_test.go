@@ -44,7 +44,7 @@ func TestReadTask_RowPredicates(t *testing.T) {
 	})
 }
 
-func TestReadTask_Records(t *testing.T) {
+func TestReadTask_AppendRecords(t *testing.T) {
 	// oneStreamTask returns a task for a single admitted stream, and that stream's ID.
 	oneStreamTask := func(t *testing.T, streamLabels string) (ReadTask, int64) {
 		t.Helper()
@@ -62,7 +62,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records([]logs.Record{
+		records, err := task.appendRecords(nil, []logs.Record{
 			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
 			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
 		})
@@ -86,24 +86,42 @@ func TestReadTask_Records(t *testing.T) {
 		}, records)
 	})
 
-	t.Run("it copies the line, because the row reader reuses that buffer", func(t *testing.T) {
+	t.Run("the record's line shares the row's line buffer", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		// One buffer, rewritten between reads, is what the row reader does. The replacement is
-		// the same length as the original, so it overwrites every byte.
 		buffer := []byte("first")
-		first, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
+		records, err := task.appendRecords(nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
 		require.NoError(t, err)
 
 		copy(buffer, []byte("third"))
-		require.Equal(t, "first", string(first[0].line), "the record must not alias the read buffer")
+		require.Equal(t, "third", string(records[0].line))
+	})
+
+	t.Run("an empty line is forwarded as nil", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		records, err := task.appendRecords(nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte{}}})
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Nil(t, records[0].line)
+	})
+
+	t.Run("it appends after the records already in dst", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		existing := LogRecord{timestamp: at(9).UnixNano()}
+		records, err := task.appendRecords([]LogRecord{existing}, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+		require.Equal(t, existing, records[0])
+		require.Equal(t, "one", string(records[1].line))
 	})
 
 	t.Run("it forwards no line when the task does not need it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 		task.needReturningLine = false
 
-		records, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		records, err := task.appendRecords(nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].line)
@@ -112,7 +130,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("a row from a stream the task did not plan fails rather than get silently skipped", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		_, err := task.records([]logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
+		_, err := task.appendRecords(nil, []logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 9999")
 	})
 
@@ -127,14 +145,14 @@ func TestReadTask_Records(t *testing.T) {
 		)
 		task := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
-		_, err = task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		_, err = task.appendRecords(nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 7")
 	})
 
 	t.Run("no rows yields no records", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records(nil)
+		records, err := task.appendRecords(nil, nil)
 		require.NoError(t, err)
 		require.Empty(t, records)
 	})

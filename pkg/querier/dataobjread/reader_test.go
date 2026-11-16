@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -45,10 +46,7 @@ func TestLogReader(t *testing.T) {
 		require.ElementsMatch(t, []string{"one", "two", "three"}, lines)
 	})
 
-	t.Run("a batch size below the row count still yields every distinct line", func(t *testing.T) {
-		// Each record's line comes out of a buffer the row reader reuses between reads, so a
-		// section read in several batches is what proves the reader copies it. With the copy
-		// removed, the earlier lines of a batch come back as the last line read.
+	t.Run("a batch size of one recycles row buffers and still yields every distinct line", func(t *testing.T) {
 		var entries []push.Entry
 		want := make([]string, 0, 10)
 		for i := range 10 {
@@ -63,6 +61,67 @@ func TestLogReader(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 		require.ElementsMatch(t, want, lines)
+	})
+
+	t.Run("concurrent scans that share recycled batches yield every distinct line", func(t *testing.T) {
+		var (
+			streams []logproto.Stream
+			want    []string
+		)
+		for s := range 8 {
+			stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+			for i := range 50 {
+				line := fmt.Sprintf("stream-%d-line-%d", s, i)
+				stream.Entries = append(stream.Entries, entry(t, i+1, line))
+				want = append(want, line)
+			}
+			streams = append(streams, stream)
+		}
+		smallSections := []objtest.Option{objtest.WithTargetSectionSize(1 << 10)}
+		fixture := planReaderFixture(t, queryReturningLine, newObjectsFixtureWithOptions(t, smallSections, streams...))
+		require.Greater(t, len(fixture.tasks), 1)
+
+		for _, batchSize := range []int{1, 3, DefaultReadBatchSize} {
+			t.Run(fmt.Sprintf("at batch size %d", batchSize), func(t *testing.T) {
+				reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
+				lines := drainReader(reader)
+				require.NoError(t, reader.Err())
+				require.NoError(t, reader.Close())
+				require.ElementsMatch(t, want, lines)
+			})
+		}
+	})
+
+	t.Run("a reader that yields every record frees every batch", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 10 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
+		}
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
+		require.Len(t, drainReader(reader), len(entries))
+		require.Nil(t, reader.currBatch)
+		require.Zero(t, len(reader.batchPool.free))
+		require.NoError(t, reader.Close())
+	})
+
+	t.Run("closing a reader before it yields every record frees the queued and pooled batches", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 10 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
+		}
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 4, 1, metrics)
+		require.True(t, reader.Next())
+		require.NoError(t, reader.Close())
+		require.Zero(t, len(reader.batches))
+		require.Zero(t, len(reader.batchPool.free))
+
+		require.False(t, reader.Next())
+		require.Nil(t, reader.currBatch)
+		require.Zero(t, len(reader.batchPool.free))
 	})
 
 	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
@@ -326,6 +385,82 @@ func TestLogReader(t *testing.T) {
 	})
 }
 
+func TestReadBatchPool(t *testing.T) {
+	const batchSize = 4
+
+	t.Run("get on an empty pool returns a batch with batchSize rows and no records", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+
+		batch := pool.get()
+		require.Len(t, batch.rows, batchSize)
+		require.Empty(t, batch.records)
+		require.Equal(t, batchSize, cap(batch.records))
+	})
+
+	t.Run("get after put returns the same batch with its line buffers", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		batch.rows[0].Line = append(batch.rows[0].Line, "line"...)
+		lineBuffer := &batch.rows[0].Line[0]
+
+		pool.put(batch)
+		recycled := pool.get()
+		require.Same(t, batch, recycled)
+		require.Same(t, lineBuffer, &recycled.rows[0].Line[0])
+	})
+
+	t.Run("put drops the records and the row metadata", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		metadata := labels.FromStrings("level", "error")
+		batch.rows[0].Metadata = metadata
+		batch.records = append(batch.records, LogRecord{streamLabels: metadata, metadata: metadata})
+
+		pool.put(batch)
+		require.Empty(t, batch.records)
+		require.Equal(t, LogRecord{}, batch.records[:1][0])
+		require.True(t, batch.rows[0].Metadata.IsEmpty())
+	})
+
+	t.Run("put drops a line buffer larger than the pooled limit and keeps a smaller one", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		batch.rows[0].Line = make([]byte, maxPooledLineBytes+1)
+		batch.rows[1].Line = make([]byte, maxPooledLineBytes)
+
+		pool.put(batch)
+		require.Nil(t, batch.rows[0].Line)
+		require.Equal(t, maxPooledLineBytes, cap(batch.rows[1].Line))
+	})
+
+	t.Run("put panics when the batch is already in the pool", func(t *testing.T) {
+		pool := newReadBatchPool(2, batchSize)
+		batch := pool.get()
+		pool.put(batch)
+
+		require.PanicsWithValue(t, "dataobjread: read batch returned to the pool twice", func() { pool.put(batch) })
+	})
+
+	t.Run("put panics when the pool is full", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		first, second := pool.get(), pool.get()
+		pool.put(first)
+
+		require.PanicsWithValue(t, "dataobjread: read batch pool is full, so a batch has more than one owner", func() { pool.put(second) })
+	})
+
+	t.Run("drain removes every batch from the pool", func(t *testing.T) {
+		pool := newReadBatchPool(2, batchSize)
+		first, second := pool.get(), pool.get()
+		pool.put(first)
+		pool.put(second)
+
+		pool.drain()
+		require.Zero(t, len(pool.free))
+		require.NotSame(t, first, pool.get())
+	})
+}
+
 // TestLogReader_ConcurrentObjectOpens drives the open-object registry the way the planner
 // and the scans do: two goroutines asking for one path at once. They must share one open, so both
 // callers get the same opened object and the path counts as one opened object.
@@ -364,6 +499,53 @@ func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 	})
 }
 
+func BenchmarkLogReader(b *testing.B) {
+	const (
+		streamCount      = 20
+		entriesPerStream = 10_000
+	)
+	levels := []string{"info", "warn", "error", "debug"}
+	paths := []string{"/api/v1/push", "/loki/api/v1/query_range", "/metrics", "/ready"}
+
+	var (
+		streams   []logproto.Stream
+		lineBytes int64
+	)
+	for s := range streamCount {
+		stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+		for i := range entriesPerStream {
+			line := fmt.Sprintf(`level=%s caller=http.go:%d msg="request completed" method=GET path=%s status=%d duration=%dms trace_id=%016x`,
+				levels[i%len(levels)], i%500, paths[(i/7)%len(paths)], 200+(i%4)*100, (i*7919)%5000, uint64(i)*0x9e3779b97f4a7c15)
+			lineBytes += int64(len(line))
+			stream.Entries = append(stream.Entries, push.Entry{
+				Timestamp: at(1).Add(time.Duration(i) * 5 * time.Millisecond),
+				Line:      line,
+			})
+		}
+		streams = append(streams, stream)
+	}
+
+	for _, query := range []string{
+		`bytes_over_time({app=~".+"}[1m])`,
+		`count_over_time({app=~".+"} |= "error" [1m])`,
+	} {
+		b.Run(query, func(b *testing.B) {
+			fixture := newReaderFixture(b, query, streams...)
+			metrics := NewMetrics(nil)
+
+			b.SetBytes(lineBytes)
+			b.ReportAllocs()
+			for b.Loop() {
+				reader := NewLogReader(b.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+				for reader.Next() {
+					_ = reader.At()
+				}
+				require.NoError(b, reader.Close())
+			}
+		})
+	}
+}
+
 // readerFixture is an open-object registry together with the real tasks a plan produced over it,
 // so a reader test drives the same tasks production would.
 type readerFixture struct {
@@ -372,10 +554,15 @@ type readerFixture struct {
 }
 
 // newReaderFixture plans the read of query over streams.
-func newReaderFixture(t *testing.T, query string, streams ...logproto.Stream) readerFixture {
+func newReaderFixture(t testing.TB, query string, streams ...logproto.Stream) readerFixture {
+	t.Helper()
+	return planReaderFixture(t, query, newObjectsFixture(t, streams...))
+}
+
+// planReaderFixture plans the read of query over the objects of fixture.
+func planReaderFixture(t testing.TB, query string, fixture objectsFixture) readerFixture {
 	t.Helper()
 
-	fixture := newObjectsFixture(t, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
