@@ -57,8 +57,12 @@ func (c *categorizeLabelsIterator) Next() bool {
 	return true
 }
 
+// Err returns this wrapper's label-parse error, or the wrapped iterator's error.
 func (c *categorizeLabelsIterator) Err() error {
-	return c.currErr
+	if c.currErr != nil {
+		return c.currErr
+	}
+	return c.EntryIterator.Err()
 }
 
 func (c *categorizeLabelsIterator) Labels() string {

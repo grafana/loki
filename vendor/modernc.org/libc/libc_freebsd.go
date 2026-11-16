@@ -346,6 +346,24 @@ func Xfsync(t *TLS, fd int32) int32 {
 	return 0
 }
 
+// int fdatasync(int fd);
+func Xfdatasync(t *TLS, fd int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	if noFsync {
+		// Simulate -DSQLITE_NO_SYNC for sqlite3 testfixture, see function full_sync in sqlite3.c
+		return Xfstat(t, fd, uintptr(unsafe.Pointer(&fsyncStatbuf)))
+	}
+
+	if _, _, err := unix.Syscall(unix.SYS_FDATASYNC, uintptr(fd), 0, 0); err != 0 {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
 // long sysconf(int name);
 func Xsysconf(t *TLS, name int32) long {
 	if __ccgo_strace {

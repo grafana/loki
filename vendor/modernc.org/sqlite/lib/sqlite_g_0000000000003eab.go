@@ -34,7 +34,7 @@ func Xsqlite3_config(tls *libc.TLS, op int32, va uintptr) (r int32) {
 	 */
 	if libc.AtomicLoadPInt32(uintptr(unsafe.Pointer(&_sqlite3Config))+340) != 0 {
 		if op < 0 || op > int32(63) || libc.Uint64FromInt32(1)<<op&_mAnytimeConfigOption == uint64(0) {
-			return _sqlite3MisuseError(tls, int32(188230))
+			return _sqlite3MisuseError(tls, int32(189227))
 		}
 	}
 	ap = va
@@ -86,7 +86,7 @@ func Xsqlite3_config(tls *libc.TLS, op int32, va uintptr) (r int32) {
 		 ** or disables the collection of memory allocation statistics. */
 		_sqlite3Config.FbMemstat = libc.VaInt32(&ap)
 	case int32(SQLITE_CONFIG_SMALL_MALLOC):
-		_sqlite3Config.FbSmallMalloc = libc.Uint8FromInt32(libc.VaInt32(&ap))
+		_sqlite3Config.FbSmallMalloc = libc.BoolUint8(libc.VaInt32(&ap) != 0)
 	case int32(SQLITE_CONFIG_PAGECACHE):
 		/* EVIDENCE-OF: R-18761-36601 There are three arguments to
 		 ** SQLITE_CONFIG_PAGECACHE: A pointer to 8-byte aligned memory (pMem),
@@ -227,7 +227,7 @@ func _getPageMMap(tls *libc.TLS, pPager uintptr, pgno TPgno, ppPage uintptr, fla
 	 ** test in the previous statement, and avoid testing pgno==0 in the
 	 ** common case where pgno is large. */
 	if pgno <= uint32(1) && pgno == uint32(0) {
-		return _sqlite3CorruptError(tls, int32(65501))
+		return _sqlite3CorruptError(tls, int32(64841))
 	}
 	if bMmapOk != 0 && (*TPager)(unsafe.Pointer(pPager)).FpWal != uintptr(0) {
 		rc = _sqlite3WalFindFrame(tls, (*TPager)(unsafe.Pointer(pPager)).FpWal, pgno, bp+8)

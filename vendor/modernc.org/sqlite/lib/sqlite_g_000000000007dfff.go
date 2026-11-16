@@ -37,7 +37,7 @@ func Xsqlite3_complete16(tls *libc.TLS, zSql uintptr) (r int32) {
 	_sqlite3ValueSetStr(tls, pVal, -int32(1), zSql, uint8(SQLITE_UTF16LE), libc.UintptrFromInt32(0))
 	zSql8 = _sqlite3ValueText(tls, pVal, uint8(SQLITE_UTF8))
 	if zSql8 != 0 {
-		rc = Xsqlite3_complete(tls, zSql8)
+		rc = libc.BoolInt32(Xsqlite3_incomplete(tls, zSql8) == 0)
 	} else {
 		rc = int32(SQLITE_NOMEM)
 	}
@@ -94,7 +94,22 @@ func _readCoord(tls *libc.TLS, p uintptr, pCoord uintptr) {
 	*(*Tu32)(unsafe.Pointer(pCoord)) = uint32(**(**Tu8)(__ccgo_up(p)))<<libc.Int32FromInt32(24) + uint32(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(16) + uint32(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(8) + uint32(**(**Tu8)(__ccgo_up(p + 3)))<<libc.Int32FromInt32(0)
 }
 
+// C documentation
+//
+//	/*
+//	** Read an unsigned 64-bit integer from an unaligned big-endian byte array.
+//	*/
+func _sqlite3Get8byte(tls *libc.TLS, p uintptr) (r Tu64) {
+	/* Test this limb using -DSQLITE_BYTEORDER=0 */
+	return uint64(**(**Tu8)(__ccgo_up(p)))<<libc.Int32FromInt32(56) + uint64(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(48) + uint64(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(40) + uint64(**(**Tu8)(__ccgo_up(p + 3)))<<libc.Int32FromInt32(32) + uint64(**(**Tu8)(__ccgo_up(p + 4)))<<libc.Int32FromInt32(24) + uint64(**(**Tu8)(__ccgo_up(p + 5)))<<libc.Int32FromInt32(16) + uint64(**(**Tu8)(__ccgo_up(p + 6)))<<libc.Int32FromInt32(8) + uint64(**(**Tu8)(__ccgo_up(p + 7)))<<libc.Int32FromInt32(0)
+}
+
+// C documentation
+//
+//	/* Write an unsigned 32-bit integer into an unaligned big-endian array of bytes.
+//	*/
 func _sqlite3Put4byte(tls *libc.TLS, p uintptr, v Tu32) {
+	/* Test this limb using -DSQLITE_BYTEORDER=0 */
 	**(**uint8)(__ccgo_up(p)) = uint8(v >> libc.Int32FromInt32(24))
 	**(**uint8)(__ccgo_up(p + 1)) = uint8(v >> libc.Int32FromInt32(16))
 	**(**uint8)(__ccgo_up(p + 2)) = uint8(v >> libc.Int32FromInt32(8))

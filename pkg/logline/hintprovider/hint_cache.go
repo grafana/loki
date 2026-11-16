@@ -3,6 +3,7 @@ package hintprovider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -82,6 +83,7 @@ type CachingHintProvider struct {
 
 	requestsTotal          *prometheus.CounterVec
 	singleflightDedupedTot prometheus.Counter
+	singleflightRetriesTot prometheus.Counter
 }
 
 // NewCachingHintProvider constructs a caching decorator for QueryHintProvider.
@@ -96,6 +98,10 @@ func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, reg prome
 		singleflightDedupedTot: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_hint_cache_singleflight_deduped_total",
 			Help: "Total deduplicated hint-cache lookups via singleflight.",
+		}),
+		singleflightRetriesTot: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "logline_hint_cache_singleflight_retries_total",
+			Help: "Total shared hint-cache lookups retried because the caller that ran them was canceled.",
 		}),
 	}
 }
@@ -116,29 +122,9 @@ func (p *CachingHintProvider) fetchDays(
 			if err := gCtx.Err(); err != nil {
 				return err
 			}
-			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
-			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
-			sfKey := singleflightKey(tenant, queryString, day.day)
-			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
-				if provideErr != nil {
-					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
-				}
-				if hints == nil {
-					hints = &Hints{}
-				}
-				if writeCache {
-					p.storeDays(ctx, []dayWindow{day}, hints.TimeRanges)
-				}
-				return &provideHintsResult{hints: hints, stats: stats}, nil
-			})
-			if shared {
-				p.singleflightDedupedTot.Inc()
-			}
-
-			res, ok := value.(*provideHintsResult)
-			if !ok {
-				return fmt.Errorf("unexpected singleflight result type %T", value)
+			res, err := p.fetchDay(gCtx, ctx, tenant, expr, queryString, day, writeCache)
+			if err != nil {
+				return err
 			}
 			results[i] = *res
 			return res.err
@@ -155,6 +141,70 @@ func (p *CachingHintProvider) fetchDays(
 		}
 	}
 	return &Hints{TimeRanges: ranges}, combined, waitErr
+}
+
+// maxSharedLookupAttempts bounds how often fetchDay rejoins a day lookup after
+// the caller that ran it was canceled.
+const maxSharedLookupAttempts = 3
+
+// fetchDay looks up one day, sharing the delegate call with concurrent callers
+// for the same tenant, query and day. Each caller stops waiting when its own
+// context ends, and the shared call keeps running for the others. The shared
+// call runs with the context of the caller that started it, so a caller that
+// only joined it retries when that context ends and its own is still live.
+// Retrying starts a new shared call under the retrying caller's context.
+func (p *CachingHintProvider) fetchDay(
+	gCtx, ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	queryString string,
+	day dayWindow,
+	writeCache bool,
+) (*provideHintsResult, error) {
+	dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
+	dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
+	sfKey := singleflightKey(tenant, queryString, day.day)
+
+	for attempt := 1; ; attempt++ {
+		led := false
+		ch := p.flight.DoChan(sfKey, func() (any, error) {
+			led = true
+			hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
+			if provideErr != nil {
+				return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
+			}
+			if hints == nil {
+				hints = &Hints{}
+			}
+			if writeCache {
+				p.storeDays(ctx, []dayWindow{day}, hints.TimeRanges)
+			}
+			return &provideHintsResult{hints: hints, stats: stats}, nil
+		})
+
+		var call singleflight.Result
+		select {
+		case call = <-ch:
+		case <-gCtx.Done():
+			return &provideHintsResult{err: gCtx.Err()}, nil
+		}
+		if call.Shared {
+			p.singleflightDedupedTot.Inc()
+		}
+
+		res, ok := call.Val.(*provideHintsResult)
+		if !ok {
+			return nil, fmt.Errorf("unexpected singleflight result type %T", call.Val)
+		}
+		if led || !isContextErr(res.err) || gCtx.Err() != nil || attempt == maxSharedLookupAttempts {
+			return res, nil
+		}
+		p.singleflightRetriesTot.Inc()
+	}
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (p *CachingHintProvider) ProvideHints(
@@ -293,6 +343,16 @@ func decodeCachedAndMissingDays(days []dayWindow, found []string, bufs [][]byte,
 	}
 
 	return NormalizeRanges(decodedRanges), missingDays
+}
+
+// MinDate returns the delegate's minimum trusted index date, or zero when the
+// delegate doesn't report one.
+func (p *CachingHintProvider) MinDate() time.Time {
+	mdp, ok := p.delegate.(minDateProvider)
+	if !ok {
+		return time.Time{}
+	}
+	return mdp.MinDate()
 }
 
 func cacheKeyMinDate(delegate QueryHintProvider) string {

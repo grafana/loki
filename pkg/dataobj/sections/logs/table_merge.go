@@ -71,8 +71,8 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 		}
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset: t,
-			Columns: dsetColumns,
+			Dataset:          t,
+			ProjectedColumns: dsetColumns,
 
 			// Download pages lazily; the table is already in memory.
 			PrefetchAllOnOpen: false,

@@ -79,7 +79,7 @@ func newStructKeys(fields []*structFieldSet) *structKeys {
 		}
 		k.insert(folded, field)
 	}
-	k.makeExact(fields)
+	k.makeExact(fields, false)
 	k.makeFoldRunes(fields)
 	for i := range k.entries {
 		e := &k.entries[i]
@@ -91,12 +91,13 @@ func newStructKeys(fields []*structFieldSet) *structKeys {
 	return k
 }
 
-// makeExact makes the table of the keys which are not ASCII, by their bytes as they are. A key which is not
-// valid UTF-8 is not in it: an object key which is not valid UTF-8 is decoded with its bytes replaced first.
-func (k *structKeys) makeExact(fields []*structFieldSet) {
+// makeExact makes the table of the keys which are not ASCII, or of all the keys if all is set ( for v2, which
+// matches names as they are ), by their bytes as they are. A key which is not valid UTF-8 is not in it: an object
+// key which is not valid UTF-8 is decoded with its bytes replaced first.
+func (k *structKeys) makeExact(fields []*structFieldSet, all bool) {
 	var keys []*structFieldSet
 	for _, field := range fields {
-		if !isASCII(field.key) && utf8.ValidString(field.key) {
+		if (all || !isASCII(field.key)) && utf8.ValidString(field.key) {
 			keys = append(keys, field)
 		}
 	}

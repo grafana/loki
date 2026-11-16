@@ -58,7 +58,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 
 	builder := NewBuilder(desiredVer)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-		builder.AddSeries(lbls.Copy(), fp, chks)
+		builder.AddSeries(lbls, fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -94,6 +94,24 @@ type TSDBFile struct {
 
 	// to sastisfy Reader() and Close() methods
 	getRawFileReader GetRawFileReaderFunc
+
+	// shard is the fingerprint range of the file when its name says it is one
+	// of several shards of its table (see SingleTenantTSDBIdentifier.Shard).
+	shard index.ShardAnnotation
+}
+
+// FingerprintBounds returns the [from, through) fingerprint range the file
+// holds. An unsharded file holds every fingerprint.
+func (f *TSDBFile) FingerprintBounds() (model.Fingerprint, model.Fingerprint) {
+	if f.shard.IsSharded() {
+		return f.shard.GetFromThrough()
+	}
+	return 0, model.Fingerprint(math.MaxUint64)
+}
+
+func shardOfIdentifier(id Identifier) index.ShardAnnotation {
+	parsed, _ := ParseSingleTenantTSDBPath(filepath.Base(id.Name()))
+	return parsed.Shard
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
@@ -146,6 +164,7 @@ func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
 	}
+	file.shard = shardOfIdentifier(id)
 	return file, err
 }
 
@@ -215,8 +234,9 @@ func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
 	return f
 }
 
-// fn must NOT capture it's arguments. They're reused across series iterations and returned to
-// a pool after completion.
+// fn must NOT capture the chunks. They're reused across series iterations and returned to
+// a pool after completion. The labels may be retained, even after the index is closed (see
+// index.SeriesScan.Series); the compactor relies on this to avoid copying them.
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)

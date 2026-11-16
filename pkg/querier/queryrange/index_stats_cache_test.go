@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"math"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -84,12 +83,15 @@ func TestIndexStatsCache(t *testing.T) {
 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 	*calls = 0
 	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute))
+	// The cached extent is 1h1ms long, because RoundToMilliseconds rounds testTime's 10ns up to the next millisecond.
+	// The request reuses the last 45m1ms of it, so the cached result is scaled by 2700001/3600001, just above 0.75,
+	// and rounded up. The remaining 15m is a new request, which returns statsResp unscaled, and the two are summed.
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
-			Streams: 2,
-			Chunks:  4,
-			Bytes:   (1<<10)*0.75 + (1 << 10),
-			Entries: uint64(math.Floor(10*0.75) + 10),
+			Streams: 2,    // 1 cached (streams aren't scaled) + 1 new
+			Chunks:  4,    // 2 cached (2 * 0.75 = 1.5, rounded up) + 2 new
+			Bytes:   1793, // 769 cached (1024 * 0.75 = 768, plus a fraction from the extra 1ms, rounded up) + 1024 new
+			Entries: 18,   // 8 cached (10 * 0.75 = 7.5, rounded up) + 10 new
 		},
 	}
 	resp, err = rc.Do(ctx, req)

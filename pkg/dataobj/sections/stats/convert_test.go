@@ -13,7 +13,7 @@ import (
 func TestFromRecordBatch_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -101,7 +101,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name,label:job"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -166,7 +166,7 @@ func TestFromRecordBatch_ParityWithDecodeRow(t *testing.T) {
 func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
@@ -237,7 +237,7 @@ func TestFromRecordBatch_DestShorterThanBatch(t *testing.T) {
 func TestFromRecordBatch_ReusedDestNoStaleValues(t *testing.T) {
 	ctx := context.Background()
 
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), testLayout("label:service_name"))
 
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",

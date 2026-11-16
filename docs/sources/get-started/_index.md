@@ -34,7 +34,7 @@ To collect logs and view your log data generally involves the following steps:
       Refer to the following section for an example Grafana Alloy configuration file.
    1. Add [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) to your logs following our [best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/).
       Most Loki users start by adding labels that describe where the logs are coming from such as region, cluster, or environment.
-1. Deploy [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/quickstart/) and configure a [Loki data source](https://grafana.com/docs/grafana/latest/datasources/loki/configure-loki-data-source/).
+1. Deploy [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/quickstart/) and configure a [Loki data source](https://grafana.com/docs/grafana/latest/datasources/loki/configure/).
 1. Select the [Explore feature](https://grafana.com/docs/grafana/latest/explore/) in the Grafana main menu.
    To [view logs in Explore](https://grafana.com/docs/grafana/latest/explore/logs-integration/):
    1. Pick a time range.

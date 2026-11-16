@@ -41,6 +41,10 @@ func (d *boolDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.
 		if err := validateNull(buf, cursor); err != nil {
 			return 0, err
 		}
+		if ctx.Option.V2&(V2Semantics|V2MergeWithLegacySemantics) == V2Semantics {
+			// the semantics of encoding/json/v2 decode null as the zero value, but with MergeWithLegacySemantics
+			**(**bool)(unsafe.Pointer(&p)) = false
+		}
 		cursor += 4
 		return cursor, nil
 	}

@@ -159,6 +159,48 @@ func Test_DecodePushRequest(t *testing.T) {
 			]
 		}`,
 		},
+		{
+			name: "null in stream label value",
+			expected: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+					},
+					Labels: `{nothing="null", test="test"}`,
+				},
+			},
+			actual: `{
+			"streams": [
+				{
+					"stream": {
+						"test": "test",
+						"nothing": null
+					},
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
+
+		{
+			name:        "null stream",
+			expectedErr: "stream must be an object",
+			actual: `{
+			"streams": [
+				{
+					"stream": null,
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
 
 		{
 			name:        "invalid top level field",
@@ -172,7 +214,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		{
 			name:        "invalid field",
 			expected:    nil,
-			expectedErr: "unmarshalerDecoder: found unknown field",
+			expectedErr: "reading Stream: found unknown field",
 			actual: `{
 				"streams": [
 				  {

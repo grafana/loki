@@ -110,6 +110,10 @@ type Client struct {
 	trailingHeaderSupport bool
 	maxRetries            int
 
+	// Upload limits enforced before sending a request. Always read through
+	// its accessors, which resolve zero fields to the S3 defaults.
+	limits UploadLimits
+
 	// RDMA dispatch state. rdmaEnabled mirrors Options.EnableRDMA;
 	// the rest are only touched by rdma.go (built with -tags=rdma) but
 	// have to live on the struct so the stub and the tagged build share
@@ -170,12 +174,17 @@ type Options struct {
 	// when the caller supplies PutObjectOptions.RDMABuffer / GetObjectOptions.RDMABuffer.
 	// No-op unless built with -tags=rdma.
 	EnableRDMA bool
+
+	// UploadLimits overrides the upload limits the client enforces before
+	// sending a request. Leave nil, or leave individual fields zero, to use
+	// Amazon S3's limits.
+	UploadLimits *UploadLimits
 }
 
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.3.0"
+	libraryVersion = "v7.4.1"
 )
 
 // User Agent should always following the below style.
@@ -338,6 +347,13 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	clnt.maxRetries = MaxRetry
 	if opts.MaxRetries > 0 {
 		clnt.maxRetries = opts.MaxRetries
+	}
+
+	if opts.UploadLimits != nil {
+		if err := opts.UploadLimits.validate(); err != nil {
+			return nil, err
+		}
+		clnt.limits = *opts.UploadLimits
 	}
 
 	// Return.
@@ -1151,12 +1167,8 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 			// Do not change the host if the endpoint URL is a FIPS S3 endpoint or a S3 PrivateLink interface endpoint
 			if !s3utils.IsAmazonFIPSEndpoint(*c.endpointURL) && !s3utils.IsAmazonPrivateLinkEndpoint(*c.endpointURL) {
 				if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
-					if bucketName == "" {
-						host = getS3ExpressEndpoint(bucketLocation, false)
-					} else {
-						// Fetch new host based on the bucket location.
-						host = getS3ExpressEndpoint(bucketLocation, s3utils.IsS3ExpressBucket(bucketName))
-					}
+					// Fetch new host based on the bucket location.
+					host = getS3ExpressEndpoint(bucketLocation, bucketName, c.s3DualstackEnabled)
 				} else {
 					// Fetch new host based on the bucket location.
 					host = getS3Endpoint(bucketLocation, c.s3DualstackEnabled)

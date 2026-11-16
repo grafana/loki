@@ -160,7 +160,7 @@ func writeSeries(t *testing.T, nSeries int, nLogsPerSeries int, cliDistributor *
 }
 
 func checkCompactionFinished(t *testing.T, cliCompactor *client.Client) {
-	checkForTimestampMetric(t, cliCompactor, "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds")
+	checkForTimestampMetric(t, cliCompactor, "loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds")
 }
 
 func checkBloomBuildFinished(t *testing.T, cliPlanner *client.Client) {

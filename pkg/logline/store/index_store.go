@@ -440,19 +440,6 @@ func (s *Store) indexesForRange(start, end time.Time, onlyIngesterWindow bool) [
 	return result
 }
 
-// EligibleForDeletion returns Metas from the current snapshot that are
-// safe to delete based on the store's retention and compaction grace period.
-// Delegates to Snapshot.EligibleForDeletion with the store's config values.
-func (s *Store) EligibleForDeletion(now time.Time) []Meta {
-	snap := s.snapshot.Load()
-	if snap == nil {
-		return []Meta{}
-	}
-	retentionCutoff := now.Add(-s.cfg.RetentionDuration)
-	graceCutoff := now.Add(-s.cfg.CompactionGracePeriod)
-	return snap.EligibleForDeletion(retentionCutoff, graceCutoff)
-}
-
 // PollNotify returns a channel that receives the new snapshot after each
 // successful background poll. The channel is buffered(1) with non-blocking
 // send — if the consumer falls behind, intermediate snapshots are skipped.

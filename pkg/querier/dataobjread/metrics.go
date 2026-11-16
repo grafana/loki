@@ -93,7 +93,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 // holds those alone.
 //
 // It attributes each region to the component of its root region, not of its own name. The metastore
-// reads index objects through nested streams and pointers regions, and the root keeps their requests
+// reads index objects through nested postings and streams regions, and the root keeps their requests
 // under the metastore component.
 func (m *Metrics) Record(capture *xcap.Capture) {
 	if m == nil || capture == nil {

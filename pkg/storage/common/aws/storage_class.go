@@ -4,32 +4,45 @@ import (
 	"fmt"
 	"strings"
 
+	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/thanos-io/objstore/providers/s3"
+
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-const (
-
-	// S3 Storage Class options which define the data access, resiliency & cost requirements of objects
-	// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
-	StorageClassGlacier                  = "GLACIER"
-	StorageClassDeepArchive              = "DEEP_ARCHIVE"
-	StorageClassGlacierInstantRetrieval  = "GLACIER_IR"
-	StorageClassIntelligentTiering       = "INTELLIGENT_TIERING"
-	StorageClassOneZoneInfrequentAccess  = "ONEZONE_IA"
-	StorageClassOutposts                 = "OUTPOSTS"
-	StorageClassReducedRedundancy        = "REDUCED_REDUNDANCY"
-	StorageClassStandard                 = "STANDARD"
-	StorageClassStandardInfrequentAccess = "STANDARD_IA"
-)
-
 var (
-	SupportedStorageClasses = []string{StorageClassGlacier, StorageClassDeepArchive, StorageClassGlacierInstantRetrieval, StorageClassIntelligentTiering, StorageClassOneZoneInfrequentAccess, StorageClassOutposts, StorageClassReducedRedundancy, StorageClassStandard, StorageClassStandardInfrequentAccess}
+	SupportedSSETypes       = []string{s3.SSEKMS, s3.SSES3}
+	SupportedStorageClasses = []s3_types.ObjectStorageClass{
+		s3_types.ObjectStorageClassStandard,
+		s3_types.ObjectStorageClassStandardIa,
+		s3_types.ObjectStorageClassReducedRedundancy,
+	}
 )
+
+// StorageClassUsage returns the description of the supported storage classes for use in flag help texts.
+func StorageClassUsage() string {
+	return fmt.Sprintf(
+		"Supported values are: %s. %s is only intended for use with MinIO.",
+		strings.Join(ToStringSlice(SupportedStorageClasses), ", "),
+		s3_types.ObjectStorageClassReducedRedundancy,
+	)
+}
+
+func ToStringSlice[T ~string](in []T) []string {
+	var out []string
+	for _, o := range in {
+		out = append(out, string(o))
+	}
+	return out
+}
 
 func ValidateStorageClass(storageClass string) error {
-	if !util.StringsContain(SupportedStorageClasses, storageClass) {
-		return fmt.Errorf("unsupported S3 storage class: %s. Supported values: %s", storageClass, strings.Join(SupportedStorageClasses, ", "))
+	if storageClass == "" {
+		return nil
 	}
-
+	storageClasses := ToStringSlice(SupportedStorageClasses)
+	if !util.StringsContain(storageClasses, storageClass) {
+		return ErrUnsupportedStorageClass(storageClass)
+	}
 	return nil
 }

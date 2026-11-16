@@ -35,22 +35,17 @@ func getIndexesResult(err error) string {
 }
 
 type ObjectMetastoreMetrics struct {
-	getIndexesTotalDuration             *prometheus.HistogramVec
-	indexObjectsTotal                   prometheus.Histogram
-	streamFilterTotalDuration           prometheus.Histogram
-	streamFilterSections                prometheus.Histogram
-	streamFilterStreamsReadDuration     prometheus.Histogram
-	streamFilterPointersReadDuration    prometheus.Histogram
-	estimateSectionsTotalDuration       prometheus.Histogram
-	estimateSectionsPointerReadDuration prometheus.Histogram
-	estimateSectionsSections            prometheus.Histogram
-	resolvedSectionsTotalDuration       prometheus.Histogram
-	resolvedSectionsTotal               prometheus.Histogram
-	resolvedSectionsRatio               prometheus.Histogram
+	getIndexesTotalDuration            *prometheus.HistogramVec
+	indexObjectsTotal                  prometheus.Histogram
+	streamFilterSections               prometheus.Histogram
+	resolvedSectionsTotalDuration      prometheus.Histogram
+	resolvedSectionsFirstIndexDuration prometheus.Histogram
+	resolvedSectionsTotal              prometheus.Histogram
+	resolvedSectionsRatio              prometheus.Histogram
 
-	indexReadFlowTotal        *prometheus.CounterVec
-	indexReadRowsPerObject    *prometheus.HistogramVec
+	indexReadRowsPerObject    prometheus.Histogram
 	resolvedSectionsPerObject prometheus.Histogram
+	skippedIndexObjects       prometheus.Histogram
 	duplicateSectionsTotal    *prometheus.CounterVec
 }
 
@@ -72,14 +67,6 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_stream_filter_total_duration_seconds",
-			Help:                            "Total time taken to lookup streams for a Metastore query in seconds",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
 		streamFilterSections: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_sections_total",
 			Help:                            "Total number of sections resolved for a Metastore query when listing sections from stream matchers",
@@ -88,49 +75,17 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		streamFilterStreamsReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_stream_filter_streams_read_duration_seconds",
-			Help:                            "Total time taken to read one streams section during a Metastore query when listing sections from stream matchers in seconds",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		streamFilterPointersReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_stream_filter_pointers_read_duration_seconds",
-			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from stream matchers in seconds",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		estimateSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_estimate_sections_total_duration_seconds",
-			Help:                            "Total time taken to check section membership for a Metastore query when listing sections from AMQ filters in seconds",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		estimateSectionsPointerReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_estimate_sections_pointer_read_duration_seconds",
-			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from AMQ filters in seconds",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		estimateSectionsSections: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_estimate_sections_sections_total",
-			Help:                            "Total number of sections resolved for a Metastore query when listing sections from AMQ filters",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
 		resolvedSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_total_duration_seconds",
-			Help:                            "Total time taken to resolve sections for a Metastore query",
+			Help:                            "Total time taken to resolve sections for a Metastore query, from the start of the resolution to the end of its last index read. It counts only resolutions that succeed and read at least one index object",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		resolvedSectionsFirstIndexDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_first_index_duration_seconds",
+			Help:                            "Time from the start of a section resolution to the sections of its first index object",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -152,21 +107,25 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		indexReadFlowTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_metastore_index_read_flow_total",
-			Help: "Total number of index objects routed to each read flow",
-		}, []string{"flow"}),
-		indexReadRowsPerObject: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_read_rows_per_object",
-			Help:                            "Number of index rows read while resolving a single index object",
+			Help:                            "Number of index rows read while resolving a single index run. An index object of no run is a run of its own",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
-		}, []string{"flow"}),
+		}),
 		resolvedSectionsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_per_object",
-			Help:                            "Number of sections resolved from a single index object",
+			Help:                            "Number of sections resolved from a single index run. An index object of no run is a run of its own",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		skippedIndexObjects: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_skipped_index_objects",
+			Help:                            "Number of index objects that a Metastore query skips, because their posting key range holds no label that the query reads",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -200,19 +159,14 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.getIndexesTotalDuration,
 		p.indexObjectsTotal,
-		p.streamFilterTotalDuration,
 		p.streamFilterSections,
-		p.streamFilterStreamsReadDuration,
-		p.streamFilterPointersReadDuration,
-		p.estimateSectionsTotalDuration,
-		p.estimateSectionsPointerReadDuration,
-		p.estimateSectionsSections,
 		p.resolvedSectionsTotalDuration,
+		p.resolvedSectionsFirstIndexDuration,
 		p.resolvedSectionsTotal,
 		p.resolvedSectionsRatio,
-		p.indexReadFlowTotal,
 		p.indexReadRowsPerObject,
 		p.resolvedSectionsPerObject,
+		p.skippedIndexObjects,
 		p.duplicateSectionsTotal,
 	}
 

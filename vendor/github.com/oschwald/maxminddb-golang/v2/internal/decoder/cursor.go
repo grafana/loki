@@ -73,13 +73,23 @@ func (d *Decoder) Cursor() Cursor {
 	return Cursor{decoder: d.cursorDecoder, offset: d.offset}
 }
 
+// CursorAt returns an immutable cursor at offset in the decoder's input buffer.
+// It does not change the decoder's position. Cursor operations validate the
+// offset and encoded value when used. The cursor shares the decoder's cache.
+// Independent cursors can be read concurrently while the input remains valid
+// and unchanged.
+func (d *Decoder) CursorAt(offset uint) Cursor {
+	return Cursor{decoder: d.cursorDecoder, offset: offset}
+}
+
 // Advance moves the decoder to a successor cursor returned by a Cursor read.
-// It rejects cursors from another decoder or from an unrelated value.
+// It checks decoder identity and recorded origin. A successor from MapReader.End
+// relies on the caller having completed that reader's counted traversal.
 func (d *Decoder) Advance(next Cursor) error {
 	if next.decoder != d.cursorDecoder {
 		return errors.New("cannot advance with a cursor from another decoder")
 	}
-	if next.originToken != d.offset+1 {
+	if !next.hasOrigin(d.offset) {
 		return errors.New("cursor is not the successor of the current value")
 	}
 	d.reset(next.offset)
@@ -812,9 +822,10 @@ func (c Cursor) Unmarshal(value Unmarshaler) (Cursor, error) {
 	return c.successor(next), nil
 }
 
-// UnmarshalCursor invokes an existing cursor unmarshaler and validates that it
-// returned the proven successor of this cursor. A nil interface or an interface
-// containing a typed nil is rejected.
+// UnmarshalCursor invokes an existing cursor unmarshaler and checks the returned
+// cursor's decoder identity and recorded origin. A successor from MapReader.End
+// relies on the caller having completed that reader's counted traversal. A nil
+// interface or an interface containing a typed nil is rejected.
 func (c Cursor) UnmarshalCursor(value CursorUnmarshaler) (Cursor, error) {
 	if err := c.validate(); err != nil {
 		return Cursor{}, err
@@ -833,7 +844,7 @@ func (c Cursor) UnmarshalCursor(value CursorUnmarshaler) (Cursor, error) {
 	if next.decoder != c.decoder {
 		return Cursor{}, errors.New("cursor unmarshaler returned a cursor from another decoder")
 	}
-	if next.originToken != c.offset+1 {
+	if !next.hasOrigin(c.offset) {
 		return Cursor{}, errors.New("cursor unmarshaler did not return the successor of its input")
 	}
 	return next, nil
@@ -853,16 +864,17 @@ func isNilableDynamicKind(kind reflect.Kind) bool {
 // returns zero for an uninitialized cursor, whose Err method reports an error.
 func (m *MapCursor) Size() uint { return m.size }
 
-// Next consumes the proven successor of the previous map value and returns the
-// next key and value cursor. Pass a zero Cursor on the first call. The returned
-// key aliases the decoder input and must not be modified. Copy it before
-// retaining it.
+// Next checks the previous value successor's decoder identity and recorded
+// origin, then returns the next key and value cursor. Pass a zero Cursor on the
+// first call. Nested MapReader traversal remains the caller's responsibility.
+// The returned key aliases the decoder input and must not be modified. Copy it
+// before retaining it.
 func (m *MapCursor) Next(successor Cursor) ([]byte, Cursor, bool) {
 	if m.err != nil {
 		return nil, Cursor{}, false
 	}
 	if m.pending {
-		if successor.decoder != m.decoder || successor.originToken != m.offset+1 {
+		if successor.decoder != m.decoder || !successor.hasOrigin(m.offset) {
 			m.err = errors.New("cursor is not the successor of the current map value")
 			return nil, Cursor{}, false
 		}
@@ -897,7 +909,9 @@ func (m *MapCursor) Err() error {
 	return nil
 }
 
-// End returns the proven successor of the complete map.
+// End returns the map successor after Next has consumed the declared entries.
+// Its position relies on the value successors supplied to Next, including any
+// successors derived from caller-counted MapReader traversal.
 func (m *MapCursor) End() (Cursor, error) {
 	if err := m.Err(); err != nil {
 		return Cursor{}, err
@@ -973,14 +987,15 @@ func (s *SliceCursor) SizeForCapacity(capacity int) (size uint, ok bool) {
 	return 0, false
 }
 
-// Next consumes the proven successor of the previous slice value and returns
-// the next index and value cursor. Pass a zero Cursor on the first call.
+// Next checks the previous value successor's decoder identity and recorded
+// origin, then returns the next index and value cursor. Pass a zero Cursor on
+// the first call. Nested MapReader traversal remains the caller's responsibility.
 func (s *SliceCursor) Next(successor Cursor) (uint, Cursor, bool) {
 	if s.err != nil {
 		return 0, Cursor{}, false
 	}
 	if s.pending {
-		if successor.decoder != s.decoder || successor.originToken != s.valueOffset+1 {
+		if successor.decoder != s.decoder || !successor.hasOrigin(s.valueOffset) {
 			s.err = errors.New("cursor is not the successor of the current slice value")
 			return 0, Cursor{}, false
 		}
@@ -1011,7 +1026,9 @@ func (s *SliceCursor) Err() error {
 	return nil
 }
 
-// End returns the proven successor of the complete slice.
+// End returns the slice successor after Next has consumed the declared elements.
+// Its position relies on the value successors supplied to Next, including any
+// successors derived from caller-counted MapReader traversal.
 func (s *SliceCursor) End() (Cursor, error) {
 	if err := s.Err(); err != nil {
 		return Cursor{}, err
@@ -1078,6 +1095,10 @@ func (c Cursor) successor(offset uint) Cursor {
 		offset:      offset,
 		originToken: c.offset + 1,
 	}
+}
+
+func (c Cursor) hasOrigin(offset uint) bool {
+	return c.originToken != 0 && c.originToken == offset+1
 }
 
 func (c Cursor) validate() error {

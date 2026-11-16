@@ -56,7 +56,7 @@ func TestReadTask_Records(t *testing.T) {
 			map[int64]labels.Labels{id: parsed},
 			func(labels.Labels, uint64) bool { return true },
 		)
-		return ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streamIDs: []int64{id}, streams: streams}, id
+		return ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streamIDs: []int64{id}, streams: streams, needReturningLine: true}, id
 	}
 
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
@@ -97,6 +97,16 @@ func TestReadTask_Records(t *testing.T) {
 
 		copy(buffer, []byte("third"))
 		require.Equal(t, "first", string(first[0].line), "the record must not alias the read buffer")
+	})
+
+	t.Run("it forwards no line when the task does not need it", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+		task.needReturningLine = false
+
+		records, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Nil(t, records[0].line)
 	})
 
 	t.Run("a row from a stream the task did not plan fails rather than get silently skipped", func(t *testing.T) {

@@ -83,6 +83,8 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // An Object is a representation of a data object.
@@ -95,8 +97,9 @@ type Object struct {
 	tenants  []string
 }
 
-// MetadataCache caches the metadata region of data objects, keyed by an opaque key. Data objects are
-// immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
+// MetadataCache caches the metadata region of data objects, or the entire object if it is tiny, keyed
+// by an opaque key. A key must name an object that never changes, so a cached entry never goes stale:
+// do not cache a ToC. Implementations must be safe for concurrent use.
 type MetadataCache interface {
 	// GetOrLoadMetadataRegion returns the metadata region for key. On a miss it calls load, stores the
 	// result, and returns it; concurrent calls for the same key share a single load. A load error is
@@ -113,7 +116,8 @@ type MetadataCache interface {
 	GetOrLoadMetadataRegion(ctx context.Context, key string, load func(ctx context.Context) ([]byte, error)) ([]byte, error)
 
 	// MaxItemBytes returns the largest region the underlying backend will store. It must always be
-	// positive: an implementation with no real backend limit still reports a safe, conservative value.
+	// positive. An implementation with no limit returns math.MaxInt64, and the decoder then does not
+	// bound the region that it reads for an item.
 	MaxItemBytes() int64
 }
 
@@ -121,16 +125,27 @@ type MetadataCache interface {
 type OpenOption func(*openOptions)
 
 type openOptions struct {
-	metadataCache MetadataCache
-	logger        log.Logger
+	metadataCache       MetadataCache
+	metadataPrefetcher  metadata.Prefetcher
+	metadataPrefetchSet metadata.PrefetchSet
+	logger              log.Logger
+}
+
+// WithMetadataPrefetcher serves the object's metadata through prefetcher, which returns the
+// metadata that the prefetch set reads.
+//
+// When the prefetcher serves the object, the open does not read the head window of prefetchBytes. A
+// read of metadata outside the prefetched ranges goes to object storage.
+func WithMetadataPrefetcher(prefetcher metadata.Prefetcher, prefetchSet metadata.PrefetchSet) OpenOption {
+	return func(o *openOptions) { o.metadataPrefetcher, o.metadataPrefetchSet = prefetcher, prefetchSet }
 }
 
 // WithMetadataCache serves the object's metadata region through the cache instead of reading it from
-// object storage on every open.
+// object storage on every open. A tiny object is cached whole.
 //
-// On the cached path, the prefetched window becomes exactly the cached metadata region, not
-// prefetchBytes. A caller that also relies on prefetchBytes to warm overlapping section reads should
-// account for that before enabling the cache.
+// On the cached path, the prefetched window becomes exactly the cached region, not prefetchBytes. A
+// caller that also relies on prefetchBytes to warm overlapping section reads should account for that
+// before enabling the cache.
 func WithMetadataCache(cache MetadataCache) OpenOption {
 	// normalizeNilCache collapses a typed-nil MetadataCache to a true nil interface value.
 	normalizeNilCache := func(cache MetadataCache) MetadataCache {
@@ -150,9 +165,9 @@ func WithMetadataCache(cache MetadataCache) OpenOption {
 	return func(o *openOptions) { o.metadataCache = normalizeNilCache(cache) }
 }
 
-// WithLogger reports otherwise-invisible degradations of the metadata cache: a cached entry that does
-// not decode, or metadata that cannot be turned into a cacheable region at all. The default is to
-// report nothing.
+// WithLogger reports otherwise-invisible degradations of the metadata cache and the metadata
+// prefetcher: an entry that does not decode, or metadata that cannot be cached or prefetched. The
+// default is to report nothing.
 func WithLogger(logger log.Logger) OpenOption {
 	return func(o *openOptions) { o.logger = logger }
 }
@@ -175,11 +190,18 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 
 	rr := &bucketRangeReader{bucket: NewInstrumentedBucketReader(bucket), path: path}
 
-	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path, logger: o.logger}
+	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataPrefetcher: o.metadataPrefetcher, metadataPrefetchSet: o.metadataPrefetchSet, dataobjPath: path, logger: o.logger}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
+
+	opened := StatObjectsOpenedUncompacted
+	if IsCompactedObjectPath(path) {
+		opened = StatObjectsOpenedCompacted
+	}
+	xcap.RegionFromContext(ctx).Record(opened.Observe(1))
+
 	return obj, nil
 }
 
@@ -263,6 +285,17 @@ func (o *Object) Tenant() (string, error) {
 		return "", fmt.Errorf("%w: tenants %q", ErrNotSingleTenant, tenants)
 	}
 	return tenants[0], nil
+}
+
+// SizeLeveledCompaction returns where the size-leveled compaction strategy
+// placed the object. The bool is false for index objects, log objects from an
+// older compactor, and objects that another strategy placed.
+func (o *Object) SizeLeveledCompaction() (SizeLeveledCompaction, bool) {
+	sizeLeveled := o.metadata.GetCompaction().GetSizeLeveled()
+	if sizeLeveled == nil {
+		return SizeLeveledCompaction{}, false
+	}
+	return SizeLeveledCompaction{Level: sizeLeveled.Level}, true
 }
 
 // Reader returns a reader for the entire raw data object.

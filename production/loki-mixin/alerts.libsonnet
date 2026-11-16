@@ -57,7 +57,9 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (%(group_by_cluster)s) > 1
+              # Metric was renamed from loki_boltdb_shipper_compactor_running to loki_tsdb_shipper_compactor_running.
+              # Combine before summing so a compactor running on the old metric and one on the new metric are still counted together.
+              sum(loki_tsdb_shipper_compactor_running or loki_boltdb_shipper_compactor_running) by (%(group_by_cluster)s) > 1
             ||| % $._config,
             'for': '5m',
             labels: {
@@ -77,7 +79,13 @@
               # The "last successful run" metric is updated even if the compactor owns no tenants,
               # so this alert correctly doesn't fire if compactor has nothing to do.
               min (
-                time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+                time()
+                -
+                (
+                  (loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+                  or
+                  (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+                )
               )
               by (%s, namespace)
               > 60 * 60 * 3
@@ -100,6 +108,10 @@
               # The "last successful run" metric is updated even if the compactor owns no tenants,
               # so this alert correctly doesn't fire if compactor has nothing to do.
               max(
+                max_over_time(
+                  loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
+                )
+                or
                 max_over_time(
                   loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
                 )

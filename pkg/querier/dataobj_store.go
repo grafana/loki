@@ -12,6 +12,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -29,10 +30,16 @@ import (
 // DataObjStoreOption customizes the store returned by [NewDataObjStore].
 type DataObjStoreOption func(*DataObjStore)
 
-// WithDataObjMetadataCache serves each object's metadata region through cache, so opening an
-// object does not read that region from object storage. A nil cache disables it.
+// WithDataObjMetadataCache serves the metadata region of each log object through cache, or the entire
+// object if it is tiny. A nil cache disables it.
 func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjStoreOption {
 	return func(s *DataObjStore) { s.metadataCache = cache }
+}
+
+// WithDataObjMetadataPrefetcher serves the metadata of each log object through prefetcher, which
+// returns the metadata that the query reads. A nil prefetcher disables it.
+func WithDataObjMetadataPrefetcher(prefetcher metadata.Prefetcher) DataObjStoreOption {
+	return func(s *DataObjStore) { s.metadataPrefetcher = prefetcher }
 }
 
 // WithDataObjHeadPrefetchBytes sets how many bytes an object open reads up front.
@@ -76,6 +83,9 @@ type DataObjStore struct {
 	maxConcurrency int
 	rangeConfig    rangeio.Config
 	metadataCache  dataobj.MetadataCache
+
+	// metadataPrefetcher is nil when the store has none.
+	metadataPrefetcher metadata.Prefetcher
 }
 
 // NewDataObjStore returns a [Store] that serves stream-first metric queries from the data objects
@@ -143,28 +153,31 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if extractor == nil {
 		return iter.NoopSampleIterator, nil
 	}
-	extractor, err = deletion.SetupExtractor(req, extractor)
-	if err != nil {
-		return nil, err
-	}
-
 	selector, err := expr.Selector()
 	if err != nil {
 		return nil, err
-	}
-	matchers := dataObjStreamMatchers(selector.Matchers())
-	if len(matchers) == 0 {
-		// The metastore resolves nothing without a stream matcher, so an empty result would be
-		// a silently wrong answer rather than an empty one. LogQL cannot produce such a
-		// selector today, which is why this is an error and not a fallback.
-		return nil, fmt.Errorf("data object metric queries need at least one stream matcher, query %q has none", req.Selector)
 	}
 
 	deletes, err := dataObjDeleteSelectors(req)
 	if err != nil {
 		return nil, err
 	}
+
 	projection, err := dataobjread.NewProjectionPlan(expr, deletes)
+	if err != nil {
+		return nil, err
+	}
+
+	// The underlying reader applies the pushable line filters, so here we just have to apply
+	// the remaining pipeline stages (if any).
+	if unpushed := projection.UnpushedExpr(); unpushed != nil {
+		extractor, err = unpushed.Extractor()
+		if err != nil {
+			return nil, fmt.Errorf("building the extractor of %q: %w", unpushed, err)
+		}
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
@@ -173,32 +186,35 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if err != nil {
 		return nil, err
 	}
-	query := dataobjread.QueryParams{
-		Start:      req.Start,
-		End:        req.End,
-		Matchers:   matchers,
-		Shard:      dataobjread.NewQueryShard(assignment),
-		Projection: projection,
-	}
 
 	var filterer chunk.Filterer
 	if s.filterer != nil {
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query. When the reader closes, it reads the query stats from the
-	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
-	// per-component object-store metrics. The planner's object opens and streams reads record
-	// into a region of their own, so only the metrics see them.
+	query := dataobjread.QueryParams{
+		Start:      req.Start,
+		End:        req.End,
+		Matchers:   dataObjStreamMatchers(selector.Matchers(), filterer),
+		Shard:      dataobjread.NewQueryShard(assignment),
+		Projection: projection,
+	}
+
+	// One capture spans the query. When the reader closes, it adds the capture's figures to the query
+	// stats and to the per-component object-store metrics. The planner's object opens and streams
+	// reads record into a region of their own. The object counts and downloaded bytes in the query
+	// stats include that region, and so do the metrics.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
-	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, s.metadataCache)
+	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes,
+		dataobjread.WithMetadataCache(s.metadataCache),
+		dataobjread.WithMetadataPrefetcher(s.metadataPrefetcher, projection.MetadataPrefetchSet()),
+	)
 	tasks := dataobjread.NewPlanner(s.metastore, objects, filterer).Plan(ctx, query)
 
 	// The dataset layer records its statistics into the region the context carries, and nothing
 	// under logs.RowReader starts one, so without this the query's byte and row counts are lost.
-	// The region name matches what the v2 engine reads, so both report the same statistics.
 	readCtx, _ := xcap.StartRegion(ctx, logs.RegionRead)
 	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
 
@@ -208,13 +224,30 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 
 // dataObjStreamMatchers drops the synthetic matchers the metastore does not understand, leaving
 // the tenant's stream-label selector.
-func dataObjStreamMatchers(matchers []*labels.Matcher) []*labels.Matcher {
+//
+// It also adds the pushable label matchers of the filterer, so the metastore leaves out streams the
+// filterer would drop. The planner still calls the filterer on each stream the metastore lists.
+func dataObjStreamMatchers(matchers []*labels.Matcher, filterer chunk.Filterer) []*labels.Matcher {
 	out := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		if matcher.Name == model.MetricNameLabel || matcher.Name == astmapper.ShardLabel {
 			continue
 		}
 		out = append(out, matcher)
+	}
+
+	// It adds nothing to an empty selector. The metastore rejects a request without a matcher of its
+	// own, and the added matchers must not hide that.
+	if filterer != nil && len(out) > 0 {
+		for _, matcher := range filterer.PushableLabelMatchers() {
+			// Skip a matcher that matches the empty string. It prunes little, because it admits the
+			// streams that lack the label, and the metastore needs an extra scan to evaluate it. The
+			// metastore also reads =~".*" as a matcher that needs the label, so it drops those streams.
+			if matcher.Matches("") {
+				continue
+			}
+			out = append(out, matcher)
+		}
 	}
 	return out
 }

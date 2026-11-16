@@ -121,29 +121,22 @@ func Dbf(raw []byte, limit uint32) bool {
 	return slices.Contains(dbfTypes, raw[0])
 }
 
-// ElfObj matches an object file.
-func ElfObj(raw []byte, limit uint32) bool {
-	return len(raw) > 17 && ((raw[16] == 0x01 && raw[17] == 0x00) ||
-		(raw[16] == 0x00 && raw[17] == 0x01))
+func elfType(raw []byte, t byte) bool {
+	return len(raw) > 17 &&
+		((raw[16] == t && raw[17] == 0x00) || (raw[16] == 0x00 && raw[17] == t))
 }
+
+// ElfObj matches an object file.
+func ElfObj(raw []byte, limit uint32) bool { return elfType(raw, 0x01) }
 
 // ElfExe matches an executable file.
-func ElfExe(raw []byte, limit uint32) bool {
-	return len(raw) > 17 && ((raw[16] == 0x02 && raw[17] == 0x00) ||
-		(raw[16] == 0x00 && raw[17] == 0x02))
-}
+func ElfExe(raw []byte, limit uint32) bool { return elfType(raw, 0x02) }
 
 // ElfLib matches a shared library file.
-func ElfLib(raw []byte, limit uint32) bool {
-	return len(raw) > 17 && ((raw[16] == 0x03 && raw[17] == 0x00) ||
-		(raw[16] == 0x00 && raw[17] == 0x03))
-}
+func ElfLib(raw []byte, limit uint32) bool { return elfType(raw, 0x03) }
 
 // ElfDump matches a core dump file.
-func ElfDump(raw []byte, limit uint32) bool {
-	return len(raw) > 17 && ((raw[16] == 0x04 && raw[17] == 0x00) ||
-		(raw[16] == 0x00 && raw[17] == 0x04))
-}
+func ElfDump(raw []byte, limit uint32) bool { return elfType(raw, 0x04) }
 
 // Dcm matches a DICOM medical format file.
 func Dcm(raw []byte, limit uint32) bool {

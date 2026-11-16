@@ -60,6 +60,7 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 		sectionIdx:         0,
 		streamLabels:       testLabels,
 		streamShardBuckets: makeTestShardBuckets(testLabels),
+		shardLayout:        streams.DefaultShardLayout(),
 		builder:            builder,
 	}
 }
@@ -136,12 +137,13 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 		builder: builder,
 	}
 	calc := &statsCalculation{schema: []string{"label:service_name", "label:cluster"}}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, []logs.Record{
 		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("x")},
 	}))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -182,6 +184,7 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 		builder: builder,
 	}
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 	records := []logs.Record{
 		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("a")},
 		{StreamID: 2, Timestamp: time.Unix(150, 0).UTC(), Line: []byte("c")},
@@ -189,7 +192,7 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, records))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 2)
@@ -207,6 +210,7 @@ func TestStatsCalculation_MissingShardBucket(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	ctx.streamShardBuckets = map[int64]uint32{}
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	err := calc.ProcessBatch(context.Background(), ctx, []logs.Record{
@@ -219,6 +223,7 @@ func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: []string{"metadata:trace_id"}}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	err := calc.Prepare(context.Background(), ctx, nil, logs.Stats{})
 	require.Error(t, err)
@@ -229,6 +234,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -249,7 +255,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	// We expect 3 aggregates: "", "svcA", and "svcB".
@@ -300,6 +306,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -308,7 +315,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 		{StreamID: 1, Timestamp: ts, Line: []byte("msg")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -331,6 +338,7 @@ func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -348,7 +356,7 @@ func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 		},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -359,6 +367,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -366,7 +375,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 		{StreamID: 3, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("no svc")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -377,6 +386,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -392,7 +402,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 		{StreamID: 1, Timestamp: time.Unix(30, 0).UTC(), Line: []byte("third batch")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch2))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	// svcA and svcB
@@ -415,10 +425,11 @@ func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{schema: fakeSchema}
+	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), calc.schema)))
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	// No data → builder is empty, Flush returns ErrBuilderEmpty.
 	_, _, err := builder.Flush()

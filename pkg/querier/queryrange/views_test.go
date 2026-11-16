@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
@@ -311,12 +310,13 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	require.NoError(b, err)
 
 	responses := make([]*LokiSeriesResponse, 100)
+	seriesData := generateSeries()
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",
 			Version:    1,
 			Statistics: stats.Result{},
-			Data:       generateSeries(),
+			Data:       seriesData,
 		}
 	}
 

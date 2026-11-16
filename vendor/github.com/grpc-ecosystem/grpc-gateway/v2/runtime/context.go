@@ -148,6 +148,17 @@ func annotateContext(ctx context.Context, mux *ServeMux, req *http.Request, rpcM
 		}
 	}
 	var pairs []string
+	// For backwards-compatibility, pass through 'authorization' header with no prefix.
+	// It is added before the header loop so that it is always the first
+	// "authorization" value: the loop iterates a map, so a header the matcher
+	// forwards under the same key (Grpc-Metadata-Authorization with the default
+	// matcher) would otherwise land ahead of it in random order, and a backend
+	// reading the first value would get the client-forwarded one.
+	for _, val := range req.Header.Values("Authorization") {
+		if isValidGRPCMetadataTextValue(val) {
+			pairs = append(pairs, "authorization", val)
+		}
+	}
 	for key, vals := range req.Header {
 		key = textproto.CanonicalMIMEHeaderKey(key)
 		switch key {
@@ -157,11 +168,17 @@ func annotateContext(ctx context.Context, mux *ServeMux, req *http.Request, rpcM
 		}
 
 		for _, val := range vals {
-			// For backwards-compatibility, pass through 'authorization' header with no prefix.
-			if key == "Authorization" && isValidGRPCMetadataTextValue(val) {
-				pairs = append(pairs, "authorization", val)
-			}
 			if h, ok := mux.incomingHeaderMatcher(key); ok {
+				// The gateway derives x-forwarded-host and x-forwarded-for below from
+				// the trusted request (Host / X-Forwarded-* / RemoteAddr), and backends
+				// rely on those metadata keys for client host/IP decisions. Refuse a
+				// forwarded header that the matcher strips into one of them (e.g.
+				// Grpc-Metadata-X-Forwarded-For) so a client cannot slip a spoofed value
+				// in ahead of the gateway-set one.
+				if strings.EqualFold(h, xForwardedFor) || strings.EqualFold(h, xForwardedHost) {
+					grpclog.Errorf("HTTP header %q maps to gateway-reserved metadata key %q; skipping", key, h)
+					continue
+				}
 				if !isValidGRPCMetadataKey(h) {
 					grpclog.Errorf("HTTP header name %q is not valid as gRPC metadata key; skipping", h)
 					continue
@@ -189,25 +206,40 @@ func annotateContext(ctx context.Context, mux *ServeMux, req *http.Request, rpcM
 		pairs = append(pairs, strings.ToLower(xForwardedHost), req.Host)
 	}
 
-	xff := req.Header.Values(xForwardedFor)
+	// Validate each X-Forwarded-For value on its own, so that an invalid
+	// client-supplied value is dropped without also dropping the remote
+	// address the gateway appends.
+	var xff []string
+	for _, value := range req.Header.Values(xForwardedFor) {
+		if isValidGRPCMetadataTextValue(value) {
+			xff = append(xff, value)
+		}
+	}
 	if addr := req.RemoteAddr; addr != "" {
-		if remoteIP, _, err := net.SplitHostPort(addr); err == nil {
+		if remoteIP, _, err := net.SplitHostPort(addr); err == nil && isValidGRPCMetadataTextValue(remoteIP) {
 			xff = append(xff, remoteIP)
 		}
 	}
 	if len(xff) > 0 {
-		if value := strings.Join(xff, ", "); isValidGRPCMetadataTextValue(value) {
-			pairs = append(pairs, strings.ToLower(xForwardedFor), value)
-		}
+		pairs = append(pairs, strings.ToLower(xForwardedFor), strings.Join(xff, ", "))
 	}
 
 	if timeout != 0 {
 		ctx, _ = context.WithTimeout(ctx, timeout)
 	}
 	md := metadata.Pairs(pairs...)
+	var annotated metadata.MD
 	for _, mda := range mux.metadataAnnotators {
-		md = metadata.Join(md, mda(ctx, req))
+		annotated = metadata.Join(annotated, mda(ctx, req))
 	}
+	// Annotators are the gateway's own code, so their values replace whatever
+	// the request headers put under the same key. Joining them after the
+	// header values would let a client send Grpc-Metadata-<key> and have its
+	// value read first by a backend that trusts the annotator.
+	for k := range annotated {
+		delete(md, strings.ToLower(k))
+	}
+	md = metadata.Join(md, annotated)
 	if len(md) == 0 {
 		return ctx, nil, nil
 	}

@@ -125,8 +125,8 @@ func (d *Decbuf) SkipUvarintBytes() {
 // ResetAt sets the pointer of the underlying FileReader to the absolute
 // offset.
 // If E is non-nil, this method has no effect.
-// ResetAt-ing beyond the end of the underlying FileReader will set E to an error and
-// not advance the pointer of the FileReader.
+// ResetAt-ing to a negative offset or beyond the end of the underlying
+// FileReader will set E to an error and not move the pointer of the FileReader.
 func (d *Decbuf) ResetAt(off int) {
 	if d.E != nil {
 		return

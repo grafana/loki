@@ -61,7 +61,10 @@ local runner = import 'runner.libsonnet',
         platforms: '${{ matrix.arch }}',
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
+        'build-args': |||
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GO_VERSION=${{ env.GO_VERSION }}
+        |||,
       }),
 
       step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),
@@ -79,7 +82,7 @@ local runner = import 'runner.libsonnet',
           --package=images \
           --version=${{ github.sha }}
       |||),
-      ]),
+    ]),
 
   weeklyImage: function(
     name,

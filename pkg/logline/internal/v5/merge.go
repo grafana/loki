@@ -5,22 +5,24 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
-// mergeWriter is the common interface for writing merged index output.
-// Both IndexWriter and StreamingIndexWriter satisfy this.
+// mergeWriter is the interface for writing merged index output.
+// StreamingIndexWriter satisfies it.
 type mergeWriter interface {
-	AddDocuments(docs []format.DocumentMetadata)
 	WriteTermBitmap(term [8]byte, bm format.Bitmap) error
 	WriteTermDocIDs(term [8]byte, docIDs []uint32, cardinality int) error
 	Close() error
 }
 
 // StreamingMergeIndexReaders merges indexes accessed via io.ReaderAt into a
-// single output stream using constant memory proportional to document and
-// term count rather than bitmap size. At least 2 readers are required.
+// single output stream using memory proportional to term count rather than
+// bitmap size. At least 2 readers are required, and they must share one
+// document layout: their document IDs are cells of the same day, so merged
+// postings are the union of the inputs' with no remapping.
 // The context is checked periodically during the k-way merge so that
 // long-running merges can be cancelled (e.g. on worker shutdown).
 // The caller owns out and is responsible for closing and flushing it.
@@ -30,8 +32,12 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 		return format.HeaderInfo{}, fmt.Errorf("streaming merge requires at least 2 readers, got %d", len(readers))
 	}
 	var sw *StreamingIndexWriter
-	err := doMergeFromReaders(ctx, readers, sizes, func(docCount uint32) (mergeWriter, error) {
-		w, err := newStreamingIndexWriterTo(out, cfg, docCount)
+	err := doMergeFromReaders(ctx, readers, sizes, func(layout documentLayout) (mergeWriter, error) {
+		wcfg, err := cfg.withLayout(layout)
+		if err != nil {
+			return nil, err
+		}
+		w, err := newStreamingIndexWriterTo(out, wcfg)
 		if err != nil {
 			return nil, err
 		}
@@ -44,9 +50,10 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 	return sw.Info(), nil
 }
 
-// doMergeFromReaders opens inputs from readers, deduplicates documents, creates
-// a writer via newWriter, runs the k-way merge, and closes the writer.
-func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, newWriter func(docCount uint32) (mergeWriter, error)) error {
+// doMergeFromReaders opens inputs from readers, checks they share one document
+// layout, creates a writer via newWriter, runs the k-way merge, and closes the
+// writer.
+func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, newWriter func(layout documentLayout) (mergeWriter, error)) error {
 	idxReaders, iterators, err := openMergeInputsFromReaders(readers, sizes)
 	if err != nil {
 		return err
@@ -57,14 +64,17 @@ func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int6
 		}
 	}()
 
-	allDocs, remaps := deduplicateDocuments(idxReaders)
-
-	w, err := newWriter(uint32(len(allDocs)))
+	layout, err := commonDocumentLayout(idxReaders)
 	if err != nil {
 		return err
 	}
 
-	if err := mergeIndexes(ctx, w, allDocs, iterators, remaps); err != nil {
+	w, err := newWriter(layout)
+	if err != nil {
+		return err
+	}
+
+	if err := mergeIndexes(ctx, w, iterators); err != nil {
 		return err
 	}
 	return w.Close()
@@ -101,58 +111,31 @@ func openMergeInputsFromReaders(readers []io.ReaderAt, sizes []int64) ([]*IndexR
 	return idxReaders, iterators, nil
 }
 
-// deduplicateDocuments builds a unified document table from multiple readers.
-// Documents with identical time bounds are collapsed into a single ID.
-// Returns the deduplicated document list and per-source doc ID remap arrays.
-func deduplicateDocuments(readers []*IndexReader) ([]format.DocumentMetadata, [][]uint32) {
-	uniqueDocs := make(map[docTimeKey]uint32)
-	var nextID uint32
-
-	remaps := make([][]uint32, len(readers))
-	for i, r := range readers {
-		docs := r.Documents()
-
-		var maxID uint32
-		for _, doc := range docs {
-			if doc.ID > maxID {
-				maxID = doc.ID
-			}
-		}
-		remaps[i] = make([]uint32, maxID+1)
-
-		for _, doc := range docs {
-			key := docTimeKey{doc.MinTimeUnix, doc.MaxTimeUnix}
-			newID, exists := uniqueDocs[key]
-			if !exists {
-				newID = nextID
-				nextID++
-				uniqueDocs[key] = newID
-			}
-			remaps[i][doc.ID] = newID
+// commonDocumentLayout returns the document layout shared by every input.
+// Inputs with different intervals, shard bits, or days number their documents
+// differently, so they cannot be merged.
+func commonDocumentLayout(readers []*IndexReader) (documentLayout, error) {
+	want := readers[0].header.documentLayout()
+	for i, r := range readers[1:] {
+		if got := r.header.documentLayout(); got != want {
+			return documentLayout{}, fmt.Errorf(
+				"merge: input %d has document interval %v, %d document shard bits, and day start %s; input 0 has %v, %d, and %s",
+				i+1, got.interval, got.shardBits, got.dayStart().Format(time.RFC3339),
+				want.interval, want.shardBits, want.dayStart().Format(time.RFC3339),
+			)
 		}
 	}
-
-	allDocs := make([]format.DocumentMetadata, nextID)
-	for key, id := range uniqueDocs {
-		allDocs[id] = format.DocumentMetadata{
-			ID:          id,
-			MinTimeUnix: key.minTimeUnix,
-			MaxTimeUnix: key.maxTimeUnix,
-		}
-	}
-	return allDocs, remaps
+	return want, nil
 }
 
-// mergeIndexes performs the k-way merge of term iterators into a writer.
-// Adds documents, then merges terms in sorted order with doc ID remapping.
-// The context is checked every 1000 terms to allow cancellation of
-// long-running merges without measurable overhead on the hot path.
+// mergeIndexes performs the k-way merge of term iterators into a writer,
+// merging terms in sorted order. The context is checked every 1000 terms to
+// allow cancellation of long-running merges without measurable overhead on
+// the hot path.
 //
-// Per-term postings avoid a roaring round-trip: remap → sort/unique →
-// two-pointer merge-union → WriteTermDocIDs.
-func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentMetadata, iterators []*IndexTermIterator, remaps [][]uint32) error {
-	w.AddDocuments(allDocs)
-
+// Per-term postings avoid a roaring round-trip: each input's doc IDs are
+// sorted and unique, so a two-pointer merge-union feeds WriteTermDocIDs.
+func mergeIndexes(ctx context.Context, w mergeWriter, iterators []*IndexTermIterator) error {
 	active := make([]int, 0, len(iterators))
 	for i, it := range iterators {
 		if it.Next() {
@@ -163,8 +146,7 @@ func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentM
 	shouldAdvance := make([]bool, len(iterators))
 	nextActive := make([]int, 0, len(active))
 
-	// Reusable scratch for remap/sort and successive unions.
-	var remapBuf []uint32
+	// Reusable scratch for successive unions.
 	var unionA, unionB []uint32
 
 	var termCount int
@@ -183,8 +165,8 @@ func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentM
 			}
 		}
 
-		// Union remapped doc IDs for this term. MatchesAll is absorbing: once
-		// any source has a sentinel, the output is a sentinel.
+		// Union the doc IDs for this term. MatchesAll is absorbing: once any
+		// source has a sentinel, the output is a sentinel.
 		matchesAll := false
 		unionA = unionA[:0]
 		first := true
@@ -201,13 +183,12 @@ func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentM
 				matchesAll = true
 				continue
 			}
-			remapBuf = remapSortUnique(remapBuf[:0], ids, remaps[idx])
 			if first {
-				unionA = append(unionA[:0], remapBuf...)
+				unionA = append(unionA[:0], ids...)
 				first = false
 				continue
 			}
-			unionB = mergeUnionSorted(unionB[:0], unionA, remapBuf)
+			unionB = mergeUnionSorted(unionB[:0], unionA, ids)
 			unionA, unionB = unionB, unionA
 		}
 
@@ -241,32 +222,6 @@ func mergeIndexes(ctx context.Context, w mergeWriter, allDocs []format.DocumentM
 		}
 	}
 	return nil
-}
-
-// remapSortUnique remaps src doc IDs through remap, then sorts and uniques
-// into dst (reusing dst capacity). Remapping is not order-preserving.
-func remapSortUnique(dst, src []uint32, remap []uint32) []uint32 {
-	dst = slices.Grow(dst[:0], len(src))
-	for _, id := range src {
-		dst = append(dst, remap[id])
-	}
-	slices.Sort(dst)
-	return dedupeSorted(dst)
-}
-
-// dedupeSorted removes adjacent duplicates from a sorted slice in place.
-func dedupeSorted(ids []uint32) []uint32 {
-	if len(ids) < 2 {
-		return ids
-	}
-	w := 1
-	for i := 1; i < len(ids); i++ {
-		if ids[i] != ids[w-1] {
-			ids[w] = ids[i]
-			w++
-		}
-	}
-	return ids[:w]
 }
 
 // mergeUnionSorted appends the sorted union of a and b into dst (reusing dst

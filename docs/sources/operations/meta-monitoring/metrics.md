@@ -104,24 +104,26 @@ Abnormal behavior:
 Compaction issues can silently degrade read performance and retention behavior over time.
 
 {{< admonition type="note" >}}
-The compaction and retention metrics use a `loki_boltdb_shipper_` prefix for historical reasons. The compactor emits these metrics regardless of which index type you use, including TSDB.
+Prior to Loki 4.0 the compaction and retention metrics used a `loki_boltdb_shipper_` prefix for historical reasons.
+The compactor emitted these metrics regardless of which index type you use, including TSDB.
+After removing the legacy BoltDB Shipper index, the prefix has been renamed to `loki_tsdb_shipper_`.
 {{< /admonition >}}
 
 Key metrics:
 
-- `loki_boltdb_shipper_compactor_running`
-- `loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_compact_tables_operation_total`
-- `loki_boltdb_shipper_compact_tables_operation_duration_seconds`
+- `loki_tsdb_shipper_compactor_running`
+- `loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
+- `loki_tsdb_shipper_compact_tables_operation_total`
+- `loki_tsdb_shipper_compact_tables_operation_duration_seconds`
 
 Example queries:
 
 ```promql
-sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace)
+sum(loki_tsdb_shipper_compactor_running) by (cluster, namespace)
 ```
 
 ```promql
-time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
+time() - (loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
 ```
 
 Abnormal behavior:
@@ -249,12 +251,14 @@ Abnormal behavior:
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
 
-Connection metrics just for S3:
+Connection-level metrics (all object storage backends):
 
 - `net_conntrack_dialer_conn_attempted_total`
 - `net_conntrack_dialer_conn_established_total`
 - `net_conntrack_dialer_conn_failed_total`
 - `net_conntrack_dialer_conn_closed_total`
+
+These metrics come from the HTTP transport Loki uses to talk to object storage, and apply to every supported backend (S3, GCS, Azure Blob Storage, and others), not only S3. Filter by the label `dialer_name="objstore"` to isolate object store connections from any other connection-tracking metrics in the same process.
 
 Abnormal behavior:
 
@@ -319,19 +323,37 @@ Retention and sweeper lag can cause storage growth and delayed data lifecycle ac
 Key metrics:
 
 - `loki_compactor_apply_retention_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time`
-- `loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
+- `loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time`
+- `loki_tsdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
 
 Example query:
 
 ```promql
-time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
+time() - (loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
 ```
 
 Abnormal behavior:
 
 - Increasing sweeper lag.
 - Falling delete throughput or sustained delete failures.
+
+## Version tracking
+
+During a rollout, it helps to know which Loki version each component is running, and to catch a rollout that gets stuck partway through.
+
+Key metric:
+
+- `loki_build_info`: a gauge that is always `1`, with `version`, `revision`, `branch`, and `goversion` labels identifying the build.
+
+Example query:
+
+```promql
+count by (version) (loki_build_info{cluster="$cluster", namespace="$namespace"})
+```
+
+Abnormal behavior:
+
+- More than one `version` value present outside of an active rollout window usually means a rollout is stuck or a component failed to update.
 
 ## Next steps
 

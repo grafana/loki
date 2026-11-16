@@ -337,14 +337,22 @@ func (c *Container) IsAccessDeniedErr(err error) bool {
 	return errors.Is(err, swift.Forbidden)
 }
 
+func (c *Container) IsConditionNotMetErr(_ error) bool { return false }
+
 // Upload writes the contents of the reader as an object into the container.
-func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err error) {
+func (c *Container) Upload(_ context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) (err error) {
+	if err := objstore.ValidateUploadOptions(c.SupportedObjectUploadOptions(), opts...); err != nil {
+		return err
+	}
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "could not guess file size, using large object to avoid issues if the file is larger than limit", "name", name, "err", err)
 		// Anything higher or equal to chunk size so the SLO is used.
 		size = c.chunkSize
 	}
+
+	uploadOpts := objstore.ApplyObjectUploadOptions(opts...)
+
 	var file io.WriteCloser
 	if size >= c.chunkSize {
 		opts := swift.LargeObjectOpts{
@@ -353,6 +361,7 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 			ChunkSize:        c.chunkSize,
 			SegmentContainer: c.segmentsContainer,
 			CheckHash:        true,
+			ContentType:      uploadOpts.ContentType,
 		}
 		if c.useDynamicLargeObjects {
 			if file, err = c.connection.DynamicLargeObjectCreateFile(&opts); err != nil {
@@ -364,7 +373,7 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 			}
 		}
 	} else {
-		if file, err = c.connection.ObjectCreate(c.name, name, true, "", "", swift.Headers{}); err != nil {
+		if file, err = c.connection.ObjectCreate(c.name, name, true, "", uploadOpts.ContentType, swift.Headers{}); err != nil {
 			return errors.Wrap(err, "create file")
 		}
 	}
@@ -377,6 +386,10 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 
 func (b *Container) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	panic("unimplemented: Swift.GetAndReplace")
+}
+
+func (c *Container) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return []objstore.ObjectUploadOptionType{objstore.ContentType}
 }
 
 // Delete removes the object with the given name.

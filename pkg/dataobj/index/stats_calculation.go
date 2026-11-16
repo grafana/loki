@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"hash/fnv"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
@@ -106,7 +106,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 	return nil
 }
 
-func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
+func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext, builder *indexobj.Builder) error {
 	if len(c.aggregates) == 0 {
 		return nil
 	}
@@ -128,13 +128,11 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		return 0
 	})
 
-	sortSchema := strings.Join(c.schema, ",")
 	for _, agg := range sorted {
-		err := calcCtx.builder.AppendStat(
+		err := builder.AppendStat(
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
 			agg.shardBucket,
-			sortSchema,
 			agg.labels,
 			agg.minTimestamp,
 			agg.maxTimestamp,
