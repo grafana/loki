@@ -994,7 +994,6 @@ func TestCheckStaleCheckpoint(t *testing.T) {
 			}
 			require.ErrorIs(t, err, errStaleCheckpoint)
 
-			// The check must not remove anything.
 			for _, c := range tc.checkpoints {
 				require.DirExists(t, filepath.Join(dir, c))
 			}
@@ -1002,7 +1001,6 @@ func TestCheckStaleCheckpoint(t *testing.T) {
 	}
 }
 
-// Failures to run the check must not look like a stale checkpoint, or they'd be logged as one.
 func TestCheckStaleCheckpointNonSequentialSegments(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.000001"), 0o750))

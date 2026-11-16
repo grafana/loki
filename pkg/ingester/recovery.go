@@ -33,21 +33,13 @@ func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
-// errStaleCheckpoint is returned when the latest checkpoint in a WAL directory doesn't line up
-// with its segments.
-//
-// Writing checkpoint N creates segment N+1 before truncating the segments below it, so a healthy
-// directory always has firstSegment <= N+1 <= lastSegment. Anything else means segment files were
-// deleted or restored without the checkpoint directory, for example by a non-recursive
-// `rm <wal.dir>/*`. Recovery keeps replaying such a checkpoint until the segment counter passes it.
+// errStaleCheckpoint is returned when the latest checkpoint doesn't match the WAL segments, for
+// example because the segment files were deleted but the checkpoint directory was left behind.
 var errStaleCheckpoint = errors.New("stale WAL checkpoint")
 
-// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint in
-// dir doesn't line up with the WAL segments, or a different error if the check can't run. It
-// doesn't modify dir.
-//
-// Call it before opening the WAL: opening it creates segment lastSegment+1, which can make a
-// stale checkpoint look healthy.
+// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint
+// doesn't match the WAL segments. It must run before the WAL is opened, because opening the WAL
+// creates a new segment that can hide a stale checkpoint.
 func checkStaleCheckpoint(dir string) error {
 	_, checkpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
@@ -69,8 +61,7 @@ func checkStaleCheckpoint(dir string) error {
 	return nil
 }
 
-// warnOnStaleCheckpoint logs, and otherwise ignores, anything checkStaleCheckpoint finds. A failure
-// to run the check is logged separately so it isn't mistaken for a stale checkpoint.
+// warnOnStaleCheckpoint logs anything checkStaleCheckpoint finds and otherwise ignores it.
 func warnOnStaleCheckpoint(dir string, logger log.Logger) {
 	err := checkStaleCheckpoint(dir)
 	if err == nil {
