@@ -16,7 +16,7 @@ type deadlineRecorder struct {
 	hasDeadline bool
 }
 
-func (d *deadlineRecorder) ReplaceIndexPointers(ctx context.Context, _ time.Time, _ string, _ []string, _ []metastore.TableOfContentsRun) (bool, error) {
+func (d *deadlineRecorder) ReplaceIndexPointers(ctx context.Context, _ time.Time, _ string, _ []string, _ []metastore.IndexRunEntries) (bool, error) {
 	d.deadline, d.hasDeadline = ctx.Deadline()
 	return true, nil
 }
@@ -36,7 +36,7 @@ func TestPublisherReplace(t *testing.T) {
 		require.True(t, swapped)
 		require.Equal(t, []replaceCall{{
 			window: window, tenant: "acme", oldPaths: oldPaths,
-			newRuns:    []metastore.TableOfContentsRun{{twoEntries[0]}, {twoEntries[1]}},
+			newRuns:    []metastore.IndexRunEntries{{twoEntries[0]}, {twoEntries[1]}},
 			newEntries: twoEntries,
 		}}, writer.snapshot())
 	})

@@ -152,7 +152,7 @@ func TestWriteEntry(t *testing.T) {
 		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
-	t.Run("keeps the run ID, run size, posting keys and shard layout of every entry when it adds an entry", func(t *testing.T) {
+	t.Run("keeps the run ID, run length, posting keys and shard layout of every entry when it adds an entry", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
 
@@ -162,7 +162,7 @@ func TestWriteEntry(t *testing.T) {
 		)
 		require.NoError(t, err)
 		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
-		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, RunSize: 2, PostingKeys: keys, ShardBuckets: buckets}
+		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, RunLength: 2, PostingKeys: keys, ShardBuckets: buckets}
 		uploadToCPointers(t, bucket, tocPath, "tenant-a", existing)
 
 		writer := newTableOfContentsWriter(t, bucket)
@@ -515,11 +515,11 @@ func TestReplaceIndexPointers(t *testing.T) {
 		}
 		inRun := func(path string, runID indexpointers.RunID, size int) indexpointers.IndexPointer {
 			pointer := runPointer(path, runID)
-			pointer.RunSize = size
+			pointer.RunLength = size
 			return pointer
 		}
 
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old-a", "idx/old-b"}, []TableOfContentsRun{
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old-a", "idx/old-b"}, []IndexRunEntries{
 			{entry("idx/first-a"), entry("idx/first-b")},
 			{entry("idx/single")},
 			{entry("idx/second-a"), entry("idx/second-b"), entry("idx/second-c")},
@@ -544,16 +544,16 @@ func TestReplaceIndexPointers(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0))
 		writer := newTableOfContentsWriter(t, bucket)
-		run := TableOfContentsRun{
+		run := IndexRunEntries{
 			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
 			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
 		}
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []TableOfContentsRun{run})
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{run})
 		require.NoError(t, err)
 		require.True(t, swapped)
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 
-		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []TableOfContentsRun{run})
+		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{run})
 		require.NoError(t, err)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
@@ -567,7 +567,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 		writer := newTableOfContentsWriter(t, bucket)
 
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []TableOfContentsRun{{
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
 			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
 			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
 		}})
@@ -584,7 +584,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 		writer := newTableOfContentsWriter(t, bucket)
 
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []TableOfContentsRun{{
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
 			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
 			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
 		}})
@@ -1030,27 +1030,27 @@ func TestReplaceIndexPointers(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name    string
-		newRuns []TableOfContentsRun
+		newRuns []IndexRunEntries
 		wantErr string
 	}{
 		{
 			name:    "returns an error without touching storage when a new run is empty",
-			newRuns: []TableOfContentsRun{{entry("idx/a-new")}, {}},
+			newRuns: []IndexRunEntries{{entry("idx/a-new")}, {}},
 			wantErr: "empty new run",
 		},
 		{
 			name:    "returns an error without touching storage when a new run holds one path twice",
-			newRuns: []TableOfContentsRun{{entry("idx/a-new"), entry("idx/a-new")}},
+			newRuns: []IndexRunEntries{{entry("idx/a-new"), entry("idx/a-new")}},
 			wantErr: "idx/a-new of a new run appears more than once",
 		},
 		{
 			name:    "returns an error without touching storage when an entry of a new run has an old path",
-			newRuns: []TableOfContentsRun{{entry("idx/a-0"), entry("idx/b-new")}},
+			newRuns: []IndexRunEntries{{entry("idx/a-0"), entry("idx/b-new")}},
 			wantErr: "idx/a-0 of a new run appears more than once or is an old path",
 		},
 		{
 			name:    "returns an error without touching storage when an entry of a new run has the path of another new run of one entry",
-			newRuns: []TableOfContentsRun{{entry("idx/a-new"), entry("idx/b-new")}, {entry("idx/b-new")}},
+			newRuns: []IndexRunEntries{{entry("idx/a-new"), entry("idx/b-new")}, {entry("idx/b-new")}},
 			wantErr: "idx/b-new of a new run appears more than once",
 		},
 	} {
@@ -1443,10 +1443,10 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 }
 
 // runsOfOne returns one run for each entry.
-func runsOfOne(entries []TableOfContentsEntry) []TableOfContentsRun {
-	var runs []TableOfContentsRun
+func runsOfOne(entries []TableOfContentsEntry) []IndexRunEntries {
+	var runs []IndexRunEntries
 	for _, entry := range entries {
-		runs = append(runs, TableOfContentsRun{entry})
+		runs = append(runs, IndexRunEntries{entry})
 	}
 	return runs
 }

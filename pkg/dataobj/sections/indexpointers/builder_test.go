@@ -67,30 +67,30 @@ func TestBuilder(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
-func TestBuilder_RunSize(t *testing.T) {
+func TestBuilder_RunLength(t *testing.T) {
 	encode := func(pointer indexpointers.IndexPointer) error {
 		ib := indexpointers.NewBuilder(nil, 1024, 0)
 		ib.SetTenant(tenantID)
 		ib.Append(pointer)
 		return dataobj.NewBuilder(nil).Append(ib)
 	}
-	pointer := func(runID indexpointers.RunID, runSize int) indexpointers.IndexPointer {
-		return indexpointers.IndexPointer{Path: "foo", StartTs: unixTime(10), EndTs: unixTime(20), RunID: runID, RunSize: runSize}
+	pointer := func(runID indexpointers.RunID, runLength int) indexpointers.IndexPointer {
+		return indexpointers.IndexPointer{Path: "foo", StartTs: unixTime(10), EndTs: unixTime(20), RunID: runID, RunLength: runLength}
 	}
 
-	t.Run("encodes a positive run size of a pointer with a run ID", func(t *testing.T) {
+	t.Run("encodes a positive run length of a pointer with a run ID", func(t *testing.T) {
 		require.NoError(t, encode(pointer(1, 2)))
 	})
 
-	t.Run("returns an error when the run size is set without a run ID", func(t *testing.T) {
+	t.Run("returns an error when the run length is set without a run ID", func(t *testing.T) {
 		require.ErrorContains(t, encode(pointer(0, 2)), "without a run ID")
 	})
 
-	t.Run("returns an error when the run size is negative", func(t *testing.T) {
-		require.ErrorContains(t, encode(pointer(1, -1)), "invalid run size")
+	t.Run("returns an error when the run length is negative", func(t *testing.T) {
+		require.ErrorContains(t, encode(pointer(1, -1)), "invalid run length")
 	})
 
-	t.Run("returns an error when the run size does not fit in 32 bits", func(t *testing.T) {
-		require.ErrorContains(t, encode(pointer(1, 1<<40)), "invalid run size")
+	t.Run("returns an error when the run length does not fit in 32 bits", func(t *testing.T) {
+		require.ErrorContains(t, encode(pointer(1, 1<<40)), "invalid run length")
 	})
 }

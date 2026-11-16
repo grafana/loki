@@ -25,16 +25,16 @@ type indexRun struct {
 	entries []indexpointers.IndexPointer
 }
 
-// checkSize returns an error that wraps errCorruptIndex if an index object of
-// r records a run size other than the number of index objects of r. The ToC
+// checkLength returns an error that wraps errCorruptIndex if an index object of
+// r records a run length other than the number of index objects of r. The ToC
 // then does not list the run that the ToC writer recorded.
 //
-// A run size of zero is unknown, so it matches any number. A ToC writer that
-// predates the run_size column drops the size when it rewrites the ToC.
-func (r indexRun) checkSize() error {
+// A run length of zero is unknown, so it matches any number. A ToC writer that
+// predates the run_length column drops the length when it rewrites the ToC.
+func (r indexRun) checkLength() error {
 	for _, entry := range r.entries {
-		if entry.RunSize != 0 && entry.RunSize != len(r.entries) {
-			return fmt.Errorf("%w: index %s records a run of %d index objects, but the ToC lists %d", errCorruptIndex, entry.Path, entry.RunSize, len(r.entries))
+		if entry.RunLength != 0 && entry.RunLength != len(r.entries) {
+			return fmt.Errorf("%w: index %s records a run of %d index objects, but the ToC lists %d", errCorruptIndex, entry.Path, entry.RunLength, len(r.entries))
 		}
 	}
 	return nil

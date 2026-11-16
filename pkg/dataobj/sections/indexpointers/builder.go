@@ -31,12 +31,12 @@ type IndexPointer struct {
 	// RunID is the run that holds the index object.
 	RunID RunID
 
-	// RunSize is the number of index objects of run RunID that the ToC writer
+	// RunLength is the number of index objects of run RunID that the ToC writer
 	// recorded. Zero means no recorded size: the index object is of no run, or
-	// a ToC writer without the run_size column rewrote the ToC. A non-zero
-	// RunSize is positive, at most math.MaxInt32, and requires a non-zero
+	// a ToC writer without the run_length column rewrote the ToC. A non-zero
+	// RunLength is positive, at most math.MaxInt32, and requires a non-zero
 	// RunID. The builder fails to encode a pointer that breaks this.
-	RunSize int
+	RunLength int
 
 	// PostingKeys bounds the posting keys of the index object. The zero value
 	// means the bounds are unknown, so the index object can hold any posting
@@ -83,17 +83,17 @@ func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
 	return streams.MustShardLayoutFromBuckets(b.count), true
 }
 
-// checkRunSize returns an error if the run size of pointer is negative, above
-// math.MaxInt32, or set without a run ID. The builder and the row decoder both
-// use it, so the builder and the decoder accept the same run sizes.
-func checkRunSize(pointer IndexPointer) error {
+// checkRunLength returns an error if the run length of pointer is negative,
+// above math.MaxInt32, or set without a run ID. The builder and the row
+// decoder both use it, so they accept the same run lengths.
+func checkRunLength(pointer IndexPointer) error {
 	switch {
-	case pointer.RunSize == 0:
+	case pointer.RunLength == 0:
 		return nil
-	case pointer.RunSize < 0 || pointer.RunSize > math.MaxInt32:
-		return fmt.Errorf("index pointer %s: invalid run size %d", pointer.Path, pointer.RunSize)
+	case pointer.RunLength < 0 || pointer.RunLength > math.MaxInt32:
+		return fmt.Errorf("index pointer %s: invalid run length %d", pointer.Path, pointer.RunLength)
 	case pointer.RunID == 0:
-		return fmt.Errorf("index pointer %s: run size %d without a run ID", pointer.Path, pointer.RunSize)
+		return fmt.Errorf("index pointer %s: run length %d without a run ID", pointer.Path, pointer.RunLength)
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (b *Builder) EstimatedSize() int {
 		pathCompressionRatio = 3                                     // ZSTD compression ratio
 		timestampDeltaSize   = streamio.VarintSize(int64(time.Hour)) // 1 hour delta
 		runIDSize            = 1                                     // Delta of a mostly constant value
-		runSizeSize          = 1                                     // Delta of a mostly constant value
+		runLengthSize        = 1                                     // Delta of a mostly constant value
 		shardBucketsSize     = 1                                     // Delta of a mostly constant value
 		metadataOverhead     = 100                                   // Estimated metadata overhead per column
 		columnCount          = 8
@@ -186,7 +186,7 @@ func (b *Builder) EstimatedSize() int {
 	sizeEstimate += 2 * len(b.indexPointers) * timestampDeltaSize
 
 	sizeEstimate += b.postingKeyBytes
-	sizeEstimate += len(b.indexPointers) * (runIDSize + runSizeSize + shardBucketsSize)
+	sizeEstimate += len(b.indexPointers) * (runIDSize + runLengthSize + shardBucketsSize)
 	sizeEstimate += columnCount * metadataOverhead
 
 	return sizeEstimate
@@ -287,6 +287,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return err
 	}
+	runLengthBuilder, err := b.newColumnBuilder(ColumnTypeRunLength, datasetmd_v2.PHYSICAL_TYPE_INT64, datasetmd_v2.ENCODING_TYPE_DELTA, datasetmd_v2.COMPRESSION_TYPE_NONE)
+	if err != nil {
+		return err
+	}
 	minPostingKeyBuilder, err := b.newColumnBuilder(ColumnTypeMinPostingKey, datasetmd_v2.PHYSICAL_TYPE_BINARY, datasetmd_v2.ENCODING_TYPE_PLAIN, datasetmd_v2.COMPRESSION_TYPE_ZSTD)
 	if err != nil {
 		return err
@@ -299,13 +303,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return err
 	}
-	runSizeBuilder, err := b.newColumnBuilder(ColumnTypeRunSize, datasetmd_v2.PHYSICAL_TYPE_INT64, datasetmd_v2.ENCODING_TYPE_DELTA, datasetmd_v2.COMPRESSION_TYPE_NONE)
-	if err != nil {
-		return err
-	}
 
 	for i, pointer := range b.indexPointers {
-		if err := checkRunSize(*pointer); err != nil {
+		if err := checkRunLength(*pointer); err != nil {
 			return err
 		}
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
@@ -317,6 +317,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if pointer.RunID != 0 {
 			_ = runIDBuilder.Append(i, dataset.Int64Value(int64(pointer.RunID)))
 		}
+		if pointer.RunLength != 0 {
+			_ = runLengthBuilder.Append(i, dataset.Int64Value(int64(pointer.RunLength)))
+		}
 		if keys := pointer.PostingKeys; !keys.IsZero() {
 			minEncoded, maxEncoded := keys.Encode()
 			_ = minPostingKeyBuilder.Append(i, dataset.BinaryValue(minEncoded))
@@ -325,11 +328,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if layout, ok := pointer.ShardBuckets.Layout(); ok {
 			_ = shardBucketsBuilder.Append(i, dataset.Int64Value(int64(layout.Buckets())))
 		}
-		if pointer.RunSize != 0 {
-			_ = runSizeBuilder.Append(i, dataset.Int64Value(int64(pointer.RunSize)))
-		}
 	}
-	for _, builder := range []*dataset.ColumnBuilder{runIDBuilder, minPostingKeyBuilder, maxPostingKeyBuilder, shardBucketsBuilder, runSizeBuilder} {
+	for _, builder := range []*dataset.ColumnBuilder{runIDBuilder, runLengthBuilder, minPostingKeyBuilder, maxPostingKeyBuilder, shardBucketsBuilder} {
 		builder.Backfill(len(b.indexPointers))
 	}
 
@@ -342,10 +342,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeRunID, runIDBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRunLength, runLengthBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMinPostingKey, minPostingKeyBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMaxPostingKey, maxPostingKeyBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
-		errs = append(errs, encodeColumn(enc, ColumnTypeRunSize, runSizeBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)

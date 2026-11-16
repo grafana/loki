@@ -20,7 +20,7 @@ func TestDecodeRow(t *testing.T) {
 		{Name: "min_posting_key", Type: ColumnTypeMinPostingKey},
 		{Name: "max_posting_key", Type: ColumnTypeMaxPostingKey},
 		{Name: "shard_buckets", Type: ColumnTypeShardBuckets},
-		{Name: "run_size", Type: ColumnTypeRunSize},
+		{Name: "run_length", Type: ColumnTypeRunLength},
 	}
 	lowKey := postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}
 	highKey := postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"}
@@ -153,7 +153,7 @@ func TestDecodeRow(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "decodes the run ID, run size, posting keys and shard layout when all are present",
+			name:    "decodes the run ID, run length, posting keys and shard layout when all are present",
 			columns: optionalColumns,
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -172,7 +172,7 @@ func TestDecodeRow(t *testing.T) {
 				StartTs:      time.Unix(0, 1234567890000000000),
 				EndTs:        time.Unix(0, 1234567890000000000),
 				RunID:        7,
-				RunSize:      3,
+				RunLength:    3,
 				PostingKeys:  keyRange,
 				ShardBuckets: shardBuckets,
 			},
@@ -233,7 +233,7 @@ func TestDecodeRow(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "returns an error when the run size is set without a run ID",
+			name:    "returns an error when the run length is set without a run ID",
 			columns: optionalColumns,
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -250,7 +250,7 @@ func TestDecodeRow(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "returns an error when the run size is not positive",
+			name:    "returns an error when the run length is not positive",
 			columns: optionalColumns,
 			row: dataset.Row{
 				Values: []dataset.Value{

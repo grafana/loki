@@ -15,7 +15,7 @@ type tocReplacer interface {
 		window time.Time,
 		tenant string,
 		oldPaths []string,
-		newRuns []metastore.TableOfContentsRun,
+		newRuns []metastore.IndexRunEntries,
 	) (bool, error)
 }
 
@@ -29,8 +29,8 @@ type tocPublisher struct {
 // Replace atomically replaces oldPaths with newEntries in the tenant's ToC
 // for window. It returns true only when this call applied the swap.
 //
-// Replace publishes each entry as a run of one, so the ToC gives it no run ID
-// and skips a path that it already holds.
+// Every task writes one index object, so Replace publishes each entry as a run
+// of one. The ToC gives such a run no run ID and skips a path it already holds.
 //
 // The swap applies only if the ToC holds every path in oldPaths. Otherwise it
 // writes nothing.
@@ -53,9 +53,9 @@ func (p *tocPublisher) Replace(
 		return false, nil
 	}
 
-	newRuns := make([]metastore.TableOfContentsRun, 0, len(newEntries))
+	newRuns := make([]metastore.IndexRunEntries, 0, len(newEntries))
 	for _, entry := range newEntries {
-		newRuns = append(newRuns, metastore.TableOfContentsRun{entry})
+		newRuns = append(newRuns, metastore.IndexRunEntries{entry})
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)

@@ -91,7 +91,7 @@ const (
 	ColumnTypeMinPostingKey                   // ColumnTypeMinPostingKey is an optional column containing the encoded smallest posting key of the index object.
 	ColumnTypeMaxPostingKey                   // ColumnTypeMaxPostingKey is an optional column containing the encoded largest posting key of the index object.
 	ColumnTypeShardBuckets                    // ColumnTypeShardBuckets is an optional column containing the shard bucket count of the tenant's layout in the index object.
-	ColumnTypeRunSize                         // ColumnTypeRunSize is an optional column containing the number of index objects of the run that holds the index object.
+	ColumnTypeRunLength                       // ColumnTypeRunLength is an optional column containing the number of index objects of the run that holds the index object.
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -103,7 +103,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeMinPostingKey: "min_posting_key",
 	ColumnTypeMaxPostingKey: "max_posting_key",
 	ColumnTypeShardBuckets:  "shard_buckets",
-	ColumnTypeRunSize:       "run_size",
+	ColumnTypeRunLength:     "run_length",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -126,8 +126,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMaxPostingKey, nil
 	case "shard_buckets":
 		return ColumnTypeShardBuckets, nil
-	case "run_size":
-		return ColumnTypeRunSize, nil
+	case "run_length":
+		return ColumnTypeRunLength, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)

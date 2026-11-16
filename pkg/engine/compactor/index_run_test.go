@@ -67,33 +67,33 @@ func TestIndexRun_String(t *testing.T) {
 	})
 }
 
-func TestIndexRun_CheckSize(t *testing.T) {
+func TestIndexRun_CheckLength(t *testing.T) {
 	run := func(sizes ...int) indexRun {
 		var r indexRun
 		for i, size := range sizes {
-			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunSize: size})
+			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunLength: size})
 		}
 		return r
 	}
 
 	t.Run("accepts a run whose index objects record the number of index objects in the ToC", func(t *testing.T) {
-		require.NoError(t, run(2, 2).checkSize())
+		require.NoError(t, run(2, 2).checkLength())
 	})
 
 	t.Run("accepts a run whose index objects record no size", func(t *testing.T) {
-		require.NoError(t, run(0, 0).checkSize())
+		require.NoError(t, run(0, 0).checkLength())
 	})
 
 	t.Run("returns a corrupt index error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
-		require.ErrorIs(t, run(3, 3).checkSize(), errCorruptIndex)
+		require.ErrorIs(t, run(3, 3).checkLength(), errCorruptIndex)
 	})
 
 	t.Run("returns a corrupt index error when a later index object records another size than the first", func(t *testing.T) {
-		require.ErrorIs(t, run(2, 3).checkSize(), errCorruptIndex)
+		require.ErrorIs(t, run(2, 3).checkLength(), errCorruptIndex)
 	})
 
 	t.Run("returns a corrupt index error when the ToC lists more index objects than the run records", func(t *testing.T) {
-		require.ErrorIs(t, run(2, 2, 2).checkSize(), errCorruptIndex)
+		require.ErrorIs(t, run(2, 2, 2).checkLength(), errCorruptIndex)
 	})
 }
 

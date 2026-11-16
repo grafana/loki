@@ -143,7 +143,7 @@ type replaceCall struct {
 	window   time.Time
 	tenant   string
 	oldPaths []string
-	newRuns  []metastore.TableOfContentsRun
+	newRuns  []metastore.IndexRunEntries
 	// newEntries are the entries of newRuns, in order.
 	newEntries []metastore.TableOfContentsEntry
 }
@@ -153,14 +153,14 @@ func (f *fakeReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newRuns []metastore.TableOfContentsRun,
+	newRuns []metastore.IndexRunEntries,
 ) (bool, error) {
 	var newEntries []metastore.TableOfContentsEntry
 	for _, run := range newRuns {
 		newEntries = append(newEntries, run...)
 	}
 	f.mu.Lock()
-	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsRun(nil), newRuns...), newEntries})
+	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.IndexRunEntries(nil), newRuns...), newEntries})
 	f.mu.Unlock()
 	return f.swapped, f.err
 }
@@ -2085,13 +2085,13 @@ func (r *concurrentRemovalReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newRuns []metastore.TableOfContentsRun,
+	newRuns []metastore.IndexRunEntries,
 ) (bool, error) {
 	require.Contains(r.t, oldPaths, r.removed)
 	require.NotEmpty(r.t, newRuns)
 	require.NotEmpty(r.t, newRuns[0])
 	first := newRuns[0][0]
-	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.TableOfContentsRun{{{
+	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.IndexRunEntries{{{
 		Path:      "indexes/concurrent",
 		StartTime: first.StartTime,
 		EndTime:   first.EndTime,
@@ -3522,7 +3522,7 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 	}
 	// indexAt writes an index object at path with the postings and stats rows
 	// of one log object, and returns its ToC entry.
-	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runSize int) indexpointers.IndexPointer {
+	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runLength int) indexpointers.IndexPointer {
 		t.Helper()
 		logPath := "logs/" + path
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
@@ -3535,7 +3535,7 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 				indexAtPosting(logPath, "z"),
 			},
 		})
-		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: runID, RunSize: runSize}
+		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: runID, RunLength: runLength}
 	}
 	// shortRun returns the ToC entries of two index objects of a run that
 	// records three index objects.
