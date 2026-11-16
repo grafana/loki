@@ -42,7 +42,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// Exercise OR-aware hint planning rather than the single-conjunction production default.
 const loglineMaxConjunctions = 4
 
 // queryFrontendExecutionStack runs queries through a query-frontend + query-scheduler +
