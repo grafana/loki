@@ -29,3 +29,11 @@ const (
 	StreamsSectionKind       = "streams"
 	WatermarksSectionKind    = "watermarks"
 )
+
+// The logical types of the columns of a logs section.
+const (
+	LogsColumnStreamID  = "stream_id"
+	LogsColumnTimestamp = "timestamp"
+	LogsColumnMetadata  = "metadata"
+	LogsColumnMessage   = "message"
+)

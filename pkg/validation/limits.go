@@ -275,6 +275,10 @@ type Limits struct {
 	// DataObjShardFactor is the number of stream shard buckets in new data
 	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+
+	// TSDBShardedIndexShardFactor is the number of fingerprint-range files the
+	// compactor splits the tenant's sharded TSDB index copy into.
+	TSDBShardedIndexShardFactor int `yaml:"tsdb_sharded_index_shard_factor" json:"tsdb_sharded_index_shard_factor" category:"experimental" doc:"hidden"`
 }
 
 // ShardFactor is the number of shard buckets that data objects divide a
@@ -561,7 +565,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Deprecated: Whether to create blooms for the tenant.")
 	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
 	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
-	f.BoolVar(&l.DataObjDeletionSweepEnabled, "dataobj-compaction.deletion-sweep.enable", false, "Experimental. Whether the dataobj deletion sweep runs for the tenant. The sweep also needs -dataobj.compaction.deletion-sweep.enabled.")
+	f.BoolVar(&l.DataObjDeletionSweepEnabled, "dataobj-compaction.deletion-sweep.enable", false, "Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep finds the objects of the tenant that no table of contents (ToC) file can reach. An object that two sweeps, at least 23 hours apart, both find unreachable is a deletion candidate. Sweeps log a summary and examples of the candidates, and delete nothing. The sweep also needs -dataobj.compaction.deletion-sweep.enabled.")
 	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Deprecated: Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
@@ -629,6 +633,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
 	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
+	f.IntVar(&l.TSDBShardedIndexShardFactor, "limits.tsdb-sharded-index-shard-factor", 0, "Experimental: Number of fingerprint-range files the compactor splits the tenant's index into in the sharded_path_prefix of a schema period. 0 and 1 write a single file; larger values must be powers of two.")
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -771,6 +776,10 @@ func (l *Limits) Validate() error {
 
 	if err := l.DataObjShardFactor.Validate(); err != nil {
 		return fmt.Errorf("dataobj_shard_factor: %w", err)
+	}
+
+	if f := l.TSDBShardedIndexShardFactor; f < 0 || f&(f-1) != 0 {
+		return fmt.Errorf("tsdb_sharded_index_shard_factor must be 0, 1 or a power of two, got %d", f)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -1508,6 +1517,12 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 		return streams.DefaultShardLayout()
 	}
 	return layout
+}
+
+// TSDBShardedIndexShardFactor returns the number of fingerprint-range files of
+// the sharded TSDB index copy for userID.
+func (o *Overrides) TSDBShardedIndexShardFactor(userID string) int {
+	return o.getOverridesForUser(userID).TSDBShardedIndexShardFactor
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

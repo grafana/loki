@@ -2,6 +2,7 @@ package dataobjread
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -25,7 +27,7 @@ func TestOpenObjects(t *testing.T) {
 
 	t.Run("a section read of one object is shared by every caller that asks for it", func(t *testing.T) {
 		bucket, path, _ := createTestStoredObject(t, fixtureTenant, &defaultStoredLayout, `{app="a"}`)
-		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		first, err := objects.get(t.Context(), path)
@@ -57,7 +59,7 @@ func TestOpenObjects(t *testing.T) {
 			fixtures.LogsSection(t, fixtureTenant, mine.Logs()),
 		)
 
-		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		object, err := objects.get(t.Context(), path)
@@ -80,11 +82,23 @@ func TestOpenObjects(t *testing.T) {
 
 	t.Run("opening an object that is not in the bucket fails", func(t *testing.T) {
 		bucket, _, _ := createTestStoredObject(t, fixtureTenant, &defaultStoredLayout, `{app="a"}`)
-		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		_, err := objects.get(t.Context(), "objects/does-not-exist")
 		require.Error(t, err)
+	})
+
+	t.Run("opening an object reads its metadata through the metadata cache", func(t *testing.T) {
+		bucket, path, _ := createTestStoredObject(t, fixtureTenant, &defaultStoredLayout, `{app="a"}`)
+		metadataCache := &countingMetadataCache{}
+		objects := NewOpenObjects(bucket, fixtureTenant, DefaultHeadPrefetchBytes, WithMetadataCache(metadataCache))
+		t.Cleanup(objects.release)
+
+		_, err := objects.get(t.Context(), path)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(1), metadataCache.loads.Load())
 	})
 }
 
@@ -292,10 +306,20 @@ func createAndOpenTestStoredObject(t *testing.T, tenant string, layout *streams.
 func openStoredObject(t *testing.T, bucket objstore.Bucket, tenant, path string) *openObject {
 	t.Helper()
 
-	objects := NewOpenObjects(bucket, tenant, DefaultHeadPrefetchBytes, nil)
+	objects := NewOpenObjects(bucket, tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
 	object, err := objects.get(t.Context(), path)
 	require.NoError(t, err)
 	return object
 }
+
+// countingMetadataCache is a metadata cache that loads every region and counts the loads.
+type countingMetadataCache struct{ loads atomic.Int64 }
+
+func (c *countingMetadataCache) GetOrLoadMetadataRegion(ctx context.Context, _ string, load func(context.Context) ([]byte, error)) ([]byte, error) {
+	c.loads.Inc()
+	return load(ctx)
+}
+
+func (c *countingMetadataCache) MaxItemBytes() int64 { return 8 << 20 }

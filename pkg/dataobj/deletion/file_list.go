@@ -18,7 +18,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
-// FileList is the list of objects that hold data of a tenant at CreatedAt.
+// FileList is a list of objects of a tenant at CreatedAt. The list that a
+// sweep stores holds the objects that no ToC could reach.
 //
 // When two writers store a file list for the same tenant, the list with the
 // later CreatedAt wins.
