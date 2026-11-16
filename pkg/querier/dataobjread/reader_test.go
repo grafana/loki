@@ -10,13 +10,16 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+	"unsafe"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -45,10 +48,7 @@ func TestLogReader(t *testing.T) {
 		require.ElementsMatch(t, []string{"one", "two", "three"}, lines)
 	})
 
-	t.Run("a batch size below the row count still yields every distinct line", func(t *testing.T) {
-		// Each record's line comes out of a buffer the row reader reuses between reads, so a
-		// section read in several batches is what proves the reader copies it. With the copy
-		// removed, the earlier lines of a batch come back as the last line read.
+	t.Run("a batch size of one recycles batches and still yields every distinct line", func(t *testing.T) {
 		var entries []push.Entry
 		want := make([]string, 0, 10)
 		for i := range 10 {
@@ -63,6 +63,67 @@ func TestLogReader(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 		require.ElementsMatch(t, want, lines)
+	})
+
+	t.Run("concurrent scans that share recycled batches yield every distinct line", func(t *testing.T) {
+		var (
+			streams []logproto.Stream
+			want    []string
+		)
+		for s := range 8 {
+			stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+			for i := range 50 {
+				line := fmt.Sprintf("stream-%d-line-%d", s, i)
+				stream.Entries = append(stream.Entries, entry(t, i+1, line))
+				want = append(want, line)
+			}
+			streams = append(streams, stream)
+		}
+		smallSections := []objtest.Option{objtest.WithTargetSectionSize(1 << 10)}
+		fixture := planReaderFixture(t, queryReturningLine, newObjectsFixtureWithOptions(t, smallSections, streams...))
+		require.Greater(t, len(fixture.tasks), 1)
+
+		for _, batchSize := range []int{1, 3, DefaultReadBatchSize} {
+			t.Run(fmt.Sprintf("at batch size %d", batchSize), func(t *testing.T) {
+				reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
+				lines := drainReader(reader)
+				require.NoError(t, reader.Err())
+				require.NoError(t, reader.Close())
+				require.ElementsMatch(t, want, lines)
+			})
+		}
+	})
+
+	t.Run("a reader that yields every record frees every batch", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 10 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
+		}
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
+		require.Len(t, drainReader(reader), len(entries))
+		require.Nil(t, reader.currBatch)
+		require.Zero(t, len(reader.batchPool.free))
+		require.NoError(t, reader.Close())
+	})
+
+	t.Run("closing a reader before it yields every record frees the queued and pooled batches", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 10 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
+		}
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 4, 1, metrics)
+		require.True(t, reader.Next())
+		require.NoError(t, reader.Close())
+		require.Zero(t, len(reader.batches))
+		require.Zero(t, len(reader.batchPool.free))
+
+		require.False(t, reader.Next())
+		require.Nil(t, reader.currBatch)
+		require.Zero(t, len(reader.batchPool.free))
 	})
 
 	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
@@ -326,6 +387,136 @@ func TestLogReader(t *testing.T) {
 	})
 }
 
+func TestReadBatch_Fill(t *testing.T) {
+	const streamID = int64(7)
+	task := lineTask(t, streamID)
+
+	t.Run("it copies the lines into one region of the batch's allocator", func(t *testing.T) {
+		rows := []logs.Record{
+			{StreamID: streamID, Timestamp: at(1), Line: []byte("one")},
+			{StreamID: streamID, Timestamp: at(2), Line: []byte("two")},
+		}
+		var batch readBatch
+		require.NoError(t, batch.fill(task, rows))
+
+		copy(rows[0].Line, "xxx")
+		require.Equal(t, "one", string(batch.records[0].line))
+		require.Equal(t, "two", string(batch.records[1].line))
+		first, second := batch.records[0].line, batch.records[1].line
+		require.Equal(t, unsafe.Add(unsafe.Pointer(&first[0]), len(first)), unsafe.Pointer(&second[0]))
+		require.Equal(t, len("onetwo"), batch.lines.AllocatedBytes())
+	})
+
+	t.Run("it allocates no line memory when the task does not need the line", func(t *testing.T) {
+		noLine := task
+		noLine.needReturningLine = false
+
+		var batch readBatch
+		require.NoError(t, batch.fill(noLine, []logs.Record{{StreamID: streamID, Timestamp: at(1), Line: []byte("one")}}))
+		require.Len(t, batch.records, 1)
+		require.Nil(t, batch.records[0].line)
+		require.Zero(t, batch.lines.AllocatedBytes())
+	})
+
+	t.Run("it leaves the records unchanged when a row has an unexpected stream", func(t *testing.T) {
+		var batch readBatch
+		require.NoError(t, batch.fill(task, []logs.Record{{StreamID: streamID, Timestamp: at(1), Line: []byte("one")}}))
+		before := batch.records
+
+		require.ErrorContains(t, batch.fill(task, []logs.Record{{StreamID: 9999, Timestamp: at(2)}}), "unexpected stream ID 9999")
+		require.Equal(t, before, batch.records)
+	})
+}
+
+func TestReadBatchPool(t *testing.T) {
+	const (
+		batchSize = 4
+		streamID  = int64(7)
+	)
+	task := lineTask(t, streamID)
+	rowsOf := func(lines ...string) []logs.Record {
+		rows := make([]logs.Record, len(lines))
+		for i, line := range lines {
+			rows[i] = logs.Record{StreamID: streamID, Timestamp: at(i + 1), Line: []byte(line)}
+		}
+		return rows
+	}
+
+	t.Run("get on an empty pool returns a batch with no records", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+
+		batch := pool.get()
+		require.Empty(t, batch.records)
+		require.Equal(t, batchSize, cap(batch.records))
+	})
+
+	t.Run("get after put returns the same batch, which reuses its line memory", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		require.NoError(t, batch.fill(task, rowsOf("first")))
+		lineMemory := &batch.records[0].line[0]
+
+		pool.put(batch)
+		recycled := pool.get()
+		require.Same(t, batch, recycled)
+		require.NoError(t, recycled.fill(task, rowsOf("other")))
+		require.Same(t, lineMemory, &recycled.records[0].line[0])
+	})
+
+	t.Run("put drops the records", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		metadata := labels.FromStrings("level", "error")
+		batch.records = append(batch.records, LogRecord{streamLabels: metadata, metadata: metadata})
+
+		pool.put(batch)
+		require.Empty(t, batch.records)
+		require.Equal(t, LogRecord{}, batch.records[:1][0])
+	})
+
+	t.Run("put releases the line memory that the last fill did not use", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		batch := pool.get()
+		require.NoError(t, batch.fill(task, rowsOf("short")))
+		pool.put(batch)
+
+		batch = pool.get()
+		long := strings.Repeat("x", 100)
+		require.NoError(t, batch.fill(task, rowsOf(long)))
+		require.Equal(t, len("short")+len(long), batch.lines.AllocatedBytes())
+
+		pool.put(batch)
+		require.Equal(t, len(long), batch.lines.AllocatedBytes())
+	})
+
+	t.Run("put panics when the batch is already in the pool", func(t *testing.T) {
+		pool := newReadBatchPool(2, batchSize)
+		batch := pool.get()
+		pool.put(batch)
+
+		require.PanicsWithValue(t, "dataobjread: read batch returned to the pool twice", func() { pool.put(batch) })
+	})
+
+	t.Run("put panics when the pool is full", func(t *testing.T) {
+		pool := newReadBatchPool(1, batchSize)
+		first, second := pool.get(), pool.get()
+		pool.put(first)
+
+		require.PanicsWithValue(t, "dataobjread: read batch pool is full, so a batch has more than one owner", func() { pool.put(second) })
+	})
+
+	t.Run("drain removes every batch from the pool", func(t *testing.T) {
+		pool := newReadBatchPool(2, batchSize)
+		first, second := pool.get(), pool.get()
+		pool.put(first)
+		pool.put(second)
+
+		pool.drain()
+		require.Zero(t, len(pool.free))
+		require.NotSame(t, first, pool.get())
+	})
+}
+
 // TestLogReader_ConcurrentObjectOpens drives the open-object registry the way the planner
 // and the scans do: two goroutines asking for one path at once. They must share one open, so both
 // callers get the same opened object and the path counts as one opened object.
@@ -364,6 +555,54 @@ func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 	})
 }
 
+func BenchmarkLogReader(b *testing.B) {
+	const (
+		streamCount      = 20
+		entriesPerStream = 10_000
+	)
+	levels := []string{"info", "warn", "error", "debug"}
+	paths := []string{"/api/v1/push", "/loki/api/v1/query_range", "/metrics", "/ready"}
+
+	var (
+		streams   []logproto.Stream
+		lineBytes int64
+	)
+	for s := range streamCount {
+		stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+		for i := range entriesPerStream {
+			line := fmt.Sprintf(`level=%s caller=http.go:%d msg="request completed" method=GET path=%s status=%d duration=%dms trace_id=%016x`,
+				levels[i%len(levels)], i%500, paths[(i/7)%len(paths)], 200+(i%4)*100, (i*7919)%5000, uint64(i)*0x9e3779b97f4a7c15)
+			lineBytes += int64(len(line))
+			stream.Entries = append(stream.Entries, push.Entry{
+				Timestamp: at(1).Add(time.Duration(i) * 5 * time.Millisecond),
+				Line:      line,
+			})
+		}
+		streams = append(streams, stream)
+	}
+
+	for _, query := range []string{
+		`bytes_over_time({app=~".+"}[1m])`,
+		`count_over_time({app=~".+"} |= "error" [1m])`,
+		`count_over_time({app=~".+"} |= "error" | logfmt [1m])`,
+	} {
+		b.Run(query, func(b *testing.B) {
+			fixture := newReaderFixture(b, query, streams...)
+			metrics := NewMetrics(nil)
+
+			b.SetBytes(lineBytes)
+			b.ReportAllocs()
+			for b.Loop() {
+				reader := NewLogReader(b.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+				for reader.Next() {
+					_ = reader.At()
+				}
+				require.NoError(b, reader.Close())
+			}
+		})
+	}
+}
+
 // readerFixture is an open-object registry together with the real tasks a plan produced over it,
 // so a reader test drives the same tasks production would.
 type readerFixture struct {
@@ -372,10 +611,15 @@ type readerFixture struct {
 }
 
 // newReaderFixture plans the read of query over streams.
-func newReaderFixture(t *testing.T, query string, streams ...logproto.Stream) readerFixture {
+func newReaderFixture(t testing.TB, query string, streams ...logproto.Stream) readerFixture {
+	t.Helper()
+	return planReaderFixture(t, query, newObjectsFixture(t, streams...))
+}
+
+// planReaderFixture plans the read of query over the objects of fixture.
+func planReaderFixture(t testing.TB, query string, fixture objectsFixture) readerFixture {
 	t.Helper()
 
-	fixture := newObjectsFixture(t, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
@@ -427,4 +671,17 @@ func (b *holdBucket) Get(ctx context.Context, name string) (io.ReadCloser, error
 func (b *holdBucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
 	<-b.release
 	return b.Bucket.GetRange(ctx, name, offset, length)
+}
+
+// lineTask returns a task that forwards the lines of one admitted stream with the given ID.
+func lineTask(t *testing.T, streamID int64) ReadTask {
+	t.Helper()
+
+	streamLabels, err := syntax.ParseLabels(`{app="a"}`)
+	require.NoError(t, err)
+	streams := newObjectStreams(
+		map[int64]labels.Labels{streamID: streamLabels},
+		func(labels.Labels, uint64) bool { return true },
+	)
+	return ReadTask{streamIDs: []int64{streamID}, streams: streams, needReturningLine: true}
 }

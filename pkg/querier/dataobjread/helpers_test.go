@@ -39,10 +39,16 @@ type objectsFixture struct {
 //
 // It builds a real index, so the descriptors carry the section indexes and stream IDs a query
 // would resolve. Use [createTestStoredObject] for a test that only needs an object in a bucket.
-func newObjectsFixture(t *testing.T, tenantStreams ...logproto.Stream) objectsFixture {
+func newObjectsFixture(t testing.TB, tenantStreams ...logproto.Stream) objectsFixture {
+	t.Helper()
+	return newObjectsFixtureWithOptions(t, nil, tenantStreams...)
+}
+
+// newObjectsFixtureWithOptions is [newObjectsFixture] with options for the object builder.
+func newObjectsFixtureWithOptions(t testing.TB, opts []objtest.Option, tenantStreams ...logproto.Stream) objectsFixture {
 	t.Helper()
 
-	builder := objtest.NewBuilder(t)
+	builder := objtest.NewBuilder(t, opts...)
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
 
 	builder.Append(ctx, tenantStreams...)

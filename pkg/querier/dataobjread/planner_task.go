@@ -129,14 +129,18 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// records turns one section read's rows into forwardable records, attaching each stream's
-// identity and copying each line when the task needs it.
+// appendRecords appends one forwardable record per row of one Read call to dst, attaching each
+// stream's identity. It returns the extended slice.
+//
+// A record's line is a copy of row.Line in the spare capacity of lines, so it stays valid when
+// the rows are decoded into again. lines needs room for every line the task forwards, or the
+// copies move to the heap. The line is nil when the task does not need it, or when the row's
+// line is empty.
 //
 // It fails on a row whose stream the task did not plan to read. The read matches only the
 // task's streams, so an unexpected ID means that broke, and dropping the row would under-count
 // the query without saying so.
-func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
-	out := make([]LogRecord, 0, len(rows))
+func (t ReadTask) appendRecords(dst []LogRecord, lines []byte, rows []logs.Record) ([]LogRecord, error) {
 	for i := range rows {
 		row := &rows[i]
 		stream, ok := t.streams.admittedByID[row.StreamID]
@@ -145,12 +149,13 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 		}
 
 		var line []byte
-		if t.needReturningLine {
-			// Copy the line, because DecodeRow reuses one buffer for it across reads.
-			line = append(line, row.Line...)
+		if t.needReturningLine && len(row.Line) > 0 {
+			start := len(lines)
+			lines = append(lines, row.Line...)
+			line = lines[start:len(lines):len(lines)]
 		}
 
-		out = append(out, LogRecord{
+		dst = append(dst, LogRecord{
 			streamHash:   stream.streamHash,
 			streamLabels: stream.streamLabels,
 			timestamp:    row.Timestamp.UnixNano(),
@@ -161,7 +166,7 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 			metadata: row.Metadata,
 		})
 	}
-	return out, nil
+	return dst, nil
 }
 
 // TaskIterator streams read tasks from the planner to the reader. The planner fills it from a
