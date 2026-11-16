@@ -251,42 +251,50 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		return err
 	}
 
-	// A panic in sendBatches drops the batch that it held. The garbage collector frees that
-	// batch, and the outer recover reports the panic itself.
-	batch, err := r.sendBatches(ctx, reader, task, make([]logs.Record, batchSize))
-	if batch != nil {
-		r.batchPool.put(batch)
-	}
-	return err
+	return r.sendBatches(ctx, reader, task, make([]logs.Record, batchSize))
 }
 
 // sendBatches reads the rows of reader into rows and sends one batch of records per Read call
 // that returns rows. A send passes the batch to the consumer, which owns it from then on.
 //
-// When sendBatches fails after it took a batch from the pool and did not send it, it returns
-// that batch, and the caller must return it to the pool. It never returns a batch that it sent,
-// because the consumer could then read lines that a scan copies into the same memory.
-func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, rows []logs.Record) (*readBatch, error) {
-	for {
-		n, readErr := reader.Read(ctx, rows)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return nil, readErr
-		}
-		if n > 0 {
-			batch := r.batchPool.get()
-			if err := batch.fill(task, rows[:n]); err != nil {
-				return batch, err
+// sendBatches returns a batch that it took and did not send to the pool before it returns. The
+// put is not deferred, because a deferred put also runs during a panic. A put that panics then
+// would replace the first panic, and the recover in runTasks would report the wrong cause. So a
+// panic drops the batch instead, and the garbage collector frees it.
+func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, rows []logs.Record) error {
+	// unsent is the batch that this scan took and did not send, or nil. A sent batch must never
+	// go back to the pool from here, because the consumer could then read lines that another
+	// scan copies into the same memory.
+	var unsent *readBatch
+
+	err := func() error {
+		for {
+			n, readErr := reader.Read(ctx, rows)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return readErr
 			}
-			select {
-			case r.batches <- batch:
-			case <-ctx.Done():
-				return batch, ctx.Err()
+			if n > 0 {
+				unsent = r.batchPool.get()
+				if err := unsent.fill(task, rows[:n]); err != nil {
+					return err
+				}
+				select {
+				case r.batches <- unsent:
+					unsent = nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			if n == 0 && errors.Is(readErr, io.EOF) {
+				return nil
 			}
 		}
-		if n == 0 && errors.Is(readErr, io.EOF) {
-			return nil, nil
-		}
+	}()
+
+	if unsent != nil {
+		r.batchPool.put(unsent)
 	}
+	return err
 }
 
 func (r *LogReader) Next() bool {
