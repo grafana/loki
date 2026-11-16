@@ -76,6 +76,9 @@ Query-shape support and hint lookup for logline index lookups.
      If no filter has terms for some version in the window, `buildTermJobs`
      returns `ErrUnsupported`. Skipping that version's blocks would leave them
      without ranges and hide their matches.
+   - With no index in the window, `PlanHints` cannot tell the version. It
+     passes through unless some filter has terms under every version, because
+     a window with no index holds no line with a term.
 13. **A regex contributes only the literals every match contains**
     - `|~` and `=~` (line, pre-parser and post-parser filters alike) go through
       `regexliteral.Required`, never a local AST walk. It owns the rules that

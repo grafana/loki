@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -185,9 +186,28 @@ func (p *LoglineHintProvider) PlanHints(
 	plan.Indexes = overlapping
 	plan.Ranges = ranges
 	if len(overlapping) == 0 {
+		// A window with no index holds no line with a term, so only a query
+		// that needs a term can skip it.
+		if !hasTermsInEveryVersion(filters, p.ngramLength) {
+			ranges = append(ranges, passthroughForInclusiveThrough(end))
+		}
 		plan.Ranges = NormalizeRanges(ranges)
 	}
 	return plan, nil
+}
+
+// hasTermsInEveryVersion reports whether some filter has terms under every
+// index version. With no index in the window, the builders' version is unknown.
+func hasTermsInEveryVersion(filters []string, ngramLength int) bool {
+	for _, version := range logline.AllVersions() {
+		if !slices.ContainsFunc(filters, func(filter string) bool {
+			terms, err := ExtractQueryNgrams(filter, ngramLength, version)
+			return err == nil && len(terms) > 0
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *LoglineHintProvider) ProvideHints(
