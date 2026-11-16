@@ -76,7 +76,7 @@ func (enc *plainBytesEncoder) Reset(w streamio.Writer) {
 // plainBytesDecoder decodes byte arrays from a byte slice.
 type plainBytesDecoder struct {
 	data []byte
-	off  int // Last read offset into data.
+	off  int // Byte offset in data of the next value to read or skip.
 }
 
 var _ valueDecoder = (*plainBytesDecoder)(nil)
@@ -160,6 +160,28 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 		offsets[:count+1],
 		memory.Bitmap{},
 	), nil
+}
+
+// Skip implements [valueDecoder]. A malformed or truncated length prefix ends
+// the data. Skip does not check that a value fits in the data.
+func (dec *plainBytesDecoder) Skip(count int) (int, error) {
+	var (
+		data = dec.data
+		off  = dec.off
+
+		skipped int
+	)
+	for skipped < count {
+		stringSize, uvarintSize := binary.Uvarint(data[off:])
+		if uvarintSize <= 0 {
+			break
+		}
+		off += uvarintSize + int(stringSize)
+		skipped++
+	}
+
+	dec.off = off
+	return skipped, nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from data.

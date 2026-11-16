@@ -97,6 +97,16 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 	}
 }
 
+func Test_bitmapDecoder_Skip(t *testing.T) {
+	t.Run("returns an error because skipping is not implemented", func(t *testing.T) {
+		dec := newBitmapDecoder([]byte{0x02, 0x01})
+
+		skipped, err := dec.Skip(1)
+		require.EqualError(t, err, "dataset.bitmapDecoder: Skip is not implemented")
+		require.Equal(t, 0, skipped)
+	})
+}
+
 func decodeBitmapValues(t *testing.T, dec *bitmapDecoder, alloc *memory.Allocator, batchSize int) []bool {
 	t.Helper()
 
