@@ -60,6 +60,7 @@ type slotGrammar struct {
 	nts   []*sgNT
 	index map[string]int // dedup key -> nt id
 	start int
+	la    *lookahead // selection sets guarding descriptor creation
 }
 
 func (sg *slotGrammar) reserve(key, label string) (int, bool) {
@@ -88,6 +89,7 @@ func compileSlots(g *Grammar, rootRulename string, maxSlots int) (*slotGrammar, 
 	if c.over {
 		return nil, &ErrGrammarTooLarge{Max: maxSlots}
 	}
+	sg.la = computeLookahead(sg)
 	return sg, nil
 }
 
@@ -246,17 +248,27 @@ type gnode struct {
 	kind       gnodeKind
 	nt         int // symbol nonterminal id, for gSymbol
 	Start, End int
-	packs      [][]*gnode // each pack has 1 or 2 children; >1 pack == ambiguity
+	packs      []pack // >1 pack == ambiguity
 }
 
-func (n *gnode) addPack(children []*gnode) {
+// pack is a packed node. It is labelled by the grammar slot it completes and
+// its pivot (Scott & Johnstone, "GLL parse-tree generation", Science of
+// Computer Programming 78(10), 2013, §3.1); the pivot is the left extent of the
+// last child. Two alternates deriving the same span through the same children
+// are distinct derivations, hence distinct packed nodes.
+type pack struct {
+	L    slot
+	kids []*gnode // 1 or 2 children
+}
+
+func (n *gnode) addPack(L slot, children []*gnode) {
 	for _, p := range n.packs {
-		if len(p) != len(children) {
+		if p.L != L || len(p.kids) != len(children) {
 			continue
 		}
 		same := true
-		for i := range p {
-			if p[i] != children[i] {
+		for i := range p.kids {
+			if p.kids[i] != children[i] {
 				same = false
 				break
 			}
@@ -265,7 +277,7 @@ func (n *gnode) addPack(children []*gnode) {
 			return
 		}
 	}
-	n.packs = append(n.packs, children)
+	n.packs = append(n.packs, pack{L: L, kids: children})
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +344,31 @@ type gssKey struct {
 	ret slot
 	pos int
 	rc  int
+}
+
+// addAlt adds the descriptor starting alternate L.alt of L.nt at i when the
+// lookahead test admits it. A rejected alternate would fail on its first
+// terminal at i (or, when nullable, its continuation would), so its terminals
+// are reported to the furthest-failure diagnostics in its place.
+func (p *gllParser) addAlt(L slot, u *gssNode, i int, rc int) {
+	if p.admits(p.sg.la.alt(L.nt, L.alt), i) {
+		p.add(L, u, i, nil, rc)
+	}
+}
+
+// admits applies a lookahead test at i. A rejected sequence would have failed
+// on one of the set's terminals at i, so those feed the furthest-failure
+// diagnostics in its place.
+func (p *gllParser) admits(s *laSet, i int) bool {
+	if s.admits(p.input, i) {
+		return true
+	}
+	if i >= p.maxPos {
+		for _, t := range s.terms {
+			p.noteFail(i, t)
+		}
+	}
+	return false
 }
 
 func (p *gllParser) add(L slot, u *gssNode, i int, w *gnode, rc int) {
@@ -416,9 +453,9 @@ func (p *gllParser) getNodeP(L slot, w, z *gnode) *gnode {
 	}
 	y := p.findNode(k)
 	if w != nil {
-		y.addPack([]*gnode{w, z})
+		y.addPack(L, []*gnode{w, z})
 	} else {
-		y.addPack([]*gnode{z})
+		y.addPack(L, []*gnode{z})
 	}
 	return y
 }
@@ -490,7 +527,7 @@ func (p *gllParser) parse() *gnode {
 	startNT := p.sg.start
 	p.u0 = &gssNode{ret: slot{-1, -1, -1}, pos: 0}
 	for ai := range p.sg.nts[startNT].alts {
-		p.add(slot{startNT, ai, 0}, p.u0, 0, nil, 0)
+		p.addAlt(slot{startNT, ai, 0}, p.u0, 0, 0)
 	}
 	for len(p.work) > 0 {
 		if p.aborted {
@@ -518,6 +555,9 @@ func (p *gllParser) process(d descriptor) {
 		}
 		s := prod[L.dot]
 		if s.kind == symNonterm {
+			if !p.admits(p.sg.la.callAt(L), i) {
+				return
+			}
 			ret := slot{L.nt, L.alt, L.dot + 1}
 			// Preserve the current repetition frame count across the sub-parse so
 			// that when it returns we resume the loop with the right count.
@@ -533,7 +573,7 @@ func (p *gllParser) process(d descriptor) {
 				p.addRepAlts(s.nt, v, i, childRC)
 			} else {
 				for ai := range p.sg.nts[s.nt].alts {
-					p.add(slot{s.nt, ai, 0}, v, i, nil, 0)
+					p.addAlt(slot{s.nt, ai, 0}, v, i, 0)
 				}
 			}
 			return
@@ -600,10 +640,10 @@ func capRC(rc int, nt *sgNT) int {
 func (p *gllParser) addRepAlts(ntID int, v *gssNode, i, rc int) {
 	nt := p.sg.nts[ntID]
 	if rc >= nt.repMin {
-		p.add(slot{ntID, 0, 0}, v, i, nil, rc) // stop: alt 0 == [eps]
+		p.addAlt(slot{ntID, 0, 0}, v, i, rc) // stop: alt 0 == [eps]
 	}
 	if nt.repMax == inf || rc < nt.repMax {
-		p.add(slot{ntID, 1, 0}, v, i, nil, rc) // loop: alt 1 == [element, self]
+		p.addAlt(slot{ntID, 1, 0}, v, i, rc) // loop: alt 1 == [element, self]
 	}
 }
 
@@ -661,6 +701,18 @@ func (e *ErrGrammarTooLarge) Error() string {
 	return "abnf: grammar lowering exceeded " + strconv.Itoa(e.Max) + " nonterminals"
 }
 
+func newGLLParser(sg *slotGrammar, input []byte, maxNodes int) *gllParser {
+	return &gllParser{
+		sg:       sg,
+		input:    input,
+		nodes:    map[nodeKey]*gnode{},
+		gss:      map[gssKey]*gssNode{},
+		seen:     map[descriptor]bool{},
+		popped:   map[*gssNode]map[*gnode]bool{},
+		maxNodes: maxNodes,
+	}
+}
+
 // ParseForest parses input with grammar starting at rootRulename using GLL,
 // returning the shared packed parse forest. It runs in worst-case O(n^3) time
 // and space for ANY grammar -- left/right/mutual recursion and ambiguity
@@ -674,15 +726,7 @@ func ParseForest(input []byte, grammar *Grammar, rootRulename string, opts ...Fo
 	if err != nil {
 		return nil, err
 	}
-	p := &gllParser{
-		sg:       sg,
-		input:    input,
-		nodes:    map[nodeKey]*gnode{},
-		gss:      map[gssKey]*gssNode{},
-		seen:     map[descriptor]bool{},
-		popped:   map[*gssNode]map[*gnode]bool{},
-		maxNodes: cfg.maxNodes,
-	}
+	p := newGLLParser(sg, input, cfg.maxNodes)
 	root := p.parse()
 	if p.aborted {
 		return nil, &ErrForestTooLarge{Max: cfg.maxNodes}
@@ -717,7 +761,7 @@ func (f *Forest) Nodes() int {
 		}
 		seen[n] = true
 		for _, pk := range n.packs {
-			for _, c := range pk {
+			for _, c := range pk.kids {
 				walk(c)
 			}
 		}
@@ -742,7 +786,7 @@ func (f *Forest) Ambiguous() bool {
 			return true
 		}
 		for _, pk := range n.packs {
-			for _, c := range pk {
+			for _, c := range pk.kids {
 				if walk(c) {
 					return true
 				}
@@ -779,7 +823,7 @@ func (f *Forest) NumTrees() *big.Int {
 		}
 		for _, pk := range n.packs {
 			prod := big.NewInt(1)
-			for _, c := range pk {
+			for _, c := range pk.kids {
 				prod.Mul(prod, count(c))
 			}
 			total.Add(total, prod)
@@ -830,7 +874,7 @@ func (f *Forest) collect(n *gnode, into *[]*ParseTree, onStack map[*gnode]bool) 
 		}
 		return
 	}
-	for _, c := range n.packs[0] {
+	for _, c := range n.packs[0].kids {
 		f.collectChild(c, into, onStack)
 	}
 }

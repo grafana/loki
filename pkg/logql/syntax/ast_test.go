@@ -440,6 +440,13 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"foo", false}, {"bar", false}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "" or "" or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}},
+		},
+		{
 			`{app="foo"} |~ "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -686,6 +693,47 @@ func TestOrLineFilterTypes(t *testing.T) {
 			require.Equal(t, tt.ty, f1.Ty)
 			require.Equal(t, tt.ty, f2.Ty)
 			require.Equal(t, tt.ty, f3.Ty)
+		})
+	}
+}
+
+// An empty operand in a positive or chain is dropped, so `|= "" or "foo"`
+// keeps the same lines as `|= "foo"`. Under boolean OR it would keep every
+// line, because every line contains "". Queries depend on the current
+// behavior: query builders that leave an extra or value blank, and dashboards
+// that put optional text variables into a chain such as
+// `|= "$search" or "$search2"`. If the behavior changed, those queries would
+// start returning every line.
+func TestOrLineFilterEmptyOperandIsIgnored(t *testing.T) {
+	t.Parallel()
+	lines := []string{"foo", "bar", "baz", "foo bar"}
+	for _, tt := range []struct {
+		q    string
+		kept []string
+	}{
+		{`{app="foo"} |= "" or "foo"`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or ""`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or "" or "baz"`, []string{"foo", "baz", "foo bar"}},
+		{"{app=\"foo\"} |= `foo` or `` or ``", []string{"foo", "foo bar"}},
+		{`{app="foo"} |~ "" or "foo"`, []string{"foo", "foo bar"}},
+		{`{app="foo"} |= "foo" or "" |= "bar"`, []string{"foo bar"}},
+		{`{app="foo"} |= "" or ""`, lines},
+	} {
+		t.Run(tt.q, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseLogSelector(tt.q, true)
+			require.NoError(t, err)
+			p, err := expr.Pipeline()
+			require.NoError(t, err)
+
+			sp := p.ForStream(labelBar)
+			var kept []string
+			for _, l := range lines {
+				if _, _, ok := sp.Process(0, []byte(l), labels.EmptyLabels()); ok {
+					kept = append(kept, l)
+				}
+			}
+			require.Equal(t, tt.kept, kept)
 		})
 	}
 }
@@ -1691,6 +1739,116 @@ func TestMultiStageExpr_PushableLabelFilters(t *testing.T) {
 
 var result bool
 
+func TestMultiStageExpr_Stages_Hints(t *testing.T) {
+	tests := []struct {
+		name                     string
+		stage                    string
+		wantReadsLine            bool
+		wantReadsArbitraryLabels bool
+	}{
+		{
+			name:          "a line filter reads the line and no arbitrary label",
+			stage:         `|= "boom"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "an ip line filter reads the line and no arbitrary label",
+			stage:         `|= ip("10.0.0.1")`,
+			wantReadsLine: true,
+		},
+		{
+			name:  "a label filter reads no line and no arbitrary label",
+			stage: `| level="error"`,
+		},
+		{
+			name:          "a logfmt parser reads the line and no arbitrary label",
+			stage:         `| logfmt`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a json parser reads the line and no arbitrary label",
+			stage:         `| json`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a regexp parser reads the line and no arbitrary label",
+			stage:         `| regexp "(?P<a>.+)"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a pattern parser reads the line and no arbitrary label",
+			stage:         `| pattern "<a> <b>"`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "an unpack parser reads the line and no arbitrary label",
+			stage:         `| unpack`,
+			wantReadsLine: true,
+		},
+		{
+			name:          "a decolorize reads the line and no arbitrary label",
+			stage:         `| decolorize`,
+			wantReadsLine: true,
+		},
+		{
+			name:                     "a logfmt expression parser reads the line and arbitrary labels",
+			stage:                    `| logfmt a="x"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a json expression parser reads the line and arbitrary labels",
+			stage:                    `| json a="x"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:  "a drop reads no line and no arbitrary label",
+			stage: `| drop pod`,
+		},
+		{
+			name:  "a keep reads no line and no arbitrary label",
+			stage: `| keep app`,
+		},
+		{
+			name:                     "a line_format reads arbitrary labels and no line",
+			stage:                    `| line_format "{{.app}}"`,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a line_format that calls __line__ reads the line and arbitrary labels",
+			stage:                    `| line_format "{{ __line__ }}"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a label_format reads arbitrary labels and no line",
+			stage:                    `| label_format pod=app`,
+			wantReadsArbitraryLabels: true,
+		},
+		{
+			name:                     "a label_format that calls __line__ reads the line and arbitrary labels",
+			stage:                    `| label_format pod="{{ __line__ }}"`,
+			wantReadsLine:            true,
+			wantReadsArbitraryLabels: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expr, err := ParseLogSelector(`{app="x"} `+test.stage, true)
+			require.NoError(t, err)
+
+			stages, err := expr.(*PipelineExpr).MultiStages.Stages()
+			require.NoError(t, err)
+
+			hints := stages.Hints()
+			require.Equal(t, test.wantReadsLine, hints.ReadsLine)
+			require.Equal(t, test.wantReadsArbitraryLabels, hints.ReadsArbitraryLabels)
+		})
+	}
+}
+
 func BenchmarkReorderedPipeline(b *testing.B) {
 	logfmtLine := []byte(`level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`)
 
@@ -1818,5 +1976,23 @@ func TestCombineFilters(t *testing.T) {
 		if i > 2 {
 			t.Fatalf("left num isn't a correct number")
 		}
+	}
+}
+
+func TestBinOpExpr_String_VectorMatching(t *testing.T) {
+	for _, q := range []string{
+		`(sum(rate({a="b"}[1m])) * on () sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * on () group_left sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * ignoring () group_left sum(rate({c="d"}[1m])))`,
+		`(sum(rate({a="b"}[1m])) * ignoring () group_right (x) sum(rate({c="d"}[1m])))`,
+	} {
+		t.Run(q, func(t *testing.T) {
+			expr, err := ParseExpr(q)
+			require.NoError(t, err)
+
+			reparsed, err := ParseExpr(expr.String())
+			require.NoError(t, err)
+			require.Equal(t, expr, reparsed)
+		})
 	}
 }

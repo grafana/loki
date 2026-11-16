@@ -24,8 +24,8 @@ The following are upgrade instructions for Grafana Loki 1.x versions.
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```bash
-export OLD_LOKI=2.9.4
-export NEW_LOKI=3.0.0
+export OLD_LOKI=0.12.0
+export NEW_LOKI=1.0.0
 export CONFIG_FILE=local-config.yaml
 diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```

@@ -3,10 +3,10 @@ package logqltest
 import (
 	"context"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -16,18 +16,31 @@ import (
 )
 
 const (
-	directTimestampFirstStackName               = "direct (timestamp-first)"
-	directStreamFirstStackName                  = "direct (stream-first)"
-	queryFrontendNoShardTimestampFirstStackName = "query-frontend + query-scheduler (no sharding, timestamp-first)"
-	queryFrontendShardTimestampFirstStackName   = "query-frontend + query-scheduler (sharding, timestamp-first)"
-	queryFrontendShardStreamFirstStackName      = "query-frontend + query-scheduler (sharding, stream-first)"
-	directDataObjStackName                      = "direct (dataobj)"
-	queryFrontendShardDataObjStackName          = "query-frontend + query-scheduler (sharding, dataobj)"
-	queryFrontendShardDataObjAndChunkStackName  = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+	directTimestampFirstStackName                     = "direct (timestamp-first)"
+	directStreamFirstStackName                        = "direct (stream-first)"
+	queryFrontendNoShardTimestampFirstStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first)"
+	queryFrontendShardTimestampFirstStackName         = "query-frontend + query-scheduler (sharding, timestamp-first)"
+	queryFrontendShardLoglineTimestampFirstStackName  = "query-frontend + query-scheduler (sharding, timestamp-first, logline)"
+	queryFrontendShardStreamFirstStackName            = "query-frontend + query-scheduler (sharding, stream-first)"
+	directDataObjStackName                            = "direct (dataobj)"
+	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
+	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName}
+	stackNames = []string{
+		directTimestampFirstStackName,
+		directStreamFirstStackName,
+		queryFrontendNoShardTimestampFirstStackName,
+		queryFrontendShardTimestampFirstStackName,
+		queryFrontendShardLoglineTimestampFirstStackName,
+		queryFrontendShardStreamFirstStackName,
+		directDataObjStackName,
+		queryFrontendShardDataObjStackName,
+		queryFrontendShardDataObjAndChunkStackName,
+		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+	}
 )
 
 // splitDataObjStart is the data-object start time of the stack that reads both data objects and
@@ -87,6 +100,64 @@ func isQueryShardingSupported(query string) bool {
 	return shardable
 }
 
+// stackOptions change an execution stack from its defaults. The zero value changes nothing.
+type stackOptions struct {
+	// maxQuerySeries, when positive, is the series limit of every query the stack runs, in the
+	// querier and in the query-frontend.
+	maxQuerySeries int
+
+	// maxQuerySeriesCutoff turns on MaxQuerySeriesCutoff in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	maxQuerySeriesCutoff bool
+
+	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
+	queryShardingEnabled bool
+
+	// loglineEnabled turns on frontend hint lookups over the script's Logline index.
+	loglineEnabled bool
+}
+
+// stackOption changes one aspect of an execution stack from its default.
+type stackOption func(*stackOptions)
+
+// withMaxQuerySeries returns the stackOption that sets the series limit of the stack.
+func withMaxQuerySeries(maxQuerySeries int) stackOption {
+	return func(o *stackOptions) { o.maxQuerySeries = maxQuerySeries }
+}
+
+// withMaxQuerySeriesCutoff returns the stackOption that turns on MaxQuerySeriesCutoff in every
+// engine of the stack.
+func withMaxQuerySeriesCutoff() stackOption {
+	return func(o *stackOptions) { o.maxQuerySeriesCutoff = true }
+}
+
+// withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
+func withQuerySharding() stackOption {
+	return func(o *stackOptions) { o.queryShardingEnabled = true }
+}
+
+// withLogline returns the stackOption that turns Logline filtering on in the query-frontend.
+func withLogline() stackOption {
+	return func(o *stackOptions) { o.loglineEnabled = true }
+}
+
+// newEngineOpts returns the default engine options, changed by o.
+func newEngineOpts(o stackOptions) logql.EngineOpts {
+	var engineOpts logql.EngineOpts
+	flagext.DefaultValues(&engineOpts)
+	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	return engineOpts
+}
+
+// newStackOptions returns the stackOptions that opts build on top of the defaults.
+func newStackOptions(opts ...stackOption) stackOptions {
+	var o stackOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
+}
+
 // newScriptQuerierFunc builds the querier of an execution stack over stores.
 type newScriptQuerierFunc func(t *testing.T, stores *scriptStores) logql.Querier
 
@@ -105,12 +176,19 @@ func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 }
 
 // execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
-// series limit and the query timeout are high enough that no script reaches them.
+// query timeout is high enough that no script reaches it. The series limit is the default limit of
+// a tenant, unless maxQuerySeries sets another.
 type execLimits struct {
 	streamFirstExecutionEnabled bool
+	maxQuerySeries              int
 }
 
-func (execLimits) MaxQuerySeries(string) int { return math.MaxInt32 }
+func (l execLimits) MaxQuerySeries(string) int {
+	if l.maxQuerySeries > 0 {
+		return l.maxQuerySeries
+	}
+	return defaultMaxQuerySeries()
+}
 
 func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
 

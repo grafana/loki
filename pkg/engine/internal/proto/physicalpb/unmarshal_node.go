@@ -81,6 +81,7 @@ func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
 		Runs:                    copyRunRefs(logMerge.Runs),
 		KeyRange:                copyKeyRange(logMerge.KeyRange),
 		InputBytes:              logMerge.InputBytes,
+		OutputLevel:             logMerge.OutputLevel,
 	}
 	return nil
 }
@@ -101,9 +102,9 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = IndexFilter{
-		Tenant:          indexFilter.Tenant,
-		SourceIndexPath: indexFilter.SourceIndexPath,
-		ObjectPaths:     slices.Clone(indexFilter.ObjectPaths),
+		Tenant:           indexFilter.Tenant,
+		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
+		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
 	}
 	return nil
 }

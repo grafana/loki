@@ -22,8 +22,46 @@ func (m *RequestContext) GetClientAddress() any {
 	return nil
 }
 
+func (m *RequestContext) deleteClientAddress() {
+	if m == nil {
+		return
+	}
+	switch ov := m.ClientAddress.(type) {
+	case *RequestContext_IP:
+		deleteRequestContext_IP(ov)
+	case *RequestContext_TCP:
+		deleteRequestContext_TCP(ov)
+	case *RequestContext_UDP:
+		deleteRequestContext_UDP(ov)
+	case *RequestContext_Unix:
+		deleteRequestContext_Unix(ov)
+	}
+	m.ClientAddress = nil
+}
+
+var (
+	protoPoolRequestContext_IP = sync.Pool{
+		New: func() any {
+			return &RequestContext_IP{}
+		},
+	}
+)
+
 type RequestContext_IP struct {
 	IP *IPAddr
+}
+
+func NewRequestContext_IP() *RequestContext_IP {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &RequestContext_IP{}
+	}
+	return protoPoolRequestContext_IP.Get().(*RequestContext_IP)
+}
+
+func deleteRequestContext_IP(v *RequestContext_IP) {
+	// Called only when pool is enabled
+	v.IP = nil
+	protoPoolRequestContext_IP.Put(v)
 }
 
 func (m *RequestContext) GetIP() *IPAddr {
@@ -33,8 +71,29 @@ func (m *RequestContext) GetIP() *IPAddr {
 	return nil
 }
 
+var (
+	protoPoolRequestContext_TCP = sync.Pool{
+		New: func() any {
+			return &RequestContext_TCP{}
+		},
+	}
+)
+
 type RequestContext_TCP struct {
 	TCP *TCPAddr
+}
+
+func NewRequestContext_TCP() *RequestContext_TCP {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &RequestContext_TCP{}
+	}
+	return protoPoolRequestContext_TCP.Get().(*RequestContext_TCP)
+}
+
+func deleteRequestContext_TCP(v *RequestContext_TCP) {
+	// Called only when pool is enabled
+	v.TCP = nil
+	protoPoolRequestContext_TCP.Put(v)
 }
 
 func (m *RequestContext) GetTCP() *TCPAddr {
@@ -44,8 +103,29 @@ func (m *RequestContext) GetTCP() *TCPAddr {
 	return nil
 }
 
+var (
+	protoPoolRequestContext_UDP = sync.Pool{
+		New: func() any {
+			return &RequestContext_UDP{}
+		},
+	}
+)
+
 type RequestContext_UDP struct {
 	UDP *UDPAddr
+}
+
+func NewRequestContext_UDP() *RequestContext_UDP {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &RequestContext_UDP{}
+	}
+	return protoPoolRequestContext_UDP.Get().(*RequestContext_UDP)
+}
+
+func deleteRequestContext_UDP(v *RequestContext_UDP) {
+	// Called only when pool is enabled
+	v.UDP = nil
+	protoPoolRequestContext_UDP.Put(v)
 }
 
 func (m *RequestContext) GetUDP() *UDPAddr {
@@ -55,8 +135,29 @@ func (m *RequestContext) GetUDP() *UDPAddr {
 	return nil
 }
 
+var (
+	protoPoolRequestContext_Unix = sync.Pool{
+		New: func() any {
+			return &RequestContext_Unix{}
+		},
+	}
+)
+
 type RequestContext_Unix struct {
 	Unix *UnixAddr
+}
+
+func NewRequestContext_Unix() *RequestContext_Unix {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
+		return &RequestContext_Unix{}
+	}
+	return protoPoolRequestContext_Unix.Get().(*RequestContext_Unix)
+}
+
+func deleteRequestContext_Unix(v *RequestContext_Unix) {
+	// Called only when pool is enabled
+	v.Unix = nil
+	protoPoolRequestContext_Unix.Put(v)
 }
 
 func (m *RequestContext) GetUnix() *UnixAddr {
@@ -76,30 +177,6 @@ var (
 	protoPoolRequestContext = sync.Pool{
 		New: func() any {
 			return &RequestContext{}
-		},
-	}
-
-	ProtoPoolRequestContext_IP = sync.Pool{
-		New: func() any {
-			return &RequestContext_IP{}
-		},
-	}
-
-	ProtoPoolRequestContext_TCP = sync.Pool{
-		New: func() any {
-			return &RequestContext_TCP{}
-		},
-	}
-
-	ProtoPoolRequestContext_UDP = sync.Pool{
-		New: func() any {
-			return &RequestContext_UDP{}
-		},
-	}
-
-	ProtoPoolRequestContext_Unix = sync.Pool{
-		New: func() any {
-			return &RequestContext_Unix{}
 		},
 	}
 )
@@ -124,24 +201,7 @@ func DeleteRequestContext(orig *RequestContext, nullable bool) {
 	for i := range orig.ClientMetadata {
 		DeleteKeyValue(&orig.ClientMetadata[i], false)
 	}
-	switch ov := orig.ClientAddress.(type) {
-	case *RequestContext_IP:
-		DeleteIPAddr(ov.IP, true)
-		ov.IP = nil
-		ProtoPoolRequestContext_IP.Put(ov)
-	case *RequestContext_TCP:
-		DeleteTCPAddr(ov.TCP, true)
-		ov.TCP = nil
-		ProtoPoolRequestContext_TCP.Put(ov)
-	case *RequestContext_UDP:
-		DeleteUDPAddr(ov.UDP, true)
-		ov.UDP = nil
-		ProtoPoolRequestContext_UDP.Put(ov)
-	case *RequestContext_Unix:
-		DeleteUnixAddr(ov.Unix, true)
-		ov.Unix = nil
-		ProtoPoolRequestContext_Unix.Put(ov)
-	}
+	orig.deleteClientAddress()
 	orig.Reset()
 	if nullable {
 		protoPoolRequestContext.Put(orig)
@@ -167,45 +227,25 @@ func CopyRequestContext(dest, src *RequestContext) *RequestContext {
 
 	switch t := src.ClientAddress.(type) {
 	case *RequestContext_IP:
-		var ov *RequestContext_IP
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &RequestContext_IP{}
-		} else {
-			ov = ProtoPoolRequestContext_IP.Get().(*RequestContext_IP)
-		}
+		ov := NewRequestContext_IP()
 		ov.IP = NewIPAddr()
 		CopyIPAddr(ov.IP, t.IP)
 		dest.ClientAddress = ov
 
 	case *RequestContext_TCP:
-		var ov *RequestContext_TCP
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &RequestContext_TCP{}
-		} else {
-			ov = ProtoPoolRequestContext_TCP.Get().(*RequestContext_TCP)
-		}
+		ov := NewRequestContext_TCP()
 		ov.TCP = NewTCPAddr()
 		CopyTCPAddr(ov.TCP, t.TCP)
 		dest.ClientAddress = ov
 
 	case *RequestContext_UDP:
-		var ov *RequestContext_UDP
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &RequestContext_UDP{}
-		} else {
-			ov = ProtoPoolRequestContext_UDP.Get().(*RequestContext_UDP)
-		}
+		ov := NewRequestContext_UDP()
 		ov.UDP = NewUDPAddr()
 		CopyUDPAddr(ov.UDP, t.UDP)
 		dest.ClientAddress = ov
 
 	case *RequestContext_Unix:
-		var ov *RequestContext_Unix
-		if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-			ov = &RequestContext_Unix{}
-		} else {
-			ov = ProtoPoolRequestContext_Unix.Get().(*RequestContext_Unix)
-		}
+		ov := NewRequestContext_Unix()
 		ov.Unix = NewUnixAddr()
 		CopyUnixAddr(ov.Unix, t.Unix)
 		dest.ClientAddress = ov
@@ -326,48 +366,28 @@ func (orig *RequestContext) UnmarshalJSON(iter *json.Iterator) {
 
 		case "iP":
 			{
-				var ov *RequestContext_IP
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &RequestContext_IP{}
-				} else {
-					ov = ProtoPoolRequestContext_IP.Get().(*RequestContext_IP)
-				}
+				ov := NewRequestContext_IP()
 				ov.IP = NewIPAddr()
 				ov.IP.UnmarshalJSON(iter)
 				orig.ClientAddress = ov
 			}
 		case "tCP":
 			{
-				var ov *RequestContext_TCP
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &RequestContext_TCP{}
-				} else {
-					ov = ProtoPoolRequestContext_TCP.Get().(*RequestContext_TCP)
-				}
+				ov := NewRequestContext_TCP()
 				ov.TCP = NewTCPAddr()
 				ov.TCP.UnmarshalJSON(iter)
 				orig.ClientAddress = ov
 			}
 		case "uDP":
 			{
-				var ov *RequestContext_UDP
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &RequestContext_UDP{}
-				} else {
-					ov = ProtoPoolRequestContext_UDP.Get().(*RequestContext_UDP)
-				}
+				ov := NewRequestContext_UDP()
 				ov.UDP = NewUDPAddr()
 				ov.UDP.UnmarshalJSON(iter)
 				orig.ClientAddress = ov
 			}
 		case "unix":
 			{
-				var ov *RequestContext_Unix
-				if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-					ov = &RequestContext_Unix{}
-				} else {
-					ov = ProtoPoolRequestContext_Unix.Get().(*RequestContext_Unix)
-				}
+				ov := NewRequestContext_Unix()
 				ov.Unix = NewUnixAddr()
 				ov.Unix.UnmarshalJSON(iter)
 				orig.ClientAddress = ov
@@ -532,12 +552,7 @@ func (orig *RequestContext) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			var ov *RequestContext_IP
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &RequestContext_IP{}
-			} else {
-				ov = ProtoPoolRequestContext_IP.Get().(*RequestContext_IP)
-			}
+			ov := NewRequestContext_IP()
 			ov.IP = NewIPAddr()
 			err = ov.IP.UnmarshalProto(buf[startPos:pos])
 			if err != nil {
@@ -555,12 +570,7 @@ func (orig *RequestContext) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			var ov *RequestContext_TCP
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &RequestContext_TCP{}
-			} else {
-				ov = ProtoPoolRequestContext_TCP.Get().(*RequestContext_TCP)
-			}
+			ov := NewRequestContext_TCP()
 			ov.TCP = NewTCPAddr()
 			err = ov.TCP.UnmarshalProto(buf[startPos:pos])
 			if err != nil {
@@ -578,12 +588,7 @@ func (orig *RequestContext) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			var ov *RequestContext_UDP
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &RequestContext_UDP{}
-			} else {
-				ov = ProtoPoolRequestContext_UDP.Get().(*RequestContext_UDP)
-			}
+			ov := NewRequestContext_UDP()
 			ov.UDP = NewUDPAddr()
 			err = ov.UDP.UnmarshalProto(buf[startPos:pos])
 			if err != nil {
@@ -601,12 +606,7 @@ func (orig *RequestContext) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			var ov *RequestContext_Unix
-			if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-				ov = &RequestContext_Unix{}
-			} else {
-				ov = ProtoPoolRequestContext_Unix.Get().(*RequestContext_Unix)
-			}
+			ov := NewRequestContext_Unix()
 			ov.Unix = NewUnixAddr()
 			err = ov.Unix.UnmarshalProto(buf[startPos:pos])
 			if err != nil {

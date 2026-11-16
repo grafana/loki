@@ -72,7 +72,6 @@ const (
 	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
 	IndexCache                CacheType = "index"                 //nolint:staticcheck
 	ResultCache               CacheType = "result"                //nolint:staticcheck
-	LogResultCache            CacheType = "log-result"            //nolint:staticcheck
 	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
 	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
 	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
@@ -82,7 +81,6 @@ const (
 	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
-	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
 	DataObjMetadataCache      CacheType = "dataobj-metadata"      //nolint:staticcheck
 )
 
@@ -187,8 +185,6 @@ func (c *Context) Caches() Caches {
 		SeriesResult:        c.caches.SeriesResult,
 		LabelResult:         c.caches.LabelResult,
 		InstantMetricResult: c.caches.InstantMetricResult,
-		LogResult:           c.caches.LogResult,
-		TaskResult:          c.caches.TaskResult,
 	}
 }
 
@@ -317,6 +313,12 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
 	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
+	s.Dataobj.LogsCompactedObjectsCount += m.Dataobj.LogsCompactedObjectsCount
+	s.Dataobj.LogsUncompactedObjectsCount += m.Dataobj.LogsUncompactedObjectsCount
+	s.Dataobj.IndexCompactedObjectsCount += m.Dataobj.IndexCompactedObjectsCount
+	s.Dataobj.IndexUncompactedObjectsCount += m.Dataobj.IndexUncompactedObjectsCount
+	s.Dataobj.LogsDownloadedBytes += m.Dataobj.LogsDownloadedBytes
+	s.Dataobj.IndexDownloadedBytes += m.Dataobj.IndexDownloadedBytes
 	s.ChunkFetchFailures += m.ChunkFetchFailures
 	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
@@ -383,6 +385,7 @@ func (i Index) ChunkFilterRatio() (float64, bool) {
 func (l *Logline) Merge(m Logline) {
 	l.SkippedRequests += m.SkippedRequests
 	l.NarrowedRequests += m.NarrowedRequests
+	l.PassthroughRequests += m.PassthroughRequests
 
 	keepFirst(&l.Outcome, m.Outcome)
 	keepFirst(&l.HintStatus, m.HintStatus)
@@ -414,8 +417,6 @@ func (c *Caches) Merge(m Caches) {
 	c.SeriesResult.Merge(m.SeriesResult)
 	c.LabelResult.Merge(m.LabelResult)
 	c.InstantMetricResult.Merge(m.InstantMetricResult)
-	c.LogResult.Merge(m.LogResult)
-	c.TaskResult.Merge(m.TaskResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -742,6 +743,40 @@ func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
 	}
 }
 
+// AddDataobjLogsCompactedObjectsCount adds i to the number of compacted logs data objects the query
+// opened.
+func (c *Context) AddDataobjLogsCompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsCompactedObjectsCount, i)
+}
+
+// AddDataobjLogsUncompactedObjectsCount adds i to the number of uncompacted logs data objects the
+// query opened.
+func (c *Context) AddDataobjLogsUncompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsUncompactedObjectsCount, i)
+}
+
+// AddDataobjIndexCompactedObjectsCount adds i to the number of compacted index data objects the query
+// opened.
+func (c *Context) AddDataobjIndexCompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexCompactedObjectsCount, i)
+}
+
+// AddDataobjIndexUncompactedObjectsCount adds i to the number of uncompacted index data objects the
+// query opened.
+func (c *Context) AddDataobjIndexUncompactedObjectsCount(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexUncompactedObjectsCount, i)
+}
+
+// AddDataobjLogsDownloadedBytes adds i to the bytes the query downloaded from logs data objects.
+func (c *Context) AddDataobjLogsDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.LogsDownloadedBytes, i)
+}
+
+// AddDataobjIndexDownloadedBytes adds i to the bytes the query downloaded from index data objects.
+func (c *Context) AddDataobjIndexDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.IndexDownloadedBytes, i)
+}
+
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
 }
@@ -822,10 +857,6 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.LabelResult
 	case InstantMetricResultsCache:
 		stats = &c.caches.InstantMetricResult
-	case LogResultCache:
-		stats = &c.caches.LogResult
-	case TaskResultCache:
-		stats = &c.caches.TaskResult
 	default:
 		return nil
 	}
@@ -940,16 +971,5 @@ func (c Caches) kvList() []any {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
-		"Cache.LogResult.Requests", c.LogResult.Requests,
-		"Cache.LogResult.EntriesRequested", c.LogResult.EntriesRequested,
-		"Cache.LogResult.EntriesFound", c.LogResult.EntriesFound,
-		"Cache.LogResult.EntriesStored", c.LogResult.EntriesStored,
-		"Cache.LogResult.BytesSent", humanize.Bytes(uint64(c.LogResult.BytesSent)),
-		"Cache.LogResult.BytesReceived", humanize.Bytes(uint64(c.LogResult.BytesReceived)),
-		"Cache.LogResult.DownloadTime", c.LogResult.CacheDownloadTime(),
-		"Cache.TaskResult.Requests", c.TaskResult.Requests,
-		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
-		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
-		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
 	}
 }

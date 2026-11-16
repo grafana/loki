@@ -53,6 +53,20 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | line_format "L
 eval instant at 60s bytes_over_time({app="a"} | level="error" | line_format "{{.level}}" [1m])
   {app="a", level="error"} 15
 
+# line_format() reads the line through __line__.
+clear
+load
+  {app="a"}     "ok"   @ 20s [repeat every 20s for 3] [metadata lvl="info"]
+  {app="a"}     "boom" @ 30s [repeat every 20s for 2] [metadata lvl="error"]
+  {app="noise"} "ok"   @ 30s [repeat every 20s for 2] [metadata lvl="info"]
+
+eval instant at 60s sum by (lvl) (bytes_over_time({app="a"} | line_format "{{ __line__ }}{{ __line__ }}" [1m]))
+  {lvl="error"} 16   # (4 + 4 bytes) x 2
+  {lvl="info"} 12    # (2 + 2 bytes) x 3
+eval range from 40s to 80s step 20s sum by (lvl) (bytes_over_time({app="a"} | line_format "{{ __line__ }}{{ __line__ }}" [1m]))   # overlapping
+  {lvl="error"} 8 16 16
+  {lvl="info"} 8 12 8
+
 # label_format renames a label (dst=src) or sets one from a template (dst="...").
 clear
 load
@@ -127,6 +141,27 @@ eval instant at 60s count_over_time({app="a"} | label_format env=env_extracted [
   {app="a", env="canary"} 3
 eval instant at 60s count_over_time({app="a"} | label_format env_extracted=env [1m])
   {app="a", env_extracted="prod"} 3
+
+# label_format() reads the line through __line__.
+clear
+load
+  {app="a"}     "ok"   @ 20s [repeat every 20s for 3] [metadata lvl="info"]
+  {app="a"}     "boom" @ 30s [repeat every 20s for 2] [metadata lvl="error"]
+  {app="noise"} "ok"   @ 30s [repeat every 20s for 2] [metadata lvl="info"]
+
+eval instant at 60s sum by (msg) (count_over_time({app="a"} | label_format msg="{{ __line__ }}" [1m]))
+  {msg="ok"} 3
+  {msg="boom"} 2
+eval range from 40s to 80s step 20s sum by (msg) (count_over_time({app="a"} | label_format msg="{{ __line__ }}" [1m]))   # overlapping
+  {msg="ok"} 2 3 2
+  {msg="boom"} 1 2 2
+eval instant at 60s sum by (msg) (count_over_time({app="a"} | label_format msg="{{ __line__ | upper }}" [1m]))
+  {msg="OK"} 3
+  {msg="BOOM"} 2
+# A rename in the same stage does not hide the template that reads the line.
+eval instant at 60s sum by (level, msg) (count_over_time({app="a"} | label_format level=lvl, msg="{{ __line__ }}" [1m]))
+  {level="info", msg="ok"} 3
+  {level="error", msg="boom"} 2
 
 # line_format and label_format read a parsed field as $.field, the same as .field.
 # A metric query extracts only the fields that the pipeline uses, so the parser must extract $.field too.

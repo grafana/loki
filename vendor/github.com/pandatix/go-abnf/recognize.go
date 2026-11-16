@@ -85,6 +85,10 @@ func (r *recognizer) reachRep(rep Repetition, index int) map[int]bool {
 	// level shrank by one each step ({1..n}, {2..n}, ...), giving O(n^3).
 	seen := map[int]bool{index: true}
 
+	// Levels are stationary after at most len(input)+1 counts: reachElem only
+	// moves forward, so whether position x is in a level depends on positions
+	// below x plus x reaching itself, and each position settles one count after
+	// the ones below it. The stationary check below therefore fires within cap.
 	cap := len(r.input) + 2
 	for c := 1; c <= cap; c++ {
 		if rep.Max != inf && c > rep.Max {
@@ -110,6 +114,18 @@ func (r *recognizer) reachRep(rep Repetition, index int) map[int]bool {
 				seen[e] = true
 				grew = true
 			}
+		}
+		// Stationary level: every further count reaches the same positions, so
+		// a minimum not yet met is met by that same set. This happens with a
+		// nullable element, e.g. 3"" on an empty input, where the count must
+		// go past the input length to reach the minimum.
+		if c < rep.Min && sameSet(next, level) {
+			if rep.Max == inf || rep.Min <= rep.Max {
+				for e := range next {
+					ends[e] = true
+				}
+			}
+			break
 		}
 		level = next
 		// Reachable set closed and the minimum-count requirement met.
@@ -289,4 +305,16 @@ func (r *recognizer) computeElem(elem ElemItf, index int) map[int]bool {
 		return out
 	}
 	return out
+}
+
+func sameSet(a, b map[int]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }

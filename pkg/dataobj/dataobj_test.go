@@ -13,7 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
@@ -356,8 +356,8 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, bigMeta, gotMeta)
 	})
 
-	// maxItemBytes is a custom limit, not metadatacache.Cache's default, so this also proves MaxItemBytes
-	// is genuinely plumbed through fetchExtendedMetadataRegion, not just the built-in default.
+	// maxItemBytes is a custom limit, not the unlimited value of a zero, so this also proves MaxItemBytes
+	// is genuinely plumbed through fetchExtendedMetadataRegion.
 	t.Run("a metadata region above the cache size cap still caches the file metadata but not the oversized section's metadata", func(t *testing.T) {
 		ctx := context.Background()
 		const maxItemBytes = 4096
@@ -417,7 +417,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(corrupted)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := newMetadataCache(memoryCache, 0)
+		// The item limit stops the open from reading the region that the header claims. Without a limit,
+		// the open tries to read 128 MiB and fails, and it does not fall back to a direct read.
+		metadataCache := newMetadataCache(memoryCache, 8<<20)
 		t.Cleanup(metadataCache.Stop)
 		logger := &test.CapturingLogger{}
 
@@ -591,10 +593,10 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		noOption, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
 		require.NoError(t, err)
 
-		// typedNil is *metadatacache.Cache, the real concrete type callers pass, not a test-only
+		// typedNil is *metadata.Cache, the real concrete type callers pass, not a test-only
 		// stand-in: this proves WithMetadataCache's typed-nil normalization covers it specifically,
 		// rather than panicking on first use the way a direct method call on it would.
-		var typedNil *metadatacache.Cache
+		var typedNil *metadata.Cache
 		typedNilCache, err := dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(typedNil))
 		require.NoError(t, err)
 
@@ -606,6 +608,120 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 				return typedNilSec.Reader.DataRange(ctx, 0, typedNilSec.Reader.DataSize())
 			}))
 	})
+}
+
+func TestFromBucket_MetadataPrefetcher(t *testing.T) {
+	var (
+		ctx   = t.Context()
+		raw   = buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
+		inmem = objstore.NewInMemBucket()
+	)
+
+	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+
+	// openThrough opens the object through a prefetcher that returns res and err, and returns the
+	// metadata of its section and the number of reads it made to the object storage.
+	openThrough := func(t *testing.T, res metadata.PrefetchResponse, err error) (meta []byte, reads int64, openErr error) {
+		t.Helper()
+
+		cb := &countingBucket{Bucket: inmem}
+		obj, openErr := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			return res, err
+		}), metadata.PrefetchSet{}))
+		if openErr != nil {
+			return nil, cb.getRanges.Load(), openErr
+		}
+
+		sec := obj.Sections()[0]
+		meta = readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		return meta, cb.getRanges.Load(), nil
+	}
+
+	t.Run("reads the metadata directly when the prefetcher cannot prefetch the object", func(t *testing.T) {
+		meta, reads, err := openThrough(t, metadata.PrefetchResponse{}, metadata.ErrNotPrefetchable)
+
+		require.NoError(t, err)
+		require.Positive(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("reads the metadata directly when the prefetched ranges do not decode", func(t *testing.T) {
+		garbage := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: []byte("not a data object")}}}
+
+		meta, reads, err := openThrough(t, garbage, nil)
+
+		require.NoError(t, err)
+		require.Positive(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("serves the metadata from the prefetched ranges without a read", func(t *testing.T) {
+		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
+
+		meta, reads, err := openThrough(t, whole, nil)
+
+		require.NoError(t, err)
+		require.Zero(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("asks the prefetcher for the object path and the prefetch set, with a reader of the object", func(t *testing.T) {
+		var got metadata.PrefetchRequest
+		wantSet := metadata.PrefetchSet{Message: true, MetadataNames: []string{"trace_id"}}
+		prefetcher := prefetcherFunc(func(_ context.Context, req metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			got = req
+			return metadata.PrefetchResponse{}, metadata.ErrNotPrefetchable
+		})
+
+		_, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcher, wantSet))
+
+		require.NoError(t, err)
+		require.Equal(t, "obj", got.Path)
+		require.Equal(t, wantSet, got.PrefetchSet)
+		rc, err := got.Source.ReadRange(ctx, 0, 4)
+		require.NoError(t, err)
+		magic, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+		require.Equal(t, "DOBJ", string(magic))
+	})
+
+	t.Run("takes precedence over the metadata cache", func(t *testing.T) {
+		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
+		prefetcher := prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) { return whole, nil })
+
+		_, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0,
+			dataobj.WithMetadataCache(failingMetadataCache{t}),
+			dataobj.WithMetadataPrefetcher(prefetcher, metadata.PrefetchSet{}),
+		)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("fails when the prefetcher fails for another reason", func(t *testing.T) {
+		wantErr := errors.New("prefetcher is down")
+
+		_, _, err := openThrough(t, metadata.PrefetchResponse{}, wantErr)
+
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+// failingMetadataCache is a metadata cache that fails the test when an open uses it.
+type failingMetadataCache struct{ t *testing.T }
+
+func (c failingMetadataCache) GetOrLoadMetadataRegion(context.Context, string, func(context.Context) ([]byte, error)) ([]byte, error) {
+	c.t.Error("unexpected call to the metadata cache")
+	return nil, errors.New("unexpected call to the metadata cache")
+}
+
+func (c failingMetadataCache) MaxItemBytes() int64 { return 1 }
+
+// prefetcherFunc is a [metadata.Prefetcher] that calls a function.
+type prefetcherFunc func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error)
+
+func (f prefetcherFunc) Prefetch(ctx context.Context, req metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+	return f(ctx, req)
 }
 
 // countingBucket counts GetRange calls and the bytes they request, to prove which reads hit storage.
@@ -624,7 +740,7 @@ func (b *countingBucket) GetRange(ctx context.Context, name string, off, length 
 func (b *countingBucket) reset() { b.getRanges.Store(0); b.rangeBytes.Store(0) }
 
 // onlyCachedBlob returns the single blob stored in memoryCache, failing the test if there isn't exactly one.
-// metadatacache.Cache prefixes and versions its keys internally, so tests read the cache back this
+// metadata.Cache prefixes and versions its keys internally, so tests read the cache back this
 // way instead of assuming a literal key.
 func onlyCachedBlob(t *testing.T, memoryCache cache.MockCache) []byte {
 	t.Helper()
@@ -744,6 +860,6 @@ func (b *truncatedHeadBucket) GetRange(ctx context.Context, name string, off, le
 	}{io.LimitReader(rc, b.limit), rc}, nil
 }
 
-func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadatacache.Cache {
-	return metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)
+func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)
 }

@@ -101,13 +101,13 @@ func TestDataObjShardingPolicy_powerOfTwoShards(t *testing.T) {
 		require.Equal(t, 64, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
 	})
 
-	t.Run("keeps the ceiling of 256 shards for a tenant that has more buckets than the default", func(t *testing.T) {
+	t.Run("caps the shard count at the largest shard factor for a tenant that has the largest layout", func(t *testing.T) {
 		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{
 			bytesPerShardLimits: limits,
-			layouts:             map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(1024)},
+			layouts:             map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(valid.MaxShardFactor)},
 		})
 
-		require.Equal(t, 256, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
+		require.Equal(t, valid.MaxShardFactor, policy.powerOfTwoShards(tenants, stats.Stats{Bytes: bytes}, 0))
 	})
 
 	for _, tenants := range [][]string{{"1", "2"}, {"2", "1"}} {
@@ -211,14 +211,14 @@ func TestDataObjShardingPolicy_boundedShards(t *testing.T) {
 		require.Empty(t, gotChunks)
 	})
 
-	t.Run("merges 1000 shards into at most the ceiling of 256 shards for a tenant that has 1024 buckets", func(t *testing.T) {
-		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(1024)}})
+	t.Run("merges 1000 shards into at most the largest shard factor for a tenant that has the largest layout", func(t *testing.T) {
+		policy := newDataObjShardingPolicy(Config{}, shardLayoutLimits{layouts: map[string]dataobjstreams.ShardLayout{"1": dataobjstreams.MustShardLayoutFromBuckets(valid.MaxShardFactor)}})
 		shards, chunks := boundedShards(1000, 10)
 
 		gotShards, gotChunks := policy.boundedShards(tenants, shards, chunks)
 
-		require.LessOrEqual(t, len(gotShards), 256)
-		require.Greater(t, len(gotShards), 128, "the merge must keep more than half of the cap")
+		require.LessOrEqual(t, len(gotShards), valid.MaxShardFactor)
+		require.Greater(t, len(gotShards), valid.MaxShardFactor/2, "the merge must keep more than half of the cap")
 		require.Empty(t, gotChunks)
 	})
 

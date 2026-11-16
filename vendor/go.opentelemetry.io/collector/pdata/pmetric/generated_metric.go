@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -122,12 +121,7 @@ func (ms Metric) Gauge() Gauge {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyGauge() Gauge {
 	ms.state.AssertMutable()
-	var ov *internal.Metric_Gauge
-	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-		ov = &internal.Metric_Gauge{}
-	} else {
-		ov = internal.ProtoPoolMetric_Gauge.Get().(*internal.Metric_Gauge)
-	}
+	ov := internal.NewMetric_Gauge()
 	ov.Gauge = internal.NewGauge()
 	ms.orig.Data = ov
 	return newGauge(ov.Gauge, ms.state)
@@ -154,12 +148,7 @@ func (ms Metric) Sum() Sum {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySum() Sum {
 	ms.state.AssertMutable()
-	var ov *internal.Metric_Sum
-	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-		ov = &internal.Metric_Sum{}
-	} else {
-		ov = internal.ProtoPoolMetric_Sum.Get().(*internal.Metric_Sum)
-	}
+	ov := internal.NewMetric_Sum()
 	ov.Sum = internal.NewSum()
 	ms.orig.Data = ov
 	return newSum(ov.Sum, ms.state)
@@ -186,12 +175,7 @@ func (ms Metric) Histogram() Histogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyHistogram() Histogram {
 	ms.state.AssertMutable()
-	var ov *internal.Metric_Histogram
-	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-		ov = &internal.Metric_Histogram{}
-	} else {
-		ov = internal.ProtoPoolMetric_Histogram.Get().(*internal.Metric_Histogram)
-	}
+	ov := internal.NewMetric_Histogram()
 	ov.Histogram = internal.NewHistogram()
 	ms.orig.Data = ov
 	return newHistogram(ov.Histogram, ms.state)
@@ -218,12 +202,7 @@ func (ms Metric) ExponentialHistogram() ExponentialHistogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyExponentialHistogram() ExponentialHistogram {
 	ms.state.AssertMutable()
-	var ov *internal.Metric_ExponentialHistogram
-	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-		ov = &internal.Metric_ExponentialHistogram{}
-	} else {
-		ov = internal.ProtoPoolMetric_ExponentialHistogram.Get().(*internal.Metric_ExponentialHistogram)
-	}
+	ov := internal.NewMetric_ExponentialHistogram()
 	ov.ExponentialHistogram = internal.NewExponentialHistogram()
 	ms.orig.Data = ov
 	return newExponentialHistogram(ov.ExponentialHistogram, ms.state)
@@ -250,12 +229,7 @@ func (ms Metric) Summary() Summary {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySummary() Summary {
 	ms.state.AssertMutable()
-	var ov *internal.Metric_Summary
-	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
-		ov = &internal.Metric_Summary{}
-	} else {
-		ov = internal.ProtoPoolMetric_Summary.Get().(*internal.Metric_Summary)
-	}
+	ov := internal.NewMetric_Summary()
 	ov.Summary = internal.NewSummary()
 	ms.orig.Data = ov
 	return newSummary(ov.Summary, ms.state)

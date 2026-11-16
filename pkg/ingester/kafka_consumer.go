@@ -54,7 +54,12 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 	}
 }
 
-func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
+// timestampedPusher is what the Kafka consumer pushes records to.
+type timestampedPusher interface {
+	PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error)
+}
+
+func NewKafkaConsumerFactory(pusher timestampedPusher, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
 
@@ -75,7 +80,7 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 }
 
 type kafkaConsumer struct {
-	pusher             logproto.PusherServer
+	pusher             timestampedPusher
 	logger             log.Logger
 	decoder            *kafka.Decoder
 	committer          partition.Committer
@@ -150,15 +155,18 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			}
 
 			recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
-			req := &logproto.PushRequest{
-				Streams: []logproto.Stream{stream},
+			push := TimestampedPush{
+				PushRequest: &logproto.PushRequest{Streams: []logproto.Stream{stream}},
+			}
+			if validRecordTimestamp(record.Timestamp) {
+				push.IngestedAt = record.Timestamp
 			}
 
 			level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
 
 			if err := retryWithBackoff(ctx, func(attempts int) error {
 				pushTime := time.Now()
-				_, err := kc.pusher.Push(recordCtx, req)
+				_, err := kc.pusher.PushWithTimestamp(recordCtx, push)
 
 				kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
 
@@ -236,6 +244,10 @@ func groupByStream(records []partition.Record) []streamGroup {
 	return groups
 }
 
+// canRetry reports whether a push that failed with err is retried with backoff until it succeeds
+// or the consumer stops. Meanwhile the stream's worker is blocked and the commit can't move past
+// its record, so a retryable error stalls the partition until it clears. Only ingester-wide
+// conditions (shutdown, WAL disk throttling) belong here, never one tied to a stream or tenant.
 func canRetry(err error) bool {
 	return errors.Is(err, ErrReadOnly)
 }

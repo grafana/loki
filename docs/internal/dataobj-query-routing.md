@@ -96,10 +96,11 @@ configured sharding strategy:
 
 - with the power-of-two strategy, the number of shards comes from the bytes of the query and the
   setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 8 times the
-  number of shard buckets that the tenant sets for new data objects, and never above 256. The
-  default is 32 buckets, so the default cap is 256. Above the number of buckets, several shards
-  read the same bucket. The query then reads up to 8 times as much data as it needs. We accept that
-  to get more shards and finish the query sooner;
+  number of shard buckets that the tenant sets for new data objects, and never above 256, the
+  largest value that `dataobj_shard_factor` accepts. The default is 32 buckets, so the default cap
+  is 256. Above the number of buckets, several shards read the same bucket. The query then reads up
+  to 8 times as much data as it needs. We accept that to get more shards and finish the query
+  sooner;
 - with the bounded strategy, the index returns its shards. If it returns more than the cap, the
   query-frontend merges neighbouring shards by size into at most that many shards. The merged
   shards still cover the same range without gaps. The same over-read applies. The query-frontend
@@ -109,7 +110,8 @@ configured sharding strategy:
 ### Shard buckets
 
 A tenant sets the number of shard buckets of its new data objects with the `dataobj_shard_factor`
-limit. The query-frontend takes the number from the current setting of the tenant. A query can have
+limit. The value must be a power of two from 1 to 256. The default is 32. The query-frontend takes
+the number from the current setting of the tenant. A query can have
 several tenants. The query-frontend then takes the largest number, because a smaller one would
 limit the shards of the tenant with the most buckets. A tenant with fewer buckets over-reads by
 more than 8 times in that query.
@@ -120,6 +122,11 @@ can change its setting. The metastore reads the number of buckets from each inde
 querier reads it from each data object. Both take 32 for an object that records none, because
 legacy data objects used 32 hardcoded shard buckets. Each of them maps the shard to the buckets of
 that object. A shard reads the same streams whatever the number of buckets of the objects.
+
+When a tenant changes its factor, only new data objects get the new number of buckets. Old data
+objects keep theirs for as long as they exist. Compaction never changes the number of buckets of
+an object, and it merges only objects that have the same number. One time window can therefore hold
+several groups of objects that never merge.
 
 ## Limitations
 

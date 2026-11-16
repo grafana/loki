@@ -176,6 +176,7 @@ func WrapMiddlewareWithStore(
 		indexStore,
 		cfg.NgramLength,
 		cfg.MaxHintParallel,
+		cfg.MaxConjunctions,
 		nil,
 		logger,
 		// QF should not have a metadata cache

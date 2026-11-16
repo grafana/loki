@@ -38,7 +38,12 @@ func TestQueryStats_TrackingReader_ClassifiesBySections(t *testing.T) {
 			// Write a minimal index with one document and one term.
 			path := t.TempDir() + "/test.lidx"
 			docs := []format.DocumentMetadata{{ID: 0, MinTimeUnix: 1000, MaxTimeUnix: 2000}}
-			w, err := logline.NewWriter(version, path, docs, nil)
+			var cfg *format.WriterConfig
+			if !logline.VersionHasDocumentTable(version) {
+				docs = nil
+				cfg = &format.WriterConfig{DocumentInterval: time.Second, DayStart: time.Unix(0, 0).UTC()}
+			}
+			w, err := logline.NewWriter(version, path, docs, cfg)
 			require.NoError(t, err)
 			require.NoError(t, w.WriteTermBitmap([8]byte{'a', 'a', 'a', 'a', 'a', 'a'}, format.Bitmap{MatchesAll: true}))
 			require.NoError(t, w.Close())

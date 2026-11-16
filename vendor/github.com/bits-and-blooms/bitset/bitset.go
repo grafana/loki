@@ -478,15 +478,15 @@ func (b *BitSet) Compact() *BitSet {
 // this method could be extremely slow and in some cases might cause the entire BitSet
 // to be recopied.
 func (b *BitSet) InsertAt(idx uint) *BitSet {
-	insertAtElement := idx >> log2WordSize
-
-	// if length of set is a multiple of wordSize we need to allocate more space first
-	if b.isLenExactMultiple() {
-		b.set = append(b.set, uint64(0))
+	if idx >= b.length {
+		b.extendSet(idx)
+		return b
 	}
 
-	var i uint
-	for i = uint(len(b.set) - 1); i > insertAtElement; i-- {
+	insertAtElement := idx >> log2WordSize
+	b.extendSet(b.length)
+
+	for i := uint(len(b.set) - 1); i > insertAtElement; i-- {
 		// all elements above the position where we want to insert can simply by shifted
 		b.set[i] <<= 1
 
@@ -500,16 +500,13 @@ func (b *BitSet) InsertAt(idx uint) *BitSet {
 	dataMask := uint64(1)<<uint64(wordsIndex(idx)) - 1
 
 	// extract that data that we'll shift
-	data := b.set[i] & (^dataMask)
+	data := b.set[insertAtElement] & (^dataMask)
 
 	// set the positions of the data mask to 0 in the element where we insert
-	b.set[i] &= dataMask
+	b.set[insertAtElement] &= dataMask
 
 	// shift data mask to the left and insert its data to the slice element
-	b.set[i] |= data << 1
-
-	// add 1 to length of BitSet
-	b.length++
+	b.set[insertAtElement] |= data << 1
 
 	return b
 }

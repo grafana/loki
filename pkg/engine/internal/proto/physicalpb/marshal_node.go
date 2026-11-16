@@ -96,6 +96,7 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Runs:           copyRunRefs(n.Runs),
 		KeyRange:       copyKeyRange(n.KeyRange),
 		InputBytes:     n.InputBytes,
+		OutputLevel:    n.OutputLevel,
 	}, nil
 }
 
@@ -107,10 +108,10 @@ func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, err
 // MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
 func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexFilter{
-		NodeID:          nodeID,
-		Tenant:          n.Tenant,
-		SourceIndexPath: n.SourceIndexPath,
-		ObjectPaths:     slices.Clone(n.ObjectPaths),
+		NodeID:           nodeID,
+		Tenant:           n.Tenant,
+		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
+		ObjectPaths:      slices.Clone(n.ObjectPaths),
 	}, nil
 }
 

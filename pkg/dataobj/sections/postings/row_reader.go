@@ -59,13 +59,20 @@ func (r *RowReader) Next() bool {
 	return true
 }
 
+// rowReaderBatchSize is the number of rows that a RowReader reads at a time.
+//
+// Bloom rows can hold tens of kilobytes each, and every batch is copied
+// several times while it is read. An index merge keeps one batch open per
+// source index, so a larger batch multiplies the memory of the merge.
+const rowReaderBatchSize = 1024
+
 // next reads the next Row from the section. Returns io.EOF when exhausted.
 func (r *RowReader) next() (Row, error) {
 	if r.batch == nil || r.index >= int(r.batch.NumRows()) {
 		r.batch = nil
 
 		for r.batch == nil {
-			batch, err := r.reader.Read(r.ctx, 8192)
+			batch, err := r.reader.Read(r.ctx, rowReaderBatchSize)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return Row{}, fmt.Errorf("reading batch: %w", err)
 			}

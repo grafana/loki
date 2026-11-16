@@ -1,5 +1,3 @@
-//go:debug multipathtcp=0
-
 package main
 
 import (
@@ -106,6 +104,10 @@ Example with --output-timestamp-format:
 	   --to="2021-01-19T20:00:00Z"
 	   --output-timestamp-format=rfc3339nano
 	   'my-query'
+
+By default the query command sends the request to be executed by a Loki server.
+Optionally, logcli can execute the query itself, reading from object storage
+via --store-config.
 
 The output is limited to 30 entries by default; use --limit to increase.
 

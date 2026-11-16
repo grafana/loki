@@ -1,5 +1,3 @@
-//go:debug multipathtcp=0
-
 package main
 
 import (

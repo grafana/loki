@@ -50,7 +50,7 @@ type Service struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	const componentName = "dataobj-builder"
 	logger = log.With(logger, "component", componentName)
 
@@ -125,7 +125,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	}
 	flusher := newFlusher(uploader, logger, reg)
 
-	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+	idxBucket := metastore.NewIndexBucket(bucket)
 	indexer, err := index.NewSimpleIndexer(
 		cfg.IndexobjBuilder,
 		scratchStore,
@@ -153,13 +153,15 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		committer,
 		indexer,
 		tocWriter,
+		cfg.Topic,
 		partitionID,
 		cfg.FlushConcurrency,
 		logger,
 		reg,
 	)
+	watermarks := newWatermarkCache(cfg.Topic, partitionID, idxBucket, NewWatermarkMetrics(reg))
 	processor := newProcessor(
-		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize), watermarks),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

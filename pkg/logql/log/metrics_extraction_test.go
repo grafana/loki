@@ -1000,6 +1000,18 @@ func TestStageHints_Merge(t *testing.T) {
 		require.True(t, StageHints{CanModifyLine: true}.Merge(StageHints{}).CanModifyLine)
 		require.True(t, StageHints{}.Merge(StageHints{CanModifyLine: true}).CanModifyLine)
 	})
+
+	t.Run("reports a line read set on either side", func(t *testing.T) {
+		require.False(t, StageHints{}.Merge(StageHints{}).ReadsLine)
+		require.True(t, StageHints{ReadsLine: true}.Merge(StageHints{}).ReadsLine)
+		require.True(t, StageHints{}.Merge(StageHints{ReadsLine: true}).ReadsLine)
+	})
+
+	t.Run("reports an arbitrary label read set on either side", func(t *testing.T) {
+		require.False(t, StageHints{}.Merge(StageHints{}).ReadsArbitraryLabels)
+		require.True(t, StageHints{ReadsArbitraryLabels: true}.Merge(StageHints{}).ReadsArbitraryLabels)
+		require.True(t, StageHints{}.Merge(StageHints{ReadsArbitraryLabels: true}).ReadsArbitraryLabels)
+	})
 }
 
 func TestReduceStages_FoldsHintsAcrossStages(t *testing.T) {

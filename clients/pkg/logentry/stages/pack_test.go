@@ -107,7 +107,6 @@ func Test_packStage_Run(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	tests := []struct {
 		name          string
@@ -348,7 +347,7 @@ func Test_packStage_Run(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newPackStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newPackStage(tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			// Normal pipeline operation will put all the labels into the extracted map
 			// replicate that here.

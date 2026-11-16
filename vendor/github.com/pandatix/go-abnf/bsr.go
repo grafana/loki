@@ -65,6 +65,14 @@ type bsrParser struct {
 	aborted  bool
 }
 
+// addAlt adds the descriptor starting alternate L.alt of L.nt at i when the
+// lookahead test admits it.
+func (p *bsrParser) addAlt(L slot, u *bsrGNode, i, rc int) {
+	if p.sg.la.alt(L.nt, L.alt).admits(p.input, i) {
+		p.add(L, u, i, rc)
+	}
+}
+
 func (p *bsrParser) add(L slot, u *bsrGNode, i, rc int) {
 	d := bsrDesc{L, u, i, rc}
 	if p.seen[d] {
@@ -130,10 +138,10 @@ func (p *bsrParser) pop(u *bsrGNode, j int) {
 func (p *bsrParser) addRepAlts(ntID int, v *bsrGNode, i, rc int) {
 	nt := p.sg.nts[ntID]
 	if rc >= nt.repMin {
-		p.add(slot{ntID, 0, 0}, v, i, rc)
+		p.addAlt(slot{ntID, 0, 0}, v, i, rc)
 	}
 	if nt.repMax == inf || rc < nt.repMax {
-		p.add(slot{ntID, 1, 0}, v, i, rc)
+		p.addAlt(slot{ntID, 1, 0}, v, i, rc)
 	}
 }
 
@@ -198,7 +206,7 @@ func (p *bsrParser) parse() {
 	startNT := p.sg.start
 	p.u0 = &bsrGNode{ret: slot{-1, -1, -1}, pos: 0, edgeSet: map[*bsrGNode]bool{}}
 	for ai := range p.sg.nts[startNT].alts {
-		p.add(slot{startNT, ai, 0}, p.u0, 0, 0)
+		p.addAlt(slot{startNT, ai, 0}, p.u0, 0, 0)
 	}
 	for len(p.work) > 0 {
 		if p.aborted {
@@ -220,6 +228,9 @@ func (p *bsrParser) process(d bsrDesc) {
 		}
 		s := prod[L.dot]
 		if s.kind == symNonterm {
+			if !p.sg.la.callAt(L).admits(p.input, i) {
+				return
+			}
 			ret := slot{L.nt, L.alt, L.dot + 1}
 			v := p.create(ret, u, i, rc)
 			if p.sg.nts[s.nt].isRep {
@@ -230,7 +241,7 @@ func (p *bsrParser) process(d bsrDesc) {
 				p.addRepAlts(s.nt, v, i, childRC)
 			} else {
 				for ai := range p.sg.nts[s.nt].alts {
-					p.add(slot{s.nt, ai, 0}, v, i, 0)
+					p.addAlt(slot{s.nt, ai, 0}, v, i, 0)
 				}
 			}
 			return
@@ -552,6 +563,18 @@ func (f *BSRForest) collectChild(s ssym, a, b int, out *[]*ParseTree, visited ma
 	visited[id] = false
 }
 
+func newBSRParser(sg *slotGrammar, input []byte, maxElems int) *bsrParser {
+	return &bsrParser{
+		sg:       sg,
+		input:    input,
+		set:      map[bsrElem]bool{},
+		gss:      map[gssKey]*bsrGNode{},
+		seen:     map[bsrDesc]bool{},
+		popped:   map[*bsrGNode]map[int]bool{},
+		maxElems: maxElems,
+	}
+}
+
 // ParseBSR parses input under rootRulename using the BSR engine. It accepts the
 // same options as ParseForest (WithMaxForestNodes bounds the BSR set size).
 func ParseBSR(input []byte, grammar *Grammar, rootRulename string, opts ...ForestOption) (*BSRForest, error) {
@@ -563,15 +586,7 @@ func ParseBSR(input []byte, grammar *Grammar, rootRulename string, opts ...Fores
 	if err != nil {
 		return nil, err
 	}
-	p := &bsrParser{
-		sg:       sg,
-		input:    input,
-		set:      map[bsrElem]bool{},
-		gss:      map[gssKey]*bsrGNode{},
-		seen:     map[bsrDesc]bool{},
-		popped:   map[*bsrGNode]map[int]bool{},
-		maxElems: cfg.maxNodes,
-	}
+	p := newBSRParser(sg, input, cfg.maxNodes)
 	p.parse()
 	if p.aborted {
 		return nil, &ErrForestTooLarge{Max: cfg.maxNodes}

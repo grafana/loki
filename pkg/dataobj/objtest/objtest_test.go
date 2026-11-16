@@ -255,7 +255,7 @@ func countIndexObjects(t *testing.T, builder *Builder) int {
 	t.Helper()
 
 	var count int
-	require.NoError(t, builder.Location().Bucket.Iter(t.Context(), indexPrefix, func(name string) error {
+	require.NoError(t, builder.Location().Bucket.Iter(t.Context(), metastore.IndexStoragePrefix, func(name string) error {
 		if strings.Contains(name, "/indexes/") {
 			count++
 		}

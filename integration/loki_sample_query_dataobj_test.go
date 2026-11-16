@@ -12,13 +12,9 @@ import (
 
 	dskit_metrics "github.com/grafana/dskit/metrics"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/integration/client"
-	"github.com/grafana/loki/v3/integration/cluster"
-	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 // TestSampleQueryStreamDataObjEquivalence ingests the same data through the real distributor and
@@ -26,116 +22,14 @@ import (
 // once from data objects, built from the same Kafka records by a dataobj-builder, routed there by
 // the querier's stream-first data-object band. The two must return identical results.
 func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
-	// Single-partition fake Kafka, so the ingester and the dataobj-builder consume records in
-	// the same order.
-	kafkaCluster, _ := testkafka.CreateCluster(t, 1, "loki")
-	kafkaAddr := kafkaCluster.ListenAddrs()[0]
-
-	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
-	})
-	t.Cleanup(func() {
-		assert.NoError(t, clu.Cleanup())
-	})
-
-	kafkaIngestionFlags := []string{
-		"-kafka.writer.address=" + kafkaAddr,
-		"-kafka.reader.address=" + kafkaAddr,
-		"-kafka.topic=loki",
-		"-ingester.kafka-ingestion-enabled=true",
-		"-ingester.partition-ring.store=inmemory",
-	}
-
-	// Start compactor and index-gateway.
 	var (
-		tCompactor = clu.AddComponent(
-			"compactor",
-			"-target=compactor",
-			"-compactor.compaction-interval=1h",
-		)
-		tIndexGateway = clu.AddComponent(
-			"index-gateway",
-			"-target=index-gateway",
-		)
+		clu            = startDataObjCluster(t, withChunksOnlyQuerier())
+		tDistributor   = clu.distributor
+		tIngester      = clu.ingester
+		tIndexGateway  = clu.indexGateway
+		tQuerier       = clu.querier
+		tQueryFrontend = clu.queryFrontend
 	)
-	require.NoError(t, clu.Run())
-
-	// Start distributor, ingester, and dataobj-builder, all reading the same Kafka topic.
-	var (
-		tDistributor = clu.AddComponent(
-			"distributor",
-			append([]string{
-				"-target=distributor",
-				"-distributor.kafka-writes-enabled=true",
-				"-distributor.ingester-writes-enabled=false",
-			}, kafkaIngestionFlags...)...,
-		)
-		tIngester = clu.AddComponent(
-			"ingester",
-			append([]string{
-				"-target=ingester",
-				"-ingester.lifecycler.ID=ingester-0", // deterministic partition id 0
-				"-ingester.partition-ring.min-partition-owners-duration=0s",
-				"-kafka.max-consumer-lag-at-startup=1s",
-				"-tsdb.shipper.index-gateway-client.server-address=" + tIndexGateway.GRPCURL(),
-			}, kafkaIngestionFlags...)...,
-		)
-		_ = clu.AddComponent(
-			"dataobj-builder",
-			"-target=dataobj-builder",
-			"-kafka.reader.address="+kafkaAddr,
-			"-dataobj.enabled=true",
-			"-dataobj.builder.topic=loki",
-			"-dataobj.builder.partition-id=0", // the fake Kafka's only partition
-			"-dataobj.builder.idle-flush-timeout=1s",
-			"-dataobj.builder.max-builder-age=1s",
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	// Start query-scheduler.
-	tQueryScheduler := clu.AddComponent(
-		"query-scheduler",
-		"-target=query-scheduler",
-		"-query-scheduler.use-scheduler-ring=false",
-		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-	)
-	require.NoError(t, clu.Run())
-
-	// Start querier and query-frontend. Store-only and stream-first are enabled from the start:
-	// store-only only affects whether ingesters are consulted, not which store is picked, so there's
-	// no need to restart for it. The querier gets its -dataobj.* flags later, once the object exists,
-	// so the first query below is a genuine chunks-only baseline.
-	//
-	// The query-frontend decides which queries a querier may read from data objects. It gets the
-	// data-object flags and the data-object start time from the start. The baseline query is then
-	// eligible, and the querier, which has no data-object store yet, still reads chunks.
-	dataObjQueryStart := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
-	var (
-		tQuerier = clu.AddComponent(
-			"querier",
-			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-querier.query-store-only=true",
-			"-querier.stream-first-execution-enabled=true",
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		tQueryFrontend = clu.AddComponent(
-			"query-frontend",
-			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-frontend.default-validity=0s",
-			"-querier.query-store-only=true",
-			"-querier.stream-first-execution-enabled=true",
-			"-querier.dataobj-query-start-time="+dataObjQueryStart,
-			"-dataobj.enabled=true",
-			"-dataobj.storage-lag=0s",
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-	)
-	require.NoError(t, clu.Run())
 
 	var (
 		ctx    = context.Background()
@@ -281,16 +175,10 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
 	})
 
-	tQuerier.AddFlags(
-		"-dataobj.enabled=true",
-		"-querier.dataobj-query-start-time="+dataObjQueryStart,
-		"-dataobj.storage-lag=0s",
-		"-dataobj.metadata-cache.embedded-cache.enabled=true",
-	)
-	require.NoError(t, tQuerier.Restart())
+	clu.restartQuerierOnDataObjects(t, "-dataobj.metadata-cache.embedded-cache.enabled=true")
 
 	// The dataobj-builder flushes and uploads on its own (idle-flush-timeout/max-builder-age are set
-	// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
+	// short in the cluster setup); there's no force-flush endpoint. The metastore does an uncached lookup per
 	// request, so poll the query itself rather than any builder-internal state.
 	require.Eventually(t, func() bool {
 		resp, err := runCountQuery()
@@ -306,7 +194,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		return reflect.DeepEqual(counts, expectedCounts)
 	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
-	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
+	t.Run("a query served by data objects returns the complete expected result, reports dataobj stats, and reads no chunks and no second-stage rows", func(t *testing.T) {
 		resp, err := runCountQuery()
 		require.NoError(t, err)
 
@@ -318,6 +206,10 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedBytes)
 		require.Positive(t, store.Dataobj.SectionsResolutionMaxTime)
+		require.Positive(t, store.Dataobj.LogsUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.LogsCompactedObjectsCount, "only the builder writes objects in this cluster")
+		require.Positive(t, store.Dataobj.IndexUncompactedObjectsCount)
+		require.Zero(t, store.Dataobj.IndexCompactedObjectsCount, "only the builder writes objects in this cluster")
 		require.Zero(t, store.Dataobj.PostFilterRows)
 		require.Zero(t, store.Chunk.DecompressedLines)
 	})

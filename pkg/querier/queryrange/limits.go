@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	querystats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -248,6 +250,16 @@ type querySizeLimiter struct {
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
 	spec              querySizeLimitSpec
+
+	// splitter makes the same splits as the split middleware after the limiter. The
+	// limiter uses it to count the data that the splits of a range aggregation read again.
+	// It is nil when the limiter does not count re-reads.
+	splitter splitter
+
+	// maxQueryLookback returns the max query lookback of a tenant. The limiter does not count
+	// data before the lookback start (now minus the max query lookback), as the index stats
+	// and the queriers do not read it. It is nil when the limiter has no splitter.
+	maxQueryLookback func(context.Context, string) time.Duration
 }
 
 func newQuerySizeLimiter(
@@ -298,6 +310,29 @@ func NewQuerySizeLimiterMiddleware(
 	})
 }
 
+// newSplitQuerySizeLimiterMiddleware creates a new Middleware that enforces
+// max_query_bytes_read on metric range queries that the split middleware then splits by
+// time.
+//
+// The estimate is the bytes that all splits read together. A split of a range aggregation
+// also reads the range vector interval before its start, so the splits read more than the
+// unsplit request. splitter must make the same splits as the split middleware after the
+// limiter. Otherwise the limiter counts reads that do not happen.
+func newSplitQuerySizeLimiterMiddleware(
+	engineOpts logql.EngineOpts,
+	logger log.Logger,
+	limits Limits,
+	splitter splitter,
+	statsHandler queryrangebase.Handler,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		q := newQuerySizeLimiter(next, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler)
+		q.splitter = splitter
+		q.maxQueryLookback = limits.MaxQueryLookback
+		return q
+	})
+}
+
 // getBytesReadForRequest returns the number of bytes that would be read for the query in r.
 // Since the query expression may contain multiple stream matchers, this function sums up the
 // bytes that will be read for each stream.
@@ -309,21 +344,44 @@ func NewQuerySizeLimiterMiddleware(
 // individual intervals and offsets
 //   - {job="foo"}
 //   - {job="bar"}
-func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
+//
+// When the limiter has a splitter, the bytes of r include the data that the splits of r
+// read again. The bytes of the query limits context include them too: the limiter splits
+// the context range with the same splitter and the step of r, because the client sends
+// the same step for all parts of the context. Overlaps at the boundaries of the client's
+// own parts are not counted.
+//
+// The limiter starts the context range at the lookback start (now minus the max query
+// lookback), as the limits middleware does for the request. So the index stats and the
+// splits cover the same range, and the limiter does not split the part of the context range
+// before the lookback start. The estimate does not count a context range that ends before
+// the lookback start.
+func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, tenantIDs []string, r queryrangebase.Request) (uint64, error) {
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
+
+	lookbackStart := q.lookbackStart(ctx, tenantIDs)
 
 	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
 	fullCtxBytes := uint64(0)
 	if queryLimitCtx != nil && queryLimitCtx.Expr != "" && !queryLimitCtx.From.IsZero() && !queryLimitCtx.To.IsZero() {
-		var err error
-		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To)
-		if err != nil {
-			return 0, nil
+		if limitsCtx, ok := withinMaxQueryLookback(*queryLimitCtx, lookbackStart); ok {
+			var err error
+			fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, limitsCtx.Expr, limitsCtx.From, limitsCtx.To, lookbackStart, func() []queryrangebase.Request {
+				if ctxReq := contextRequest(r, &limitsCtx); ctxReq != nil {
+					return q.split(tenantIDs, ctxReq)
+				}
+				return nil
+			})
+			if err != nil {
+				return 0, nil
+			}
 		}
 	}
 
-	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd())
+	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd(), lookbackStart, func() []queryrangebase.Request {
+		return q.split(tenantIDs, r)
+	})
 	if err != nil {
 		return 0, nil
 	}
@@ -335,7 +393,86 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	return queryBytes, nil
 }
 
-func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
+// split returns the splits that the splitter makes of r, or nil when r is not split.
+//
+// It does not split requests other than *LokiRequest, because metricQuerySplitter panics
+// on them.
+func (q *querySizeLimiter) split(tenantIDs []string, r queryrangebase.Request) []queryrangebase.Request {
+	if q.splitter == nil {
+		return nil
+	}
+	if _, ok := r.(*LokiRequest); !ok {
+		return nil
+	}
+	splits, enabled := q.splitter.split(time.Now().UTC(), tenantIDs, r)
+	if !enabled {
+		return nil
+	}
+	return splits
+}
+
+// withinMaxQueryLookback returns c with its start moved to lookbackStart, if c starts
+// before it. It returns false when c ends before lookbackStart. A zero lookbackStart
+// returns c unchanged.
+func withinMaxQueryLookback(c querylimits.Context, lookbackStart time.Time) (querylimits.Context, bool) {
+	if lookbackStart.IsZero() {
+		return c, true
+	}
+	if c.To.Before(lookbackStart) {
+		return c, false
+	}
+	if c.From.Before(lookbackStart) {
+		c.From = lookbackStart
+	}
+	return c, true
+}
+
+// lookbackStart returns now minus the max query lookback of the tenants. It returns the
+// zero time when the limiter has no max query lookback or the tenants do not set one.
+func (q *querySizeLimiter) lookbackStart(ctx context.Context, tenantIDs []string) time.Time {
+	if q.maxQueryLookback == nil {
+		return time.Time{}
+	}
+	lookbackCapture := func(id string) time.Duration { return q.maxQueryLookback(ctx, id) }
+	maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture)
+	if maxQueryLookback <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(-maxQueryLookback)
+}
+
+// contextRequest returns a request for the range of the query limits context c, with the
+// step of r. It returns nil when r is not a *LokiRequest or the query of c does not parse.
+func contextRequest(r queryrangebase.Request, c *querylimits.Context) *LokiRequest {
+	lokiReq, ok := r.(*LokiRequest)
+	if !ok {
+		return nil
+	}
+	expr, err := syntax.ParseExpr(c.Expr)
+	if err != nil {
+		return nil
+	}
+	return &LokiRequest{
+		Query:     c.Expr,
+		StartTs:   c.From,
+		EndTs:     c.To,
+		Step:      lokiReq.Step,
+		Direction: lokiReq.Direction,
+		Path:      lokiReq.Path,
+		Plan:      &plan.QueryPlan{AST: expr},
+	}
+}
+
+// getBytesForQueryAndRange estimates the bytes that query reads in [from, to].
+//
+// split returns the splits of the query, or nil when the query is not split. When the
+// splits overlap, the estimate is the bytes that they read together. The estimate does not
+// count data before lookbackStart. A zero lookbackStart does not limit it.
+//
+// getBytesForQueryAndRange calls split only after the index stats lookup succeeds, and
+// only when a matcher group has a range vector interval. So a range that fails the max
+// query length check is never split.
+func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to, lookbackStart time.Time, split func() []queryrangebase.Request) (uint64, error) {
 	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return 0, err
@@ -363,7 +500,18 @@ func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query s
 		return 0, err
 	}
 
+	var splits []queryrangebase.Request
+	if split != nil && slices.ContainsFunc(matcherGroups, func(grp syntax.MatcherRange) bool { return grp.Interval > 0 }) {
+		splits = split()
+	}
+
 	combinedStats := stats.MergeStats(matcherStats...)
+	combinedStats.Bytes = 0
+	for i, grp := range matcherGroups {
+		if matcherStats[i] != nil {
+			combinedStats.Bytes += splitBytesRead(matcherStats[i].Bytes, grp, from, to, lookbackStart, splits)
+		}
+	}
 
 	level.Debug(q.logger).Log(
 		append(
@@ -390,7 +538,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limitFuncCapture); maxBytesRead > 0 {
-		bytesRead, err := q.getBytesReadForRequest(ctx, r)
+		bytesRead, err := q.getBytesReadForRequest(ctx, tenantIDs, r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
@@ -405,6 +553,52 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	}
 
 	return q.next.Do(ctx, r)
+}
+
+// splitBytesRead scales bytes to the bytes that splits read together. bytes is the index
+// stats of the matcher group grp for the request range [from, to].
+//
+// A split reads its own time range plus the range vector interval before it. The windows
+// of adjacent splits overlap by about the interval, so each split reads the overlap again.
+// The index stats cover the overlap only once.
+//
+// The index stats and the queriers do not read data before lookbackStart. So both the
+// time that the stats cover and the window of each split start at lookbackStart at the
+// earliest. A zero lookbackStart does not limit them.
+//
+// The scaling assumes that the matcher group stores data at a constant rate. It scales the
+// stats instead of sending one index request per split, so that the index load does not
+// grow with the number of splits.
+func splitBytesRead(bytes uint64, grp syntax.MatcherRange, from, to, lookbackStart time.Time, splits []queryrangebase.Request) uint64 {
+	if grp.Interval <= 0 || len(splits) < 2 {
+		return bytes
+	}
+
+	covered := readWindow(grp, from, to, lookbackStart)
+	var read time.Duration
+	for _, s := range splits {
+		read += readWindow(grp, s.GetStart(), s.GetEnd(), lookbackStart)
+	}
+	if covered <= 0 || read <= covered {
+		return bytes
+	}
+
+	return uint64(float64(bytes) * float64(read) / float64(covered))
+}
+
+// readWindow returns the time that the matcher group grp reads for the range [start, end]:
+// from start minus the interval and offset, but not before lookbackStart, to end minus the
+// offset.
+func readWindow(grp syntax.MatcherRange, start, end, lookbackStart time.Time) time.Duration {
+	windowStart := start.Add(-grp.Interval - grp.Offset)
+	windowEnd := end.Add(-grp.Offset)
+	if !lookbackStart.IsZero() && windowStart.Before(lookbackStart) {
+		windowStart = lookbackStart
+	}
+	if windowEnd.Before(windowStart) {
+		return 0
+	}
+	return windowEnd.Sub(windowStart)
 }
 
 type seriesLimiter struct {

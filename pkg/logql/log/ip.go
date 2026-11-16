@@ -67,8 +67,10 @@ func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 func (f *IPLineFilter) Hints() StageHints {
 	return StageHints{
 		// It matches the IP in the line, never touching labels.
-		CanModifyLabels: false,
-		CanModifyLine:   false,
+		CanModifyLabels:      false,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
 	}
 }
 
@@ -123,8 +125,10 @@ func (f *IPLabelFilter) Hints() StageHints {
 		// It only reads a label value to match against the IP pattern, never writing a label.
 		CanModifyLabels: false,
 		// The parser rejects an ip filter on __error__ or __error_details__, so it never reads the error.
-		ReadsErrorLabel: false,
-		CanModifyLine:   false,
+		ReadsErrorLabel:      false,
+		CanModifyLine:        false,
+		ReadsLine:            false,
+		ReadsArbitraryLabels: false,
 	}
 }
 
