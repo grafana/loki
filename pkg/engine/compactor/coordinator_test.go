@@ -739,6 +739,37 @@ func TestExecuteLogCompaction(t *testing.T) {
 		requireEntriesMatchCalls(t, runner.snapshot(), swaps[0].newEntries)
 	})
 
+	t.Run("publishes the artifacts of each task as one run with the time range and posting keys of each artifact", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		keys, err := postings.NewKeyRange(
+			postings.Key{Kind: postings.KindLabel, ColumnName: "app"},
+			postings.Key{Kind: postings.KindLabel, ColumnName: "env"},
+		)
+		require.NoError(t, err)
+		epoch := time.Unix(0, 0).UTC()
+		runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			object := planObjectPaths(t, plan)[0]
+			return []v2.ResultArtifact{
+				{Path: object + "/index-1", MinTime: epoch, MaxTime: epoch, PostingKeys: keys},
+				{Path: object + "/index-2"},
+			}, nil
+		}
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
+
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		entry := func(path string, keys postings.KeyRange) metastore.TableOfContentsEntry {
+			return metastore.TableOfContentsEntry{Path: path, StartTime: epoch, EndTime: epoch, PostingKeys: keys}
+		}
+		require.ElementsMatch(t, []metastore.IndexRunEntries{
+			{entry("logs/a/index-1", keys), entry("logs/a/index-2", postings.KeyRange{})},
+			{entry("logs/b/index-1", keys), entry("logs/b/index-2", postings.KeyRange{})},
+		}, swaps[0].newRuns)
+	})
+
 	t.Run("swaps the source index when a task fails once and its retry succeeds", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
 		runner.failOnCall = 1
@@ -3088,7 +3119,7 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 	require.Equal(t, time.Unix(0, 1000).UTC(), calls[0].newEntries[0].EndTime)
 }
 
-func TestRunsTimeBounds(t *testing.T) {
+func TestRunsTimeRange(t *testing.T) {
 	section := func(minTS, maxTS int64) *compactionv2pb.SectionRef {
 		return &compactionv2pb.SectionRef{MinTimestamp: minTS, MaxTimestamp: maxTS}
 	}
@@ -3114,10 +3145,9 @@ func TestRunsTimeBounds(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, taskOutputs{
-				start: time.Unix(0, test.wantStart).UTC(),
-				end:   time.Unix(0, test.wantEnd).UTC(),
-			}, runsTimeBounds(test.runs))
+			start, end := runsTimeRange(test.runs)
+			require.Equal(t, time.Unix(0, test.wantStart).UTC(), start)
+			require.Equal(t, time.Unix(0, test.wantEnd).UTC(), end)
 		})
 	}
 }
@@ -3406,9 +3436,9 @@ func TestOutputRuns(t *testing.T) {
 	window := imWindow()
 	at := func(offset time.Duration) time.Time { return window.Add(offset).UTC() }
 	buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
-	outputs := []taskOutputs{
-		{start: at(time.Hour), end: at(3 * time.Hour), shardBuckets: buckets},
-		{start: at(2 * time.Hour), end: at(4 * time.Hour), shardBuckets: buckets},
+	outputs := []outputBounds{
+		{inputs: newTimeRange(at(time.Hour), at(3*time.Hour)), shardBuckets: buckets},
+		{inputs: newTimeRange(at(2*time.Hour), at(4*time.Hour)), shardBuckets: buckets},
 	}
 	keys, err := postings.NewKeyRange(
 		postings.Key{Kind: postings.KindLabel, ColumnName: "app"},
@@ -3632,8 +3662,7 @@ func TestIndexFilterForUnmerged(t *testing.T) {
 		task := indexFilterForUnmerged(run, unmerged)
 		require.Equal(t, []string{"indexes/run/a", "indexes/run/b"}, task.sourceIndexPaths)
 		require.Equal(t, []string{"logs/a", "logs/b"}, task.objectPaths)
-		require.Equal(t, time.Unix(0, 10).UTC(), task.bounds.start)
-		require.Equal(t, time.Unix(0, 40).UTC(), task.bounds.end)
+		require.Equal(t, newTimeRange(time.Unix(0, 10).UTC(), time.Unix(0, 40).UTC()), task.inputs)
 	})
 }
 

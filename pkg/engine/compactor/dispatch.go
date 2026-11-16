@@ -101,8 +101,8 @@ type planRun struct {
 //     does not reference them yet.
 //   - A non-nil error fails the attempt. The dispatcher ignores any artifact
 //     that comes with it.
-//   - No artifacts with a nil error, or an artifact that is not valid, is an
-//     invalid response and fails the attempt.
+//   - An empty result with a nil error, or any artifact that is not valid,
+//     fails the attempt.
 //
 // No-work decisions belong to planning, before dispatch.
 func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {

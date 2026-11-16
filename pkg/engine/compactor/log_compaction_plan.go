@@ -12,7 +12,7 @@ import (
 // logCompactionPlan is the work that replaces one source index in one window.
 // The source index is an index run: one index object, or every index object
 // that shares a RunID. The swap replaces every index object of the run with
-// one new run per task, which holds the artifacts of the task.
+// one new run per task, with an entry for each artifact of the task.
 //
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
@@ -70,14 +70,13 @@ func (p logCompactionPlan) physicalPlans(tenant string) []*physical.Plan {
 	return plans
 }
 
-// outputs returns the outputs of each task, in task order.
-func (p logCompactionPlan) outputs() []taskOutputs {
-	outputs := make([]taskOutputs, len(p.tasks))
+// outputBounds returns the output bounds of each task, in task order.
+func (p logCompactionPlan) outputBounds() []outputBounds {
+	bounds := make([]outputBounds, len(p.tasks))
 	for i, task := range p.tasks {
-		outputs[i] = task.outputs()
-		outputs[i].shardBuckets = p.shardBuckets
+		bounds[i] = outputBounds{inputs: task.inputTimeRange(), shardBuckets: p.shardBuckets}
 	}
-	return outputs
+	return bounds
 }
 
 // logCompactionTask is one unit of work in a log compaction plan.
@@ -85,9 +84,8 @@ type logCompactionTask interface {
 	// physicalPlan returns a new single-root physical plan for the task.
 	physicalPlan(tenant string, window time.Time) *physical.Plan
 
-	// outputs returns the time range of the inputs of the task, without a
-	// shard layout.
-	outputs() taskOutputs
+	// inputTimeRange returns the time range of the inputs of the task.
+	inputTimeRange() timeRange
 
 	// logStats returns the log data that the task reads. Its bytes are zero
 	// if the task reads no log data.
@@ -97,25 +95,25 @@ type logCompactionTask interface {
 // logMergeTask merges the runs of spec into new log objects.
 type logMergeTask struct {
 	spec   *compactionv2pb.TaskSpec
-	bounds taskOutputs
+	inputs timeRange
 }
 
 func newLogMergeTask(spec *compactionv2pb.TaskSpec) logMergeTask {
-	return logMergeTask{spec: spec, bounds: runsTimeBounds(spec.Runs)}
+	return logMergeTask{spec: spec, inputs: newTimeRange(runsTimeRange(spec.Runs))}
 }
 
 func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Plan {
 	return buildLogMergePlan(tenant, window, t.spec)
 }
 
-func (t logMergeTask) outputs() taskOutputs { return t.bounds }
+func (t logMergeTask) inputTimeRange() timeRange { return t.inputs }
 
 // logStats returns the input bytes of the task's key range from the index
 // stats, so the tasks of a split merge add up to the bytes of the merge. If
 // the spec has no input bytes, it falls back to the size of the task's
 // sections.
 func (t logMergeTask) logStats() logTaskStats {
-	stats := logTaskStats{oldestTimestamp: t.bounds.start}
+	stats := logTaskStats{oldestTimestamp: t.inputs.start}
 	if t.spec.InputBytes > 0 {
 		stats.inputBytes = uint64(t.spec.InputBytes)
 		return stats
@@ -136,14 +134,14 @@ type indexFilterTask struct {
 	// part of a run loses postings.
 	sourceIndexPaths []string
 	objectPaths      []string
-	bounds           taskOutputs
+	inputs           timeRange
 }
 
 func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan {
 	return buildIndexFilterPlan(tenant, t.sourceIndexPaths, t.objectPaths)
 }
 
-func (t indexFilterTask) outputs() taskOutputs { return t.bounds }
+func (t indexFilterTask) inputTimeRange() timeRange { return t.inputs }
 
 // logStats returns zero bytes, because the filter reads only the source
 // index.

@@ -71,6 +71,20 @@ func TestDecodeResultArtifacts(t *testing.T) {
 	require.NoError(t, err)
 	lowKey, highKey := keys.Encode()
 
+	t.Run("decodes the record of a worker that predates the time range and posting key columns as artifacts with a path only", func(t *testing.T) {
+		mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer mem.AssertSize(t, 0)
+		b := array.NewRecordBuilder(mem, legacyResultRecordSchema)
+		defer b.Release()
+		b.Field(0).(*array.StringBuilder).Append("indexes/a")
+		rec := b.NewRecordBatch()
+		defer rec.Release()
+
+		out, err := DecodeResultArtifacts(rec)
+		require.NoError(t, err)
+		require.Equal(t, []ResultArtifact{{Path: "indexes/a"}}, out)
+	})
+
 	for _, tc := range []struct {
 		name    string
 		schema  *arrow.Schema
@@ -78,7 +92,7 @@ func TestDecodeResultArtifacts(t *testing.T) {
 		wantErr string
 	}{
 		{name: "returns an error when the record is missing", wantErr: "missing record"},
-		{name: "returns an error when the record has another schema", schema: arrow.NewSchema([]arrow.Field{{Name: "path", Type: arrow.PrimitiveTypes.Int64}}, nil), wantErr: "schema does not match"},
+		{name: "returns an error when the record has another schema", schema: arrow.NewSchema([]arrow.Field{{Name: "path", Type: arrow.PrimitiveTypes.Int64}}, nil), rows: []row{{}}, wantErr: "schema does not match"},
 		{name: "returns an error when the record has no rows", schema: ResultRecordSchema, wantErr: "no rows"},
 		{name: "returns an error when a path is null", schema: ResultRecordSchema, rows: []row{{}}, wantErr: "null path"},
 		{name: "returns an error when a path is empty", schema: ResultRecordSchema, rows: []row{{path: str("")}}, wantErr: "empty path"},
@@ -100,6 +114,10 @@ func TestDecodeResultArtifacts(t *testing.T) {
 						appendTimestamp(b.Field(2).(*array.TimestampBuilder), r.maxTime)
 						appendBinary(b.Field(3).(*array.BinaryBuilder), r.minKey)
 						appendBinary(b.Field(4).(*array.BinaryBuilder), r.maxKey)
+					}
+				} else {
+					for range tc.rows {
+						b.Field(0).(*array.Int64Builder).Append(1)
 					}
 				}
 				rec = b.NewRecordBatch()

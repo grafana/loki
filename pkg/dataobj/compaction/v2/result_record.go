@@ -14,7 +14,9 @@ import (
 )
 
 // ResultRecordSchema is the Arrow schema of the record a compaction job emits
-// to report its artifacts: one row per artifact, at least one row.
+// to report its artifacts: one row per artifact, at least one row. Null times
+// mean the artifact has no time range. Null posting keys mean its bounds are
+// unknown.
 var ResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path", Type: arrow.BinaryTypes.String, Nullable: false},
 	{Name: "min_time", Type: arrow.FixedWidthTypes.Timestamp_ns, Nullable: true},
@@ -23,10 +25,14 @@ var ResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "max_posting_key", Type: arrow.BinaryTypes.Binary, Nullable: true},
 }, nil)
 
+// legacyResultRecordSchema is the schema of the record of a worker that
+// predates ResultRecordSchema: one row with the path of one artifact.
+var legacyResultRecordSchema = arrow.NewSchema([]arrow.Field{
+	{Name: "path", Type: arrow.BinaryTypes.String, Nullable: false},
+}, nil)
+
 // ResultArtifact is one object that a completed task uploaded. It is usable
-// only when returned with a nil error. Its newly referenced log objects are
-// uploaded too, but the ToC does not reference it yet. The zero value is
-// invalid.
+// only when returned with a nil error. The zero value is not valid.
 type ResultArtifact struct {
 	Path string
 
@@ -99,15 +105,21 @@ func EncodeResultArtifacts(mem memory.Allocator, artifacts []ResultArtifact) (ar
 // EncodeResultArtifacts encoded. It returns an error if rec has another
 // schema, has no rows, or holds an artifact that is not valid. The artifacts
 // do not borrow memory from rec.
+//
+// It also decodes the record of a worker that predates ResultRecordSchema, as
+// artifacts with a path only. So a coordinator can update before its workers.
 func DecodeResultArtifacts(rec arrow.RecordBatch) ([]ResultArtifact, error) {
 	if rec == nil {
 		return nil, errors.New("result record: missing record")
 	}
-	if !rec.Schema().Equal(ResultRecordSchema) {
-		return nil, errors.New("result record: schema does not match ResultRecordSchema")
-	}
 	if rec.NumRows() == 0 {
 		return nil, errors.New("result record: no rows")
+	}
+	switch {
+	case rec.Schema().Equal(legacyResultRecordSchema):
+		return decodeLegacyResultArtifacts(rec)
+	case !rec.Schema().Equal(ResultRecordSchema):
+		return nil, errors.New("result record: schema does not match ResultRecordSchema")
 	}
 	var (
 		paths          = rec.Column(0).(*array.String)
@@ -138,6 +150,24 @@ func DecodeResultArtifacts(rec arrow.RecordBatch) ([]ResultArtifact, error) {
 			}
 			artifact.PostingKeys = keys
 		}
+		if err := artifact.Validate(); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	return artifacts, nil
+}
+
+// decodeLegacyResultArtifacts decodes rec, which has legacyResultRecordSchema
+// and at least one row, as artifacts with a path only.
+func decodeLegacyResultArtifacts(rec arrow.RecordBatch) ([]ResultArtifact, error) {
+	paths := rec.Column(0).(*array.String)
+	artifacts := make([]ResultArtifact, 0, rec.NumRows())
+	for i := range int(rec.NumRows()) {
+		if paths.IsNull(i) {
+			return nil, fmt.Errorf("result record: null path in row %d", i)
+		}
+		artifact := ResultArtifact{Path: strings.Clone(paths.Value(i))}
 		if err := artifact.Validate(); err != nil {
 			return nil, err
 		}

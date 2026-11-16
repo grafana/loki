@@ -219,6 +219,23 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
 
+	t.Run("reports the time range and posting key bounds of the kept postings rows only", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b", "logs/c"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		artifact, err := oneArtifact{t}.of(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			ObjectPaths: []string{"logs/a", "logs/b"},
+		}))
+		require.NoError(t, err)
+		require.Equal(t, time.Unix(0, 1_000).UTC(), artifact.MinTime)
+		require.Equal(t, time.Unix(0, 1_001).UTC(), artifact.MaxTime)
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "logs/a"}, artifact.PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "logs/b"}, artifact.PostingKeys.Max())
+	})
+
 	t.Run("returns an error when no index object of a run has stats rows of a listed object", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b"}
