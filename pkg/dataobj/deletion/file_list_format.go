@@ -21,8 +21,10 @@ import (
 var ErrMalformedFileList = errors.New("malformed file list")
 
 // fileListVersion is the version of the stored format that this package
-// writes and reads.
-const fileListVersion = 1
+// writes and reads. The paths of the list are the objects of the tenant that
+// no ToC could reach. Decoding rejects lists of any other version as
+// malformed, and the sweep never replaces them.
+const fileListVersion = 2
 
 // fileListHeader is the first record of a stored file list.
 //
@@ -31,8 +33,8 @@ const fileListVersion = 1
 // increasing order, so that a reader can merge them with a sorted bucket
 // listing. For example:
 //
-//	{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}
-//	{"path":"index/v0/indexes/00/x"}
+//	{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}
+//	{"path":"index/v0/indexes/tenants/a/00/x"}
 //	{"path":"objects/tenants/a/aa/y"}
 //
 // Decoding rejects unknown fields and other versions. The writer reads only
@@ -42,6 +44,11 @@ type fileListHeader struct {
 	Version   int       `json:"version"`
 	Tenant    string    `json:"tenant"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// equal reports whether h and other describe the same stored list.
+func (h fileListHeader) equal(other fileListHeader) bool {
+	return h.Version == other.Version && h.Tenant == other.Tenant && h.CreatedAt.Equal(other.CreatedAt)
 }
 
 func (h fileListHeader) validate() error {
@@ -228,7 +235,8 @@ func OpenFileList(ctx context.Context, bucket objstore.BucketReader, tenant stri
 	}
 	dec, err := newFileListDecoder(rc, tenant)
 	if err != nil {
-		rc.Close()
+		// The decode error is the cause, so a close error would add nothing.
+		_ = rc.Close()
 		return nil, fmt.Errorf("opening file list %s: %w", p, err)
 	}
 	return &FileListReader{rc: rc, dec: dec}, nil

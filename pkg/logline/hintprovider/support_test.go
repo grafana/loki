@@ -539,6 +539,18 @@ func TestSupportedQuery(t *testing.T) {
 			expected:    nil,
 		},
 		{
+			name:        "splits post-parser value at slashes",
+			query:       `{app="foo"} | json | path="/api/v1/accounts"`,
+			ngramLength: 6,
+			expected:    []string{"ACCOUNTS"},
+		},
+		{
+			name:        "splits post-parser value at spaces",
+			query:       `{app="foo"} | logfmt | msg="connection refused"`,
+			ngramLength: 6,
+			expected:    []string{"CONNECTION", "REFUSED"},
+		},
+		{
 			name:        "rejects label filter after unpack parser",
 			query:       `{app="foo"} | unpack | trace_id="abc123def456"`,
 			ngramLength: 6,
@@ -572,7 +584,7 @@ func TestSupportedQuery(t *testing.T) {
 			name:        "supports post-parser regex label filter with multiple literal runs",
 			query:       `{app="foo"} | json | msg=~".*user=abcdefgh.*id=[0-9]+ took=.*"`,
 			ngramLength: 6,
-			expected:    []string{"USER=ABCDEFGH", " TOOK="},
+			expected:    []string{"USER=ABCDEFGH"},
 		},
 		{
 			name:        "supports post-parser regex label filter after json expression parser",

@@ -1,10 +1,13 @@
 package compactor
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -78,5 +81,44 @@ func TestLayoutGroup_CountRuns(t *testing.T) {
 	t.Run("returns an error for an index object outside the group", func(t *testing.T) {
 		_, err := group.countRuns([]string{"unknown"})
 		require.Error(t, err)
+	})
+}
+
+// runOfEntry returns the index run of entry alone.
+func runOfEntry(entry indexpointers.IndexPointer) indexRun {
+	return indexRun{entries: []indexpointers.IndexPointer{entry}}
+}
+
+// runOfPath returns the index run of the index object at path alone.
+func runOfPath(path string) indexRun {
+	return runOfEntry(indexpointers.IndexPointer{Path: path})
+}
+
+func TestExistsInToC(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
+	pointer := func(path string) indexpointers.IndexPointer {
+		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1}
+	}
+	run := indexRun{entries: []indexpointers.IndexPointer{pointer("indexes/run/a"), pointer("indexes/run/b")}}
+
+	t.Run("reports true when the ToC lists every index object of the run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
+
+		exists, err := c.existsInToC(ctx, "acme", window, run)
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("reports false when the ToC lists only some index objects of the run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
+
+		exists, err := c.existsInToC(ctx, "acme", window, run)
+		require.NoError(t, err)
+		require.False(t, exists)
 	})
 }
