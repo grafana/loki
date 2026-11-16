@@ -223,12 +223,12 @@ func TestMetricsTripperware(t *testing.T) {
 	h := getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	// Test that MaxQueryBytesRead counts the data that the splits of a range aggregation
 	// read again. The query splits at 08:00, and the 2h range vector makes the two splits
-	// read 8h of data, but the index stats cover 6h. 800 bytes scale to about 1066.
+	// read 8h of data, but the index stats cover 6h. 2*400 bytes scale to about 1066.
 	rangeReq := &LokiRequest{
 		Query:     `count_over_time({app="foo"} |= "foo"[2h])`,
 		Limit:     1000,
@@ -239,12 +239,12 @@ func TestMetricsTripperware(t *testing.T) {
 		Path:      "/query_range",
 		Plan:      testutil.MustPlan(`count_over_time({app="foo"} |= "foo"[2h])`),
 	}
-	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 800})
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 400})
 	queryCount, queryHandler = counter()
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, rangeReq)
 	require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
-	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	// Test MaxQuerierBytesRead limit
@@ -254,7 +254,7 @@ func TestMetricsTripperware(t *testing.T) {
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.ErrorContains(t, err, "query too large to execute on a single querier")
 	require.Equal(t, 0, *queryCount)
-	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 3, *statsCount)
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -345,7 +345,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	// Test MaxQuerierBytesRead limit
@@ -354,7 +354,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 4, *statsCount)
 	require.Equal(t, 0, *queryCount)
 }
 
@@ -653,8 +653,8 @@ func TestIndexStatsTripperware(t *testing.T) {
 
 	count, h := indexStatsResult(response)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	// 2 queries
-	require.Equal(t, 2, *count)
+	// 4 queries
+	require.Equal(t, 4, *count)
 	require.NoError(t, err)
 
 	// Test the cache.
@@ -667,10 +667,10 @@ func TestIndexStatsTripperware(t *testing.T) {
 	// Test the response is the expected
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
-	require.Equal(t, response.Streams*2, res.Response.Streams)
-	require.Equal(t, response.Chunks*2, res.Response.Chunks)
-	require.Equal(t, response.Bytes*2, res.Response.Bytes)
-	require.Equal(t, response.Entries*2, res.Response.Entries)
+	require.Equal(t, response.Streams*4, res.Response.Streams)
+	require.Equal(t, response.Chunks*4, res.Response.Chunks)
+	require.Equal(t, response.Bytes*4, res.Response.Bytes)
+	require.Equal(t, response.Entries*4, res.Response.Entries)
 }
 
 func TestVolumeTripperware(t *testing.T) {
@@ -965,9 +965,9 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 	)
 
 	ctx := user.InjectOrgID(t.Context(), "1")
-	// The clock stands at 12:00 UTC, so that no range below crosses a UTC midnight. A stats request
+	// The clock stands at 13:00 UTC, so that no range below crosses an 8h stats split. A stats request
 	// that crosses one splits in two, and the fake index answers both halves.
-	now := time.Now().UTC().Truncate(24 * time.Hour).Add(-12 * time.Hour)
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(-11 * time.Hour)
 	heldEnd := now.Add(-storageLag)
 
 	newLimits := func(opts ...func(*fakeLimits)) Limits {
@@ -1050,10 +1050,10 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 			Path:      "/loki/api/v1/query_range",
 		}
 	}
-	// The range sits inside one UTC day and starts after 00:00.
+	// The range sits inside the 08:00 to 16:00 stats split and crosses the 12:00 data-object split.
 	yesterday := now.Truncate(24 * time.Hour).Add(-24 * time.Hour)
 	insideRange := func(query string) *LokiRequest {
-		return rangeRequest(query, yesterday.Add(time.Hour), yesterday.Add(14*time.Hour))
+		return rangeRequest(query, yesterday.Add(9*time.Hour), yesterday.Add(15*time.Hour))
 	}
 	instantRequest := func() *LokiInstantRequest {
 		const query = `sum(count_over_time({app="a"}[2h]))`
@@ -1135,7 +1135,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(streamFirstQuery))
 
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 12)
+		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 6)
 		for _, shards := range requests.requestsBySplit() {
 			require.Equal(t, 128, shards)
 		}
@@ -1151,7 +1151,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(`rate({app="a"}[1m])`))
 
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 12)
+		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 6)
 		for _, shards := range requests.requestsBySplit() {
 			require.Equal(t, 128, shards)
 		}
