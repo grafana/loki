@@ -38,7 +38,7 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		MinTimestamp: math.MaxInt64, MaxTimestamp: math.MinInt64,
 	}
 
-	t.Run("reports no time range but posting key bounds when its only row is a bloom row of a column that no record set", func(t *testing.T) {
+	t.Run("reports posting key bounds and no time range when its only row is a bloom row with no observed values", func(t *testing.T) {
 		out := newOutput(t)
 		require.NoError(t, out.appendPostingsRow(unsetBloom))
 
@@ -49,7 +49,7 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		require.Equal(t, "trace_id", artifact.PostingKeys.Min().ColumnName)
 	})
 
-	t.Run("reports the time range of the label rows after a bloom row of a column that no record set", func(t *testing.T) {
+	t.Run("reports the time range of the label rows after a bloom row with no observed values", func(t *testing.T) {
 		out := newOutput(t)
 		require.NoError(t, out.appendPostingsRow(unsetBloom))
 		require.NoError(t, out.appendPostingsRow(label("app", 10, 20)))
@@ -59,6 +59,32 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		require.Equal(t, time.Unix(0, 10).UTC(), artifact.MinTime)
 		require.Equal(t, time.Unix(0, 20).UTC(), artifact.MaxTime)
 		require.Equal(t, "trace_id", artifact.PostingKeys.Min().ColumnName)
+		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
+	})
+
+}
+
+func TestIndexOutput_Upload(t *testing.T) {
+	label := func(column string, minTS, maxTS int64) postings.Row {
+		return postings.Row{
+			Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: column, LabelValue: "v",
+			StreamIDBitmap: []byte{1}, MinTimestamp: minTS, MaxTimestamp: maxTS,
+		}
+	}
+	t.Run("reports only the rows appended after a successful upload", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		out, err := newTestExecutorContext(t, bucket).newIndexOutput("acme", streams.Layout{})
+		require.NoError(t, err)
+		t.Cleanup(out.reset)
+		require.NoError(t, out.appendPostingsRow(label("env", 10, 20)))
+		_, _, _, err = out.upload(t.Context(), bucket)
+		require.NoError(t, err)
+
+		require.NoError(t, out.appendPostingsRow(label("app", 30, 40)))
+		artifact, err := out.artifact("indexes/out")
+		require.NoError(t, err)
+		require.Equal(t, time.Unix(0, 30).UTC(), artifact.MinTime)
+		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
 	})
 }

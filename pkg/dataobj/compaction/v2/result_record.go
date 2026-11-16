@@ -25,8 +25,8 @@ var ResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "max_posting_key", Type: arrow.BinaryTypes.Binary, Nullable: true},
 }, nil)
 
-// legacyResultRecordSchema is the schema of the record of a worker that
-// predates ResultRecordSchema: one row with the path of one artifact.
+// legacyResultRecordSchema is the schema of ResultRecordSchema before it had
+// time range and posting key columns: one row with the path of one artifact.
 var legacyResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path", Type: arrow.BinaryTypes.String, Nullable: false},
 }, nil)
@@ -37,8 +37,8 @@ type ResultArtifact struct {
 	Path string
 
 	// MinTime and MaxTime bound the timestamps of the postings rows of an
-	// index artifact. Both bounds are inclusive. Both are zero if the artifact
-	// is not an index or holds no postings rows.
+	// index artifact. Both bounds are inclusive. Both are zero if the time
+	// range is unknown, or if no postings row of the artifact has a time range.
 	MinTime, MaxTime time.Time
 
 	// PostingKeys bounds the posting keys of an index artifact. The zero
@@ -106,8 +106,9 @@ func EncodeResultArtifacts(mem memory.Allocator, artifacts []ResultArtifact) (ar
 // schema, has no rows, or holds an artifact that is not valid. The artifacts
 // do not borrow memory from rec.
 //
-// It also decodes the record of a worker that predates ResultRecordSchema, as
-// artifacts with a path only. So a coordinator can update before its workers.
+// It also decodes the record of a worker that uses legacyResultRecordSchema,
+// as artifacts with a path only. This lets a coordinator update before its
+// workers.
 func DecodeResultArtifacts(rec arrow.RecordBatch) ([]ResultArtifact, error) {
 	if rec == nil {
 		return nil, errors.New("result record: missing record")

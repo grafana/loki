@@ -69,8 +69,9 @@ func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 	}
 	o.maxKey = key
 
-	// A bloom row of a column that no record set has an empty time range,
-	// with its minimum above its maximum. It adds no time to the output.
+	// A bloom row of a column with no observed values keeps the start values
+	// MaxInt64 and MinInt64, so its minimum is above its maximum. It adds no
+	// time to the output.
 	if row.MinTimestamp > row.MaxTimestamp {
 		return nil
 	}
@@ -89,6 +90,11 @@ func (o *indexOutput) appendStat(stat stats.Stat) error {
 // reset releases the resources of the output and empties it.
 func (o *indexOutput) reset() {
 	o.builder.Reset()
+	o.clearBounds()
+}
+
+// clearBounds forgets the recorded time range and posting key bounds.
+func (o *indexOutput) clearBounds() {
 	*o = indexOutput{tenant: o.tenant, builder: o.builder}
 }
 
@@ -155,7 +161,7 @@ func (o *indexOutput) upload(ctx context.Context, bucket objstore.Bucket) (artif
 	if err != nil {
 		return v2.ResultArtifact{}, 0, 0, err
 	}
-	// Flush emptied the builder, so only the recorded bounds remain.
-	*o = indexOutput{tenant: o.tenant, builder: o.builder}
+	// Flush emptied the builder. Clear the recorded bounds so they match.
+	o.clearBounds()
 	return artifact, compressedBytes, uncompressedBytes, nil
 }
