@@ -269,6 +269,13 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 		return PrefetchResponse{}, err
 	}
 
+	// The load wrote the groups that its first caller missed. A caller that shared the load can have
+	// missed other groups, so this call writes them and skips the groups that the load wrote.
+	//
+	// Writing every group in the load would be simpler. But a miss can be a single evicted group while
+	// the cache holds the rest, and a rewrite of the rest costs CPU for the compression and write traffic.
+	p.fillMetadataRangesCache(ctx, req.Path, loaded.groups, found, loaded.filled)
+
 	ranges := prefetchSet.prefetchedRangesFor(loaded.groups.Groups, loaded.region)
 	if !prefetchSet.AllMetadata {
 		// The ranges alias the whole region. A copy stops a small range from keeping the whole region in
@@ -373,18 +380,22 @@ func (p *CachedPrefetcher) fetchAndFillMetadataRangesCache(ctx context.Context, 
 		return nil, fmt.Errorf("%w: %w", ErrNotPrefetchable, err)
 	}
 
-	p.fillMetadataRangesCache(ctx, req.Path, groups, f)
-	return &loadedRegion{region: region, groups: groups}, nil
+	filled := p.fillMetadataRangesCache(ctx, req.Path, groups, f, nil)
+	return &loadedRegion{region: region, groups: groups, filled: filled}, nil
 }
 
-// fillMetadataRangesCache writes to the cache the groups of an object that the lookup did not find.
-func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path string, groups prefetchedRangesGroups, f *fetchResult) {
+// fillMetadataRangesCache writes to the cache the groups of an object that the lookup f did not find,
+// except the groups in skip. It returns the groups that it tried to write, including those that failed.
+func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path string, groups prefetchedRangesGroups, f *fetchResult, skip map[prefetchedRangesID]struct{}) map[prefetchedRangesID]struct{} {
 	// A lookup always asks for the file metadata group. Without a valid one, the cache does not know the
 	// object. A cold lookup then writes every group that it did not find, asked or not, so a later query
 	// with another prefetch set hits. Any other lookup writes only the missing groups that it asked
 	// for, because it cannot tell whether the others exist.
 	cold := f.fileMetadata == nil
 	missing := func(id prefetchedRangesID) bool {
+		if _, skipped := skip[id]; skipped {
+			return false
+		}
 		if _, asked := f.asked[id]; !asked && !cold {
 			return false
 		}
@@ -392,13 +403,15 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 	}
 
 	var (
-		keys   []string
-		values [][]byte
+		keys    []string
+		values  [][]byte
+		written = map[prefetchedRangesID]struct{}{}
 	)
 	add := func(id prefetchedRangesID, raw []byte) {
 		unhashedKey, hashedKey := id.cacheKey(path)
 		keys = append(keys, hashedKey)
 		values = append(values, encodeCacheItem(raw, unhashedKey, p.codec, p.encoder))
+		written[id] = struct{}{}
 	}
 
 	for _, id := range []prefetchedRangesID{{Kind: kindFileMetadata}, {Kind: kindCore}, {Kind: kindMessage}} {
@@ -421,13 +434,14 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 	// A lookup for all metadata asks for the file metadata group and the region item. When it found the
 	// group, nothing is left to write, because the loader writes the region item.
 	if len(keys) == 0 {
-		return
+		return written
 	}
 
 	// A failed write costs a later miss. It does not fail the load.
 	if err := p.cache.Store(ctx, keys, values); err != nil {
 		p.warn("data object metadata prefetcher fill failed", path, err)
 	}
+	return written
 }
 
 // warn writes a warning about the object at path, unless it wrote one in the last warnInterval.
@@ -439,6 +453,9 @@ func (p *CachedPrefetcher) warn(msg, path string, err error) {
 type loadedRegion struct {
 	region []byte
 	groups prefetchedRangesGroups
+
+	// filled holds the groups that the load tried to write to the cache.
+	filled map[prefetchedRangesID]struct{}
 }
 
 // fetchResult holds the groups that a fetch from the cache found for one object.

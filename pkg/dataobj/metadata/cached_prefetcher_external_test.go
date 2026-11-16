@@ -417,6 +417,69 @@ func TestCachedPrefetcher(t *testing.T) {
 		})
 	})
 
+	t.Run("concurrent prefetches that miss different groups share one load and write every group they missed", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			backend := newFakeCache()
+			p := newPrefetcher(t, backend, nil)
+			_, err := p.Prefetch(t.Context(), obj.request(prefetchSets["message"]))
+			require.NoError(t, err)
+			for _, part := range []string{"region", "col:trace_id", "col:level"} {
+				backend.drop(part)
+			}
+			src := &testSource{bucket: obj.bucket, path: obj.path, gate: make(chan struct{})}
+
+			var wg sync.WaitGroup
+			names := []string{"trace_id", "level"}
+			errs := make([]error, len(names))
+			for i, name := range names {
+				wg.Go(func() {
+					_, errs[i] = p.Prefetch(t.Context(), metadata.PrefetchRequest{Path: obj.path, PrefetchSet: metadata.PrefetchSet{MetadataNames: []string{name}}, Source: src})
+				})
+			}
+			synctest.Wait()
+			close(src.gate)
+			wg.Wait()
+
+			for _, err := range errs {
+				require.NoError(t, err)
+			}
+			require.Len(t, src.calls(), 1, "one exact read of the region for both callers")
+			for _, name := range names {
+				require.NotEmpty(t, backend.entry("col:"+name), name)
+			}
+		})
+	})
+
+	t.Run("concurrent prefetches that miss the same groups write each group once", func(t *testing.T) {
+		missWithCallers := func(t *testing.T, callers int) (sets int) {
+			synctest.Test(t, func(t *testing.T) {
+				backend := newFakeCache()
+				p := newPrefetcher(t, backend, nil)
+				_, err := p.Prefetch(t.Context(), obj.request(prefetchSets["message"]))
+				require.NoError(t, err)
+				backend.drop("region")
+				backend.drop("col:trace_id")
+				backend.resetCounts()
+				src := &testSource{bucket: obj.bucket, path: obj.path, gate: make(chan struct{})}
+
+				var wg sync.WaitGroup
+				for range callers {
+					wg.Go(func() {
+						_, err := p.Prefetch(t.Context(), metadata.PrefetchRequest{Path: obj.path, PrefetchSet: prefetchSets["one metadata column"], Source: src})
+						require.NoError(t, err)
+					})
+				}
+				synctest.Wait()
+				close(src.gate)
+				wg.Wait()
+				sets = backend.sets()
+			})
+			return sets
+		}
+
+		require.Equal(t, missWithCallers(t, 1), missWithCallers(t, 4))
+	})
+
 	t.Run("concurrent cold prefetches of two objects do not share a load", func(t *testing.T) {
 		other := newTestObjectWithStreams(t, 60)
 		require.NotEqual(t, obj.path, other.path)
