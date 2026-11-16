@@ -25,7 +25,24 @@ var (
 
 	// errRegionTooLarge means the metadata region is larger than the limit of the loader.
 	errRegionTooLarge = errors.New("the metadata region is above the limit")
+
+	// errStorageTimeout means the object storage client gave up waiting for a read. The load was still
+	// alive, so the deadline is not the one of the request or of the load.
+	errStorageTimeout = errors.New("the object storage read timed out")
 )
+
+// regionLoadFailureReasons lists the values of the reason label of the load failures counter. A load
+// never fails because of the cache, and it does not read sections, so it has no cache reason and no
+// unsupported reason.
+var regionLoadFailureReasons = []string{
+	reasonCanceled,
+	reasonTimeout,
+	reasonTooLarge,
+	reasonHeadTooSmall,
+	reasonCorrupted,
+	reasonStorageTimeout,
+	reasonStorage,
+}
 
 // Values of the source label of the load successes counter and of the load duration histogram.
 const (
@@ -94,7 +111,7 @@ type CachedRegionLoader struct {
 	loadRequests       prometheus.Counter
 	loadSuccesses      *prometheus.CounterVec
 	loadDuration       *prometheus.HistogramVec
-	loadFailures       prometheus.Counter
+	loadFailures       *prometheus.CounterVec
 	cacheStores        prometheus.Counter
 	cacheStoreFailures prometheus.Counter
 }
@@ -146,10 +163,10 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"source"}),
-		loadFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		loadFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_region_load_failures_total",
-			Help: "Failed loads of the whole metadata region of a data object. A load that skips an object whose region is too large counts as failed.",
-		}),
+			Help: "Failed loads of the whole metadata region of a data object, by reason: canceled, timeout for the deadline of the request or of the load, too_large for a metadata region above the limit, head_too_small for a file metadata that does not fit in the head read, corrupted for metadata that is not valid, storage_timeout for an object storage read that the storage client gave up waiting for, and storage_error for another failed object storage read. A load that skips an object whose region is too large counts as failed.",
+		}, []string{"reason"}),
 		cacheStores: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_region_cache_stores_total",
 			Help: "Writes of the whole metadata region of a data object to the cache.",
@@ -164,6 +181,9 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 	for _, source := range []string{sourceCache, sourceStorage} {
 		l.loadSuccesses.WithLabelValues(source)
 		l.loadDuration.WithLabelValues(source)
+	}
+	for _, reason := range regionLoadFailureReasons {
+		l.loadFailures.WithLabelValues(reason)
 	}
 	return l, nil
 }
@@ -182,7 +202,7 @@ func (l *CachedRegionLoader) Load(ctx context.Context, req PrefetchRequest, opts
 	l.loadRequests.Inc()
 	defer func() {
 		if err != nil {
-			l.loadFailures.Inc()
+			l.loadFailures.WithLabelValues(failureReason(err)).Inc()
 		}
 	}()
 
@@ -358,14 +378,24 @@ func (l *CachedRegionLoader) warn(msg, path string, err error) {
 func readRange(ctx context.Context, src DataobjSourceReader, offset, length int64) (data []byte, err error) {
 	rc, err := src.ReadRange(ctx, offset, length)
 	if err != nil {
-		return nil, fmt.Errorf("reading the metadata region: %w", err)
+		return nil, readError(ctx, err)
 	}
 	defer util.CloseAndHandleError(rc, &err)
 
 	buf := make([]byte, length)
 	n, err := io.ReadFull(rc, buf)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, fmt.Errorf("reading the metadata region: %w", err)
+		return nil, readError(ctx, err)
 	}
 	return buf[:n], nil
+}
+
+// readError wraps the error of a read from object storage. When the storage client gave up waiting
+// while ctx was alive, the error also wraps errStorageTimeout. The mark tells that timeout from the
+// deadline of ctx, because an HTTP client reports its own timeout as a context deadline error.
+func readError(ctx context.Context, err error) error {
+	if ctx.Err() == nil && isTimeout(err) {
+		return fmt.Errorf("reading the metadata region: %w: %w", errStorageTimeout, err)
+	}
+	return fmt.Errorf("reading the metadata region: %w", err)
 }

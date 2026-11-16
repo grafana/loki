@@ -854,7 +854,7 @@ func (p *openMetricsParser) handleSample(input []byte, node *goabnf.ParseTree) e
 	return nil
 }
 
-func (p *openMetricsParser) parseExemplar(input []byte, node *goabnf.ParseTree, enforceRuneLimit bool) (*dto.Exemplar, error) {
+func (p *openMetricsParser) parseExemplar(input []byte, node *goabnf.ParseTree, isOM1 bool) (*dto.Exemplar, error) {
 	var (
 		rawLabels []parsedLabel
 		valStr    string
@@ -874,7 +874,7 @@ func (p *openMetricsParser) parseExemplar(input []byte, node *goabnf.ParseTree, 
 	}
 
 	val, err := parseOpenMetricsFloat(valStr)
-	if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
+	if err != nil || (isOM1 && (math.IsNaN(val) || math.IsInf(val, 0))) {
 		return nil, ParseError{Line: p.lineNum, Msg: fmt.Sprintf("invalid exemplar value %q", valStr)}
 	}
 
@@ -884,6 +884,9 @@ func (p *openMetricsParser) parseExemplar(input []byte, node *goabnf.ParseTree, 
 		totalRune int
 	)
 	for _, rl := range rawLabels {
+		if rl.name == string(model.MetricNameLabel) {
+			return nil, ParseError{Line: p.lineNum, Msg: fmt.Sprintf("exemplar label name %q is reserved", model.MetricNameLabel)}
+		}
 		if !p.validationScheme().IsValidLabelName(rl.name) {
 			return nil, ParseError{Line: p.lineNum, Msg: fmt.Sprintf("invalid exemplar label name %q", rl.name)}
 		}
@@ -900,7 +903,7 @@ func (p *openMetricsParser) parseExemplar(input []byte, node *goabnf.ParseTree, 
 			Value: proto.String(rl.value),
 		})
 	}
-	if enforceRuneLimit && totalRune > openMetricsExemplarMaxRunes {
+	if isOM1 && totalRune > openMetricsExemplarMaxRunes {
 		return nil, ParseError{Line: p.lineNum, Msg: fmt.Sprintf("exemplar label set exceeds %d runes (%d)", openMetricsExemplarMaxRunes, totalRune)}
 	}
 
@@ -1022,26 +1025,34 @@ func parseSampleTimestampMs(s string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if math.IsNaN(f) || math.IsInf(f, 0) {
+	ms := math.Round(f * 1000)
+	if math.IsNaN(ms) || math.IsInf(ms, 0) || ms < float64(math.MinInt64) || ms >= math.Exp2(63) {
 		return 0, fmt.Errorf("invalid timestamp %v", f)
 	}
-	return int64(math.Round(f * 1000)), nil
+	return int64(ms), nil
 }
 
 func parseTimestampToProto(s string) (*timestamppb.Timestamp, error) {
 	if ts, ok := parseExactDecimalTimestamp(s); ok {
+		if err := ts.CheckValid(); err != nil {
+			return nil, fmt.Errorf("invalid timestamp %q: %w", s, err)
+		}
 		return ts, nil
 	}
 	f, err := parseOpenMetricsFloat(s)
 	if err != nil {
 		return nil, err
 	}
-	if math.IsNaN(f) || math.IsInf(f, 0) {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f < float64(math.MinInt64) || f >= math.Exp2(63) {
 		return nil, fmt.Errorf("invalid timestamp %v", f)
 	}
 	sec, frac := math.Modf(f)
 	nanos := int64(math.Round(frac * 1e9))
-	return timestamppb.New(time.Unix(int64(sec), nanos)), nil
+	ts := timestamppb.New(time.Unix(int64(sec), nanos))
+	if err := ts.CheckValid(); err != nil {
+		return nil, fmt.Errorf("invalid timestamp %q: %w", s, err)
+	}
+	return ts, nil
 }
 
 func parseExactDecimalTimestamp(s string) (*timestamppb.Timestamp, bool) {
