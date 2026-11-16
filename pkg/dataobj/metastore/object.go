@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -26,8 +25,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -49,6 +51,10 @@ const (
 	// indexPrefetchBytes is how many bytes Sections reads up front from an index object. A cache hit
 	// replaces this read.
 	indexPrefetchBytes = 64 * 1024
+
+	// maxConcurrentIndexObjectLookups is the number of index objects that a resolution looks up at the
+	// same time.
+	maxConcurrentIndexObjectLookups = 64
 )
 
 var (
@@ -72,6 +78,16 @@ func WithIndexMetadataCache(cache dataobj.MetadataCache) ObjectMetastoreOption {
 	return func(m *ObjectMetastore) { m.indexMetadataCache = cache }
 }
 
+// WithIndexLookupCache makes the metastore keep the lookups of index objects in backend, so that a
+// request that finds a lookup there does not read the postings sections of the index object.
+// maxEntryBytes is the largest entry that backend stores. A nil backend disables the cache.
+func WithIndexLookupCache(backend cache.Cache, maxEntryBytes int) ObjectMetastoreOption {
+	return func(m *ObjectMetastore) {
+		m.indexLookupCacheBackend = backend
+		m.indexLookupCacheMaxEntryBytes = maxEntryBytes
+	}
+}
+
 // WithTOCResolverCache makes the ToC resolver of the metastore read through cache when it refreshes a ToC. A nil cache
 // disables it.
 func WithTOCResolverCache(cache *metadata.Cache) ObjectMetastoreOption {
@@ -85,10 +101,17 @@ func WithTOCResolverCache(cache *metadata.Cache) ObjectMetastoreOption {
 type ObjectMetastore struct {
 	services.Service
 
-	bucket      objstore.BucketReader
-	parallelism int
-	logger      log.Logger
-	metrics     *ObjectMetastoreMetrics
+	bucket  objstore.BucketReader
+	logger  log.Logger
+	metrics *ObjectMetastoreMetrics
+
+	// indexLookupProvider looks up the stream selector of a request in index objects. It is never nil.
+	indexLookupProvider indexLookupProvider
+
+	// indexLookupCacheBackend stores the cached lookups of the index objects. It is nil when no cache is
+	// configured.
+	indexLookupCacheBackend       cache.Cache
+	indexLookupCacheMaxEntryBytes int
 
 	// tocResolver serves every ToC the metastore reads. It is never nil.
 	tocResolver *TOCResolver
@@ -312,20 +335,43 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, reg pr
 	}
 
 	store := &ObjectMetastore{
-		bucket:      dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
-		parallelism: 64,
-		logger:      logger,
-		metrics:     NewObjectMetastoreMetrics(reg),
+		bucket:  dataobj.NewInstrumentedBucketReader(NewIndexBucket(b)),
+		logger:  logger,
+		metrics: NewObjectMetastoreMetrics(reg),
 	}
 	for _, opt := range opts {
 		opt(store)
 	}
+	store.indexLookupProvider = store.newIndexLookupProvider(reg)
 
 	// The resolver reads the bucket of the metastore. Its cache keys carry the same index storage prefix.
 	store.tocResolver = NewTOCResolver(store.bucket, cfg.TOCResolver, store.tocCache, IndexStoragePrefix+"/", logger, reg)
 	store.Service = store.tocResolver.Service
 
 	return store
+}
+
+// newIndexLookupProvider returns the provider that the metastore looks up index objects with. It
+// reads the index objects from object storage, behind the cache when the metastore has one.
+func (m *ObjectMetastore) newIndexLookupProvider(reg prometheus.Registerer) indexLookupProvider {
+	layoutResolver := newShardLayoutResolver(func(ctx context.Context, tenantID, indexPath string) (streams.ShardLayout, error) {
+		obj, err := dataobj.FromBucket(ctx, m.bucket, indexPath, indexPrefetchBytes, dataobj.WithMetadataCache(m.indexMetadataCache))
+		if err != nil {
+			return streams.ShardLayout{}, fmt.Errorf("prepare obj %s: %w", indexPath, err)
+		}
+		return indexobj.TenantShardLayout(ctx, obj, tenantID)
+	}, m.logger)
+
+	objectStoreProvider := &objectStoreIndexLookupProvider{
+		scanner:        &postingsIndexScanner{openIndexObjects: m.openIndexObjects},
+		layoutResolver: layoutResolver,
+		logger:         m.logger,
+		parallelism:    maxConcurrentIndexObjectLookups,
+	}
+	if m.indexLookupCacheBackend == nil {
+		return objectStoreProvider
+	}
+	return newIndexLookupCache(objectStoreProvider, m.indexLookupCacheBackend, m.indexLookupCacheMaxEntryBytes, m.logger, reg)
 }
 
 func matchersToString(matchers []*labels.Matcher) string {
@@ -507,8 +553,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// Read each index run with one reader, and only its index objects that can hold a posting
-	// that the request reads.
+	// Read each index run as one index, and only its index objects that can hold a posting that
+	// the request reads.
 	var (
 		toRead  []indexRun
 		skipped int
@@ -526,6 +572,17 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		m.metrics.resolvedSectionsTotal.Observe(0)
 		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index object holds postings of the matchers")
 		span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		return
+	}
+
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		yield(nil, err)
+		return
+	}
+	lookupReq, err := newIndexLookupRequest(tenantID, req)
+	if err != nil {
+		yield(nil, err)
 		return
 	}
 
@@ -550,99 +607,63 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	go func() {
 		defer close(batches)
 
+		// The caller cannot recover a panic on this goroutine, and the panic would end the process. End
+		// the resolution with an error instead. The send cannot block forever, because the caller or
+		// the deferred drain keeps receiving.
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				serverutil.RecordPanic()
+				level.Error(utillog.WithContext(ctx, m.logger)).Log(
+					"msg", "panic resolving the sections of the index objects",
+					"panic", panicked,
+					"stack", string(debug.Stack()),
+				)
+				batches <- batch{err: fmt.Errorf("resolving the sections of the index objects: %v", panicked)}
+			}
+		}()
+
 		var (
-			g errgroup.Group
-
-			// mu guards the variables below.
-			mu sync.Mutex
-
-			// deduplicator keeps the first descriptor of each section until the resolution ends. It
-			// compares each later copy with that descriptor, which the caller can already hold.
-			deduplicator = newSectionsDeduplicator(m.logger, m.metrics)
-
-			failed         bool
+			deduplicator   = newSectionsDeduplicator(m.logger, m.metrics)
+			window         = newRequestTimeWindow(req.Start, req.End)
 			totalSections  int
 			uniqueSections int
 		)
 
-		// fail ends the resolution with err. It does nothing when an earlier read already failed. Call
-		// it with mu held.
-		fail := func(err error) {
-			if failed {
+		for result, err := range m.indexLookupProvider.lookupIndexRuns(readCtx, lookupReq, toRead) {
+			if err != nil {
+				batches <- batch{err: err}
 				return
 			}
-			failed = true
 
-			// The check above makes err the only error in the channel.
-			batches <- batch{err: err}
-			cancelReads()
+			sections, streamRows := result.sectionsInTimeWindow(window)
+			m.metrics.resolvedSectionsPerObject.Observe(float64(len(sections)))
+			m.metrics.indexReadRowsPerObject.Observe(float64(streamRows))
+
+			// The deduplicator must not run again after an error, and the loop ends at the first one.
+			indexUniqueSections, err := deduplicator.deduplicate(ctx, sections)
+			if err != nil {
+				batches <- batch{err: err}
+				return
+			}
+
+			totalSections += streamRows
+			if len(indexUniqueSections) == 0 {
+				continue
+			}
+
+			if uniqueSections == 0 {
+				firstIndex := time.Since(start)
+				m.metrics.resolvedSectionsFirstIndexDuration.Observe(firstIndex.Seconds())
+				span.Record(StatMetastoreSectionsFirstIndexDuration.Observe(int64(firstIndex)))
+			}
+			uniqueSections += len(indexUniqueSections)
+
+			batches <- batch{sections: indexUniqueSections}
 		}
 
-		g.SetLimit(m.parallelism)
-		for _, run := range toRead {
-			g.Go(func() error {
-				// The caller cannot recover a panic on this goroutine, and the panic would end the
-				// process. End the resolution with an error instead. The deferred Unlock below runs
-				// first, so mu is free here.
-				defer func() {
-					if panicked := recover(); panicked != nil {
-						serverutil.RecordPanic()
-						level.Error(utillog.WithContext(ctx, m.logger)).Log(
-							"msg", "panic reading the sections of an index object",
-							"index", run.String(),
-							"panic", panicked,
-							"stack", string(debug.Stack()),
-						)
-
-						mu.Lock()
-						defer mu.Unlock()
-						fail(fmt.Errorf("reading the sections of %s: %v", run, panicked))
-					}
-				}()
-
-				sections, readRows, err := m.readIndexSections(readCtx, req, run)
-
-				mu.Lock()
-				defer mu.Unlock()
-
-				// An earlier read failed. The deduplicator must not run again after an error, and the
-				// caller drops the batches that follow.
-				if failed {
-					return nil
-				}
-
-				if err != nil {
-					fail(err)
-					return nil
-				}
-
-				indexUniqueSections, err := deduplicator.deduplicate(ctx, sections)
-				if err != nil {
-					fail(err)
-					return nil
-				}
-
-				totalSections += readRows
-				if len(indexUniqueSections) == 0 {
-					return nil
-				}
-
-				if uniqueSections == 0 {
-					firstIndex := time.Since(start)
-					m.metrics.resolvedSectionsFirstIndexDuration.Observe(firstIndex.Seconds())
-					span.Record(StatMetastoreSectionsFirstIndexDuration.Observe(int64(firstIndex)))
-				}
-				uniqueSections += len(indexUniqueSections)
-
-				batches <- batch{sections: indexUniqueSections}
-				return nil
-			})
-		}
-		_ = g.Wait()
-
-		// A failed or canceled resolution skips the totals below. A read can succeed after the cancel,
-		// so check the context as well as the failed flag.
-		if failed || readCtx.Err() != nil {
+		// A canceled resolution skips the totals below. A lookup can succeed after the cancel, so
+		// check the context.
+		if readCtx.Err() != nil {
 			return
 		}
 
@@ -693,35 +714,6 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 			return
 		}
 	}
-}
-
-// readIndexSections reads the sections that one index run lists. It returns them with the
-// number of rows the index reader resolved, before deduplication.
-func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, run indexRun) ([]DataobjSectionDescriptorWithIndex, int, error) {
-	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-		Indexes:         run.entries,
-		SectionsRequest: req,
-		PrefetchBytes:   indexPrefetchBytes,
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("get index sections reader: %w", err)
-	}
-	reader := readerResp.Reader
-	defer reader.Close()
-
-	sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
-	if err != nil {
-		return nil, 0, fmt.Errorf("collect sections of %s: %w", run, err)
-	}
-
-	name := run.String()
-	sections := make([]DataobjSectionDescriptorWithIndex, 0, len(sectionsResp.SectionsResponse.Sections))
-	for _, section := range sectionsResp.SectionsResponse.Sections {
-		sections = append(sections, DataobjSectionDescriptorWithIndex{section, name})
-	}
-
-	sp := reader.(statsProvider)
-	return sections, int(sp.stats().ReadRows), nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {

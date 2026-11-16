@@ -178,26 +178,22 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		withPosting []indexObject
 	)
 	for _, object := range r.objects {
-		objectHasPostings := false
-		for _, section := range object.obj.Sections() {
-			if section.Tenant != tenant || !postings.CheckSection(section) {
-				continue
-			}
-			matching = append(matching, section)
-			objectHasPostings = true
+		sections := tenantPostingsSections(object.obj, tenant)
+		if len(sections) == 0 {
+			continue
 		}
-		if objectHasPostings {
-			withPosting = append(withPosting, object)
-		}
+		matching = append(matching, sections...)
+		withPosting = append(withPosting, object)
 	}
 
-	opened := make([]*postings.Section, len(matching))
+	var (
+		opened      []*postings.Section
+		bucketRange *postings.ShardBucketRange
+	)
 	g, groupCtx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrentSectionOpens)
 
 	// Read the layout in parallel with the postings sections, so the two reads overlap. An index
 	// object with no postings section of the tenant has nothing to prune.
-	var bucketRange *postings.ShardBucketRange
 	if len(withPosting) > 0 {
 		g.Go(func() error {
 			var err error
@@ -205,17 +201,11 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 			return err
 		})
 	}
-
-	for i, section := range matching {
-		g.Go(func() error {
-			sec, err := postings.Open(groupCtx, section)
-			if err != nil {
-				return fmt.Errorf("opening postings section: %w", err)
-			}
-			opened[i] = sec
-			return nil
-		})
-	}
+	g.Go(func() error {
+		var err error
+		opened, err = openPostingsSectionsConcurrently(groupCtx, matching)
+		return err
+	})
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -255,12 +245,7 @@ func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tena
 			return nil, fmt.Errorf("%w: %d and %d buckets", errRunShardLayouts, layout.Buckets(), other.Buckets())
 		}
 	}
-
-	from, to := layout.BucketRange(*r.hashRange)
-	if layout.CoversAllShardBuckets(from, to) {
-		return nil, nil
-	}
-	return &postings.ShardBucketRange{From: from, To: to}, nil
+	return shardBucketRangeFor(layout, r.hashRange), nil
 }
 
 // shardLayout returns the shard layout of tenant in o. It takes the layout from

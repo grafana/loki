@@ -670,6 +670,110 @@ func TestStreamSelector_MixedMatcherTypes(t *testing.T) {
 	require.Equal(t, []int64{1}, streamIDs(res[0]))
 }
 
+func TestStreamSelector_TimeTerms(t *testing.T) {
+	const hour = int64(time.Hour)
+	at := func(nanos int64) time.Time { return time.Unix(0, nanos) }
+
+	selectIn := func(t *testing.T, sections []*postings.Section, selector string, start, end time.Time) []SectionStreams {
+		t.Helper()
+
+		result, err := openAndSelectStreams(t.Context(), t, newStreamSelector(parseMatchersText(selector), nil, start, end, nil), sections)
+		require.NoError(t, err)
+		return result
+	}
+
+	t.Run("a filter matcher with rows of other streams in a later hour", func(t *testing.T) {
+		sections, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "a", streamID: 1, obj: "o", section: 0, minTs: 10 * hour, maxTs: 11 * hour},
+			{name: "team", value: "x", streamID: 1, obj: "o", section: 0, minTs: 10 * hour, maxTs: 11 * hour},
+			{name: "app", value: "b", streamID: 2, obj: "o", section: 0, minTs: 13 * hour, maxTs: 14 * hour},
+			{name: "env", value: "prod", streamID: 2, obj: "o", section: 0, minTs: 13 * hour, maxTs: 14 * hour},
+		}, nil)
+		defer closer()
+		const selector = `app=a env!=dev`
+
+		t.Run("keeps the stream with the time range of its own rows when the window overlaps only them", func(t *testing.T) {
+			result := selectIn(t, sections, selector, at(10*hour+hour/2), at(10*hour+3*hour/4))
+
+			require.Len(t, result, 1)
+			require.Equal(t, []int64{1}, streamIDs(result[0]))
+			require.Equal(t, 10*hour, result[0].MinTimestamp)
+			require.Equal(t, 11*hour, result[0].MaxTimestamp)
+		})
+
+		t.Run("drops the section when the window lies in the gap between the rows", func(t *testing.T) {
+			require.Empty(t, selectIn(t, sections, selector, at(12*hour), at(12*hour+hour/2)))
+		})
+
+		t.Run("reports the union of the time ranges of the rows when the window overlaps all of them", func(t *testing.T) {
+			result := selectIn(t, sections, selector, at(9*hour), at(15*hour))
+
+			require.Len(t, result, 1)
+			require.Equal(t, []int64{1}, streamIDs(result[0]))
+			require.Equal(t, 10*hour, result[0].MinTimestamp)
+			require.Equal(t, 14*hour, result[0].MaxTimestamp)
+		})
+
+		t.Run("keeps the section when the window touches the time range of the rows at an end", func(t *testing.T) {
+			require.Len(t, selectIn(t, sections, selector, at(8*hour), at(10*hour)), 1)
+			require.Len(t, selectIn(t, sections, selector, at(11*hour), at(12*hour)), 1)
+		})
+
+		t.Run("drops the section when the window ends one nanosecond before the rows start or starts one after they end", func(t *testing.T) {
+			require.Empty(t, selectIn(t, sections, selector, at(8*hour), at(10*hour-1)))
+			require.Empty(t, selectIn(t, sections, selector, at(11*hour+1), at(12*hour)))
+		})
+
+		t.Run("keeps the section and reports no time range when the request has no time range", func(t *testing.T) {
+			result := selectIn(t, sections, selector, time.Time{}, time.Time{})
+
+			require.Len(t, result, 1)
+			require.Equal(t, []int64{1}, streamIDs(result[0]))
+			require.Zero(t, result[0].MinTimestamp)
+			require.Zero(t, result[0].MaxTimestamp)
+		})
+	})
+
+	t.Run("a logical section in two postings sections with rows at different times", func(t *testing.T) {
+		sections, closer := buildSplitPostingsSections(t,
+			[]labelPosting{{name: "app", value: "a", streamID: 1, obj: "o", section: 0, minTs: 10 * hour, maxTs: 10 * hour}},
+			[]labelPosting{{name: "app", value: "b", streamID: 2, obj: "o", section: 0, minTs: 13 * hour, maxTs: 13 * hour}},
+		)
+		defer closer()
+		require.Len(t, sections, 2)
+
+		t.Run("keeps only the streams whose rows overlap the window", func(t *testing.T) {
+			result := selectIn(t, sections, `app=~a|b`, at(12*hour), at(14*hour))
+
+			require.Len(t, result, 1)
+			require.Equal(t, []int64{2}, streamIDs(result[0]))
+		})
+
+		t.Run("keeps the streams of every row that the window overlaps", func(t *testing.T) {
+			result := selectIn(t, sections, `app=~a|b`, at(9*hour), at(14*hour))
+
+			require.Len(t, result, 1)
+			require.Equal(t, []int64{1, 2}, streamIDs(result[0]))
+		})
+	})
+
+	t.Run("a stream whose filter rows start before its matcher rows", func(t *testing.T) {
+		sections, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "a", streamID: 1, obj: "o", section: 0, minTs: 10 * hour, maxTs: 11 * hour},
+			{name: "env", value: "prod", streamID: 1, obj: "o", section: 0, minTs: 8 * hour, maxTs: 9 * hour},
+		}, nil)
+		defer closer()
+
+		t.Run("reports the earliest start of the rows that the window overlaps", func(t *testing.T) {
+			result := selectIn(t, sections, `app=a env!=dev`, at(7*hour), at(15*hour))
+
+			require.Len(t, result, 1)
+			require.Equal(t, 8*hour, result[0].MinTimestamp)
+			require.Equal(t, 11*hour, result[0].MaxTimestamp)
+		})
+	})
+}
+
 // BenchmarkStreamSelector_SelectStreams measures selectStreams over a section
 // carrying many streams, each with several labels, matched by a mix of
 // value-selecting matchers and filters. Section construction is excluded from the timed

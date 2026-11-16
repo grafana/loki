@@ -24,6 +24,9 @@ type Config struct {
 	// holds the tables of contents (ToCs) that the resolver refreshes. It is enabled when a backend is
 	// configured.
 	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// IndexCache caches the lookups of the stream selector of a request in the index objects. It is
+	// enabled when a backend is configured.
+	IndexCache cache.Config `yaml:"index_cache" doc:"description=Caches the results of reading the index objects: the sections that match a stream selector, and the answers to the equality predicates of a query. A result does not depend on the time range of the query, so queries with another time range share it. The shards of one query share the sections that match the selector when the query has at least as many shards as the index object has shard buckets. The cache is enabled when a backend is configured. Entries are keyed by the path of the index object, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -39,6 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
 	cfg.Metastore.RegisterFlags(f)
 	cfg.MetadataCache.RegisterFlagsWithPrefix("dataobj.metadata-cache.", "", f)
+	cfg.IndexCache.RegisterFlagsWithPrefix("dataobj.index-cache.", "", f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(
 		&cfg.StorageBucketPrefix,

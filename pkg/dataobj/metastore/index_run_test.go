@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 func TestIndexRuns(t *testing.T) {
@@ -183,6 +184,12 @@ type runFile struct {
 // records the posting key bounds of each index object, unless unknownKeys is set.
 func newRunMetastore(t *testing.T, files ...runFile) *ObjectMetastore {
 	t.Helper()
+	return newRunMetastoreWithOptions(t, nil, files...)
+}
+
+// newRunMetastoreWithOptions is newRunMetastore with options for the metastore.
+func newRunMetastoreWithOptions(t *testing.T, options []ObjectMetastoreOption, files ...runFile) *ObjectMetastore {
+	t.Helper()
 	bucket := objstore.NewInMemBucket()
 
 	pointers := make([]indexpointers.IndexPointer, len(files))
@@ -212,7 +219,7 @@ func newRunMetastore(t *testing.T, files ...runFile) *ObjectMetastore {
 
 	tocPath := IndexStoragePrefix + "/" + TableOfContentsPath(tenantID, tocTestWindow)
 	require.NoError(t, bucket.Upload(t.Context(), tocPath, bytes.NewReader(newTOCBytes(t, tenantID, pointers...))))
-	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry())
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), prometheus.NewRegistry(), options...)
 }
 
 // newSingleIndexMetastore returns a metastore whose ToC lists one index object of no run, which
@@ -358,6 +365,54 @@ func TestObjectMetastore_Sections_Runs(t *testing.T) {
 		req.StreamHashRange = &streams.HashRange{From: 1 << 63, To: math.MaxUint64}
 		_, err := m.Sections(ctx, req)
 		require.ErrorIs(t, err, errRunShardLayouts)
+	})
+}
+
+func TestObjectMetastore_Sections_RunsWithIndexLookupCache(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+	request := func(matchers ...*labels.Matcher) SectionsRequest {
+		return SectionsRequest{Start: runTestTime.Add(-time.Minute), End: runTestTime.Add(2 * time.Minute), Matchers: matchers}
+	}
+	appFile := runFile{observations: slices.Concat(
+		streamObservations(1, "app", "api"),
+		streamObservations(2, "app", "api"),
+		streamObservations(3, "app", "web"),
+	)}
+	envFile := runFile{observations: slices.Concat(
+		streamObservations(1, "env", "prod"),
+		streamObservations(2, "env", "dev"),
+		streamObservations(3, "env", "prod"),
+	)}
+
+	t.Run("returns the streams of a run of several index objects and stores no entry for it", func(t *testing.T) {
+		backend := cache.NewMockCache()
+		m := newRunMetastoreWithOptions(t, []ObjectMetastoreOption{WithIndexLookupCache(backend, 0)}, appFile, envFile)
+
+		resp, err := m.Sections(ctx, request(
+			labels.MustNewMatcher(labels.MatchEqual, "app", "api"),
+			labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+		))
+
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int64{"obj-a/0": {1}}, streamsOf(resp.Sections))
+		require.Empty(t, backend.GetInternal())
+	})
+
+	t.Run("stores the entries of a run when only one of its index objects can hold a posting of the request", func(t *testing.T) {
+		backend := cache.NewMockCache()
+		m := newRunMetastoreWithOptions(t, []ObjectMetastoreOption{WithIndexLookupCache(backend, 0)}, appFile, envFile)
+		req := request(labels.MustNewMatcher(labels.MatchEqual, "app", "api"))
+
+		first, err := m.Sections(ctx, req)
+		require.NoError(t, err)
+		stored := len(backend.GetInternal())
+		second, err := m.Sections(ctx, req)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int64{"obj-a/0": {1, 2}}, streamsOf(first.Sections))
+		require.Equal(t, streamsOf(first.Sections), streamsOf(second.Sections))
+		require.Positive(t, stored)
+		require.Len(t, backend.GetInternal(), stored)
 	})
 }
 

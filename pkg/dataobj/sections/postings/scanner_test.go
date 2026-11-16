@@ -24,192 +24,90 @@ func TestCompileMatcher_PreservesMatcherAndCompilesRegex(t *testing.T) {
 	require.Equal(t, re, cm.Matcher())
 }
 
-func TestScanner_MatchLabel_PushesValuePredicate(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "dev", streamID: 2, obj: "/o", section: 0, minTs: 30, maxTs: 40},
-	}, nil)
-	defer closer()
+func TestScanner_MatchLabelRows(t *testing.T) {
+	ctx := t.Context()
 
-	cm, err := postings.CompileMatcher(labels.MustNewMatcher(labels.MatchEqual, "env", "prod"))
-	require.NoError(t, err)
+	t.Run("returns only the rows whose value matches the matcher", func(t *testing.T) {
+		secs, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "env", value: "dev", streamID: 2, obj: "/o", section: 0, minTs: 30, maxTs: 40},
+		}, nil)
+		defer closer()
 
-	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, nil, cms)
+		cms := compileAllT(t, labels.MustNewMatcher(labels.MatchEqual, "env", "prod"))
+
+		rows := matchLabelRows(ctx, t, secs, cms)
+		require.Equal(t, []rowSummary{{matcher: 0, matches: true, streams: []int{1}}}, summarizeRows(rows))
 	})
-	require.Len(t, got, 1)
 
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher, ok := got[ref]
-	require.True(t, ok)
-	require.Len(t, perMatcher, 1)
-	ms := perMatcher[0]
+	t.Run("attributes each row to the matcher it satisfies", func(t *testing.T) {
+		secs, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "env", value: "dev", streamID: 3, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "tier", value: "gold", streamID: 9, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+		}, nil)
+		defer closer()
 
-	require.Equal(t, []int{1}, bitmapIDs(ms.Matched), "only stream 1 (env=prod) is returned")
-	require.True(t, ms.Has)
-	require.Equal(t, int64(10), ms.MinNS)
-	require.Equal(t, int64(20), ms.MaxNS, "envelope spans only the matching row")
+		cms := compileAllT(t,
+			labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
+			labels.MustNewMatcher(labels.MatchRegexp, "env", "pro.*"),
+			labels.MustNewMatcher(labels.MatchEqual, "tier", "silver"), // no row has this value
+		)
+
+		rows := matchLabelRows(ctx, t, secs, cms)
+		require.ElementsMatch(t, []rowSummary{
+			{matcher: 0, matches: true, streams: []int{1}},
+			{matcher: 1, matches: true, streams: []int{1}},
+		}, summarizeRows(rows))
+	})
+
+	t.Run("does not attribute a row to a matcher with the same name that it does not satisfy", func(t *testing.T) {
+		secs, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+		}, nil)
+		defer closer()
+
+		cms := compileAllT(t,
+			labels.MustNewMatcher(labels.MatchRegexp, "app", "lo.*"),
+			labels.MustNewMatcher(labels.MatchEqual, "app", "mimir"),
+		)
+
+		rows := matchLabelRows(ctx, t, secs, cms)
+		require.ElementsMatch(t, []rowSummary{
+			{matcher: 0, matches: true, streams: []int{1}},
+			{matcher: 1, matches: true, streams: []int{2}},
+		}, summarizeRows(rows))
+	})
 }
 
-func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "dev", streamID: 2, obj: "/o", section: 0, minTs: 30, maxTs: 40},
-	}, nil)
-	defer closer()
+func TestScanner_LabelNameRows(t *testing.T) {
+	ctx := t.Context()
 
-	cm, err := postings.CompileMatcher(labels.MustNewMatcher(labels.MatchEqual, "env", "prod"))
-	require.NoError(t, err)
+	t.Run("attributes each row to the matchers with its name", func(t *testing.T) {
+		secs, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+			{name: "env", value: "dev", streamID: 3, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+		}, nil)
+		defer closer()
 
-	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, nil, cms)
+		cms := compileAllT(t,
+			labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
+			labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+		)
+
+		rows := labelNameRows(ctx, t, secs, cms)
+		require.ElementsMatch(t, []rowSummary{
+			{matcher: 0, matches: true, streams: []int{1}},
+			{matcher: 0, matches: false, streams: []int{2}},
+			{matcher: 1, matches: true, streams: []int{1}},
+			{matcher: 1, matches: false, streams: []int{3}},
+		}, summarizeRows(rows))
 	})
-	require.Len(t, got, 1)
-
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher, ok := got[ref]
-	require.True(t, ok)
-	require.Len(t, perMatcher, 1)
-	ls := perMatcher[0]
-
-	require.Equal(t, []int{1, 2}, bitmapIDs(ls.Present), "both streams carry env (name-only scan)")
-	require.Equal(t, []int{1}, bitmapIDs(ls.Matched), "only stream 1 has env=prod")
-	require.True(t, ls.Has)
-	require.Equal(t, int64(10), ls.MinNS)
-	require.Equal(t, int64(40), ls.MaxNS, "envelope spans every row for the name")
-}
-
-// TestScanner_LabelStreams_UnionZeroExtends covers accumulating rows whose
-// stream bitmaps differ in byte length. Stream 70 lives beyond the first byte,
-// so its bitmap is longer than stream 1's; the union must zero-extend the
-// shorter operand rather than reject the length mismatch.
-func TestScanner_LabelStreams_UnionZeroExtends(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "prod", streamID: 70, obj: "/o", section: 0, minTs: 30, maxTs: 40},
-	}, nil)
-	defer closer()
-
-	cm, err := postings.CompileMatcher(labels.MustNewMatcher(labels.MatchEqual, "env", "prod"))
-	require.NoError(t, err)
-
-	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, nil, cms)
-	})
-	require.Len(t, got, 1)
-
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher, ok := got[ref]
-	require.True(t, ok)
-	require.Len(t, perMatcher, 1)
-	ls := perMatcher[0]
-
-	require.Equal(t, []int{1, 70}, bitmapIDs(ls.Present), "both streams union across differing bitmap lengths")
-	require.Equal(t, []int{1, 70}, bitmapIDs(ls.Matched))
-}
-
-// TestScanner_MatchLabels_MultiMatcherAttribution verifies the single OR scan
-// attributes each row to the right matcher position, including a regex matcher
-// (which forces the in-memory Matches re-test) and a matcher whose value is
-// absent (empty result, not a misattribution).
-func TestScanner_MatchLabels_MultiMatcherAttribution(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "dev", streamID: 3, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "tier", value: "gold", streamID: 9, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-	}, nil)
-	defer closer()
-
-	cms := compileAllT(t,
-		labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),    // -> stream 1
-		labels.MustNewMatcher(labels.MatchRegexp, "env", "pro.*"),  // regex -> stream 1
-		labels.MustNewMatcher(labels.MatchEqual, "tier", "silver"), // value absent -> empty
-	)
-
-	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, nil, cms)
-	})
-	require.Len(t, got, 1)
-
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher := got[ref]
-	require.Len(t, perMatcher, 3)
-
-	require.Equal(t, []int{1}, bitmapIDs(perMatcher[0].Matched), "app=loki -> stream 1 only")
-	require.Equal(t, []int{1}, bitmapIDs(perMatcher[1].Matched), "env=~pro.* -> stream 1 only (regex re-test)")
-	require.Nil(t, perMatcher[2].Matched, "tier=silver absent -> no matched streams")
-}
-
-// TestScanner_MatchLabels_SharedNameDisambiguation guards the in-memory Matches
-// re-test: two matchers on the same name (legal for differing matcher types)
-// produce OR branches that share name==app. A row must attribute only to the
-// matcher whose value it actually satisfies, not to every same-name matcher.
-func TestScanner_MatchLabels_SharedNameDisambiguation(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-	}, nil)
-	defer closer()
-
-	cms := compileAllT(t,
-		labels.MustNewMatcher(labels.MatchRegexp, "app", "lo.*"), // -> stream 1 (loki)
-		labels.MustNewMatcher(labels.MatchEqual, "app", "mimir"), // -> stream 2
-	)
-
-	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, nil, cms)
-	})
-	require.Len(t, got, 1)
-
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher := got[ref]
-	require.Len(t, perMatcher, 2)
-
-	require.Equal(t, []int{1}, bitmapIDs(perMatcher[0].Matched), "app=~lo.* -> stream 1 only, not mimir's stream 2")
-	require.Equal(t, []int{2}, bitmapIDs(perMatcher[1].Matched), "app=mimir -> stream 2 only, not loki's stream 1")
-}
-
-// TestScanner_LabelStreams_MultiMatcherAttribution verifies the name-only OR
-// scan attributes Present (all streams with the name) and Matched (value subset)
-// to the correct matcher position across multiple matchers.
-func TestScanner_LabelStreams_MultiMatcherAttribution(t *testing.T) {
-	ctx := context.Background()
-	secs, closer := buildLabelBloomSection(t, []labelPosting{
-		{name: "app", value: "loki", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "app", value: "mimir", streamID: 2, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-		{name: "env", value: "dev", streamID: 3, obj: "/o", section: 0, minTs: 10, maxTs: 20},
-	}, nil)
-	defer closer()
-
-	cms := compileAllT(t,
-		labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	)
-
-	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, nil, cms)
-	})
-	require.Len(t, got, 1)
-
-	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
-	perMatcher := got[ref]
-	require.Len(t, perMatcher, 2)
-
-	require.Equal(t, []int{1, 2}, bitmapIDs(perMatcher[0].Present), "app present on streams 1,2")
-	require.Equal(t, []int{1}, bitmapIDs(perMatcher[0].Matched), "app=loki on stream 1")
-	require.Equal(t, []int{1, 3}, bitmapIDs(perMatcher[1].Present), "env present on streams 1,3")
-	require.Equal(t, []int{1}, bitmapIDs(perMatcher[1].Matched), "env=prod on stream 1")
 }
 
 func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledMatcher {
@@ -223,8 +121,8 @@ func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledM
 	return cms
 }
 
-// scanAll runs scan over each section and returns the single non-empty result
-// map (the builder splits label and bloom rows across sections).
+// scannerFactory returns a function that opens the readers of a section for the given matchers,
+// filters and predicates and returns a scanner over them.
 func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.CompiledMatcher, filters []postings.CompiledMatcher, predicates []*labels.Matcher) func(*postings.Section) *postings.Scanner {
 	t.Helper()
 	return func(sec *postings.Section) *postings.Scanner {
@@ -234,24 +132,6 @@ func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.Compi
 		t.Cleanup(func() { require.NoError(t, readers.Close()) })
 		return postings.NewScanner(sec, readers)
 	}
-}
-
-func scanAll[T any](
-	t *testing.T,
-	secs []*postings.Section,
-	newScanner func(*postings.Section) *postings.Scanner,
-	scan func(*postings.Scanner) (map[postings.SectionRef]T, error),
-) map[postings.SectionRef]T {
-	t.Helper()
-	var got map[postings.SectionRef]T
-	for _, sec := range secs {
-		m, err := scan(newScanner(sec))
-		require.NoError(t, err)
-		if len(m) > 0 {
-			got = m
-		}
-	}
-	return got
 }
 
 // bitmapIDs expands a bitmap's set bits to ascending ints for assertions.
@@ -472,6 +352,7 @@ type labelPosting struct {
 	obj          string
 	section      int64
 	minTs, maxTs int64 // unix nanos
+	shardBucket  uint32
 }
 
 type bloomPosting struct {
@@ -498,7 +379,7 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 	for _, lp := range labelsIn {
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-			StreamID: lp.streamID, UncompressedSize: 0,
+			StreamID: lp.streamID, UncompressedSize: 0, ShardBucket: lp.shardBucket,
 			Time: postings.At(time.Unix(0, lp.minTs).UTC()).Extend(time.Unix(0, lp.maxTs).UTC()),
 		})
 	}
@@ -513,4 +394,48 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 	}
 
 	return openPostingsSections(ctx, t, b)
+}
+
+// rowSummary is the part of a postings.LabelRow that the tests compare.
+type rowSummary struct {
+	matcher int
+	matches bool
+	streams []int
+}
+
+func summarizeRows(rows []postings.LabelRow) []rowSummary {
+	out := make([]rowSummary, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, rowSummary{matcher: row.Matcher, matches: row.Matches, streams: streamIDsOf(row)})
+	}
+	return out
+}
+
+func streamIDsOf(row postings.LabelRow) []int {
+	bitmap := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
+	return bitmapIDs(&bitmap)
+}
+
+// matchLabelRows scans every section with the matchers as value matchers.
+func matchLabelRows(ctx context.Context, t *testing.T, secs []*postings.Section, cms []postings.CompiledMatcher) []postings.LabelRow {
+	t.Helper()
+	var rows []postings.LabelRow
+	for _, sec := range secs {
+		got, err := scannerFactory(ctx, t, cms, nil, nil)(sec).MatchLabelRows(ctx, cms)
+		require.NoError(t, err)
+		rows = append(rows, got...)
+	}
+	return rows
+}
+
+// labelNameRows scans every section with the matchers as filter matchers.
+func labelNameRows(ctx context.Context, t *testing.T, secs []*postings.Section, cms []postings.CompiledMatcher) []postings.LabelRow {
+	t.Helper()
+	var rows []postings.LabelRow
+	for _, sec := range secs {
+		got, err := scannerFactory(ctx, t, nil, cms, nil)(sec).LabelNameRows(ctx, cms)
+		require.NoError(t, err)
+		rows = append(rows, got...)
+	}
+	return rows
 }
