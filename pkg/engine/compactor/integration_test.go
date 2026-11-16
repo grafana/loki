@@ -781,7 +781,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))
 	activeServices = append(activeServices, w.Service())
 
-	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 	}
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
@@ -848,7 +848,8 @@ func TestRunPlan(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, first, second)
-		_, err = bucket.Attributes(ctx, second.Path)
+		require.Len(t, second, 1)
+		_, err = bucket.Attributes(ctx, second[0].Path)
 		require.NoError(t, err)
 	})
 }
@@ -861,7 +862,7 @@ func recordLogActors(c *coordinator) func() []string {
 		actors []string
 	)
 	inner := c.logDispatcher.runPlan
-	c.logDispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+	c.logDispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 		mu.Lock()
 		actors = append(actors, opts.Actor[len(opts.Actor)-1])
 		mu.Unlock()
@@ -1279,6 +1280,10 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 		require.Len(t, after, 1, "the run and the other index must merge into one index")
 		requireToCShardBuckets(ctx, t, bucket, tenant, window, after[0].Path)
+		require.Equal(t, time.Unix(0, ts).UTC(), after[0].StartTs.UTC(), "the entry starts at the first postings row of the merged index")
+		require.Equal(t, time.Unix(0, ts+10).UTC(), after[0].EndTs.UTC(), "the entry ends at the last postings row of the merged index")
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}, after[0].PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "dev"}, after[0].PostingKeys.Max())
 
 		postingRows, statRows := readIndexRows(ctx, t, bucket, tenant, after[0].Path)
 		var keys []string

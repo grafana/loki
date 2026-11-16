@@ -138,7 +138,7 @@ var _ sequence[intRecord] = (*trackingSequence[intRecord])(nil)
 // loser-tree helpers as the production merge sites (heapAt, heapLess,
 // closeSeq). It yields every record in sorted order to fn; iteration stops
 // early when fn returns false. It mirrors the inlined loop in
-// mergePostingsIntoBuilder / mergeStatsIntoBuilder so those helpers stay tested
+// mergePostingsInto / mergeStatsInto so those helpers stay tested
 // without a dedicated merge function.
 func drainMerge[R any](ctx context.Context, groups []sequence[R], cmp func(a, b R) int, fn func(R) bool) error {
 	tree := loser.New(groups, heapVal[R]{isMax: true}, heapAt[R], heapLess(cmp), closeSeq[R])
@@ -464,7 +464,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 
 	// 3. Create executor context and run the merger.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	// 4. Verify an artifact was produced and contains both section kinds.
@@ -567,6 +567,39 @@ func TestDoIndexMerge(t *testing.T) {
 		require.ErrorContains(t, err, "records no stream layout")
 	})
 
+	t.Run("reports the time range and posting key bounds of the postings rows of its output", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		observe := func(column string, ts int64) postings.LabelObservation {
+			return postings.LabelObservation{
+				ObjectPath: "log-X", ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, ts)), UncompressedSize: 100,
+			}
+		}
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-a.dat", []postings.LabelObservation{observe("env", 300), observe("app", 200)})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{observe("zone", 100)})
+
+		artifact, err := oneArtifact{t}.of(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Equal(t, time.Unix(0, 100).UTC(), artifact.MinTime)
+		require.Equal(t, time.Unix(0, 300).UTC(), artifact.MaxTime)
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "v"}, artifact.PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "v"}, artifact.PostingKeys.Max())
+	})
+
+	t.Run("reports no time range and no posting key bounds when its output has no postings rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-b.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "web"})})
+
+		artifact, err := oneArtifact{t}.of(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.True(t, artifact.MinTime.IsZero())
+		require.True(t, artifact.MaxTime.IsZero())
+		require.True(t, artifact.PostingKeys.IsZero())
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)
@@ -618,7 +651,7 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 
 	// Run the executor.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err, "merge should succeed despite a legacy streams section")
 
 	// Verify the output exists.
@@ -931,7 +964,7 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1053,7 +1086,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1151,7 +1184,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1244,7 +1277,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1329,7 +1362,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1367,9 +1400,9 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
-	require.Nil(t, artifacts)
+	require.Zero(t, artifacts)
 }
 
 // TestStatsRowReader_DottedLabelNames tests that label names containing dots
@@ -1538,7 +1571,7 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1610,9 +1643,8 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, resultRec, "result record must not be nil")
 
 	// Read the artifacts from the record.
-	var artifacts v2.ResultArtifact
-	require.NoError(t, artifacts.FromRecordBatch(resultRec))
-	require.NoError(t, artifacts.Validate())
+	artifacts, err := oneArtifact{t}.of(v2.DecodeResultArtifacts(resultRec))
+	require.NoError(t, err)
 
 	// Verify the artifact path matches the content-hash naming scheme.
 	path := artifacts.Path
@@ -1660,10 +1692,10 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		execCtx := newTestExecutorContext(t, bucket)
 		execCtx.indexMergeObserver = observer
 
-		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+		artifact, err := oneArtifact{t}.of(execCtx.doIndexMerge(ctx, &physical.IndexMerge{
 			NodeID: ulid.Make(), Tenant: "tenant-1",
 			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
-		})
+		}))
 		require.NoError(t, err)
 
 		attrs, err := bucket.Attributes(ctx, artifact.Path)
@@ -1683,7 +1715,7 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 		for _, path := range paths {
 			node.Runs[0].Sections = append(node.Runs[0].Sections, &compactionv2pb.SectionRef{ObjectPath: path})
 		}
-		artifacts, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		artifacts, err := oneArtifact{t}.of(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
 		require.NoError(t, err)
 		obj, err := dataobj.FromBucket(t.Context(), bucket, artifacts.Path, 0)
 		require.NoError(t, err)
@@ -1761,4 +1793,17 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
 	})
+}
+
+// oneArtifact requires that a task returned exactly one artifact.
+type oneArtifact struct{ t testing.TB }
+
+// of returns the only artifact of artifacts, or err if it is not nil.
+func (o oneArtifact) of(artifacts []v2.ResultArtifact, err error) (v2.ResultArtifact, error) {
+	o.t.Helper()
+	if err != nil {
+		return v2.ResultArtifact{}, err
+	}
+	require.Len(o.t, artifacts, 1)
+	return artifacts[0], nil
 }

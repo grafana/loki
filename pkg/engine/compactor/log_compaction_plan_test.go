@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 func TestLogCompactionPlanLogTaskStats(t *testing.T) {
@@ -33,7 +32,7 @@ func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 
 	t.Run("skips an IndexFilter task", func(t *testing.T) {
 		plan := logCompactionPlan{tasks: []logCompactionTask{
-			indexFilterTask{entry: metastore.TableOfContentsEntry{StartTime: now.Add(-48 * time.Hour)}},
+			indexFilterTask{bounds: taskOutputs{start: now.Add(-48 * time.Hour)}},
 		}}
 
 		require.Empty(t, slices.Collect(plan.logTaskStats()))

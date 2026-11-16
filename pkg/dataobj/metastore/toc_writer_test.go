@@ -539,6 +539,29 @@ func TestReplaceIndexPointers(t *testing.T) {
 		}, readToCPointers(t, bucket, tocPath))
 	})
 
+	t.Run("records the posting keys and shard layout of each new entry", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0))
+		writer := newTableOfContentsWriter(t, bucket)
+		keys, err := postings.NewKeyRange(
+			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
+			postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"},
+		)
+		require.NoError(t, err)
+		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
+			{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20), PostingKeys: keys, ShardBuckets: buckets},
+		}})
+		require.NoError(t, err)
+		require.True(t, swapped)
+		want := runPointer("idx/new", 0)
+		want.PostingKeys, want.ShardBuckets = keys, buckets
+		require.Equal(t, []indexpointers.IndexPointer{want}, readToCPointers(t, bucket, tocPath))
+	})
+
 	t.Run("returns false and leaves the ToC unchanged when the ToC already holds a new run and none of the old paths", func(t *testing.T) {
 		window := unixTime(0)
 		tocPath := TableOfContentsPath("tenantA", window)

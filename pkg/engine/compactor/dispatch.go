@@ -17,8 +17,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// runFunc executes one single-root physical.Plan as a workflow.
-type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error)
+// runFunc executes one single-root physical.Plan as a workflow and returns
+// the artifacts of its result.
+type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error)
 
 // Values of the outcome label of taskAttemptsTotal.
 const (
@@ -77,8 +78,8 @@ type planRun struct {
 	retryCtx context.Context
 }
 
-// RunToCompletion executes every plan and returns their artifacts in plan
-// order. Each plan runs under the actor of its root node.
+// RunToCompletion executes every plan and returns the artifacts of each plan,
+// in plan order. Each plan runs under the actor of its root node.
 //
 // A failed plan runs again up to maxRetries times, after an exponential
 // backoff. Failures often come in bursts, for example while the scheduler or
@@ -94,17 +95,17 @@ type planRun struct {
 // returns only after every plan finishes. Cancelling ctx stops only the
 // retries: a plan that fails after ctx is done fails the run at once.
 //
-// Each attempt must return a valid artifact or an error:
+// Each attempt must return at least one valid artifact or an error:
 //
-//   - A valid artifact with a nil error is ready for publication. The ToC does
-//     not reference it yet.
+//   - Valid artifacts with a nil error are ready for publication. The ToC
+//     does not reference them yet.
 //   - A non-nil error fails the attempt. The dispatcher ignores any artifact
 //     that comes with it.
-//   - A nil artifact with a nil error, or an artifact with an empty path, is
-//     an invalid response and fails the attempt.
+//   - No artifacts with a nil error, or an artifact that is not valid, is an
+//     invalid response and fails the attempt.
 //
 // No-work decisions belong to planning, before dispatch.
-func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
+func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
 	return d.run(ctx, context.WithoutCancel(ctx), tenant, plans)
 }
 
@@ -114,14 +115,14 @@ func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, pla
 //
 // Use RunCancellable for plans that are safe to stop at any time and cheap
 // to run again.
-func (d *planDispatcher) RunCancellable(ctx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
+func (d *planDispatcher) RunCancellable(ctx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
 	return d.run(ctx, ctx, tenant, plans)
 }
 
 // run executes plans under planCtx. The run stops when planCtx is done or a
 // plan fails. Retries stop when ctx is done.
-func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans []*physical.Plan) ([]v2.ResultArtifact, error) {
-	artifacts := make([]v2.ResultArtifact, len(plans))
+func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
+	artifacts := make([][]v2.ResultArtifact, len(plans))
 	g, siblingCtx := errgroup.WithContext(planCtx)
 	if d.limit > 0 {
 		g.SetLimit(d.limit)
@@ -130,11 +131,11 @@ func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans 
 	for i, plan := range plans {
 		g.Go(func() error {
 			logger := log.With(d.logger, "tenant", tenant, "plan", i, "plans", len(plans))
-			artifact, err := d.runPlanWithRetries(run, logger, plan)
+			planArtifacts, err := d.runPlanWithRetries(run, logger, plan)
 			if err != nil {
 				return err
 			}
-			artifacts[i] = *artifact
+			artifacts[i] = planArtifacts
 			return nil
 		})
 	}
@@ -150,7 +151,7 @@ func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans 
 //
 // Retries do not classify errors, because worker errors reach the coordinator
 // as plain strings. A plan without a valid root node fails at once.
-func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan *physical.Plan) (*v2.ResultArtifact, error) {
+func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 	root, err := plan.Root()
 	if err != nil {
 		return nil, fmt.Errorf("compaction plan root: %w", err)
@@ -167,10 +168,10 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 		if err := run.siblingCtx.Err(); err != nil {
 			return nil, err
 		}
-		artifact, err := d.runOne(run.siblingCtx, run.tenant, actor, plan)
+		artifacts, err := d.runOne(run.siblingCtx, run.tenant, actor, plan)
 		if err == nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeSuccess).Inc()
-			return artifact, nil
+			return artifacts, nil
 		}
 		if run.siblingCtx.Err() != nil {
 			d.siblingCancelled(logger, actor, attempt, err)
@@ -219,19 +220,21 @@ func (d *planDispatcher) siblingCancelled(logger log.Logger, actor string, attem
 	lvl(logger).Log("msg", "compaction task attempt ended after a sibling task failed", "attempt", attempt, "err", err)
 }
 
-func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan *physical.Plan) (*v2.ResultArtifact, error) {
+func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 	opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", actor}}
-	artifact, err := d.runPlan(ctx, opts, plan)
+	artifacts, err := d.runPlan(ctx, opts, plan)
 	if err != nil {
 		return nil, fmt.Errorf("%s job: %w", actor, err)
 	}
-	if artifact == nil {
+	if len(artifacts) == 0 {
 		return nil, fmt.Errorf("%s job produced no result artifact", actor)
 	}
-	if err := artifact.Validate(); err != nil {
-		return nil, fmt.Errorf("%s job: %w", actor, err)
+	for _, artifact := range artifacts {
+		if err := artifact.Validate(); err != nil {
+			return nil, fmt.Errorf("%s job: %w", actor, err)
+		}
 	}
-	return artifact, nil
+	return artifacts, nil
 }
 
 // rootActor returns the scheduler actor for a compaction plan, based on the

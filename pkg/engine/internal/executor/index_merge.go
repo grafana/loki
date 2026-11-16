@@ -28,19 +28,16 @@ import (
 // section metadata, which saves a request per section.
 const indexPrefetchBytes = 64 * 1024
 
-// executeIndexMerge orchestrates the index merge: classify sections,
-// drive both merges, feed indexobj.Builder, upload the result, and emit a record
-// reporting the content-hash path.
+// executeIndexMerge orchestrates the index merge: classify sections, drive
+// both merges, upload the result, and emit a record that reports the
+// artifacts of the result.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
-		artifact, err := c.doIndexMerge(ctx, node)
+		artifacts, err := c.doIndexMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		if artifact == nil {
-			return errorPipeline(ctx, errors.New("IndexMerge: missing result artifact"))
-		}
-		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		rec, err := v2.EncodeResultArtifacts(memory.DefaultAllocator, artifacts)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -48,7 +45,7 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 	})
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (*v2.ResultArtifact, error) {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -60,73 +57,27 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
-	// Create index object builder
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
+	out, err := c.newIndexOutput(node.Tenant, layout)
 	if err != nil {
-		return nil, fmt.Errorf("creating index builder: %w", err)
+		return nil, err
 	}
-	defer builder.Reset()
+	defer out.reset()
 
-	// Merge postings sections
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
+	if err := c.mergePostingsInto(ctx, objects, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
-
-	// Merge stats sections
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, keepAll, builder); err != nil {
+	if err := c.mergeStatsInto(ctx, objects, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	artifact, compressedBytes, uncompressedBytes, err := c.uploadIndex(ctx, node.Tenant, builder)
+	artifact, compressedBytes, uncompressedBytes, err := c.uploadIndex(ctx, out)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
 	if c.indexMergeObserver != nil {
 		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, compressedBytes, uncompressedBytes)
 	}
-	return artifact, nil
-}
-
-// uploadIndex flushes builder and uploads the index object to a content-hash
-// path. It returns the artifact for the uploaded object and the object's
-// compressed and uncompressed sizes in bytes.
-func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *indexobj.MergeBuilder) (artifact *v2.ResultArtifact, compressedBytes, uncompressedBytes int64, err error) {
-	// Read the size before Flush, because Flush resets the builder.
-	uncompressedBytes = int64(builder.GetEstimatedSize())
-
-	obj, closer, err := builder.Flush()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("flushing index: %w", err)
-	}
-
-	pathReader, err := obj.Reader(ctx)
-	if err != nil {
-		return nil, 0, 0, errors.Join(err, closer.Close())
-	}
-	path, hashErr := v2.CompactedIndexPath(tenant, pathReader)
-	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return nil, 0, 0, errors.Join(hashErr, closer.Close())
-	}
-
-	compressedBytes = obj.Size()
-	uploadReader, err := obj.Reader(ctx)
-	if err != nil {
-		return nil, 0, 0, errors.Join(err, closer.Close())
-	}
-	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
-	}
-	if err := uploadReader.Close(); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
-	}
-
-	if err := closer.Close(); err != nil {
-		return nil, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
-	}
-	return &v2.ResultArtifact{Path: path}, compressedBytes, uncompressedBytes, nil
+	return []v2.ResultArtifact{artifact}, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
@@ -257,10 +208,10 @@ type objectSections struct {
 // keepAll keeps every row, whatever log object the row references.
 func keepAll(string) bool { return true }
 
-// mergePostingsIntoBuilder merges the postings sections of all source index
-// objects with a K-way loser-tree merge. It writes a row to builder only if
-// keep returns true for the log object path of the row.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
+// mergePostingsInto merges the postings sections of all source index objects
+// with a K-way loser-tree merge. It writes a row to out only if keep returns
+// true for the log object path of the row.
+func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
 	readers := postingsSequences(ctx, objects)
 	if len(readers) == 0 {
 		return nil
@@ -294,7 +245,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		if last != nil && samePostingsKey(*last, row) {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: postings full-key collision",
-				"tenant", tenant,
+				"tenant", out.tenant,
 				"kind", row.Kind,
 				"object_path", row.ObjectPath,
 				"section_index", row.SectionIndex,
@@ -305,7 +256,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		last = &row
-		if err := c.writePostingsRow(builder, tenant, row); err != nil {
+		if err := out.appendPostingsRow(row); err != nil {
 			return err
 		}
 	}
@@ -338,21 +289,10 @@ func postingsSequences(ctx context.Context, objects []objectSections) []sequence
 	return readers
 }
 
-func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {
-	switch row.Kind {
-	case postings.KindLabel:
-		return builder.AppendPostingsLabelEntry(tenant, row.LabelEntry())
-	case postings.KindBloom:
-		return builder.AppendPostingsBloomEntry(tenant, row.BloomEntry())
-	default:
-		return fmt.Errorf("unknown postings kind: %v", row.Kind)
-	}
-}
-
-// mergeStatsIntoBuilder merges the stats sections of all source index objects
-// with a K-way loser-tree merge. It writes a row to builder only if keep
-// returns true for the log object path of the row.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, keep func(logObjectPath string) bool, builder *indexobj.MergeBuilder) error {
+// mergeStatsInto merges the stats sections of all source index objects with a
+// K-way loser-tree merge. It writes a row to out only if keep returns true for
+// the log object path of the row.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -399,7 +339,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		if last != nil && stats.Compare(*last, row) == 0 {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: stats full-key collision",
-				"tenant", tenant,
+				"tenant", out.tenant,
 				"object_path", row.ObjectPath,
 				"section_index", row.SectionIndex,
 				"min_timestamp", row.MinTimestamp,
@@ -409,7 +349,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		last = &row
-		if err := builder.AppendStat(tenant, row); err != nil {
+		if err := out.appendStat(row); err != nil {
 			return err
 		}
 	}

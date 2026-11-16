@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -97,6 +98,12 @@ type TableOfContentsEntry struct {
 	// must equal [indexobj.TenantShardBuckets] of the object, because readers
 	// trust it.
 	ShardBuckets indexpointers.ShardBuckets
+
+	// PostingKeys bounds the posting keys of the index object. Queries skip
+	// an index object whose bounds hold no column that they read, so the
+	// bounds must hold every posting key of the object. The zero value means
+	// the bounds are unknown.
+	PostingKeys postings.KeyRange
 }
 
 // IndexRunEntries holds the entries of the index objects of one run. A
@@ -679,6 +686,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 				EndTs:        entry.EndTime,
 				RunID:        runID,
 				RunLength:    length,
+				PostingKeys:  entry.PostingKeys,
 				ShardBuckets: entry.ShardBuckets,
 			}); err != nil {
 				return nil, fmt.Errorf("appending index pointer: %w", err)

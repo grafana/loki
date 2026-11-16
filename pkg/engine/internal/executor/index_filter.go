@@ -11,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -20,14 +19,14 @@ import (
 
 // executeIndexFilter copies the rows of the node's log objects from the
 // source index into a new index object, and emits a record that reports the
-// content-hash path of the new index.
+// artifacts of the new index.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
-		artifact, err := c.doIndexFilter(ctx, node)
+		artifacts, err := c.doIndexFilter(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		rec, err := v2.EncodeResultArtifacts(memory.DefaultAllocator, artifacts)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -35,7 +34,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 	})
 }
 
-func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) (*v2.ResultArtifact, error) {
+func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) ([]v2.ResultArtifact, error) {
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
@@ -51,11 +50,11 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	if err != nil {
 		return nil, err
 	}
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
+	out, err := c.newIndexOutput(node.Tenant, layout)
 	if err != nil {
-		return nil, fmt.Errorf("creating index builder: %w", err)
+		return nil, err
 	}
-	defer builder.Reset()
+	defer out.reset()
 
 	keepSet := make(map[string]struct{}, len(node.ObjectPaths))
 	for _, path := range node.ObjectPaths {
@@ -74,11 +73,11 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	// A K-way merge keeps the rows in key order when they come from several
 	// index objects of one index run, so each output section stays sorted.
 	foundPostings := make(map[string]struct{}, len(keepSet))
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, sources, keep(foundPostings), builder); err != nil {
+	if err := c.mergePostingsInto(ctx, sources, keep(foundPostings), out); err != nil {
 		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
 	}
 	foundStats := make(map[string]struct{}, len(keepSet))
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, sources, keep(foundStats), builder); err != nil {
+	if err := c.mergeStatsInto(ctx, sources, keep(foundStats), out); err != nil {
 		return nil, fmt.Errorf("filtering stats of source index %q: %w", source, err)
 	}
 
@@ -94,11 +93,11 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	artifact, _, _, err := c.uploadIndex(ctx, node.Tenant, builder)
+	artifact, _, _, err := c.uploadIndex(ctx, out)
 	if err != nil {
 		return nil, fmt.Errorf("index filter output for source index %q: %w", source, err)
 	}
-	return artifact, nil
+	return []v2.ResultArtifact{artifact}, nil
 }
 
 // openFilterSources opens the source index objects of node and returns their
