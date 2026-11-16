@@ -87,6 +87,7 @@ func TestLabelFilterHints_ShouldParseLine(t *testing.T) {
 		{name: "budget: an alternation of 3 and a literal are both kept", query: `{app="foo"} | json | foo=~"aaaa|bbbb|cccc" | bar="abcdefgh"`, line: `{"foo":"zzzz","bar":"abcdefgh"}`, want: false},
 		{name: "budget: a literal is kept with an alternation of 3", query: `{app="foo"} | json | foo=~"aaaa|bbbb|cccc" | bar="abcdefgh"`, line: `{"foo":"bbbb"}`, want: false},
 		{name: "budget: an alternation that no longer fits is dropped", query: `{app="foo"} | json | foo=~"aaaa|bbbb|cccc|dddd" | bar="abcdefgh"`, line: `{"foo":"zzzz","bar":"abcdefgh"}`, want: true},
+		{name: "budget: an escape counts as a search", query: `{app="foo"} | json | path="/aaaa/bbbb" | foo="cccc" | bar="dddd" | baz="eeee"`, line: `{"path":"/aaaa/bbbb","foo":"cccc","bar":"dddd"}`, want: true},
 
 		// logfmt
 		{name: "logfmt: the line has the key and the value", query: `{app="foo"} | logfmt | foo="abcd"`, line: `foo=abcd`, want: true},

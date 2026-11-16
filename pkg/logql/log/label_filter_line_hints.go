@@ -30,7 +30,8 @@ const (
 	// slice of the line.
 	valuesVerbatim
 
-	// maxLineSearches is the most literals ShouldParseLine searches a line for, not counting escapes.
+	// maxLineSearches is the most literals and escapes ShouldParseLine searches a line for, not
+	// counting the \u escape, which it searches for once, at the first literal that the line misses.
 	maxLineSearches = 4
 
 	// minLiteralLen is the length of the shortest literal worth searching a line for. Shorter ones are
@@ -68,8 +69,8 @@ type lineNeed interface {
 	// mayHold returns false only when the line cannot hold what the label filter needs.
 	mayHold(line []byte) bool
 
-	// searchCost returns how many literals mayHold searches the line for, and the length of the
-	// shortest.
+	// searchCost returns how many literals and escapes mayHold searches the line for, and the length
+	// of the shortest literal.
 	searchCost() (searches, shortest int)
 }
 
@@ -98,7 +99,7 @@ func (l lineLiteral) mayHold(line []byte) bool {
 }
 
 func (l lineLiteral) searchCost() (searches, shortest int) {
-	return 1, len(l.match)
+	return 1 + len(l.escapes), len(l.match)
 }
 
 // allLineNeeds needs the line to hold each of them.
@@ -197,8 +198,9 @@ func appendParts(dst []lineRequirement, name string, need lineNeed) []lineRequir
 }
 
 // withinBudget sorts reqs longest first, because a longer literal is in fewer lines, and keeps them
-// while they search the line for at most maxLineSearches literals. An alternation counts as long as
-// its shortest literal and searches for each of them, so it is dropped whole when it does not fit.
+// while they search the line for at most maxLineSearches literals and escapes. An alternation
+// counts as long as its shortest literal and searches for each of them, so it is dropped whole when
+// it does not fit.
 func withinBudget(reqs []lineRequirement) []lineRequirement {
 	slices.SortStableFunc(reqs, func(a, b lineRequirement) int {
 		_, aLen := a.need.searchCost()
