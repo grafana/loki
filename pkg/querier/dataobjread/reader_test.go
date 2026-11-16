@@ -441,12 +441,12 @@ func TestReadBatch_Fill(t *testing.T) {
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "first")))
 		require.Len(t, batch.records, 1)
 		region := &batch.records[0].line[0]
-		allocated := batch.lines.AllocatedBytes()
+		allocated := batch.linesAlloc.AllocatedBytes()
 
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "other")))
 		require.Len(t, batch.records, 1)
 		require.Same(t, region, &batch.records[0].line[0])
-		require.Equal(t, allocated, batch.lines.AllocatedBytes())
+		require.Equal(t, allocated, batch.linesAlloc.AllocatedBytes())
 	})
 
 	t.Run("it allocates no line memory when the task does not need the line", func(t *testing.T) {
@@ -457,7 +457,7 @@ func TestReadBatch_Fill(t *testing.T) {
 		require.NoError(t, batch.fill(noLine, rowsOf(streamID, "one")))
 		require.Len(t, batch.records, 1)
 		require.Nil(t, batch.records[0].line)
-		require.Zero(t, batch.lines.AllocatedBytes())
+		require.Zero(t, batch.linesAlloc.AllocatedBytes())
 	})
 
 	t.Run("a row with an unexpected stream fails the fill and leaves no records", func(t *testing.T) {
@@ -530,11 +530,11 @@ func TestReadBatchPool_Put(t *testing.T) {
 		batch = pool.get()
 		long := strings.Repeat("x", 100)
 		require.NoError(t, batch.fill(task, rowsOf(streamID, long)))
-		withBoth := batch.lines.AllocatedBytes()
+		withBoth := batch.linesAlloc.AllocatedBytes()
 
 		pool.put(batch)
-		require.Less(t, batch.lines.AllocatedBytes(), withBoth)
-		require.GreaterOrEqual(t, batch.lines.AllocatedBytes(), len(long))
+		require.Less(t, batch.linesAlloc.AllocatedBytes(), withBoth)
+		require.GreaterOrEqual(t, batch.linesAlloc.AllocatedBytes(), len(long))
 	})
 
 	t.Run("it keeps the line region after a fill that copied no line", func(t *testing.T) {
@@ -542,12 +542,12 @@ func TestReadBatchPool_Put(t *testing.T) {
 		batch := pool.get()
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "first")))
 		pool.put(batch)
-		allocated := batch.lines.AllocatedBytes()
+		allocated := batch.linesAlloc.AllocatedBytes()
 
 		batch = pool.get()
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "")))
 		pool.put(batch)
-		require.Equal(t, allocated, batch.lines.AllocatedBytes())
+		require.Equal(t, allocated, batch.linesAlloc.AllocatedBytes())
 	})
 
 	t.Run("it panics when the batch is already in the pool", func(t *testing.T) {

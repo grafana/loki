@@ -452,24 +452,32 @@ func (r *LogReader) recordStats() {
 }
 
 // readBatch holds the records built from the rows of one Read call. A non-nil record line
-// points into a region of lines. A readBatch must not be copied, because it owns an Allocator.
+// points into a region of linesAlloc, and stays valid until the next fill or reset of the batch.
+// Only fill and reset use linesAlloc.
+//
+// A readBatch must not be copied, because it owns an Allocator.
 type readBatch struct {
-	records []LogRecord
-	lines   memory.Allocator
+	records    []LogRecord
+	linesAlloc memory.Allocator
 
 	// pooled is true from a put until the next get.
 	pooled bool
 }
 
 // fill replaces the records of the batch with one record per row. It copies the lines that the
-// task needs into a region from b.lines, so the records do not alias rows. On error the batch
-// holds no records.
+// task needs into one region from b.linesAlloc, so the records do not alias rows. On error the
+// batch holds no records.
 //
-// fill reclaims b.lines first, so the lines of the previous fill must no longer be in use.
+// fill reclaims b.linesAlloc first, so the lines of the previous fill must no longer be in use.
 func (b *readBatch) fill(task ReadTask, rows []logs.Record) error {
-	b.lines.Reclaim()
+	b.linesAlloc.Reclaim()
 
-	records, err := task.appendRecords(b.records[:0], &b.lines, rows)
+	var lineBuf []byte
+	if size := task.forwardedLineBytes(rows); size > 0 {
+		lineBuf = b.linesAlloc.Allocate(size).Data()[:0:size]
+	}
+
+	records, err := task.appendRecords(b.records[:0], lineBuf, rows)
 	if err != nil {
 		b.records = b.records[:0]
 		return err
@@ -491,8 +499,8 @@ func (b *readBatch) reset() {
 	clear(b.records[:cap(b.records)])
 	b.records = b.records[:0]
 
-	if b.lines.FreeBytes() < b.lines.AllocatedBytes() {
-		b.lines.Reset()
+	if b.linesAlloc.FreeBytes() < b.linesAlloc.AllocatedBytes() {
+		b.linesAlloc.Reset()
 	}
 }
 
