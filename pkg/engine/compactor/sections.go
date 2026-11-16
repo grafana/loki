@@ -250,8 +250,8 @@ type openedIndex struct {
 }
 
 // openRunObjects opens the index objects of run, in the order of run. It
-// returns an error that wraps errCorruptIndex if the ToC lists only part of
-// run, so no planning reads an incomplete run.
+// returns an error that wraps errCorruptIndex if an index object of run
+// records a run size other than the number of index objects of run.
 //
 // Each returned object keeps its prefetch buffer of up to prefetchBytes, so
 // the memory grows with the number of index objects in run.
@@ -310,6 +310,7 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 // section for tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
+//   - records a run size other than the number of index objects of run,
 //   - has stats sections that do not share one layout,
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,

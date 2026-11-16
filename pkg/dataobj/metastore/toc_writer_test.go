@@ -559,6 +559,23 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
 	})
 
+	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds the paths of a new run as runs of one and none of the old paths", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/new-a", 0), runPointer("idx/new-b", 0))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []TableOfContentsRun{{
+			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
+			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
+		}})
+		require.ErrorIs(t, err, errChangeSuperseded)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
 	t.Run("returns an error without retrying and leaves the ToC unchanged when the ToC keeps the path of an entry of a new run", func(t *testing.T) {
 		window := unixTime(0)
 		tocPath := TableOfContentsPath("tenantA", window)
@@ -965,7 +982,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		{
 			name:     "returns an error without touching storage when newEntries is empty",
 			oldPaths: []string{"idx/a-old"},
-			wantErr:  "no new entries",
+			wantErr:  "no new runs",
 		},
 		{
 			name:       "returns the TimeWindow error without touching storage when a new entry is not valid",
@@ -1025,6 +1042,11 @@ func TestReplaceIndexPointers(t *testing.T) {
 			name:    "returns an error without touching storage when a new run holds one path twice",
 			newRuns: []TableOfContentsRun{{entry("idx/a-new"), entry("idx/a-new")}},
 			wantErr: "idx/a-new of a new run appears more than once",
+		},
+		{
+			name:    "returns an error without touching storage when an entry of a new run has an old path",
+			newRuns: []TableOfContentsRun{{entry("idx/a-0"), entry("idx/b-new")}},
+			wantErr: "idx/a-0 of a new run appears more than once or is an old path",
 		},
 		{
 			name:    "returns an error without touching storage when an entry of a new run has the path of another new run of one entry",

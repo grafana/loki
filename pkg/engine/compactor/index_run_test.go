@@ -88,8 +88,12 @@ func TestIndexRun_CheckSize(t *testing.T) {
 		require.ErrorIs(t, run(3, 3).checkSize(), errCorruptIndex)
 	})
 
-	t.Run("returns a corrupt index error when one index object records another size than the others", func(t *testing.T) {
-		require.ErrorIs(t, run(2, 0, 3).checkSize(), errCorruptIndex)
+	t.Run("returns a corrupt index error when a later index object records another size than the first", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 3).checkSize(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists more index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 2, 2).checkSize(), errCorruptIndex)
 	})
 }
 

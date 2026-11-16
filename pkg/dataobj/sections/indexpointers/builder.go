@@ -3,6 +3,7 @@ package indexpointers
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -30,9 +31,11 @@ type IndexPointer struct {
 	// RunID is the run that holds the index object.
 	RunID RunID
 
-	// RunSize is the number of index objects of the run that holds the index
-	// object. Zero means the size is unknown: the index object is of no run,
-	// or a ToC writer that predates the run_size column dropped it.
+	// RunSize is the number of index objects of run RunID that the ToC writer
+	// recorded. Zero means no recorded size: the index object is of no run, or
+	// a ToC writer without the run_size column rewrote the ToC. A non-zero
+	// RunSize is at most math.MaxInt32 and requires a non-zero RunID. The
+	// builder fails to encode a pointer that breaks this.
 	RunSize int
 
 	// PostingKeys bounds the posting keys of the index object. The zero value
@@ -78,6 +81,21 @@ func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
 		return streams.ShardLayout{}, false
 	}
 	return streams.MustShardLayoutFromBuckets(b.count), true
+}
+
+// checkRunSize returns an error if the run size of pointer is negative, above
+// math.MaxInt32, or set without a run ID. Readers reject such a value, so a ToC
+// that holds it could not be read back.
+func checkRunSize(pointer IndexPointer) error {
+	switch {
+	case pointer.RunSize == 0:
+		return nil
+	case pointer.RunSize < 0 || pointer.RunSize > math.MaxInt32:
+		return fmt.Errorf("index pointer %s: invalid run size %d", pointer.Path, pointer.RunSize)
+	case pointer.RunID == 0:
+		return fmt.Errorf("index pointer %s: run size %d without a run ID", pointer.Path, pointer.RunSize)
+	}
+	return nil
 }
 
 // TenantIndexPointer is meant to collectively hold IndexPointer with the ID of the tenant it belongs to.
@@ -287,6 +305,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	}
 
 	for i, pointer := range b.indexPointers {
+		if err := checkRunSize(*pointer); err != nil {
+			return err
+		}
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(pointer.StartTs.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(pointer.EndTs.UnixNano()))

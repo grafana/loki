@@ -26,8 +26,8 @@ type indexRun struct {
 }
 
 // checkSize returns an error that wraps errCorruptIndex if an index object of
-// r records a run size other than the number of index objects of r. Then the
-// ToC lists only part of the run.
+// r records a run size other than the number of index objects of r. The ToC
+// then does not list the run that the ToC writer recorded.
 //
 // A run size of zero is unknown, so it matches any number. A ToC writer that
 // predates the run_size column drops the size when it rewrites the ToC.

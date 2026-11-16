@@ -3513,30 +3513,57 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
 
-	// shortRun returns a ToC entry of each of two index objects of a run that
+	indexAtPosting := func(logPath, value string) postings.Row {
+		return postings.Row{
+			Kind: postings.KindLabel, ObjectPath: logPath, ColumnName: "common", LabelValue: value,
+			MinTimestamp: 10, MaxTimestamp: 20, ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
+			MaxShardBucket: streams.DefaultShardLayout().Buckets() - 1,
+		}
+	}
+	// indexAt writes an index object at path with the postings and stats rows
+	// of one log object, and returns its ToC entry.
+	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runSize int) indexpointers.IndexPointer {
+		t.Helper()
+		logPath := "logs/" + path
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
+			stats: []stats.Stat{{
+				ObjectPath: logPath, SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100,
+			}},
+			postings: []postings.Row{
+				indexAtPosting(logPath, "a"),
+				indexAtPosting(logPath, "z"),
+			},
+		})
+		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: runID, RunSize: runSize}
+	}
+	// shortRun returns the ToC entries of two index objects of a run that
 	// records three index objects.
 	shortRun := func(t *testing.T, bucket objstore.Bucket) []indexpointers.IndexPointer {
 		t.Helper()
-		var pointers []indexpointers.IndexPointer
-		for _, path := range []string{"indexes/run/a", "indexes/run/b"} {
-			buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{{
-				ObjectPath: "logs/log-0", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
-				MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100,
-			}})
-			pointers = append(pointers, indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1, RunSize: 3})
+		return []indexpointers.IndexPointer{
+			indexAt(t, bucket, "indexes/run/a", 1, 3),
+			indexAt(t, bucket, "indexes/run/b", 1, 3),
 		}
-		return pointers
 	}
 
-	t.Run("IndexMerge skips an index run that the ToC lists only in part, counts it, and reports no error", func(t *testing.T) {
+	t.Run("IndexMerge skips an index run that the ToC lists only in part, counts it, and still merges the other indexes", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		pointers := shortRun(t, bucket)
+		pointers := append(shortRun(t, bucket),
+			indexAt(t, bucket, "indexes/single-a", 0, 0),
+			indexAt(t, bucket, "indexes/single-b", 0, 0),
+		)
 		runner := &fakeRunner{}
 		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 		_, err := c.compactTenantIndexes(ctx, "acme", window, pointers)
 		require.NoError(t, err)
-		require.Empty(t, runner.snapshot())
+		calls := runner.snapshot()
+		require.NotEmpty(t, calls)
+		for _, call := range calls {
+			require.NotContains(t, planObjectPaths(t, call.plan), "indexes/run/a")
+			require.NotContains(t, planObjectPaths(t, call.plan), "indexes/run/b")
+		}
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
 	})
 

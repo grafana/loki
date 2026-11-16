@@ -29,7 +29,8 @@ type tocPublisher struct {
 // Replace atomically replaces oldPaths with newEntries in the tenant's ToC
 // for window. It returns true only when this call applied the swap.
 //
-// Each entry is a run of its own, because every task writes one index object.
+// Replace publishes each entry as a run of one, so the ToC gives it no run ID
+// and skips a path that it already holds.
 //
 // The swap applies only if the ToC holds every path in oldPaths. Otherwise it
 // writes nothing.

@@ -240,7 +240,8 @@ func RunIDFromValue(value int64) (RunID, error) {
 
 // RunSizeFromValue returns the run size with the given value, as the run_size
 // column stores it. It returns an error if value is not positive, because
-// writers store no value for an unknown size.
+// writers store no value for an unknown size. It also returns an error above
+// math.MaxInt32, so the size fits in an int on every platform.
 func RunSizeFromValue(value int64) (int, error) {
 	if value <= 0 || value > math.MaxInt32 {
 		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunSize, value)
