@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"errors"
+	"log"
 	"testing"
 	"time"
 
@@ -62,6 +63,27 @@ func TestGetVolume(t *testing.T) {
 
 func TestGetVolumeRange(t *testing.T) {
 	testVolumeQuery(t, true)
+}
+
+func TestGetVolumePrintsWarnings(t *testing.T) {
+	var logs bytes.Buffer
+	prevOutput, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOutput)
+		log.SetFlags(prevFlags)
+	})
+
+	q := &volume.Query{QueryString: `{app="loki"}`}
+	out := output.NewRaw(&bytes.Buffer{}, &output.LogOutputOptions{})
+	response := &loghttp.QueryResponse{
+		Warnings: []string{"partial results"},
+		Data:     loghttp.QueryResponseData{Result: loghttp.Streams{}},
+	}
+
+	require.NoError(t, GetVolume(q, &testIndexClient{volumeResponse: response}, out, false))
+	require.Equal(t, "Warning: partial results\n", logs.String())
 }
 
 func testVolumeQuery(t *testing.T, rangeQuery bool) {
