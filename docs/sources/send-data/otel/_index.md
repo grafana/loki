@@ -30,7 +30,7 @@ limits_config:
 
 With the example config, here is how various kinds of Attributes would be stored:
 
-* Store all 17 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
+* Store all 18 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
@@ -75,7 +75,7 @@ limits_config:
 
 With the example config, here is how various kinds of Attributes would be stored:
 
-* Store all 17 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
+* Store all 18 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
 * Store remaining Resource Attributes as Structured Metadata.
 * Drop Scope Attribute named `method.name` and store all other Scope Attributes as Structured Metadata.
 * Store Log Attribute named `user.id` as Structured Metadata and drop all other Log Attributes.

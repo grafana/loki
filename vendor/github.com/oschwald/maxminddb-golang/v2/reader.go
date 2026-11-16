@@ -570,10 +570,7 @@ func (r *Reader) traverseTree(ip netip.Addr, node uint, stopBit int) (uint, int,
 	case 32:
 		return r.traverseTree32(ip, node, stopBit)
 	default:
-		return 0, 0, mmdberrors.NewInvalidDatabaseError(
-			"unsupported record size: %d",
-			r.Metadata.RecordSize,
-		)
+		return 0, 0, unsupportedRecordSizeError(r.Metadata.RecordSize)
 	}
 }
 
@@ -623,15 +620,14 @@ func (r *Reader) traverseTree24(ip netip.Addr, node uint, stopBit int) (uint, in
 
 	for i < stopBit && node < nodeCount {
 		// Extract bits in 32-bit chunks to reduce shift/mask operations in the
-		// inner loop.
+		// inner loop. Because i starts at 0 and each completed chunk advances
+		// by 32, i is always 32-bit aligned at the start of an iteration.
 		chunk := i >> 5
 		ipBits := binary.BigEndian.Uint32(ip16[chunk*4:])
 
-		offsetInChunk := i & 31
-		ipBits <<= offsetInChunk
-
-		bitsToProcess := min(32-offsetInChunk, stopBit-i)
-		for j := 0; j < bitsToProcess && node < nodeCount; j++ {
+		bitsToProcess := min(32, stopBit-i)
+		j := 0
+		for ; j < bitsToProcess && node < nodeCount; j++ {
 			bit := uint((ipBits >> 31) & 1)
 			ipBits <<= 1
 
@@ -641,8 +637,8 @@ func (r *Reader) traverseTree24(ip netip.Addr, node uint, stopBit int) (uint, in
 			node = (uint(buffer[offset]) << 16) |
 				(uint(buffer[offset+1]) << 8) |
 				uint(buffer[offset+2])
-			i++
 		}
+		i += j
 	}
 
 	return node, i, nil
@@ -697,22 +693,21 @@ func (r *Reader) traverseTree28(ip netip.Addr, node uint, stopBit int) (uint, in
 
 	for i < stopBit && node < nodeCount {
 		// Extract bits in 32-bit chunks to reduce shift/mask operations in the
-		// inner loop.
+		// inner loop. Because i starts at 0 and each completed chunk advances
+		// by 32, i is always 32-bit aligned at the start of an iteration.
 		chunk := i >> 5
 		ipBits := binary.BigEndian.Uint32(ip16[chunk*4:])
 
-		offsetInChunk := i & 31
-		ipBits <<= offsetInChunk
-
-		bitsToProcess := min(32-offsetInChunk, stopBit-i)
-		for j := 0; j < bitsToProcess && node < nodeCount; j++ {
+		bitsToProcess := min(32, stopBit-i)
+		j := 0
+		for ; j < bitsToProcess && node < nodeCount; j++ {
 			bit := uint((ipBits >> 31) & 1)
 			ipBits <<= 1
 
 			baseOffset := node * 7
 			node = readNode28(buffer, baseOffset, bit)
-			i++
 		}
+		i += j
 	}
 
 	return node, i, nil
@@ -774,15 +769,14 @@ func (r *Reader) traverseTree32(ip netip.Addr, node uint, stopBit int) (uint, in
 
 	for i < stopBit && node < nodeCount {
 		// Extract bits in 32-bit chunks to reduce shift/mask operations in the
-		// inner loop.
+		// inner loop. Because i starts at 0 and each completed chunk advances
+		// by 32, i is always 32-bit aligned at the start of an iteration.
 		chunk := i >> 5
 		ipBits := binary.BigEndian.Uint32(ip16[chunk*4:])
 
-		offsetInChunk := i & 31
-		ipBits <<= offsetInChunk
-
-		bitsToProcess := min(32-offsetInChunk, stopBit-i)
-		for j := 0; j < bitsToProcess && node < nodeCount; j++ {
+		bitsToProcess := min(32, stopBit-i)
+		j := 0
+		for ; j < bitsToProcess && node < nodeCount; j++ {
 			bit := uint((ipBits >> 31) & 1)
 			ipBits <<= 1
 
@@ -793,11 +787,19 @@ func (r *Reader) traverseTree32(ip netip.Addr, node uint, stopBit int) (uint, in
 				(uint(buffer[offset+1]) << 16) |
 				(uint(buffer[offset+2]) << 8) |
 				uint(buffer[offset+3])
-			i++
 		}
+		i += j
 	}
 
 	return node, i, nil
+}
+
+//go:noinline
+func unsupportedRecordSizeError(recordSize uint) error {
+	return mmdberrors.NewInvalidDatabaseError(
+		"unsupported record size: %d",
+		recordSize,
+	)
 }
 
 func hasBufferRange(bufferLen, offset, size uint) bool {
@@ -808,12 +810,17 @@ func (r *Reader) resolveDataPointer(pointer uint) (uintptr, error) {
 	// Check for integer underflow: pointer must be greater than nodeCount + separator
 	minPointer := r.Metadata.NodeCount + dataSectionSeparatorSize
 	if pointer < minPointer {
-		return 0, mmdberrors.NewInvalidDatabaseError("the MaxMind DB file's search tree is corrupt")
+		return 0, searchTreeCorruptError()
 	}
 
 	resolved := pointer - minPointer
 	if resolved >= r.dataSectionSize {
-		return 0, mmdberrors.NewInvalidDatabaseError("the MaxMind DB file's search tree is corrupt")
+		return 0, searchTreeCorruptError()
 	}
 	return uintptr(resolved), nil
+}
+
+//go:noinline
+func searchTreeCorruptError() error {
+	return mmdberrors.NewInvalidDatabaseError("the MaxMind DB file's search tree is corrupt")
 }

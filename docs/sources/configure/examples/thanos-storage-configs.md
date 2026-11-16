@@ -2,7 +2,7 @@
 title: "Configuration examples for using Thanos-based storage clients"
 menuTitle: Thanos storage examples
 description: "Real-world examples for using Thanos-based S3, GCS, Azure, MinIO, and filesystem clients in Grafana Loki."
-weight: 100
+weight: 90
 ---
 
 # Configuration examples for using Thanos-based storage clients

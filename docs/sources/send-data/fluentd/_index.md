@@ -10,7 +10,7 @@ weight:  600
 
 The [Fluentd output plugin](https://www.fluentd.org/) for Grafana Loki is called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
-instance or [Grafana Cloud](/products/cloud/).
+instance or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/send-data/logs/).
 
 The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
@@ -32,7 +32,7 @@ The Docker image `grafana/fluent-plugin-loki:main` contains [default configurati
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-This image starts an instance of Fluentd that forwards incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/) to ship logs without needing Fluentd.
+This image starts an instance of Fluentd that forwards incoming logs to the specified Loki URL. As an alternate, containerized applications can also use the [Docker driver plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -75,7 +75,7 @@ services:
 Use either `<label>...</label>` or `extra_labels` to set at least one label.
 {{< /admonition >}}
 
-In your Fluentd configuration, add `@type loki`. Additional configuration is optional. Default values would look like this:
+In your Fluentd configuration, add `@type loki`. Additional configuration is optional. A typical configuration looks like this:
 
 ```conf
 <match **>
@@ -191,17 +191,34 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ### `url`
 
-The URL of the Loki server to send logs to. When sending data, the publish path (`../reference/api/loki-http-api/v1/push/`) will automatically be appended.
-By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](/products/cloud/) service.
+The URL of the Loki server to send logs to. When sending data, the publish path (see [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs)) will automatically be appended.
+By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](https://grafana.com/docs/grafana-cloud/send-data/logs/) service.
 
 #### Proxy Support
 
-Starting with version 0.8.0, this gem uses [excon, which supports proxy with environment variables](https://github.com/excon/excon#proxy-support).
+This plugin uses Ruby's standard `Net::HTTP` library to send requests, which honors the `http_proxy`, `https_proxy`, and `no_proxy` environment variables for outbound requests.
 
 ### `username` / `password`
 
 If the Loki server requires authentication, specify a username and password.
-If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
+If using Grafana Labs' hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
+
+### `bearer_token_file`
+
+As an alternative to `username` / `password`, specify a path to a file containing a bearer token. The plugin reads the file once at startup and sends its contents in an `Authorization: Bearer <token>` header on every request.
+
+Do not set `bearer_token_file` together with `username` / `password`. If both are configured, the basic auth credentials silently overwrite the bearer token, and no error is raised.
+
+```conf
+<match **>
+  @type loki
+
+  url "https://loki"
+  bearer_token_file /path/to/token
+
+  ...
+</match>
+```
 
 ### tenant
 
@@ -263,6 +280,23 @@ A flag to disable server certificate verification. By default the `insecure_tls`
 </match>
 ```
 
+### TLS ciphers and minimum version
+
+Use `ciphers` to restrict the TLS connection to a specific OpenSSL cipher list (for example, `ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384`), and `min_version` to set the minimum TLS protocol version to accept (for example, `TLS1_2`). Both are optional and unset by default.
+
+```conf
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  ciphers ECDHE-RSA-AES128-GCM-SHA256
+  min_version TLS1_2
+
+  ...
+</match>
+```
+
 ### compress
 
 Enable compression for the HTTP request body. Supported values: `gzip`. Not compressed by default.
@@ -278,21 +312,36 @@ Enable compression for the HTTP request body. Supported values: `gzip`. Not comp
 </match>
 ```
 
+### `custom_headers`
+
+Add arbitrary extra HTTP headers to every request sent to Loki. Defaults to an empty set (no headers).
+
+```conf
+<match **>
+  @type loki
+
+  url "https://loki"
+  custom_headers {"X-My-Header":"my-value"}
+
+  ...
+</match>
+```
+
 ### Output format
 
 Loki is intended to index and group log streams using only a small set of labels. It is not intended for full-text indexing. When sending logs to Loki the majority of log message will be sent as a single log "line".
 
 Several configuration settings are available to control the output format.
 
-- extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
-- remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line. You can use [record_accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
+- extra_labels: (default: `{}`) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
+- remove_keys: (default: `[]`) comma separated list of needless record keys to remove. All other keys will be placed into the log line. You can use [record_accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
 - line_format (default:key_value): format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format `<key>=<value>`.
 - drop_single_key: if set to true and a record only has 1 key after extracting `<label></label>` blocks, set the log line to the value and discard the key.
 - include_thread_label (default: true): whether or not to include the fluentd_thread label when multiple threads are used for flushing.
 
 ### Buffer options
 
-`fluentd-plugin-loki` extends [Fluentd's builtin Output plugin](https://docs.fluentd.org/v1.0/articles/output-plugin-overview) and use `compat_parameters` plugin helper. It adds the following options:
+`fluentd-plugin-loki` extends [Fluentd's builtin Output plugin](https://docs.fluentd.org/output/) and use `compat_parameters` plugin helper. It adds the following options:
 
 ```conf
 buffer_type memory

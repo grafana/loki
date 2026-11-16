@@ -169,13 +169,13 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_failed_total",
-			Help:      "The total number of streams the ingest-limits service returned no usable shard count for, because it did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition. In live mode these streams are sharded with the local rate store's count instead.",
+			Help:      "The total number of streams the ingest-limits service returned no usable shard count for, because it did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition. In live mode these streams are written unsharded.",
 		}, []string{"tenant", "mode", "reason"}),
 
 		limitsServiceShardShadowRejected: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_rejected_total",
-			Help:      "The total number of streams the ingest-limits service rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count. In live mode these streams are not sharded; whether they are written is decided by the ExceedsLimits check.",
+			Help:      "The total number of streams the ingest-limits service rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count. In live mode these streams are dropped, unless the ingest limits run in dry-run mode, which writes them unsharded.",
 		}, []string{"tenant", "mode", "reason"}),
 
 		limitsServiceShardShadowCompared: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

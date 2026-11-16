@@ -27,8 +27,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
@@ -746,6 +746,11 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 
 func (f fakeChunkFilterer) RequiredLabelNames() []string {
 	return []string{"foo"}
+}
+
+func (f fakeChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
 }
 
 func TestLokiStore_SelectWithChunkFilterer(t *testing.T) {
@@ -2087,7 +2092,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 
 		require.NoError(t, chunkEnc.Close())
 		from, to := chunkEnc.Bounds()
-		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()), 0)
 		if err := c.Encode(); err != nil {
 			panic(err)
 		}

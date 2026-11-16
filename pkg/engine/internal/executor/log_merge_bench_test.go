@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
@@ -61,7 +62,7 @@ func BenchmarkLogObjectMerge(b *testing.B) {
 			streamSet = append(streamSet, testStream{labels: fmt.Sprintf(`{app="app-%04d"}`, stream), entries: entries})
 		}
 		path := fmt.Sprintf("objects/source-%d", file)
-		buildSourceLogObjectWithConfig(b, dataBucket, path, cfg, sortSchema, map[string][]testStream{tenant: streamSet})
+		buildSourceLogObjectWithConfig(b, dataBucket, path, cfg, streams.DefaultShardLayout(), sortSchema, map[string][]testStream{tenant: streamSet})
 		paths = append(paths, path)
 	}
 
@@ -78,7 +79,9 @@ func BenchmarkLogObjectMerge(b *testing.B) {
 		c.indexobjCfg = defaults.IndexobjBuilder
 		c.dataBucket = dataBucket
 		_, err := c.doLogObjectMerge(b.Context(), node)
-		require.NoError(b, err)
+		if err != nil {
+			require.NoError(b, err)
+		}
 	}
 }
 

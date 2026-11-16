@@ -56,9 +56,9 @@ func (re *Regexp) Split(input string, count int) ([]string, error) {
 	matched := false
 
 	origin := re.stringSearchOrigin(input, -1, d.runeStart)
-	m, err := runner.scan(d.runes, text, origin, d.runeStart, -1, true, re.MatchTimeout)
+	m, err := runner.scan(d.runes, text, origin, d.runeStart, -1, scanCaptures, re.MatchTimeout)
 
-	for ; m != nil && count > 0; m, err = runner.scan(d.runes, text, m.textpos, m.textpos, m.RuneLength, true, re.MatchTimeout) {
+	for ; m != nil && count > 0; m, err = runner.scan(d.runes, text, m.textpos, m.textpos, m.RuneLength, scanCaptures, re.MatchTimeout) {
 		if m.balancing {
 			compactBalancedMatches(m)
 		}

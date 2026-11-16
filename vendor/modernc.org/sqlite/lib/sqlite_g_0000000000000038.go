@@ -30,8 +30,6 @@ const F_DUPFD_CLOFORK = 23
 
 const MINCORE_PSIND_SHIFT = 5
 
-const O_CLOFORK = 134217728
-
 const O_NAMEDATTR = 67108864
 
 const O_XATTR = 67108864
@@ -133,9 +131,9 @@ func _robust_open(tls *libc.TLS, z uintptr, f int32, m Tmode_t) (r int32) {
 			(*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(16)].FpCurrent})))(tls, z)
 		}
 		(*(*func(*libc.TLS, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(1)].FpCurrent})))(tls, fd)
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3750, libc.VaList(bp+232, z, fd))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3764, libc.VaList(bp+232, z, fd))
 		fd = -int32(1)
-		if (*(*func(*libc.TLS, uintptr, int32, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[0].FpCurrent})))(tls, __ccgo_ts+3793, O_RDONLY, libc.Int32FromUint16(m)) < 0 {
+		if (*(*func(*libc.TLS, uintptr, int32, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[0].FpCurrent})))(tls, __ccgo_ts+3807, O_RDONLY, libc.Int32FromUint16(m)) < 0 {
 			break
 		}
 	}
@@ -218,6 +216,56 @@ func _unixAccess(tls *libc.TLS, NotUsed uintptr, zPath uintptr, flags int32, pRe
 // C documentation
 //
 //	/*
+//	** Return the name of a directory in which to put temporary files.
+//	** If no suitable temporary file directory can be found, return NULL.
+//	**
+//	** The return value might be a string obtained from getenv() and so
+//	** the return value should not be used after any call to setenv() or
+//	** putenv() as that value might have been freed.
+//	*/
+func _unixTempFileDir(tls *libc.TLS) (r uintptr) {
+	bp := tls.Alloc(224)
+	defer tls.Free(224)
+	var i uint32
+	var zDir uintptr
+	var _ /* buf at bp+0 */ Tstat
+	_, _ = i, zDir
+	i = uint32(0)
+	for {
+		if !(i < uint32(7)) {
+			break
+		}
+		switch i {
+		case uint32(0):
+			zDir = Xsqlite3_temp_directory
+		case uint32(1):
+			zDir = libc.Xgetenv(tls, __ccgo_ts+4013)
+		case uint32(2):
+			zDir = libc.Xgetenv(tls, __ccgo_ts+4027)
+		case uint32(3):
+			zDir = __ccgo_ts + 4034
+		case uint32(4):
+			zDir = __ccgo_ts + 4043
+		case uint32(5):
+			zDir = __ccgo_ts + 4052
+		default:
+			zDir = __ccgo_ts + 1765
+			break
+		}
+		if zDir != uintptr(0) && (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(4)].FpCurrent})))(tls, zDir, bp) == 0 && libc.Int32FromUint16((**(**Tstat)(__ccgo_up(bp))).Fst_mode)&int32(0170000) == int32(0040000) && (*(*func(*libc.TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(2)].FpCurrent})))(tls, zDir, int32(03)) == 0 {
+			return zDir
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	return uintptr(0)
+}
+
+// C documentation
+//
+//	/*
 //	** Check a unixFile that is a database.  Verify the following:
 //	**
 //	** (1) There is exactly one hard link on the file
@@ -238,19 +286,19 @@ func _verifyDbFile(tls *libc.TLS, pFile uintptr) {
 	}
 	rc = (*(*func(*libc.TLS, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(5)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, bp)
 	if rc != 0 {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3834, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3848, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 	if (**(**Tstat)(__ccgo_up(bp))).Fst_nlink == uint64(0) {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3858, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3872, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 	if (**(**Tstat)(__ccgo_up(bp))).Fst_nlink > uint64(1) {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3887, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3901, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 	if _fileHasMoved(tls, pFile) != 0 {
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3914, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3928, libc.VaList(bp+232, (*TunixFile)(unsafe.Pointer(pFile)).FzPath))
 		return
 	}
 }

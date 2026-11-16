@@ -18,6 +18,7 @@ package array
 
 import (
 	"fmt"
+	"math/bits"
 	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -78,6 +79,9 @@ type Builder interface {
 	// additional memory will be allocated. If n is smaller, the allocated memory may reduced.
 	Resize(n int)
 
+	// truncate removes elements from the end of the builder without changing its capacity.
+	truncate(n int)
+
 	// NewArray creates a new array from the memory buffers used
 	// by the builder and resets the Builder so it can be used to build
 	// a new array.
@@ -133,10 +137,9 @@ func (b *builder) SetNull(i int) {
 	if i < 0 || i >= b.length {
 		panic("arrow/array: index out of range")
 	}
-	if bitutil.BitIsSet(b.nullBitmap.Bytes(), i) {
+	if bitutil.ClearBitSwap(b.nullBitmap.Bytes(), i) {
 		b.nulls++
 	}
-	bitutil.ClearBit(b.nullBitmap.Bytes(), i)
 }
 
 func (b *builder) init(capacity int) {
@@ -164,18 +167,35 @@ func (b *builder) resize(newBits int, init func(int)) {
 		return
 	}
 
-	newBytesN := bitutil.CeilByte(newBits) / 8
+	allocBits := max(newBits, minBuilderCapacity)
+	newBytesN := bitutil.CeilByte(allocBits) / 8
 	oldBytesN := b.nullBitmap.Len()
 	b.nullBitmap.Resize(newBytesN)
-	b.capacity = newBits
+	b.capacity = allocBits
 	if oldBytesN < newBytesN {
 		// TODO(sgc): necessary?
 		memory.Set(b.nullBitmap.Buf()[oldBytesN:], 0)
 	}
 	if newBits < b.length {
-		b.length = newBits
-		b.nulls = newBits - bitutil.CountSetBits(b.nullBitmap.Buf(), 0, newBits)
+		b.truncate(newBits)
 	}
+}
+
+func (b *builder) truncate(n int) {
+	if n < 0 || n > b.length {
+		panic("arrow/array: invalid builder truncation length")
+	}
+	if n == b.length {
+		return
+	}
+
+	if b.nullBitmap != nil {
+		bitutil.SetBitsTo(b.nullBitmap.Buf(), int64(n), int64(b.length-n), false)
+		b.nulls = n - bitutil.CountSetBits(b.nullBitmap.Buf(), 0, n)
+	} else if b.nulls > n {
+		b.nulls = n
+	}
+	b.length = n
 }
 
 func (b *builder) reserve(elements int, resize func(int)) {
@@ -196,32 +216,131 @@ func (b *builder) unsafeAppendBoolsToBitmap(valid []bool, length int) {
 		return
 	}
 
+	validLength := len(valid)
 	byteOffset := b.length / 8
-	bitOffset := byte(b.length % 8)
 	nullBitmap := b.nullBitmap.Bytes()
-	bitSet := nullBitmap[byteOffset]
-
-	for _, v := range valid {
-		if bitOffset == 8 {
-			bitOffset = 0
-			nullBitmap[byteOffset] = bitSet
-			byteOffset++
-			bitSet = nullBitmap[byteOffset]
-		}
-
-		if v {
-			bitSet |= bitutil.BitMask[bitOffset]
-		} else {
-			bitSet &= bitutil.FlippedBitMask[bitOffset]
-			b.nulls++
-		}
-		bitOffset++
-	}
+	bitOffset := b.length % 8
 
 	if bitOffset != 0 {
+		bitSet := nullBitmap[byteOffset]
+		prefixLength := min(8-bitOffset, len(valid))
+		for i, v := range valid[:prefixLength] {
+			if v {
+				bitSet |= bitutil.BitMask[bitOffset+i]
+			} else {
+				bitSet &= bitutil.FlippedBitMask[bitOffset+i]
+				b.nulls++
+			}
+		}
+		nullBitmap[byteOffset] = bitSet
+		valid = valid[prefixLength:]
+		byteOffset++
+	}
+
+	packed := packBoolsSIMD(nullBitmap[byteOffset:], valid)
+	for i := 0; i < packed/8; i++ {
+		bitSet := nullBitmap[byteOffset+i]
+		b.nulls += 8 - bits.OnesCount8(bitSet)
+	}
+	valid = valid[packed:]
+	byteOffset += packed / 8
+
+	for len(valid) >= 8 {
+		bitSet := packBoolsByte(valid)
+		nullBitmap[byteOffset] = bitSet
+		b.nulls += 8 - bits.OnesCount8(bitSet)
+		valid = valid[8:]
+		byteOffset++
+	}
+
+	if len(valid) != 0 {
+		bitSet := nullBitmap[byteOffset]
+		for i, v := range valid {
+			if v {
+				bitSet |= bitutil.BitMask[i]
+			} else {
+				bitSet &= bitutil.FlippedBitMask[i]
+				b.nulls++
+			}
+		}
 		nullBitmap[byteOffset] = bitSet
 	}
-	b.length += len(valid)
+	b.length += validLength
+}
+
+func packBoolsByte(values []bool) byte {
+	values = values[:8]
+	var packed byte
+	if values[0] {
+		packed |= 1 << 0
+	}
+	if values[1] {
+		packed |= 1 << 1
+	}
+	if values[2] {
+		packed |= 1 << 2
+	}
+	if values[3] {
+		packed |= 1 << 3
+	}
+	if values[4] {
+		packed |= 1 << 4
+	}
+	if values[5] {
+		packed |= 1 << 5
+	}
+	if values[6] {
+		packed |= 1 << 6
+	}
+	if values[7] {
+		packed |= 1 << 7
+	}
+	return packed
+}
+
+func packBoolsToBitmap(dst []byte, offset int, values []bool) {
+	if len(values) == 0 {
+		return
+	}
+
+	byteOffset := offset / 8
+	bitOffset := offset % 8
+	if bitOffset != 0 {
+		bitSet := dst[byteOffset]
+		prefixLength := min(8-bitOffset, len(values))
+		for i, v := range values[:prefixLength] {
+			if v {
+				bitSet |= bitutil.BitMask[bitOffset+i]
+			} else {
+				bitSet &= bitutil.FlippedBitMask[bitOffset+i]
+			}
+		}
+		dst[byteOffset] = bitSet
+		values = values[prefixLength:]
+		byteOffset++
+	}
+
+	packed := packBoolsSIMD(dst[byteOffset:], values)
+	values = values[packed:]
+	byteOffset += packed / 8
+
+	for len(values) >= 8 {
+		dst[byteOffset] = packBoolsByte(values)
+		values = values[8:]
+		byteOffset++
+	}
+
+	if len(values) != 0 {
+		bitSet := dst[byteOffset]
+		for i, v := range values {
+			if v {
+				bitSet |= bitutil.BitMask[i]
+			} else {
+				bitSet &= bitutil.FlippedBitMask[i]
+			}
+		}
+		dst[byteOffset] = bitSet
+	}
 }
 
 // unsafeSetValid sets the next length bits to valid in the validity bitmap.
@@ -246,6 +365,30 @@ func (b *builder) unsafeSetValid(length int) {
 	}
 
 	b.length = newLength
+}
+
+func (b *builder) unsafeAppendNulls(n int) {
+	if n <= 0 {
+		return
+	}
+
+	if n == 1 {
+		bitutil.ClearBit(b.nullBitmap.Bytes(), b.length)
+	} else {
+		bitutil.SetBitsTo(b.nullBitmap.Bytes(), int64(b.length), int64(n), false)
+	}
+	b.length += n
+	b.nulls += n
+}
+
+func (b *builder) unsafeAppendEmptyValues(data []byte, valueSize, length int) {
+	if length <= 0 {
+		return
+	}
+
+	start := b.length * valueSize
+	memory.Set(data[start:start+length*valueSize], 0)
+	b.unsafeSetValid(length)
 }
 
 func (b *builder) UnsafeAppendBoolToBitmap(isValid bool) {
@@ -375,7 +518,7 @@ func NewBuilder(mem memory.Allocator, dtype arrow.DataType) Builder {
 		return NewDurationBuilder(mem, typ)
 	case arrow.RUN_END_ENCODED:
 		typ := dtype.(*arrow.RunEndEncodedType)
-		return NewRunEndEncodedBuilder(mem, typ.RunEnds(), typ.Encoded())
+		return newRunEndEncodedBuilder(mem, typ)
 	case arrow.BINARY_VIEW:
 		return NewBinaryViewBuilder(mem)
 	case arrow.STRING_VIEW:

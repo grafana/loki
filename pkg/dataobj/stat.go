@@ -34,6 +34,14 @@ var (
 	// "transferred from storage" figure.
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
 
+	// StatObjectsOpened* count the objects that [FromBucket] opened. The compaction state of the key
+	// picks the statistic. See [IsCompactedObjectPath].
+	//
+	// An open counts once it has read the object metadata, even when a cache served the read. A failed
+	// open counts nothing. Opening one key twice counts twice.
+	StatObjectsOpenedCompacted   = xcap.NewStatisticInt64("dataobj.objects.opened.compacted", xcap.AggregationTypeSum)
+	StatObjectsOpenedUncompacted = xcap.NewStatisticInt64("dataobj.objects.opened.uncompacted", xcap.AggregationTypeSum)
+
 	// StatObjectRequests* count every object-store request a task issued through
 	// a reader from [NewInstrumentedBucketReader], successful or not.
 	//

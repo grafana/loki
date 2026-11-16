@@ -1,11 +1,8 @@
 package stages
 
 import (
-	"reflect"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -19,8 +16,7 @@ const (
 )
 
 type tenantStage struct {
-	cfg    TenantConfig
-	logger log.Logger
+	cfg TenantConfig
 }
 
 type TenantConfig struct {
@@ -43,7 +39,7 @@ func validateTenantConfig(c TenantConfig) error {
 }
 
 // newTenantStage creates a new tenant stage to override the tenant ID from extracted data
-func newTenantStage(logger log.Logger, configs interface{}) (Stage, error) {
+func newTenantStage(configs interface{}) (Stage, error) {
 	cfg := TenantConfig{}
 	err := mapstructure.Decode(configs, &cfg)
 	if err != nil {
@@ -56,8 +52,7 @@ func newTenantStage(logger log.Logger, configs interface{}) (Stage, error) {
 	}
 
 	return toStage(&tenantStage{
-		cfg:    cfg,
-		logger: logger,
+		cfg: cfg,
 	}), nil
 }
 
@@ -91,18 +86,12 @@ func (s *tenantStage) getTenantFromSourceField(extracted map[string]interface{})
 	// Get the tenant ID from the source data
 	value, ok := extracted[s.cfg.Source]
 	if !ok {
-		if Debug {
-			level.Debug(s.logger).Log("msg", "the tenant source does not exist in the extracted data", "source", s.cfg.Source)
-		}
 		return ""
 	}
 
 	// Convert the value to string
 	tenantID, err := getString(value)
 	if err != nil {
-		if Debug {
-			level.Debug(s.logger).Log("msg", "failed to convert value to string", "err", err, "type", reflect.TypeOf(value))
-		}
 		return ""
 	}
 
@@ -114,9 +103,6 @@ func (s *tenantStage) getTenantFromLabel(labels model.LabelSet) string {
 	tenantID, ok := labels[model.LabelName(s.cfg.Label)]
 
 	if !ok {
-		if Debug {
-			level.Debug(s.logger).Log("msg", "the tenant source does not exist in the labels", "source", s.cfg.Source)
-		}
 		return ""
 	}
 

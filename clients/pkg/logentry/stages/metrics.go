@@ -3,7 +3,6 @@ package stages
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -163,10 +162,10 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 			if c != nil && c.Cfg.MatchAll != nil && *c.Cfg.MatchAll {
 				if c.Cfg.CountBytes != nil && *c.Cfg.CountBytes {
 					if entry != nil {
-						m.recordCounter(name, c, labels, len(*entry))
+						m.recordCounter(c, labels, len(*entry))
 					}
 				} else {
-					m.recordCounter(name, c, labels, nil)
+					m.recordCounter(c, labels, nil)
 				}
 				continue
 			}
@@ -174,11 +173,11 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
 			case *metric.Counters:
-				m.recordCounter(name, vec, labels, v)
+				m.recordCounter(vec, labels, v)
 			case *metric.Gauges:
-				m.recordGauge(name, vec, labels, v)
+				m.recordGauge(vec, labels, v)
 			case *metric.Histograms:
-				m.recordHistogram(name, vec, labels, v)
+				m.recordHistogram(vec, labels, v)
 			}
 		} else {
 			level.Debug(m.logger).Log("msg", "source does not exist", "err", fmt.Sprintf("source: %s, does not exist", *m.cfg[name].Source))
@@ -207,16 +206,11 @@ func (m *metricStage) Cleanup() {
 
 // recordCounter will update a counter metric
 // nolint:goconst
-func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordCounter(counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if counter.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
-			}
 			return
 		}
 		if *counter.Cfg.Value != stringVal {
@@ -230,9 +224,6 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 	case metric.CounterAdd:
 		f, err := getFloat(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
-			}
 			return
 		}
 		counter.With(labels).Add(f)
@@ -240,16 +231,11 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 }
 
 // recordGauge will update a gauge metric
-func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordGauge(gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if gauge.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
-			}
 			return
 		}
 		if *gauge.Cfg.Value != stringVal {
@@ -261,9 +247,6 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeSet:
 		f, err := getFloat(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
-			}
 			return
 		}
 		gauge.With(labels).Set(f)
@@ -274,18 +257,12 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
-			}
 			return
 		}
 		gauge.With(labels).Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
-			}
 			return
 		}
 		gauge.With(labels).Sub(f)
@@ -293,16 +270,11 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 }
 
 // recordHistogram will update a Histogram metric
-func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordHistogram(histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if histogram.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
-			}
 			return
 		}
 		if *histogram.Cfg.Value != stringVal {
@@ -311,9 +283,6 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 	}
 	f, err := getFloat(v)
 	if err != nil {
-		if Debug {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
-		}
 		return
 	}
 	histogram.With(labels).Observe(f)

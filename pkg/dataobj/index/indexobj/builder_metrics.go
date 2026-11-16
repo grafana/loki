@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
 // BuilderMetrics provides instrumentation for a [Builder].
@@ -19,6 +20,7 @@ type BuilderMetrics struct {
 	indexPointers *indexpointers.Metrics
 	postings      *postings.Metrics
 	stats         *stats.Metrics
+	watermarks    *watermarks.Metrics
 	dataobj       *dataobj.Metrics
 
 	targetPageSize   prometheus.Gauge
@@ -44,6 +46,7 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 		indexPointers: indexpointers.NewMetrics(),
 		postings:      postings.NewMetrics(),
 		stats:         stats.NewMetrics(),
+		watermarks:    watermarks.NewMetrics(reg),
 		dataobj:       dataobj.NewMetrics(),
 		targetPageSize: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_page_size_bytes",

@@ -30,7 +30,7 @@ golangci-lint: | $(BIN_DIR)
 		GOLANGCI_LINT_TMP_DIR=$$(mktemp -d); \
 		cd $$GOLANGCI_LINT_TMP_DIR; \
 		go mod init tmp; \
-		GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2; \
+		GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0; \
 		rm -rf $$GOLANGCI_LINT_TMP_DIR; \
 	}
 
@@ -54,6 +54,13 @@ bench-check:
 bench-calibrate:
 	go run ./internal/cmd/benchcheck -calibrate -attempts 1 $(BENCH_CHECK_FLAGS)
 
+# bench-compare-jsontext prints the benchmarks of github.com/goccy/go-json/jsontext ( GoJson ) and of
+# encoding/json/jsontext ( StdLib ) side by side, on the data of the tests of encoding/json of Go
+# ( benchmarks/jsontext_test.go ). It needs Go 1.27.
+.PHONY: bench-compare-jsontext
+bench-compare-jsontext:
+	cd benchmarks && go test -run '^TestJsontext' -bench '^Benchmark_Jsontext_' -benchtime 300ms -count 3 .
+
 # bench-compare-encode prints the encode benchmarks of go-json and of bytedance/sonic side by side.
 # SonicStd is sonic configured to do what encoding/json, and go-json, do ( escape HTML, sort the keys of a map ),
 # and GoJsonLikeSonic is go-json configured to do what sonic does by default.
@@ -73,15 +80,21 @@ bench-compare-encode:
 # Keys ones structs whose keys differ only, in length or in script ( benchmarks/decode_key_length_test.go ), and the
 # GitHub ones the responses of the REST and the GraphQL APIs of GitHub ( benchmarks/decode_github_test.go ), and
 # the OpenAI and Anthropic ones the responses and the streams of the APIs of LLMs ( benchmarks/llm_api_test.go ).
+# The ChunkedStream ones decode by Decoder from a reader which gives the input in chunks and has no Len method,
+# and report the most memory which the decoding keeps alive ( benchmarks/decode_stream_test.go ).
+# The Stream ones decode one value by a new Decoder from a bytes.Reader, the SlowReader ones from a reader which gives
+# at most the chunk size at a time, and CodeDecoder values one after another by one Decoder ( benchmarks/sonic_stream_test.go ).
 # BENCH_LIVE_HEAP_MB gives the benchmarks a live heap of that size, as a real program has, which sets the goal of the
 # GC for every library alike ( benchmarks/live_heap_test.go ).
 .PHONY: bench-compare-decode
 bench-compare-decode:
 	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_(Small|Medium|Large)Struct_Unmarshal_(GoJson|GoJsonUnmarshalOfNoCopyString|Sonic|SonicStd|SonicFastest|SonicFastestValidating)$$' -benchtime 300ms -count 3 .
-	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_Twitter' -benchtime 300ms -count 3 .
+	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_Twitter(Binding|Generic)_' -benchtime 300ms -count 3 .
 	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_(Short|Medium|Long|NonASCII|UnknownNonASCII)Keys_Unmarshal_' -benchtime 300ms -count 3 .
 	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_GitHub(REST|GraphQL)_Unmarshal_' -benchtime 300ms -count 3 .
 	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_(OpenAIChatCompletion|OpenAIResponse|AnthropicMessage)(Stream)?_Unmarshal_' -benchtime 300ms -count 3 .
+	cd benchmarks && go test -run '^$$' -bench '^Benchmark_Decode_.*_ChunkedStream_' -benchtime 300ms -count 3 .
+	cd benchmarks && go test -run '^$$' -bench '^(Benchmark_Decode_(Small|Medium|Large)Struct_Stream|Benchmark_Decode_SlowReader|BenchmarkCodeDecoder)(_GoJson|_Sonic|_SonicStd)?$$' -benchtime 300ms -count 3 .
 
 # bench-report measures the JSON libraries doing the same work, as the benchmark report does on the CI, and
 # renders the page and the summary into benchmarks/site ( see benchmarks/report_test.go ).

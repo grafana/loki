@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -33,6 +34,8 @@ type Limits interface {
 	// DataObjMaxBytesPerShard returns the target maximum number of bytes in one shard of a query
 	// that reads data objects.
 	DataObjMaxBytesPerShard(string) uint64
+	// DataObjShardLayout returns the shard layout of new data objects of the tenant.
+	DataObjShardLayout(userID string) streams.ShardLayout
 	TSDBShardingStrategy(context.Context, string) string
 
 	RequiredLabels(context.Context, string) []string

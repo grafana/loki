@@ -31,7 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-// Used to expose SortSchemaLabels to logs builders
+// fakeLimits exposes SortSchemaLabels and DataObjShardLayout to logs builders.
 type fakeLimits struct{}
 
 func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
@@ -39,6 +39,9 @@ func (fakeLimits) CompactionPhases(_ string) (runIndex, runLog bool) {
 }
 func (fakeLimits) SortSchemaLabels(string) []string {
 	return fakeSchema
+}
+func (fakeLimits) DataObjShardLayout(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
 }
 
 var testCalculatorConfig = logsobj.BuilderBaseConfig{
@@ -253,6 +256,15 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 	})
 
+	t.Run("builds an index object key that IsCompactedObjectPath rejects, because a builder wrote the object", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		key, err := ObjectKey(t.Context(), obj)
+		require.NoError(t, err)
+
+		require.False(t, dataobj.IsCompactedObjectPath(key))
+	})
+
 	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
 		obj := calculateConcurrently(t, newMultiSectionSource(t))
 
@@ -340,7 +352,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
 		postingsBuilder.SetTenant(tenant)
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: time.Unix(10, 0).UTC(),
+			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(time.Unix(10, 0).UTC()),
 		})
 		obj, closer := fixtures.DataObject(t, postingsBuilder)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })

@@ -177,6 +177,7 @@ type Node struct {
 	//	*Node_IndexMerge
 	//	*Node_LogMerge
 	//	*Node_IndexFilter
+	//	*Node_DeletionSweep
 	Kind isNode_Kind `protobuf_oneof:"kind"`
 }
 
@@ -228,10 +229,14 @@ type Node_LogMerge struct {
 type Node_IndexFilter struct {
 	IndexFilter *IndexFilter `protobuf:"bytes,20,opt,name=index_filter,json=indexFilter,proto3,oneof"`
 }
+type Node_DeletionSweep struct {
+	DeletionSweep *DeletionSweep `protobuf:"bytes,21,opt,name=deletion_sweep,json=deletionSweep,proto3,oneof"`
+}
 
-func (*Node_IndexMerge) isNode_Kind()  {}
-func (*Node_LogMerge) isNode_Kind()    {}
-func (*Node_IndexFilter) isNode_Kind() {}
+func (*Node_IndexMerge) isNode_Kind()    {}
+func (*Node_LogMerge) isNode_Kind()      {}
+func (*Node_IndexFilter) isNode_Kind()   {}
+func (*Node_DeletionSweep) isNode_Kind() {}
 
 func (m *Node) GetKind() isNode_Kind {
 	if m != nil {
@@ -268,12 +273,20 @@ func (m *Node) GetIndexFilter() *IndexFilter {
 	return nil
 }
 
+func (m *Node) GetDeletionSweep() *DeletionSweep {
+	if x, ok := m.GetKind().(*Node_DeletionSweep); ok {
+		return x.DeletionSweep
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Node) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*Node_IndexMerge)(nil),
 		(*Node_LogMerge)(nil),
 		(*Node_IndexFilter)(nil),
+		(*Node_DeletionSweep)(nil),
 	}
 }
 
@@ -347,6 +360,15 @@ type LogMerge struct {
 	Tenant                  string           `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	TocWindowStartUnixNanos int64            `protobuf:"varint,2,opt,name=toc_window_start_unix_nanos,json=tocWindowStartUnixNanos,proto3" json:"toc_window_start_unix_nanos,omitempty"`
 	Runs                    []*proto1.RunRef `protobuf:"bytes,3,rep,name=runs,proto3" json:"runs,omitempty"`
+	// key_range limits the merge to the streams in the range. A missing
+	// key_range means the full key space.
+	KeyRange *proto1.KeyRange `protobuf:"bytes,5,opt,name=key_range,json=keyRange,proto3" json:"key_range,omitempty"`
+	// input_bytes is the uncompressed size of the log records in key_range
+	// across the sections of runs, from the index stats. It is 0 if the size is
+	// unknown, and then the merge does not check the size of what it reads.
+	InputBytes int64 `protobuf:"varint,6,opt,name=input_bytes,json=inputBytes,proto3" json:"input_bytes,omitempty"`
+	// The merge records output_level as the size level of each output object.
+	OutputLevel uint32 `protobuf:"varint,7,opt,name=output_level,json=outputLevel,proto3" json:"output_level,omitempty"`
 }
 
 func (m *LogMerge) Reset()      { *m = LogMerge{} }
@@ -402,13 +424,36 @@ func (m *LogMerge) GetRuns() []*proto1.RunRef {
 	return nil
 }
 
+func (m *LogMerge) GetKeyRange() *proto1.KeyRange {
+	if m != nil {
+		return m.KeyRange
+	}
+	return nil
+}
+
+func (m *LogMerge) GetInputBytes() int64 {
+	if m != nil {
+		return m.InputBytes
+	}
+	return 0
+}
+
+func (m *LogMerge) GetOutputLevel() uint32 {
+	if m != nil {
+		return m.OutputLevel
+	}
+	return 0
+}
+
 // IndexFilter copies the postings and stats rows of the listed log objects
 // from one tenant's index into a new index object. It reads only the source
-// index.
+// index, which is one index object or the index objects of one index run.
 type IndexFilter struct {
-	Tenant          string   `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	SourceIndexPath string   `protobuf:"bytes,2,opt,name=source_index_path,json=sourceIndexPath,proto3" json:"source_index_path,omitempty"`
-	ObjectPaths     []string `protobuf:"bytes,3,rep,name=object_paths,json=objectPaths,proto3" json:"object_paths,omitempty"`
+	Tenant      string   `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	ObjectPaths []string `protobuf:"bytes,3,rep,name=object_paths,json=objectPaths,proto3" json:"object_paths,omitempty"`
+	// source_index_paths lists the paths of every index object of the source
+	// index.
+	SourceIndexPaths []string `protobuf:"bytes,4,rep,name=source_index_paths,json=sourceIndexPaths,proto3" json:"source_index_paths,omitempty"`
 }
 
 func (m *IndexFilter) Reset()      { *m = IndexFilter{} }
@@ -450,18 +495,62 @@ func (m *IndexFilter) GetTenant() string {
 	return ""
 }
 
-func (m *IndexFilter) GetSourceIndexPath() string {
-	if m != nil {
-		return m.SourceIndexPath
-	}
-	return ""
-}
-
 func (m *IndexFilter) GetObjectPaths() []string {
 	if m != nil {
 		return m.ObjectPaths
 	}
 	return nil
+}
+
+func (m *IndexFilter) GetSourceIndexPaths() []string {
+	if m != nil {
+		return m.SourceIndexPaths
+	}
+	return nil
+}
+
+// DeletionSweep applies delete requests to the objects of one tenant.
+type DeletionSweep struct {
+	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+}
+
+func (m *DeletionSweep) Reset()      { *m = DeletionSweep{} }
+func (*DeletionSweep) ProtoMessage() {}
+func (*DeletionSweep) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d1fdbb44b95b211f, []int{7}
+}
+func (m *DeletionSweep) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DeletionSweep) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DeletionSweep.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DeletionSweep) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeletionSweep.Merge(m, src)
+}
+func (m *DeletionSweep) XXX_Size() int {
+	return m.Size()
+}
+func (m *DeletionSweep) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeletionSweep.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DeletionSweep proto.InternalMessageInfo
+
+func (m *DeletionSweep) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
 }
 
 func init() {
@@ -472,6 +561,7 @@ func init() {
 	proto.RegisterType((*IndexMerge)(nil), "loki.physical.IndexMerge")
 	proto.RegisterType((*LogMerge)(nil), "loki.physical.LogMerge")
 	proto.RegisterType((*IndexFilter)(nil), "loki.physical.IndexFilter")
+	proto.RegisterType((*DeletionSweep)(nil), "loki.physical.DeletionSweep")
 }
 
 func init() {
@@ -479,55 +569,62 @@ func init() {
 }
 
 var fileDescriptor_d1fdbb44b95b211f = []byte{
-	// 762 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x94, 0x41, 0x6f, 0xe3, 0x44,
-	0x14, 0xc7, 0xed, 0xc4, 0x8e, 0x9c, 0xf1, 0x46, 0x9b, 0x7a, 0x0b, 0x0d, 0x45, 0xf2, 0xee, 0xe6,
-	0xb4, 0x0b, 0xc2, 0x56, 0x53, 0xc1, 0xa9, 0xa2, 0x52, 0x54, 0xaa, 0xb6, 0x2a, 0x55, 0x35, 0xa8,
-	0x42, 0xe2, 0x62, 0x26, 0xf6, 0x74, 0x3c, 0x8d, 0x33, 0x63, 0x8d, 0xc7, 0x69, 0xe1, 0x02, 0x17,
-	0xee, 0x9c, 0xf8, 0x0c, 0xf0, 0x4d, 0x7a, 0xec, 0xb1, 0xe2, 0x50, 0xd1, 0xf4, 0xc2, 0xb1, 0x1f,
-	0x01, 0x79, 0xc6, 0x21, 0x6d, 0xd5, 0x02, 0xe2, 0xb2, 0x97, 0xc8, 0xf3, 0xe6, 0xf7, 0x7f, 0xff,
-	0x37, 0x6f, 0xde, 0x04, 0x7c, 0x9a, 0x8f, 0x49, 0x88, 0x19, 0xa1, 0x0c, 0x87, 0x94, 0x49, 0x2c,
-	0x18, 0xca, 0xc2, 0x5c, 0x70, 0xc9, 0xc3, 0x3c, 0xfd, 0xae, 0xa0, 0x31, 0xca, 0xf2, 0xd1, 0x9d,
-	0xcf, 0x40, 0xed, 0x79, 0x9d, 0x8c, 0x8f, 0x69, 0x30, 0x0f, 0xaf, 0x2e, 0x13, 0x4e, 0xb8, 0x56,
-	0x55, 0x5f, 0x1a, 0x5a, 0x1d, 0x54, 0xb9, 0x13, 0x24, 0x11, 0x1f, 0x9d, 0x84, 0x31, 0x9f, 0xe4,
-	0x28, 0x96, 0x94, 0xb3, 0x70, 0x3a, 0xa8, 0x1d, 0x16, 0xb1, 0xe9, 0xa0, 0xd6, 0xbc, 0x7d, 0xba,
-	0x9e, 0x32, 0xa3, 0x89, 0xfa, 0xd1, 0x68, 0xff, 0x5b, 0x60, 0x1d, 0x66, 0x88, 0x79, 0x6f, 0x81,
-	0xcd, 0x78, 0x82, 0x8b, 0x9e, 0xf9, 0xaa, 0xf9, 0xc6, 0x1d, 0xbc, 0x08, 0xee, 0xd5, 0x16, 0x1c,
-	0xf0, 0x04, 0x43, 0x4d, 0x78, 0x9f, 0x00, 0x1b, 0x27, 0x04, 0x17, 0xbd, 0x86, 0x42, 0x57, 0x1e,
-	0xa0, 0x55, 0xba, 0x2f, 0x12, 0x82, 0xa1, 0xa6, 0xfa, 0x02, 0x38, 0xf3, 0x90, 0xb7, 0x0e, 0x5a,
-	0x39, 0x12, 0x98, 0xc9, 0x9e, 0xf9, 0xca, 0x7c, 0xe3, 0x0e, 0xde, 0x7b, 0xc4, 0x66, 0x77, 0x6b,
-	0x68, 0x9d, 0x5f, 0xbd, 0x34, 0x60, 0x8d, 0x7a, 0x6b, 0xc0, 0x8e, 0x53, 0x9a, 0x25, 0xbd, 0xc6,
-	0xbf, 0x6b, 0x34, 0xd9, 0xff, 0x01, 0xb4, 0x74, 0xd8, 0x2b, 0x81, 0x3d, 0x45, 0x59, 0x89, 0x6b,
-	0xc3, 0x95, 0x40, 0x9d, 0x5d, 0x65, 0x98, 0xae, 0x05, 0x87, 0x55, 0x0f, 0x8e, 0xf6, 0x77, 0xb7,
-	0x86, 0xdb, 0x95, 0xfc, 0xf7, 0xab, 0x97, 0x9f, 0x13, 0x2a, 0xd3, 0x72, 0x14, 0xc4, 0x7c, 0x12,
-	0x12, 0x81, 0x8e, 0x11, 0x43, 0x61, 0x45, 0x87, 0xd3, 0xf5, 0xf0, 0x9f, 0xbb, 0x1a, 0x54, 0x79,
-	0xa0, 0x76, 0xeb, 0xff, 0xd6, 0x04, 0x56, 0x55, 0x81, 0xf7, 0x31, 0x68, 0xd0, 0xe4, 0xbf, 0x9c,
-	0xb6, 0x41, 0x13, 0x6f, 0x03, 0xb8, 0x94, 0x25, 0xf8, 0x2c, 0x9a, 0x60, 0x41, 0x70, 0x6f, 0x49,
-	0xa9, 0x3e, 0x78, 0xa0, 0xda, 0xad, 0x88, 0x2f, 0x2b, 0x60, 0xc7, 0x80, 0x80, 0xfe, 0xbd, 0xf2,
-	0x3e, 0x03, 0xed, 0x8c, 0x93, 0x5a, 0xeb, 0xd5, 0xc7, 0xbd, 0xaf, 0xdd, 0xe7, 0x64, 0xae, 0x74,
-	0xb2, 0xfa, 0xdb, 0xdb, 0x04, 0xcf, 0xb4, 0xeb, 0x31, 0xcd, 0x24, 0x16, 0xbd, 0x65, 0x25, 0x5d,
-	0x7d, 0xcc, 0x76, 0x5b, 0x11, 0x3b, 0x06, 0x74, 0xe9, 0x62, 0x39, 0x6c, 0x01, 0x6b, 0x4c, 0x59,
-	0xb2, 0x67, 0x39, 0x8d, 0xee, 0xd2, 0x9e, 0xe5, 0xbc, 0xe8, 0x2e, 0xc3, 0xe7, 0x88, 0x10, 0x81,
-	0x09, 0x92, 0x38, 0x12, 0x88, 0x11, 0x0c, 0xbb, 0x8b, 0xc0, 0x14, 0xc7, 0x92, 0x0b, 0x68, 0x15,
-	0x31, 0x62, 0xb0, 0xa5, 0x5d, 0xa1, 0x9d, 0xd1, 0x09, 0x95, 0x10, 0xe4, 0x82, 0x9f, 0x60, 0x35,
-	0xce, 0xb0, 0x13, 0xf3, 0xac, 0x9c, 0xb0, 0x48, 0x4d, 0xb8, 0x84, 0x4e, 0xc5, 0x47, 0x05, 0x96,
-	0xd0, 0x96, 0x3c, 0x8f, 0xc6, 0xd0, 0xcd, 0x91, 0x40, 0x59, 0x86, 0x33, 0xfa, 0x3d, 0x86, 0xd6,
-	0x09, 0xa7, 0x0c, 0xda, 0xea, 0xf4, 0xb0, 0x93, 0x73, 0x75, 0x43, 0x45, 0xa4, 0x3c, 0x9c, 0x11,
-	0x92, 0x71, 0x4a, 0x19, 0x81, 0x76, 0x8c, 0xe2, 0x14, 0x43, 0xb7, 0xe0, 0x42, 0x46, 0x7c, 0x54,
-	0x39, 0xf5, 0x7f, 0x32, 0x01, 0x58, 0x34, 0xd5, 0x7b, 0x1f, 0xb4, 0x24, 0x66, 0xa8, 0x9e, 0xd1,
-	0x36, 0xac, 0x57, 0xde, 0x06, 0xf8, 0x50, 0xf2, 0x38, 0x3a, 0xa5, 0x2c, 0xe1, 0xa7, 0x51, 0x21,
-	0x91, 0x90, 0x51, 0xc9, 0xe8, 0x59, 0xc4, 0x10, 0xe3, 0x85, 0x1a, 0xce, 0x26, 0x5c, 0x91, 0x3c,
-	0xfe, 0x5a, 0x11, 0x5f, 0x55, 0xc0, 0x11, 0xa3, 0x67, 0x07, 0xd5, 0xb6, 0xf7, 0x1a, 0x58, 0xa2,
-	0x64, 0x45, 0xaf, 0xa9, 0xde, 0x4c, 0x47, 0xbf, 0xbe, 0x00, 0x96, 0x0c, 0xe2, 0x63, 0xa8, 0xb6,
-	0xfa, 0xbf, 0x98, 0xc0, 0x99, 0x5f, 0xd0, 0x3b, 0xab, 0x62, 0xcf, 0x72, 0xac, 0xae, 0x5d, 0x37,
-	0xa8, 0x88, 0x53, 0x3c, 0x41, 0x7d, 0x09, 0xdc, 0x3b, 0xb7, 0xff, 0x64, 0x69, 0x1f, 0x81, 0xa5,
-	0x82, 0x97, 0x22, 0xc6, 0x91, 0x1e, 0xa7, 0x1c, 0xc9, 0x54, 0x15, 0xd4, 0x86, 0xcf, 0xf5, 0x86,
-	0xca, 0x72, 0x88, 0x64, 0xea, 0xbd, 0x06, 0xcf, 0x74, 0xf7, 0x15, 0xa5, 0x0b, 0x6a, 0x43, 0x57,
-	0xc7, 0x2a, 0xa2, 0x18, 0x96, 0x17, 0xd7, 0xbe, 0x71, 0x79, 0xed, 0x1b, 0xb7, 0xd7, 0xbe, 0xf9,
-	0xe3, 0xcc, 0x37, 0x7f, 0x9d, 0xf9, 0xe6, 0xf9, 0xcc, 0x37, 0x2f, 0x66, 0xbe, 0xf9, 0xc7, 0xcc,
-	0x37, 0xff, 0x9c, 0xf9, 0xc6, 0xed, 0xcc, 0x37, 0x7f, 0xbe, 0xf1, 0x8d, 0x8b, 0x1b, 0xdf, 0xb8,
-	0xbc, 0xf1, 0x8d, 0x6f, 0x36, 0xff, 0xd7, 0xfb, 0x5d, 0xfc, 0x35, 0x8f, 0x5a, 0x2a, 0xb2, 0xfe,
-	0xd7, 0x00, 0x52, 0xf1, 0x3a, 0x0e, 0xd4, 0x05, 0x00, 0x00,
+	// 873 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x95, 0xcf, 0x6f, 0x1b, 0x45,
+	0x14, 0xc7, 0x77, 0xed, 0x5d, 0xe3, 0x8c, 0x6b, 0xea, 0x4c, 0x53, 0xb2, 0x04, 0xb4, 0x49, 0x7d,
+	0x21, 0x15, 0xc5, 0xab, 0x3a, 0x82, 0x53, 0x45, 0x25, 0x2b, 0xad, 0x92, 0x10, 0xaa, 0x68, 0xaa,
+	0x0a, 0x89, 0xcb, 0x32, 0xde, 0x7d, 0x59, 0x4f, 0xbc, 0x9e, 0x59, 0xed, 0xce, 0x3a, 0x09, 0x17,
+	0xb8, 0x20, 0x71, 0x83, 0x3f, 0x83, 0x3f, 0xa5, 0xc7, 0x1c, 0x2b, 0x0e, 0x15, 0x71, 0x2e, 0x1c,
+	0xf3, 0x27, 0xa0, 0x99, 0xd9, 0xe0, 0x24, 0x24, 0x80, 0xb8, 0x70, 0xb1, 0x66, 0xbe, 0xf3, 0x79,
+	0x3f, 0x66, 0xde, 0x7b, 0x5e, 0xf4, 0x69, 0x36, 0x4e, 0x02, 0xe0, 0x09, 0xe3, 0x10, 0x30, 0x2e,
+	0x21, 0xe7, 0x34, 0x0d, 0xb2, 0x5c, 0x48, 0x11, 0x64, 0xa3, 0xe3, 0x82, 0x45, 0x34, 0xcd, 0x86,
+	0x97, 0x96, 0x3d, 0x7d, 0x86, 0xdb, 0xa9, 0x18, 0xb3, 0xde, 0x85, 0xbc, 0xb2, 0x94, 0x88, 0x44,
+	0x18, 0x2b, 0xb5, 0x32, 0xd0, 0x4a, 0x5f, 0xf9, 0x8e, 0xa9, 0xa4, 0x62, 0x78, 0x10, 0x44, 0x62,
+	0x92, 0xd1, 0x48, 0x32, 0xc1, 0x83, 0x69, 0xbf, 0x8a, 0x30, 0xd7, 0xa6, 0xfd, 0xca, 0xe6, 0xe1,
+	0xed, 0xf9, 0x94, 0x29, 0x8b, 0xf5, 0x8f, 0x41, 0xbb, 0xdf, 0x20, 0x67, 0x2f, 0xa5, 0x1c, 0x3f,
+	0x44, 0x2e, 0x17, 0x31, 0x14, 0x9e, 0xbd, 0x56, 0x5f, 0x6f, 0xf5, 0xef, 0xf5, 0xae, 0xe4, 0xd6,
+	0x7b, 0x21, 0x62, 0x20, 0x86, 0xc0, 0x9f, 0x20, 0x17, 0xe2, 0x04, 0x0a, 0xaf, 0xa6, 0xd1, 0xe5,
+	0x6b, 0xa8, 0x72, 0xf7, 0x2c, 0x4e, 0x80, 0x18, 0xaa, 0x9b, 0xa3, 0xe6, 0x85, 0x84, 0x37, 0x50,
+	0x23, 0xa3, 0x39, 0x70, 0xe9, 0xd9, 0x6b, 0xf6, 0x7a, 0xab, 0x7f, 0xff, 0x86, 0x30, 0xdb, 0x9b,
+	0x03, 0xe7, 0xf5, 0xdb, 0x55, 0x8b, 0x54, 0x28, 0x7e, 0x8c, 0xdc, 0x68, 0xc4, 0xd2, 0xd8, 0xab,
+	0xfd, 0xb3, 0x8d, 0x21, 0xbb, 0xdf, 0xa1, 0x86, 0x91, 0x71, 0x89, 0xdc, 0x29, 0x4d, 0x4b, 0xa8,
+	0x02, 0x2e, 0xf7, 0xf4, 0xdd, 0xb5, 0x87, 0xe9, 0xe3, 0xde, 0x9e, 0x7a, 0x83, 0x57, 0xbb, 0xdb,
+	0x9b, 0x83, 0xe7, 0xca, 0xfc, 0xd7, 0xb7, 0xab, 0x9f, 0x27, 0x4c, 0x8e, 0xca, 0x61, 0x2f, 0x12,
+	0x93, 0x20, 0xc9, 0xe9, 0x3e, 0xe5, 0x34, 0x50, 0x74, 0x30, 0xdd, 0x08, 0xfe, 0xfe, 0x55, 0x7b,
+	0xca, 0x0f, 0x31, 0xd1, 0xba, 0xe7, 0x75, 0xe4, 0xa8, 0x0c, 0xf0, 0xc7, 0xa8, 0xc6, 0xe2, 0x7f,
+	0x73, 0xdb, 0x1a, 0x8b, 0xf1, 0x13, 0xd4, 0x62, 0x3c, 0x86, 0xa3, 0x70, 0x02, 0x79, 0x02, 0xde,
+	0xa2, 0xb6, 0x7a, 0xff, 0x9a, 0xd5, 0xb6, 0x22, 0xbe, 0x54, 0xc0, 0x96, 0x45, 0x10, 0xfb, 0x73,
+	0x87, 0x3f, 0x43, 0x0b, 0xa9, 0x48, 0x2a, 0x5b, 0x5c, 0x5d, 0xf7, 0xaa, 0xed, 0xae, 0x48, 0x2e,
+	0x2c, 0x9b, 0x69, 0xb5, 0xc6, 0x4f, 0xd1, 0x1d, 0x13, 0x75, 0x9f, 0xa5, 0x12, 0x72, 0x6f, 0x49,
+	0x9b, 0xae, 0xdc, 0x14, 0xf6, 0xb9, 0x26, 0xb6, 0x2c, 0xd2, 0x62, 0xf3, 0x2d, 0x7e, 0x86, 0xde,
+	0x8d, 0x21, 0x05, 0xd5, 0x82, 0x61, 0x71, 0x08, 0x90, 0x79, 0xf7, 0xb5, 0x8b, 0x0f, 0xaf, 0xb9,
+	0xd8, 0xac, 0xa0, 0x97, 0x8a, 0xd9, 0xb2, 0x48, 0x3b, 0xbe, 0x2c, 0x0c, 0x1a, 0xc8, 0x19, 0x33,
+	0x1e, 0xef, 0x38, 0xcd, 0x5a, 0x67, 0x71, 0xc7, 0x69, 0xde, 0xeb, 0x2c, 0x91, 0xbb, 0x34, 0x49,
+	0x72, 0x48, 0xa8, 0x84, 0x30, 0xa7, 0x3c, 0x01, 0xd2, 0x99, 0x0b, 0x53, 0x88, 0xa4, 0xc8, 0x89,
+	0x53, 0x44, 0x94, 0x93, 0x86, 0x49, 0x9e, 0xb8, 0x29, 0x9b, 0x30, 0x49, 0x50, 0x96, 0x8b, 0x03,
+	0xd0, 0x53, 0x41, 0xda, 0x91, 0x48, 0xcb, 0x09, 0x0f, 0xf5, 0xa0, 0x48, 0xd2, 0x54, 0x7c, 0x58,
+	0x80, 0x24, 0xae, 0x14, 0x59, 0x38, 0x26, 0xad, 0x8c, 0xe6, 0x34, 0x4d, 0x21, 0x65, 0xdf, 0x02,
+	0x71, 0x0e, 0x04, 0xe3, 0xc4, 0xd5, 0x8f, 0x48, 0xda, 0x99, 0xd0, 0x85, 0x2e, 0x42, 0x1d, 0xa3,
+	0x39, 0xa4, 0x32, 0x1a, 0x31, 0x9e, 0x10, 0x37, 0xa2, 0xd1, 0x08, 0x48, 0xab, 0x10, 0xb9, 0x0c,
+	0xc5, 0x50, 0x45, 0xea, 0xfe, 0x60, 0x23, 0x34, 0xaf, 0x0d, 0x7e, 0x0f, 0x35, 0x24, 0x70, 0x5a,
+	0xb5, 0xfa, 0x02, 0xa9, 0x76, 0xf8, 0x09, 0xfa, 0x40, 0x8a, 0x28, 0x3c, 0x64, 0x3c, 0x16, 0x87,
+	0x61, 0x21, 0x69, 0x2e, 0xc3, 0x92, 0xb3, 0xa3, 0x90, 0x53, 0x2e, 0x0a, 0xdd, 0xe3, 0x75, 0xb2,
+	0x2c, 0x45, 0xf4, 0x95, 0x26, 0x5e, 0x2a, 0xe0, 0x15, 0x67, 0x47, 0x2f, 0xd4, 0x31, 0x7e, 0x80,
+	0x9c, 0xbc, 0xe4, 0x85, 0x57, 0xd7, 0xa3, 0xd7, 0x36, 0x43, 0xdc, 0x23, 0x25, 0x27, 0xb0, 0x4f,
+	0xf4, 0x51, 0xf7, 0xc7, 0x1a, 0x6a, 0x5e, 0xd4, 0xf9, 0x7f, 0xcb, 0x02, 0x3f, 0x42, 0x0b, 0x63,
+	0x38, 0x36, 0x45, 0xf3, 0x5c, 0xdd, 0x0e, 0x77, 0x2b, 0xee, 0x0b, 0x38, 0x26, 0xba, 0x96, 0xcd,
+	0x71, 0xb5, 0xc2, 0xab, 0xaa, 0xf1, 0xb3, 0x52, 0x86, 0xc3, 0x63, 0x09, 0x85, 0xd7, 0xd0, 0xe1,
+	0x91, 0x96, 0x06, 0x4a, 0xc1, 0x0f, 0xd0, 0x1d, 0x51, 0x4a, 0x45, 0xa4, 0x30, 0x85, 0xd4, 0x7b,
+	0x67, 0xcd, 0x5e, 0x6f, 0x93, 0x96, 0xd1, 0x76, 0x95, 0xb4, 0xe3, 0x34, 0x9d, 0x8e, 0x5b, 0x95,
+	0xa4, 0x88, 0x46, 0x30, 0xa1, 0xdd, 0x9f, 0x6c, 0xd4, 0xba, 0xd4, 0xb7, 0xb7, 0xbe, 0x86, 0xf2,
+	0xae, 0x8b, 0x18, 0x66, 0x54, 0x8e, 0xcc, 0xbd, 0x16, 0x48, 0xcb, 0x68, 0x7b, 0x4a, 0xc2, 0x8f,
+	0x10, 0x2e, 0x44, 0x99, 0x47, 0x10, 0x9a, 0x59, 0x31, 0xa0, 0xa3, 0xc1, 0x8e, 0x39, 0xd1, 0x91,
+	0x34, 0xad, 0x5b, 0xb8, 0x4e, 0x16, 0xff, 0x62, 0xd1, 0xfd, 0x08, 0xb5, 0xaf, 0x4c, 0xc1, 0x6d,
+	0x29, 0x0d, 0xca, 0x93, 0x53, 0xdf, 0x7a, 0x73, 0xea, 0x5b, 0xe7, 0xa7, 0xbe, 0xfd, 0xfd, 0xcc,
+	0xb7, 0x7f, 0x99, 0xf9, 0xf6, 0xeb, 0x99, 0x6f, 0x9f, 0xcc, 0x7c, 0xfb, 0xb7, 0x99, 0x6f, 0xff,
+	0x3e, 0xf3, 0xad, 0xf3, 0x99, 0x6f, 0xff, 0x7c, 0xe6, 0x5b, 0x27, 0x67, 0xbe, 0xf5, 0xe6, 0xcc,
+	0xb7, 0xbe, 0x7e, 0xfa, 0x9f, 0xfe, 0xbd, 0xe6, 0x1f, 0xa6, 0x61, 0x43, 0x2b, 0x1b, 0x7f, 0x0c,
+	0x00, 0x4c, 0x0c, 0x13, 0x34, 0xd2, 0x06, 0x00, 0x00,
 }
 
 func (this *Plan) Equal(that interface{}) bool {
@@ -723,6 +820,30 @@ func (this *Node_IndexFilter) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *Node_DeletionSweep) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Node_DeletionSweep)
+	if !ok {
+		that2, ok := that.(Node_DeletionSweep)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.DeletionSweep.Equal(that1.DeletionSweep) {
+		return false
+	}
+	return true
+}
 func (this *IndexMerge) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -791,6 +912,15 @@ func (this *LogMerge) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.KeyRange.Equal(that1.KeyRange) {
+		return false
+	}
+	if this.InputBytes != that1.InputBytes {
+		return false
+	}
+	if this.OutputLevel != that1.OutputLevel {
+		return false
+	}
 	return true
 }
 func (this *IndexFilter) Equal(that interface{}) bool {
@@ -815,9 +945,6 @@ func (this *IndexFilter) Equal(that interface{}) bool {
 	if this.Tenant != that1.Tenant {
 		return false
 	}
-	if this.SourceIndexPath != that1.SourceIndexPath {
-		return false
-	}
 	if len(this.ObjectPaths) != len(that1.ObjectPaths) {
 		return false
 	}
@@ -825,6 +952,38 @@ func (this *IndexFilter) Equal(that interface{}) bool {
 		if this.ObjectPaths[i] != that1.ObjectPaths[i] {
 			return false
 		}
+	}
+	if len(this.SourceIndexPaths) != len(that1.SourceIndexPaths) {
+		return false
+	}
+	for i := range this.SourceIndexPaths {
+		if this.SourceIndexPaths[i] != that1.SourceIndexPaths[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *DeletionSweep) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeletionSweep)
+	if !ok {
+		that2, ok := that.(DeletionSweep)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
 	}
 	return true
 }
@@ -868,7 +1027,7 @@ func (this *Node) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 9)
 	s = append(s, "&physicalpb.Node{")
 	s = append(s, "Id: "+strings.Replace(this.Id.GoString(), `&`, ``, 1)+",\n")
 	if this.Kind != nil {
@@ -901,6 +1060,14 @@ func (this *Node_IndexFilter) GoString() string {
 		`IndexFilter:` + fmt.Sprintf("%#v", this.IndexFilter) + `}`}, ", ")
 	return s
 }
+func (this *Node_DeletionSweep) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&physicalpb.Node_DeletionSweep{` +
+		`DeletionSweep:` + fmt.Sprintf("%#v", this.DeletionSweep) + `}`}, ", ")
+	return s
+}
 func (this *IndexMerge) GoString() string {
 	if this == nil {
 		return "nil"
@@ -919,13 +1086,18 @@ func (this *LogMerge) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 10)
 	s = append(s, "&physicalpb.LogMerge{")
 	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
 	s = append(s, "TocWindowStartUnixNanos: "+fmt.Sprintf("%#v", this.TocWindowStartUnixNanos)+",\n")
 	if this.Runs != nil {
 		s = append(s, "Runs: "+fmt.Sprintf("%#v", this.Runs)+",\n")
 	}
+	if this.KeyRange != nil {
+		s = append(s, "KeyRange: "+fmt.Sprintf("%#v", this.KeyRange)+",\n")
+	}
+	s = append(s, "InputBytes: "+fmt.Sprintf("%#v", this.InputBytes)+",\n")
+	s = append(s, "OutputLevel: "+fmt.Sprintf("%#v", this.OutputLevel)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -936,8 +1108,18 @@ func (this *IndexFilter) GoString() string {
 	s := make([]string, 0, 7)
 	s = append(s, "&physicalpb.IndexFilter{")
 	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
-	s = append(s, "SourceIndexPath: "+fmt.Sprintf("%#v", this.SourceIndexPath)+",\n")
 	s = append(s, "ObjectPaths: "+fmt.Sprintf("%#v", this.ObjectPaths)+",\n")
+	s = append(s, "SourceIndexPaths: "+fmt.Sprintf("%#v", this.SourceIndexPaths)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DeletionSweep) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&physicalpb.DeletionSweep{")
+	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1184,6 +1366,28 @@ func (m *Node_IndexFilter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Node_DeletionSweep) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *Node_DeletionSweep) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeletionSweep != nil {
+		{
+			size, err := m.DeletionSweep.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xaa
+	}
+	return len(dAtA) - i, nil
+}
 func (m *IndexMerge) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1253,6 +1457,28 @@ func (m *LogMerge) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.OutputLevel != 0 {
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(m.OutputLevel))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.InputBytes != 0 {
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(m.InputBytes))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.KeyRange != nil {
+		{
+			size, err := m.KeyRange.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.Runs) > 0 {
 		for iNdEx := len(m.Runs) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1302,6 +1528,15 @@ func (m *IndexFilter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.SourceIndexPaths) > 0 {
+		for iNdEx := len(m.SourceIndexPaths) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.SourceIndexPaths[iNdEx])
+			copy(dAtA[i:], m.SourceIndexPaths[iNdEx])
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(len(m.SourceIndexPaths[iNdEx])))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if len(m.ObjectPaths) > 0 {
 		for iNdEx := len(m.ObjectPaths) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.ObjectPaths[iNdEx])
@@ -1311,13 +1546,36 @@ func (m *IndexFilter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0x1a
 		}
 	}
-	if len(m.SourceIndexPath) > 0 {
-		i -= len(m.SourceIndexPath)
-		copy(dAtA[i:], m.SourceIndexPath)
-		i = encodeVarintPhysicalpb(dAtA, i, uint64(len(m.SourceIndexPath)))
+	if len(m.Tenant) > 0 {
+		i -= len(m.Tenant)
+		copy(dAtA[i:], m.Tenant)
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(len(m.Tenant)))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeletionSweep) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeletionSweep) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DeletionSweep) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
 	if len(m.Tenant) > 0 {
 		i -= len(m.Tenant)
 		copy(dAtA[i:], m.Tenant)
@@ -1434,6 +1692,18 @@ func (m *Node_IndexFilter) Size() (n int) {
 	}
 	return n
 }
+func (m *Node_DeletionSweep) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeletionSweep != nil {
+		l = m.DeletionSweep.Size()
+		n += 2 + l + sovPhysicalpb(uint64(l))
+	}
+	return n
+}
 func (m *IndexMerge) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1475,6 +1745,16 @@ func (m *LogMerge) Size() (n int) {
 			n += 1 + l + sovPhysicalpb(uint64(l))
 		}
 	}
+	if m.KeyRange != nil {
+		l = m.KeyRange.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	if m.InputBytes != 0 {
+		n += 1 + sovPhysicalpb(uint64(m.InputBytes))
+	}
+	if m.OutputLevel != 0 {
+		n += 1 + sovPhysicalpb(uint64(m.OutputLevel))
+	}
 	return n
 }
 
@@ -1488,15 +1768,30 @@ func (m *IndexFilter) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPhysicalpb(uint64(l))
 	}
-	l = len(m.SourceIndexPath)
-	if l > 0 {
-		n += 1 + l + sovPhysicalpb(uint64(l))
-	}
 	if len(m.ObjectPaths) > 0 {
 		for _, s := range m.ObjectPaths {
 			l = len(s)
 			n += 1 + l + sovPhysicalpb(uint64(l))
 		}
+	}
+	if len(m.SourceIndexPaths) > 0 {
+		for _, s := range m.SourceIndexPaths {
+			l = len(s)
+			n += 1 + l + sovPhysicalpb(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *DeletionSweep) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Tenant)
+	if l > 0 {
+		n += 1 + l + sovPhysicalpb(uint64(l))
 	}
 	return n
 }
@@ -1590,6 +1885,16 @@ func (this *Node_IndexFilter) String() string {
 	}, "")
 	return s
 }
+func (this *Node_DeletionSweep) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Node_DeletionSweep{`,
+		`DeletionSweep:` + strings.Replace(fmt.Sprintf("%v", this.DeletionSweep), "DeletionSweep", "DeletionSweep", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *IndexMerge) String() string {
 	if this == nil {
 		return "nil"
@@ -1620,6 +1925,9 @@ func (this *LogMerge) String() string {
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`TocWindowStartUnixNanos:` + fmt.Sprintf("%v", this.TocWindowStartUnixNanos) + `,`,
 		`Runs:` + repeatedStringForRuns + `,`,
+		`KeyRange:` + strings.Replace(fmt.Sprintf("%v", this.KeyRange), "KeyRange", "proto1.KeyRange", 1) + `,`,
+		`InputBytes:` + fmt.Sprintf("%v", this.InputBytes) + `,`,
+		`OutputLevel:` + fmt.Sprintf("%v", this.OutputLevel) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1630,8 +1938,18 @@ func (this *IndexFilter) String() string {
 	}
 	s := strings.Join([]string{`&IndexFilter{`,
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
-		`SourceIndexPath:` + fmt.Sprintf("%v", this.SourceIndexPath) + `,`,
 		`ObjectPaths:` + fmt.Sprintf("%v", this.ObjectPaths) + `,`,
+		`SourceIndexPaths:` + fmt.Sprintf("%v", this.SourceIndexPaths) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeletionSweep) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeletionSweep{`,
+		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2137,6 +2455,41 @@ func (m *Node) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &Node_IndexFilter{v}
 			iNdEx = postIndex
+		case 21:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeletionSweep", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &DeletionSweep{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Kind = &Node_DeletionSweep{v}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -2413,6 +2766,80 @@ func (m *LogMerge) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyRange", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.KeyRange == nil {
+				m.KeyRange = &proto1.KeyRange{}
+			}
+			if err := m.KeyRange.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InputBytes", wireType)
+			}
+			m.InputBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.InputBytes |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OutputLevel", wireType)
+			}
+			m.OutputLevel = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.OutputLevel |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -2498,38 +2925,6 @@ func (m *IndexFilter) Unmarshal(dAtA []byte) error {
 			}
 			m.Tenant = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SourceIndexPath", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPhysicalpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthPhysicalpb
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthPhysicalpb
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.SourceIndexPath = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ObjectPaths", wireType)
@@ -2561,6 +2956,123 @@ func (m *IndexFilter) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.ObjectPaths = append(m.ObjectPaths, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SourceIndexPaths", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SourceIndexPaths = append(m.SourceIndexPaths, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeletionSweep) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPhysicalpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeletionSweep: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeletionSweep: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenant = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

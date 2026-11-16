@@ -1,6 +1,7 @@
 package json
 
 import (
+	"bytes"
 	"reflect"
 
 	"github.com/goccy/go-json/internal/decoder"
@@ -50,7 +51,15 @@ func (p *Path) UsedDoubleQuotePathSelector() bool {
 
 // Extract extracts a specific JSON string.
 func (p *Path) Extract(data []byte, optFuncs ...DecodeOptionFunc) ([][]byte, error) {
-	return extractFromPath(p, data, optFuncs...)
+	contents, err := extractFromPath(p, data, optFuncs...)
+	if err != nil {
+		return nil, err
+	}
+	// each one is a copy of its own, which keeps alive neither the input nor the other ones
+	for i, content := range contents {
+		contents[i] = bytes.Clone(content)
+	}
+	return contents, nil
 }
 
 // PathString returns original JSON Path string.

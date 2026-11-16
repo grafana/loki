@@ -64,6 +64,7 @@ func stripClientHints(request queryrangebase.Request) {
 		request.HintRanges = nil
 		request.DataObjOptions = nil
 	case *LokiInstantRequest:
+		request.HintRanges = nil
 		request.DataObjOptions = nil
 	}
 }

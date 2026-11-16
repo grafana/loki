@@ -224,8 +224,8 @@ func _concatFuncCore(tls *libc.TLS, context uintptr, argc int32, argv uintptr, n
 func _exprAnalyzeOrTerm(tls *libc.TLS, pSrc uintptr, pWC uintptr, idxTerm int32) {
 	var affLeft, affRight, i, iColumn, iCursor, iOne, iTwo, idxNew, j, j1, okToChngToIN, v7, v9 int32
 	var b, b1, chngToIN, indexable TBitmask
-	var db, pAndInfo, pAndTerm, pAndWC, pDup, pExpr, pLeft, pLeft1, pList, pNew, pOne, pOrInfo, pOrTerm, pOrWc, pOther, pParse, pTerm, pTwo, pWInfo, v1, v2 uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = affLeft, affRight, b, b1, chngToIN, db, i, iColumn, iCursor, iOne, iTwo, idxNew, indexable, j, j1, okToChngToIN, pAndInfo, pAndTerm, pAndWC, pDup, pExpr, pLeft, pLeft1, pList, pNew, pOne, pOrInfo, pOrTerm, pOrWc, pOther, pParse, pTerm, pTwo, pWInfo, v1, v2, v7, v9
+	var db, pAndInfo, pAndTerm, pAndWC, pCollSeq, pDup, pExpr, pLeft, pLeft1, pList, pNew, pOne, pOrInfo, pOrTerm, pOrWc, pOther, pParse, pTerm, pThis, pTwo, pWInfo, v1, v2 uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = affLeft, affRight, b, b1, chngToIN, db, i, iColumn, iCursor, iOne, iTwo, idxNew, indexable, j, j1, okToChngToIN, pAndInfo, pAndTerm, pAndWC, pCollSeq, pDup, pExpr, pLeft, pLeft1, pList, pNew, pOne, pOrInfo, pOrTerm, pOrWc, pOther, pParse, pTerm, pThis, pTwo, pWInfo, v1, v2, v7, v9
 	pWInfo = (*TWhereClause)(unsafe.Pointer(pWC)).FpWInfo                 /* WHERE clause processing context */
 	pParse = (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpParse                /* Parser context */
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb                            /* Database connection */
@@ -475,13 +475,20 @@ func _exprAnalyzeOrTerm(tls *libc.TLS, pSrc uintptr, pWC uintptr, idxTerm int32)
 			;
 			j1 = j1 + 1
 		}
-		/* At this point, okToChngToIN is true if original pTerm satisfies
-		 ** case 1.  In that case, construct a new virtual term that is
-		 ** pTerm converted into an IN operator.
+		/* At this point, okToChngToIN is true if original pTerm is a
+		 ** candidate to satisfy case 1, though we are not yet certain that
+		 ** the collating sequences are all compatible.  Try to construct a
+		 ** new virtual term that is pTerm converted from an OR operator
+		 ** into an IN operator.
+		 **
+		 ** During construction, verify that the collating sequences on all
+		 ** subterms of the OR are compatible.  Omit the construction of the
+		 ** new IN operator if there are any collating sequence mismatches.
 		 */
 		if okToChngToIN != 0 { /* A transient duplicate expression */
-			pList = uintptr(0)  /* The RHS of the IN operator */
-			pLeft1 = uintptr(0) /* The complete IN operator */
+			pList = uintptr(0)    /* The RHS of the IN operator */
+			pLeft1 = uintptr(0)   /* The LHS of the IN operator */
+			pCollSeq = uintptr(0) /* The complete IN operator */
 			i = (*TWhereClause)(unsafe.Pointer(pOrWc)).FnTerm - int32(1)
 			pOrTerm = (*TWhereClause)(unsafe.Pointer(pOrWc)).Fa
 			for {
@@ -491,17 +498,33 @@ func _exprAnalyzeOrTerm(tls *libc.TLS, pSrc uintptr, pWC uintptr, idxTerm int32)
 				if libc.Int32FromUint16((*TWhereTerm)(unsafe.Pointer(pOrTerm)).FwtFlags)&int32(TERM_OK) == 0 {
 					goto _16
 				}
-				pDup = _sqlite3ExprDup(tls, db, (*TExpr)(unsafe.Pointer((*TWhereTerm)(unsafe.Pointer(pOrTerm)).FpExpr)).FpRight, 0)
+				pThis = (*TWhereTerm)(unsafe.Pointer(pOrTerm)).FpExpr
+				pDup = _sqlite3ExprDup(tls, db, (*TExpr)(unsafe.Pointer(pThis)).FpRight, 0)
 				pList = _sqlite3ExprListAppend(tls, (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpParse, pList, pDup)
-				pLeft1 = (*TExpr)(unsafe.Pointer((*TWhereTerm)(unsafe.Pointer(pOrTerm)).FpExpr)).FpLeft
+				if pLeft1 == uintptr(0) {
+					pLeft1 = (*TExpr)(unsafe.Pointer(pThis)).FpLeft
+					pCollSeq = _sqlite3ExprCompareCollSeq(tls, pParse, pThis)
+				} else {
+					if pCollSeq != _sqlite3ExprCompareCollSeq(tls, pParse, pThis) {
+						pLeft1 = uintptr(0) /* Collating sequence mismatch */
+						break
+					}
+				}
 				goto _16
 			_16:
 				;
 				i = i - 1
 				pOrTerm += 56
 			}
-			pDup = _sqlite3ExprDup(tls, db, pLeft1, 0)
-			pNew = _sqlite3PExpr(tls, pParse, int32(TK_IN), pDup, uintptr(0))
+			if pLeft1 == uintptr(0) {
+				pNew = uintptr(0) /* Collating sequence mismatch */
+			} else {
+				pDup = _sqlite3ExprDup(tls, db, pLeft1, 0)
+				if _sqlite3ExprCollSeq(tls, pParse, pDup) != pCollSeq && pCollSeq != uintptr(0) {
+					pDup = _sqlite3ExprAddCollateString(tls, pParse, pDup, (*TCollSeq)(unsafe.Pointer(pCollSeq)).FzName)
+				}
+				pNew = _sqlite3PExpr(tls, pParse, int32(TK_IN), pDup, uintptr(0))
+			}
 			if pNew != 0 {
 				_transferJoinMarkings(tls, pNew, pExpr)
 				*(*uintptr)(unsafe.Pointer(pNew + 32)) = pList
@@ -721,7 +744,7 @@ func _fts5TriTokenize(tls *libc.TLS, pTok uintptr, pCtx uintptr, unusedFlags int
 			zIn = zIn + 1
 			iCode = uint32(**(**uint8)(__ccgo_up(v1)))
 			if iCode >= uint32(0xc0) {
-				iCode = uint32(_sqlite3Utf8Trans1[iCode-uint32(0xc0)])
+				iCode = uint32(_fts5Utf8Trans1[iCode-uint32(0xc0)])
 				for zIn < zEof && libc.Int32FromUint8(**(**uint8)(__ccgo_up(zIn)))&int32(0xc0) == int32(0x80) {
 					v1 = zIn
 					zIn = zIn + 1
@@ -798,7 +821,7 @@ func _fts5TriTokenize(tls *libc.TLS, pTok uintptr, pCtx uintptr, unusedFlags int
 			zIn = zIn + 1
 			iCode = uint32(**(**uint8)(__ccgo_up(v1)))
 			if iCode >= uint32(0xc0) {
-				iCode = uint32(_sqlite3Utf8Trans1[iCode-uint32(0xc0)])
+				iCode = uint32(_fts5Utf8Trans1[iCode-uint32(0xc0)])
 				for zIn < zEof && libc.Int32FromUint8(**(**uint8)(__ccgo_up(zIn)))&int32(0xc0) == int32(0x80) {
 					v1 = zIn
 					zIn = zIn + 1
@@ -912,7 +935,7 @@ _2:
 			zCsr = zCsr + 1
 			iCode = uint32(**(**uint8)(__ccgo_up(v3)))
 			if iCode >= uint32(0xc0) {
-				iCode = uint32(_sqlite3Utf8Trans1[iCode-uint32(0xc0)])
+				iCode = uint32(_fts5Utf8Trans1[iCode-uint32(0xc0)])
 				for zCsr < zTerm && libc.Int32FromUint8(**(**uint8)(__ccgo_up(zCsr)))&int32(0xc0) == int32(0x80) {
 					v3 = zCsr
 					zCsr = zCsr + 1
@@ -966,7 +989,7 @@ _6:
 	zCsr = zCsr + 1
 	iCode = uint32(**(**uint8)(__ccgo_up(v3)))
 	if iCode >= uint32(0xc0) {
-		iCode = uint32(_sqlite3Utf8Trans1[iCode-uint32(0xc0)])
+		iCode = uint32(_fts5Utf8Trans1[iCode-uint32(0xc0)])
 		for zCsr < zTerm && libc.Int32FromUint8(**(**uint8)(__ccgo_up(zCsr)))&int32(0xc0) == int32(0x80) {
 			v3 = zCsr
 			zCsr = zCsr + 1
@@ -1152,7 +1175,7 @@ func _geopolyParseJson(tls *libc.TLS, z uintptr, pRc uintptr) (r uintptr) {
 			}
 			break
 		}
-		if v2 = int32(_geopolySkipSpace(tls, bp)) == int32(']') && (**(**TGeoParse)(__ccgo_up(bp))).FnVertex >= int32(4) && **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa)) == **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + uintptr((**(**TGeoParse)(__ccgo_up(bp))).FnVertex*int32(2)-int32(2))*4)) && **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + 1*4)) == **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + uintptr((**(**TGeoParse)(__ccgo_up(bp))).FnVertex*int32(2)-int32(1))*4)); v2 {
+		if v2 = int32(_geopolySkipSpace(tls, bp)) == int32(']') && (**(**TGeoParse)(__ccgo_up(bp))).FnVertex >= int32(4) && (**(**TGeoParse)(__ccgo_up(bp))).FnVertex < int32(16777216) && **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa)) == **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + uintptr((**(**TGeoParse)(__ccgo_up(bp))).FnVertex*int32(2)-int32(2))*4)) && **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + 1*4)) == **(**TGeoCoord)(__ccgo_up((**(**TGeoParse)(__ccgo_up(bp))).Fa + uintptr((**(**TGeoParse)(__ccgo_up(bp))).FnVertex*int32(2)-int32(1))*4)); v2 {
 			(**(**TGeoParse)(__ccgo_up(bp))).Fz = (**(**TGeoParse)(__ccgo_up(bp))).Fz + 1
 		}
 		if v2 && int32(_geopolySkipSpace(tls, bp)) == libc.Int32FromInt32(0) {
@@ -1969,7 +1992,7 @@ func _sqlite3FindFunction(tls *libc.TLS, db uintptr, zName uintptr, nArg int32, 
 	nName = _sqlite3Strlen30(tls, zName)
 	/* First search for a match amongst the application-defined functions.
 	 */
-	p = _sqlite3HashFind(tls, db+624, zName)
+	p = _sqlite3HashFind(tls, db+632, zName)
 	for p != 0 {
 		score = _matchQuality(tls, p, nArg, enc)
 		if score > bestScore {
@@ -2027,7 +2050,7 @@ func _sqlite3FindFunction(tls *libc.TLS, db uintptr, zName uintptr, nArg int32, 
 			;
 			z = z + 1
 		}
-		pOther = _sqlite3HashInsert(tls, db+624, (*TFuncDef)(unsafe.Pointer(pBest)).FzName, pBest)
+		pOther = _sqlite3HashInsert(tls, db+632, (*TFuncDef)(unsafe.Pointer(pBest)).FzName, pBest)
 		if pOther == pBest {
 			_sqlite3DbFree(tls, db, pBest)
 			_sqlite3OomFault(tls, db)
@@ -2201,7 +2224,7 @@ func _sqlite3Fts5HashWrite(tls *libc.TLS, pHash uintptr, iRowid Ti64, iCol int32
 		 **     + 5 bytes for the new position offset (32-bit max).
 		 */
 		if (*TFts5HashEntry)(unsafe.Pointer(p)).FnAlloc-(*TFts5HashEntry)(unsafe.Pointer(p)).FnData < libc.Int32FromInt32(9)+libc.Int32FromInt32(4)+libc.Int32FromInt32(1)+libc.Int32FromInt32(3)+libc.Int32FromInt32(5) {
-			nNew = int64((*TFts5HashEntry)(unsafe.Pointer(p)).FnAlloc * int32(2))
+			nNew = int64((*TFts5HashEntry)(unsafe.Pointer(p)).FnAlloc) * int64(2)
 			pNew = Xsqlite3_realloc64(tls, p, libc.Uint64FromInt64(nNew))
 			if pNew == uintptr(0) {
 				return int32(SQLITE_NOMEM)

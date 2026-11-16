@@ -1,6 +1,7 @@
 # doc-example:skip-validation=true
 # This partial configuration uses Azure for chunk storage
 storage_config:
+  use_thanos_objstore: false # legacy storage client; see the Thanos storage examples for the current default
   azure:
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
     account_key: <azure_blob_access_key>

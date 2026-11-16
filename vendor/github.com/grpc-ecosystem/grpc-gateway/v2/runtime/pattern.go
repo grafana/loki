@@ -176,6 +176,10 @@ func MustPattern(p Pattern, err error) Pattern {
 // matched but contained malformed escape sequences. If successful, the function
 // returns a mapping from field paths to their captured values.
 func (p Pattern) MatchAndEscape(components []string, verb string, unescapingMode UnescapingMode) (map[string]string, error) {
+	return p.matchAndEscape(components, verb, unescapingMode, false)
+}
+
+func (p Pattern) matchAndEscape(components []string, verb string, unescapingMode UnescapingMode, strictDeepWildcard bool) (map[string]string, error) {
 	if p.verb != verb {
 		if p.verb != "" {
 			return nil, ErrNotMatch
@@ -220,7 +224,7 @@ func (p Pattern) MatchAndEscape(components []string, verb string, unescapingMode
 				return nil, ErrNotMatch
 			}
 			end -= p.tailLen
-			if p.strictDeepWildcard && pos > 0 && pos == end {
+			if (p.strictDeepWildcard || strictDeepWildcard) && pos > 0 && pos == end {
 				// A deep wildcard ("**") is allowed to match zero path segments when it is
 				// the first thing being matched in the pattern (pos == 0). But once a literal
 				// or variable segment has already consumed a component, "**" needs the request

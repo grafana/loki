@@ -1,3 +1,36 @@
+# v1.114.10 (2026-11-10)
+
+* **Bug Fix**: Sign the S3 Express CreateSession call with the same credentials used to build the session cache key, and give each derived client its own bound S3 Express credentials provider.
+* **Dependency Update**: Update to smithy-go v1.28.9.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.9 (2026-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.8 (2026-11-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.7 (2026-11-04)
+
+* **Dependency Update**: Update to smithy-go v1.28.8.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.6 (2026-10-27)
+
+* **Dependency Update**: Update to smithy-go v1.28.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.5 (2026-10-22)
+
+* **Bug Fix**: Update smithy-go to v1.28.6
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.4 (2026-10-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.114.3 (2026-10-09.2)
 
 * **Dependency Update**: Update to smithy-go v1.28.5.

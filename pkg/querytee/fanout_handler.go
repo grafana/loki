@@ -16,7 +16,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
@@ -243,6 +243,7 @@ func (h *FanOutHandler) compareStats(req queryrangebase.Request, primary, second
 			prefix + "_bytes_processed", s.Summary.TotalBytesProcessed,
 			prefix + "_lines_processed", s.Summary.TotalLinesProcessed,
 			prefix + "_exec_time_seconds", s.Summary.ExecTime,
+			prefix + "_querier_wall_time_seconds", s.Querier.QuerierExecTime,
 			prefix + "_queue_time_seconds", s.Summary.QueueTime,
 			prefix + "_splits", s.Summary.Splits,
 			prefix + "_shards", s.Summary.Shards,
