@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func TestReadTask_RowPredicates(t *testing.T) {
@@ -62,7 +64,7 @@ func TestReadTask_AppendRecords(t *testing.T) {
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.appendRecords(nil, nil, []logs.Record{
+		records, err := task.appendRecords(nil, memory.NewAllocator(nil), []logs.Record{
 			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
 			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
 		})
@@ -86,47 +88,55 @@ func TestReadTask_AppendRecords(t *testing.T) {
 		}, records)
 	})
 
-	t.Run("the record's line is a copy in the spare capacity of lines", func(t *testing.T) {
+	t.Run("a needed line is copied into memory from lines, so a later decode does not change it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
 		buffer := []byte("first")
-		lines := make([]byte, 0, len(buffer))
+		lines := memory.NewAllocator(nil)
 		records, err := task.appendRecords(nil, lines, []logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
 		require.NoError(t, err)
 
 		copy(buffer, []byte("third"))
+		require.Len(t, records, 1)
 		require.Equal(t, "first", string(records[0].line))
-		require.Same(t, &lines[:1][0], &records[0].line[0])
+		require.Equal(t, len(buffer), lines.AllocatedBytes())
 	})
 
-	t.Run("each line of a batch gets its own part of lines", func(t *testing.T) {
+	t.Run("the lines of one call share one region, each capped at its own length", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		lines := make([]byte, 0, len("onetwo"))
+		lines := memory.NewAllocator(nil)
 		records, err := task.appendRecords(nil, lines, []logs.Record{
 			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
 			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
 		})
 		require.NoError(t, err)
-		require.Equal(t, "onetwo", string(lines[:6]))
-		require.Equal(t, []string{"one", "two"}, []string{string(records[0].line), string(records[1].line)})
-		require.Equal(t, len("one"), cap(records[0].line))
+		require.Len(t, records, 2)
+
+		first, second := records[0].line, records[1].line
+		require.Equal(t, "one", string(first))
+		require.Equal(t, "two", string(second))
+		require.Equal(t, len(first), cap(first))
+		require.Equal(t, unsafe.Add(unsafe.Pointer(&first[0]), len(first)), unsafe.Pointer(&second[0]))
+		require.Equal(t, len("onetwo"), lines.AllocatedBytes())
 	})
 
-	t.Run("an empty line is forwarded as nil", func(t *testing.T) {
+	t.Run("an empty line is forwarded as nil and takes no line memory", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.appendRecords(nil, nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte{}}})
+		lines := memory.NewAllocator(nil)
+		records, err := task.appendRecords(nil, lines, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte{}}})
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].line)
+		require.Zero(t, lines.AllocatedBytes())
 	})
 
 	t.Run("it appends after the records already in dst", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
 		existing := LogRecord{timestamp: at(9).UnixNano()}
-		records, err := task.appendRecords([]LogRecord{existing}, nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		records, err := task.appendRecords([]LogRecord{existing}, memory.NewAllocator(nil), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.NoError(t, err)
 		require.Len(t, records, 2)
 		require.Equal(t, existing, records[0])
@@ -137,7 +147,7 @@ func TestReadTask_AppendRecords(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 		task.needReturningLine = false
 
-		records, err := task.appendRecords(nil, nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		records, err := task.appendRecords(nil, memory.NewAllocator(nil), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].line)
@@ -146,7 +156,7 @@ func TestReadTask_AppendRecords(t *testing.T) {
 	t.Run("a row from a stream the task did not plan fails rather than get silently skipped", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		_, err := task.appendRecords(nil, nil, []logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
+		_, err := task.appendRecords(nil, memory.NewAllocator(nil), []logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 9999")
 	})
 
@@ -161,14 +171,14 @@ func TestReadTask_AppendRecords(t *testing.T) {
 		)
 		task := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
-		_, err = task.appendRecords(nil, nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		_, err = task.appendRecords(nil, memory.NewAllocator(nil), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 7")
 	})
 
 	t.Run("no rows yields no records", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.appendRecords(nil, nil, nil)
+		records, err := task.appendRecords(nil, memory.NewAllocator(nil), nil)
 		require.NoError(t, err)
 		require.Empty(t, records)
 	})

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 const (
@@ -129,18 +130,28 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// appendRecords appends one forwardable record per row of one Read call to dst, attaching each
-// stream's identity. It returns the extended slice.
+// appendRecords appends one forwardable record per row to dst, attaching each stream's identity.
+// It returns the extended slice.
 //
-// A record's line is a copy of row.Line in the spare capacity of lines, so it stays valid when
-// the rows are decoded into again. lines needs room for every line the task forwards, or the
-// copies move to the heap. The line is nil when the task does not need it, or when the row's
-// line is empty.
+// A record's line is a copy of row.Line in one region from lines, so it stays valid when the rows
+// are decoded into again, until lines is reclaimed. The line is nil when the task does not need
+// it, or when the row's line is empty.
 //
 // It fails on a row whose stream the task did not plan to read. The read matches only the
 // task's streams, so an unexpected ID means that broke, and dropping the row would under-count
 // the query without saying so.
-func (t ReadTask) appendRecords(dst []LogRecord, lines []byte, rows []logs.Record) ([]LogRecord, error) {
+func (t ReadTask) appendRecords(dst []LogRecord, lines *memory.Allocator, rows []logs.Record) ([]LogRecord, error) {
+	var lineBuf []byte
+	if t.needReturningLine {
+		var size int
+		for i := range rows {
+			size += len(rows[i].Line)
+		}
+		if size > 0 {
+			lineBuf = lines.Allocate(size).Data()[:0:size]
+		}
+	}
+
 	for i := range rows {
 		row := &rows[i]
 		stream, ok := t.streams.admittedByID[row.StreamID]
@@ -150,9 +161,9 @@ func (t ReadTask) appendRecords(dst []LogRecord, lines []byte, rows []logs.Recor
 
 		var line []byte
 		if t.needReturningLine && len(row.Line) > 0 {
-			start := len(lines)
-			lines = append(lines, row.Line...)
-			line = lines[start:len(lines):len(lines)]
+			start := len(lineBuf)
+			lineBuf = append(lineBuf, row.Line...)
+			line = lineBuf[start:len(lineBuf):len(lineBuf)]
 		}
 
 		dst = append(dst, LogRecord{
