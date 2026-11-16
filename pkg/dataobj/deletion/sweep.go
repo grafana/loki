@@ -199,7 +199,6 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 		"reachable", len(scanned)-len(list.Paths),
 		"unreachable", len(list.Paths),
 		"missing_index_objects", reachability.MissingIndexObjects,
-		"unexpected_index_sections", fmt.Sprint(reachability.UnexpectedSections),
 	)
 	if cands != nil {
 		s.logDryRun(ctx, logger, previous.CreatedAt, list, *cands)
