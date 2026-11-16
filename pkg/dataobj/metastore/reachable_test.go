@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 )
 
 func TestListTableOfContentsWindows(t *testing.T) {
@@ -101,13 +102,13 @@ func TestReachableObjects(t *testing.T) {
 		require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 		require.NoError(t, builder.AppendStat("objects/00/in-stats", 0, 0, nil, time.Unix(10, 0), time.Unix(20, 0), 1, 1))
 		builder.ObserveLabelPosting(postings.LabelObservation{ObjectPath: "objects/00/in-postings", ColumnName: "app", LabelValue: "foo", StreamID: 1, Time: postings.At(time.Unix(10, 0))})
-		require.NoError(t, builder.AppendWatermark("topic", 0, 10))
 		uploadObject(t, bucket, "indexes/aa/built", builder.Flush)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/built")
 
-		paths, _, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		paths, reachability, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.NoError(t, err)
 		require.Equal(t, []string{"index/v0/indexes/aa/built", "objects/00/in-stats"}, paths)
+		require.Empty(t, reachability.UnexpectedSections)
 	})
 
 	t.Run("returns the log objects of an index object with stats and no postings", func(t *testing.T) {
@@ -120,7 +121,7 @@ func TestReachableObjects(t *testing.T) {
 		require.Equal(t, []string{"index/v0/indexes/aa/index", "objects/00/in-stats"}, paths)
 	})
 
-	t.Run("returns only the index object when it references no log object", func(t *testing.T) {
+	t.Run("returns only the index object and counts a watermarks section as unexpected", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -128,9 +129,10 @@ func TestReachableObjects(t *testing.T) {
 		uploadObject(t, bucket, "indexes/aa/empty", builder.Flush)
 		registerIndex(t, bucket, tenant, first, "indexes/aa/empty")
 
-		paths, _, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		paths, reachability, err := ReachableObjects(t.Context(), bucket, tenant, 1)
 		require.NoError(t, err)
 		require.Equal(t, []string{"index/v0/indexes/aa/empty"}, paths)
+		require.Equal(t, map[string]int{watermarks.SectionType().String(): 1}, reachability.UnexpectedSections)
 	})
 
 	t.Run("returns every log object when the paths fill several read batches", func(t *testing.T) {

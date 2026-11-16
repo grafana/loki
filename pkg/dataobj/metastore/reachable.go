@@ -82,8 +82,8 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // the index object itself as reachable, and counts it in the stats.
 //
 // ReachableObjects reads only the stats sections of an index object. It
-// skips the postings and watermarks sections, and counts the sections of any
-// other type in the stats. Queries read the postings sections only, and the
+// skips the postings sections, and counts the sections of any other type in
+// the stats. Queries read the postings sections only, and the
 // index builder computes the postings and the stats from the same rows. So a
 // section that is not a stats section references no log object that a query
 // can read.
@@ -135,7 +135,7 @@ type ReachabilityStats struct {
 	MissingIndexObjects int
 
 	// UnexpectedSections counts the sections of index objects that are not
-	// stats, postings, or watermarks sections, by section type.
+	// stats or postings sections, by section type.
 	UnexpectedSections map[string]int
 }
 
@@ -276,8 +276,8 @@ func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []
 // can have no tenant. A filter by tenant could drop paths that the tenant can
 // read. The paths of other tenants only make the result larger.
 //
-// It skips postings and watermarks sections. It counts the sections of other
-// types, and a missing index object, and adds nothing for them.
+// It skips postings sections. It counts the sections of other types, and a
+// missing index object, and adds nothing for them.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
 	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, indexPrefetchBytes)
 	if err != nil {
@@ -300,7 +300,7 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 			if err := w.addStatsObjectPaths(ctx, section); err != nil {
 				return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
 			}
-		case postings.CheckSection(section), watermarks.CheckSection(section):
+		case postings.CheckSection(section):
 		default:
 			w.countUnexpectedSection(section)
 		}
