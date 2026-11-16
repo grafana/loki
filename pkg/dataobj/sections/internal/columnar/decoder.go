@@ -82,20 +82,20 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 			region.Record(dataobj.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
 		}()
 
-		// blobs[i] holds the metadata of columns[i]. A prefetched blob aliases its prefetched range. The
-		// other blobs are read in one call. rangeio would merge a prefetched blob with the gaps around
-		// it, and the gaps are not prefetched.
+		// columnMetadataBlobs[i] holds the metadata of columns[i]. A prefetched blob aliases its prefetched
+		// range. The other blobs are read in one call. rangeio would merge a prefetched blob with the gaps
+		// around it, and the gaps are not prefetched.
 		var (
-			blobs         = make([][]byte, len(columns))
-			ranges        = make([]rangeio.Range, 0, len(columns))
-			rangeColumn   = make([]int, 0, len(columns))
-			prefetched, _ = dec.sr.(prefetchedMetadataRangeReader)
+			columnMetadataBlobs = make([][]byte, len(columns))
+			ranges              = make([]rangeio.Range, 0, len(columns))
+			rangeColumn         = make([]int, 0, len(columns))
+			prefetched, _       = dec.sr.(prefetchedMetadataRangeReader)
 		)
 
 		for i, column := range columns {
 			if prefetched != nil {
 				if blob, ok := prefetched.PrefetchedMetadataRange(int64(column.ColumnMetadataOffset), int64(column.ColumnMetadataLength)); ok {
-					blobs[i] = blob
+					columnMetadataBlobs[i] = blob
 					continue
 				}
 			}
@@ -113,11 +113,11 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 				return err
 			}
 			for i, r := range ranges {
-				blobs[rangeColumn[i]] = r.Data
+				columnMetadataBlobs[rangeColumn[i]] = r.Data
 			}
 		}
 
-		for _, blob := range blobs {
+		for _, blob := range columnMetadataBlobs {
 			var md datasetmd.ColumnMetadata
 			if err := protocodec.Decode(bytes.NewReader(blob), &md); err != nil {
 				return fmt.Errorf("decoding column metadata: %w", err)

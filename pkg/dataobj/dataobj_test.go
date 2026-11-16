@@ -356,8 +356,8 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, bigMeta, gotMeta)
 	})
 
-	// maxItemBytes is a custom limit, not metadata.Cache's default, so this also proves MaxItemBytes
-	// is genuinely plumbed through fetchExtendedMetadataRegion, not just the built-in default.
+	// maxItemBytes is a custom limit, not the unlimited value of a zero, so this also proves MaxItemBytes
+	// is genuinely plumbed through fetchExtendedMetadataRegion.
 	t.Run("a metadata region above the cache size cap still caches the file metadata but not the oversized section's metadata", func(t *testing.T) {
 		ctx := context.Background()
 		const maxItemBytes = 4096
@@ -417,7 +417,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(corrupted)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := newMetadataCache(memoryCache, 0)
+		// The item limit stops the open from reading the region that the header claims. Without a limit,
+		// the open tries to read 128 MiB and fails, and it does not fall back to a direct read.
+		metadataCache := newMetadataCache(memoryCache, 8<<20)
 		t.Cleanup(metadataCache.Stop)
 		logger := &test.CapturingLogger{}
 

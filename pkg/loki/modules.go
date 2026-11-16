@@ -839,11 +839,20 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 		}
 	}
 
+	// The prefetcher takes the limit of the backend as it is, where zero means no limit, because it bounds its items by
+	// max_region_bytes. The other caches need a limit: the decoder reads no more than the limit of a cache in bytes of
+	// metadata for an item, and the bound also stops a corrupt layout from driving a huge allocation. They use 8 MiB
+	// when the backend has none.
+	metadataCacheMaxItemBytes := maxItemBytes
+	if metadataCacheMaxItemBytes <= 0 {
+		metadataCacheMaxItemBytes = 8 << 20
+	}
+
 	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
-	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
-	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
+	t.dataObjIndexCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
+	t.dataObjTOCCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
 	if t.dataObjMetadataPrefetcher == nil {
-		t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+		t.dataObjLogsCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
 	}
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.

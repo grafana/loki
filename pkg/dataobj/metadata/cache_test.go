@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -22,8 +23,9 @@ import (
 )
 
 func TestCache_MaxItemBytes(t *testing.T) {
-	require.Equal(t, int64(DefaultMaxItemBytes), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value falls back to the default")
 	require.Equal(t, int64(1024), newTestCache(cache.NewMockCache(), 1024, nil).MaxItemBytes())
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value means no limit")
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), -1, nil).MaxItemBytes(), "a non-positive value means no limit")
 }
 
 func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
@@ -391,6 +393,18 @@ func TestCache_GetOrLoad(t *testing.T) {
 
 		require.Equal(t, 2, loads)
 		require.Equal(t, []byte("stale"), mc.GetInternal()[keyPrefix+"obj"])
+	})
+
+	t.Run("stores a loaded value of any size when the cache has no limit", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+		large := make([]byte, 16<<20)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return large, nil })
+
+		require.NoError(t, err)
+		require.Len(t, got, len(large))
+		require.Contains(t, mc.GetInternal(), keyPrefix+"obj")
 	})
 
 	t.Run("accepts every hit when accept is nil", func(t *testing.T) {

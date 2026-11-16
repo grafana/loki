@@ -116,7 +116,8 @@ type MetadataCache interface {
 	GetOrLoadMetadataRegion(ctx context.Context, key string, load func(ctx context.Context) ([]byte, error)) ([]byte, error)
 
 	// MaxItemBytes returns the largest region the underlying backend will store. It must always be
-	// positive: an implementation with no real backend limit still reports a safe, conservative value.
+	// positive. An implementation with no limit returns math.MaxInt64, and the decoder then does not
+	// bound the region that it reads for an item.
 	MaxItemBytes() int64
 }
 

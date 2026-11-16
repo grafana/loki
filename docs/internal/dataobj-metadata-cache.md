@@ -46,18 +46,17 @@ tiny object is kept whole, so a warm open reads nothing from object storage.
 
 ### Log objects, when the prefetcher is off
 
-The cache holds the object from its start to the end of the metadata of the last section that is not a
-logs section. A tiny object is kept whole. The cache leaves out the metadata of the logs sections on
-purpose, because it grows with the number of columns. But the item is one contiguous prefix, so it also
-holds the metadata of every logs section that lies before the last non-logs section. In compacted objects
-the small streams section lies among the logs sections, so the item can be megabytes. When that prefix
-does not fit in the item size limit, the item holds only the file metadata.
+A writer places the streams section before the logs sections. The cache holds the object from its start
+to the end of the metadata of the last section that is not a logs section. So the item holds the file
+metadata and the metadata of the streams section, and it is small. A tiny object is kept whole.
 
-This shape does not fit log objects well:
+The item leaves out the metadata of the logs sections on purpose, because it grows with the number of
+columns. This shape does not fit log objects well:
 
-- A query fetches the whole item, even when it reads only a few columns.
-- What the item holds depends on the order of the sections in the object, and not on what a query needs.
-- The metadata of the logs sections that lies after the prefix still needs reads from object storage.
+- The metadata of the logs sections is the part that grows and that a query needs, and it is not in the
+  item. Every query reads it from object storage.
+- One item for that metadata would not help. Every query would fetch the columns that it does not
+  read.
 
 The prefetcher exists to fix this.
 
@@ -74,7 +73,7 @@ sections.
 
 ```
 | header + file metadata | section metadata ... | section data ... |
-|<------------ metadata region ------------>|   not cached
+|<-------------- metadata region -------------->| not cached
 ```
 
 The cache does not hold section data. A section can hold a lot of it, and it would push the metadata
@@ -83,12 +82,16 @@ out of the cache. Metadata is the part that every query reuses.
 The cache holds the region in two shapes:
 
 - **Groups.** Each group is a small cache item. The groups are:
-  - The file metadata.
+  - The file metadata. It is a group of its own, because a query that needs all the metadata reads
+    the file metadata and the whole region, and it does not need the core metadata.
   - The core metadata that every query needs: the stream ID and timestamp columns, and the non-log
     sections.
   - The log line column.
   - One group for each structured metadata column.
 - **The whole region.** One cache item holds all of it.
+
+The cache stores both shapes, so an object takes about twice the memory of its region. The second copy
+lets a miss on one group read the region from the cache, and not from object storage.
 
 A query tells the cache which metadata it needs, and the cache returns only the groups for it. A query
 that filters on one structured metadata column then prefetches a few kilobytes, and not the whole
