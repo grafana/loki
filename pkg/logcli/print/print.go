@@ -25,6 +25,8 @@ type QueryResultPrinter struct {
 	FixedLabelsLen      int
 	Forward             bool
 	IncludeCommonLabels bool
+
+	printedWarnings map[string]struct{}
 }
 
 func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, quiet bool, fixedLabelsLen int, forward bool, includeCommonLabels bool) *QueryResultPrinter {
@@ -230,6 +232,20 @@ func (k kvLogger) Log(keyvals ...interface{}) error {
 func (r *QueryResultPrinter) PrintStats(stats stats.Result) {
 	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
 	stats.Log(kvLogger{Writer: writer})
+}
+
+// PrintWarnings logs each distinct warning of a query once, because every batch of the query can return it again.
+func (r *QueryResultPrinter) PrintWarnings(warnings []string) {
+	for _, w := range warnings {
+		if _, ok := r.printedWarnings[w]; ok {
+			continue
+		}
+		if r.printedWarnings == nil {
+			r.printedWarnings = make(map[string]struct{})
+		}
+		r.printedWarnings[w] = struct{}{}
+		log.Println("Warning:", w)
+	}
 }
 
 func matchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {
