@@ -7,6 +7,9 @@ import (
 	"maps"
 	"math"
 	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"slices"
 	"sort"
 	"sync"
@@ -29,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
@@ -906,6 +910,70 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 			},
 			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
 			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+}
+
+// TestDataObjStore_AccessControl runs the store with the label-based access control filter that
+// Loki installs, and checks the policies a gateway sends in the X-Prom-Label-Policy header.
+func TestDataObjStore_AccessControl(t *testing.T) {
+	const query = `sum by (app) (count_over_time({env=~".+"}[1m]))`
+
+	streams := []logproto.Stream{
+		{Labels: `{app="a", env="prod"}`, Entries: []push.Entry{entry(t, 1, "one")}},
+		{Labels: `{app="b", env="prod", secret="true"}`, Entries: []push.Entry{entry(t, 1, "two")}},
+		{Labels: `{app="c", env="dev", secret="true"}`, Entries: []push.Entry{entry(t, 1, "three")}},
+		{Labels: `{app="d", env="dev"}`, Entries: []push.Entry{entry(t, 1, "four")}},
+	}
+	store := newTestDataObjStore(t, streams, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+	readStreams := func(ctx context.Context) []string {
+		return sampleLabels(store.selectSamples(ctx, query, at(0), at(10)))
+	}
+
+	t.Run("returns every stream when the request carries no policy", func(t *testing.T) {
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(testCtx(t)))
+	})
+
+	t.Run("returns only the streams that match a single equality policy", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns the streams that match any of several policies", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{secret!="true", env="prod"}`, `{env="dev"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns every stream when the policy belongs to another tenant", func(t *testing.T) {
+		ctx := accessControlContext(t, "another-tenant", `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("counts only the lines that a rewritten aggregated-metrics query permits", func(t *testing.T) {
+		aggregated := logproto.Stream{
+			Labels: `{__aggregated_metric__="varlog_service"}`,
+			Entries: []push.Entry{
+				entry(t, 1, `service_name="varlog_service" env="dev" classification="confidential"`),
+				entry(t, 2, `service_name="varlog_service" env="dev" classification="secret"`),
+				entry(t, 3, `service_name="varlog_service" env="prod" classification="secret"`),
+				entry(t, 4, `service_name="varlog_service" env="prod" classification="notsecret"`),
+			},
+		}
+		aggregatedStore := newTestDataObjStore(t, []logproto.Stream{aggregated}, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+		policies := policySet(t, objtest.Tenant, `{env!="dev", classification!="secret"}`, `{classification!="secret"}`)
+		request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?"+url.Values{
+			"query": {`sum by (service_name) (count_over_time({__aggregated_metric__="varlog_service"}[1m]))`},
+		}.Encode(), nil)
+		request.Header.Set("X-Scope-OrgID", objtest.Tenant)
+		require.NoError(t, labelaccess.ModifyAggregatedMetricsQuery(request, policies))
+
+		ctx := labelaccess.InjectLabelMatchersContext(testCtx(t), policies)
+		got := aggregatedStore.selectSamples(ctx, request.URL.Query().Get("query"), at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 4, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
 		}, got)
 	})
 }
