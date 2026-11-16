@@ -87,7 +87,7 @@ func TestIndexStatsCache(t *testing.T) {
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: 2,
-			Chunks:  4,
+			Chunks:  uint64(math.Floor(2*0.75) + 2),
 			Bytes:   (1<<10)*0.75 + (1 << 10),
 			Entries: uint64(math.Floor(10*0.75) + 10),
 		},

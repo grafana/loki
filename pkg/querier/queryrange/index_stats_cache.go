@@ -40,7 +40,7 @@ func (p IndexStatsExtractor) Extract(start, end int64, res resultscache.Response
 	return &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: statsRes.Response.GetStreams(),
-			Chunks:  statsRes.Response.GetChunks(),
+			Chunks:  uint64(float64(statsRes.Response.GetChunks()) * factor),
 			Bytes:   uint64(float64(statsRes.Response.GetBytes()) * factor),
 			Entries: uint64(float64(statsRes.Response.GetEntries()) * factor),
 		},
