@@ -67,6 +67,10 @@ func (r lineRequirement) labelSet(lbs *LabelsBuilder) bool {
 type lineNeed interface {
 	// mayHold returns false only when the line cannot hold what the label filter needs.
 	mayHold(line []byte) bool
+
+	// searchCost returns how many literals mayHold searches the line for, and the length of the
+	// shortest.
+	searchCost() (searches, shortest int)
 }
 
 // lineLiteral needs the line to contain match.
@@ -93,6 +97,10 @@ func (l lineLiteral) mayHold(line []byte) bool {
 	return false
 }
 
+func (l lineLiteral) searchCost() (searches, shortest int) {
+	return 1, len(l.match)
+}
+
 // allLineNeeds needs the line to hold each of them.
 type allLineNeeds []lineNeed
 
@@ -105,6 +113,10 @@ func (a allLineNeeds) mayHold(line []byte) bool {
 	return true
 }
 
+func (a allLineNeeds) searchCost() (searches, shortest int) {
+	return sumSearchCost(a)
+}
+
 // anyLineNeeds needs the line to hold one of them.
 type anyLineNeeds []lineNeed
 
@@ -115,6 +127,19 @@ func (a anyLineNeeds) mayHold(line []byte) bool {
 		}
 	}
 	return false
+}
+
+func (a anyLineNeeds) searchCost() (searches, shortest int) {
+	return sumSearchCost(a)
+}
+
+func sumSearchCost(needs []lineNeed) (searches, shortest int) {
+	shortest = math.MaxInt
+	for _, n := range needs {
+		s, l := n.searchCost()
+		searches, shortest = searches+s, min(shortest, l)
+	}
+	return searches, shortest
 }
 
 // appendLineRequirements appends a requirement for each `=` or `=~` filter in f, descending into both
@@ -176,38 +201,19 @@ func appendParts(dst []lineRequirement, name string, need lineNeed) []lineRequir
 // its shortest literal and searches for each of them, so it is dropped whole when it does not fit.
 func withinBudget(reqs []lineRequirement) []lineRequirement {
 	slices.SortStableFunc(reqs, func(a, b lineRequirement) int {
-		_, aLen := searchCost(a.need)
-		_, bLen := searchCost(b.need)
+		_, aLen := a.need.searchCost()
+		_, bLen := b.need.searchCost()
 		return bLen - aLen
 	})
 	budget := maxLineSearches
 	kept := reqs[:0]
 	for _, r := range reqs {
-		if searches, _ := searchCost(r.need); searches <= budget {
+		if searches, _ := r.need.searchCost(); searches <= budget {
 			kept = append(kept, r)
 			budget -= searches
 		}
 	}
 	return kept
-}
-
-// searchCost returns how many literals need searches the line for, and the length of the shortest.
-func searchCost(need lineNeed) (searches, shortest int) {
-	var needs []lineNeed
-	switch n := need.(type) {
-	case lineLiteral:
-		return 1, len(n.match)
-	case allLineNeeds:
-		needs = n
-	case anyLineNeeds:
-		needs = n
-	}
-	shortest = math.MaxInt
-	for _, n := range needs {
-		s, l := searchCost(n)
-		searches, shortest = searches+s, min(shortest, l)
-	}
-	return searches, shortest
 }
 
 // appendLineFilterLiterals appends the case-sensitive literals that every line the line filter f
