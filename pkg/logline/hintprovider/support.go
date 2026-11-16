@@ -13,175 +13,236 @@ import (
 )
 
 // SupportedQuery returns the needles for query shapes that can use logline
-// index hints. The result is True when the query has no needle. Today it is
-// one conjunction, the literals below, which are all required.
+// index hints. The result is True when the query has no needle.
 //
-// Rules:
-//   - at least one mandatory positive filter must exist
-//   - sources: line filters (|=, |~) that still run on the ingested line
-//     (collectLineFilters stops at line_format / decolorize / unpack),
-//     pre-parser label filters (syntax.ExtractLabelFiltersBeforeParser), and
-//     post-parser extracted-field filters after a high-confidence extractor
-//     (see collectPostParserLabelFilterLiterals)
-//   - accepted ops: equality, or regex. A regex contributes the literals every
-//     match must contain (regexliteral.Literals), e.g. ".*foo.*bar" gives
-//     "foo" and "bar"
-//   - OR branches are not mandatory and are ignored
-//   - unsupported filters are ignored when a mandatory positive literal remains
-//   - extracted literals must be at least ngramLength bytes
-//   - literals are returned with ASCII letters uppercased (upperASCII), so
-//     filters that differ only in case share one needle
-//   - needles are matcher values only (never field names); value prefixes are
-//     not stripped
-//   - skip label filters on reserved `__*` names such as `__error__`
-//     (UsableLabelName). Loki sets those, so their values are not in the line.
-//   - skip post-parser values with `"`, `\`, or control bytes. The same
-//     filter can match a parsed field, a stream label, or SM, so we cannot
-//     assume the raw line used JSON/logfmt escapes.
-//   - split post-parser values at `/` and spaces. JSON and logfmt decode `\/`
-//     to `/`, and replace U+FFFD and invalid UTF-8 with a space, so the line
-//     may only hold the parts between them.
+// Needles are compiled needle.Conjunctions, an OR of sets of literals. A line
+// can match only if it contains every literal of at least one set. Each filter becomes a
+// clause and all clauses are ANDed:
+//   - line filters (|=, |~) that still run on the ingested line
+//     (collectLineFilters stops at line_format / decolorize / unpack). An or
+//     chain such as |= "a" or "b" is one clause, an OR of its branches.
+//   - pre-parser label filters (syntax.ExtractLabelFiltersBeforeParser). and
+//     and , combine children with AND, or combines them with OR.
+//   - post-parser extracted-field filters after a high-confidence extractor
+//     (see postParserClauses).
+//
+// A leaf we cannot look up is True, never dropped, and a True branch makes its
+// whole OR True. True leaves are ip(), negative filters, pattern filters,
+// literals shorter than ngramLength, matchers other than = and =~, numeric,
+// duration and bytes label filters, regexes with no required literal, label
+// filters on reserved `__*` names such as `__error__` (UsableLabelName, Loki
+// sets those so their values are not in the line), and post-parser values
+// with `"`, `\`, or control bytes (IsVerbatimLineLiteral, the same filter can
+// match a parsed field, a stream label, or SM, so we cannot assume the raw
+// line used JSON/logfmt escapes).
+//
+// A regex contributes regexliteral.Needles, so `(GET|POST) /api` gives
+// {GET /api} or {POST /api}. Literals are returned with ASCII letters
+// uppercased (upperASCII), so filters that differ only in case share a needle.
+// Needles are matcher values only, never field names, and value prefixes are
+// not stripped.
+// Post-parser literals are split at slashes and spaces so decoded JSON/logfmt
+// values do not require text absent from the ingested line.
+//
+// Requirements remain factored until all filters are combined and mapped.
+// Compile then bounds expansion to maxConjunctions sets, collapsing operands
+// or unions to their implied existing literals when needed. maxConjunctions 1 gives one
+// set, the needles every branch of every OR shares. Values below 1 are treated as 1.
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Conjunctions {
+func SupportedQuery(expr syntax.Expr, ngramLength, maxConjunctions int) needle.Conjunctions {
 	if expr == nil || ngramLength <= 0 {
 		return nil
 	}
+	p := planner{ngramLength: ngramLength}
 
-	lineFilters := collectLineFilters(expr)
-	labelFilters := syntax.ExtractLabelFiltersBeforeParser(expr)
-	postParser := collectPostParserLabelFilterLiterals(expr)
-
-	literals := make([]string, 0, len(lineFilters)+len(labelFilters)+len(postParser))
-	add := func(match string) {
-		if len(match) >= ngramLength {
-			literals = append(literals, upperASCII(match))
+	var clauses []needle.Expr
+	for _, stage := range collectLineFilters(expr) {
+		clauses = append(clauses, p.lineFilterStage(stage))
+	}
+	for _, filter := range syntax.ExtractLabelFiltersBeforeParser(expr) {
+		if filter != nil {
+			clauses = append(clauses, p.labelFilter(filter.LabelFilterer, false))
 		}
 	}
+	clauses = append(clauses, p.postParserClauses(expr)...)
 
-	for _, filter := range lineFilters {
-		for _, match := range extractMandatoryPositiveFilterLiterals(filter) {
-			add(match)
+	return needle.And(clauses...).Compile(maxConjunctions)
+}
+
+// planner builds the needles of one query.
+type planner struct {
+	ngramLength int
+}
+
+// keep maps a literal to the needle that is looked up, or reports false when
+// it is too short to look up.
+func (p planner) keep(s string) (string, bool) {
+	if len(s) < p.ngramLength {
+		return "", false
+	}
+	return upperASCII(s), true
+}
+
+// keepVerbatim keeps only fragments that remain verbatim after parser decoding.
+func (p planner) keepVerbatim(s string) []string {
+	if !IsVerbatimLineLiteral(s) {
+		return nil
+	}
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == ' ' })
+	kept := parts[:0]
+	for _, part := range parts {
+		if len(part) >= p.ngramLength {
+			kept = append(kept, upperASCII(part))
 		}
 	}
+	return kept
+}
 
-	for _, filter := range labelFilters {
-		if filter == nil {
+// literal is the needle of a filter that requires s.
+func (p planner) literal(s string, postParser bool) needle.Expr {
+	if postParser {
+		return needle.AllOf(p.keepVerbatim(s)...)
+	}
+	if s, ok := p.keep(s); ok {
+		return needle.Lit(s)
+	}
+	return needle.True()
+}
+
+// regex is the needle of a filter that requires a match of pattern.
+func (p planner) regex(pattern string, postParser bool) needle.Expr {
+	e := regexliteral.Needles(pattern)
+	if postParser {
+		return e.MapAll(p.keepVerbatim)
+	}
+	return e.Map(p.keep)
+}
+
+// lineFilterStage mirrors LineFilterExpr.Filter. Every node on the Left chain
+// is ANDed, and a node with an Or chain is an OR of its own LineFilter and
+// the LineFilter of every node on that chain.
+//
+// A negative or chain such as != "a" or "b" is rewritten by the parser into
+// nested negative filters, so it never reaches here as an Or.
+func (p planner) lineFilterStage(f *syntax.LineFilterExpr) needle.Expr {
+	var clauses []needle.Expr
+	for curr := f; curr != nil; curr = curr.Left {
+		if hasEmptyOrBranch(curr) {
+			// Loki does not run an or chain with an empty branch as a plain
+			// OR, and the result depends on where "" sits: |= "" or "" or "a"
+			// keeps every line, |= "a" or "" or "" does not. Skip the chain,
+			// the other filters still narrow.
+			// TODO: Revisit once logql properly define the "OR" semantic
 			continue
 		}
-		for _, match := range collectLabelFilterLiterals(filter.LabelFilterer) {
-			add(match)
+		branches := []needle.Expr{p.lineFilter(curr.LineFilter)}
+		for or := curr.Or; or != nil; or = or.Or {
+			branches = append(branches, p.lineFilter(or.LineFilter))
+		}
+		clauses = append(clauses, needle.Or(branches...))
+	}
+	return needle.And(clauses...)
+}
+
+// hasEmptyOrBranch reports whether f has an or chain with a "" branch.
+func hasEmptyOrBranch(f *syntax.LineFilterExpr) bool {
+	if f.Or == nil {
+		return false
+	}
+	for or := f; or != nil; or = or.Or {
+		if or.Match == "" {
+			return true
 		}
 	}
-
-	for _, match := range postParser {
-		add(match)
-	}
-
-	// Compile deduplicates and prunes the final set of required literals.
-	return needle.AllOf(literals...).Compile(1)
+	return false
 }
 
-func extractMandatoryPositiveFilterLiterals(filter *syntax.LineFilterExpr) []string {
-	if filter == nil {
-		return nil
+// lineFilter is the needle of a single line filter.
+func (p planner) lineFilter(f syntax.LineFilter) needle.Expr {
+	// ip() and other function filters cannot be looked up.
+	if f.Op != "" {
+		return needle.True()
 	}
-
-	// In positive line-filter OR chains, no individual branch is guaranteed.
-	// Example: |= "foo" or "bar"
-	if filter.Or != nil || filter.IsOrChild {
-		return nil
-	}
-
-	// Keep IP and other function filters unsupported.
-	if filter.Op != "" {
-		return nil
-	}
-
-	switch filter.Ty {
+	switch f.Ty {
 	case logql_log.LineMatchEqual:
-		return []string{filter.Match}
+		return p.literal(f.Match, false)
 	case logql_log.LineMatchRegexp:
-		return regexliteral.Literals(filter.Match)
+		return p.regex(f.Match, false)
 	default:
-		return nil
+		// Negative and pattern filters.
+		return needle.True()
 	}
 }
 
-// collectLabelFilterLiterals walks a label filterer and returns literals from
-// mandatory positive equality/regex leaves. AND combines children; OR
-// contributes nothing (no individual branch is guaranteed).
-func collectLabelFilterLiterals(filter logql_log.LabelFilterer) []string {
-	if filter == nil {
-		return nil
-	}
-
+// labelFilter is the needle of a label filterer. and combines children with
+// AND, or with OR.
+func (p planner) labelFilter(filter logql_log.LabelFilterer, postParser bool) needle.Expr {
 	switch f := filter.(type) {
 	case *logql_log.BinaryLabelFilter:
-		// OR: neither branch is mandatory (e.g. | a="x" or b="y") → ignore.
-		if !f.And {
-			return nil
+		left := p.labelFilter(f.Left, postParser)
+		right := p.labelFilter(f.Right, postParser)
+		if f.And {
+			return needle.And(left, right)
 		}
-		// AND: Left/Right are the two children (e.g. | foo="abcdef", bar="ghijkl"
-		// → Left=foo, Right=bar). Recurse and keep eligible literals from each;
-		// that example yields ["abcdef", "ghijkl"].
-		left := collectLabelFilterLiterals(f.Left)
-		right := collectLabelFilterLiterals(f.Right)
-		if len(left) == 0 {
-			return right
-		}
-		if len(right) == 0 {
-			return left
-		}
-		out := make([]string, 0, len(left)+len(right))
-		out = append(out, left...)
-		out = append(out, right...)
-		return out
+		return needle.Or(left, right)
 
 	case *logql_log.LineFilterLabelFilter:
 		// Usual leaf after ParseExpr for | foo="bar" / | foo=~"...".
-		return extractMatcherLiterals(f.Matcher)
+		return p.matcher(f.Matcher, postParser)
 
 	case *logql_log.StringLabelFilter:
-		// Same LogQL as above; NewStringLabelFilter usually returns
-		// LineFilterLabelFilter instead of StringLabelFilter.
-		// Handle the rare fallback form.
-		return extractMatcherLiterals(f.Matcher)
+		// Same LogQL as above. NewStringLabelFilter usually returns
+		// LineFilterLabelFilter instead of StringLabelFilter, this is the
+		// rare fallback form.
+		return p.matcher(f.Matcher, postParser)
 
 	default:
-		// Numeric, duration, bytes, IP, noop, and other filterers are ineligible.
-		return nil
+		// Numeric, duration, bytes, IP, noop, and other filterers.
+		return needle.True()
 	}
 }
 
-// collectPostParserLabelFilterLiterals returns values from label filters
-// after json, logfmt, regexp, or pattern (e.g. | json | msg="ok").
-// ExtractLabelFiltersBeforeParser stops at the first parser; this continues
-// past it and keeps a value only if it still appears in the ingested line.
-func collectPostParserLabelFilterLiterals(expr syntax.Expr) []string {
-	if expr == nil {
-		return nil
+func (p planner) matcher(m *labels.Matcher, postParser bool) needle.Expr {
+	if m == nil || !UsableLabelName(m.Name) {
+		return needle.True()
 	}
+	switch m.Type {
+	case labels.MatchEqual:
+		return p.literal(m.Value, postParser)
+	case labels.MatchRegexp:
+		// Label regexes are anchored, but the value is looked up as a
+		// substring of the indexed text, so required literals still apply.
+		return p.regex(m.Value, postParser)
+	default:
+		return needle.True()
+	}
+}
 
-	var out []string
+// postParserClauses returns the clauses of label filters after json, logfmt,
+// regexp, or pattern (e.g. | json | msg="ok").
+// ExtractLabelFiltersBeforeParser stops at the first parser. This continues
+// past it and keeps a value only if it still appears in the ingested line.
+func (p planner) postParserClauses(expr syntax.Expr) []needle.Expr {
+	var out []needle.Expr
 	visitor := &syntax.DepthFirstTraversal{
 		VisitPipelineFn: func(_ syntax.RootVisitor, pipe *syntax.PipelineExpr) {
-			out = append(out, literalsFromPostParserWindow(pipe.MultiStages)...)
+			out = append(out, p.postParserWindow(pipe.MultiStages)...)
 		},
 	}
 	expr.Accept(visitor)
 	return out
 }
 
-// literalsFromPostParserWindow walks one pipeline left to right. If a parser pulls
-// a value from the original logline, we collect the label-filter values that come after it.
-// If we hit a stage that rewrites the line or invents labels, the filters after it
-// are no longer safe n-gram lookups, so we stop.
-func literalsFromPostParserWindow(stages syntax.MultiStageExpr) []string {
+// postParserWindow walks one pipeline left to right. If a parser pulls a
+// value from the original logline, we collect the label filters that come
+// after it. If we hit a stage that rewrites the line or invents labels, the
+// filters after it are no longer safe n-gram lookups, so we stop.
+func (p planner) postParserWindow(stages syntax.MultiStageExpr) []needle.Expr {
 	windowOpen := false
 	closedPermanently := false
-	var out []string
+	var out []needle.Expr
 
 	closeWindow := func() {
 		closedPermanently = true
@@ -240,11 +301,7 @@ func literalsFromPostParserWindow(stages syntax.MultiStageExpr) []string {
 			if !windowOpen || s == nil {
 				continue
 			}
-			for _, lit := range collectLabelFilterLiterals(s.LabelFilterer) {
-				if IsVerbatimLineLiteral(lit) {
-					out = append(out, strings.FieldsFunc(lit, func(r rune) bool { return r == '/' || r == ' ' })...)
-				}
-			}
+			out = append(out, p.labelFilter(s.LabelFilterer, true))
 
 		case *syntax.LineFilterExpr:
 			// |= "..." does not extract or derive labels.
@@ -281,22 +338,6 @@ func IsVerbatimLineLiteral(s string) bool {
 // Reserved `__*` names (e.g. `__error__`) are set by Loki, not read from the line.
 func UsableLabelName(name string) bool {
 	return name != "" && !strings.HasPrefix(name, model.ReservedLabelPrefix)
-}
-
-func extractMatcherLiterals(m *labels.Matcher) []string {
-	if m == nil || !UsableLabelName(m.Name) {
-		return nil
-	}
-	switch m.Type {
-	case labels.MatchEqual:
-		return []string{m.Value}
-	case labels.MatchRegexp:
-		// Label regexes are anchored, but the value is looked up as a
-		// substring of the indexed text, so required literals still apply.
-		return regexliteral.Literals(m.Value)
-	default:
-		return nil
-	}
 }
 
 // upperASCII uppercases a-z and leaves every other byte as it is. This is the
