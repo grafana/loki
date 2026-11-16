@@ -414,23 +414,18 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 	return days
 }
 
-// needleKey returns the cache key for what a lookup does for expr: its needle
-// sets and the n-gram length. Queries with the same needle sets share a key,
-// even with different stream matchers or pipelines. ok is false with no single
-// log selector or no needles; key on the expression then.
+// needleKey returns the cache key for expr: the needle sets a lookup uses and
+// the n-gram length. ok is false when there is nothing to share, so the caller
+// keys on the expression.
 func needleKey(expr syntax.Expr, ngramLength, maxConjunctions int) (key string, ok bool) {
 	selector := expr
 	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
 		selector = inner
 	}
-	// A binary operation has a selector on each side, and SupportedQuery would
-	// combine their needles into one plan. Key on the expression instead.
+	// A binary operation has a selector on each side, so it has no single plan.
 	if _, isLog := selector.(syntax.LogSelectorExpr); !isLog {
 		return "", false
 	}
-	// The same call the lookup makes, so the key holds the needles it uses.
-	// Conjunctions are sorted and normalized, and String quotes each literal,
-	// so a needle containing "," can't look like two.
 	needles := SupportedQuery(expr, ngramLength, maxConjunctions)
 	if len(needles) == 0 {
 		return "", false
