@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -82,15 +83,14 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // the index object itself as reachable, and counts it in the stats.
 //
 // ReachableObjects reads only the stats sections of an index object. It
-// skips the postings sections, and counts the sections of any other type in
-// the stats. Queries read the postings sections only, and the
-// index builder computes the postings and the stats from the same rows. So a
-// section that is not a stats section references no log object that a query
-// can read.
+// skips the postings sections, and the streams and pointers sections of old
+// index objects. Queries read the postings sections only, and the index
+// builder computes the postings and the stats from the same rows. So these
+// sections reference no log object that a query can read.
 //
 // ReachableObjects returns an error, and no paths, if it cannot read a ToC or
-// an index object for another reason. It also returns an error for other
-// content that it cannot interpret, for example a ToC section of an unknown
+// an index object for another reason. It also returns an error for any
+// content that it cannot interpret, for example a section of an unknown
 // type, a ToC of another tenant, or a path that is not clean and relative. A
 // partial result would make reachable objects look unreachable.
 //
@@ -122,21 +122,24 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 		indexBucket: indexBucket,
 		tenant:      tenantID,
 		reachable:   make(map[string]struct{}),
-		stats:       ReachabilityStats{UnexpectedSections: make(map[string]int)},
 	}
 	return walk.run(ctx, windows, maxOpenFiles)
 }
 
-// ReachabilityStats counts the index objects and index sections that
-// ReachableObjects skipped because it did not expect them.
+// ReachabilityStats counts the index objects that ReachableObjects skipped.
 type ReachabilityStats struct {
 	// MissingIndexObjects is the number of index objects that a ToC points
 	// to, but that do not exist.
 	MissingIndexObjects int
+}
 
-	// UnexpectedSections counts the sections of index objects that are not
-	// stats or postings sections, by section type.
-	UnexpectedSections map[string]int
+// legacyPointersSectionType is the type of the pointers sections of old index
+// objects. Loki no longer reads or writes them. [dataobj.SectionType.Equals]
+// ignores the version, so it matches pointers sections of every version.
+var legacyPointersSectionType = dataobj.SectionType{
+	Namespace: "github.com/grafana/loki",
+	Kind:      "pointers",
+	Version:   2,
 }
 
 // reachabilityWalk holds the state of one ReachableObjects call. The index
@@ -276,16 +279,23 @@ func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []
 // can have no tenant. A filter by tenant could drop paths that the tenant can
 // read. The paths of other tenants only make the result larger.
 //
-// It skips postings sections. It counts the sections of other types, and a
-// missing index object, and adds nothing for them.
+// It skips postings sections, and the streams and pointers sections of old
+// index objects. It returns an error for a section of any other type. A new
+// section type could reference log objects, and skipping it would make them
+// look unreachable.
+//
+// It counts a missing index object, and adds nothing for it. It asks the
+// bucket with Exists instead of checking the open error. That error wraps the
+// bucket error with fmt.Errorf, and some buckets detect a missing object only
+// in an unwrapped error.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
 	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, indexPrefetchBytes)
 	if err != nil {
-		missing, existsErr := w.isMissing(ctx, indexPath)
+		exists, existsErr := w.indexBucket.Exists(ctx, indexPath)
 		if existsErr != nil {
 			return fmt.Errorf("opening index object %s: %w", indexPath, errors.Join(err, existsErr))
 		}
-		if !missing {
+		if exists {
 			return fmt.Errorf("opening index object %s: %w", indexPath, err)
 		}
 		w.reachableMu.Lock()
@@ -300,28 +310,12 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 			if err := w.addStatsObjectPaths(ctx, section); err != nil {
 				return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
 			}
-		case postings.CheckSection(section):
+		case postings.CheckSection(section), streams.CheckSection(section), legacyPointersSectionType.Equals(section.Type):
 		default:
-			w.countUnexpectedSection(section)
+			return fmt.Errorf("index object %s: section %d has unknown type %s, so the log objects that it references are unknown", indexPath, i, section.Type)
 		}
 	}
 	return nil
-}
-
-func (w *reachabilityWalk) countUnexpectedSection(section *dataobj.Section) {
-	w.reachableMu.Lock()
-	defer w.reachableMu.Unlock()
-	w.stats.UnexpectedSections[section.Type.String()]++
-}
-
-// isMissing reports whether no object exists at indexPath.
-//
-// It asks the bucket again instead of checking the error of
-// [dataobj.FromBucket]. That error wraps the bucket error with fmt.Errorf,
-// and some buckets detect a missing object only in an unwrapped error.
-func (w *reachabilityWalk) isMissing(ctx context.Context, indexPath string) (bool, error) {
-	exists, err := w.indexBucket.Exists(ctx, indexPath)
-	return !exists, err
 }
 
 // addStatsObjectPaths adds the object paths of a stats section. It returns an
