@@ -61,7 +61,6 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		require.Equal(t, "trace_id", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
 	})
-
 }
 
 func TestIndexOutput_Upload(t *testing.T) {
@@ -84,6 +83,7 @@ func TestIndexOutput_Upload(t *testing.T) {
 		artifact, err := out.artifact("indexes/out")
 		require.NoError(t, err)
 		require.Equal(t, time.Unix(0, 30).UTC(), artifact.MinTime)
+		require.Equal(t, time.Unix(0, 40).UTC(), artifact.MaxTime)
 		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
 	})
