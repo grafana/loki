@@ -2,11 +2,16 @@ package querier
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"io"
 	stditer "iter"
 	"maps"
 	"math"
 	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"slices"
 	"sort"
 	"sync"
@@ -24,11 +29,12 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
@@ -148,6 +154,57 @@ func TestWithDataObjMetadataCache(t *testing.T) {
 
 		require.NotEmpty(t, got)
 	})
+}
+
+func TestWithDataObjMetadataPrefetcher(t *testing.T) {
+	appStream := logproto.Stream{
+		Labels:  `{app="a", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "level=info one", "level", "info"), entry(t, 2, "level=warn two", "level", "warn")},
+	}
+	otherStream := logproto.Stream{
+		Labels:  `{app="b", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "level=info beta", "level", "info", "trace_id", "t1")},
+	}
+	streams := []logproto.Stream{appStream, otherStream}
+
+	// metadataRegionEnd returns where the metadata regions of the data object that the store reads end.
+	// The store holds one object.
+	metadataRegionEnd := func(t *testing.T, store *testDataObjStore) int64 {
+		t.Helper()
+
+		resp, err := store.metastore.Sections(testCtx(t), metastore.SectionsRequest{
+			Start:    at(0),
+			End:      at(100),
+			Matchers: syntax.MustParseLogSelector(`{env="prod"}`, true).Matchers(),
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.Sections)
+
+		return objtest.MetadataRegionEnd(t, store.bucket, resp.Sections[0].ObjectPath)
+	}
+
+	queries := map[string]string{
+		"a count that reads no metadata column": `sum by (app) (count_over_time({env="prod"}[1m]))`,
+		"a grouping on one metadata column":     `sum by (level) (count_over_time({env="prod"}[1m]))`,
+		"a bytes count that reads the message":  `sum by (app) (bytes_over_time({env="prod"}[1m]))`,
+		"a line filter and a metadata filter":   `sum by (app) (count_over_time({env="prod"} |= "info" | level="info" [1m]))`,
+		"a count that keeps every label":        `count_over_time({env="prod"}[1m])`,
+	}
+	for name, query := range queries {
+		t.Run("returns the same samples as without the prefetcher, and reads no metadata from object storage once warm: "+name, func(t *testing.T) {
+			want := newTestDataObjStore(t, streams).selectSamples(testCtx(t), query, at(0), at(10))
+			require.NotEmpty(t, want)
+
+			recorder := &rangeRecorder{}
+			store := newTestDataObjStore(t, streams, withMetadataPrefetcher(newTestPrefetcher(t)), withBucketWrapper(recorder.wrap))
+
+			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "cold")
+			recorder.reset()
+			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "warm")
+			require.NotZero(t, recorder.total(), "the data pages still come from object storage")
+			require.Zero(t, recorder.readsBelow(metadataRegionEnd(t, store)), "reads inside the metadata region")
+		})
+	}
 }
 
 func TestDataObjStore_SelectSamples(t *testing.T) {
@@ -910,6 +967,70 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 	})
 }
 
+// TestDataObjStore_AccessControl runs the store with the label-based access control filter that
+// Loki installs, and checks the policies a gateway sends in the X-Prom-Label-Policy header.
+func TestDataObjStore_AccessControl(t *testing.T) {
+	const query = `sum by (app) (count_over_time({env=~".+"}[1m]))`
+
+	streams := []logproto.Stream{
+		{Labels: `{app="a", env="prod"}`, Entries: []push.Entry{entry(t, 1, "one")}},
+		{Labels: `{app="b", env="prod", secret="true"}`, Entries: []push.Entry{entry(t, 1, "two")}},
+		{Labels: `{app="c", env="dev", secret="true"}`, Entries: []push.Entry{entry(t, 1, "three")}},
+		{Labels: `{app="d", env="dev"}`, Entries: []push.Entry{entry(t, 1, "four")}},
+	}
+	store := newTestDataObjStore(t, streams, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+	readStreams := func(ctx context.Context) []string {
+		return sampleLabels(store.selectSamples(ctx, query, at(0), at(10)))
+	}
+
+	t.Run("returns every stream when the request carries no policy", func(t *testing.T) {
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(testCtx(t)))
+	})
+
+	t.Run("returns only the streams that match a single equality policy", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns the streams that match any of several policies", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{secret!="true", env="prod"}`, `{env="dev"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns every stream when the policy belongs to another tenant", func(t *testing.T) {
+		ctx := accessControlContext(t, "another-tenant", `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("counts only the lines that a rewritten aggregated-metrics query permits", func(t *testing.T) {
+		aggregated := logproto.Stream{
+			Labels: `{__aggregated_metric__="varlog_service"}`,
+			Entries: []push.Entry{
+				entry(t, 1, `service_name="varlog_service" env="dev" classification="confidential"`),
+				entry(t, 2, `service_name="varlog_service" env="dev" classification="secret"`),
+				entry(t, 3, `service_name="varlog_service" env="prod" classification="secret"`),
+				entry(t, 4, `service_name="varlog_service" env="prod" classification="notsecret"`),
+			},
+		}
+		aggregatedStore := newTestDataObjStore(t, []logproto.Stream{aggregated}, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+		policies := policySet(t, objtest.Tenant, `{env!="dev", classification!="secret"}`, `{classification!="secret"}`)
+		request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?"+url.Values{
+			"query": {`sum by (service_name) (count_over_time({__aggregated_metric__="varlog_service"}[1m]))`},
+		}.Encode(), nil)
+		request.Header.Set("X-Scope-OrgID", objtest.Tenant)
+		require.NoError(t, labelaccess.ModifyAggregatedMetricsQuery(request, policies))
+
+		ctx := labelaccess.InjectLabelMatchersContext(testCtx(t), policies)
+		got := aggregatedStore.selectSamples(ctx, request.URL.Query().Get("query"), at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 4, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
+		}, got)
+	})
+}
+
 // denyAppFilterer denies every stream whose app label has the given value.
 type denyAppFilterer struct{ app string }
 
@@ -921,6 +1042,11 @@ func (f denyAppFilterer) ShouldFilter(streamLabels labels.Labels) bool {
 
 func (f denyAppFilterer) RequiredLabelNames() []string { return []string{"app"} }
 
+func (f denyAppFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 // denyEverythingFilterer denies every stream.
 type denyEverythingFilterer struct{}
 
@@ -929,6 +1055,11 @@ func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { ret
 func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
 
 // fixedMetastore yields the descriptors a test supplies as one batch from every SectionsStream
 // call. A test uses it for an object that no real index can describe, such as one that holds two
@@ -977,6 +1108,11 @@ type testDataObjStore struct {
 	// chunkStore counts what the store delegated, so a test can tell a served query from a
 	// passed-through one.
 	chunkStore *chunkStoreSpy
+
+	// metastore and bucket hold the objects that the store reads. The bucket is the one that the objects
+	// were written to, without the wrapper that the store reads through.
+	metastore metastore.Metastore
+	bucket    objstore.BucketReader
 }
 
 type testStoreOptions struct {
@@ -985,6 +1121,8 @@ type testStoreOptions struct {
 	filterer         chunk.RequestChunkFilterer
 	maxConcurrency   int
 	metadataCache    dataobj.MetadataCache
+	prefetcher       metadata.Prefetcher
+	bucketWrapper    func(objstore.Bucket) objstore.Bucket
 	registerer       prometheus.Registerer
 	compactedLayout  bool
 }
@@ -1021,6 +1159,15 @@ func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
 
 func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
+}
+
+// withBucketWrapper wraps the bucket that the store reads.
+func withBucketWrapper(wrap func(objstore.Bucket) objstore.Bucket) testStoreOption {
+	return func(o *testStoreOptions) { o.bucketWrapper = wrap }
+}
+
+func withMetadataPrefetcher(prefetcher metadata.Prefetcher) testStoreOption {
+	return func(o *testStoreOptions) { o.prefetcher = prefetcher }
 }
 
 func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
@@ -1063,12 +1210,21 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 		storeOpts = append(storeOpts, WithDataObjMetadataCache(options.metadataCache))
 	}
 
-	location := builder.Location()
+	if options.prefetcher != nil {
+		storeOpts = append(storeOpts, WithDataObjMetadataPrefetcher(options.prefetcher))
+	}
+
+	bucket := builder.Location().Bucket
+	storeBucket := bucket
+	if options.bucketWrapper != nil {
+		storeBucket = options.bucketWrapper(bucket)
+	}
+	ms := builder.Metastore()
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
+	store, err := NewDataObjStore(chunkStore, storeBucket, ms, options.registerer, storeOpts...)
 	require.NoError(t, err)
 
-	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore, metastore: ms, bucket: bucket}
 }
 
 // selectSamples runs a stream-first metric query and returns its samples as a set.
@@ -1287,7 +1443,7 @@ func TestDataObjStore_RepeatedMetadataFilter(t *testing.T) {
 	})
 }
 
-// metadataCacheSpy wraps a metadatacache.Cache over an in-memory mock backend. It records the key of
+// metadataCacheSpy wraps a metadata.Cache over an in-memory mock backend. It records the key of
 // each call and counts the loads.
 type metadataCacheSpy struct {
 	inner dataobj.MetadataCache
@@ -1298,7 +1454,7 @@ type metadataCacheSpy struct {
 }
 
 func newMetadataCacheSpy() *metadataCacheSpy {
-	return &metadataCacheSpy{inner: metadatacache.NewCache(cache.NewMockCache(), 0, metadatacache.KindLogs, metadatacache.NewMetrics(nil), nil)}
+	return &metadataCacheSpy{inner: metadata.NewCache(cache.NewMockCache(), 0, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)}
 }
 
 func (s *metadataCacheSpy) GetOrLoadMetadataRegion(ctx context.Context, key string, load func(context.Context) ([]byte, error)) ([]byte, error) {
@@ -1341,6 +1497,63 @@ func (s *metadataCacheSpy) loadCount() int {
 	return s.loads
 }
 
+// newTestPrefetcher returns a prefetcher with the default config over an in-memory store.
+func newTestPrefetcher(t *testing.T) *metadata.CachedPrefetcher {
+	t.Helper()
+
+	var cfg metadata.PrefetcherConfig
+	cfg.RegisterFlagsWithPrefix("test.", flag.NewFlagSet("test", flag.PanicOnError))
+
+	p, err := metadata.NewCachedPrefetcher(cache.NewMockCache(), 0, cfg, nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(p.Stop)
+	return p
+}
+
+// rangeRecorder records where the range reads of a bucket start.
+type rangeRecorder struct {
+	objstore.Bucket
+
+	mu      sync.Mutex
+	offsets []int64
+}
+
+func (r *rangeRecorder) wrap(bucket objstore.Bucket) objstore.Bucket {
+	r.Bucket = bucket
+	return r
+}
+
+func (r *rangeRecorder) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	r.mu.Lock()
+	r.offsets = append(r.offsets, off)
+	r.mu.Unlock()
+	return r.Bucket.GetRange(ctx, name, off, length)
+}
+
+func (r *rangeRecorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.offsets = nil
+}
+
+func (r *rangeRecorder) total() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.offsets)
+}
+
+// readsBelow counts the reads that start before end.
+func (r *rangeRecorder) readsBelow(end int64) (n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, off := range r.offsets {
+		if off < end {
+			n++
+		}
+	}
+	return n
+}
+
 // boundedShardsOfFingerprintSpace splits the fingerprint space into n adjacent bounded shards, and
 // returns them as the query-frontend encodes them. n must not be zero.
 func boundedShardsOfFingerprintSpace(n uint64) []string {
@@ -1381,11 +1594,13 @@ func newTestDataObjStoreOfObjects(t *testing.T, objects []testObject) *testDataO
 	}
 	builder.Close()
 
+	bucket := builder.Location().Bucket
+	ms := builder.Metastore()
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, builder.Location().Bucket, builder.Metastore(), nil)
+	store, err := NewDataObjStore(chunkStore, bucket, ms, nil)
 	require.NoError(t, err)
 
-	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore, metastore: ms, bucket: bucket}
 }
 
 // shardLayoutOverrides gives every tenant the shard layout in its layout field and no schema labels.

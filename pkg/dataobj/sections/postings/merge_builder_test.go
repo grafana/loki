@@ -83,7 +83,7 @@ func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
 		for streamID, bucket := range map[int64]uint32{1: 3, 2: 9} {
 			source.ObserveLabelPosting(LabelObservation{
 				ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: "prod",
-				StreamID: streamID, Timestamp: time.Unix(0, 10).UTC(), ShardBucket: bucket,
+				StreamID: streamID, Time: At(time.Unix(0, 10).UTC()), ShardBucket: bucket,
 			})
 		}
 		sourceSections := flushAndOpenSections(t, source)

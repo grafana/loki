@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,10 +21,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -87,7 +84,7 @@ type Service struct {
 	// and with revoke-time stripping of pending commit sets
 	// (onPartitionsLostOrRevoked) against the flush goroutine's commit path.
 	builderMtx          sync.Mutex
-	activeBuilder       *indexBuilder
+	activeBuilder       *Builder
 	lastConsumedOffsets map[kafka.PartitionID]kafka.Offset // highest offset consumed per partition in the current builder
 	pendingFlush        chan struct{}                      // closed by flush goroutine on completion; nil when idle
 	// pendingFlushOffsets is the offset snapshot held by an in-flight
@@ -573,7 +570,7 @@ func (s *Service) stopping(stoppingErr error) error {
 	}
 
 	// Grab the current builder for a final flush before shutting down.
-	var lastBuilder *indexBuilder
+	var lastBuilder *Builder
 	var lastOffsets map[kafka.PartitionID]kafka.Offset
 	err := func() error {
 		s.builderMtx.Lock()
@@ -622,14 +619,14 @@ func (s *Service) processRecordBatch(records []rawRecord) error {
 			return fmt.Errorf("failed to decode protobuf stream (partition=%d offset=%d size=%d): %w",
 				rec.partition, rec.offset, len(rec.value), err)
 		}
-		// processStream returns an error only when spilling a sorted run to
+		// ProcessStream returns an error only when spilling a sorted run to
 		// scratch disk fails (e.g. volume full) — non-recoverable I/O; the pod
 		// must restart and re-consume from the last committed offset. Bail
-		// without advancing offsets so the failure stays visible. The recordRef
+		// without advancing offsets so the failure stays visible. The RecordRef
 		// is read only if the out-of-window panic fires, attributing the crash
 		// to this record.
-		ref := recordRef{valid: true, partition: rec.partition, offset: rec.offset, tenantID: rec.tenantID}
-		if err := s.activeBuilder.processStream(&stream, &parsedLabels, rec.timestamp, ref); err != nil {
+		ref := RecordRef{Valid: true, Partition: rec.partition, Offset: rec.offset, TenantID: rec.tenantID}
+		if err := s.activeBuilder.ProcessStream(&stream, &parsedLabels, rec.timestamp, ref); err != nil {
 			return fmt.Errorf("run spill failed (partition=%d offset=%d): %w",
 				rec.partition, rec.offset, err)
 		}
@@ -738,7 +735,7 @@ func (s *Service) awaitPendingFlush(timeout time.Duration) bool {
 
 // swapBuilder replaces the active builder and offsets with fresh instances,
 // returning the old ones for flushing. Caller must hold builderMtx.
-func (s *Service) swapBuilder() (*indexBuilder, map[kafka.PartitionID]kafka.Offset, error) {
+func (s *Service) swapBuilder() (*Builder, map[kafka.PartitionID]kafka.Offset, error) {
 	oldBuilder := s.activeBuilder
 	oldOffsets := s.lastConsumedOffsets
 
@@ -796,7 +793,7 @@ func (s *Service) flushAndCommit(force bool) {
 }
 
 // executeFlush runs the full flush pipeline for the given builder.
-func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastConsumedOffsets map[kafka.PartitionID]kafka.Offset, reason string, done chan struct{}) {
+func (s *Service) executeFlush(ctx context.Context, builder *Builder, lastConsumedOffsets map[kafka.PartitionID]kafka.Offset, reason string, done chan struct{}) {
 	defer close(done)
 
 	retryTilSuccess := func(step string, retry func(ctx context.Context) error) bool {
@@ -820,17 +817,17 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 	}
 
 	start := time.Now()
-	var files []fileInfo
+	var prepared PreparedIndexes
 	if !retryTilSuccess("prepare_flush_files", func(_ context.Context) error {
 		var err error
-		files, err = builder.prepareIndexes()
+		prepared, err = builder.Prepare()
 		return err
 	}) {
-		builder.clear()
+		builder.Clear()
 		return
 	}
 
-	if len(files) == 0 {
+	if prepared.Len() == 0 {
 		// there is no data in this flush cycle. Still attempt an offset commit:
 		// we may have been drawing down the queue without producing index
 		// data (pre-minDate records, empty protos, zero ngrams; records outside
@@ -842,14 +839,14 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 		retryTilSuccess("commit_offsets", func(ctx context.Context) error {
 			return s.commitOffsets(ctx, lastConsumedOffsets)
 		})
-		builder.clear()
+		builder.Clear()
 		return
 	}
 
 	if !retryTilSuccess("upload_flush_files", func(ctx context.Context) error {
-		return s.uploadPartialIndexes(ctx, files)
+		return prepared.Upload(ctx, s.indexStore)
 	}) {
-		builder.clear()
+		builder.Clear()
 		return
 	}
 
@@ -857,7 +854,7 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 	// into the new active builder since the swap are NOT committed here; they will
 	// be committed by the next flush cycle.
 	//
-	// On-disk cleanup happens after upload succeeds (in builder.clear below, or
+	// On-disk cleanup happens after upload succeeds (in builder.Clear below, or
 	// in the abandonment paths above). Deleting inside the upload goroutines
 	// would race with retryTilSuccess: a partial success deletes some files,
 	// then the retry fails reading them.
@@ -870,12 +867,12 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 		// cycle), so cross-restart duplicates are expected and are collapsed by
 		// downstream compaction. The Exists() check in uploadPartialIndexes only
 		// dedupes upload retries within this process, not across restarts.
-		builder.clear()
+		builder.Clear()
 		return
 	}
 
 	bucketCount := builder.bucketCount()
-	builder.clear()
+	builder.Clear()
 
 	flushDuration := time.Since(start)
 	s.metrics.flushDuration.Observe(flushDuration.Seconds())
@@ -885,7 +882,7 @@ func (s *Service) executeFlush(ctx context.Context, builder *indexBuilder, lastC
 		"msg", "flush complete",
 		"reason", reason,
 		"buckets", bucketCount,
-		"files", len(files),
+		"files", prepared.Len(),
 		"duration", flushDuration,
 	)
 }
@@ -1024,83 +1021,4 @@ func (s *Service) shouldFlush() (bool, string) {
 	}
 
 	return false, ""
-}
-
-// uploadPartialIndexes uploads the cycle's .lidx files to the index store.
-// Each file is written as a store index with metadata derived from the
-// builder's accumulation cycle. StorageIDs are pre-generated by the caller
-// (stored in fileInfo.storageID) so retries reuse the same object paths.
-//
-// The read handles in fileInfo.file are owned by the producing indexBuilder;
-// this function only reads from them (seeking to 0 at each attempt so retries
-// re-read from the start). builder.clear closes the handles and removes the
-// files.
-func (s *Service) uploadPartialIndexes(ctx context.Context, files []fileInfo) error {
-	g, ctx := errgroup.WithContext(ctx)
-
-	for _, f := range files {
-
-		g.Go(func() error {
-			uploadStart := time.Now()
-
-			if _, err := f.file.Seek(0, io.SeekStart); err != nil {
-				return fmt.Errorf("failed to seek index file: %w", err)
-			}
-
-			meta := store.Meta{
-				StorageID:         f.storageID,
-				Date:              f.date,
-				Version:           s.cfg.Index.Version,
-				MinLogTs:          f.minLogTs,
-				MaxLogTs:          f.maxLogTs,
-				MinRecordTs:       f.minEnqueuedTime,
-				MaxRecordTs:       f.maxEnqueuedTime,
-				ShardCount:        s.cfg.Index.ShardCount,
-				ShardAlgorithm:    s.cfg.Index.ShardAlgorithm,
-				ShardValue:        f.shardValue,
-				DocumentInterval:  s.cfg.Index.DocumentInterval,
-				DocumentShardBits: s.cfg.Index.DocumentShardBits,
-			}
-			if err := meta.SetFileInfo(f.file); err != nil {
-				return fmt.Errorf("failed to populate file info: %w", err)
-			}
-			header, err := logline.ReadHeaderAt(f.file, meta.SizeBytes)
-			if err != nil {
-				return fmt.Errorf("failed to read index header: %w", err)
-			}
-			meta.IndexHeader = &header
-
-			exists, err := s.indexStore.IndexExists(ctx, meta)
-			if err != nil {
-				return fmt.Errorf("failed to check index existence: %w", err)
-			}
-			if exists {
-				level.Info(s.logger).Log("msg", "index already exists, skipping upload", "path", meta.IndexPath())
-				s.metrics.uploadDuration.Observe(time.Since(uploadStart).Seconds())
-				return nil
-			}
-
-			if err := s.indexStore.PutIndex(ctx, f.file, meta); err != nil {
-				return fmt.Errorf("failed to upload index: %w", err)
-			}
-
-			level.Info(s.logger).Log(
-				"msg", "uploaded index",
-				"path", meta.IndexPath(),
-				"date", f.date,
-				"min_log_ts", f.minLogTs.Format(time.RFC3339),
-				"max_log_ts", f.maxLogTs.Format(time.RFC3339),
-				"min_rec_ts", f.minEnqueuedTime.Format(time.RFC3339),
-				"max_rec_ts", f.maxEnqueuedTime.Format(time.RFC3339),
-				"duration", time.Since(uploadStart),
-			)
-			s.metrics.uploadDuration.Observe(time.Since(uploadStart).Seconds())
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("partial upload failure: %w", err)
-	}
-	return nil
 }

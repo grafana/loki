@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
 // TestTermIterator_MultiBlock verifies that the lazy block-walking iterator correctly
@@ -36,12 +34,7 @@ func TestTermIterator_MultiBlock(t *testing.T) {
 		}
 	}
 
-	docs := []format.DocumentMetadata{
-		{ID: 0, MinTimeUnix: 1, MaxTimeUnix: 2},
-		{ID: 1, MinTimeUnix: 3, MaxTimeUnix: 4},
-		{ID: 2, MinTimeUnix: 5, MaxTimeUnix: 6},
-	}
-	path := writeTestIndex(t, dir, "multiblock.idx", docs, postings)
+	path := writeTestIndex(t, dir, "multiblock.idx", postings)
 
 	r, err := OpenIndexFile(path)
 	require.NoError(t, err)

@@ -17,47 +17,26 @@
 package config
 
 import (
-	"encoding/json"
 	"net/http"
 	"path/filepath"
+
+	"github.com/prometheus/common/config/internal/secretvalue"
+	"github.com/prometheus/common/config/secret"
 )
 
-const secretToken = "<secret>"
-
 // Secret special type for storing secrets.
-type Secret string
+//
+// It is an alias of secret.Secret, which can be imported on its own without
+// the dependencies of this package.
+type Secret = secret.Secret
 
 // MarshalSecretValue if set to true will expose Secret type
 // through the marshal interfaces. Useful for outside projects
 // that load and marshal the Prometheus config.
 var MarshalSecretValue = false
 
-// MarshalYAML implements the yaml.Marshaler interface for Secrets.
-func (s Secret) MarshalYAML() (any, error) {
-	if MarshalSecretValue {
-		return string(s), nil
-	}
-	if s != "" {
-		return secretToken, nil
-	}
-	return nil, nil
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for Secrets.
-func (s *Secret) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain Secret
-	return unmarshal((*plain)(s))
-}
-
-// MarshalJSON implements the json.Marshaler interface for Secret.
-func (s Secret) MarshalJSON() ([]byte, error) {
-	if MarshalSecretValue {
-		return json.Marshal(string(s))
-	}
-	if len(s) == 0 {
-		return json.Marshal("")
-	}
-	return json.Marshal(secretToken)
+func init() {
+	secretvalue.Marshal = &MarshalSecretValue
 }
 
 type ProxyHeader map[string][]Secret

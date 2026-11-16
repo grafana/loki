@@ -79,8 +79,8 @@ func newInstanceMetrics(reg prometheus.Registerer) *instanceMetrics {
 		memoryStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_memory_streams",
-			Help:      "The total number of streams in memory per tenant.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams in memory per tenant and policy.",
+		}, []string{"tenant", "policy"}),
 		memoryStreamShards: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_memory_stream_shards",
@@ -123,7 +123,7 @@ type instance struct {
 	// per-tenant ingester metrics that are initialized at construction time
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
-	memoryStreams       prometheus.Gauge
+	memoryStreams       *policyGauges
 	memoryStreamShards  prometheus.Gauge
 
 	tailers   map[uint32]*tailer
@@ -192,7 +192,7 @@ func newInstance(
 		metrics:             metrics,
 		streamsCreatedTotal: metrics.instance.streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: metrics.instance.streamsRemovedTotal.WithLabelValues(instanceID),
-		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
+		memoryStreams:       newPolicyGauges(metrics.instance.memoryStreams, instanceID),
 		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
 		tailers:             map[uint32]*tailer{},
@@ -223,14 +223,20 @@ func newInstance(
 	return i, err
 }
 
-// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+// Push pushes a request without a record timestamp, see PushWithTimestamp.
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp will iterate over the given streams present in the PushRequest and attempt to store them.
 //
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
+	record.IngestedAt = req.IngestedAt
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
@@ -257,7 +263,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, req.IngestedAt)
 		s.chunkMtx.Unlock()
 	}
 
@@ -384,7 +390,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 }
 
 func (i *instance) onStreamCreated(s *stream) {
-	i.memoryStreams.Inc()
+	i.memoryStreams.For(s.policy).Inc()
 	if s.labels.Has(constants.StreamShardLabel) {
 		i.memoryStreamShards.Inc()
 	}
@@ -459,7 +465,7 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
-		i.memoryStreams.Dec()
+		i.memoryStreams.For(s.policy).Dec()
 		if s.labels.Has(constants.StreamShardLabel) {
 			i.memoryStreamShards.Dec()
 		}

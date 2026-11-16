@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	lokimem "github.com/grafana/loki/v3/pkg/memory"
@@ -88,14 +89,29 @@ type resolvedRow struct {
 	ambiguousNames []string
 }
 
-// postingsIndexSectionsReader resolves matching streams from an index object's
-// postings sections via a streamSelector, expands each result's
-// stream-ID bitmap into one resolvedRow per stream, and serializes those
-// rows in batchSize chunks. Section lifetime is bound to the underlying
-// *dataobj.Object, so the reader does not close sections itself.
+// indexObject is one index object of an index run, with the shard layout
+// that its ToC entry records.
+type indexObject struct {
+	obj *dataobj.Object
+
+	// shardBuckets is the shard layout from the ToC. The zero value means the
+	// reader reads the layout from obj.
+	shardBuckets indexpointers.ShardBuckets
+}
+
+// errRunShardLayouts reports a run whose index objects record different shard
+// layouts. Writers never produce such a run.
+var errRunShardLayouts = errors.New("index objects of one run record different shard layouts")
+
+// postingsIndexSectionsReader resolves matching streams from the postings
+// sections of the index objects of one index run via one streamSelector,
+// expands each result's stream-ID bitmap into one resolvedRow per stream, and
+// serializes those rows in batchSize chunks. Section lifetime is bound to the
+// underlying *dataobj.Object values, so the reader does not close sections
+// itself.
 type postingsIndexSectionsReader struct {
-	logger log.Logger
-	obj    *dataobj.Object
+	logger  log.Logger
+	objects []indexObject
 
 	matchers   []*labels.Matcher
 	predicates []*labels.Matcher
@@ -117,7 +133,7 @@ type postingsIndexSectionsReader struct {
 
 func newPostingsIndexSectionsReader(
 	logger log.Logger,
-	obj *dataobj.Object,
+	objects []indexObject,
 	start, end time.Time,
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
@@ -129,7 +145,7 @@ func newPostingsIndexSectionsReader(
 	}
 	return &postingsIndexSectionsReader{
 		logger:     logger,
-		obj:        obj,
+		objects:    objects,
 		matchers:   matchers,
 		predicates: predicates,
 		start:      start,
@@ -157,12 +173,22 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	var matching []*dataobj.Section
-	for _, section := range r.obj.Sections() {
-		if section.Tenant != tenant || !postings.CheckSection(section) {
-			continue
+	var (
+		matching    []*dataobj.Section
+		withPosting []indexObject
+	)
+	for _, object := range r.objects {
+		objectHasPostings := false
+		for _, section := range object.obj.Sections() {
+			if section.Tenant != tenant || !postings.CheckSection(section) {
+				continue
+			}
+			matching = append(matching, section)
+			objectHasPostings = true
 		}
-		matching = append(matching, section)
+		if objectHasPostings {
+			withPosting = append(withPosting, object)
+		}
 	}
 
 	opened := make([]*postings.Section, len(matching))
@@ -170,12 +196,12 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	g.SetLimit(maxConcurrentSectionOpens)
 
 	// Read the layout in parallel with the postings sections, so the two reads overlap. An index
-	// with no postings section of the tenant has nothing to prune.
+	// object with no postings section of the tenant has nothing to prune.
 	var bucketRange *postings.ShardBucketRange
-	if len(matching) > 0 {
+	if len(withPosting) > 0 {
 		g.Go(func() error {
 			var err error
-			bucketRange, err = r.shardBucketRange(groupCtx, tenant)
+			bucketRange, err = r.shardBucketRange(groupCtx, tenant, withPosting)
 			return err
 		})
 	}
@@ -205,23 +231,49 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	return nil
 }
 
-// shardBucketRange maps the hash range of the request to the shard buckets of tenant in this index
-// object. It returns nil if the request has no hash range, or if the range covers every bucket of
-// the layout, because such a range prunes nothing.
-func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tenant string) (*postings.ShardBucketRange, error) {
+// shardBucketRange maps the hash range of the request to the shard buckets of tenant in objects. It
+// returns nil if the request has no hash range, or if the range covers every bucket of the layout,
+// because such a range prunes nothing.
+//
+// Every index object must have the same shard layout. It returns an error that wraps
+// errRunShardLayouts otherwise.
+func (r *postingsIndexSectionsReader) shardBucketRange(ctx context.Context, tenant string, objects []indexObject) (*postings.ShardBucketRange, error) {
 	if r.hashRange == nil {
 		return nil, nil
 	}
 
-	layout, err := indexobj.TenantShardLayout(ctx, r.obj, tenant)
+	layout, err := objects[0].shardLayout(ctx, tenant)
 	if err != nil {
-		return nil, fmt.Errorf("reading the shard layout of the index object: %w", err)
+		return nil, err
 	}
+	for _, object := range objects[1:] {
+		other, err := object.shardLayout(ctx, tenant)
+		if err != nil {
+			return nil, err
+		}
+		if other != layout {
+			return nil, fmt.Errorf("%w: %d and %d buckets", errRunShardLayouts, layout.Buckets(), other.Buckets())
+		}
+	}
+
 	from, to := layout.BucketRange(*r.hashRange)
 	if layout.CoversAllShardBuckets(from, to) {
 		return nil, nil
 	}
 	return &postings.ShardBucketRange{From: from, To: to}, nil
+}
+
+// shardLayout returns the shard layout of tenant in o. It takes the layout from
+// the ToC if the ToC records it, so it reads no stats section.
+func (o indexObject) shardLayout(ctx context.Context, tenant string) (streams.ShardLayout, error) {
+	if layout, ok := o.shardBuckets.Layout(); ok {
+		return layout, nil
+	}
+	layout, err := indexobj.TenantShardLayout(ctx, o.obj, tenant)
+	if err != nil {
+		return streams.ShardLayout{}, fmt.Errorf("reading the shard layout of the index object: %w", err)
+	}
+	return layout, nil
 }
 
 var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")

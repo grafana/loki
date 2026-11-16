@@ -58,6 +58,7 @@ Here is an example of using it on a small piece of YAML:
 ./go-yaml -t <<< '
 foo: &a1 bar
 *a1: baz
+'
 ```
 
 
@@ -166,10 +167,10 @@ make shell GO-VERSION=1.23.4
 The repository's makefile (`GNUmakefile`) provides a number of useful targets:
 
 - `make test` runs all tests including yaml-test-suite tests
-- `make test-unit` runs just the unit tests
+- `make test-main` runs just the unit tests
 - `make test-internal` runs just the internal tests
 - `make test-yts` runs just the yaml-test-suite tests
-- `make test v=1 count=3` runs the tests with options
+- `make test v=1 opts='-count=3'` runs the tests with options
 - `make test GO-VERSION=1.23.4` runs the tests with a specific Go version
 - `make test GO_YAML_PATH=/path/to/go/bin` uses your own Go installation
 - `make shell` opens a shell with the project's dependencies set up
@@ -179,6 +180,25 @@ The repository's makefile (`GNUmakefile`) provides a number of useful targets:
 - `make lint-yaml` runs a pinned yamllint using uv from Makes
 - `make tidy` runs `go mod tidy`
 - `make distclean` cleans the project completely
+
+
+## Preparing a GitHub Release
+
+Write and review the announcement in `docs/releases/vVERSION.md`.
+After the annotated tag is available on GitHub, run from the repository root:
+
+```bash
+make release v=4.0.0
+```
+
+Makes installs the GitHub CLI automatically.
+Authenticate it with an account that can create releases in `yaml/go-yaml`.
+The target requires an unprefixed stable version, a matching remote tag, and
+nonempty release notes.
+It creates an unpublished draft and prints its URL.
+Review the rendered announcement on GitHub, then publish it as a stable release
+marked **Latest**.
+Run `make test-release` to check the target using a mock GitHub CLI.
 
 
 ## Getting Help

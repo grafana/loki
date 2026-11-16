@@ -34,7 +34,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -566,6 +566,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
+		// The prefetcher serves the metadata of log objects. Index objects and ToCs use their own caches.
+		if t.dataObjMetadataPrefetcher != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataPrefetcher(t.dataObjMetadataPrefetcher))
+		}
+
 		dataObjStore, err = querier.NewDataObjStore(t.Store, t.dataObjBucket, t.dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
@@ -811,8 +816,9 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the metadata caches of the data objects and, when enabled, the metadata prefetcher. They share
+// one backend. The prefetcher serves the log objects when enabled. Otherwise the logs cache does. It returns no service
+// when data objects are disabled or no cache is configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
 		return nil, nil
@@ -820,21 +826,45 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "querier")
 
-	backend, maxItemBytes, err := metadatacache.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+	backend, maxItemBytes, err := metadata.NewBackend(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 	}
 
-	cacheMetrics := metadatacache.NewMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindLogs, cacheMetrics, logger)
-	t.dataObjIndexCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindIndex, cacheMetrics, logger)
-	t.dataObjTOCCache = metadatacache.NewCache(backend, maxItemBytes, metadatacache.KindTOC, cacheMetrics, logger)
+	if t.Cfg.DataObj.MetadataPrefetcher.Enabled {
+		t.dataObjMetadataPrefetcher, err = metadata.NewCachedPrefetcher(backend, maxItemBytes, t.Cfg.DataObj.MetadataPrefetcher, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			backend.Stop()
+			return nil, err
+		}
+	}
+
+	// The prefetcher takes the limit of the backend as it is, where zero means no limit, because it bounds its items by
+	// max_region_bytes. The other caches need a limit: the decoder reads no more than the limit of a cache in bytes of
+	// metadata for an item, and the bound also stops a corrupt layout from driving a huge allocation. They use 8 MiB
+	// when the backend has none.
+	metadataCacheMaxItemBytes := maxItemBytes
+	if metadataCacheMaxItemBytes <= 0 {
+		metadataCacheMaxItemBytes = 8 << 20
+	}
+
+	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
+	t.dataObjIndexCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
+	t.dataObjTOCCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
+	if t.dataObjMetadataPrefetcher == nil {
+		t.dataObjLogsCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+	}
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
 		t.dataObjIndexCache.Stop()
 		t.dataObjTOCCache.Stop()
+		if t.dataObjLogsCache != nil {
+			t.dataObjLogsCache.Stop()
+		}
+		if t.dataObjMetadataPrefetcher != nil {
+			t.dataObjMetadataPrefetcher.Stop()
+		}
 		return nil
 	}), nil
 }
@@ -1001,12 +1031,28 @@ func (t *Loki) initStore() (services.Service, error) {
 		}
 	}
 
+	perIndexOwnership := t.usePerIndexOwnership()
+	if perIndexOwnership {
+		// Read the sharded index copy of the schema periods that have one, and
+		// preload only the indexes this gateway owns, after it has joined the
+		// ring and can tell which those are.
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
+		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
+		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
+	}
+
 	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}
 
 	t.Store = store
+
+	if perIndexOwnership {
+		logger := log.With(util_log.Logger, "component", "index-gateway")
+		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer))
+	}
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.Store.Stop()
@@ -1265,8 +1311,9 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 // compactorAddress returns the configured address of the compactor.
 // It prefers grpc address over http. If the address is grpc then the bool would be true otherwise false
 func (t *Loki) compactorAddress() (string, bool, error) {
-	if t.Cfg.isTarget(All) {
-		// In single binary or read modes, this module depends on Server
+	// With -target=all the compactor runs in this process and serves the delete requests API on the local gRPC server.
+	// A compactor worker does not hold the delete requests store, so it has to ask the main compactor.
+	if t.Cfg.isTarget(All) && t.Cfg.CompactorConfig.HorizontalScalingMode != compactor.HorizontalScalingModeWorker {
 		return net.JoinHostPort(t.Cfg.Server.GRPCListenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
 	}
 
@@ -1874,6 +1921,16 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	return t.indexGatewayRingManager, nil
 }
 
+// usePerIndexOwnership reports whether this process is an index gateway that
+// owns indexes per (tenant, table) in the ring.
+func (t *Loki) usePerIndexOwnership() bool {
+	return t.Cfg.IndexGateway.PerIndexOwnership.Enabled &&
+		t.Cfg.IndexGateway.Mode == indexgateway.RingMode &&
+		t.Cfg.isTarget(IndexGateway) &&
+		t.indexGatewayRingManager != nil &&
+		t.indexGatewayRingManager.Mode == lokiring.ServerMode
+}
+
 func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	// Only expose per-tenant metric if index gateway runs as standalone service
 	if t.Cfg.isTarget(IndexGateway) {
@@ -2144,6 +2201,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
 		Bucket:          indexBucket,
+		DataBucket:      store,
 		MetastoreWriter: tocWriter,
 		Limits:          t.Overrides,
 		Logger:          logger,
@@ -2445,12 +2503,16 @@ func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
 	// keeps its own watcher rather than reusing t.PartitionRingWatcher so its
 	// logline_partition_ring_* metrics stay unchanged; see the TODO on
 	// builder.PartitionRingWatcher.
-	t.loglinePartitionRing = loglinebuilder.NewPartitionRingWatcher(
+	var err error
+	t.loglinePartitionRing, err = loglinebuilder.NewPartitionRingWatcher(
 		t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore,
 		ingester.PartitionRingKey,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
 	return t.loglinePartitionRing, nil
 }
 
@@ -2534,9 +2596,11 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	// the index does not record it, so a reader must use the value the builder
 	// did. The store's ingester window comes from loglineStoreConfig, so
 	// IndexesForRange and IndexesExcludedByIngesterWindow match production
-	// narrowing.
+	// narrowing. AlignQueriesWithStep comes from query_range, so a metric
+	// cycle uses the same step alignment as the query frontend.
 	cfg := t.Cfg.Logline.Correctness
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
 	indexStore, err := loglinestore.New(
 		context.Background(),

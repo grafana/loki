@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"flag"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,9 +14,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
@@ -330,4 +334,124 @@ func TestLoglineStoreConfigBorrowsIngesterWindow(t *testing.T) {
 			require.Zero(t, l.Cfg.Logline.Store.QueryIngestersWithin)
 		})
 	}
+}
+
+func TestCompactorAddress(t *testing.T) {
+	const (
+		ownGRPCAddress = "10.0.0.1:9095"
+		mainGRPC       = "loki-main:9095"
+		compactorHTTP  = "http://compactor:3100"
+	)
+
+	for _, tc := range []struct {
+		name        string
+		target      []string
+		mode        string
+		grpcAddress string
+		httpAddress string
+		want        string
+		wantGRPC    bool
+		wantErr     bool
+	}{
+		{
+			name:     "all targets with the compactor disabled uses the own address",
+			target:   []string{All},
+			mode:     compactor.HorizontalScalingModeDisabled,
+			want:     ownGRPCAddress,
+			wantGRPC: true,
+		},
+		{
+			name:        "all targets with the main compactor uses the own address",
+			target:      []string{All},
+			mode:        compactor.HorizontalScalingModeMain,
+			grpcAddress: mainGRPC,
+			want:        ownGRPCAddress,
+			wantGRPC:    true,
+		},
+		{
+			name:        "all targets with a worker compactor uses the configured address",
+			target:      []string{All},
+			mode:        compactor.HorizontalScalingModeWorker,
+			grpcAddress: mainGRPC,
+			want:        mainGRPC,
+			wantGRPC:    true,
+		},
+		{
+			name:    "all targets with a worker compactor requires a configured address",
+			target:  []string{All},
+			mode:    compactor.HorizontalScalingModeWorker,
+			wantErr: true,
+		},
+		{
+			name:        "querier prefers the configured gRPC address",
+			target:      []string{Querier},
+			mode:        compactor.HorizontalScalingModeDisabled,
+			grpcAddress: mainGRPC,
+			httpAddress: compactorHTTP,
+			want:        mainGRPC,
+			wantGRPC:    true,
+		},
+		{
+			name:        "querier falls back to the configured HTTP address",
+			target:      []string{Querier},
+			mode:        compactor.HorizontalScalingModeDisabled,
+			httpAddress: compactorHTTP,
+			want:        compactorHTTP,
+		},
+		{
+			name:    "querier requires a configured address",
+			target:  []string{Querier},
+			mode:    compactor.HorizontalScalingModeDisabled,
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var loki Loki
+			loki.Cfg.Target = tc.target
+			loki.Cfg.Server.GRPCListenAddress = "10.0.0.1"
+			loki.Cfg.Server.GRPCListenPort = 9095
+			loki.Cfg.CompactorConfig.HorizontalScalingMode = tc.mode
+			loki.Cfg.Common.CompactorGRPCAddress = tc.grpcAddress
+			loki.Cfg.Common.CompactorAddress = tc.httpAddress
+
+			got, isGRPC, err := loki.compactorAddress()
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.wantGRPC, isGRPC)
+		})
+	}
+}
+
+func TestInitDataObjCache(t *testing.T) {
+	t.Run("the caches are limited to 8 MiB and the prefetcher is not limited when the backend has no limit", func(t *testing.T) {
+		const defaultMetadataCacheMaxItemBytes = 8 << 20
+		prepareGlobalMetricsRegistry(t)
+
+		var prefetcher metadata.PrefetcherConfig
+		prefetcher.RegisterFlagsWithPrefix("", flag.NewFlagSet("test", flag.PanicOnError))
+		prefetcher.Enabled = true
+		prefetcher.MaxRegionBytes = 2 * defaultMetadataCacheMaxItemBytes
+
+		l := &Loki{}
+		l.Cfg.DataObj.Enabled = true
+		l.Cfg.DataObj.MetadataCache = cache.Config{
+			Prefix:        "dataobj.metadata-cache.",
+			EmbeddedCache: cache.EmbeddedCacheConfig{Enabled: true, MaxSizeMB: 1, TTL: time.Minute},
+		}
+		l.Cfg.DataObj.MetadataPrefetcher = prefetcher
+
+		svc, err := l.initDataObjCache()
+		require.NoError(t, err, "the prefetcher accepts a max region above the limit of the other caches")
+		require.NoError(t, services.StartAndAwaitRunning(t.Context(), svc))
+		defer func() {
+			require.NoError(t, services.StopAndAwaitTerminated(t.Context(), svc))
+		}()
+
+		require.Equal(t, int64(defaultMetadataCacheMaxItemBytes), l.dataObjIndexCache.MaxItemBytes())
+		require.Equal(t, int64(defaultMetadataCacheMaxItemBytes), l.dataObjTOCCache.MaxItemBytes())
+	})
 }

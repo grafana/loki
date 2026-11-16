@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -83,6 +84,27 @@ func TenantShardLayout(ctx context.Context, obj *dataobj.Object, tenant string) 
 		return streams.ShardLayout{}, err
 	}
 	return resolveShardLayout(layout, recorded, unrecorded)
+}
+
+// TenantShardBuckets returns the shard buckets that a ToC entry of obj records
+// for tenant. It is the shard layout that [TenantShardLayout] returns, or the
+// zero ShardBuckets if obj has no stats section for tenant. Without a stats
+// section, the index records no layout, so the ToC records none either.
+//
+// It returns the errors of [TenantShardLayout].
+func TenantShardBuckets(ctx context.Context, obj *dataobj.Object, tenant string) (indexpointers.ShardBuckets, error) {
+	layout, recorded, unrecorded, err := recordedTenantLayout(ctx, obj, tenant)
+	if err != nil {
+		return indexpointers.ShardBuckets{}, err
+	}
+	if recorded == 0 && unrecorded == 0 {
+		return indexpointers.ShardBuckets{}, nil
+	}
+	shardLayout, err := resolveShardLayout(layout, recorded, unrecorded)
+	if err != nil {
+		return indexpointers.ShardBuckets{}, err
+	}
+	return indexpointers.NewShardBuckets(shardLayout), nil
 }
 
 // resolveShardLayout returns the shard layout of an index from what the stats

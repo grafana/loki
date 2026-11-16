@@ -43,7 +43,7 @@ func TestBuilder_Sharded_BucketCount(t *testing.T) {
 			{Timestamp: now, Line: "info: successfully established connection"},
 		},
 	}
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	// With 4 shards, the merge produces 1-4 files for today's date, depending
 	// on which shards the ngrams route to.
@@ -65,7 +65,7 @@ func TestBuilder_Sharded_UnshardedFallback(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed"},
 		},
 	}
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestBuilder_Sharded_PrepareIndexes_ShardFields(t *testing.T) {
 			{Timestamp: now, Line: "error: connection failed to database server with timeout"},
 		},
 	}
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -108,7 +108,7 @@ func TestBuilder_Sharded_NgramRouting(t *testing.T) {
 			{Timestamp: now, Line: "AAAAAA BBBBBB error connection"},
 		},
 	}
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestBuilder_Sharded_LabelValueRouting(t *testing.T) {
 			{Timestamp: now, Line: "x"},
 		},
 	}
-	_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+	_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 
 	files, err := b.prepareIndexes()
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestBuilder_Sharded_PrepareProducesFiles(t *testing.T) {
 					Line: "error: request failed with status 500 at endpoint /api/v1/resource"},
 			},
 		}
-		_ = b.processStream(stream, parseLabelsOrNil(stream.Labels), now, recordRef{})
+		_ = b.ProcessStream(stream, parseLabelsOrNil(stream.Labels), now, RecordRef{})
 	}
 
 	files, err := b.prepareIndexes()

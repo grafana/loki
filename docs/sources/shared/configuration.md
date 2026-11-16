@@ -973,6 +973,20 @@ kafka_config:
   # CLI flag: -kafka.tracing-enabled
   [tracing_enabled: <boolean> | default = false]
 
+  # The highest ApiVersions request version the Kafka client sends, from 1 to 4.
+  # The default of 4 keeps the client compatible with backends that close the
+  # connection on ApiVersions v5, such as WarpStream. 0 removes the cap, so the
+  # client sends v5.
+  # CLI flag: -kafka.api-versions-max-version
+  [api_versions_max_version: <int> | default = 4]
+
+  # The largest size, in bytes, that one fetched Kafka batch may decompress to.
+  # A bigger batch stops the client from reading its partition. The default of
+  # 2147483647 (2 GiB minus 1 byte) is the highest value allowed. 0 uses the
+  # Kafka client default of 1073741824 (1 GiB).
+  # CLI flag: -kafka.max-decompress-batch-bytes
+  [max_decompress_batch_bytes: <int> | default = 2147483647]
+
 dataobj:
   builder:
     logsobj_builder:
@@ -1133,6 +1147,42 @@ dataobj:
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
+  metadata_prefetcher:
+    # Experimental: Serve the metadata of log objects from separate cache items,
+    # so a query reads only the metadata it needs.
+    # CLI flag: -dataobj.metadata-prefetcher.enabled
+    [enabled: <boolean> | default = false]
+
+    # The codec of the cache items. Supported values are: "zstd", "none". With
+    # "none", the cache items stay uncompressed.
+    # CLI flag: -dataobj.metadata-prefetcher.compression
+    [compression: <string> | default = "zstd"]
+
+    # A cache item stays uncompressed when compression shrinks it by less than
+    # this ratio.
+    # CLI flag: -dataobj.metadata-prefetcher.min-compression-ratio
+    [min_compression_ratio: <float> | default = 1.5]
+
+    # Size in bytes of the first object storage read of an object whose metadata
+    # is not cached. The header and the file metadata of the object must fit in
+    # it, or the prefetcher skips the object. The minimum is 16 KiB.
+    # CLI flag: -dataobj.metadata-prefetcher.head-bytes
+    [head_bytes: <int> | default = 262144]
+
+    # The largest metadata region, in bytes, that the prefetcher handles. The
+    # metadata region of an object is the part of the object from its start to
+    # the end of the metadata of all sections. The prefetcher skips an object
+    # with a larger region, and a query reads the metadata of that object
+    # directly. When the metadata cache has a maximum item size
+    # (-dataobj.metadata-cache.memcached.max-item-size, where 0 means no
+    # maximum), this value plus 64 KiB must not exceed it.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
+    [max_region_bytes: <int> | default = 4194304]
+
+    # The time limit of the load that follows a cache miss.
+    # CLI flag: -dataobj.metadata-prefetcher.load-timeout
+    [load_timeout: <duration> | default = 5s]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -1149,6 +1199,21 @@ dataobj:
     # by the coordinator. 0 means unlimited.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Number of times the coordinator runs a failed compaction
+    # task again. 0 disables retries.
+    # CLI flag: -dataobj.compaction.task-max-retries
+    [task_max_retries: <int> | default = 3]
+
+    # Experimental: Shortest wait before the first retry of a failed compaction
+    # task. The wait grows exponentially with each retry, with jitter, up to
+    # task-retry-max-backoff.
+    # CLI flag: -dataobj.compaction.task-retry-min-backoff
+    [task_retry_min_backoff: <duration> | default = 10s]
+
+    # Experimental: Longest wait before a retry of a failed compaction task.
+    # CLI flag: -dataobj.compaction.task-retry-max-backoff
+    [task_retry_max_backoff: <duration> | default = 1m]
 
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
@@ -1233,6 +1298,30 @@ dataobj:
       # worker frame traffic.
       # CLI flag: -dataobj.compaction.scheduler.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    deletion_sweep:
+      # Experimental: Check each tenant once an hour. Scan the tenant
+      # directories of a tenant at most once every 23 hours for objects that no
+      # table of contents (ToC) file can reach, and store them in the deletion
+      # file list of the tenant. The sweep ignores objects outside the tenant
+      # directories. Only tenants with the dataobj_deletion_sweep_enabled limit
+      # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
+      # Requires dataobj compaction to be enabled.
+      # CLI flag: -dataobj.compaction.deletion-sweep.enabled
+      [enabled: <boolean> | default = false]
+
+      # Experimental: Maximum number of deletion sweeps that run at the same
+      # time, across all tenants. Each sweep lists the tenant directories and
+      # reads the table of contents (ToC) files and index objects of the tenant.
+      # CLI flag: -dataobj.compaction.deletion-sweep.max-concurrent-sweeps
+      [max_concurrent_sweeps: <int> | default = 4]
+
+      # Experimental: Log a summary and examples of the deletion candidates,
+      # instead of deleting them. A candidate is an object that no table of
+      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
+      # Only true is supported.
+      # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
+      [dry_run: <boolean> | default = true]
 
     worker:
       # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
@@ -1373,6 +1462,12 @@ ingest_limits:
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
+
+  # How often to evict the streams of ingestion policies with a
+  # limits_service_streams_expiry that have been idle for longer than that
+  # expiry.
+  # CLI flag: -ingest-limits.policies-custom-eviction-interval
+  [policies_custom_eviction_interval: <duration> | default = 1m]
 
   # Enable durability for stream sharding. Rate buckets are written to the
   # stream metadata topic and restored from it, which removes the warm-up period
@@ -3578,9 +3673,11 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
+  # Number of index gateway instances that own each key in the index gateway
+  # ring. It is the default for -index-gateway.shard-size, which can also be set
+  # per tenant. When -index-gateway.per-index-ownership.enabled is true, it is
+  # also the number of index gateways that own each (tenant, table) index, so
+  # index gateways and their clients must use the same value.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 
@@ -3899,6 +3996,12 @@ wal:
   # CLI flag: -ingester.wal-disk-full-threshold
   [disk_full_threshold: <float> | default = 0.9]
 
+  # Write WAL records as V4, which store the Kafka record timestamp. Older
+  # versions can't replay them. When disabled, records are written as V3 and V4
+  # timestamps are ignored on replay.
+  # CLI flag: -ingester.wal-record-v4-enabled
+  [record_v4_enabled: <boolean> | default = false]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards
@@ -4190,10 +4293,6 @@ discover_generic_fields:
 # the stream is limited.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <int> | default = 15MB]
-
-# Maximum number of chunks that can be fetched in a single query.
-# CLI flag: -store.query-chunk-limit
-[max_chunks_per_query: <int> | default = 2000000]
 
 # Limit the maximum of unique series that is returned by a metric query. When
 # the limit is reached an error is returned.
@@ -4505,9 +4604,9 @@ shard_streams:
   # unchanged behavior), 'shadow' (ask the limits service and compare its answer
   # against the local rate store's; the local rate store still decides how
   # streams are sharded) or 'live' (shard streams with the count the limits
-  # service returns, falling back to the local rate store for streams it does
-  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
-  # to be enabled.
+  # service returns; a stream it gives no usable count for is written
+  # unsharded). Both 'shadow' and 'live' have no effect unless the ingest-limits
+  # service is enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
@@ -4577,6 +4676,15 @@ shard_streams:
 # compaction is a configuration error.
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
+# finds the objects of the tenant that no table of contents (ToC) file can
+# reach. An object that two sweeps, at least 23 hours apart, both find
+# unreachable is a deletion candidate. Sweeps log a summary and examples of the
+# candidates, and delete nothing. The sweep also needs
+# -dataobj.compaction.deletion-sweep.enabled.
+# CLI flag: -dataobj-compaction.deletion-sweep.enable
+[dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -5200,6 +5308,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Fail a query on max_query_series as soon as a range iterator
+  # or vector aggregation holds more series than the limit, where the query's
+  # output cannot be smaller. Logs Drilldown requests are exempt.
+  # CLI flag: -querier.engine.max-query-series-cutoff
+  [max_query_series_cutoff: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5942,9 +6056,9 @@ http_config:
 # CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# The S3 storage class which objects will use. Supported values are: STANDARD,
+# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+# with MinIO.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -6819,9 +6933,8 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
-  # FSX_ONTAP, AWS_BACKUP_WARM, AWS_BACKUP_LOW_COST_WARM
+  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
+  # with MinIO.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
@@ -6947,8 +7060,8 @@ gcs:
   # CLI flag: -<prefix>.gcs.service-account
   [service_account: <string> | default = ""]
 
-  # The maximum size of the buffer that GCS client for a single PUT request. 0
-  # to disable buffering.
+  # The maximum size that the GCS client will attempt to send in a single
+  # request. 0 to use a default of 16MB.
   # CLI flag: -<prefix>.gcs.chunk-buffer-size
   [chunk_buffer_size: <int> | default = 0]
 
@@ -7391,10 +7504,8 @@ overrides:
   tenant1:
     ingestion_rate_mb: 10
     max_streams_per_user: 100000
-    max_chunks_per_query: 100000
   tenant2:
     max_streams_per_user: 1000000
-    max_chunks_per_query: 1000000
 
 multi_kv_config:
     mirror-enabled: false

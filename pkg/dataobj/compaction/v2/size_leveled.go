@@ -8,15 +8,15 @@ import (
 )
 
 const (
-	// DefaultSizeLevelBase is the default upper bound of level 0, in bytes of
+	// DefaultSizeLevelBase is the default upper bound of level 1, in bytes of
 	// uncompressed log data. Empirically, a fresh run is one object of about 6GiB. One
-	// fresh run stays in level 0, and a merge of three or more moves up a
+	// fresh run stays in level 1, and a merge of three or more moves up a
 	// level.
 	DefaultSizeLevelBase uint64 = 16 << 30
 
 	// DefaultSizeLevelRatio is the default size ratio between levels. It
-	// matches the default log merge fan-in (K) of 8. For levels 1 and above,
-	// a merge of 8 runs from one level lands in the next level. Level 0 has
+	// matches the default log merge fan-in (K) of 8. For levels 2 and above,
+	// a merge of 8 runs from one level lands in the next level. Level 1 has
 	// no lower bound, so this does not hold there.
 	DefaultSizeLevelRatio uint64 = 8
 )
@@ -25,8 +25,12 @@ const (
 // Runs in the same level have a similar size, so merging them keeps write
 // amplification low.
 //
-// Level 0 holds runs below base. Level n, for n >= 1, holds runs in
-// [base*ratio^(n-1), base*ratio^n). The top level has no upper size bound.
+// Level 1 holds runs below base. Level n, for n >= 2, holds runs in
+// [base*ratio^(n-2), base*ratio^(n-1)). The top level has no upper size bound.
+//
+// Levels start at 1, because level 0 means uncompacted in the file metadata of
+// an object. The strategy groups runs by size only, so it also puts fresh runs
+// below base in level 1.
 //
 // A level is full when it holds at least k runs. Each merge task holds
 // exactly k runs from one level.
@@ -36,7 +40,7 @@ type SizeLeveledStrategy struct {
 	k     int
 }
 
-// NewSizeLeveledStrategy returns a strategy with the given level 0 bound,
+// NewSizeLeveledStrategy returns a strategy with the given level 1 bound,
 // ratio between levels, and number of runs per merge task k.
 //
 // base must be greater than 0 and ratio must be at least 2. k must be at
@@ -55,9 +59,9 @@ func NewSizeLeveledStrategy(base, ratio uint64, k int) (*SizeLeveledStrategy, er
 	return &SizeLeveledStrategy{base: base, ratio: ratio, k: k}, nil
 }
 
-// level returns the index of the level that holds a run of the given size.
+// level returns the level that holds a run of the given size.
 func (s *SizeLeveledStrategy) level(size uint64) int {
-	level := 0
+	level := 1
 	for bound := s.base; size >= bound; level++ {
 		// The next bound would overflow uint64, so no size can reach it.
 		if bound > math.MaxUint64/s.ratio {
@@ -69,27 +73,27 @@ func (s *SizeLeveledStrategy) level(size uint64) int {
 }
 
 // groupByLevels returns runs grouped by level based on each run's uncompressed size.
-// The result has one entry per level up to the highest level that holds a run,
-// and empty levels are nil. Runs keep their input order within each level.
+// The result holds level n at index n-1, up to the highest level that holds a
+// run, and empty levels are nil. Runs keep their input order within each level.
 func (s *SizeLeveledStrategy) groupByLevels(runs []Run) [][]Run {
 	var levels [][]Run
 	for _, run := range runs {
-		level := s.level(run.Size())
-		if level >= len(levels) {
-			levels = append(levels, make([][]Run, level+1-len(levels))...)
+		i := s.level(run.Size()) - 1
+		if i >= len(levels) {
+			levels = append(levels, make([][]Run, i+1-len(levels))...)
 		}
-		levels[level] = append(levels[level], run)
+		levels[i] = append(levels[i], run)
 	}
 	return levels
 }
 
-// RunsPerLevel returns the number of runs in each level, from level 0 up to
+// RunsPerLevel returns the number of runs in each level, from level 1 up to
 // the highest level that holds a run.
 func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
 	levels := s.groupByLevels(runs)
 	counts := make([]int, len(levels))
-	for i, level := range levels {
-		counts[i] = len(level)
+	for i, levelRuns := range levels {
+		counts[i] = len(levelRuns)
 	}
 	return counts
 }
@@ -100,8 +104,8 @@ func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
 // even if its runs overlap. Plan merges each group of k runs in a level into
 // one run, so each compaction reduces the number of runs and compaction stops.
 func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
-	for _, level := range s.groupByLevels(runs) {
-		if len(level) >= s.k {
+	for _, levelRuns := range s.groupByLevels(runs) {
+		if len(levelRuns) >= s.k {
 			return true
 		}
 	}
@@ -118,11 +122,25 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 // Plan returns the runs it does not merge in unmerged, so the caller can keep
 // them without rewriting their data. Every run lands in exactly one merge
 // task or in unmerged.
+//
+// The output level of a task is the level of the summed size of its input
+// runs, so it can be above the level of the inputs.
 func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
-	for _, level := range s.groupByLevels(runs) {
-		full := len(level) - len(level)%s.k
-		merges = append(merges, Plan(level[:full], tenant, s.k)...)
-		unmerged = append(unmerged, level[full:]...)
+	for _, levelRuns := range s.groupByLevels(runs) {
+		full := len(levelRuns) - len(levelRuns)%s.k
+		for start := 0; start < full; start += s.k {
+			group := levelRuns[start : start+s.k]
+			var mergedSize uint64
+			for _, run := range group {
+				mergedSize += run.Size()
+			}
+			outputLevel := uint32(s.level(mergedSize))
+			for _, task := range Plan(group, tenant, s.k) {
+				task.OutputLevel = outputLevel
+				merges = append(merges, task)
+			}
+		}
+		unmerged = append(unmerged, levelRuns[full:]...)
 	}
 	return merges, unmerged
 }

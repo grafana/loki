@@ -7,17 +7,14 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var magic = []byte("DOBJ")
-
-const (
-	fileFormatVersion = 0x1
-)
+var magic = []byte(format.FileMagic)
 
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
@@ -30,6 +27,8 @@ type encoder struct {
 	// prioritySections lists the section types that come first in the
 	// object, in this order. Types match by [SectionType.Equals].
 	prioritySections []SectionType
+
+	sizeLeveled *SizeLeveledCompaction
 
 	typesReady       bool
 	dictionary       []string
@@ -52,11 +51,13 @@ type sectionInfo struct {
 }
 
 // newEncoder returns an encoder that buffers sections in store and puts
-// sections with a type in prioritySections first.
-func newEncoder(store scratch.Store, prioritySections []SectionType) *encoder {
+// sections with a type in prioritySections first. If sizeLeveled is not nil,
+// the encoder writes it into the file metadata of every object.
+func newEncoder(store scratch.Store, prioritySections []SectionType, sizeLeveled *SizeLeveledCompaction) *encoder {
 	return &encoder{
 		store:            store,
 		prioritySections: slices.Clone(prioritySections),
+		sizeLeveled:      sizeLeveled,
 	}
 }
 
@@ -220,6 +221,11 @@ func (enc *encoder) metadata() (*filemd.Metadata, error) {
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
 	}
+	if enc.sizeLeveled != nil {
+		md.Compaction = &filemd.CompactionInfo{
+			SizeLeveled: &filemd.SizeLeveledCompaction{Level: enc.sizeLeveled.Level},
+		}
+	}
 	return md, nil
 }
 
@@ -265,11 +271,11 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, fmt.Errorf("writing magic header: %w", err)
 	}
 
-	metadataSize := streamio.UvarintSize(fileFormatVersion) + protocodec.Size(metadata)
+	metadataSize := streamio.UvarintSize(format.FileFormatVersion) + protocodec.Size(metadata)
 
 	if err := binary.Write(&headerBuffer, binary.LittleEndian, uint32(metadataSize)); err != nil {
 		return nil, fmt.Errorf("writing metadata size: %w", err)
-	} else if err := streamio.WriteUvarint(&headerBuffer, fileFormatVersion); err != nil {
+	} else if err := streamio.WriteUvarint(&headerBuffer, format.FileFormatVersion); err != nil {
 		return nil, err
 	} else if err := protocodec.Encode(&headerBuffer, metadata); err != nil {
 		return nil, err
@@ -305,7 +311,7 @@ func (enc *encoder) Flush() (*snapshot, error) {
 }
 
 // Reset resets the Encoder to a fresh state, removing any sections it still
-// holds from the scratch store.
+// holds from the scratch store. Reset keeps the size-leveled compaction info.
 func (enc *encoder) Reset() {
 	for _, section := range enc.sections {
 		// A failed removal is not actionable: the handle is unreachable either
