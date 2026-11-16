@@ -9,7 +9,8 @@ the full storage read path and parsing/extraction pipeline are exercised end to 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
 
-For syntax highlighting of `.logqltest` files in GoLand or VS Code, see [syntax/README.md](syntax/README.md).
+For syntax highlighting of `.logqltest` files in GoLand, VS Code or Zed, see `tools/syntax/logqltest`
+in the `grafana/loki-toolbox` repository.
 
 ## Commands
 
@@ -285,10 +286,16 @@ Each `eval` runs on multiple execution stacks:
 - `direct (stream-first)` — the same, with stream-first execution enabled.
 - `direct (dataobj)` — the direct stack with stream-first execution and data objects on. The
   stack has no query-frontend, so it marks every query as eligible for data objects itself. The
-  querier reads stream-first queries from data objects and every other query from chunks. A
-  stream-first query that returns data must read data-object rows, or the eval fails.
+  querier reads the stream-first parts of a query from data objects and every other part from
+  chunks. A query with a stream-first part that returns data must read data-object rows, or the
+  eval fails. The check skips a query with another source of samples, such as `vector()` or a range
+  aggregation that is not stream-first, because that source does not read data objects.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
+- `query-frontend + query-scheduler (sharding, timestamp-first, logline)` — the sharded timestamp-first
+  loop with the production Logline hint middleware over stored chunks.
+  Only eligible queries receive hints; unsupported queries, instant metric queries, and
+  `absent_over_time` intentionally bypass hints.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
   and stream-first execution on.
 - `query-frontend + query-scheduler (sharding, dataobj)` — the sharded stream-first loop over the
@@ -296,6 +303,25 @@ Each `eval` runs on multiple execution stacks:
   querier may read from data objects.
 - `query-frontend + query-scheduler (sharding, dataobj and chunk)` — the same, but the querier reads
   the samples before 90s from chunks.
+- `query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)` — the
+  unsharded loop with max query series cutoff on in every engine.
+
+The logline fixture (`store_logline.go`) uses the production `builder.NewBuilder`, `ProcessStream`,
+`Prepare`, and `Upload` path, with `Clear` for cleanup. It publishes indexes and their metadata through
+the production store rather than handcrafting them, using the default index version and a 16s
+document interval. Before the next `eval` after an additive `load` or `clear`, `scriptStores.setStreams`
+rebuilds a shared snapshot of the current streams and synchronously polls the logline store, including
+for empty data. The logline stack runs without an ingester, Kafka builder service, or caches.
+
+Every stack runs with the default series limit of a tenant, which no script reaches.
+
+A stack with another stack-wide series limit is built with a `stackOption` such as
+`withMaxQuerySeries` (`exec.go`). A limit that makes some queries fail can't be checked against the
+eval expectations, so don't add such a stack to `stackNames` and `newExecutionStacks`. Compare how
+each eval ends on two stacks instead, with `runScript`, as
+`TestLogQLScripts_ShouldEndEveryEvalTheSameWayOnTheDirectAndUnshardedQueryFrontendStacks` does.
+`TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff` does the same with
+max query series cutoff disabled and enabled.
 
 ## Example
 

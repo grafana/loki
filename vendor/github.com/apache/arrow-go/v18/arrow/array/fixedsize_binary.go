@@ -97,6 +97,13 @@ func (a *FixedSizeBinary) GetOneForMarshal(i int) interface{} {
 	return a.Value(i)
 }
 
+func (a *FixedSizeBinary) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *FixedSizeBinary) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {

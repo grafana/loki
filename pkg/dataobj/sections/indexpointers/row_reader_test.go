@@ -29,6 +29,29 @@ func TestRowReader(t *testing.T) {
 	require.Equal(t, indexPointerTestData, actual)
 }
 
+func TestRowReader_Read(t *testing.T) {
+	t.Run("returns paths that stay valid after later reads and after Close", func(t *testing.T) {
+		r := indexpointers.NewRowReader(buildIndexPointersDecoder(t, 100, 0))
+		require.NoError(t, r.Open(t.Context()))
+
+		var paths []string
+		buf := make([]indexpointers.IndexPointer, 1)
+		for {
+			n, err := r.Read(t.Context(), buf)
+			for _, pointer := range buf[:n] {
+				paths = append(paths, pointer.Path)
+			}
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.NoError(t, r.Close())
+
+		require.Equal(t, []string{"/path/to/index/object/1", "/path/to/index/object/2", "/path/to/index/object/3"}, paths)
+	})
+}
+
 func TestRowReader_ReadBeforeOpen(t *testing.T) {
 	sec := buildIndexPointersDecoder(t, 100, 0)
 	r := indexpointers.NewRowReader(sec)
@@ -44,7 +67,7 @@ func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *indexpoint
 
 	s := indexpointers.NewBuilder(nil, pageSize, pageRows)
 	for _, d := range indexPointerTestData {
-		s.Append(d.Path, d.StartTs, d.EndTs)
+		s.Append(d)
 	}
 
 	builder := dataobj.NewBuilder(nil)

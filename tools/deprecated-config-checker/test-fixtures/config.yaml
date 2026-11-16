@@ -160,6 +160,7 @@ limits_config:
   per_tenant_override_config: ./overrides.yaml # DELETED
   per_tenant_override_period: 5s # DELETED
   allow_deletes: true # DELETED
+  max_chunks_per_query: 2000000 # DELETED
   bloom_gateway_enable_filtering: true # DEPRECATED
   bloom_build_max_builders: 10 # DEPRECATED
   bloom_build_task_max_retries: 3 # DEPRECATED

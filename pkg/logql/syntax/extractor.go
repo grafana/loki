@@ -142,7 +142,7 @@ func stagesFor(expr *LogRangeExpr) ([]log.Stage, error) {
 	if !ok {
 		return nil, nil
 	}
-	return p.MultiStages.stages()
+	return p.MultiStages.Stages()
 }
 
 // KeepsErroredLines reports whether expr's pipeline asks to keep the lines that carry __error__,

@@ -38,7 +38,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 		ColumnName:       "env",
 		LabelValue:       "prod",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -104,7 +104,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		ColumnName:       "env",
 		LabelValue:       "prod",
 		StreamID:         5,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 	b.ObserveLabelPosting(postings.LabelObservation{
@@ -113,7 +113,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		ColumnName:       "env",
 		LabelValue:       "staging",
 		StreamID:         10,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -190,7 +190,7 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 		ColumnName:   "env",
 		LabelValue:   "prod",
 		StreamID:     1,
-		Timestamp:    time.Unix(0, 0).UTC(),
+		Time:         postings.At(time.Unix(0, 0).UTC()),
 	})
 
 	objBuilder := dataobj.NewBuilder(nil)
@@ -339,7 +339,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 		ColumnName:       "pod",
 		LabelValue:       "foobar",
 		StreamID:         1,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -349,7 +349,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 		ColumnName:       "pod",
 		LabelValue:       "baz",
 		StreamID:         2,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -359,7 +359,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 		ColumnName:       "pod",
 		LabelValue:       "foo",
 		StreamID:         3,
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 
@@ -413,7 +413,7 @@ func TestRowReader_NotRegexMatchPredicate(t *testing.T) {
 			ColumnName:       "pod",
 			LabelValue:       lv,
 			StreamID:         int64(i + 1),
-			Timestamp:        ts,
+			Time:             postings.At(ts),
 			UncompressedSize: 100,
 		})
 	}
@@ -469,7 +469,7 @@ func TestRowReader_ContinuesPastEmptyBatches(t *testing.T) {
 			ColumnName:       "pod",
 			LabelValue:       fmt.Sprintf("pod-%d", i),
 			StreamID:         int64(i + 1),
-			Timestamp:        ts,
+			Time:             postings.At(ts),
 			UncompressedSize: 100,
 		})
 	}
@@ -480,7 +480,7 @@ func TestRowReader_ContinuesPastEmptyBatches(t *testing.T) {
 		ColumnName:       "pod",
 		LabelValue:       "pod-z", // lexigraphically after 'a' so it is sorted after the previous batch
 		StreamID:         int64(8193),
-		Timestamp:        ts,
+		Time:             postings.At(ts),
 		UncompressedSize: 100,
 	})
 

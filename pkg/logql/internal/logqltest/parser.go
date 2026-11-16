@@ -262,6 +262,20 @@ func (c evalCmd) getTimeRange() (start, end, step time.Duration) {
 	}
 }
 
+// label returns the name of the subtest of the eval: its mode and its query.
+func (c evalCmd) label() string {
+	switch c.mode {
+	case evalInstant:
+		return "instant: " + c.query
+	case evalRange:
+		return "range: " + c.query
+	case evalSelect:
+		return "select " + strings.ToLower(c.direction.String()) + ": " + c.query
+	default:
+		panic(fmt.Sprintf("unknown eval mode %v", c.mode))
+	}
+}
+
 func parseEval(line string) (evalCmd, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "eval"))
 	switch {

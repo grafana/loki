@@ -69,6 +69,11 @@ func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
 
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
 // epoch anchors every test timestamp, so a query range reads as plain seconds and the metastore's
 // time filter has something stable to match.
 var epoch = time.Unix(0, 0).UTC()

@@ -13,8 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 func main() {
@@ -113,10 +111,7 @@ func (cmd *localityCommand) run() error {
 // buildSource constructs the section source from the mutually-exclusive
 // --dir (local) or --config.file (bucket) flags.
 func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, from, to time.Time) (sectionSource, error) {
-	var (
-		b    objstore.Bucket
-		mCfg metastore.Config
-	)
+	var b objstore.Bucket
 
 	switch {
 	case *cmd.dir != "":
@@ -127,17 +122,16 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 		if err != nil {
 			return nil, fmt.Errorf("opening local directory %s: %w", *cmd.dir, err)
 		}
+		// The directory is the bucket root: --dir assumes no
+		// StorageBucketPrefix is in play.
 		b = fsBucket
-		// Use the same defaults as metastore.Config.RegisterFlagsWithPrefix.
-		// --dir assumes no StorageBucketPrefix is in play.
-		mCfg = metastore.Config{IndexStoragePrefix: "index/v0"}
 
 	case *cmd.lokiConfigFile != "":
 		if *cmd.tenant == "" {
 			return nil, fmt.Errorf("--tenant is required for the bucket source")
 		}
 		var err error
-		b, mCfg, err = buildBucketFromLokiConfig(ctx, *cmd.lokiConfigFile, *cmd.expandEnv, logger)
+		b, err = buildBucketFromLokiConfig(ctx, *cmd.lokiConfigFile, *cmd.expandEnv, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -147,13 +141,12 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 	}
 
 	return &indexObjectSource{
-		rawBucket:    b,
-		metastoreCfg: mCfg,
-		tenant:       *cmd.tenant,
-		from:         from,
-		to:           to,
-		logger:       logger,
-		concurrency:  *cmd.concurrency,
+		rawBucket:   b,
+		tenant:      *cmd.tenant,
+		from:        from,
+		to:          to,
+		logger:      logger,
+		concurrency: *cmd.concurrency,
 	}, nil
 }
 

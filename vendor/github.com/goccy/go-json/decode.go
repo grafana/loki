@@ -83,6 +83,7 @@ var (
 	pathDecoder = decoder.NewPathDecoder()
 )
 
+// extractFromPath returns the values of data which the path selects: parts of data, or of a copy of it.
 func extractFromPath(path *Path, data []byte, optFuncs ...DecodeOptionFunc) ([][]byte, error) {
 	if path.path.RootSelectorOnly {
 		return [][]byte{data}, nil
@@ -90,10 +91,10 @@ func extractFromPath(path *Path, data []byte, optFuncs ...DecodeOptionFunc) ([][
 	src := decoder.NewInput(data)
 
 	ctx := decoder.TakeRuntimeContext()
-	ctx.Buf = src
+	decoder.SetBuf(ctx, src)
 	ctx.Option.Flags = 0
 	ctx.Option.Flags |= decoder.PathOption
-	ctx.Option.Path = path.path
+	ctx.SetPath(path.path)
 	for _, optFunc := range optFuncs {
 		optFunc(ctx.Option)
 	}
@@ -111,17 +112,13 @@ func extractFromPath(path *Path, data []byte, optFuncs ...DecodeOptionFunc) ([][
 
 // endWithError releases the context of a decoding into a value of the pointer type typ, which failed with err or
 // else has a type error, and returns the error: the type error is returned only when the whole input is valid, as
-// encoding/json does. It takes the decoder of typ again, so that the functions which decode keep nothing more
-// across their call of it: an error is rare.
+// encoding/json does.
 //
 //go:noinline
 func endWithError(ctx *decoder.RuntimeContext, typ unsafe.Pointer, err error) error {
 	err = inputSyntaxError(ctx, err)
 	if err == nil {
-		var dec decoder.Decoder
-		if dec, err = ctx.DecoderOf(typ); err == nil {
-			err = ctx.TypeError(dec, runtime.TypeOfPtr(typ), 0, 0)
-		}
+		err = ctx.TypeError(runtime.TypeOfPtr(typ), 0, 0, nil)
 	}
 	ctx.DiscardTypeError()
 	decoder.ReleaseRuntimeContext(ctx)

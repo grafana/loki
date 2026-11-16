@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -63,29 +63,29 @@ func TestHandleQueryRequest(t *testing.T) {
 			code:   http.StatusBadRequest,
 		},
 		"parser error": {
-			err:    logqlmodel.ErrParse,
+			err:    logqlerr.ErrParse,
 			errMsg: "failed to parse",
 			code:   http.StatusBadRequest,
 		},
 		"parser error wrapped in a gRPC status": {
 			// A parse error that a downstream layer already converted into a gRPC
 			// status carrying a non-HTTP code should still be reported as 400.
-			err:    grpcStatusErr{code: codes.Unknown, err: logqlmodel.ErrParse},
+			err:    grpcStatusErr{code: codes.Unknown, err: logqlerr.ErrParse},
 			errMsg: "failed to parse",
 			code:   http.StatusBadRequest,
 		},
 		"pipeline error": {
-			err:    logqlmodel.ErrPipeline,
+			err:    logqlerr.ErrPipeline,
 			errMsg: "failed execute pipeline",
 			code:   http.StatusBadRequest,
 		},
 		"limit error": {
-			err:    logqlmodel.ErrLimit,
+			err:    logqlerr.ErrLimit,
 			errMsg: "limit reached",
 			code:   http.StatusBadRequest,
 		},
 		"blocked error": {
-			err:    logqlmodel.ErrBlocked,
+			err:    logqlerr.ErrBlocked,
 			errMsg: "query blocked by policy",
 			code:   http.StatusBadRequest,
 		},

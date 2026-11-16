@@ -2,10 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 /.cache/
-/.claude/
-/note/
-/worktree/
 /yts/testdata/
 /go-yaml
-/*.md
-/*.yaml
+*.so

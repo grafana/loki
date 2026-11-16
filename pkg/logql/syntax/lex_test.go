@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"text/scanner"
@@ -139,6 +140,25 @@ func TestLex(t *testing.T) {
 			}
 			require.Equal(t, tc.expected, actual)
 		})
+	}
+}
+
+func TestParse_UnexpectedCharacter(t *testing.T) {
+	for _, c := range []string{"!", "$", "@", "?", ";", "~", "&", `\`} {
+		for _, template := range []string{
+			`{foo="bar"} | json %[1]s = "x"`,
+			`{foo="bar"} | logfmt %[1]s = "x"`,
+			`{foo="bar"} | label_format %[1]s = baz`,
+			`{foo="bar"} | %[1]s = "x"`,
+			`{%[1]s = "x"}`,
+			`sum by (%[1]s) (rate({foo="bar"}[5m]))`,
+		} {
+			in := fmt.Sprintf(template, c)
+			t.Run(in, func(t *testing.T) {
+				_, err := ParseExpr(in)
+				require.ErrorContains(t, err, fmt.Sprintf("unexpected character %q", c))
+			})
+		}
 	}
 }
 

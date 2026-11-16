@@ -14,16 +14,18 @@ var (
 type FieldQuery struct {
 	Name   string
 	Fields []*FieldQuery
-	hash   string
+	// hash is the Hash of a query which Build made, and of the queries in it, decided there: a query is shared by
+	// goroutines, which only read it.
+	hash string
 }
 
+// Hash returns the key of the opcodes filtered by the query.
 func (q *FieldQuery) Hash() string {
 	if q.hash != "" {
 		return q.hash
 	}
 	b, _ := Marshal(q)
-	q.hash = string(b)
-	return q.hash
+	return string(b)
 }
 
 func (q *FieldQuery) MarshalJSON() ([]byte, error) {
@@ -54,22 +56,35 @@ func (s FieldQueryString) Build() (*FieldQuery, error) {
 	return s.build(reflect.ValueOf(query))
 }
 
+// build builds the query of v and decides its hash, as of every query in it, which the encodings of the fields
+// they filter are given ( see Hash ).
 func (s FieldQueryString) build(v reflect.Value) (*FieldQuery, error) {
+	var q *FieldQuery
+	var err error
 	switch v.Type().Kind() {
 	case reflect.String:
-		return s.buildString(v)
+		q, err = s.buildString(v)
 	case reflect.Map:
-		return s.buildMap(v)
+		q, err = s.buildMap(v)
 	case reflect.Slice:
-		return s.buildSlice(v)
+		q, err = s.buildSlice(v)
 	case reflect.Interface:
 		return s.build(reflect.ValueOf(v.Interface()))
+	default:
+		return nil, fmt.Errorf("failed to build field query")
 	}
-	return nil, fmt.Errorf("failed to build field query")
+	if err != nil {
+		return nil, err
+	}
+	q.hash = q.Hash()
+	return q, nil
 }
 
 func (s FieldQueryString) buildString(v reflect.Value) (*FieldQuery, error) {
 	b := []byte(v.String())
+	if len(b) == 0 {
+		return nil, fmt.Errorf("failed to build field query: empty field name")
+	}
 	switch b[0] {
 	case '[', '{':
 		var query any

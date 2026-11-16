@@ -74,6 +74,9 @@ func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithB
 			blocks: chunksBufferPool.Get(chunkSize),
 			head:   headBufferPool.Get(headSize),
 		}
+		if !d.ingestedAt.IsZero() {
+			wireChunk.IngestedAtMs = d.ingestedAt.UnixMilli()
+		}
 
 		err := d.chunk.SerializeForCheckpointTo(
 			wireChunk.blocks,
@@ -98,6 +101,9 @@ func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Ch
 			synced:      c.Synced,
 			flushed:     c.FlushedAt,
 			lastUpdated: c.LastUpdated,
+		}
+		if c.IngestedAtMs > 0 {
+			desc.ingestedAt = time.UnixMilli(c.IngestedAtMs).UTC()
 		}
 
 		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, headfmt, conf.BlockSize, conf.TargetChunkSize)

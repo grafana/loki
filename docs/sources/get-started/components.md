@@ -273,7 +273,7 @@ The query frontend supports caching metric query results and reuses them on subs
 
 #### Log queries
 
-The query frontend also supports caching of log queries in form of a negative cache.
+The query frontend also supports caching of log queries in the form of a negative cache.
 This means that instead of caching the log results for quantized time ranges, Loki only caches empty results for quantized time ranges.
 This is more efficient than caching actual results because log queries are limited (usually 1000 results)
 and if you have a query over a long time range that matches only a few lines, and you only cache actual results,
@@ -282,12 +282,22 @@ you'd still need to process a lot of data in addition to the data from the resul
 #### Index stats queries
 
 The query frontend caches index stats query results similar to the [metric query](#metric-queries) results.
-This cache is only applicable when using single store TSDB.
 
 #### Log volume queries
 
 The query frontend caches log volume query results similar to the [metric query](#metric-queries) results.
-This cache is only applicable when using single store TSDB.
+
+#### Instant metric queries
+
+The query frontend caches instant metric query results similar to the [metric query](#metric-queries) results.
+
+#### Series queries
+
+The query frontend caches series query results similar to the [metric query](#metric-queries) results.
+
+#### Label queries
+
+The query frontend caches label query results similar to the [metric query](#metric-queries) results.
 
 ## Query scheduler
 

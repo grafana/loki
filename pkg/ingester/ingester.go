@@ -46,9 +46,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -590,15 +590,20 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer checkpointCloser.Close()
-
+		// Close readers as soon as they are consumed; otherwise their file
+		// descriptors keep deleted segments alive until starting() returns,
+		// which can take long when the partition reader is catching up.
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
+		if err := checkpointCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close checkpoint reader", "err", err)
+		}
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
 			level.Error(i.logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
+				"err", checkpointRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -612,15 +617,17 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer segmentCloser.Close()
-
 		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
+		if err := segmentCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close WAL segment reader", "err", err)
+		}
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
+				"err", segmentRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -788,7 +795,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) // #nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -1014,8 +1021,20 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	return services.StopAndAwaitTerminated(context.Background(), i)
 }
 
+type TimestampedPush struct {
+	*logproto.PushRequest
+	// IngestedAt is the timestamp of the Kafka record the push was read from, or zero if there is none.
+	IngestedAt time.Time
+}
+
 // Push implements logproto.Pusher.
+// NOTE: gRPC pushes don't carry a record timestamp.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp pushes a request along with the timestamp of the Kafka record it was read from.
+func (i *Ingester) PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1037,7 +1056,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	return &logproto.PushResponse{}, instance.PushWithTimestamp(ctx, push)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate

@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -542,9 +543,27 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		}
 
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
+		logAssignment(s.logger, assignment.t.inner, worker.RemoteAddr())
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.ClosedSourceIDs)
 	}
+}
+
+// logAssignment logs that task was assigned to the worker at addr.
+func logAssignment(logger log.Logger, task *workflow.Task, addr net.Addr) {
+	fields := []any{
+		"msg", "assigning compaction task",
+		"task_id", task.ULID,
+		"tenant", task.TenantID,
+		"worker", addr,
+	}
+	if task.Fragment != nil {
+		if root, err := task.Fragment.Root(); err == nil {
+			fields = append(fields, "node_type", root.Type().String())
+			fields = append(fields, physical.LogFields(root)...)
+		}
+	}
+	level.Info(logger).Log(fields...)
 }
 
 // parkWorker blocks until the worker advertises freed capacity (a ready message

@@ -29,6 +29,11 @@ type MarshalerCall struct {
 	// library is, or of a type which has it only by embedding one ( see runtime.IsStdMarshalerType and
 	// runtime.PromotedStdMethod ): it is not checked.
 	trusted bool
+	// v2Raw is whether the method is MarshalJSON of a value of the v2 semantics at its address, which
+	// AppendMarshalJSON calls by fn, as the encoder of v1 calls it, and whose output is a raw value of the v2
+	// semantics ( see appendV2Raw ): recv is then the type of the value. appendValue, which does the same by a
+	// call more, is set as well, so that AppendMarshalJSON looks at v2Raw only behind its check of appendValue.
+	v2Raw bool
 	// recv is the type of the receiver, for an error.
 	recv reflect.Type
 	// appendOutput writes what the method of a type of the standard library returns without calling it, by the
@@ -36,7 +41,17 @@ type MarshalerCall struct {
 	// text of MarshalText, by AppendText. It returns false, and writes nothing, when the method is to be called,
 	// as for an error, which is then the one of the method.
 	appendOutput func(b []byte, recv unsafe.Pointer) ([]byte, bool)
+	// appendValue, if it is set, writes the value at the address recv instead of a method: the representation of
+	// a type which the compiler gives by a function ( see Compiler.appendFuncCode ).
+	appendValue AppendFunc
+	// marshalTo, if it is set, returns what MarshalJSONTo of the receiver writes, which the encoder of v1 writes as
+	// the output of MarshalJSON, or appends the value after b by the representation after the method, if the method
+	// declined it, and reports so ( see Compiler.marshalToCall ).
+	marshalTo func(ctx *RuntimeContext, b []byte, recv unsafe.Pointer) (out []byte, appended bool, err error)
 }
+
+// AppendFunc appends the JSON value of the value at p, the address of the value.
+type AppendFunc func(ctx *RuntimeContext, b []byte, p unsafe.Pointer) ([]byte, error)
 
 func (m *MarshalerCall) call(recv unsafe.Pointer) ([]byte, error) {
 	f := *(*func(unsafe.Pointer) ([]byte, error))(unsafe.Pointer(&m))

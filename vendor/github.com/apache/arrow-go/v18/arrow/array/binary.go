@@ -24,7 +24,9 @@ import (
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
@@ -159,6 +161,13 @@ func (a *Binary) GetOneForMarshal(i int) interface{} {
 	return a.Value(i)
 }
 
+func (a *Binary) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *Binary) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -224,15 +233,21 @@ func (a *Binary) ValidateFull() error {
 }
 
 func arrayEqualBinary(left, right *Binary) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && !bytes.Equal(left.Value(i), right.Value(i)) {
+				return false
+			}
 		}
-		if !bytes.Equal(left.Value(i), right.Value(i)) {
-			return false
-		}
+		return true
 	}
-	return true
+	return arrayEqualVariableWidth(
+		left.valueOffsets, right.valueOffsets,
+		left.valueBytes, right.valueBytes,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		bytes.Equal,
+	)
 }
 
 type LargeBinary struct {
@@ -353,6 +368,13 @@ func (a *LargeBinary) GetOneForMarshal(i int) interface{} {
 	return a.Value(i)
 }
 
+func (a *LargeBinary) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *LargeBinary) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -418,15 +440,125 @@ func (a *LargeBinary) ValidateFull() error {
 }
 
 func arrayEqualLargeBinary(left, right *LargeBinary) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && !bytes.Equal(left.Value(i), right.Value(i)) {
+				return false
+			}
 		}
-		if !bytes.Equal(left.Value(i), right.Value(i)) {
+		return true
+	}
+	return arrayEqualVariableWidth(
+		left.valueOffsets, right.valueOffsets,
+		left.valueBytes, right.valueBytes,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		bytes.Equal,
+	)
+}
+
+type binaryOffset interface {
+	~int32 | ~int64
+}
+
+func useScalarVariableWidthEquality(values arrow.Array) bool {
+	if values.NullN() == 0 {
+		return false
+	}
+	if values.Len() <= 64 || len(values.NullBitmapBytes()) == 0 {
+		return true
+	}
+
+	// Very short validity runs cost more to set up than direct value comparisons.
+	// Sample a few runs and retain the scalar path when they average under four values.
+	const (
+		sampleRuns          = 8
+		minAverageRunLength = 4
+	)
+	runs := bitutils.NewSetBitRunReader(
+		values.NullBitmapBytes(), int64(values.Data().Offset()), int64(values.Len()),
+	)
+	validValues := int64(0)
+	for range sampleRuns {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return false
+		}
+		validValues += run.Length
+	}
+	return validValues < sampleRuns*minAverageRunLength
+}
+
+func arrayEqualVariableWidth[T binaryOffset, V ~[]byte | ~string](
+	leftOffsets, rightOffsets []T,
+	leftValues, rightValues V,
+	leftOffset, rightOffset, length, nulls int,
+	validity []byte,
+	equalValues func(V, V) bool,
+) bool {
+	if length == 0 {
+		return true
+	}
+
+	// A declared null count may be inconsistent with the validity bitmap.
+	// Verify zero-null bitmaps before comparing the whole payload.
+	if len(validity) == 0 ||
+		(nulls == 0 && bitutil.CountSetBits(validity, leftOffset, length) == length) {
+		return arrayEqualVariableWidthRun(
+			leftOffsets, rightOffsets,
+			leftValues, rightValues,
+			leftOffset, rightOffset, length,
+			equalValues,
+		)
+	}
+
+	runs := bitutils.NewSetBitRunReader(validity, int64(leftOffset), int64(length))
+	for {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return true
+		}
+		if !arrayEqualVariableWidthRun(
+			leftOffsets, rightOffsets,
+			leftValues, rightValues,
+			leftOffset+int(run.Pos), rightOffset+int(run.Pos), int(run.Length),
+			equalValues,
+		) {
+			return false
+		}
+	}
+}
+
+func arrayEqualVariableWidthRun[T binaryOffset, V ~[]byte | ~string](
+	leftOffsets, rightOffsets []T,
+	leftValues, rightValues V,
+	leftOffset, rightOffset, length int,
+	equalValues func(V, V) bool,
+) bool {
+	leftStart, leftEnd := leftOffsets[leftOffset], leftOffsets[leftOffset+length]
+	rightStart, rightEnd := rightOffsets[rightOffset], rightOffsets[rightOffset+length]
+	if leftEnd-leftStart != rightEnd-rightStart ||
+		!equalValues(
+			sliceBinaryValues(leftValues, leftStart, leftEnd),
+			sliceBinaryValues(rightValues, rightStart, rightEnd),
+		) {
+		return false
+	}
+	if length == 1 {
+		return true
+	}
+
+	for i := range length {
+		if leftOffsets[leftOffset+i+1]-leftOffsets[leftOffset+i] !=
+			rightOffsets[rightOffset+i+1]-rightOffsets[rightOffset+i] {
 			return false
 		}
 	}
 	return true
+}
+
+func sliceBinaryValues[T binaryOffset, V ~[]byte | ~string](values V, start, end T) V {
+	return values[start:end]
 }
 
 type ViewLike interface {
@@ -482,6 +614,17 @@ func (a *BinaryView) ValueLen(i int) int {
 	return s.Len()
 }
 
+func (a *BinaryView) Validate() error {
+	return validateViewLayout(a, "binary view")
+}
+
+func (a *BinaryView) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	return validateViewValues(a, a.dataBuffers, nil)
+}
+
 // ValueString returns the value at index i as a string instead of
 // a byte slice, without copying the underlying data.
 func (a *BinaryView) ValueString(i int) string {
@@ -529,6 +672,13 @@ func (a *BinaryView) GetOneForMarshal(i int) interface{} {
 	return a.Value(i)
 }
 
+func (a *BinaryView) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *BinaryView) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -550,6 +700,89 @@ func arrayEqualBinaryView(left, right *BinaryView) bool {
 		}
 	}
 	return true
+}
+
+func validateViewLayout(arr ViewLike, kind string) error {
+	data := arr.Data().(*Data)
+	if data.length == 0 {
+		return nil
+	}
+	if data.buffers[1] == nil {
+		return fmt.Errorf("arrow/array: non-empty %s array has no view buffer", kind)
+	}
+
+	expNumViews := data.offset + data.length
+	if len(data.buffers[1].Bytes())/arrow.ViewHeaderSizeBytes < expNumViews {
+		return fmt.Errorf("arrow/array: %s buffer must have at least %d view values", kind, expNumViews)
+	}
+	return nil
+}
+
+func validateViewValues(arr ViewLike, dataBuffers []*memory.Buffer, validateValue func(int, []byte) error) error {
+	data := arr.Data().(*Data)
+	if data.length == 0 {
+		return nil
+	}
+	rawViews := data.buffers[1].Bytes()
+	for i := 0; i < data.length; i++ {
+		if arr.IsNull(i) {
+			continue
+		}
+
+		view := arr.ValueHeader(i)
+		if view.Len() < 0 {
+			return fmt.Errorf("arrow/array: view at slot %d has negative size %d", i, view.Len())
+		}
+
+		if view.IsInline() {
+			rawOffset := (data.offset + i) * arrow.ViewHeaderSizeBytes
+			raw := rawViews[rawOffset : rawOffset+arrow.ViewHeaderSizeBytes]
+			for _, b := range raw[4+view.Len() : arrow.ViewHeaderSizeBytes] {
+				if b != 0 {
+					return fmt.Errorf("arrow/array: view at slot %d was inline with size %d but its padding bytes were not all zero", i, view.Len())
+				}
+			}
+			if validateValue != nil {
+				if err := validateValue(i, view.InlineBytes()); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		if view.BufferIndex() < 0 {
+			return fmt.Errorf("arrow/array: view at slot %d has negative buffer index %d", i, view.BufferIndex())
+		}
+		if view.BufferOffset() < 0 {
+			return fmt.Errorf("arrow/array: view at slot %d has negative offset %d", i, view.BufferOffset())
+		}
+		if int(view.BufferIndex()) >= len(dataBuffers) {
+			return fmt.Errorf("arrow/array: view at slot %d references buffer %d but there are only %d data buffers", i, view.BufferIndex(), len(dataBuffers))
+		}
+
+		buf := dataBuffers[view.BufferIndex()]
+		if buf == nil {
+			return fmt.Errorf("arrow/array: view at slot %d references nil data buffer %d", i, view.BufferIndex())
+		}
+
+		offset := int(view.BufferOffset())
+		end := offset + view.Len()
+		if end > buf.Len() {
+			return fmt.Errorf("arrow/array: view at slot %d references range %d-%d of buffer %d but that buffer is only %d bytes long", i, offset, end, view.BufferIndex(), buf.Len())
+		}
+
+		value := buf.Bytes()[offset:end]
+		prefix := view.Prefix()
+		if !bytes.Equal(value[:arrow.ViewPrefixLen], prefix[:]) {
+			return fmt.Errorf("arrow/array: view at slot %d has inlined prefix %x but the out-of-line data begins with %x", i, prefix, value[:arrow.ViewPrefixLen])
+		}
+		if validateValue != nil {
+			if err := validateValue(i, value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 var (

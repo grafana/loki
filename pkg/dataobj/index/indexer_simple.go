@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -29,6 +30,9 @@ var (
 type Result struct {
 	Path      string
 	TimeRange dataobj.TimeRange
+
+	// ShardBuckets is [indexobj.TenantShardBuckets] of the index object.
+	ShardBuckets indexpointers.ShardBuckets
 }
 
 // A SimpleIndexer builds an index for a data object and uploads it.
@@ -112,6 +116,13 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 	}
 	defer s.release(closer, objLogger, "index object")
 
+	// Read the layout back from the built object, so the ToC records exactly
+	// the layout that a reader of the object finds.
+	shardBuckets, err := indexobj.TenantShardBuckets(ctx, idxObj, tenant)
+	if err != nil {
+		return Result{}, fmt.Errorf("failed to read index shard layout: %w", err)
+	}
+
 	idxObjKey, err := ObjectKey(ctx, idxObj)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to generate index object key: %w", err)
@@ -130,7 +141,7 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 	level.Debug(objLogger).Log("msg", "uploaded index object",
 		"idxPath", idxObjKey, "idxSize", uint64(idxObj.Size()), "tenant", timeRange.Tenant)
 
-	return Result{Path: idxObjKey, TimeRange: timeRange}, nil
+	return Result{Path: idxObjKey, TimeRange: timeRange, ShardBuckets: shardBuckets}, nil
 }
 
 // ObjectKey generates the object key for storing an index object in object storage.
