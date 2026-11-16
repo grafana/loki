@@ -1,9 +1,120 @@
-#
 # Label collisions: what happens when a name comes from more than one of the stream labels, the
 # structured metadata, and the parsed fields. This file has one group of cases for each kind of
-# collision. A comment on a `load` line says what the stream has. A comment above an `eval` says
-# what the query shows.
+# collision. `label_collisions_parsers.logqltest` runs the rules for every parser.
 #
+# The rules that the cases show:
+#
+# 1. Labels arrive in this order: stream labels, structured metadata, parsed labels, one parser stage
+#    after another. The precedence is the same order: stream > structured metadata > parsed. The
+#    result has one label for each name.
+# 2. The source with the highest precedence keeps the name. A loser is renamed to `<name>_extracted`.
+# 3. A label that has a name keeps it. A key is renamed at most once. If a stream label or a
+#    structured metadata value already has the new name, the loser is dropped. A parsed key never
+#    replaces a label. A key that is called `foo_extracted` in the line becomes
+#    `foo_extracted_extracted` when a label has the name `foo_extracted`.
+# 4. Among parsed keys the first writer wins, in every parser: of two equal keys in one line, and
+#    between stages. In one stage, a literal `foo_extracted` key beats a renamed `foo` key.
+# 5. In json, a null and an array give no label. In logfmt, an empty value gives no label, unless
+#    `--keep-empty` is set. An empty JSON string is a real value.
+# 6. An expression form (`json a`, `logfmt a`) asks for names. A name that the line lacks, or a JSON
+#    null, gives an empty label. A name that a label already has gets no empty label.
+# 7. `drop` before the parser removes a name from the clash test. `label_format` replaces any label.
+#    A filter or a grouping does not change the labels of a line.
+#
+# The groups, in order:
+#
+# - A structured metadata key and a stream label with the same name.
+# - A parsed field and a stream label.
+# - A parsed field and structured metadata.
+# - All three at once, and the ways around the clash.
+# - Two parsers in a row.
+# - A literal `foo_extracted` key next to the key that is renamed to it, and next to labels.
+# - The shape of a value: an empty string, a null, a key with no value.
+# - A duplicate key in one line.
+#
+# Each group loads several streams and reads them with one query, so the query reads lines with a
+# collision and lines without one, and each line resolves on its own. A comment on a `load` line
+# says what the stream has. A comment above an `eval` says what the query shows. A log-selection
+# query keeps the stream labels, the structured metadata, and the parsed labels apart, so each
+# expected line states the category of every label. Some groups also have metric queries over the
+# same lines. They take another path: the parser hints of a grouping decide which keys the parser
+# extracts.
+#
+
+# A structured metadata key with the same name as a stream label. The metadata key moves to
+# `foo_extracted`, and it stays in the metadata category. The other lines keep their names.
+clear
+load
+  {app="a1", foo="l"}    "stream label and metadata" @ 10s [metadata foo="m"]
+  {app="a2"}             "metadata only"             @ 10s [metadata foo="m"]
+  {app="a3", foo="l"}    "stream label only"         @ 10s
+  {app="a4"}             "neither"                   @ 10s
+  {app="noise", foo="l"} "x"                         @ 10s [metadata foo="m"]
+
+# Only the stream that has both the label and the metadata key changes.
+eval select from 0 to 30s forward {app=~"a[1-4]"}
+  {app="a1", foo="l"} "stream label and metadata" @ 10s [metadata foo_extracted="m"]
+  {app="a2"} "metadata only" @ 10s [metadata foo="m"]
+  {app="a3", foo="l"} "stream label only" @ 10s
+  {app="a4"} "neither" @ 10s
+
+# A parsed field with the same name as a stream label. The parsed field moves to `foo_extracted` on
+# the lines that have the stream label, and it keeps its name on the others.
+clear
+load
+  {app="b1", foo="l"}    `{"foo":"p"}`     @ 10s # stream label and parsed field
+  {app="b2"}             `{"foo":"p"}`     @ 10s # parsed field only
+  {app="b3", foo="l"}    `{"other":"x"}`   @ 10s # stream label, and the line has no `foo`
+  {app="b4"}             `{}`              @ 10s # neither
+  {app="noise", foo="l"} `{"foo":"noise"}` @ 10s
+
+# The parsed `foo` moves to `foo_extracted` on the stream with the label. A line without `foo` has
+# nothing to move.
+eval select from 0 to 30s forward {app=~"b[1-4]"} | json
+  {app="b1", foo="l"} `{"foo":"p"}` @ 10s [parsed foo_extracted="p"]
+  {app="b2"} `{"foo":"p"}` @ 10s [parsed foo="p"]
+  {app="b3", foo="l"} `{"other":"x"}` @ 10s [parsed other="x"]
+  {app="b4"} `{}` @ 10s
+# A metric query merges the three categories into one label set.
+eval instant at 60s count_over_time({app=~"b[1-4]"} | json [1m])
+  {app="b1", foo="l", foo_extracted="p"} 1
+  {app="b2", foo="p"} 1
+  {app="b3", foo="l", other="x"} 1
+  {app="b4"} 1
+eval range from 40s to 60s step 20s count_over_time({app=~"b[1-4]"} | json [1m]) # overlapping
+  {app="b1", foo="l", foo_extracted="p"} 1 1
+  {app="b2", foo="p"} 1 1
+  {app="b3", foo="l", other="x"} 1 1
+  {app="b4"} 1 1
+# A grouping lets the parser extract only `foo` and `foo_extracted`, so this form takes the parser
+# hint path. The labels are the same.
+eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"b[1-4]"} | json [1m]))
+  {foo="l", foo_extracted="p"} 1
+  {foo="p"} 1
+  {foo="l"} 1
+  {} 1
+eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"b[1-4]"} | json [1m])) # overlapping
+  {foo="l", foo_extracted="p"} 1 1
+  {foo="p"} 1 1
+  {foo="l"} 1 1
+  {} 1 1
+
+# A parsed field with the same name as structured metadata. The parsed field moves to
+# `foo_extracted`, and the metadata value keeps its name. A line with a stream label instead of the
+# metadata resolves the same way.
+clear
+load
+  {app="c1"}          `{"foo":"p"}`     @ 10s [metadata foo="m"] # metadata and parsed field
+  {app="c2"}          `{"other":"x"}`   @ 10s [metadata foo="m"] # metadata, and the line has no `foo`
+  {app="c3", foo="l"} `{"foo":"p"}`     @ 10s                    # stream label and parsed field
+  {app="noise"}       `{"foo":"noise"}` @ 10s [metadata foo="m"]
+
+# The parsed `foo` moves to `foo_extracted` when the metadata or the stream label has `foo`. The
+# line without `foo` has nothing to move.
+eval select from 0 to 30s forward {app=~"c[1-3]"} | json
+  {app="c1"} `{"foo":"p"}` @ 10s [metadata foo="m"] [parsed foo_extracted="p"]
+  {app="c2"} `{"other":"x"}` @ 10s [metadata foo="m"] [parsed other="x"]
+  {app="c3", foo="l"} `{"foo":"p"}` @ 10s [parsed foo_extracted="p"]
 
 # The stream label, the structured metadata, and the parsed field all have the name `foo`. The
 # metadata key moves to `foo_extracted` when it enters the pipeline. The parsed `foo` would move to
@@ -63,15 +174,42 @@ eval select from 0 to 30s forward {app="d5"} | json p="foo"
 eval select from 0 to 30s forward {app="d5"} | json | drop foo
   {app="d5"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"]
 
-# Two parsers in a row, where the second stage is an expression form. `line_format` swaps the line
-# between the two stages. The first stage to write a name keeps it, so the second stage does not
-# overwrite `foo=j1`.
+# Two parsers in a row. `line_format` swaps the line between the two stages. The first stage to
+# write a name keeps it, and the second stage skips that name. The stages do not overwrite each
+# other. The first stage gives `foo=j1`, and the second gives `foo=f2`. The same holds when the
+# second stage is an expression form.
 clear
 load
+  {app="e1", foo="l"}    `{"foo":"j1","next":"foo=f2"}`  @ 10s # both stages write `foo`
+  {app="e2", foo="l"}    `{"foo":"j1","next":"bar=b2"}`  @ 10s # the second stage has no `foo`
+  {app="e3"}             `{"foo":"j1","next":"foo=f2"}`  @ 10s # no stream label
+  {app="e4", foo="l"}    `{"bar":"j1","next":"foo=f2"}`  @ 10s # the first stage has no `foo`
+  {app="e5", foo="l"}    `{"foo":"","next":"foo=f2"}`    @ 10s # an empty value counts as written
+  {app="e6", foo="l"}    `{"foo":"","next":"bar=b2"}`    @ 10s # an empty value, and no `foo` in the second stage
   {app="e7"}             `{"foo":"j1","next":"foo=f2"}`  @ 10s # the second stage is `logfmt foo`
   {app="e8"}             `{"foo":"j1"}`                  @ 10s # the second stage is `json foo`
   {app="noise", foo="l"} `{"foo":"noise","next":"foo=noise"}` @ 10s
 
+# The first stage writes `foo` or `foo_extracted`, and the second stage skips its `foo`. The
+# second stage writes `foo_extracted` only when the first stage did not write a `foo`. An empty
+# value counts as written.
+eval select from 0 to 30s forward {app=~"e[1-6]"} | json | line_format "{{.next}}" | logfmt
+  {app="e1", foo="l"} "foo=f2" @ 10s [parsed foo_extracted="j1" next="foo=f2"]
+  {app="e2", foo="l"} "bar=b2" @ 10s [parsed bar="b2" foo_extracted="j1" next="bar=b2"]
+  {app="e3"} "foo=f2" @ 10s [parsed foo="j1" next="foo=f2"]
+  {app="e4", foo="l"} "foo=f2" @ 10s [parsed bar="j1" foo_extracted="f2" next="foo=f2"]
+  {app="e5", foo="l"} "foo=f2" @ 10s [parsed foo_extracted="" next="foo=f2"]
+  {app="e6", foo="l"} "bar=b2" @ 10s [parsed bar="b2" foo_extracted="" next="bar=b2"]
+# The metric forms read the lines without an empty value. The grouping makes the parser extract only
+# the two names.
+eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"e[1-4]"} | json | line_format "{{.next}}" | logfmt [1m]))
+  {foo="l", foo_extracted="j1"} 2
+  {foo="j1"} 1
+  {foo="l", foo_extracted="f2"} 1
+eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"e[1-4]"} | json | line_format "{{.next}}" | logfmt [1m])) # overlapping
+  {foo="l", foo_extracted="j1"} 2 2
+  {foo="j1"} 1 1
+  {foo="l", foo_extracted="f2"} 1 1
 # `logfmt foo` as the second stage does not overwrite the value of the first stage either.
 eval select from 0 to 30s forward {app="e7"} | json | line_format "{{.next}}" | logfmt foo
   {app="e7"} "foo=f2" @ 10s [parsed foo="j1" next="foo=f2"]
@@ -118,6 +256,26 @@ eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app
 eval select from 0 to 30s forward {app=~"f1[ab]"} | json foo, foo_extracted
   {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
   {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+
+# A literal `foo_extracted` key without a stream label `foo`. Nothing is renamed, so the literal key
+# keeps its name, also next to a `foo` key. A query that also reads a stream with the label `foo`
+# gives the same result for the lines of the streams without it.
+clear
+load
+  {app="f2"}             `{"foo_extracted":"lit"}`           @ 10s # only the literal key
+  {app="f2b"}            `{"foo":"p","foo_extracted":"lit"}` @ 10s # the keys `foo` and `foo_extracted`
+  {app="f6", foo="l"}    `{"other":"x"}`                     @ 10s # a stream with the label `foo`, and neither key
+  {app="noise", foo="l"} `{"foo":"noise"}`                   @ 10s
+
+# Both keys keep their names.
+eval select from 0 to 30s forward {app=~"f2|f2b"} | json
+  {app="f2"} `{"foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
+  {app="f2b"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo="p" foo_extracted="lit"]
+# The stream with the label `foo` does not change the result for the other two streams.
+eval select from 0 to 30s forward {app=~"f2|f2b|f6"} | json
+  {app="f2"} `{"foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
+  {app="f2b"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo="p" foo_extracted="lit"]
+  {app="f6", foo="l"} `{"other":"x"}` @ 10s [parsed other="x"]
 
 # A stream label or a structured metadata key that is called `foo_extracted` keeps the name. A
 # parsed `foo` would move to `foo_extracted`, finds the name taken, and is dropped. A parsed
@@ -189,13 +347,56 @@ eval instant at 60s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m
 eval range from 40s to 60s step 20s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m])) # overlapping
   {a="1", b="2"} 1 1
 
-# A duplicate key in one line, in the expression forms. The first value wins.
+# The shape of a value. An empty JSON string is a real value, so it moves like any other value, and
+# it keeps its name without a clash. A JSON null is not extracted at all. A logfmt key with no value
+# is not extracted, unless `--keep-empty` is set. A key that is not extracted does not count as
+# written, so a later key with the same final name still writes it. With `--keep-empty`, the empty
+# value is written first, and it stays.
 clear
 load
+  {app="g1", foo="l"}    `{"foo":""}`   @ 10s # an empty JSON string, with a stream label
+  {app="g2"}             `{"foo":""}`   @ 10s # an empty JSON string, without a clash
+  {app="g3", foo="l"}    `{"foo":null}` @ 10s # a JSON null
+  {app="g4", foo="l"}    "foo="         @ 10s # a logfmt key with no value
+  {app="g5", foo="l"}    "foo_extracted= foo=p" @ 10s # an empty `foo_extracted` key, then `foo`
+  {app="noise", foo="l"} `{"foo":"x"}`  @ 10s
+
+# An empty string moves to `foo_extracted` like any value, and keeps `foo` without a clash. A null
+# gives no label.
+eval select from 0 to 30s forward {app=~"g[123]"} | json
+  {app="g1", foo="l"} `{"foo":""}` @ 10s [parsed foo_extracted=""]
+  {app="g2"} `{"foo":""}` @ 10s [parsed foo=""]
+  {app="g3", foo="l"} `{"foo":null}` @ 10s
+# A key with no value gives no label.
+eval select from 0 to 30s forward {app="g4"} | logfmt
+  {app="g4", foo="l"} "foo=" @ 10s
+# With `--keep-empty`, the empty value is written and renamed.
+eval select from 0 to 30s forward {app="g4"} | logfmt --keep-empty
+  {app="g4", foo="l"} "foo=" @ 10s [parsed foo_extracted=""]
+# The empty `foo_extracted` key gives no label, so the later `foo` writes `foo_extracted`.
+eval select from 0 to 30s forward {app="g5"} | logfmt
+  {app="g5", foo="l"} "foo_extracted= foo=p" @ 10s [parsed foo_extracted="p"]
+# With `--keep-empty`, the empty `foo_extracted` key is written first, and the later `foo` does not
+# replace it.
+eval select from 0 to 30s forward {app="g5"} | logfmt --keep-empty
+  {app="g5", foo="l"} "foo_extracted= foo=p" @ 10s [parsed foo_extracted=""]
+
+# A duplicate key in one line. The first value wins, for JSON and for logfmt, and for their
+# expression forms.
+clear
+load
+  {app="h1"}    `{"foo":"a","foo":"b"}` @ 10s # json
+  {app="h2"}    "foo=a foo=b"           @ 10s # logfmt
   {app="h3"}    "foo=a foo=b"           @ 10s # the expression form `logfmt foo`
   {app="h4"}    `{"foo":"a","foo":"b"}` @ 10s # the expression form `json foo`
   {app="noise"} `{"foo":"x"}`           @ 10s
 
+# JSON keeps the first value.
+eval select from 0 to 30s forward {app="h1"} | json
+  {app="h1"} `{"foo":"a","foo":"b"}` @ 10s [parsed foo="a"]
+# Logfmt keeps the first value.
+eval select from 0 to 30s forward {app="h2"} | logfmt
+  {app="h2"} "foo=a foo=b" @ 10s [parsed foo="a"]
 # The expression form of logfmt keeps the first value.
 eval select from 0 to 30s forward {app="h3"} | logfmt foo
   {app="h3"} "foo=a foo=b" @ 10s [parsed foo="a"]
