@@ -5,7 +5,7 @@ import "context"
 type contextKey struct{}
 
 // WithConfig creates a new context that contains the provided [Config]. Calls
-// to [ReadRanges] with this context will use the config.
+// to [ReadRanges] and [ReadRangesStream] with this context will use the config.
 func WithConfig(ctx context.Context, config *Config) context.Context {
 	return context.WithValue(ctx, contextKey{}, config)
 }

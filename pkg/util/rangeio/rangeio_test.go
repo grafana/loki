@@ -1,12 +1,16 @@
 package rangeio_test
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"math"
 	"math/rand"
 	"runtime"
+	"slices"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +18,16 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
+
+// readers are the functions that fill ranges from data.
+var readers = map[string]func(ctx context.Context, data []byte, ranges []rangeio.Range) error{
+	"ReadRanges": func(ctx context.Context, data []byte, ranges []rangeio.Range) error {
+		return rangeio.ReadRanges(ctx, byteRangeReader(data), ranges)
+	},
+	"ReadRangesStream": func(ctx context.Context, data []byte, ranges []rangeio.Range) error {
+		return rangeio.ReadRangesStream(ctx, newByteStreamOpener(data), ranges)
+	},
+}
 
 func FuzzReadRanges(f *testing.F) {
 	corpusEntries := []struct {
@@ -79,13 +93,16 @@ func FuzzReadRanges(f *testing.F) {
 			MaxRangeSize:   maxRange,
 		}
 		ctx := rangeio.WithConfig(t.Context(), &cfg)
-		err := rangeio.ReadRanges(ctx, byteRangeReader(testData), ranges)
-		require.NoError(t, err)
 
-		// Test that all of our ranges are correctly filled.
-		for _, r := range ranges {
-			expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
-			assert.Equal(t, r.Data, expect, "range was not filled correctly")
+		for name, read := range readers {
+			ranges := cloneRanges(ranges)
+			require.NoError(t, read(ctx, testData, ranges), name)
+
+			// Test that all of our ranges are correctly filled.
+			for _, r := range ranges {
+				expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
+				assert.Equal(t, r.Data, expect, "range was not filled correctly by %s", name)
+			}
 		}
 	})
 }
@@ -181,16 +198,133 @@ func TestReadRanges(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err := rangeio.ReadRanges(t.Context(), byteRangeReader(testData), ranges)
-			require.NoError(t, err)
+			for name, read := range readers {
+				t.Run(name, func(t *testing.T) {
+					ranges := cloneRanges(ranges)
+					require.NoError(t, read(t.Context(), testData, ranges))
 
-			// Validate our ranges were read correctly.
-			for _, r := range ranges {
-				expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
-				assert.Equal(t, expect, r.Data, "range was not filled correctly")
+					// Validate our ranges were read correctly.
+					for _, r := range ranges {
+						expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
+						assert.Equal(t, expect, r.Data, "range was not filled correctly")
+					}
+				})
 			}
 		})
 	}
+}
+
+func TestReadRangesStream(t *testing.T) {
+	const dataSize = 2000
+
+	// Small sizes make ranges of up to 150 bytes coalesce, split and run in parallel.
+	cfg := rangeio.Config{MaxParallelism: 4, CoalesceSize: 20, MaxRangeSize: 64, MinRangeSize: 16}
+
+	rnd := rand.New(rand.NewSource(1))
+	data := make([]byte, dataSize)
+	_, err := rnd.Read(data)
+	require.NoError(t, err)
+
+	t.Run("fills random ranges, starts and ends each stream on a needed byte, and drains and closes every stream", func(t *testing.T) {
+		for range 300 {
+			// Ranges can be empty, overlap, repeat, touch, span several streams or lie far apart.
+			ranges := make([]rangeio.Range, 1+rnd.Intn(12))
+			for i := range ranges {
+				offset := rnd.Intn(dataSize)
+				ranges[i] = rangeio.Range{Offset: int64(offset), Data: make([]byte, min(rnd.Intn(150), dataSize-offset))}
+			}
+			opener := newByteStreamOpener(data)
+
+			require.NoError(t, rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), opener, ranges))
+
+			needed := make([]bool, dataSize)
+			for _, r := range ranges {
+				require.Equal(t, data[r.Offset:r.Offset+r.Len()], r.Data)
+				for i := range r.Data {
+					needed[r.Offset+int64(i)] = true
+				}
+			}
+			for _, s := range opener.streams {
+				require.True(t, needed[s.offset], "stream at %d starts on a byte that no range needs", s.offset)
+				require.True(t, needed[s.offset+s.length-1], "stream at %d ends on a byte that no range needs", s.offset)
+				require.Zero(t, s.reader.Len(), "stream at %d has unread bytes", s.offset)
+				require.True(t, s.closed, "stream at %d is not closed", s.offset)
+			}
+		}
+	})
+
+	t.Run("returns io.EOF after it fills the other ranges when a range lies beyond the end of the data", func(t *testing.T) {
+		ranges := []rangeio.Range{
+			{Offset: 100, Data: make([]byte, 10)},
+			{Offset: dataSize + 500, Data: make([]byte, 10)},
+		}
+
+		err := rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), newByteStreamOpener(data), ranges)
+
+		require.Equal(t, io.EOF, err)
+		require.Equal(t, data[100:110], ranges[0].Data)
+	})
+
+	t.Run("returns io.ErrUnexpectedEOF when a stream ends inside a range", func(t *testing.T) {
+		ranges := []rangeio.Range{{Offset: dataSize - 5, Data: make([]byte, 10)}}
+
+		err := rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), newByteStreamOpener(data), ranges)
+
+		require.Equal(t, io.ErrUnexpectedEOF, err)
+	})
+
+	t.Run("returns io.ErrUnexpectedEOF when a stream ends before a later range of the same stream", func(t *testing.T) {
+		ranges := []rangeio.Range{
+			{Offset: dataSize - 10, Data: make([]byte, 10)},
+			{Offset: dataSize + 5, Data: make([]byte, 10)},
+		}
+
+		err := rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), newByteStreamOpener(data), ranges)
+
+		require.Equal(t, io.ErrUnexpectedEOF, err)
+	})
+
+	t.Run("opens streams that start and end on needed bytes when a split falls in a gap or an empty range ends a group", func(t *testing.T) {
+		ranges := []rangeio.Range{
+			{Offset: 0, Data: make([]byte, 20)},
+			{Offset: 30, Data: make([]byte, 20)},
+			{Offset: 60},
+		}
+		opener := newByteStreamOpener(data)
+
+		require.NoError(t, rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), opener, ranges))
+
+		require.Equal(t, [][2]int64{{0, 20}, {30, 20}}, opener.spans())
+	})
+
+	t.Run("opens no stream for a chunk that holds only empty ranges", func(t *testing.T) {
+		ranges := []rangeio.Range{
+			{Offset: 0, Data: make([]byte, 10)},
+			{Offset: 20}, {Offset: 40}, {Offset: 60}, {Offset: 80},
+		}
+		opener := newByteStreamOpener(data)
+
+		require.NoError(t, rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), opener, ranges))
+
+		require.Equal(t, data[:10], ranges[0].Data)
+		require.Equal(t, [][2]int64{{0, 10}}, opener.spans())
+	})
+
+	t.Run("opens no stream when every range is empty", func(t *testing.T) {
+		opener := newByteStreamOpener(data)
+
+		require.NoError(t, rangeio.ReadRangesStream(rangeio.WithConfig(t.Context(), &cfg), opener, []rangeio.Range{{Offset: 0}, {Offset: 10}}))
+
+		require.Empty(t, opener.spans())
+	})
+}
+
+func cloneRanges(ranges []rangeio.Range) []rangeio.Range {
+	out := make([]rangeio.Range, len(ranges))
+	for i, r := range ranges {
+		out[i] = rangeio.Range{Offset: r.Offset, Data: make([]byte, len(r.Data))}
+	}
+	return out
 }
 
 type byteRangeReader []byte
@@ -213,4 +347,53 @@ func (b byteRangeReader) ReadRange(_ context.Context, r rangeio.Range) (int, err
 	}
 
 	return n, nil
+}
+
+// byteStreamOpener opens streams over a byte slice, like a bucket does. It records every stream.
+type byteStreamOpener struct {
+	data []byte
+
+	mtx     sync.Mutex
+	streams []*byteStream
+}
+
+type byteStream struct {
+	offset, length int64
+	reader         *bytes.Reader
+	closed         bool
+}
+
+func newByteStreamOpener(data []byte) *byteStreamOpener { return &byteStreamOpener{data: data} }
+
+func (o *byteStreamOpener) OpenRange(_ context.Context, offset, length int64) (io.ReadCloser, error) {
+	var content []byte
+	if offset < int64(len(o.data)) {
+		content = o.data[offset:min(offset+length, int64(len(o.data)))]
+	}
+	s := &byteStream{offset: offset, length: length, reader: bytes.NewReader(content)}
+
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	o.streams = append(o.streams, s)
+	return s, nil
+}
+
+// spans returns the offset and the length of every stream, sorted by offset.
+func (o *byteStreamOpener) spans() [][2]int64 {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+
+	spans := make([][2]int64, len(o.streams))
+	for i, s := range o.streams {
+		spans[i] = [2]int64{s.offset, s.length}
+	}
+	slices.SortFunc(spans, func(a, b [2]int64) int { return cmp.Compare(a[0], b[0]) })
+	return spans
+}
+
+func (s *byteStream) Read(p []byte) (int, error) { return s.reader.Read(p) }
+
+func (s *byteStream) Close() error {
+	s.closed = true
+	return nil
 }

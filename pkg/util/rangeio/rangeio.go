@@ -75,7 +75,7 @@ type Reader interface {
 	ReadRange(ctx context.Context, r Range) (int, error)
 }
 
-// Config configures the behavior of [ReadRanges].
+// Config configures the behavior of [ReadRanges] and [ReadRangesStream].
 type Config struct {
 	// MaxParallelism is the maximum number of goroutines that may be used to
 	// read ranges in parallel. If MaxParallelism <= 0, [runtime.NumCPU] is
@@ -185,8 +185,8 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	span.AddEvent("optimized ranges")
 
 	// Once we optimized the ranges we can set up the rest of our attributes.
-	span.SetAttributes(readRangesAttributes(cfg, ranges, optimized)...)
-	defer injectThroughputAttribute(span, startTime, optimized)
+	span.SetAttributes(readRangesAttributes(cfg, ranges, len(optimized), rangesSize(optimized))...)
+	defer injectThroughputAttribute(span, startTime, rangesSize(optimized))
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(cfg.effectiveParallelism())
@@ -272,6 +272,14 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	return nil
 }
 
+// chunk is a [Range] but without the allocated data slice.
+type chunk struct {
+	Offset int64
+	Length int
+}
+
+func (c chunk) end() int64 { return c.Offset + int64(c.Length) }
+
 // optimizeRanges optimizes the set of ranges based on cfg. The returned slice
 // of ranges is sorted.
 //
@@ -280,14 +288,39 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 //
 // If cfg is nil, [DefaultConfig] is used.
 func optimizeRanges(cfg *Config, in []Range) ([]Range, func()) {
+	coalescedChunks := planChunks(cfg, in)
+
+	// Convert our chunks into target ranges.
+	out := make([]Range, len(coalescedChunks))
+	usedBuffers := make([]*bytes.Buffer, 0, len(out))
+	for i := range coalescedChunks {
+		size := coalescedChunks[i].Length
+
+		buf := bytesBufferPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		buf.Grow(size)
+		usedBuffers = append(usedBuffers, buf)
+
+		out[i] = Range{
+			Data:   buf.Bytes()[:size],
+			Offset: coalescedChunks[i].Offset,
+		}
+	}
+	return out, func() {
+		for _, buf := range usedBuffers {
+			bytesBufferPool.Put(buf)
+		}
+	}
+}
+
+// planChunks coalesces and splits the ranges based on cfg, and returns the
+// result as sorted chunks that do not overlap. The chunks cover every byte of
+// every range.
+//
+// If cfg is nil, [DefaultConfig] is used.
+func planChunks(cfg *Config, in []Range) []chunk {
 	if cfg == nil {
 		cfg = &DefaultConfig
-	}
-
-	// chunk is a [Range] but without the allocated data slice.
-	type chunk struct {
-		Offset int64
-		Length int
 	}
 
 	sorted := make([]chunk, len(in))
@@ -392,27 +425,7 @@ func optimizeRanges(cfg *Config, in []Range) ([]Range, func()) {
 		i += 2 // Skip over the range we just inserted.
 	}
 
-	// Convert our chunks into target ranges.
-	out := make([]Range, len(coalescedChunks))
-	usedBuffers := make([]*bytes.Buffer, 0, len(out))
-	for i := range coalescedChunks {
-		size := coalescedChunks[i].Length
-
-		buf := bytesBufferPool.Get().(*bytes.Buffer)
-		buf.Reset()
-		buf.Grow(size)
-		usedBuffers = append(usedBuffers, buf)
-
-		out[i] = Range{
-			Data:   buf.Bytes()[:size],
-			Offset: coalescedChunks[i].Offset,
-		}
-	}
-	return out, func() {
-		for _, buf := range usedBuffers {
-			bytesBufferPool.Put(buf)
-		}
-	}
+	return coalescedChunks
 }
 
 func rangesSize(ranges []Range) uint64 {
@@ -423,10 +436,9 @@ func rangesSize(ranges []Range) uint64 {
 	return total
 }
 
-// readRangesAttributes retrieves attributes about [ReadRanges] to be injected in spans.
-func readRangesAttributes(cfg *Config, ranges, optimizedRanges []Range) []attribute.KeyValue {
+// readRangesAttributes retrieves attributes about [ReadRanges] and [ReadRangesStream] to be injected in spans.
+func readRangesAttributes(cfg *Config, ranges []Range, optimizedCount int, optimizedSize uint64) []attribute.KeyValue {
 	origSize := rangesSize(ranges)
-	optimizedSize := rangesSize(optimizedRanges)
 
 	return []attribute.KeyValue{
 		attribute.Int("config.max_paralleism", cfg.MaxParallelism),
@@ -438,14 +450,12 @@ func readRangesAttributes(cfg *Config, ranges, optimizedRanges []Range) []attrib
 		attribute.Int("input.ranges.count", len(ranges)),
 		attribute.Stringer("input.ranges.size", bytesStringer(origSize)),
 
-		attribute.Int("optimized.ranges.count", len(optimizedRanges)),
+		attribute.Int("optimized.ranges.count", optimizedCount),
 		attribute.Stringer("optimized.ranges.size", bytesStringer(optimizedSize)),
 	}
 }
 
-func injectThroughputAttribute(span trace.Span, startTime time.Time, optimizedRanges []Range) {
-	size := rangesSize(optimizedRanges)
-
+func injectThroughputAttribute(span trace.Span, startTime time.Time, size uint64) {
 	bytesPerSec := float64(size) / time.Since(startTime).Seconds()
 	span.SetAttributes(attribute.Stringer("optimized.ranges.throughput", bytesStringer(uint64(bytesPerSec))))
 }

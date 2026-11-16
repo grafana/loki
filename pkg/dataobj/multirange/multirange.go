@@ -33,17 +33,19 @@ type multiGetter interface {
 }
 
 // Read fills the ranges from the object. It calls MultiGetRange when the bucket has it. Otherwise it
-// reads the ranges with GetRange, and coalesces them as [rangeio.ReadRanges] does.
+// reads the ranges with GetRange, and coalesces them as [rangeio.ReadRangesStream] does.
 func Read(ctx context.Context, bucket objstore.BucketReader, name string, ranges []rangeio.Range) error {
 	if b, ok := bucket.(multiGetter); ok {
 		return b.MultiGetRange(ctx, name, ranges)
 	}
-	return rangeio.ReadRanges(ctx, &getRangeReader{bucket: bucket, name: name}, ranges)
+	return rangeio.ReadRangesStream(ctx, &getRangeOpener{bucket: bucket, name: name}, ranges)
 }
 
 // NewCoalescingBucket returns a bucket with MultiGetRange. It merges ranges that are close, splits ranges
 // that are big, and reads the result in parallel with GetRange. The config in the context sets the sizes,
-// as for [rangeio.ReadRanges]. Every other call goes to bucket unchanged.
+// as for [rangeio.ReadRangesStream]. The bucket reads each merged range as one stream. It fills the buffers
+// of the caller from the stream and discards the gap bytes, so it allocates no buffer for the merged range.
+// Every other call goes to bucket unchanged.
 func NewCoalescingBucket(bucket objstore.Bucket, reg prometheus.Registerer) Bucket {
 	return &coalescingBucket{
 		Bucket: bucket,
@@ -66,8 +68,8 @@ type coalescingBucket struct {
 }
 
 func (b *coalescingBucket) MultiGetRange(ctx context.Context, name string, ranges []rangeio.Range) error {
-	reader := &getRangeReader{bucket: b.Bucket, name: name}
-	err := rangeio.ReadRanges(ctx, reader, ranges)
+	opener := &getRangeOpener{bucket: b.Bucket, name: name}
+	err := rangeio.ReadRangesStream(ctx, opener, ranges)
 
 	var needed int64
 	for _, r := range ranges {
@@ -75,27 +77,36 @@ func (b *coalescingBucket) MultiGetRange(ctx context.Context, name string, range
 	}
 	b.neededBytes.Add(float64(needed))
 	// Overlapping ranges are read once, so the bytes read can be below the bytes needed.
-	b.overreadBytes.Add(float64(max(0, reader.read.Load()-needed)))
+	b.overreadBytes.Add(float64(max(0, opener.read.Load()-needed)))
 	return err
 }
 
-// getRangeReader reads the ranges of one object with GetRange.
-type getRangeReader struct {
+// getRangeOpener opens the streams of one object with GetRange.
+type getRangeOpener struct {
 	bucket objstore.BucketReader
 	name   string
 
-	read atomic.Int64 // The bytes that the reads returned.
+	read atomic.Int64 // The bytes that the streams returned.
 }
 
-func (r *getRangeReader) ReadRange(ctx context.Context, rg rangeio.Range) (int, error) {
-	rc, err := r.bucket.GetRange(ctx, r.name, rg.Offset, rg.Len())
+func (o *getRangeOpener) OpenRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
+	rc, err := o.bucket.GetRange(ctx, o.name, offset, length)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	defer rc.Close()
+	return &countingReadCloser{ReadCloser: rc, read: &o.read}, nil
+}
 
-	n, err := io.ReadFull(rc, rg.Data)
-	r.read.Add(int64(n))
+// countingReadCloser counts the bytes that a body returns.
+type countingReadCloser struct {
+	io.ReadCloser
+
+	read *atomic.Int64
+}
+
+func (c *countingReadCloser) Read(p []byte) (int, error) {
+	n, err := c.ReadCloser.Read(p)
+	c.read.Add(int64(n))
 	return n, err
 }
 

@@ -122,8 +122,13 @@ below, as ranges, in one call.
 
 The coalescing bucket below the cache merges the missing ranges that are close, splits the ranges that
 are big, and reads them in parallel. It takes the sizes from the `rangeio` config in the context of the
-request. A merged read can include a gap. The bucket reads the gap and
-discards it, and the cache never stores it. A counter shows these bytes as overread, next to a counter of the bytes that the callers needed.
+request.
+
+The bucket reads each merged range as one stream. It fills the buffers of the caller straight from the
+stream, so it allocates no buffer for the merged range. A merged read can include a gap. The bucket reads
+the gap from the network and discards it, and the cache never stores it. A stream always starts and ends on
+a byte that a range needs, so a gap never lies at the edge of a request. A counter shows the gap bytes as
+overread, next to a counter of the bytes that the callers needed.
 
 The cache does not bound the requests of a read. The coalescing bucket does. A read of one range, such
 as the read of a footer, takes the same path: its misses go down in one multi-range call. A bucket that
