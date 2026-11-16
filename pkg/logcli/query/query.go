@@ -129,6 +129,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		if err != nil {
 			return fmt.Errorf("query failed: %w", err)
 		}
+		result.PrintWarnings(resp.Warnings)
 		if statistics {
 			result.PrintStats(resp.Data.Statistics)
 		}
@@ -161,6 +162,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+			result.PrintWarnings(resp.Warnings)
 
 			if statistics {
 				result.PrintStats(resp.Data.Statistics)
