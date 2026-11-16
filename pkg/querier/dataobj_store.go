@@ -12,6 +12,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -33,6 +34,12 @@ type DataObjStoreOption func(*DataObjStore)
 // object if it is tiny. A nil cache disables it.
 func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjStoreOption {
 	return func(s *DataObjStore) { s.metadataCache = cache }
+}
+
+// WithDataObjMetadataPrefetcher serves the metadata of each log object through prefetcher, which
+// returns the metadata that the query reads. A nil prefetcher disables it.
+func WithDataObjMetadataPrefetcher(prefetcher metadata.Prefetcher) DataObjStoreOption {
+	return func(s *DataObjStore) { s.metadataPrefetcher = prefetcher }
 }
 
 // WithDataObjHeadPrefetchBytes sets how many bytes an object open reads up front.
@@ -76,6 +83,9 @@ type DataObjStore struct {
 	maxConcurrency int
 	rangeConfig    rangeio.Config
 	metadataCache  dataobj.MetadataCache
+
+	// metadataPrefetcher is nil when the store has none.
+	metadataPrefetcher metadata.Prefetcher
 }
 
 // NewDataObjStore returns a [Store] that serves stream-first metric queries from the data objects
@@ -197,7 +207,10 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
-	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes, dataobjread.WithMetadataCache(s.metadataCache))
+	objects := dataobjread.NewOpenObjects(s.bucket, tenantID, s.prefetchBytes,
+		dataobjread.WithMetadataCache(s.metadataCache),
+		dataobjread.WithMetadataPrefetcher(s.metadataPrefetcher, projection.MetadataPrefetchSet()),
+	)
 	tasks := dataobjread.NewPlanner(s.metastore, objects, filterer).Plan(ctx, query)
 
 	// The dataset layer records its statistics into the region the context carries, and nothing
