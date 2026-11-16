@@ -233,6 +233,23 @@ func TestDecodeRow(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "returns an error when the run size is set without a run ID",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					{},
+					{},
+					{},
+					dataset.Int64Value(2),
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name:    "returns an error when the run size is not positive",
 			columns: optionalColumns,
 			row: dataset.Row{

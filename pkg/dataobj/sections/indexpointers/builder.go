@@ -34,8 +34,8 @@ type IndexPointer struct {
 	// RunSize is the number of index objects of run RunID that the ToC writer
 	// recorded. Zero means no recorded size: the index object is of no run, or
 	// a ToC writer without the run_size column rewrote the ToC. A non-zero
-	// RunSize is at most math.MaxInt32 and requires a non-zero RunID. The
-	// builder fails to encode a pointer that breaks this.
+	// RunSize is positive, at most math.MaxInt32, and requires a non-zero
+	// RunID. The builder fails to encode a pointer that breaks this.
 	RunSize int
 
 	// PostingKeys bounds the posting keys of the index object. The zero value
@@ -84,8 +84,8 @@ func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
 }
 
 // checkRunSize returns an error if the run size of pointer is negative, above
-// math.MaxInt32, or set without a run ID. Readers reject such a value, so a ToC
-// that holds it could not be read back.
+// math.MaxInt32, or set without a run ID. The builder and the row decoder both
+// use it, so a builder never writes a pointer that the decoder rejects.
 func checkRunSize(pointer IndexPointer) error {
 	switch {
 	case pointer.RunSize == 0:

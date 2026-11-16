@@ -247,8 +247,8 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 // and its pointers record the number of entries of the run. The writer picks
 // the ID inside the conditional write, so concurrent writers never share one.
 //
-// A run of one entry gets no run ID. The call adds it only if the ToC or an
-// earlier run of the call does not hold its path: the path of an index object
+// A run of one entry gets no run ID. The call adds it only if neither the ToC
+// nor an earlier run of the call holds its path: the path of an index object
 // is a hash of its content, so the same path means the same pointer. An entry
 // of a run of more than one entry fails if the ToC keeps its path, because the
 // kept pointer would keep its own run ID. A path in oldPaths is not kept.
@@ -533,8 +533,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		// of each run that change removes.
 		runs = make(map[indexpointers.RunID]struct{ total, removed int })
 		// maxRunID is the largest run ID in existing, removed pointers
-		// included. Then the ToC before and after this change never give one
-		// ID to two runs.
+		// included. So no run ID in the new ToC also names a removed run.
 		maxRunID indexpointers.RunID
 	)
 	if buf.Len() > 0 {

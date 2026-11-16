@@ -205,7 +205,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error 
 		return err
 	}
 	pointer.PostingKeys = keys
-	return nil
+	return checkRunSize(*pointer)
 }
 
 // PostingKeysFromBounds returns the posting key range of a pointer from its
