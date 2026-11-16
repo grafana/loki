@@ -409,16 +409,22 @@ func TestReadBatchPool(t *testing.T) {
 		require.Same(t, lineBuffer, &recycled.rows[0].Line[0])
 	})
 
-	t.Run("put drops the records and the row metadata", func(t *testing.T) {
+	t.Run("put drops the records, including those past their length, and the row metadata", func(t *testing.T) {
 		pool := newReadBatchPool(1, batchSize)
 		batch := pool.get()
 		metadata := labels.FromStrings("level", "error")
 		batch.rows[0].Metadata = metadata
-		batch.records = append(batch.records, LogRecord{streamLabels: metadata, metadata: metadata})
+		batch.records = append(batch.records,
+			LogRecord{streamLabels: labels.FromStrings("app", "a"), metadata: metadata},
+			LogRecord{streamLabels: labels.FromStrings("app", "b"), metadata: metadata},
+		)
+		batch.records = batch.records[:1]
 
 		pool.put(batch)
 		require.Empty(t, batch.records)
-		require.Equal(t, LogRecord{}, batch.records[:1][0])
+		for _, record := range batch.records[:cap(batch.records)] {
+			require.Equal(t, LogRecord{}, record)
+		}
 		require.True(t, batch.rows[0].Metadata.IsEmpty())
 	})
 

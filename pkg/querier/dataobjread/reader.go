@@ -249,29 +249,34 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask) (returnErr error
 		return err
 	}
 
-	// batch is the batch that this scan owns, or nil. A send passes ownership to the consumer,
-	// which returns the batch to the pool from Next. So the scan drops its reference after a send,
-	// and the deferred put returns only a batch that was never sent. If the scan also returned a
-	// sent batch, two owners would hold it, and another scan could decode into rows that the
-	// consumer still reads.
-	var batch *readBatch
-	defer func() {
-		if batch != nil {
-			r.batchPool.put(batch)
-		}
-	}()
+	// A panic in sendBatches drops the batch that it held. The garbage collector frees that
+	// batch, and the outer recover reports the panic itself.
+	batch, err := r.sendBatches(ctx, reader, task)
+	if batch != nil {
+		r.batchPool.put(batch)
+	}
+	return err
+}
 
+// sendBatches reads the rows of reader into batches from the pool, and sends each batch that
+// holds records. A send passes the batch to the consumer, which owns it from then on.
+//
+// sendBatches returns the batch that it holds and did not send, or nil, and the caller must
+// return that batch to the pool. It never returns a batch that it sent, because another scan
+// could then decode into rows that the consumer still reads.
+func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask) (*readBatch, error) {
+	var batch *readBatch
 	for {
 		if batch == nil {
 			batch = r.batchPool.get()
 		}
 		n, readErr := reader.Read(ctx, batch.rows)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return readErr
+			return batch, readErr
 		}
 		records, err := task.appendRecords(batch.records[:0], batch.rows[:n])
 		if err != nil {
-			return err
+			return batch, err
 		}
 		batch.records = records
 		if len(batch.records) > 0 {
@@ -279,11 +284,11 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask) (returnErr error
 			case r.batches <- batch:
 				batch = nil
 			case <-ctx.Done():
-				return ctx.Err()
+				return batch, ctx.Err()
 			}
 		}
 		if n == 0 && errors.Is(readErr, io.EOF) {
-			return nil
+			return batch, nil
 		}
 	}
 }
@@ -468,8 +473,11 @@ const maxPooledLineBytes = 64 << 10
 
 // reset drops the records and the metadata of the rows, and drops line buffers larger than
 // [maxPooledLineBytes]. The rows keep their other line buffers for the next decode.
+//
+// reset clears the whole backing array of the records, because a failed appendRecords can leave
+// records past their length.
 func (b *readBatch) reset() {
-	clear(b.records)
+	clear(b.records[:cap(b.records)])
 	b.records = b.records[:0]
 
 	for i := range b.rows {
