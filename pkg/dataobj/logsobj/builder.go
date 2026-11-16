@@ -84,6 +84,12 @@ type BuilderBaseConfig struct {
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
+	// SortConcurrency is the maximum number of goroutines that sort the logs of
+	// one tenant in FlushAndSort. A value of 1 or less sorts on one goroutine.
+	// Each extra goroutine holds the memory of about one section. The dataobj
+	// builder sets it, so it has no flag here.
+	SortConcurrency int `yaml:"-"`
+
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
 	// Flush returns an error if DropDuplicates is set.
@@ -664,30 +670,45 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 		}
 
 		numStreams := streamsSection.NumRows()
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
+		streamIter, remappedStreams, rankSizes, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		logsIter, err := mergeAndRemapLogsIter(ctx, sections, remappedStreams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
+		// The sort drops duplicates itself, so the section builders must not
+		// drop any. Otherwise the stream totals would count records that the
+		// builders drop.
+		newSection := func() *logs.Builder {
+			lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
+				PageSizeHint:     int(b.cfg.TargetPageSize),
+				PageMaxRowCount:  b.cfg.MaxPageRows,
+				BufferSize:       int(b.cfg.BufferSize),
+				StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+				AppendStrategy:   logs.AppendOrdered,
+				SortOrder:        logs.SortSchemaASC,
+				DropDuplicates:   false,
+			})
+			lb.SetTenant(tenant)
+			return lb
 		}
 
-		// drainLogsIter drops duplicates itself, so lb must not drop any.
-		// Otherwise the stream totals would count records that lb drops.
-		lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
-			SortOrder:        logs.SortSchemaASC,
-			DropDuplicates:   false,
-		})
-		lb.SetTenant(tenant)
-
-		totals, err := b.drainLogsIter(ctx, logsIter, lb, tenant, numStreams)
+		var (
+			totals streamTotals
+			ranges []rankRange
+		)
+		if b.cfg.SortConcurrency > 1 {
+			ranges = planSortRanges(rankSizes, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
+		}
+		if len(ranges) > 1 {
+			totals, err = b.sortRangesConcurrently(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
+		} else {
+			var logsIter result.Seq[logs.Record]
+			logsIter, err = mergeAndRemapLogsIter(ctx, sections, remappedStreams, nil)
+			if err != nil {
+				return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
+			}
+			totals, err = b.drainLogsIter(ctx, logsIter, newSection(), tenant, numStreams)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -765,19 +786,36 @@ func (b *Builder) Reset() {
 // drainLogsIter returns the totals of the appended records. The stream IDs of
 // the records must be in [1, numStreams].
 func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, numStreams int) (streamTotals, error) {
-	var (
-		totals     = newStreamTotals(numStreams)
-		duplicates logs.DuplicateTracker
-	)
+	totals := newStreamTotals(numStreams)
+	err := b.fillSections(ctx, iter, lb, tenant, totals, func(lb *logs.Builder) error { return b.builder.Append(lb) })
+	return totals, err
+}
+
+// fillSections consumes iter and appends each record to lb. It passes lb to
+// flush whenever the section size target is exceeded and once more after iter
+// ends, and it resets lb after each flush. It adds each appended record to
+// totals, and it skips duplicates as drainLogsIter does.
+//
+// fillSections writes only the entries of totals for the streams in iter, so
+// several calls can fill one totals at the same time if their streams differ.
+func (b *Builder) fillSections(
+	ctx context.Context,
+	iter result.Seq[logs.Record],
+	lb *logs.Builder,
+	tenant string,
+	totals streamTotals,
+	flush func(*logs.Builder) error,
+) error {
+	var duplicates logs.DuplicateTracker
 	for rec := range iter {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		default:
 		}
 		val, err := rec.Value()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if b.cfg.DropDuplicates && duplicates.IsDuplicate(val) {
 			continue
@@ -785,14 +823,19 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record
 		totals.add(val)
 		lb.Append(val)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return nil, err
+			if err := flush(lb); err != nil {
+				return err
 			}
 			lb.Reset()
 			lb.SetTenant(tenant)
 		}
 	}
-	return totals, b.builder.Append(lb)
+	if err := flush(lb); err != nil {
+		return err
+	}
+	lb.Reset()
+	lb.SetTenant(tenant)
+	return nil
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
@@ -861,18 +904,24 @@ type mappedStream struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, error) {
+//
+// sortAndRemapStreams also returns the size that the records of each stream add
+// to a logs section, indexed by new stream ID, where index 0 is unused. The
+// size comes from the stream stats, so it counts duplicates that the sort can
+// still drop. It is an upper bound.
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, []int64, error) {
 	allStreams := make([]mappedStream, 0, numStreams)
 	lookup := make([]rankedSortKey, numStreams+1)
+	sizes := make([]int64, numStreams+1)
 
 	for res := range iter {
 		stream, err := res.Value()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		r, err := emptyRankedSortKey(stream.Labels, schemaLabels, shardLayout)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		allStreams = append(allStreams, mappedStream{
 			stream:  stream,
@@ -889,10 +938,10 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		newID := int64(i + 1)
 
 		if oldID <= 0 || oldID > int64(numStreams) {
-			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
+			return nil, nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
 		}
 		if prev := lookup[oldID]; prev.rank != 0 {
-			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
+			return nil, nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
 		}
 
 		allStreams[i].mapping.rank = newID
@@ -900,6 +949,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 
 		// Remap to the new stream ID.
 		allStreams[i].stream.ID = newID
+		sizes[newID] = allStreams[i].stream.UncompressedSize + int64(allStreams[i].stream.Rows)*logs.RecordOverhead
 	}
 
 	return result.Iter(func(yield func(streams.Stream) bool) error {
@@ -909,7 +959,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 			}
 		}
 		return nil
-	}), lookup, nil
+	}), lookup, sizes, nil
 }
 
 func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
