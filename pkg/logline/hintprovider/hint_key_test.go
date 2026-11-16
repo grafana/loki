@@ -153,7 +153,8 @@ func TestNeedleKey_SurvivesReparse(t *testing.T) {
 // expressions it is asked about.
 type ngramDelegate struct {
 	*stubHintProvider
-	n int
+	n       int
+	maxConj int
 
 	mu    sync.Mutex
 	exprs []string
@@ -161,7 +162,7 @@ type ngramDelegate struct {
 
 func (d *ngramDelegate) NgramLength() int { return d.n }
 
-func (d *ngramDelegate) MaxConjunctions() int { return 1 }
+func (d *ngramDelegate) MaxConjunctions() int { return d.maxConj }
 
 func (d *ngramDelegate) ProvideHints(
 	ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time,
@@ -177,7 +178,7 @@ func newNgramDelegate(delay time.Duration) *ngramDelegate {
 		Start: time.Date(2026, 3, 10, 0, 10, 0, 0, time.UTC),
 		End:   time.Date(2026, 3, 10, 0, 20, 0, 0, time.UTC),
 	}}}
-	return &ngramDelegate{stubHintProvider: &stubHintProvider{hints: hints, delay: delay}, n: 6}
+	return &ngramDelegate{stubHintProvider: &stubHintProvider{hints: hints, delay: delay}, n: 6, maxConj: 1}
 }
 
 func provideKeyTestHints(p *CachingHintProvider, expr syntax.Expr) error {
@@ -207,6 +208,38 @@ func TestCachingHintProvider_SharesEntriesByNeedles(t *testing.T) {
 	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestVolumeQuery)))
 	require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, keyTestLogQuery)))
 	require.Len(t, delegate.exprs, 2)
+}
+
+// The key uses the delegate's needle set limit: with room for two sets an or is
+// keyed on its branches and shares an entry, and with room for one it has no
+// shared needle and keys on the expression.
+func TestCachingHintProvider_KeyUsesDelegateMaxConjunctions(t *testing.T) {
+	const (
+		orQuery      = `{app="api"} |= "timeout" or "failure"`
+		reorderedOr  = `{app="web"} |= "failure" or "timeout"`
+		singleNeedle = `{app="api"} |= "timeout"`
+	)
+	for name, tc := range map[string]struct {
+		maxConj int
+		calls   int
+	}{
+		"two sets share":  {2, 1},
+		"one set doesn't": {1, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			delegate := newNgramDelegate(0)
+			delegate.maxConj = tc.maxConj
+			provider := NewCachingHintProvider(delegate, newMockHintCacheBackend(), prometheus.NewRegistry())
+
+			require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, orQuery)))
+			require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, reorderedOr)))
+			require.Len(t, delegate.exprs, tc.calls)
+
+			// A different set of needles is a different entry.
+			require.NoError(t, provideKeyTestHints(provider, mustParseExpr(t, singleNeedle)))
+			require.Len(t, delegate.exprs, tc.calls+1)
+		})
+	}
 }
 
 // Concurrent lookups for a log query and a volume query with the same needles
@@ -245,7 +278,15 @@ var singleNeedlePairs = [][2]string{
 }
 
 func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
-	const ngram = 6
+	const (
+		ngram   = 6
+		maxConj = 2 // enough sets for the or pair; the single-needle pairs plan the same at any limit
+	)
+	// An or is keyed on its branches, so the pair shares a key whatever the
+	// matchers and the order of the branches.
+	pairs := append([][2]string{
+		{`{app="api"} |= "timeout" or "failure"`, `{app="web"} |= "failure" or "timeout"`},
+	}, singleNeedlePairs...)
 	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
 	t5 := day.Add(10 * time.Hour)
@@ -266,17 +307,17 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 	}{
 		{
 			"v3", v3, t0.Add(-time.Minute), t0.Add(5 * time.Minute),
-			singleNeedlePairs,
+			pairs,
 			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "absent-needle"`},
 		},
 		{
 			"v5", v5, t5.Add(-time.Minute), t5.Add(5 * time.Minute),
-			singleNeedlePairs,
+			pairs,
 			[2]string{`{app="api"} |= "timeout"`, `{app="api"} |= "absent-needle"`},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			provider, err := NewLoglineHintProvider(tc.store, ngram, 0, 1, nil, log.NewNopLogger(), nil)
+			provider, err := NewLoglineHintProvider(tc.store, ngram, 0, maxConj, nil, log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			hints := func(query string) []HintTimeRange {
 				h, _, err := provider.ProvideHints(context.Background(), "test-tenant", mustParseExpr(t, query),
@@ -287,7 +328,7 @@ func TestNeedleKey_EqualKeysGetEqualHints(t *testing.T) {
 			}
 
 			for _, pair := range tc.pairs {
-				require.Equal(t, needleKeyOf(t, pair[0], ngram), needleKeyOf(t, pair[1], ngram), "the pair should share a key: %v", pair)
+				require.Equal(t, needleKeyWith(t, pair[0], ngram, maxConj), needleKeyWith(t, pair[1], ngram, maxConj), "the pair should share a key: %v", pair)
 				got := hints(pair[0])
 				require.NotEmpty(t, got, pair)
 				require.Equal(t, got, hints(pair[1]), pair)

@@ -62,8 +62,10 @@ Query-shape support and hint lookup for logline index lookups.
      the same needle sets share an entry whatever else they contain. A metric query shares with the log query
      it wraps, and Grafana's logs volume query, which appends `| drop __error__`,
      shares with its log query. Stream matchers are not part of the key.
-   - With no needles or no single log selector, or when the delegate reports no
-     n-gram length (`NgramLength()`, like `MinDate()`), the key is `expr.String()`.
+   - With no needles or no single log selector, or when the delegate does not
+     report `NgramLength()` and `MaxConjunctions()` (like `MinDate()`; both are
+     needed, and a delegate with only one loses the sharing), the key is
+     `expr.String()`.
    - `maxConjunctions` is not a field of the key. It decides which sets the key
      holds, so the delegate reports the value its lookups use
      (`MaxConjunctions()`, invariant 18), and the key is computed with it.
