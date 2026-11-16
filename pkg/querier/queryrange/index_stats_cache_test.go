@@ -87,9 +87,9 @@ func TestIndexStatsCache(t *testing.T) {
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: 2,
-			Chunks:  uint64(math.Floor(2*0.75) + 2),
-			Bytes:   (1<<10)*0.75 + (1 << 10),
-			Entries: uint64(math.Floor(10*0.75) + 10),
+			Chunks:  uint64(math.Ceil(2*0.75) + 2),
+			Bytes:   (1<<10)*0.75 + 1 + (1 << 10), // testTime's nanoseconds round the cached extent up to 1h1ms, so the factor is just above 0.75
+			Entries: uint64(math.Ceil(10*0.75) + 10),
 		},
 	}
 	resp, err = rc.Do(ctx, req)
