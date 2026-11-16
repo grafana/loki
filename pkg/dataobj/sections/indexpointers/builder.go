@@ -85,7 +85,7 @@ func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
 
 // checkRunSize returns an error if the run size of pointer is negative, above
 // math.MaxInt32, or set without a run ID. The builder and the row decoder both
-// use it, so a builder never writes a pointer that the decoder rejects.
+// use it, so the builder and the decoder accept the same run sizes.
 func checkRunSize(pointer IndexPointer) error {
 	switch {
 	case pointer.RunSize == 0:
