@@ -25,6 +25,21 @@ type indexRun struct {
 	entries []indexpointers.IndexPointer
 }
 
+// checkSize returns an error that wraps errCorruptIndex if an index object of
+// r records a run size other than the number of index objects of r. Then the
+// ToC lists only part of the run.
+//
+// A run size of zero is unknown, so it matches any number. A ToC writer that
+// predates the run_size column drops the size when it rewrites the ToC.
+func (r indexRun) checkSize() error {
+	for _, entry := range r.entries {
+		if entry.RunSize != 0 && entry.RunSize != len(r.entries) {
+			return fmt.Errorf("%w: index %s records a run of %d index objects, but the ToC lists %d", errCorruptIndex, entry.Path, entry.RunSize, len(r.entries))
+		}
+	}
+	return nil
+}
+
 // maxLoggedRunPaths is the largest number of index object paths that
 // [indexRun.String] lists, so a log line of a large run stays short.
 const maxLoggedRunPaths = 8

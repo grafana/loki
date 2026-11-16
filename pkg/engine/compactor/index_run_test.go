@@ -67,6 +67,32 @@ func TestIndexRun_String(t *testing.T) {
 	})
 }
 
+func TestIndexRun_CheckSize(t *testing.T) {
+	run := func(sizes ...int) indexRun {
+		var r indexRun
+		for i, size := range sizes {
+			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunSize: size})
+		}
+		return r
+	}
+
+	t.Run("accepts a run whose index objects record the number of index objects in the ToC", func(t *testing.T) {
+		require.NoError(t, run(2, 2).checkSize())
+	})
+
+	t.Run("accepts a run whose index objects record no size", func(t *testing.T) {
+		require.NoError(t, run(0, 0).checkSize())
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(3, 3).checkSize(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when one index object records another size than the others", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 0, 3).checkSize(), errCorruptIndex)
+	})
+}
+
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
 	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})

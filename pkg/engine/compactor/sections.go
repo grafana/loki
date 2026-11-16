@@ -249,11 +249,16 @@ type openedIndex struct {
 	obj  *dataobj.Object
 }
 
-// openRunObjects opens the index objects of run, in the order of run.
+// openRunObjects opens the index objects of run, in the order of run. It
+// returns an error that wraps errCorruptIndex if the ToC lists only part of
+// run, so no planning reads an incomplete run.
 //
 // Each returned object keeps its prefetch buffer of up to prefetchBytes, so
 // the memory grows with the number of index objects in run.
 func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
+	if err := run.checkSize(); err != nil {
+		return nil, err
+	}
 	opened := make([]openedIndex, 0, len(run.entries))
 	for _, entry := range run.entries {
 		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)

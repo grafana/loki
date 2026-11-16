@@ -30,6 +30,11 @@ type IndexPointer struct {
 	// RunID is the run that holds the index object.
 	RunID RunID
 
+	// RunSize is the number of index objects of the run that holds the index
+	// object. Zero means the size is unknown: the index object is of no run,
+	// or a ToC writer that predates the run_size column dropped it.
+	RunSize int
+
 	// PostingKeys bounds the posting keys of the index object. The zero value
 	// means the bounds are unknown, so the index object can hold any posting
 	// key.
@@ -148,9 +153,10 @@ func (b *Builder) EstimatedSize() int {
 		pathCompressionRatio = 3                                     // ZSTD compression ratio
 		timestampDeltaSize   = streamio.VarintSize(int64(time.Hour)) // 1 hour delta
 		runIDSize            = 1                                     // Delta of a mostly constant value
+		runSizeSize          = 1                                     // Delta of a mostly constant value
 		shardBucketsSize     = 1                                     // Delta of a mostly constant value
 		metadataOverhead     = 100                                   // Estimated metadata overhead per column
-		columnCount          = 7
+		columnCount          = 8
 	)
 
 	var sizeEstimate int
@@ -162,7 +168,7 @@ func (b *Builder) EstimatedSize() int {
 	sizeEstimate += 2 * len(b.indexPointers) * timestampDeltaSize
 
 	sizeEstimate += b.postingKeyBytes
-	sizeEstimate += len(b.indexPointers) * (runIDSize + shardBucketsSize)
+	sizeEstimate += len(b.indexPointers) * (runIDSize + runSizeSize + shardBucketsSize)
 	sizeEstimate += columnCount * metadataOverhead
 
 	return sizeEstimate
@@ -275,6 +281,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return err
 	}
+	runSizeBuilder, err := b.newColumnBuilder(ColumnTypeRunSize, datasetmd_v2.PHYSICAL_TYPE_INT64, datasetmd_v2.ENCODING_TYPE_DELTA, datasetmd_v2.COMPRESSION_TYPE_NONE)
+	if err != nil {
+		return err
+	}
 
 	for i, pointer := range b.indexPointers {
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
@@ -294,8 +304,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if layout, ok := pointer.ShardBuckets.Layout(); ok {
 			_ = shardBucketsBuilder.Append(i, dataset.Int64Value(int64(layout.Buckets())))
 		}
+		if pointer.RunSize != 0 {
+			_ = runSizeBuilder.Append(i, dataset.Int64Value(int64(pointer.RunSize)))
+		}
 	}
-	for _, builder := range []*dataset.ColumnBuilder{runIDBuilder, minPostingKeyBuilder, maxPostingKeyBuilder, shardBucketsBuilder} {
+	for _, builder := range []*dataset.ColumnBuilder{runIDBuilder, minPostingKeyBuilder, maxPostingKeyBuilder, shardBucketsBuilder, runSizeBuilder} {
 		builder.Backfill(len(b.indexPointers))
 	}
 
@@ -311,6 +324,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		errs = append(errs, encodeColumn(enc, ColumnTypeMinPostingKey, minPostingKeyBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeMaxPostingKey, maxPostingKeyBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRunSize, runSizeBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)

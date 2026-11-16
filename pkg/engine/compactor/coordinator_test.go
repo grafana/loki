@@ -140,9 +140,11 @@ type fakeReplacer struct {
 }
 
 type replaceCall struct {
-	window     time.Time
-	tenant     string
-	oldPaths   []string
+	window   time.Time
+	tenant   string
+	oldPaths []string
+	newRuns  []metastore.TableOfContentsRun
+	// newEntries are the entries of newRuns, in order.
 	newEntries []metastore.TableOfContentsEntry
 }
 
@@ -151,10 +153,14 @@ func (f *fakeReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newEntries []metastore.TableOfContentsEntry,
+	newRuns []metastore.TableOfContentsRun,
 ) (bool, error) {
+	var newEntries []metastore.TableOfContentsEntry
+	for _, run := range newRuns {
+		newEntries = append(newEntries, run...)
+	}
 	f.mu.Lock()
-	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsEntry(nil), newEntries...)})
+	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsRun(nil), newRuns...), newEntries})
 	f.mu.Unlock()
 	return f.swapped, f.err
 }
@@ -2079,17 +2085,20 @@ func (r *concurrentRemovalReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newEntries []metastore.TableOfContentsEntry,
+	newRuns []metastore.TableOfContentsRun,
 ) (bool, error) {
 	require.Contains(r.t, oldPaths, r.removed)
-	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.TableOfContentsEntry{{
+	require.NotEmpty(r.t, newRuns)
+	require.NotEmpty(r.t, newRuns[0])
+	first := newRuns[0][0]
+	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.TableOfContentsRun{{{
 		Path:      "indexes/concurrent",
-		StartTime: newEntries[0].StartTime,
-		EndTime:   newEntries[0].EndTime,
-	}})
+		StartTime: first.StartTime,
+		EndTime:   first.EndTime,
+	}}})
 	require.NoError(r.t, err)
 	require.True(r.t, swapped)
-	return r.writer.ReplaceIndexPointers(ctx, window, tenant, oldPaths, newEntries)
+	return r.writer.ReplaceIndexPointers(ctx, window, tenant, oldPaths, newRuns)
 }
 
 func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant string, paths []string) objstore.Bucket {
@@ -3501,6 +3510,44 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.False(t, anyError)
 		require.Empty(t, plans)
 		require.Zero(t, singleObjectRuns)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
+	})
+
+	// shortRun returns a ToC entry of each of two index objects of a run that
+	// records three index objects.
+	shortRun := func(t *testing.T, bucket objstore.Bucket) []indexpointers.IndexPointer {
+		t.Helper()
+		var pointers []indexpointers.IndexPointer
+		for _, path := range []string{"indexes/run/a", "indexes/run/b"} {
+			buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{{
+				ObjectPath: "logs/log-0", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100,
+			}})
+			pointers = append(pointers, indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1, RunSize: 3})
+		}
+		return pointers
+	}
+
+	t.Run("IndexMerge skips an index run that the ToC lists only in part, counts it, and reports no error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		pointers := shortRun(t, bucket)
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		_, err := c.compactTenantIndexes(ctx, "acme", window, pointers)
+		require.NoError(t, err)
+		require.Empty(t, runner.snapshot())
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("LogMerge skips an index run that the ToC lists only in part, counts it, and reports no planning error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, shortRun(t, bucket)...)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		plans, _, anyError := c.planLogCompactions(ctx, "acme")
+		require.False(t, anyError)
+		require.Empty(t, plans)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
 }
