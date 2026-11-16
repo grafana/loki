@@ -392,3 +392,20 @@ func Test_ParseVolumeRangeQuery(t *testing.T) {
 		})
 	})
 }
+
+func TestStreamsMarshalEscapesHTML(t *testing.T) {
+	streams := Streams{{
+		Labels:  LabelSet{"app": "web"},
+		Entries: []Entry{{Timestamp: time.Unix(0, 1), Line: "<b>&</b>"}},
+	}}
+
+	// Marshal the way the HTTP handlers do (see pkg/util/marshal).
+	data, err := jsoniter.ConfigFastest.Marshal(streams)
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"stream":{"app":"web"},"values":[["1","\u003cb\u003e\u0026\u003c/b\u003e"]]}]`, string(data))
+	require.Contains(t, string(data), `\u003cb\u003e\u0026\u003c/b\u003e`) // JSONEq ignores the escaping
+
+	var decoded Streams
+	require.NoError(t, jsoniter.ConfigFastest.Unmarshal(data, &decoded))
+	require.Equal(t, "<b>&</b>", decoded[0].Entries[0].Line)
+}
