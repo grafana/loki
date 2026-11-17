@@ -300,7 +300,7 @@ func TestVectorAggregationExpr_Extractor_ShouldGroupBeforeTheRangeAggregationOnl
 		"max over min_over_time keeps every label":       {query: `max by (x) (min_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
 		"sum over max_over_time keeps every label":       {query: `sum by (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
 		"max over rate keeps every label":                {query: `max by (x) (rate({job="a"} | json [1m]))`, wantLabels: `{id="9", job="a", v="5", x="1"}`},
-		"max without drops only the labels it names":     {query: `max without (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a"}`},
+		"max without keeps every label":                  {query: `max without (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			expr, err := ParseSampleExpr(tc.query)
