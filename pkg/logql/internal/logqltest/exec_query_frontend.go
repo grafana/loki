@@ -42,6 +42,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+const loglineMaxConjunctions = 4
+
 // queryFrontendExecutionStack runs queries through a query-frontend + query-scheduler +
 // querier-worker loop over gRPC.
 type queryFrontendExecutionStack struct {
@@ -226,7 +228,7 @@ func newQueryFrontendStack(t *testing.T, stackName string, o stackOptions, limit
 	s.handlerForStore = func(indexStore *loglinestore.Store) (http.Handler, error) {
 		middleware := tripperware
 		if o.loglineEnabled {
-			cfg := loglinefrontend.Config{Enabled: true, NgramLength: logline.DefaultNgramLength}
+			cfg := loglinefrontend.Config{Enabled: true, NgramLength: logline.DefaultNgramLength, MaxConjunctions: loglineMaxConjunctions}
 			var err error
 			middleware, _, err = loglinefrontend.WrapMiddlewareWithStore(cfg, loglinefrontend.Deps{}, overrides, indexStore, middleware, logger, prometheus.NewRegistry())
 			if err != nil {
@@ -268,7 +270,7 @@ func (s *queryFrontendExecutionStack) setStores(stores *scriptStores) {
 	if s.loglineEnabled {
 		var err error
 		// There is no polling lifecycle to invalidate cached index metadata.
-		provider, err = hintprovider.NewLoglineHintProvider(stores.logline, logline.DefaultNgramLength, 0, nil, log.NewNopLogger(), nil)
+		provider, err = hintprovider.NewLoglineHintProvider(stores.logline, logline.DefaultNgramLength, 0, loglineMaxConjunctions, nil, log.NewNopLogger(), nil)
 		require.NoError(s.t, err)
 	}
 	handler, err := s.handlerForStore(stores.logline)

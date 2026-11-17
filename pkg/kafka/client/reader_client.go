@@ -26,7 +26,8 @@ const (
 // The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
 // `MetricsPrefix`
 //
-// Passing kgo.MaxVersions in opts replaces the ApiVersions cap.
+// Passing kgo.MaxVersions in opts replaces the ApiVersions cap, and passing
+// kgo.ConsumeResetOffset replaces the reset offset.
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
@@ -42,7 +43,12 @@ func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 		// Kafka. This is a safety measure to avoid OOMing on invalid responses.
 		// franz-go recommendation is to set it 2x FetchMaxBytes.
 		kgo.BrokerMaxReadBytes(2*fetchMaxBytes),
+		// After data loss while consuming, resume at the first record stamped at
+		// or after the last one consumed, as on franz-go < 1.22. The franz-go
+		// >= 1.22 default rewinds one minute and re-reads records.
+		kgo.ConsumeResetOffset(kgo.RewindOffset(0)),
 	)
+	clientOpts = append(clientOpts, kafka.MaxDecompressBatchBytesOpts(kafkaCfg.MaxDecompressBatchBytes)...)
 	clientOpts = append(clientOpts, opts...)
 
 	client, err := kgo.NewClient(clientOpts...)
