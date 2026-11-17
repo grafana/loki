@@ -68,7 +68,7 @@ func TestIndexRun_String(t *testing.T) {
 }
 
 func TestIndexRun_CheckLength(t *testing.T) {
-	run := func(sizes ...int) indexRun {
+	run := func(sizes ...int32) indexRun {
 		var r indexRun
 		for i, size := range sizes {
 			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunLength: size})

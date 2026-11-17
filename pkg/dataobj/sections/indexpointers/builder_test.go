@@ -74,7 +74,7 @@ func TestBuilder_RunLength(t *testing.T) {
 		ib.Append(pointer)
 		return dataobj.NewBuilder(nil).Append(ib)
 	}
-	pointer := func(runID indexpointers.RunID, runLength int) indexpointers.IndexPointer {
+	pointer := func(runID indexpointers.RunID, runLength int32) indexpointers.IndexPointer {
 		return indexpointers.IndexPointer{Path: "foo", StartTs: unixTime(10), EndTs: unixTime(20), RunID: runID, RunLength: runLength}
 	}
 
@@ -90,7 +90,4 @@ func TestBuilder_RunLength(t *testing.T) {
 		require.ErrorContains(t, encode(pointer(1, -1)), "invalid run length")
 	})
 
-	t.Run("returns an error when the run length does not fit in 32 bits", func(t *testing.T) {
-		require.ErrorContains(t, encode(pointer(1, 1<<40)), "invalid run length")
-	})
 }

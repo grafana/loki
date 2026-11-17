@@ -131,7 +131,7 @@ func TestRunLengthFromValue(t *testing.T) {
 	t.Run("returns the run length for a positive value", func(t *testing.T) {
 		size, err := RunLengthFromValue(3)
 		require.NoError(t, err)
-		require.Equal(t, 3, size)
+		require.Equal(t, int32(3), size)
 	})
 
 	t.Run("returns an error when the value is zero", func(t *testing.T) {

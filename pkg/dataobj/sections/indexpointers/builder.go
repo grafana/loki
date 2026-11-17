@@ -3,7 +3,6 @@ package indexpointers
 import (
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -32,11 +31,11 @@ type IndexPointer struct {
 	RunID RunID
 
 	// RunLength is the number of index objects of run RunID that the ToC writer
-	// recorded. Zero means no recorded size: the index object is of no run, or
-	// a ToC writer without the run_length column rewrote the ToC. A non-zero
-	// RunLength is positive, at most math.MaxInt32, and requires a non-zero
-	// RunID. The builder fails to encode a pointer that breaks this.
-	RunLength int
+	// recorded. Zero means no recorded length: the index object is of no run,
+	// or a ToC writer without the run_length column rewrote the ToC. A non-zero
+	// RunLength is positive and requires a non-zero RunID. The builder fails to
+	// encode a pointer that breaks this.
+	RunLength int32
 
 	// PostingKeys bounds the posting keys of the index object. The zero value
 	// means the bounds are unknown, so the index object can hold any posting
@@ -83,14 +82,14 @@ func (b ShardBuckets) Layout() (layout streams.ShardLayout, ok bool) {
 	return streams.MustShardLayoutFromBuckets(b.count), true
 }
 
-// checkRunLength returns an error if the run length of pointer is negative,
-// above math.MaxInt32, or set without a run ID. The builder and the row
-// decoder both use it, so they accept the same run lengths.
+// checkRunLength returns an error if the run length of pointer is negative or
+// set without a run ID. The builder and the row decoder both use it, so they
+// accept the same run lengths.
 func checkRunLength(pointer IndexPointer) error {
 	switch {
 	case pointer.RunLength == 0:
 		return nil
-	case pointer.RunLength < 0 || pointer.RunLength > math.MaxInt32:
+	case pointer.RunLength < 0:
 		return fmt.Errorf("index pointer %s: invalid run length %d", pointer.Path, pointer.RunLength)
 	case pointer.RunID == 0:
 		return fmt.Errorf("index pointer %s: run length %d without a run ID", pointer.Path, pointer.RunLength)

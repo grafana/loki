@@ -3522,7 +3522,7 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 	}
 	// indexAt writes an index object at path with the postings and stats rows
 	// of one log object, and returns its ToC entry.
-	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runLength int) indexpointers.IndexPointer {
+	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runLength int32) indexpointers.IndexPointer {
 		t.Helper()
 		logPath := "logs/" + path
 		buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,

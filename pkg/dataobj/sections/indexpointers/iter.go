@@ -240,13 +240,13 @@ func RunIDFromValue(value int64) (RunID, error) {
 
 // RunLengthFromValue returns the run length with the given value, as the
 // run_length column stores it. It returns an error if value is not positive,
-// because writers store no value for an unknown length. It also returns an
-// error above math.MaxInt32, so the length fits in an int on every platform.
-func RunLengthFromValue(value int64) (int, error) {
+// because writers store no value for an unknown length, or if value does not
+// fit in an int32.
+func RunLengthFromValue(value int64) (int32, error) {
 	if value <= 0 || value > math.MaxInt32 {
 		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunLength, value)
 	}
-	return int(value), nil
+	return int32(value), nil
 }
 
 // ShardBucketsFromCount returns the ShardBuckets with the given bucket count,

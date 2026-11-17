@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -513,7 +514,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		entry := func(path string) TableOfContentsEntry {
 			return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20)}
 		}
-		inRun := func(path string, runID indexpointers.RunID, size int) indexpointers.IndexPointer {
+		inRun := func(path string, runID indexpointers.RunID, size int32) indexpointers.IndexPointer {
 			pointer := runPointer(path, runID)
 			pointer.RunLength = size
 			return pointer
@@ -1564,5 +1565,27 @@ func TestForEachTocPointer(t *testing.T) {
 			return nil
 		}))
 		require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, paths)
+	})
+}
+
+func TestRunLengthOf(t *testing.T) {
+	t.Run("returns the number of entries of a run", func(t *testing.T) {
+		length, err := runLengthOf(3)
+		require.NoError(t, err)
+		require.Equal(t, int32(3), length)
+	})
+
+	t.Run("returns an error when the run is empty", func(t *testing.T) {
+		_, err := runLengthOf(0)
+		require.ErrorContains(t, err, "empty new run")
+	})
+
+	t.Run("returns an error when the run has more entries than an int32 holds", func(t *testing.T) {
+		if math.MaxInt == math.MaxInt32 {
+			t.Skip("an int holds no value above math.MaxInt32 on this platform")
+		}
+		tooLong := int64(math.MaxInt32) + 1
+		_, err := runLengthOf(int(tooLong))
+		require.ErrorContains(t, err, "too long")
 	})
 }

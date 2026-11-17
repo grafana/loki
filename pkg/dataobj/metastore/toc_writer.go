@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"time"
 
@@ -305,7 +306,24 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	}
 }
 
-// validateNewRuns returns an error if a run of newRuns is empty, if an entry
+// runLength returns the number of entries of run, as the run_length column of
+// its pointers records it. It returns an error if run is empty, or if its
+// length does not fit in an int32.
+func runLength(run IndexRunEntries) (int32, error) {
+	return runLengthOf(len(run))
+}
+
+func runLengthOf(entries int) (int32, error) {
+	switch {
+	case entries == 0:
+		return 0, errors.New("replace-index-pointers: empty new run")
+	case int64(entries) > math.MaxInt32:
+		return 0, fmt.Errorf("replace-index-pointers: new run of %d entries is too long", entries)
+	}
+	return int32(entries), nil
+}
+
+// validateNewRuns returns an error if a run of newRuns is empty or too long, if an entry
 // has no valid time range or lies in another window, or if the path of an
 // entry of a run of more than one entry appears twice in newRuns or is in
 // oldPaths.
@@ -318,8 +336,8 @@ func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntr
 		pathCounts[path]++
 	}
 	for _, run := range newRuns {
-		if len(run) == 0 {
-			return errors.New("replace-index-pointers: empty new run")
+		if _, err := runLength(run); err != nil {
+			return err
 		}
 		for _, entry := range run {
 			entryWindow, err := entry.TimeWindow()
@@ -636,11 +654,15 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	nextRunID := maxRunID + 1
 	for _, run := range change.add {
 		var (
-			runID     indexpointers.RunID
-			runLength int
+			runID  indexpointers.RunID
+			length int32
 		)
 		if len(run) > 1 {
-			runID, runLength = nextRunID, len(run)
+			var err error
+			if length, err = runLength(run); err != nil {
+				return nil, err
+			}
+			runID = nextRunID
 			nextRunID++
 		}
 		for _, entry := range run {
@@ -656,7 +678,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 				StartTs:      entry.StartTime,
 				EndTs:        entry.EndTime,
 				RunID:        runID,
-				RunLength:    runLength,
+				RunLength:    length,
 				ShardBuckets: entry.ShardBuckets,
 			}); err != nil {
 				return nil, fmt.Errorf("appending index pointer: %w", err)
