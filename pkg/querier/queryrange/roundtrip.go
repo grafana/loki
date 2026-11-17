@@ -522,7 +522,8 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 			"target_bytes_per_shard", op.TargetBytesPerShard,
 		)
-		return r.indexStats.Do(ctx, req)
+		// Shards of different time ranges can't be merged, so the request isn't split like index stats.
+		return r.next.Do(ctx, req)
 	case *logproto.VolumeRequest:
 		logQueryExecution(ctx, logger,
 			"type", "volume_range",

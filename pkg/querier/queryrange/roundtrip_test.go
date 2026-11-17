@@ -673,6 +673,29 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, response.Entries*4, res.Response.Entries)
 }
 
+func TestIndexShardsTripperware(t *testing.T) {
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	lreq := &logproto.ShardsRequest{
+		Query:   `{job="varlogs"}`,
+		From:    model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than the index stats split
+		Through: model.TimeFromUnixNano(testTime.UnixNano()),
+	}
+
+	count := 0
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		count++
+		return &ShardsResponse{Response: &logproto.ShardsResponse{}}, nil
+	})
+	_, err = tpw.Wrap(h).Do(user.InjectOrgID(context.Background(), "1"), lreq)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
 func TestVolumeTripperware(t *testing.T) {
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
 		limits := fakeLimits{
