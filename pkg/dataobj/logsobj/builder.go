@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/facette/natsort"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -22,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -618,123 +616,6 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 	return sorted, sortedCloser, nil
 }
 
-// sort writes originalObj sorted object-wide to b.builder and flushes it.
-// layouts must hold the layout of every tenant in originalObj, and every logs
-// section of originalObj must follow the layout of its tenant. originalObj must
-// stay open until sort returns.
-//
-// sort always resets Builder.
-func (b *Builder) sort(ctx context.Context, originalObj *dataobj.Object, layouts map[string]streams.Layout) (*dataobj.Object, io.Closer, error) {
-	defer b.Reset()
-
-	// Sort the set of tenants so the new object has a deterministic order of sections.
-	tenants := originalObj.Tenants()
-	natsort.Sort(tenants)
-
-	for _, tenant := range tenants {
-		tenantLayout, ok := layouts[tenant]
-		if !ok {
-			return nil, nil, fmt.Errorf("no layout for tenant %s", tenant)
-		}
-		if err := b.sortAndWriteTenant(ctx, originalObj, tenant, tenantLayout); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	return b.builder.Flush()
-}
-
-// sortAndWriteTenant sorts the logs and the streams of one tenant in
-// originalObj, and appends the sorted logs sections and the sorted streams
-// section of the tenant to b.builder.
-//
-// tenantLayout is the layout that the builder used for the tenant in
-// originalObj, and the sorted object keeps it. The logs go first, because the
-// streams section needs the rows and the sizes that the sort of the logs
-// counts.
-func (b *Builder) sortAndWriteTenant(ctx context.Context, originalObj *dataobj.Object, tenant string, tenantLayout streams.Layout) error {
-	originalLogs, originalStreams, err := tenantSections(ctx, originalObj, tenant)
-	if err != nil {
-		return err
-	}
-	plan, err := b.planTenantSort(ctx, tenant, originalStreams, tenantLayout)
-	if err != nil {
-		return err
-	}
-	if err := b.writeLogsSections(ctx, tenant, originalLogs, plan); err != nil {
-		return err
-	}
-	return b.writeStreamsSection(ctx, tenant, plan, tenantLayout)
-}
-
-// tenantSections returns the logs sections and the streams section of the
-// tenant in obj. It returns an error unless the tenant has at least one logs
-// section and exactly one streams section.
-func tenantSections(ctx context.Context, obj *dataobj.Object, tenant string) ([]*dataobj.Section, *streams.Section, error) {
-	var logsSections []*dataobj.Section
-	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
-		logsSections = append(logsSections, sec)
-	}
-	if len(logsSections) == 0 {
-		return nil, nil, fmt.Errorf("no logs sections found for tenant: %v", tenant)
-	}
-
-	var streamSections []*dataobj.Section
-	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
-		return streams.CheckSection(s) && s.Tenant == tenant
-	}) {
-		streamSections = append(streamSections, sec)
-	}
-	if len(streamSections) == 0 {
-		return nil, nil, fmt.Errorf("no streams sections found for tenant: %v", tenant)
-	} else if len(streamSections) > 1 {
-		return nil, nil, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
-	}
-
-	streamsSection, err := streams.Open(ctx, streamSections[0])
-	if err != nil {
-		return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
-	}
-	return logsSections, streamsSection, nil
-}
-
-// planTenantSort orders the streams of the tenant, and cuts them into ranges of
-// about one logs section. It returns an error if the tenant has no streams,
-// because a sort without ranges would drop every record of its logs sections.
-func (b *Builder) planTenantSort(ctx context.Context, tenant string, originalStreams *streams.Section, tenantLayout streams.Layout) (*sortPlan, error) {
-	table, err := newStreamTable(streamsSectionIter(ctx, originalStreams), tenant, tenantLayout.SchemaLabels(), tenantLayout.ShardLayout(), originalStreams.NumRows())
-	if err != nil {
-		return nil, fmt.Errorf("ordering the streams of tenant %s: %w", tenant, err)
-	}
-	ranges := planSortRanges(table.sorted, int64(b.cfg.TargetSectionSize))
-	if len(ranges) == 0 {
-		return nil, fmt.Errorf("tenant %s has logs sections but no streams", tenant)
-	}
-	return &sortPlan{table: table, ranges: ranges}, nil
-}
-
-// writeStreamsSection appends the sorted streams section of the tenant to
-// b.builder. It takes the streams from the plan, with the rows and the sizes
-// that writeLogsSections counted.
-func (b *Builder) writeStreamsSection(ctx context.Context, tenant string, plan *sortPlan, tenantLayout streams.Layout) error {
-	sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, tenantLayout.ShardLayout())
-	sb.SetLayout(tenantLayout)
-	sb.SetTenant(tenant)
-
-	for i := range plan.table.sorted {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		sb.AppendValue(plan.table.sorted[i].Stream)
-	}
-	return b.builder.Append(sb)
-}
-
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
 	var errs []error
 
@@ -782,74 +663,6 @@ func (b *Builder) Reset() {
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
-}
-
-// drainLogsIter consumes iter and appends each record to lb. It passes lb to
-// flush whenever the section size target is exceeded and once more after iter
-// ends, and it resets lb after each flush. It adds each appended record to the
-// counters of its stream.
-//
-// If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
-// yield the records of each stream and timestamp together, as
-// [logs.DuplicateTracker] requires.
-//
-// drainLogsIter changes only the counters of the streams in iter, so several
-// calls can run at the same time if their streams differ.
-func (b *Builder) drainLogsIter(
-	ctx context.Context,
-	iter result.Seq[sortedRecord],
-	lb *logs.Builder,
-	tenant string,
-	flush func(*logs.Builder) error,
-) error {
-	flushAndReset := func() error {
-		if err := flush(lb); err != nil {
-			return err
-		}
-		lb.Reset()
-		lb.SetTenant(tenant)
-		return nil
-	}
-
-	var duplicates logs.DuplicateTracker
-	for res := range iter {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		sr, err := res.Value()
-		if err != nil {
-			return err
-		}
-		if b.cfg.DropDuplicates && duplicates.IsDuplicate(sr.Record) {
-			continue
-		}
-		sr.stream.Rows++
-		sr.stream.UncompressedSize += sr.UncompressedSize()
-		lb.Append(sr.Record)
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := flushAndReset(); err != nil {
-				return err
-			}
-		}
-	}
-	return flushAndReset()
-}
-
-func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
-	return result.Iter(func(yield func(streams.Stream) bool) error {
-		for res := range streams.IterSection(ctx, section) {
-			stream, err := res.Value()
-			if err != nil {
-				return err
-			}
-			if !yield(stream) {
-				return nil
-			}
-		}
-		return nil
-	})
 }
 
 // ComputeSchemaKey builds a composite sort key from stream labels using FQN entries.
