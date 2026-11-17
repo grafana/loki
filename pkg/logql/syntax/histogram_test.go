@@ -389,6 +389,77 @@ func TestHistogramFuncExpr_walkAndVisit(t *testing.T) {
 	require.False(t, expr.Shardable(false))
 }
 
+// negativeZeroQueries write -0.0 as an argument of each kind: a quantile, a bound, the quantiles of a list, and a
+// bucket bound.
+var negativeZeroQueries = []string{
+	`histogram_quantile(-0.0, histogram_over_time(` + histogramTestRange + `))`,
+	`histogram_fraction(-0.0, 1, histogram_over_time(` + histogramTestRange + `))`,
+	`histogram_quantiles(histogram_over_time(` + histogramTestRange + `), "q", -0.0)`,
+	`histogram_count(histogram_over_time(buckets(-0.0, 1), ` + histogramTestRange + `))`,
+}
+
+// The number -0 is not written as -0, which the lexer reads as a duration of zero: it is the only number
+// that is a duration without a unit.
+func TestHistogram_negativeZeroRoundTrips(t *testing.T) {
+	for _, in := range negativeZeroQueries {
+		t.Run(in, func(t *testing.T) {
+			requireHistogramRoundTrips(t, MustParseExpr(in))
+		})
+	}
+}
+
+// -0 == 0, so the comparison of requireHistogramRoundTrips cannot see a sign that is lost. This looks at the
+// sign bit of each argument and bucket bound after every way that an expression is written and read again.
+func TestHistogram_negativeZeroKeepsItsSign(t *testing.T) {
+	signs := func(expr Expr) (signs []bool) {
+		expr.Walk(func(e Expr) bool {
+			switch e := e.(type) {
+			case *HistogramFuncExpr:
+				for _, p := range e.Params {
+					signs = append(signs, math.Signbit(p))
+				}
+			case *RangeAggregationExpr:
+				if e.Buckets != nil {
+					for _, b := range e.Buckets.Bounds {
+						signs = append(signs, math.Signbit(b))
+					}
+				}
+			}
+			return true
+		})
+		return signs
+	}
+
+	for _, in := range negativeZeroQueries {
+		t.Run(in, func(t *testing.T) {
+			expr := MustParseExpr(in)
+			want := signs(expr)
+			require.Contains(t, want, true, "the parser keeps the sign of -0.0")
+
+			printed, err := ParseExpr(expr.String())
+			require.NoError(t, err, expr.String())
+			require.Equal(t, want, signs(printed), "String()")
+
+			old := MaxCharsPerLine
+			MaxCharsPerLine = 20
+			defer func() { MaxCharsPerLine = old }()
+			prettified, err := ParseExpr(Prettify(expr))
+			require.NoError(t, err, Prettify(expr))
+			require.Equal(t, want, signs(prettified), "Prettify()")
+
+			cloned, err := Clone[Expr](expr)
+			require.NoError(t, err)
+			require.Equal(t, want, signs(cloned), "Clone()")
+
+			var buf bytes.Buffer
+			require.NoError(t, EncodeJSON(expr, &buf))
+			decoded, err := DecodeJSON(buf.String())
+			require.NoError(t, err, buf.String())
+			require.Equal(t, want, signs(decoded), "JSON")
+		})
+	}
+}
+
 // A querier builds the sub-queries of a sharded query from JSON, which does not
 // go through the grammar. The checks of the grammar must hold there too, because
 // a bad expression would otherwise give wrong results or panic when it is printed.
