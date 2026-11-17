@@ -806,8 +806,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 		return rangeset.Union(left, right), nil
 
 	case NotPredicate:
-		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
-		// predicates that can be applied to pages.
+		// Reduce the NotPredicate to predicates that page statistics can evaluate.
 		//
 		// See comment on [simplifyNotPredicate] for more information.
 		simplified, err := simplifyNotPredicate(p)
@@ -836,6 +835,12 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
+	case GreaterThanOrEqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
+	case LessThanOrEqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
 	case TruePredicate, FuncPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
@@ -853,8 +858,8 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	}
 }
 
-// simplifyNotPredicate applies De Morgan's laws to a NotPredicate to permit
-// page filtering.
+// simplifyNotPredicate rewrites a NotPredicate into a predicate that page
+// statistics can evaluate.
 //
 // While during evaluation, a NotPredicate inverts the result of the inner
 // predicate, the same can't be done for page filtering. For example, imagine
@@ -865,6 +870,11 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 // To correctly apply page filtering to a NotPredicate, we reduce the
 // NotPredicate to a set of predicates that can be applied to pages. This may
 // result in other NotPredicates that also need to be simplified.
+//
+// The rewrite pushes the NotPredicate down with De Morgan's laws. It replaces a
+// negated comparison with the opposite comparison. Each comparison rewrite is
+// exact for a null too, because CompareValues returns a negative, zero or
+// positive result for every pair.
 //
 // If the NotPredicate can't be simplified, simplifyNotPredicate returns an
 // error.
@@ -882,7 +892,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 			Right: NotPredicate{Inner: inner.Right},
 		}, nil
 
-	case NotPredicate: // De Morgan's law: !!A == A
+	case NotPredicate: // Double negation: !!A == A
 		return inner.Inner, nil
 
 	case FalsePredicate:
@@ -893,23 +903,23 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 		// keeps none.
 		return FalsePredicate{}, nil
 
-	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
+	case EqualPredicate: // !(A == B) == A < B || A > B
 		return OrPredicate{
 			Left:  LessThanPredicate(inner),
 			Right: GreaterThanPredicate(inner),
 		}, nil
 
-	case GreaterThanPredicate: // De Morgan's law: !(A > B) == A <= B
-		return OrPredicate{
-			Left:  EqualPredicate(inner),
-			Right: LessThanPredicate(inner),
-		}, nil
+	case GreaterThanPredicate: // !(A > B) == A <= B
+		return LessThanOrEqualPredicate(inner), nil
 
-	case LessThanPredicate: // De Morgan's law: !(A < B) == A >= B
-		return OrPredicate{
-			Left:  EqualPredicate(inner),
-			Right: GreaterThanPredicate(inner),
-		}, nil
+	case LessThanPredicate: // !(A < B) == A >= B
+		return GreaterThanOrEqualPredicate(inner), nil
+
+	case GreaterThanOrEqualPredicate: // !(A >= B) == A < B
+		return LessThanPredicate(inner), nil
+
+	case LessThanOrEqualPredicate: // !(A <= B) == A > B
+		return GreaterThanPredicate(inner), nil
 
 	case InPredicate:
 		// TODO: can be supported when we introduce NotInPredicate.
@@ -923,9 +933,11 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 	}
 }
 
-// buildColumnPredicateRanges returns a set of rowRanges that are valid based
-// on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
-// true for each page in a column.
+// buildColumnPredicateRanges returns the row ranges of the pages of column c
+// where p may be true. A page without statistics is always kept.
+//
+// p must be an EqualPredicate, an InPredicate, or one of the four ordering
+// predicates. Any other type panics.
 func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
 	if idx, ok := r.columnsLookup[c]; ok {
@@ -991,14 +1003,24 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		var include bool
 
+		// Page statistics skip nulls, and CompareValues treats a null as equal to an
+		// empty binary value. A page can hold a null that passes an EqualPredicate or
+		// a LessThanOrEqualPredicate on an empty value, even when minValue and
+		// maxValue rule the page out. Keep the page for that value.
+		//
+		// A GreaterThanOrEqualPredicate needs no such check, because no binary
+		// maxValue is below an empty value.
 		switch p := p.(type) {
-		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
-			isEmpty := p.Value.Type() == datasetmd.PHYSICAL_TYPE_BINARY && p.Value.IsZero()
-			include = isEmpty || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)
+		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page, or if p.Value is empty.
+			include = isEmptyBinary(p.Value) || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)
 		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
 			include = CompareValues(&maxValue, &p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
 			include = CompareValues(&minValue, &p.Value) < 0
+		case GreaterThanOrEqualPredicate: // GreaterThanOrEqualPredicate may be true if maxValue of a page is greater than or equal to p.Value
+			include = CompareValues(&maxValue, &p.Value) >= 0
+		case LessThanOrEqualPredicate: // LessThanOrEqualPredicate may be true if minValue of a page is less than or equal to p.Value, or if p.Value is empty
+			include = isEmptyBinary(p.Value) || CompareValues(&minValue, &p.Value) <= 0
 		case InPredicate:
 			// Check if any value falls within the page's range
 			for v := range p.Values.Iter() {
@@ -1039,6 +1061,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 	}
 
 	return ranges, nil
+}
+
+// isEmptyBinary reports whether v is a binary value of length zero. It reports
+// false for a nil value.
+func isEmptyBinary(v Value) bool {
+	return v.Type() == datasetmd.PHYSICAL_TYPE_BINARY && v.IsZero()
 }
 
 // readMinMax reads the minimum and maximum values from the provided
