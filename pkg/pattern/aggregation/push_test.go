@@ -434,6 +434,57 @@ func Test_PushStop(t *testing.T) {
 			t.Fatal("timeout")
 		}
 	})
+
+	t.Run("paused push sends the whole buffered burst once on stop", func(t *testing.T) {
+		// The channel is buffered enough to catch a periodic push that splits
+		// the burst instead of blocking the server handler.
+		pauseResponses := make(chan response, 4)
+		mock := httptest.NewServer(createServerHandler(pauseResponses))
+		defer mock.Close()
+
+		push, err := NewPush(
+			mock.Listener.Addr().String(),
+			testTenant,
+			2*time.Second,
+			40*time.Millisecond,
+			config.DefaultHTTPClientConfig,
+			"", "",
+			false,
+			&backoffCfg,
+			log.NewNopLogger(),
+			NewMetrics(nil),
+		)
+		require.NoError(t, err)
+
+		now := time.Now().Truncate(time.Second).UTC()
+		push.WriteEntry(now, "newest", lbls, structuredMetadata)
+		push.Pause()
+		// Several push periods pass without the buffered entry being sent;
+		// an unsuppressed ticker would send "newest" here on its own.
+		time.Sleep(150 * time.Millisecond)
+		// Entries written after Pause keep buffering until Stop.
+		push.WriteEntry(now.Add(-2*time.Minute), "oldest", lbls, structuredMetadata)
+		push.Stop()
+
+		select {
+		case resp := <-pauseResponses:
+			require.Len(t, resp.pushReq.Streams, 1)
+			entries := resp.pushReq.Streams[0].Entries
+			require.Len(t, entries, 2)
+			require.Equal(t, now.Add(-2*time.Minute), entries[0].Timestamp)
+			require.Equal(t, "oldest", entries[0].Line)
+			require.Equal(t, now, entries[1].Timestamp)
+			require.Equal(t, "newest", entries[1].Line)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for the entries buffered around Pause to be sent")
+		}
+
+		select {
+		case <-pauseResponses:
+			t.Fatal("a periodic push sent part of the burst while paused")
+		case <-time.After(150 * time.Millisecond):
+		}
+	})
 }
 
 func Test_PushRetryStatusCodes(t *testing.T) {

@@ -404,6 +404,7 @@ func (i *Ingester) stopping(_ error) error {
 	i.flushQueuesDone.Wait()
 
 	// Flush all patterns before stopping writers to ensure patterns are persisted
+	i.pauseWriters()
 	i.flushPatterns()
 
 	i.stopWriters()
@@ -626,6 +627,22 @@ func (i *Ingester) getInstances() []*instance {
 		instances = append(instances, instance)
 	}
 	return instances
+}
+
+// pauseWriters suspends the periodic pushes of the writers that support it,
+// so the shutdown flush below is sent whole by Stop instead of being split
+// across a ticker push and the final push.
+func (i *Ingester) pauseWriters() {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		if w, ok := instance.metricWriter.(interface{ Pause() }); ok {
+			w.Pause()
+		}
+		if w, ok := instance.patternWriter.(interface{ Pause() }); ok {
+			w.Pause()
+		}
+	}
 }
 
 func (i *Ingester) stopWriters() {

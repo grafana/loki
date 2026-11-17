@@ -66,6 +66,11 @@ type Push struct {
 	quit     chan struct{}
 	quitOnce sync.Once
 
+	// pushMu serializes Pause with a periodic push already in flight, so a
+	// ticker push cannot run once Pause has returned.
+	pushMu sync.Mutex
+	paused bool
+
 	// auth
 	username, password string
 
@@ -169,6 +174,18 @@ func (p *Push) Stop() {
 		close(p.quit)
 	})
 	p.running.Wait()
+}
+
+// Pause suspends the periodic pushes without draining the buffer: entries
+// keep buffering until Stop sends them. It waits for a periodic push already
+// in flight, so once Pause returns no further push can run before Stop's.
+// This keeps a large ordered write burst, such as the shutdown flush, in a
+// single final payload instead of being split across a ticker push and the
+// Stop push.
+func (p *Push) Pause() {
+	p.pushMu.Lock()
+	defer p.pushMu.Unlock()
+	p.paused = true
 }
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
@@ -276,12 +293,18 @@ func (p *Push) run(pushPeriod time.Duration) {
 		case <-p.quit:
 			// Send the entries buffered since the last push, which on shutdown
 			// includes the whole shutdown flush, so they are not dropped.
+			p.pushMu.Lock()
 			p.pushEntries(ctx)
+			p.pushMu.Unlock()
 			cancel()
 			return
 		case <-pushTicker.C:
 			pushTicker.Reset(pushPeriod)
-			p.pushEntries(ctx)
+			p.pushMu.Lock()
+			if !p.paused {
+				p.pushEntries(ctx)
+			}
+			p.pushMu.Unlock()
 		}
 	}
 }
