@@ -1027,27 +1027,10 @@ func (t *Loki) initStore() (services.Service, error) {
 	}
 
 	if perIndexOwnership {
-		ownershipCfg := t.Cfg.IndexGateway.PerIndexOwnership
 		logger := log.With(util_log.Logger, "component", "index-gateway")
-		preload := indexgateway.NewOwnedIndexPreload(ownershipCfg, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer)
-		if ownershipCfg.RingCheckPeriod <= 0 {
-			t.indexGatewayRingManager.SetBeforeActive(preload)
-		} else {
-			// Reconcile owned indexes on ring changes too, once the initial
-			// preload has run.
-			watcher := indexgateway.NewIndexOwnershipWatcher(t.indexGatewayRingManager.Ring, ownershipCfg.RingCheckPeriod, store, logger)
-			t.indexGatewayRingManager.SetBeforeActive(func(ctx context.Context) error {
-				if err := preload(ctx); err != nil {
-					return err
-				}
-				watcher.Activate()
-				return nil
-			})
-			return services.NewBasicService(nil, func(ctx context.Context) error {
-				watcher.Run(ctx)
-				return nil
-			}, stopStore), nil
-		}
+		watcher := indexgateway.NewIndexOwnershipWatcher(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer)
+		t.indexGatewayRingManager.SetBeforeActive(watcher.Preload)
+		return services.NewBasicService(nil, watcher.Run, stopStore), nil
 	}
 
 	return services.NewIdleService(nil, stopStore), nil

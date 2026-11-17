@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -231,18 +232,8 @@ func TestIndexOwnershipWatcher(t *testing.T) {
 	instances := newTestInstances(0, 3)
 	r := newMutableTestRing(t, instances)
 	preloader := &countingPreloader{}
-	w := NewIndexOwnershipWatcher(r, period, preloader, log.NewNopLogger())
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		w.Run(ctx)
-	}()
-	t.Cleanup(func() {
-		cancel()
-		<-done
-	})
+	w := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{RingCheckPeriod: period}, r, preloader, log.NewNopLogger(), prometheus.NewRegistry())
+	runWatcher(t, w)
 
 	// Nothing happens before the initial preload has run, even if the ring
 	// changes.
@@ -251,27 +242,66 @@ func TestIndexOwnershipWatcher(t *testing.T) {
 	time.Sleep(10 * period)
 	require.Zero(t, preloader.count())
 
-	// The first check after Activate reconciles.
-	w.Activate()
-	require.Eventually(t, func() bool { return preloader.count() == 1 }, time.Second, period)
+	// The first check after the preload reconciles.
+	require.NoError(t, w.Preload(context.Background()))
+	require.Equal(t, 1, preloader.count())
+	require.Eventually(t, func() bool { return preloader.count() == 2 }, time.Second, period)
 
 	// A heartbeat alone does not.
 	r.heartbeat(joining, time.Now().Add(time.Second).Unix())
 	time.Sleep(10 * period)
-	require.Equal(t, 1, preloader.count())
+	require.Equal(t, 2, preloader.count())
 
 	// A state change does.
 	active := withState(joining, ring.ACTIVE)
 	r.set(active)
-	require.Eventually(t, func() bool { return preloader.count() == 2 }, time.Second, period)
+	require.Eventually(t, func() bool { return preloader.count() == 3 }, time.Second, period)
 
 	// A failed reconcile is retried on the next checks until it succeeds.
 	preloader.setErr(errors.New("failed"))
 	r.set(active[:3])
-	require.Eventually(t, func() bool { return preloader.count() >= 5 }, time.Second, period)
+	require.Eventually(t, func() bool { return preloader.count() >= 6 }, time.Second, period)
 	preloader.setErr(nil)
 	time.Sleep(5 * period)
 	settled := preloader.count()
 	time.Sleep(10 * period)
 	require.Equal(t, settled, preloader.count(), "it stops once the reconcile succeeds")
+}
+
+func TestIndexOwnershipWatcherWithoutRingCheck(t *testing.T) {
+	instances := newTestInstances(0, 3)
+	r := newMutableTestRing(t, instances)
+	preloader := &countingPreloader{}
+	w := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{}, r, preloader, log.NewNopLogger(), prometheus.NewRegistry())
+	done := runWatcher(t, w)
+
+	require.NoError(t, w.Preload(context.Background()))
+	r.set(withState(instances, ring.LEAVING))
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, 1, preloader.count(), "only the preload loads indexes")
+
+	select {
+	case <-done:
+		t.Fatal("Run returned before its context was done")
+	default:
+	}
+}
+
+// runWatcher runs w until the test ends and returns a channel closed when Run
+// returns.
+func runWatcher(t *testing.T, w *IndexOwnershipWatcher) <-chan struct{} {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	var err error
+	go func() {
+		defer close(done)
+		err = w.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+		require.NoError(t, err)
+	})
+	return done
 }

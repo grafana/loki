@@ -364,7 +364,7 @@ func (tm *tableManager) cleanupCache() error {
 }
 
 // EnsureQueryReadiness implements TableManager. With Config.DropFilter, it
-// then evicts the query ready index sets this instance no longer owns. Stop
+// evicts the query ready index sets this instance no longer owns. Stop
 // cancels it and waits for it to return, and it does nothing once the table
 // manager is stopped, so it never downloads into closed tables.
 func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {

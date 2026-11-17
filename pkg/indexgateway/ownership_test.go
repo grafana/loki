@@ -240,7 +240,7 @@ type queryReadinessFunc func(ctx context.Context) error
 
 func (f queryReadinessFunc) EnsureQueryReadiness(ctx context.Context) error { return f(ctx) }
 
-func TestNewOwnedIndexPreload(t *testing.T) {
+func TestIndexOwnershipWatcherPreload(t *testing.T) {
 	blockUntilDone := queryReadinessFunc(func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
@@ -249,28 +249,28 @@ func TestNewOwnedIndexPreload(t *testing.T) {
 	t.Run("preload succeeds", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		called := false
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
+		preload := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
 			called = true
 			return nil
-		}), log.NewNopLogger(), reg)
-		require.NoError(t, fn(context.Background()))
+		}), log.NewNopLogger(), reg).Preload
+		require.NoError(t, preload(context.Background()))
 		require.True(t, called)
 		require.Equal(t, map[string]uint64{"preload/success": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("preload timeout becomes ACTIVE anyway", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: 50 * time.Millisecond}, nil, blockUntilDone, log.NewNopLogger(), reg)
-		require.NoError(t, fn(context.Background()))
+		preload := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{PreloadTimeout: 50 * time.Millisecond}, nil, blockUntilDone, log.NewNopLogger(), reg).Preload
+		require.NoError(t, preload(context.Background()))
 		require.Equal(t, map[string]uint64{"preload/timeout": 1}, preloadObservations(t, reg))
 	})
 
 	t.Run("preload error fails", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
+		preload := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, queryReadinessFunc(func(context.Context) error {
 			return errors.New("download failed")
-		}), log.NewNopLogger(), reg)
-		require.ErrorContains(t, fn(context.Background()), "download failed")
+		}), log.NewNopLogger(), reg).Preload
+		require.ErrorContains(t, preload(context.Background()), "download failed")
 		require.Equal(t, map[string]uint64{"preload/error": 1}, preloadObservations(t, reg))
 	})
 
@@ -278,8 +278,8 @@ func TestNewOwnedIndexPreload(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, blockUntilDone, log.NewNopLogger(), reg)
-		require.ErrorIs(t, fn(ctx), context.DeadlineExceeded)
+		preload := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{PreloadTimeout: time.Minute}, nil, blockUntilDone, log.NewNopLogger(), reg).Preload
+		require.ErrorIs(t, preload(ctx), context.DeadlineExceeded)
 		require.Equal(t, map[string]uint64{"preload/canceled": 1}, preloadObservations(t, reg))
 	})
 
@@ -287,11 +287,11 @@ func TestNewOwnedIndexPreload(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newTestRing(t, newTestInstances(0, 3))
 		start := time.Now()
-		fn := NewOwnedIndexPreload(PerIndexOwnershipConfig{
+		preload := NewIndexOwnershipWatcher(PerIndexOwnershipConfig{
 			WaitStabilityMinDuration: time.Second,
 			WaitStabilityMaxDuration: 10 * time.Second,
-		}, r, queryReadinessFunc(func(context.Context) error { return nil }), log.NewNopLogger(), reg)
-		require.NoError(t, fn(context.Background()))
+		}, r, queryReadinessFunc(func(context.Context) error { return nil }), log.NewNopLogger(), reg).Preload
+		require.NoError(t, preload(context.Background()))
 		require.GreaterOrEqual(t, time.Since(start), time.Second)
 		require.Equal(t, map[string]uint64{"wait_stability/success": 1, "preload/success": 1}, preloadObservations(t, reg))
 	})

@@ -283,26 +283,17 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 			}
 
 			level.Info(t.logger).Log("msg", "cleaning up expired index set", "user_id", userID)
-			if err := t.dropIndexSetLocked(userID, indexSet.DropAllDBs); err != nil {
+			if err := indexSet.DropAllDBs(); err != nil {
 				return false, err
 			}
+
+			delete(t.indexSets, userID)
 		}
 
 		return len(t.indexSets) == 0, nil
 	}
 
 	return false, nil
-}
-
-// dropIndexSetLocked removes the index set of userID from the table after
-// drop, which is the index set's DropAllDBs or Evict, succeeds. The caller
-// must hold indexSetsMtx for writing.
-func (t *table) dropIndexSetLocked(userID string, drop func() error) error {
-	if err := drop(); err != nil {
-		return err
-	}
-	delete(t.indexSets, userID)
-	return nil
 }
 
 // DropNotOwned implements Table. Only user index sets kept ready for queries
@@ -323,7 +314,6 @@ func (t *table) DropNotOwned(ctx context.Context, dropFilter TenantFilter) error
 	if len(candidates) == 0 {
 		return nil
 	}
-	slices.Sort(candidates)
 
 	toDrop, err := dropFilter(t.name, candidates)
 	if err != nil {
@@ -344,7 +334,11 @@ func (t *table) DropNotOwned(ctx context.Context, dropFilter TenantFilter) error
 			continue
 		}
 		level.Info(t.logger).Log("msg", "evicting index set no longer owned by this instance", "user_id", userID)
-		if err := t.dropIndexSetLocked(userID, indexSet.Evict); err != nil {
+		// Remove it even if Evict fails: an evicted set fails every query, so
+		// keeping it would break the tenant if this instance owns it again.
+		err := indexSet.Evict()
+		delete(t.indexSets, userID)
+		if err != nil {
 			return errors.Wrapf(err, "failed to evict index set %s for table %s", userID, t.name)
 		}
 	}
