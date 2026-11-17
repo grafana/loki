@@ -2,6 +2,7 @@ package regexliteral
 
 import (
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode"
@@ -12,9 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 )
 
-func TestRequired(t *testing.T) {
+func TestLiterals(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -30,15 +32,15 @@ func TestRequired(t *testing.T) {
 		{"wildcard wrapped", `.*2254266819291842746.*`, []string{"2254266819291842746"}},
 		{"leading space kept", `.* 2254266819291842746.*`, []string{" 2254266819291842746"}},
 		{"dot all", `(?s).*needle.*`, []string{"needle"}},
-		{"two runs", `.*kubelet.*error_code=500123.*`, []string{"kubelet", "error_code=500123"}},
-		{"char class splits", `request_id=[0-9a-f]+ status=timeout`, []string{"request_id=", " status=timeout"}},
-		{"digit class splits", `foo\d+barbazqux`, []string{"foo", "barbazqux"}},
-		{"single dot splits", `data.ase`, []string{"data", "ase"}},
+		{"two runs", `.*kubelet.*error_code=500123.*`, []string{"error_code=500123", "kubelet"}},
+		{"char class splits", `request_id=[0-9a-f]+ status=timeout`, []string{" status=timeout", "request_id="}},
+		{"digit class splits", `foo\d+barbazqux`, []string{"barbazqux", "foo"}},
+		{"single dot splits", `data.ase`, []string{"ase", "data"}},
 		{"duplicates removed", `abcdef.*abcdef`, []string{"abcdef"}},
 		{"contained removed", `abcdef.*xabcdefy`, []string{"xabcdefy"}},
 
 		// Anchors are zero-width, so the literals on both sides join.
-		{"anchored both ends", `^start_of.*end$`, []string{"start_of", "end"}},
+		{"anchored both ends", `^start_of.*end$`, []string{"end", "start_of"}},
 		{"anchor inside", `abc$\ndef`, []string{"abc\ndef"}},
 		{"word boundary inside", `abc\bdef`, []string{"abcdef"}},
 		{"multiline anchors", `(?m)^level=error$`, []string{"level=error"}},
@@ -46,23 +48,27 @@ func TestRequired(t *testing.T) {
 		// Captures are transparent.
 		{"capture", `abc(def)ghi`, []string{"abcdefghi"}},
 		{"nested captures", `((abc)(def))`, []string{"abcdef"}},
-		{"capture with wildcard", `x(abc.*def)y`, []string{"xabc", "defy"}},
+		{"capture with wildcard", `x(abc.*def)y`, []string{"defy", "xabc"}},
 
-		// Repeats. Simplify expands counted repeats into literals and optional tails.
+		// Repeats. The first min copies join the left, the last copy joins the right.
 		{"counted repeat", `(abc){2}`, []string{"abcabc"}},
-		{"counted range", `(abc){2,3}x`, []string{"abcabc", "x"}},
-		{"plus joins both sides", `x(abcdef)+ghi`, []string{"xabcdef", "abcdefghi"}},
+		{"counted range", `(abc){2,3}x`, []string{"abcabc", "abcx"}},
+		{"plus joins both sides", `x(abcdef)+ghi`, []string{"abcdefghi", "xabcdef"}},
 		{"plus on a concat", `(abc.*def)+ghi`, []string{"abc", "def", "ghi"}},
 		{"plus on single rune", `ab+cd`, []string{"ab", "bcd"}},
 		{"optional", `x(?:abcdef)?y`, []string{"x", "y"}},
 		{"star", `(abcdef)*`, nil},
 
-		// Alternation contributes nothing, but the text around it does.
+		// Alternation contributes only what every branch shares, but the text
+		// around it does.
 		{"alternation", `foo|bar`, nil},
 		{"alternation with suffix", `(foo|bar)bazqux`, []string{"bazqux"}},
 		// Parse factors the common prefix, which becomes a required literal.
 		{"factored prefix", `abcdefgh|abcdefxy`, []string{"abcdef"}},
 		{"alternation then literal", `(GET|POST) /api`, []string{" /api"}},
+		// Literals shared by every branch are required.
+		{"shared branch literal", `a.*xyz|b.*xyz`, []string{"xyz"}},
+		{"shared branch literal then suffix", `(foo.*bar|baz.*bar)qux`, []string{"bar", "qux"}},
 
 		// Case folding. Literals keep the parser's canonical form, uppercase for ASCII.
 		{"case-insensitive", `(?i)ERROR TIMEOUT`, []string{"ERROR TIMEOUT"}},
@@ -81,15 +87,231 @@ func TestRequired(t *testing.T) {
 		{"invalid", `(`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Required(tc.pattern))
+			require.Equal(t, tc.want, Literals(tc.pattern))
 		})
 	}
+}
+
+func TestNeedles(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		pattern         string
+		maxConjunctions int
+		want            string
+	}{
+		// Alternation.
+		{"alternation", `foo|bar`, 64, `{"bar"} or {"foo"}`},
+		{"alternation joined to a suffix", `(GET|POST) /api/users`, 64, `{"GET /api/users"} or {"POST /api/users"}`},
+		{"alternation joined to a prefix", `user_id=(123456|789012)`, 64, `{"user_id=123456"} or {"user_id=789012"}`},
+		{"factored into a class", `error_code=500|error_code=503`, 64, `{"error_code=500"} or {"error_code=503"}`},
+		{"alternation on both sides", `(GET|PUT) /api (ok|fail)`, 64, `{"GET /api fail"} or {"GET /api ok"} or {"PUT /api fail"} or {"PUT /api ok"}`},
+		{"single letters become a class", `(a|b)xyz(c|d)`, 64, `{"AxyzC"} or {"AxyzD"} or {"BxyzC"} or {"BxyzD"}`},
+		{"case-insensitive", `(?i)timeout|error`, 64, `{"ERROR"} or {"TIMEOUT"}`},
+		{"case-insensitive letter in a class", `(?i)status=ok`, 64, `{"STATUS=OK"}`},
+
+		// Optional parts.
+		{"optional rune", `colou?r`, 64, `{"color"} or {"colour"}`},
+		{"optional suffix absorbs", `errors?`, 64, `{"error"}`},
+		{"optional prefix absorbs", `x?abc`, 64, `{"abc"}`},
+
+		// Repeats.
+		{"plus on an alternation", `(abc|def)+ghi`, 64, `{"abcghi"} or {"defghi"}`},
+		{"plus on a literal", `x(abcdef)+ghi`, 64, `{"abcdefghi", "xabcdef"}`},
+
+		// Small classes become exact sets. Large ones split the run.
+		{"small class", `id=[0-3]x`, 64, `{"id=0x"} or {"id=1x"} or {"id=2x"} or {"id=3x"}`},
+		{"class letters uppercased", `[ab]cd`, 64, `{"Acd"} or {"Bcd"}`},
+		{"large class splits", `request_id=[0-9a-f]+ status=timeout`, 64, `{" status=timeout", "request_id="}`},
+
+		// A run that would grow past maxExact is split.
+		// Here the first 16 strings are flushed and the run restarts at the
+		// third class. Compile(16) collapses the product with them.
+		{"run split", `[0-3][0-3][0-3]x`, 16, `{"0x"} or {"1x"} or {"2x"} or {"3x"}`},
+
+		// Non-exact alternation, each branch walked on its own.
+		{"wildcard branches", `abc.*def|xyz.*uvw`, 64, `{"abc", "def"} or {"uvw", "xyz"}`},
+		{"branch with nothing required", `abc|.*`, 64, "TRUE"},
+		{"empty branch", `abc|`, 64, "TRUE"},
+		{"alternation next to required text", `kubelet.*(abc.*|def.*)`, 64, `{"abc", "kubelet"} or {"def", "kubelet"}`},
+
+		// Fixed exact-set enumeration is independent of the final DNF cap.
+		// The basic walk keeps the plain text next to an alternation even
+		// when the rich walk's alternatives exceed the DNF cap.
+		{"one conjunction keeps the plain literal", `(a|b)verylongliteral`, 1, `{"verylongliteral"}`},
+		{"two conjunctions collapse to shared text", `(a|b|c)xyz`, 2, `{"xyz"}`},
+		{"one conjunction without required text", `foo|bar`, 1, "TRUE"},
+
+		// Every set also carries the literals of one conjunction, so text a
+		// run joined into each set is still its own literal.
+		{
+			"one-conjunction literals in every set", `(GET|POST|PUT|DELETE) /api/v1/(users|orders)`, 4,
+			`{" /api/v1/", "orders"} or {" /api/v1/", "users"}`,
+		},
+		// Fixed enumeration joins all four rich alternatives into one run.
+		// Unlike enumeration capped at two, it does not split the run into
+		// two joined prefixes and two suffixes. Compile(2) therefore falls
+		// back to basic literals, while Compile(4) keeps all complete runs.
+		{
+			"basic suffix survives collapsed rich run", `prefix_(a|b)_middle_(c|d)_suffix`, 2,
+			`{"_middle_", "_suffix", "prefix_"}`,
+		},
+		{
+			"fixed enumeration keeps complete rich runs", `prefix_(a|b)_middle_(c|d)_suffix`, 4,
+			`{"prefix_A_middle_C_suffix"} or {"prefix_A_middle_D_suffix"} or {"prefix_B_middle_C_suffix"} or {"prefix_B_middle_D_suffix"}`,
+		},
+
+		// Nothing required.
+		{"star", `(abcdef)*`, 64, "TRUE"},
+		{"class only", `[a-z]+`, 64, "TRUE"},
+		{"empty pattern", ``, 64, "TRUE"},
+		{"invalid", `(`, 64, "TRUE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, Needles(tc.pattern).Compile(tc.maxConjunctions).String())
+		})
+	}
+}
+
+func TestNeedles_JoinedCross(t *testing.T) {
+	upperLong := func(s string) (string, bool) { return strings.ToUpper(s), len(s) >= 6 }
+	for _, tc := range []struct {
+		name    string
+		pattern string
+		mapLit  func(string) (string, bool)
+		want    map[int]string
+	}{
+		{
+			name:    "whole joined literals",
+			pattern: `(GET|PUT) /api (ok|fail)`,
+			want: map[int]string{
+				1: `{" /api "}`,
+				2: `{" /api ", "GET"} or {" /api ", "PUT"}`,
+				4: `{"GET /api fail"} or {"GET /api ok"} or {"PUT /api fail"} or {"PUT /api ok"}`,
+			},
+		},
+		{
+			name:    "folded literals with retained basic alternatives",
+			pattern: `(GETGET|PUTPUT) /api (okayokay|failfail)`,
+			mapLit:  upperLong,
+			want: map[int]string{
+				1: `{" /API "}`,
+				2: `{" /API ", "GETGET"} or {" /API ", "PUTPUT"}`,
+				4: `{"GETGET /API FAILFAIL"} or {"GETGET /API OKAYOKAY"} or {"PUTPUT /API FAILFAIL"} or {"PUTPUT /API OKAYOKAY"}`,
+			},
+		},
+		{
+			name:    "folded literals with short basic alternatives dropped",
+			pattern: `(get|put) /api (ok|fail)`,
+			mapLit:  upperLong,
+			want: map[int]string{
+				1: `{" /API "}`,
+				2: `{" /API "}`,
+				4: `{"GET /API FAIL"} or {"GET /API OK"} or {"PUT /API FAIL"} or {"PUT /API OK"}`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Needles(tc.pattern)
+			if tc.mapLit != nil {
+				e = e.Map(tc.mapLit)
+			}
+			for _, cap := range []int{1, 2, 4} {
+				t.Run("cap="+strconv.Itoa(cap), func(t *testing.T) {
+					require.Equal(t, tc.want[cap], e.Compile(cap).String())
+				})
+			}
+		})
+	}
+}
+
+func TestNeedles_JoinedCrossWithMandatorySeed(t *testing.T) {
+	for _, seedFirst := range []bool{true, false} {
+		t.Run("seedFirst="+strconv.FormatBool(seedFirst), func(t *testing.T) {
+			for _, tc := range []struct {
+				cap  int
+				want string
+			}{
+				{1, `{" /api ", "tenant=acme"}`},
+				{2, `{" /api ", "GET", "tenant=acme"} or {" /api ", "PUT", "tenant=acme"}`},
+				{4, `{"GET /api fail", "tenant=acme"} or {"GET /api ok", "tenant=acme"} or {"PUT /api fail", "tenant=acme"} or {"PUT /api ok", "tenant=acme"}`},
+			} {
+				t.Run("cap="+strconv.Itoa(tc.cap), func(t *testing.T) {
+					ops := []needle.Expr{Needles(`(GET|PUT) /api (ok|fail)`), needle.Lit("tenant=acme")}
+					if seedFirst {
+						ops[0], ops[1] = ops[1], ops[0]
+					}
+					require.Equal(t, tc.want, needle.And(ops...).Compile(tc.cap).String())
+				})
+			}
+
+			t.Run("mapped cap=4", func(t *testing.T) {
+				ops := []needle.Expr{Needles(`(GETGET|PUTPUT) /api (okayokay|failfail)`), needle.Lit("tenant=acme")}
+				if seedFirst {
+					ops[0], ops[1] = ops[1], ops[0]
+				}
+				e := needle.And(ops...).Map(func(s string) (string, bool) { return strings.ToUpper(s), len(s) >= 6 })
+				require.Equal(t,
+					`{"GETGET /API FAILFAIL", "TENANT=ACME"} or {"GETGET /API OKAYOKAY", "TENANT=ACME"} or {"PUTPUT /API FAILFAIL", "TENANT=ACME"} or {"PUTPUT /API OKAYOKAY", "TENANT=ACME"}`,
+					e.Compile(4).String(),
+				)
+			})
+		})
+	}
+}
+
+func TestNeedles_OrCollapse(t *testing.T) {
+	upper := func(s string) (string, bool) { return strings.ToUpper(s), true }
+	// The two regexes have five alternatives in total. Their shared text
+	// must survive combining and mapping before the final cap.
+	e := needle.Or(
+		Needles(`(get|put) foo`).Map(upper),
+		Needles(`(1|2|3) foobaz`).Map(upper),
+	)
+	for _, maxConjunctions := range []int{1, 2, 3, 4, 5, 64} {
+		t.Run(strconv.Itoa(maxConjunctions), func(t *testing.T) {
+			want := `{" FOO"}`
+			if maxConjunctions >= 5 {
+				want = `{"1 FOOBAZ"} or {"2 FOOBAZ"} or {"3 FOOBAZ"} or {"GET FOO"} or {"PUT FOO"}`
+			}
+			require.Equal(t, want, e.Compile(maxConjunctions).String())
+		})
+	}
+}
+
+func TestNeedles_CompileAfterMap(t *testing.T) {
+	t.Run("OR survives walking", func(t *testing.T) {
+		// Neither branch is exact. Walking must not collapse the alternation
+		// before the caller chooses its DNF cap.
+		e := Needles(`alpha.*left|beta.*right`)
+		require.Equal(t, `{"alpha", "left"} or {"beta", "right"}`, e.Compile(2).String())
+		require.Equal(t, "TRUE", e.Compile(1).String())
+	})
+
+	t.Run("map precedes the DNF cap", func(t *testing.T) {
+		// There is no shared case-sensitive literal. Folding before the
+		// final cap reveals one; eagerly collapsing the OR would lose it.
+		e := Needles(`foo|FOO`)
+		require.Equal(t, "TRUE", e.Compile(1).String())
+		mapped := e.Map(func(s string) (string, bool) { return strings.ToUpper(s), true })
+		require.Equal(t, `{"FOO"}`, mapped.Compile(1).String())
+	})
+}
+
+// A long counted repeat adds at most maxRepeatBytes to a run, and the text
+// after it starts a new run, because the copies left out sit in between.
+func TestLiterals_LongRepeat(t *testing.T) {
+	a := strings.Repeat("a", maxRepeatBytes)
+	require.Equal(t, []string{"ab", "x" + a}, Literals(`xa{1000}b`))
+	for _, lit := range Literals(strings.Repeat("a{1000}", 100)) {
+		require.LessOrEqual(t, len(lit), 2*maxRepeatBytes)
+	}
+	require.Equal(t, []string{"abcabcabcx"}, Literals(`(abc){3}x`))
 }
 
 // For random patterns and random lines they match, every n-gram of every
 // literal must be one the index emits for that line, for every index version.
 // Otherwise a lookup would miss the line.
-func TestRequired_NoFalseNegatives(t *testing.T) {
+func TestLiterals_NoFalseNegatives(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	checked := 0
 	for range 20000 {
@@ -98,7 +320,7 @@ func TestRequired_NoFalseNegatives(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		literals := Required(pattern)
+		literals := Literals(pattern)
 		if len(literals) == 0 {
 			continue
 		}
@@ -182,7 +404,7 @@ func randomPattern(rng *rand.Rand, depth int) string {
 	case 0:
 		return randomPattern(rng, depth-1) + "|" + randomPattern(rng, depth-1)
 	case 1:
-		quantifiers := []string{"*", "+", "?", "{2}", "{1,3}", "{0,2}"}
+		quantifiers := []string{"*", "+", "?", "{2}", "{1,3}", "{0,2}", "{2,}"}
 		return "(" + randomPattern(rng, depth-1) + ")" + quantifiers[rng.Intn(len(quantifiers))]
 	case 2:
 		return "(?i)" + randomPattern(rng, depth-1)
@@ -201,7 +423,7 @@ func randomPattern(rng *rand.Rand, depth int) string {
 
 // generateMatch appends a string re probably matches. Case-folded literals
 // pick any rune of the fold orbit, except that an ASCII rune never becomes a
-// non-ASCII one such as U+212A or U+017F. Required accepts missing those.
+// non-ASCII one such as U+212A or U+017F. Literals accepts missing those.
 func generateMatch(rng *rand.Rand, re *syntax.Regexp, sb *strings.Builder) {
 	switch re.Op {
 	case syntax.OpLiteral:

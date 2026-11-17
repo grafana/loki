@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
@@ -35,6 +36,55 @@ func TestCrossComponentValidation(t *testing.T) {
 				c.DataObj.StorageLag = time.Minute
 			},
 			err: "CONFIG ERROR: invalid dataobj metastore config: twice the refresh interval of the ToC resolver (2m0s) must not exceed a tenth of the storage lag (1m0s)",
+		},
+		{
+			desc: "invalid uploader config with data objects enabled and Kafka ingestion disabled",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.Uploader.SHAPrefixSize = 0
+			},
+			err: "CONFIG ERROR: invalid dataobj config: SHAPrefixSize must be greater than 0",
+		},
+		{
+			desc: "data object builder without a topic with data objects enabled and Kafka ingestion disabled",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+			},
+		},
+		{
+			desc: "data object builder without a topic with data objects enabled and Kafka ingestion enabled",
+			setup: func(c *Config) {
+				c.Ingester.KafkaIngestion.Enabled = true
+				c.KafkaConfig.Topic = "ingest"
+				c.DataObj.Enabled = true
+			},
+			err: "CONFIG ERROR: invalid dataobj config: topic is required",
+		},
+		{
+			desc: "metadata prefetcher without a metadata cache",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.MetadataPrefetcher.Enabled = true
+			},
+			err: "CONFIG ERROR: invalid dataobj config: the metadata prefetcher needs the metadata cache: configure dataobj.metadata_cache",
+		},
+		{
+			desc: "metadata prefetcher with an invalid config",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.MetadataPrefetcher.Enabled = true
+				c.DataObj.MetadataPrefetcher.HeadBytes = 1
+				c.DataObj.MetadataCache.Cache = cache.NewMockCache()
+			},
+			err: "CONFIG ERROR: invalid dataobj config: the metadata prefetcher head bytes must be at least 16384",
+		},
+		{
+			desc: "metadata prefetcher with a metadata cache",
+			setup: func(c *Config) {
+				c.DataObj.Enabled = true
+				c.DataObj.MetadataPrefetcher.Enabled = true
+				c.DataObj.MetadataCache.Cache = cache.NewMockCache()
+			},
 		},
 	} {
 		cfg := &Config{

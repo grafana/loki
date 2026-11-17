@@ -1855,6 +1855,21 @@ func BenchmarkRowReader(b *testing.B) {
 				AvgSize:           1024,
 				CardinalityTarget: 100_000,
 			},
+			// Low-cardinality columns for the sparse projection cases below.
+			{
+				Tag:               "cardinality-2",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 2,
+			},
+			{
+				Tag:               "cardinality-10",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 10,
+			},
 		},
 	}
 
@@ -1876,7 +1891,7 @@ func BenchmarkRowReader(b *testing.B) {
 	ds, cols := generator.Build(b, rand.Int63())
 	opts := RowReaderOptions{
 		Dataset:          ds,
-		ProjectedColumns: cols,
+		ProjectedColumns: cols[:3],
 	}
 
 	readAll := func(b *testing.B, opts RowReaderOptions, batchSize int) {
@@ -1963,6 +1978,30 @@ func BenchmarkRowReader(b *testing.B) {
 					readAll(b, filterOpts, rp.batchSize)
 				})
 			}
+		}
+	}
+
+	// An equality predicate on a column with cardinality n keeps about 1 row in n.
+	// The reader skips the other rows in the projected timestamp and log columns.
+	sparseProjections := []struct {
+		name   string
+		column Column
+	}{
+		{name: "keeps-1-in-2", column: cols[3]},
+		{name: "keeps-1-in-10", column: cols[4]},
+		{name: "keeps-1-in-1000", column: cols[0]},
+	}
+
+	for _, rp := range readPatterns {
+		for _, sparse := range sparseProjections {
+			b.Run(rp.name+"/sparse-projection/"+sparse.name, func(b *testing.B) {
+				sparseOpts := opts
+				sparseOpts.ProjectedColumns = cols[1:3]
+				sparseOpts.Predicates = []Predicate{
+					EqualPredicate{Column: sparse.column, Value: Int64Value(0)},
+				}
+				readAll(b, sparseOpts, rp.batchSize)
+			})
 		}
 	}
 }

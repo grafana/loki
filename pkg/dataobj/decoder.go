@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 )
 
 // errCannotCacheMetadata signals that extendedMetadataRegionEnd could not size a region to cache: it
@@ -35,11 +36,17 @@ type decoder struct {
 
 	prefetchedRangeReader rangeReader
 
+	// dataobjPath is the path of the object. The metadata cache and the metadata prefetcher use it to
+	// identify the object.
+	dataobjPath string
+
 	// metadataCache, when set, serves the metadata region, or the entire object if it is tiny, so a warm
-	// cache avoids re-reading it from object storage on every open. metadataKey identifies the object
-	// in the cache.
+	// cache avoids re-reading it from object storage on every open.
 	metadataCache MetadataCache
-	metadataKey   string
+
+	// metadataPrefetcher, when set, serves the file metadata and the metadata that metadataPrefetchSet names.
+	metadataPrefetcher  metadata.Prefetcher
+	metadataPrefetchSet metadata.PrefetchSet
 
 	// logger reports otherwise-invisible degradations, such as a cached metadata entry that does not
 	// decode. FromBucket and FromReaderAt default it to a no-op logger, so it is never nil here.
@@ -47,11 +54,40 @@ type decoder struct {
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
-	// An empty key would collide every object onto one cache entry, so treat it as no cache.
-	if d.metadataCache != nil && d.metadataKey != "" {
+	// An empty path would collide every object onto one cache entry, so treat it as no cache.
+	switch {
+	case d.metadataPrefetcher != nil && d.dataobjPath != "":
+		return d.metadataViaPrefetcher(ctx)
+	case d.metadataCache != nil && d.dataobjPath != "":
 		return d.metadataViaCache(ctx)
 	}
 	return d.metadataDirect(ctx)
+}
+
+// metadataViaPrefetcher decodes the file metadata from the ranges that the prefetcher returns, and
+// keeps the ranges as the prefetched ranges of the decoder.
+func (d *decoder) metadataViaPrefetcher(ctx context.Context) (*filemd.Metadata, error) {
+	// Read directly when the prefetcher cannot serve the object or its ranges do not decode.
+	res, err := d.metadataPrefetcher.Prefetch(ctx, metadata.PrefetchRequest{Path: d.dataobjPath, PrefetchSet: d.metadataPrefetchSet, Source: d.rr})
+	if errors.Is(err, metadata.ErrNotPrefetchable) {
+		// Log at debug level. The prefetcher counts these fallbacks, and an object that cannot be
+		// prefetched falls back on every open.
+		level.Debug(d.logger).Log("msg", "data-object metadata cannot be prefetched; reading directly", "key", d.dataobjPath, "err", err)
+		return d.metadataDirect(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	md, metadataSize, err := d.decodeHeaderAndFileMetadata(res.PrefetchedRanges[0].Data)
+	if err != nil {
+		level.Warn(d.logger).Log("msg", "prefetched data-object metadata did not decode; falling back to a direct read", "key", d.dataobjPath, "err", err)
+		return d.metadataDirect(ctx)
+	}
+
+	d.setPrefetchedRanges(res.PrefetchedRanges)
+	d.startOff = format.HeaderSize + int64(metadataSize)
+	return md, nil
 }
 
 // metadataDirect reads and decodes the file metadata straight from the range reader. It keeps the
@@ -71,10 +107,10 @@ func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) 
 // file metadata from it. It prefetches whatever was cached, so a later read inside it is served from
 // memory instead of a fresh read from object storage.
 func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error) {
-	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.metadataKey, d.fetchExtendedMetadataRegion)
+	blob, err := d.metadataCache.GetOrLoadMetadataRegion(ctx, d.dataobjPath, d.fetchExtendedMetadataRegion)
 	if err != nil {
 		if errors.Is(err, errCannotCacheMetadata) {
-			level.Warn(d.logger).Log("msg", "data-object metadata cannot be cached; reading directly", "key", d.metadataKey, "err", err)
+			level.Warn(d.logger).Log("msg", "data-object metadata cannot be cached; reading directly", "key", d.dataobjPath, "err", err)
 			return d.metadataDirect(ctx)
 		}
 		return nil, err
@@ -83,7 +119,7 @@ func (d *decoder) metadataViaCache(ctx context.Context) (*filemd.Metadata, error
 	md, metadataSize, decodeErr := d.decodeHeaderAndFileMetadata(blob)
 	if decodeErr != nil {
 		level.Warn(d.logger).Log("msg", "cached data-object metadata region did not decode; falling back to a direct read",
-			"key", d.metadataKey, "blob_bytes", len(blob), "err", decodeErr)
+			"key", d.dataobjPath, "blob_bytes", len(blob), "err", decodeErr)
 		return d.metadataDirect(ctx)
 	}
 
@@ -353,12 +389,16 @@ func (d *decoder) setPrefetchedBytes(offset int64, data []byte) {
 	if len(data) == 0 {
 		return
 	}
+	d.setPrefetchedRanges(metadata.PrefetchedRanges{{Offset: offset, Data: data}})
+}
 
-	d.prefetchedRangeReader = &prefetchedRangeReader{
-		inner:          d.rr,
-		prefetchOffset: offset,
-		prefetched:     data,
+// setPrefetchedRanges serves reads inside ranges from memory. The ranges must be sorted by offset and
+// must not overlap.
+func (d *decoder) setPrefetchedRanges(ranges metadata.PrefetchedRanges) {
+	if len(ranges) == 0 {
+		return
 	}
+	d.prefetchedRangeReader = &prefetchedRangeReader{inner: d.rr, ranges: ranges}
 }
 
 var errMissingSectionType = errors.New("missing section type")

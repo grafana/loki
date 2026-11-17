@@ -129,14 +129,33 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// records turns one section read's rows into forwardable records, attaching each stream's
-// identity and copying each line when the task needs it.
+// forwardedLineBytes returns the number of line bytes that appendRecords copies for rows.
+func (t ReadTask) forwardedLineBytes(rows []logs.Record) int {
+	if !t.needReturningLine {
+		return 0
+	}
+
+	var size int
+	for i := range rows {
+		size += len(rows[i].Line)
+	}
+	return size
+}
+
+// appendRecords appends one forwardable record per row to dst, attaching each stream's identity.
+// It returns the extended slice.
+//
+// A record's line is a copy of row.Line in the spare capacity of lineBuf, so it stays valid when
+// the rows are decoded into again. The line is nil when the task does not need it, or when the
+// row's line is empty.
+//
+// lineBuf must have room for [ReadTask.forwardedLineBytes] bytes. appendRecords fails when it
+// has less, so a line never moves to memory that the caller does not own.
 //
 // It fails on a row whose stream the task did not plan to read. The read matches only the
 // task's streams, so an unexpected ID means that broke, and dropping the row would under-count
 // the query without saying so.
-func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
-	out := make([]LogRecord, 0, len(rows))
+func (t ReadTask) appendRecords(dst []LogRecord, lineBuf []byte, rows []logs.Record) ([]LogRecord, error) {
 	for i := range rows {
 		row := &rows[i]
 		stream, ok := t.streams.admittedByID[row.StreamID]
@@ -145,12 +164,16 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 		}
 
 		var line []byte
-		if t.needReturningLine {
-			// Copy the line, because DecodeRow reuses one buffer for it across reads.
-			line = append(line, row.Line...)
+		if t.needReturningLine && len(row.Line) > 0 {
+			if free := cap(lineBuf) - len(lineBuf); free < len(row.Line) {
+				return nil, fmt.Errorf("line buffer has %d free bytes, but the line of row %d needs %d", free, i, len(row.Line))
+			}
+			start := len(lineBuf)
+			lineBuf = append(lineBuf, row.Line...)
+			line = lineBuf[start:len(lineBuf):len(lineBuf)]
 		}
 
-		out = append(out, LogRecord{
+		dst = append(dst, LogRecord{
 			streamHash:   stream.streamHash,
 			streamLabels: stream.streamLabels,
 			timestamp:    row.Timestamp.UnixNano(),
@@ -161,7 +184,7 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 			metadata: row.Metadata,
 		})
 	}
-	return out, nil
+	return dst, nil
 }
 
 // TaskIterator streams read tasks from the planner to the reader. The planner fills it from a

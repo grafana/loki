@@ -25,6 +25,21 @@ type indexRun struct {
 	entries []indexpointers.IndexPointer
 }
 
+// checkLength returns an error that wraps errCorruptIndex if an index object of
+// r records a run length other than the number of index objects of r. The ToC
+// then does not list the run that the ToC writer recorded.
+//
+// A run length of zero is unknown, so it matches any number. A ToC writer that
+// predates the run_length column drops the length when it rewrites the ToC.
+func (r indexRun) checkLength() error {
+	for _, entry := range r.entries {
+		if entry.RunLength != 0 && int(entry.RunLength) != len(r.entries) {
+			return fmt.Errorf("%w: index %s records a run of %d index objects, but the ToC lists %d", errCorruptIndex, entry.Path, entry.RunLength, len(r.entries))
+		}
+	}
+	return nil
+}
+
 // maxLoggedRunPaths is the largest number of index object paths that
 // [indexRun.String] lists, so a log line of a large run stays short.
 const maxLoggedRunPaths = 8
@@ -62,6 +77,15 @@ func groupIndexRuns(entries []indexpointers.IndexPointer) []indexRun {
 // belongs to one run only, so the name is unique, and it can't equal the path
 // of an index object of another run.
 func (r indexRun) planningUnit() string { return r.entries[0].Path }
+
+// paths returns the paths of the index objects of r, in the order of r.
+func (r indexRun) paths() []string {
+	paths := make([]string, len(r.entries))
+	for i, entry := range r.entries {
+		paths[i] = entry.Path
+	}
+	return paths
+}
 
 // String describes r for logs and errors. It names the paths of up to
 // maxLoggedRunPaths index objects of r.
