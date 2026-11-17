@@ -30,7 +30,7 @@ const indexPrefetchBytes = 64 * 1024
 
 // executeIndexMerge orchestrates the index merge: classify sections, drive
 // both merges, upload the result, and emit a result record that reports the
-// new index objects.
+// new index object.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifacts, err := c.doIndexMerge(ctx, node)

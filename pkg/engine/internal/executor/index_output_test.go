@@ -10,8 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// labelPostingsRow returns a label postings row of the log object logs/a with
-// the given column.
 func labelPostingsRow(column string) postings.Row {
 	return postings.Row{
 		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: column, LabelValue: "v",
@@ -38,6 +36,27 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "zone", artifact.PostingKeys.Max().ColumnName)
+	})
+
+	t.Run("includes the key of a bloom row in its posting key bounds", func(t *testing.T) {
+		out := newOutput(t)
+		require.NoError(t, out.appendPostingsRow(postings.Row{
+			Kind: postings.KindBloom, ObjectPath: "logs/a", ColumnName: "trace_id", BloomFilter: []byte{1},
+		}))
+		require.NoError(t, out.appendPostingsRow(labelPostingsRow("app")))
+
+		artifact, err := out.artifact("indexes/out")
+		require.NoError(t, err)
+		require.Equal(t, postings.Key{Kind: postings.KindBloom, ColumnName: "trace_id"}, artifact.PostingKeys.Min())
+		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
+	})
+
+	t.Run("accepts a row with the same key as the previous row", func(t *testing.T) {
+		out := newOutput(t)
+		require.NoError(t, out.appendPostingsRow(labelPostingsRow("app")))
+		row := labelPostingsRow("app")
+		row.ObjectPath = "logs/b"
+		require.NoError(t, out.appendPostingsRow(row))
 	})
 
 	t.Run("returns an error when a row sorts before the previous row", func(t *testing.T) {

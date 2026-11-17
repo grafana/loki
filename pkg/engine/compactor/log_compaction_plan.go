@@ -84,8 +84,7 @@ type logCompactionTask interface {
 	// physicalPlan returns a new single-root physical plan for the task.
 	physicalPlan(tenant string, window time.Time) *physical.Plan
 
-	// inputTimeRange returns the time range of the inputs of the task. Every
-	// ToC entry of the run that the task writes takes it.
+	// inputTimeRange returns the time range of the inputs of the task.
 	inputTimeRange() timeRange
 
 	// logStats returns the log data that the task reads. Its bytes are zero
@@ -95,26 +94,26 @@ type logCompactionTask interface {
 
 // logMergeTask merges the runs of spec into new log objects.
 type logMergeTask struct {
-	spec   *compactionv2pb.TaskSpec
-	inputs timeRange
+	spec       *compactionv2pb.TaskSpec
+	inputRange timeRange
 }
 
 func newLogMergeTask(spec *compactionv2pb.TaskSpec) logMergeTask {
-	return logMergeTask{spec: spec, inputs: newTimeRange(runsTimeRange(spec.Runs))}
+	return logMergeTask{spec: spec, inputRange: runsTimeRange(spec.Runs)}
 }
 
 func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Plan {
 	return buildLogMergePlan(tenant, window, t.spec)
 }
 
-func (t logMergeTask) inputTimeRange() timeRange { return t.inputs }
+func (t logMergeTask) inputTimeRange() timeRange { return t.inputRange }
 
 // logStats returns the input bytes of the task's key range from the index
 // stats, so the tasks of a split merge add up to the bytes of the merge. If
 // the spec has no input bytes, it falls back to the size of the task's
 // sections.
 func (t logMergeTask) logStats() logTaskStats {
-	stats := logTaskStats{oldestTimestamp: t.inputs.start}
+	stats := logTaskStats{oldestTimestamp: t.inputRange.start}
 	if t.spec.InputBytes > 0 {
 		stats.inputBytes = uint64(t.spec.InputBytes)
 		return stats
@@ -135,14 +134,14 @@ type indexFilterTask struct {
 	// part of a run loses postings.
 	sourceIndexPaths []string
 	objectPaths      []string
-	inputs           timeRange
+	inputRange       timeRange
 }
 
 func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan {
 	return buildIndexFilterPlan(tenant, t.sourceIndexPaths, t.objectPaths)
 }
 
-func (t indexFilterTask) inputTimeRange() timeRange { return t.inputs }
+func (t indexFilterTask) inputTimeRange() timeRange { return t.inputRange }
 
 // logStats returns zero bytes, because the filter reads only the source
 // index.

@@ -32,7 +32,7 @@ func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 
 	t.Run("skips an IndexFilter task", func(t *testing.T) {
 		plan := logCompactionPlan{tasks: []logCompactionTask{
-			indexFilterTask{inputs: timeRange{start: now.Add(-48 * time.Hour)}},
+			indexFilterTask{inputRange: newTimeRange(now.Add(-48*time.Hour), now)},
 		}}
 
 		require.Empty(t, slices.Collect(plan.logTaskStats()))

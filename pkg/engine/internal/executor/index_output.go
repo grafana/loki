@@ -23,13 +23,39 @@ type indexOutput struct {
 	keys    keyBounds
 }
 
-// keyBounds is the smallest and the largest posting key of the postings rows
-// of an index output. The zero value has no rows.
+// keyBounds is the smallest and the largest of the posting keys that it got,
+// in key order. The zero value holds no keys.
 type keyBounds struct {
-	// hasPostings is true once the output got a postings row. min and max
-	// have no meaning before that.
-	hasPostings bool
-	min, max    postings.Key
+	// hasKeys is true once the bounds got a key. min and max have no meaning
+	// before that.
+	hasKeys  bool
+	min, max postings.Key
+}
+
+// check returns an error if key sorts before the last key that the bounds got.
+func (b keyBounds) check(key postings.Key) error {
+	if b.hasKeys && key.Compare(b.max) < 0 {
+		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, b.max)
+	}
+	return nil
+}
+
+// add extends the bounds to key, which must not sort before the last key that
+// the bounds got. Call check first.
+func (b *keyBounds) add(key postings.Key) {
+	if !b.hasKeys {
+		b.hasKeys, b.min = true, key
+	}
+	b.max = key
+}
+
+// keyRange returns the bounds as a KeyRange. It returns the zero KeyRange if
+// the bounds hold no keys.
+func (b keyBounds) keyRange() (postings.KeyRange, error) {
+	if !b.hasKeys {
+		return postings.KeyRange{}, nil
+	}
+	return postings.NewKeyRange(b.min, b.max)
 }
 
 // newIndexOutput returns an empty output for tenant. The log objects of its
@@ -48,8 +74,8 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 // bounds of the output are its first and last key.
 func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 	key := row.Key()
-	if o.keys.hasPostings && key.Compare(o.keys.max) < 0 {
-		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, o.keys.max)
+	if err := o.keys.check(key); err != nil {
+		return err
 	}
 
 	var err error
@@ -65,10 +91,7 @@ func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 		return err
 	}
 
-	if !o.keys.hasPostings {
-		o.keys.hasPostings, o.keys.min = true, key
-	}
-	o.keys.max = key
+	o.keys.add(key)
 	return nil
 }
 
@@ -82,18 +105,14 @@ func (o *indexOutput) reset() {
 	o.keys = keyBounds{}
 }
 
-// artifact returns the result artifact of the output when it is uploaded to
-// path. An output without postings rows has no posting key bounds.
+// artifact returns the result artifact of the output at path. An output
+// without postings rows has no posting key bounds.
 func (o *indexOutput) artifact(path string) (v2.ResultArtifact, error) {
-	artifact := v2.ResultArtifact{Path: path}
-	if o.keys.hasPostings {
-		keys, err := postings.NewKeyRange(o.keys.min, o.keys.max)
-		if err != nil {
-			return v2.ResultArtifact{}, fmt.Errorf("posting key bounds of index %q: %w", path, err)
-		}
-		artifact.PostingKeys = keys
+	keys, err := o.keys.keyRange()
+	if err != nil {
+		return v2.ResultArtifact{}, fmt.Errorf("posting key bounds of index %q: %w", path, err)
 	}
-	return artifact, nil
+	return v2.ResultArtifact{Path: path, PostingKeys: keys}, nil
 }
 
 // upload flushes the output and uploads its index object to a content-hash

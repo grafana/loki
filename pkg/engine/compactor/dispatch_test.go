@@ -60,6 +60,22 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 		}, artifacts)
 	})
 
+	t.Run("returns every artifact of a plan in the order the plan returned them", func(t *testing.T) {
+		d, _ := newDispatcher(func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			return []v2.ResultArtifact{
+				{Path: fmt.Sprintf("indexes/out-%d-b", taskOf(plan))},
+				{Path: fmt.Sprintf("indexes/out-%d-a", taskOf(plan))},
+			}, nil
+		}, 0)
+
+		artifacts, err := d.RunToCompletion(t.Context(), "acme", plans[:2])
+		require.NoError(t, err)
+		require.Equal(t, [][]v2.ResultArtifact{
+			{{Path: "indexes/out-0-b"}, {Path: "indexes/out-0-a"}},
+			{{Path: "indexes/out-1-b"}, {Path: "indexes/out-1-a"}},
+		}, artifacts)
+	})
+
 	t.Run("runs each plan as the tenant with the actor of its root node", func(t *testing.T) {
 		runner := &fakeRunner{}
 		d, _ := newDispatcher(runner.run, 0)

@@ -3145,9 +3145,7 @@ func TestRunsTimeRange(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			start, end := runsTimeRange(test.runs)
-			require.Equal(t, time.Unix(0, test.wantStart).UTC(), start)
-			require.Equal(t, time.Unix(0, test.wantEnd).UTC(), end)
+			require.Equal(t, newTimeRange(time.Unix(0, test.wantStart), time.Unix(0, test.wantEnd)), runsTimeRange(test.runs))
 		})
 	}
 }
@@ -3168,10 +3166,9 @@ func TestIndexTaskBounds(t *testing.T) {
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "indexes/b", SectionIndex: 0}}},
 		}}
 
-		start, end, err := indexTaskBounds(task, inputsByPath)
+		got, err := indexTaskBounds(task, inputsByPath)
 		require.NoError(t, err)
-		require.Equal(t, window.Add(time.Hour), start)
-		require.Equal(t, window.Add(4*time.Hour), end)
+		require.Equal(t, newTimeRange(window.Add(time.Hour), window.Add(4*time.Hour)), got)
 	})
 
 	t.Run("fails when the task references an index missing from the inputs", func(t *testing.T) {
@@ -3179,12 +3176,12 @@ func TestIndexTaskBounds(t *testing.T) {
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "indexes/missing"}}},
 		}}
 
-		_, _, err := indexTaskBounds(task, inputsByPath)
+		_, err := indexTaskBounds(task, inputsByPath)
 		require.ErrorContains(t, err, `unknown index "indexes/missing"`)
 	})
 
 	t.Run("fails when the task has no sections", func(t *testing.T) {
-		_, _, err := indexTaskBounds(&compactionv2pb.TaskSpec{}, inputsByPath)
+		_, err := indexTaskBounds(&compactionv2pb.TaskSpec{}, inputsByPath)
 		require.ErrorContains(t, err, "no source indexes")
 	})
 }
@@ -3641,7 +3638,7 @@ func TestIndexFilterForUnmerged(t *testing.T) {
 		task := indexFilterForUnmerged(run, unmerged)
 		require.Equal(t, []string{"indexes/run/a", "indexes/run/b"}, task.sourceIndexPaths)
 		require.Equal(t, []string{"logs/a", "logs/b"}, task.objectPaths)
-		require.Equal(t, newTimeRange(time.Unix(0, 10).UTC(), time.Unix(0, 40).UTC()), task.inputs)
+		require.Equal(t, newTimeRange(time.Unix(0, 10), time.Unix(0, 40)), task.inputRange)
 	})
 }
 

@@ -19,7 +19,7 @@ import (
 
 // executeIndexFilter copies the rows of the node's log objects from the
 // source index into a new index object, and emits a result record that
-// reports the new index objects.
+// reports it.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifacts, err := c.doIndexFilter(ctx, node)

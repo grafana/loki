@@ -484,7 +484,7 @@ func countSingleObjectRuns(runs []v2.Run) int {
 }
 
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
-// unmerged runs from sourceIndexRun. Its outputs lie in the time range of the
+// unmerged runs from sourceIndexRun. Its run takes the time range of the
 // unmerged runs.
 func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.RunRef) indexFilterTask {
 	var objectPaths []string
@@ -498,7 +498,7 @@ func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.
 	return indexFilterTask{
 		sourceIndexPaths: sourceIndexRun.paths(),
 		objectPaths:      objectPaths,
-		inputs:           newTimeRange(runsTimeRange(unmerged)),
+		inputRange:       runsTimeRange(unmerged),
 	}
 }
 
@@ -702,14 +702,14 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	plans := make([]*physical.Plan, len(tasks))
 	planned := make([]plannedRun, len(tasks))
 	for i, task := range tasks {
-		start, end, err := indexTaskBounds(task, entriesByPath)
+		inputRange, err := indexTaskBounds(task, entriesByPath)
 		if err != nil {
 			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
 		}
 		plans[i] = buildIndexMergePlan(tenant, window, task)
 		// A merge keeps the layout of its inputs, so the output has the
 		// layout of the group.
-		planned[i] = plannedRun{timeRange: newTimeRange(start.UTC(), end.UTC()), shardBuckets: group.shardBuckets()}
+		planned[i] = plannedRun{timeRange: inputRange, shardBuckets: group.shardBuckets()}
 	}
 
 	artifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
@@ -772,7 +772,7 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 
 // runsTimeRange returns the time range of the sections of runs: from the
 // earliest section start to the latest section end.
-func runsTimeRange(runs []*compactionv2pb.RunRef) (start, end time.Time) {
+func runsTimeRange(runs []*compactionv2pb.RunRef) timeRange {
 	var minTS, maxTS int64
 	first := true
 	for _, run := range runs {
@@ -785,25 +785,26 @@ func runsTimeRange(runs []*compactionv2pb.RunRef) (start, end time.Time) {
 			maxTS = max(maxTS, sec.MaxTimestamp)
 		}
 	}
-	return time.Unix(0, minTS).UTC(), time.Unix(0, maxTS).UTC()
+	return newTimeRange(time.Unix(0, minTS), time.Unix(0, maxTS))
 }
 
-// timeRange is a range of time. Both bounds are inclusive.
+// timeRange is an inclusive range of time, in UTC.
 type timeRange struct {
 	start, end time.Time
 }
 
+// newTimeRange returns the range from start to end, both inclusive, in UTC.
 func newTimeRange(start, end time.Time) timeRange {
-	return timeRange{start: start, end: end}
+	return timeRange{start: start.UTC(), end: end.UTC()}
 }
 
-// plannedRun holds what planning knows about the index run that one task
-// writes: its time range, which is the time range of the task inputs, and its
-// shard layout, which is the layout of the inputs.
+// plannedRun is what planning knows about the index run that one task writes.
+// Every entry of the run takes:
 //
-// Every entry of the run takes both. A query filters the entries of a ToC by
-// time, so entries with one time range keep the run whole: the query reads all
-// of its index objects or none of them.
+//   - the time range of the task inputs,
+//   - the shard layout of the task inputs.
+//
+// ReplaceIndexPointers requires one time range for all entries of a run.
 type plannedRun struct {
 	timeRange    timeRange
 	shardBuckets indexpointers.ShardBuckets
@@ -839,12 +840,12 @@ func outputRuns(planned []plannedRun, artifacts [][]v2.ResultArtifact) ([]metast
 		return nil, fmt.Errorf("got artifacts of %d tasks for %d tasks", len(artifacts), len(planned))
 	}
 	runs := make([]metastore.IndexRunEntries, 0, len(planned))
-	for i, plannedRun := range planned {
-		run, err := plannedRun.entries(artifacts[i])
+	for i, p := range planned {
+		entries, err := p.entries(artifacts[i])
 		if err != nil {
 			return nil, fmt.Errorf("task %d: %w", i, err)
 		}
-		runs = append(runs, run)
+		runs = append(runs, entries)
 	}
 	return runs, nil
 }
@@ -876,14 +877,15 @@ func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
 }
 
 // indexTaskBounds returns the time range covered by the source indexes that
-// task merges. inputsByPath maps each source index path to its ToC entry.
-func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexpointers.IndexPointer) (start, end time.Time, err error) {
+// task merges. inputsByPath maps each source index path to its index pointer.
+func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexpointers.IndexPointer) (timeRange, error) {
+	var start, end time.Time
 	first := true
 	for _, run := range task.Runs {
 		for _, section := range run.Sections {
 			input, ok := inputsByPath[section.ObjectPath]
 			if !ok {
-				return time.Time{}, time.Time{}, fmt.Errorf("task references unknown index %q", section.ObjectPath)
+				return timeRange{}, fmt.Errorf("task references unknown index %q", section.ObjectPath)
 			}
 			if first || input.StartTs.Before(start) {
 				start = input.StartTs
@@ -895,9 +897,9 @@ func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]inde
 		}
 	}
 	if first {
-		return time.Time{}, time.Time{}, fmt.Errorf("task has no source indexes")
+		return timeRange{}, fmt.Errorf("task has no source indexes")
 	}
-	return start, end, nil
+	return newTimeRange(start, end), nil
 }
 
 // phase is the current step of a tenant's flip-flop worker.

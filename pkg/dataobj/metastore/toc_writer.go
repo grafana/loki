@@ -107,7 +107,8 @@ type TableOfContentsEntry struct {
 }
 
 // IndexRunEntries holds the entries of the index objects of one run. A
-// query reads the index objects of a run as one index. A run is never empty.
+// query reads the index objects of a run as one index. A run is never empty,
+// and the entries of a run of more than one entry share one time range.
 type IndexRunEntries []TableOfContentsEntry
 
 // WatermarkUpdate raises the watermark of a Kafka topic and partition in a
@@ -264,10 +265,14 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 // oldPaths and newRuns are both empty, or if the ToC already holds the swap,
 // for example after a lost response.
 //
+// A query filters the entries of a ToC by time. If every entry of a run has
+// the same time range, the time filter keeps all entries of the run or none.
+//
 // It returns an error without retrying if:
 //   - the arguments are not valid: exactly one of oldPaths and newRuns is
-//     empty, a run is empty, an entry lies outside window, or a path of a run
-//     of more than one entry appears twice or is in oldPaths,
+//     empty, a run is empty or too long, an entry lies outside window, the
+//     entries of a run of more than one entry have different time ranges, or
+//     a path of such a run appears twice or is in oldPaths,
 //   - the ToC does not exist, holds another tenant, or lacks a path in
 //     oldPaths,
 //   - the ToC keeps a path of a run of more than one entry.
@@ -336,9 +341,7 @@ func runLengthOf(entries int) (int32, error) {
 // different time ranges, or if the path of an entry appears twice in newRuns
 // or is in oldPaths.
 //
-// A query filters the entries of a ToC by time. Entries of one run with one
-// time range keep the run whole: the query reads all of its index objects or
-// none. A path in oldPaths and in a new run would make a retry after a lost
+// A path in oldPaths and in a new run would make a retry after a lost
 // response remove part of the new run.
 func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntries) error {
 	pathCounts := make(map[string]int)

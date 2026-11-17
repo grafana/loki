@@ -539,27 +539,38 @@ func TestReplaceIndexPointers(t *testing.T) {
 		}, readToCPointers(t, bucket, tocPath))
 	})
 
-	t.Run("records the posting keys and shard layout of each new entry", func(t *testing.T) {
+	t.Run("records the posting keys and shard layout of each entry of a new run", func(t *testing.T) {
 		window := unixTime(0)
 		tocPath := TableOfContentsPath("tenantA", window)
 		bucket := objstore.NewInMemBucket()
 		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0))
 		writer := newTableOfContentsWriter(t, bucket)
-		keys, err := postings.NewKeyRange(
-			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
-			postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"},
-		)
-		require.NoError(t, err)
+		keyRange := func(low, high string) postings.KeyRange {
+			keys, err := postings.NewKeyRange(
+				postings.Key{Kind: postings.KindLabel, ColumnName: low},
+				postings.Key{Kind: postings.KindLabel, ColumnName: high},
+			)
+			require.NoError(t, err)
+			return keys
+		}
+		lowKeys, highKeys := keyRange("app", "env"), keyRange("job", "zone")
 		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
 
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
-			{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20), PostingKeys: keys, ShardBuckets: buckets},
+			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20), PostingKeys: lowKeys, ShardBuckets: buckets},
+			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20), PostingKeys: highKeys, ShardBuckets: buckets},
 		}})
 		require.NoError(t, err)
 		require.True(t, swapped)
-		want := runPointer("idx/new", 0)
-		want.PostingKeys, want.ShardBuckets = keys, buckets
-		require.Equal(t, []indexpointers.IndexPointer{want}, readToCPointers(t, bucket, tocPath))
+		want := func(path string, keys postings.KeyRange) indexpointers.IndexPointer {
+			pointer := runPointer(path, 1)
+			pointer.RunLength, pointer.PostingKeys, pointer.ShardBuckets = 2, keys, buckets
+			return pointer
+		}
+		require.ElementsMatch(t, []indexpointers.IndexPointer{
+			want("idx/new-a", lowKeys),
+			want("idx/new-b", highKeys),
+		}, readToCPointers(t, bucket, tocPath))
 	})
 
 	t.Run("returns false and leaves the ToC unchanged when the ToC already holds a new run and none of the old paths", func(t *testing.T) {
@@ -1072,6 +1083,14 @@ func TestReplaceIndexPointers(t *testing.T) {
 			newRuns: []IndexRunEntries{{
 				entry("idx/a-new"),
 				{Path: "idx/b-new", StartTime: unixTime(10), EndTime: unixTime(30)},
+			}},
+			wantErr: "entry idx/b-new of a new run spans",
+		},
+		{
+			name: "returns an error without touching storage when the entries of a new run start at different times",
+			newRuns: []IndexRunEntries{{
+				entry("idx/a-new"),
+				{Path: "idx/b-new", StartTime: unixTime(5), EndTime: unixTime(20)},
 			}},
 			wantErr: "entry idx/b-new of a new run spans",
 		},

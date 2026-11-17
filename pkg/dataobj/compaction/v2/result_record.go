@@ -13,8 +13,9 @@ import (
 )
 
 // ResultRecordSchema is the Arrow schema of the record a compaction job emits
-// to report its artifacts: one row per artifact, at least one row. Null
-// posting keys mean the bounds of the artifact are unknown.
+// to report its artifacts: one row per artifact, at least one row. Both
+// posting key columns of a row are null, or neither is. Null posting keys mean
+// the bounds of the artifact are unknown.
 var ResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path", Type: arrow.BinaryTypes.String, Nullable: false},
 	{Name: "min_posting_key", Type: arrow.BinaryTypes.Binary, Nullable: true},
@@ -22,17 +23,14 @@ var ResultRecordSchema = arrow.NewSchema([]arrow.Field{
 }, nil)
 
 // legacyResultRecordSchema is the schema of ResultRecordSchema before it had
-// posting key columns: one row with the path of one artifact.
+// posting key columns: a row with the path of each artifact.
 var legacyResultRecordSchema = arrow.NewSchema([]arrow.Field{
 	{Name: "path", Type: arrow.BinaryTypes.String, Nullable: false},
 }, nil)
 
-// ResultArtifact is one object that a completed task uploaded. It holds only
-// what the task decides while it runs: the coordinator knows the time range
-// and the shard layout of the outputs of a task when it plans the task.
-//
-// A ResultArtifact is usable only when returned with a nil error. The zero
-// value is not valid.
+// ResultArtifact is an object that a completed task reports to the
+// coordinator, for example a new index object. It is usable only when
+// returned with a nil error. The zero value is not valid.
 type ResultArtifact struct {
 	Path string
 
@@ -82,8 +80,9 @@ func EncodeResultArtifacts(mem memory.Allocator, artifacts []ResultArtifact) (ar
 }
 
 // DecodeResultArtifacts decodes the artifacts of rec, which
-// EncodeResultArtifacts encoded. It returns an error if rec has another
-// schema, has no rows, or holds an artifact that is not valid. The artifacts
+// EncodeResultArtifacts encoded. It returns an error if rec has neither
+// ResultRecordSchema nor legacyResultRecordSchema, has no rows, or holds an
+// artifact that is not valid. The artifacts
 // do not borrow memory from rec.
 //
 // It also decodes the record of a worker that uses legacyResultRecordSchema,
@@ -124,7 +123,8 @@ func DecodeResultArtifacts(rec arrow.RecordBatch) ([]ResultArtifact, error) {
 }
 
 // decodePostingKeys returns the posting key bounds of row i. It returns the
-// zero KeyRange if both bounds are null, and an error if only one is.
+// zero KeyRange if both bounds are null. It returns an error if only one is,
+// or if the bounds do not decode or are out of order.
 func decodePostingKeys(minPostingKeys, maxPostingKeys *array.Binary, i int) (postings.KeyRange, error) {
 	switch minNull, maxNull := minPostingKeys.IsNull(i), maxPostingKeys.IsNull(i); {
 	case minNull && maxNull:
