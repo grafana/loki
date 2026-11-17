@@ -309,6 +309,8 @@ Each `eval` runs on multiple execution stacks:
   the unsharded loop with the identity-only range iterator on in every engine.
 - `query-frontend + query-scheduler (no sharding, timestamp-first, hash-keyed range iterator)` —
   the unsharded loop with the hash-keyed range iterator on in every engine.
+- `query-frontend + query-scheduler (no sharding, timestamp-first, min/max grouping pushdown)` — the
+  unsharded loop with `max` and `min` grouping pushed into the range aggregation in every engine.
 
 The logline fixture (`store_logline.go`) uses the production `builder.NewBuilder`, `ProcessStream`,
 `Prepare`, and `Upload` path, with `Clear` for cleanup. It publishes indexes and their metadata through

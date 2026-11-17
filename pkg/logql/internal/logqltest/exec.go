@@ -28,6 +28,7 @@ const (
 	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
 	queryFrontendNoShardIdentityOnlyStackName         = "query-frontend + query-scheduler (no sharding, timestamp-first, identity-only range iterator)"
 	queryFrontendNoShardHashKeyedStackName            = "query-frontend + query-scheduler (no sharding, timestamp-first, hash-keyed range iterator)"
+	queryFrontendNoShardMinMaxPushdownStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first, min/max grouping pushdown)"
 )
 
 var (
@@ -44,6 +45,7 @@ var (
 		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
 		queryFrontendNoShardIdentityOnlyStackName,
 		queryFrontendNoShardHashKeyedStackName,
+		queryFrontendNoShardMinMaxPushdownStackName,
 	}
 )
 
@@ -121,6 +123,9 @@ type stackOptions struct {
 	// hashKeyedRangeIterator turns on HashKeyedRangeIterator in every engine the stack
 	// runs, in the querier and in the query-frontend.
 	hashKeyedRangeIterator bool
+	// pushMinMaxGrouping turns on PushMinMaxGrouping in every engine the stack runs, in the querier
+	// and in the query-frontend.
+	pushMinMaxGrouping bool
 
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
@@ -155,6 +160,12 @@ func withHashKeyedRangeIterator() stackOption {
 	return func(o *stackOptions) { o.hashKeyedRangeIterator = true }
 }
 
+// withMinMaxGroupingPushdown returns the stackOption that turns on PushMinMaxGrouping in every
+// engine of the stack.
+func withMinMaxGroupingPushdown() stackOption {
+	return func(o *stackOptions) { o.pushMinMaxGrouping = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -172,6 +183,7 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
 	engineOpts.IdentityOnlyRangeIterator = o.identityOnlyRangeIterator
 	engineOpts.HashKeyedRangeIterator = o.hashKeyedRangeIterator
+	engineOpts.PushMinMaxGrouping = o.pushMinMaxGrouping
 	return engineOpts
 }
 

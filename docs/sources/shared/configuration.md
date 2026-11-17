@@ -5277,6 +5277,12 @@ engine:
   # CLI flag: -querier.engine.hash-keyed-range-iterator
   [hash_keyed_range_iterator: <boolean> | default = false]
 
+  # Experimental: Push the by grouping of max and min into max_over_time and
+  # min_over_time, so the range iterator holds only the label sets of the
+  # grouping instead of every label set.
+  # CLI flag: -querier.engine.push-min-max-grouping
+  [push_min_max_grouping: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

@@ -1,0 +1,214 @@
+# max by () (max_over_time()) and min by () (min_over_time()) can push their grouping into the
+# range aggregation. Without a grouping, the extractor drops the unwrap label from every series.
+# An injected by() keeps each label it names. Each query below is a trap: a wrong rewrite keeps the
+# unwrap label, merges series that differ in a label that the parent reads, or loses the error.
+
+# The unwrap label in the by() grouping.
+clear
+load
+  {app="x", pod="p1"} `{"v":1,"w":10}` @ 10s
+  {app="x", pod="p2"} `{"v":2,"w":20}` @ 20s
+  {app="x", pod="p3"} `{"v":5,"w":10}` @ 30s
+  {app="x", pod="p1"} `{"v":7,"w":10}` @ 40s
+  {app="noise"}       `{"v":99,"w":99}` @ 30s
+
+eval instant at 60s max by (v) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {} 7 # v is not a label of the child series, so the grouping keeps no label
+eval instant at 60s min by (v) (min_over_time({app="x"} | json | unwrap v [1m]))
+  {} 1
+eval instant at 60s max by (v, w) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {w="10"} 7
+  {w="20"} 2
+eval instant at 60s min by (w, v) (min_over_time({app="x"} | json | unwrap v [1m]))
+  {w="10"} 1
+  {w="20"} 2
+eval range from 40s to 60s step 20s max by (v) (max_over_time({app="x"} | json | unwrap v [1m])) # overlapping
+  {} 7 7
+
+# Series in one group merge, and the label set of the group stays.
+eval instant at 60s max by (w) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {w="10"} 7 # p1 gives 7, p3 gives 5
+  {w="20"} 2
+eval instant at 60s min by (w) (min_over_time({app="x"} | json | unwrap v [1m]))
+  {w="10"} 1 # p1 gives 1, p3 gives 5
+  {w="20"} 2
+eval instant at 60s max by (pod) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {pod="p1"} 7
+  {pod="p2"} 2
+  {pod="p3"} 5
+eval instant at 60s max by (pod, w) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {pod="p1", w="10"} 7
+  {pod="p2", w="20"} 2
+  {pod="p3", w="10"} 5
+eval instant at 60s max(max_over_time({app="x"} | json | unwrap v [1m]))
+  {} 7
+eval instant at 60s min by () (min_over_time({app="x"} | json | unwrap v [1m]))
+  {} 1
+eval instant at 60s max by (nope) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {} 7 # no series has the label, so all fall in one group
+eval instant at 60s max by (app) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {app="x"} 7
+
+# A pipeline that changes or drops the label that the parent groups by.
+eval instant at 60s max by (w) (max_over_time({app="x"} | json | drop w | unwrap v [1m]))
+  {} 7
+eval instant at 60s max by (w) (max_over_time({app="x"} | json | label_format w="{{.pod}}" | unwrap v [1m]))
+  {w="p1"} 7
+  {w="p2"} 2
+  {w="p3"} 5
+eval instant at 60s max by (v) (max_over_time({app="x"} | json | label_format v="{{.pod}}" | unwrap w [1m]))
+  {v="p1"} 10
+  {v="p2"} 20
+  {v="p3"} 10
+eval instant at 60s max by (pod) (max_over_time({app="x"} | json | keep app, w, v | unwrap v [1m]))
+  {} 7 # keep removes pod
+
+# A without grouping and a grouping on the range aggregation stay as they are.
+eval instant at 60s max without (pod) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {app="x", w="10"} 7
+  {app="x", w="20"} 2
+eval instant at 60s max without (v) (max_over_time({app="x"} | json | unwrap v [1m]))
+  {app="x", pod="p1", w="10"} 7
+  {app="x", pod="p2", w="20"} 2
+  {app="x", pod="p3", w="10"} 5
+eval instant at 60s max by (w) (max_over_time({app="x"} | json | unwrap v [1m]) by (pod, w))
+  {w="10"} 7
+  {w="20"} 2
+eval instant at 60s max by (v) (max_over_time({app="x"} | json | unwrap v [1m]) by (v, pod))
+  {v="1"} 1 # the grouping of the range aggregation keeps the unwrap label
+  {v="2"} 2
+  {v="5"} 5
+  {v="7"} 7
+
+# The error label.
+clear
+load
+  {app="a", pod="p1"} `{"ok":1}` @ 20s [metadata n="5" unrelated="u1"]
+  {app="a", pod="p2"} `{"ok":1}` @ 30s [metadata n="7" unrelated="u2"]
+  {app="a", pod="p3"} `{`        @ 40s [metadata n="9" unrelated="u3"] # malformed
+  {app="noise", pod="p4"} `{"ok":1}` @ 20s [metadata n="99"]
+
+eval instant at 60s max by (pod) (max_over_time({app="a"} | json | unwrap n [1m]))
+  expect fail msg: JSONParserErr
+eval instant at 60s max by (n) (max_over_time({app="a"} | json | unwrap n [1m]))
+  expect fail msg: JSONParserErr
+eval instant at 60s max by (pod) (max_over_time({app="a"} | json | __error__="" | unwrap n [1m]))
+  {pod="p1"} 5
+  {pod="p2"} 7
+eval instant at 60s max by (n) (max_over_time({app="a"} | json | __error__="" | unwrap n [1m]))
+  {} 7
+eval instant at 60s min by (n) (min_over_time({app="a"} | json | __error__="" | unwrap n [1m]))
+  {} 5
+eval instant at 60s max by (pod) (max_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]))
+  {pod="p3"} 9 # the parent drops the error labels
+eval instant at 60s max by (n) (max_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]))
+  {} 9
+eval instant at 60s max by (__error__) (max_over_time({app="a"} | json | __error__!="zzz" | unwrap n [1m]))
+  {} 7
+  {__error__="JSONParserErr"} 9
+eval instant at 60s min by (__error__, n) (min_over_time({app="a"} | json | __error__!="zzz" | unwrap n [1m]))
+  {} 5
+  {__error__="JSONParserErr"} 9
+eval instant at 60s max without (pod, ok, unrelated) (max_over_time({app="a"} | json | __error__!="zzz" | unwrap n [1m]))
+  {app="a"} 7
+  {app="a", __error__="JSONParserErr", __error_details__="Malformed JSON error"} 9
+eval range from 40s to 60s step 20s max by (n) (max_over_time({app="a"} | json | __error__!="" | unwrap n [1m])) # overlapping
+  {} 9 9
+
+# The unwrap conversion fails on a value that is not a number.
+clear
+load
+  {app="b", pod="p1"} `{"v":"12"}` @ 20s
+  {app="b", pod="p2"} `{"v":"abc"}` @ 30s
+
+eval instant at 60s max by (v) (max_over_time({app="b"} | json | unwrap v [1m]))
+  expect fail msg: SampleExtractionErr
+eval instant at 60s max by (v) (max_over_time({app="b"} | json | unwrap v | __error__="" [1m]))
+  {} 12
+
+# The window edges: (T-R, T] excludes a sample at T-R and includes one at T.
+clear
+load
+  {app="e", pod="a"} `{"v":100}` @ 0s  # at T-R of the first step
+  {app="e", pod="a"} `{"v":3}`   @ 30s
+  {app="e", pod="b"} `{"v":9}`   @ 60s
+  {app="e", pod="c"} `{"v":50}`  @ 61s # after the first step
+  {app="noise"}      `{"v":999}` @ 60s
+
+eval instant at 60s max by (pod) (max_over_time({app="e"} | json | unwrap v [1m]))
+  {pod="a"} 3
+  {pod="b"} 9
+eval instant at 60s max by (v) (max_over_time({app="e"} | json | unwrap v [1m]))
+  {} 9
+eval instant at 60s min by (v) (min_over_time({app="e"} | json | unwrap v [1m]))
+  {} 3
+eval range from 60s to 120s step 30s max by (pod) (max_over_time({app="e"} | json | unwrap v [1m])) # overlapping
+  {pod="a"} 3 _ _
+  {pod="b"} 9 9 _
+  {pod="c"} _ 50 50
+eval range from 60s to 120s step 30s max by (v) (max_over_time({app="e"} | json | unwrap v [1m])) # overlapping
+  {} 9 50 50
+eval range from 60s to 120s step 30s min by (v) (min_over_time({app="e"} | json | unwrap v [1m])) # overlapping
+  {} 3 9 50
+
+# A step longer than the range leaves gaps between the windows.
+clear
+load
+  {app="s", pod="a"} `{"v":4}` @ 50s
+  {app="s", pod="a"} `{"v":8}` @ 110s
+  {app="s", pod="b"} `{"v":6}` @ 55s
+  {app="s", pod="b"} `{"v":1}` @ 170s
+  {app="noise"}      `{"v":99}` @ 110s
+
+eval range from 60s to 180s step 60s max by (pod) (max_over_time({app="s"} | json | unwrap v [30s])) # non-overlapping
+  {pod="a"} 4 8 _
+  {pod="b"} 6 _ 1
+eval range from 60s to 180s step 60s max by (v) (max_over_time({app="s"} | json | unwrap v [30s])) # non-overlapping
+  {} 6 8 1
+eval range from 60s to 180s step 60s min by (v) (min_over_time({app="s"} | json | unwrap v [30s])) # non-overlapping
+  {} 4 8 1
+
+# An offset moves the window back and keeps the grouping.
+eval instant at 120s max by (v) (max_over_time({app="s"} | json | unwrap v [30s] offset 1m))
+  {} 6
+eval instant at 120s max by (pod) (max_over_time({app="s"} | json | unwrap v [30s] offset 1m))
+  {pod="a"} 4
+  {pod="b"} 6
+eval range from 120s to 240s step 60s max by (v) (max_over_time({app="s"} | json | unwrap v [30s] offset 1m)) # non-overlapping
+  {} 6 8 1
+eval range from 120s to 240s step 60s min by (pod) (min_over_time({app="s"} | json | unwrap v [30s] offset 1m)) # non-overlapping
+  {pod="a"} 4 8 _
+  {pod="b"} 6 _ 1
+
+# NaN gives way to a number in max_over_time() and in max.
+clear
+load
+  {app="n", g="1", pod="a"} `{"v":"NaN"}` @ 10s
+  {app="n", g="1", pod="b"} `{"v":3}`     @ 20s
+  {app="n", g="2", pod="c"} `{"v":"NaN"}` @ 10s
+  {app="n", g="3", pod="d"} `{"v":"-Inf"}` @ 10s
+  {app="n", g="3", pod="e"} `{"v":2}`     @ 20s
+
+eval instant at 60s max by (g) (max_over_time({app="n"} | json | unwrap v [1m]))
+  {g="1"} 3
+  {g="2"} NaN
+  {g="3"} 2
+eval instant at 60s min by (g) (min_over_time({app="n"} | json | unwrap v [1m]))
+  {g="1"} 3
+  {g="2"} NaN
+  {g="3"} -Inf
+eval instant at 60s max by (v) (max_over_time({app="n"} | json | unwrap v [1m]))
+  {} 3
+
+# sum() pushes its grouping too, and it must leave the unwrap label out as well.
+clear
+load
+  {app="x", pod="p1"} `{"v":1,"w":10}` @ 10s
+  {app="x", pod="p2"} `{"v":2,"w":20}` @ 20s
+  {app="noise"}      `{"v":99,"w":99}` @ 30s
+
+eval instant at 60s sum by (v) (sum_over_time({app="x"} | json | unwrap v [1m]))
+  {} 3
+eval instant at 60s sum by (v, w) (sum_over_time({app="x"} | json | unwrap v [1m]))
+  {w="10"} 1
+  {w="20"} 2

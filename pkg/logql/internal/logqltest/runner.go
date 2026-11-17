@@ -194,6 +194,9 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 		// Every engine runs with the hash-keyed range iterator on.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardHashKeyedStackName, withHashKeyedRangeIterator())),
+
+		// Every engine runs with max and min grouping pushdown on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMinMaxPushdownStackName, withMinMaxGroupingPushdown())),
 	}
 }
 
