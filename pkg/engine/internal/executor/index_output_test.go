@@ -33,6 +33,16 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		require.ErrorContains(t, out.appendPostingsRow(label("app", 10, 20)), "sorts before the previous key")
 	})
 
+	t.Run("returns an error when a label row has a time range that ends before it starts", func(t *testing.T) {
+		out := newOutput(t)
+		require.ErrorContains(t, out.appendPostingsRow(label("app", 20, 10)), "ends at 10, before its start at 20")
+	})
+
+	t.Run("returns an error when a label row has the start values of an unobserved bloom column", func(t *testing.T) {
+		out := newOutput(t)
+		require.ErrorContains(t, out.appendPostingsRow(label("app", math.MaxInt64, math.MinInt64)), "before its start")
+	})
+
 	unsetBloom := postings.Row{
 		Kind: postings.KindBloom, ObjectPath: "logs/a", ColumnName: "trace_id", BloomFilter: []byte{1},
 		MinTimestamp: math.MaxInt64, MaxTimestamp: math.MinInt64,

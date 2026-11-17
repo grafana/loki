@@ -516,7 +516,7 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB", "objC"),
 	}
 
-	arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+	arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 
@@ -577,7 +577,7 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
-	arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+	arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 
@@ -733,7 +733,7 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA"),
 	}
 
-	arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+	arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 
@@ -796,7 +796,7 @@ func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
 		Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 	}
 
-	arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+	arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 
@@ -952,7 +952,7 @@ func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, rec, "pipeline must yield a result record")
 
 	// Deserialize the result artifacts
-	arts, err := oneArtifact{t}.of(v2.DecodeResultArtifacts(rec))
+	arts, err := oneArtifact(t)(v2.DecodeResultArtifacts(rec))
 	require.NoError(t, err)
 
 	indexPath := arts.Path
@@ -1088,7 +1088,7 @@ func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
 			Tenant: tenant,
 			Runs:   []*compactionv2pb.RunRef{{Sections: refs}},
 		}
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 		require.NoError(t, err)
 		require.NoError(t, arts.Validate())
 
@@ -1159,7 +1159,7 @@ func TestDoLogObjectMerge(t *testing.T) {
 		indexBucket := objstore.NewInMemBucket()
 		c := newTestExecutorContext(t, indexBucket)
 		c.dataBucket = dataBucket
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 		require.NoError(t, err)
 		require.NoError(t, arts.Validate())
 
@@ -1370,7 +1370,7 @@ func TestDoLogObjectMerge(t *testing.T) {
 		c := newSmallObjectExecutorContext(t, indexBucket)
 		c.dataBucket = dataBucket
 
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, OutputLevel: 2}))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: runs, OutputLevel: 2}))
 		require.NoError(t, err)
 
 		objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts.Path, tenant)
@@ -1640,7 +1640,7 @@ func TestDoLogObjectMerge_StreamMetadataMatchesMergedRecords(t *testing.T) {
 			Tenant: tenant,
 			Runs:   []*compactionv2pb.RunRef{{Sections: refs}},
 		}
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 		require.NoError(t, err)
 		require.NoError(t, arts.Validate())
 
@@ -1686,7 +1686,7 @@ func TestDoLogObjectMerge_PlannedRuns(t *testing.T) {
 	}
 	require.True(t, len(refs[0].Sections) > 1 || len(refs[1].Sections) > 1)
 	c := newTestExecutorContext(t, bucket)
-	arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: refs}))
+	arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, Runs: refs}))
 	require.NoError(t, err)
 	require.NoError(t, arts.Validate())
 	objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
@@ -1732,7 +1732,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 	require.NotNil(t, inputs.runs[0][0].Remap)
 
 	t.Run("merge selected section once", func(t *testing.T) {
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, node))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, node))
 		require.NoError(t, err)
 		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
 		require.Len(t, objects, 1)
@@ -1741,7 +1741,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 	})
 	t.Run("concatenate all sections in storage order", func(t *testing.T) {
 		all := &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, bucket, tenant, "source")}
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(ctx, all))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, all))
 		require.NoError(t, err)
 		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
 		require.Len(t, objects, 1)
@@ -1820,7 +1820,7 @@ func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
 		uploadRawSource(t, dataBucket, "objA", streams.DefaultShardLayout(), nil)
 		c := newContext(t, dataBucket)
 
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")}))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA")}))
 		require.ErrorContains(t, err, "records no layout")
 		require.Zero(t, arts)
 	})
@@ -1834,7 +1834,7 @@ func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
 		}
 		c := newContext(t, dataBucket)
 
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}))
 		require.EqualError(t, err, `source object "objB" has a different stream layout than "objA"`)
 		require.Zero(t, arts)
 	})
@@ -1850,7 +1850,7 @@ func TestDoLogObjectMerge_StreamsLayout(t *testing.T) {
 
 		c := newTestExecutorContext(t, objstore.NewInMemBucket())
 		c.dataBucket = dataBucket
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(t.Context(), &physical.LogMerge{
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(t.Context(), &physical.LogMerge{
 			Tenant: tenant,
 			Runs:   sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
 		}))
@@ -1884,7 +1884,7 @@ func TestDoLogObjectMerge_LegacySources(t *testing.T) {
 		indexBucket := objstore.NewInMemBucket()
 		c := newTestExecutorContext(t, indexBucket)
 		c.dataBucket = dataBucket
-		arts, err := oneArtifact{t}.of(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, paths...)}))
+		arts, err := oneArtifact(t)(c.doLogObjectMerge(t.Context(), &physical.LogMerge{Tenant: tenant, Runs: sourceLogRuns(t, dataBucket, tenant, paths...)}))
 		require.NoError(t, err)
 		objs := readCompactedObjectsFromIndex(t.Context(), t, dataBucket, indexBucket, arts.Path, tenant)
 		require.NotEmpty(t, objs)

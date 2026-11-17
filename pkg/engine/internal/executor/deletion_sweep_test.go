@@ -28,7 +28,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		if err != nil {
 			return v2.ResultArtifact{}, err
 		}
-		return oneArtifact{t}.of(v2.DecodeResultArtifacts(rec))
+		return oneArtifact(t)(v2.DecodeResultArtifacts(rec))
 	}
 
 	newBucket := func(t *testing.T) objstore.Bucket {

@@ -2,8 +2,8 @@ package executor
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/thanos-io/objstore"
@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // indexOutput is one index object that an index merge or filter writes for
@@ -21,7 +22,12 @@ import (
 type indexOutput struct {
 	tenant  string
 	builder *indexobj.MergeBuilder
+	bounds  rowBounds
+}
 
+// rowBounds is the time range and the posting key bounds of the postings rows
+// of an index output. The zero value has no rows.
+type rowBounds struct {
 	// hasPostings is true once the output got a postings row. hasTime is true
 	// once it got a row with a time range. The fields that follow each of
 	// them have no meaning before that.
@@ -44,11 +50,17 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 
 // appendPostingsRow writes row to the output. It returns an error if the key
 // of row sorts before the key of the previous row, because the posting key
-// bounds of the output are its first and last key.
+// bounds of the output are its first and last key. It also returns an error
+// if the time range of row ends before it starts, unless row is a bloom row of
+// a column with no observed values.
 func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 	key := row.Key()
-	if o.hasPostings && key.Compare(o.maxKey) < 0 {
-		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, o.maxKey)
+	if o.bounds.hasPostings && key.Compare(o.bounds.maxKey) < 0 {
+		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, o.bounds.maxKey)
+	}
+	unobserved := isUnobservedBloomRow(row)
+	if !unobserved && row.MinTimestamp > row.MaxTimestamp {
+		return fmt.Errorf("postings row with key %v has a time range that ends at %d, before its start at %d", key, row.MaxTimestamp, row.MinTimestamp)
 	}
 
 	var err error
@@ -64,23 +76,27 @@ func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 		return err
 	}
 
-	if !o.hasPostings {
-		o.hasPostings, o.minKey = true, key
+	b := &o.bounds
+	if !b.hasPostings {
+		b.hasPostings, b.minKey = true, key
 	}
-	o.maxKey = key
-
-	// A bloom row of a column with no observed values keeps the start values
-	// MaxInt64 and MinInt64, so its minimum is above its maximum. It adds no
-	// time to the output.
-	if row.MinTimestamp > row.MaxTimestamp {
+	b.maxKey = key
+	if unobserved {
 		return nil
 	}
-	if !o.hasTime {
-		o.hasTime, o.minTime, o.maxTime = true, row.MinTimestamp, row.MaxTimestamp
+	if !b.hasTime {
+		b.hasTime, b.minTime, b.maxTime = true, row.MinTimestamp, row.MaxTimestamp
 	}
-	o.minTime = min(o.minTime, row.MinTimestamp)
-	o.maxTime = max(o.maxTime, row.MaxTimestamp)
+	b.minTime = min(b.minTime, row.MinTimestamp)
+	b.maxTime = max(b.maxTime, row.MaxTimestamp)
 	return nil
+}
+
+// isUnobservedBloomRow reports whether row is a bloom row of a column with no
+// observed values. Such a row keeps the start values of its time range,
+// MaxInt64 and MinInt64, so it has no time range.
+func isUnobservedBloomRow(row postings.Row) bool {
+	return row.Kind == postings.KindBloom && row.MinTimestamp == math.MaxInt64 && row.MaxTimestamp == math.MinInt64
 }
 
 func (o *indexOutput) appendStat(stat stats.Stat) error {
@@ -90,12 +106,7 @@ func (o *indexOutput) appendStat(stat stats.Stat) error {
 // reset releases the resources of the output and empties it.
 func (o *indexOutput) reset() {
 	o.builder.Reset()
-	o.clearBounds()
-}
-
-// clearBounds forgets the recorded time range and posting key bounds.
-func (o *indexOutput) clearBounds() {
-	*o = indexOutput{tenant: o.tenant, builder: o.builder}
+	o.bounds = rowBounds{}
 }
 
 // artifact returns the result artifact of the output when it is uploaded to
@@ -103,16 +114,16 @@ func (o *indexOutput) clearBounds() {
 // without a postings row with a time range has no time range.
 func (o *indexOutput) artifact(path string) (v2.ResultArtifact, error) {
 	artifact := v2.ResultArtifact{Path: path}
-	if o.hasPostings {
-		keys, err := postings.NewKeyRange(o.minKey, o.maxKey)
+	if o.bounds.hasPostings {
+		keys, err := postings.NewKeyRange(o.bounds.minKey, o.bounds.maxKey)
 		if err != nil {
 			return v2.ResultArtifact{}, fmt.Errorf("posting key bounds of index %q: %w", path, err)
 		}
 		artifact.PostingKeys = keys
 	}
-	if o.hasTime {
-		artifact.MinTime = time.Unix(0, o.minTime).UTC()
-		artifact.MaxTime = time.Unix(0, o.maxTime).UTC()
+	if o.bounds.hasTime {
+		artifact.MinTime = time.Unix(0, o.bounds.minTime).UTC()
+		artifact.MaxTime = time.Unix(0, o.bounds.maxTime).UTC()
 	}
 	return artifact, nil
 }
@@ -129,39 +140,20 @@ func (o *indexOutput) upload(ctx context.Context, bucket objstore.Bucket) (artif
 	if err != nil {
 		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("flushing index: %w", err)
 	}
+	defer util.CloseAndHandleError(closer, &err)
 
-	pathReader, err := obj.Reader(ctx)
+	path, err := compactedIndexPath(ctx, o.tenant, obj)
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, errors.Join(err, closer.Close())
+		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("generating index path: %w", err)
 	}
-	path, hashErr := v2.CompactedIndexPath(o.tenant, pathReader)
-	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
-	}
-	if hashErr != nil {
-		return v2.ResultArtifact{}, 0, 0, errors.Join(hashErr, closer.Close())
-	}
-
-	compressedBytes = obj.Size()
-	uploadReader, err := obj.Reader(ctx)
+	compressedBytes, err = uploadObject(ctx, bucket, path, obj)
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, errors.Join(err, closer.Close())
-	}
-	if err := bucket.Upload(ctx, path, uploadReader); err != nil {
-		return v2.ResultArtifact{}, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
-	}
-	if err := uploadReader.Close(); err != nil {
-		return v2.ResultArtifact{}, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
-	}
-
-	if err := closer.Close(); err != nil {
-		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
+		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("uploading index %q: %w", path, err)
 	}
 	artifact, err = o.artifact(path)
 	if err != nil {
 		return v2.ResultArtifact{}, 0, 0, err
 	}
-	// Flush emptied the builder. Clear the recorded bounds so they match.
-	o.clearBounds()
+	o.reset()
 	return artifact, compressedBytes, uncompressedBytes, nil
 }

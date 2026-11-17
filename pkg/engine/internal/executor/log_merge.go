@@ -612,7 +612,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr erro
 // uploadObject streams a built object to the given bucket and returns its encoded
 // size. The index object goes to the index bucket; compacted log objects go to
 // the data bucket.
-func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
+func uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("getting object reader: %w", err)

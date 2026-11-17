@@ -84,7 +84,9 @@ type logCompactionTask interface {
 	// physicalPlan returns a new single-root physical plan for the task.
 	physicalPlan(tenant string, window time.Time) *physical.Plan
 
-	// inputTimeRange returns the time range of the inputs of the task.
+	// inputTimeRange returns the time range of the inputs of the task. Every
+	// output of the task lies in it. The coordinator checks the time range of
+	// each artifact against it, and uses it for an artifact without one.
 	inputTimeRange() timeRange
 
 	// logStats returns the log data that the task reads. Its bytes are zero
