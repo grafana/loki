@@ -32,21 +32,17 @@ type keyBounds struct {
 	min, max postings.Key
 }
 
-// check returns an error if key sorts before the last key that the bounds got.
-func (b keyBounds) check(key postings.Key) error {
+// add extends the bounds to key. It returns an error and leaves the bounds
+// unchanged if key sorts before the last key that the bounds got.
+func (b *keyBounds) add(key postings.Key) error {
 	if b.hasKeys && key.Compare(b.max) < 0 {
 		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, b.max)
 	}
-	return nil
-}
-
-// add extends the bounds to key, which must not sort before the last key that
-// the bounds got. Call check first.
-func (b *keyBounds) add(key postings.Key) {
 	if !b.hasKeys {
 		b.hasKeys, b.min = true, key
 	}
 	b.max = key
+	return nil
 }
 
 // keyRange returns the bounds as a KeyRange. It returns the zero KeyRange if
@@ -73,26 +69,18 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 // of row sorts before the key of the previous row, because the posting key
 // bounds of the output are its first and last key.
 func (o *indexOutput) appendPostingsRow(row postings.Row) error {
-	key := row.Key()
-	if err := o.keys.check(key); err != nil {
+	if err := o.keys.add(row.Key()); err != nil {
 		return err
 	}
 
-	var err error
 	switch row.Kind {
 	case postings.KindLabel:
-		err = o.builder.AppendPostingsLabelEntry(o.tenant, row.LabelEntry())
+		return o.builder.AppendPostingsLabelEntry(o.tenant, row.LabelEntry())
 	case postings.KindBloom:
-		err = o.builder.AppendPostingsBloomEntry(o.tenant, row.BloomEntry())
+		return o.builder.AppendPostingsBloomEntry(o.tenant, row.BloomEntry())
 	default:
-		err = fmt.Errorf("unknown postings kind: %v", row.Kind)
+		return fmt.Errorf("unknown postings kind: %v", row.Kind)
 	}
-	if err != nil {
-		return err
-	}
-
-	o.keys.add(key)
-	return nil
 }
 
 func (o *indexOutput) appendStat(stat stats.Stat) error {

@@ -82,8 +82,7 @@ func EncodeResultArtifacts(mem memory.Allocator, artifacts []ResultArtifact) (ar
 // DecodeResultArtifacts decodes the artifacts of rec, which
 // EncodeResultArtifacts encoded. It returns an error if rec has neither
 // ResultRecordSchema nor legacyResultRecordSchema, has no rows, or holds an
-// artifact that is not valid. The artifacts
-// do not borrow memory from rec.
+// artifact that is not valid. The artifacts do not borrow memory from rec.
 //
 // It also decodes the record of a worker that uses legacyResultRecordSchema,
 // as artifacts with unknown posting key bounds. This lets a coordinator update

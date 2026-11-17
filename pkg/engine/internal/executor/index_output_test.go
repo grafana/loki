@@ -57,6 +57,11 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		row := labelPostingsRow("app")
 		row.ObjectPath = "logs/b"
 		require.NoError(t, out.appendPostingsRow(row))
+
+		artifact, err := out.artifact("indexes/out")
+		require.NoError(t, err)
+		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
+		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
 	})
 
 	t.Run("returns an error when a row sorts before the previous row", func(t *testing.T) {
