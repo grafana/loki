@@ -319,9 +319,9 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 }
 
 // addStatsObjectPaths adds the object paths of a stats section. It adds
-// nothing for an empty section, which has no rows. It returns an error if the
-// object path column of any other section is not certain, because a missed
-// object path makes its log object look unreachable.
+// nothing for an empty section, which has no rows. It returns an error for any
+// other section that has no object_path column or more than one, because a
+// missed object path makes its log object look unreachable.
 func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) (err error) {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
