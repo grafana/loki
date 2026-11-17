@@ -777,7 +777,7 @@ func newInstanceWithLimits(
 	aggregationMetrics *aggregation.Metrics,
 	volumeThreshold float64,
 ) (*instance, error) {
-	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, owner, metricWriter, patternWriter, aggregationMetrics, volumeThreshold)
+	return newInstance(instanceID, logger, metrics, drainCfg, drainLimits, owner, metricWriter, patternWriter, aggregationMetrics, 10*time.Second, volumeThreshold)
 }
 
 func TestStreamPerTenantConfigurationThreading(t *testing.T) {

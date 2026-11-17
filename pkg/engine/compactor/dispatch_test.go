@@ -65,7 +65,7 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 		d, _ := newDispatcher(runner.run, 0)
 		mixed := []*physical.Plan{
 			buildLogMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
-			buildIndexFilterPlan("acme", "indexes/source", []string{"logs/a"}),
+			buildIndexFilterPlan("acme", []string{"indexes/source"}, []string{"logs/a"}),
 			buildDeletionSweepPlan("acme"),
 		}
 

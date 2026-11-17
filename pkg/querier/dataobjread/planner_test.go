@@ -34,7 +34,7 @@ func TestPlanner_Plan(t *testing.T) {
 	newTestPlanner := func(t *testing.T, ms metastore.Metastore) (*Planner, metastore.DataobjSectionDescriptors) {
 		t.Helper()
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		if ms == nil {
@@ -83,7 +83,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		ms := &fixedMetastore{descriptors: fixture.descriptors}
@@ -159,7 +159,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		// Claim a stream ID no object holds, which is the index and the object disagreeing.
@@ -176,7 +176,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a stream missing from a shard bucket-pruned read is taken as out of shard rather than an error", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		corrupted := *fixture.descriptors[0]
@@ -202,7 +202,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query when the shard can hold every hash", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		corrupted := *fixture.descriptors[0]
@@ -238,7 +238,7 @@ func TestPlanner_Plan(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(test.buckets), []string{"label:app"})
 			bucket, path, _ := createTestStoredObject(t, objtest.Tenant, &layout, `{app="a"}`, `{app="b"}`)
-			objects := NewOpenObjects(bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+			objects := NewOpenObjects(bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 			t.Cleanup(objects.release)
 
 			descriptor := &metastore.DataobjSectionDescriptor{
@@ -261,7 +261,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a section the metastore lists with no stream fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		empty := *fixture.descriptors[0]
@@ -276,7 +276,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a section listed twice by the metastore fails the query rather than counting it twice", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		repeated := *fixture.descriptors[0]
@@ -292,7 +292,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("it plans the tasks of a batch before the metastore yields the next batch of the same object", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		laterSection := *fixture.descriptors[0]
@@ -316,7 +316,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("a section that two batches list fails the query rather than counting it twice", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		repeated := *fixture.descriptors[0]
@@ -328,7 +328,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("aborting the iterator stops a running resolution and reports no error", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		laterSection := *fixture.descriptors[0]
@@ -359,7 +359,7 @@ func TestPlanner_Plan(t *testing.T) {
 
 	t.Run("no task is planned when the access-control filter denies every stream", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
-		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 		t.Cleanup(objects.release)
 
 		ms := &fixedMetastore{descriptors: fixture.descriptors}
@@ -466,7 +466,7 @@ func TestPlanner_RecoversPanics(t *testing.T) {
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})
-	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes)
 	t.Cleanup(objects.release)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({app=~".+"}[1m])`)

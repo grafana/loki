@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -16,18 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
-// assert the adapter satisfies the dataobj interface.
-var _ dataobj.MetadataCache = (*Cache)(nil)
-
 func TestCache_MaxItemBytes(t *testing.T) {
-	require.Equal(t, int64(DefaultMaxItemBytes), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value falls back to the default")
 	require.Equal(t, int64(1024), newTestCache(cache.NewMockCache(), 1024, nil).MaxItemBytes())
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value means no limit")
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), -1, nil).MaxItemBytes(), "a non-positive value means no limit")
 }
 
 func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
@@ -397,6 +395,18 @@ func TestCache_GetOrLoad(t *testing.T) {
 		require.Equal(t, []byte("stale"), mc.GetInternal()[keyPrefix+"obj"])
 	})
 
+	t.Run("stores a loaded value of any size when the cache has no limit", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+		large := make([]byte, 16<<20)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return large, nil })
+
+		require.NoError(t, err)
+		require.Len(t, got, len(large))
+		require.Contains(t, mc.GetInternal(), keyPrefix+"obj")
+	})
+
 	t.Run("accepts every hit when accept is nil", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		c := newTestCache(mc, 0, nil)
@@ -488,12 +498,12 @@ func TestNewBackend(t *testing.T) {
 		require.Equal(t, int64(1024), maxItemBytes)
 	})
 
-	t.Run("falls back to the default limit when the memcached max item size is zero", func(t *testing.T) {
+	t.Run("reports no limit when the memcached max item size is zero", func(t *testing.T) {
 		backend, maxItemBytes, err := NewBackend(memcachedConfig("test.metadata-cache.", 0), prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
 		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
+		require.Zero(t, maxItemBytes)
 	})
 
 	t.Run("ignores the memcached max item size when the backend is not memcached", func(t *testing.T) {
@@ -504,7 +514,7 @@ func TestNewBackend(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
+		require.Zero(t, maxItemBytes)
 	})
 
 	t.Run("returns an error when memcached and redis are both set", func(t *testing.T) {

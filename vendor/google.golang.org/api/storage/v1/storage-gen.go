@@ -1572,6 +1572,8 @@ type BucketStorageLayout struct {
 	Location string `json:"location,omitempty"`
 	// LocationType: The type of the bucket location.
 	LocationType string `json:"locationType,omitempty"`
+	// RapidCacheInfo: The Rapid Cache configuration for the bucket.
+	RapidCacheInfo *BucketStorageLayoutRapidCacheInfo `json:"rapidCacheInfo,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -1637,6 +1639,30 @@ type BucketStorageLayoutHierarchicalNamespace struct {
 
 func (s BucketStorageLayoutHierarchicalNamespace) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketStorageLayoutHierarchicalNamespace
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketStorageLayoutRapidCacheInfo: The Rapid Cache configuration for the
+// bucket.
+type BucketStorageLayoutRapidCacheInfo struct {
+	// CacheType: The type of cache in the bucket. Set to `rapid-cache` or
+	// `rapid-cache-ultra`, only if there is a cache present.
+	CacheType string `json:"cacheType,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CacheType") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CacheType") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketStorageLayoutRapidCacheInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketStorageLayoutRapidCacheInfo
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -3700,107 +3726,6 @@ func (c *AnywhereCachesListCall) Pages(ctx context.Context, f func(*AnywhereCach
 	}
 }
 
-type AnywhereCachesPauseCall struct {
-	s               *Service
-	bucket          string
-	anywhereCacheId string
-	urlParams_      gensupport.URLParams
-	ctx_            context.Context
-	header_         http.Header
-}
-
-// Pause: Pauses an Anywhere Cache instance.
-//
-// - anywhereCacheId: The ID of requested Anywhere Cache instance.
-// - bucket: Name of the parent bucket.
-func (r *AnywhereCachesService) Pause(bucket string, anywhereCacheId string) *AnywhereCachesPauseCall {
-	c := &AnywhereCachesPauseCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.bucket = bucket
-	c.anywhereCacheId = anywhereCacheId
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *AnywhereCachesPauseCall) Fields(s ...googleapi.Field) *AnywhereCachesPauseCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *AnywhereCachesPauseCall) Context(ctx context.Context) *AnywhereCachesPauseCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *AnywhereCachesPauseCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *AnywhereCachesPauseCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}/pause")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"bucket":          c.bucket,
-		"anywhereCacheId": c.anywhereCacheId,
-	})
-	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.pause", "request", internallog.HTTPRequest(req, nil))
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "storage.anywhereCaches.pause" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *AnywhereCache.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *AnywhereCachesPauseCall) Do(opts ...googleapi.CallOption) (*AnywhereCache, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &AnywhereCache{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	b, err := gensupport.DecodeResponseBytes(target, res)
-	if err != nil {
-		return nil, err
-	}
-	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.pause", "response", internallog.HTTPResponse(res, b))
-	return ret, nil
-}
-
 type AnywhereCachesResumeCall struct {
 	s               *Service
 	bucket          string
@@ -3810,7 +3735,7 @@ type AnywhereCachesResumeCall struct {
 	header_         http.Header
 }
 
-// Resume: Resumes a paused or disabled Anywhere Cache instance.
+// Resume: Resumes a disabled Anywhere Cache instance.
 //
 // - anywhereCacheId: The ID of requested Anywhere Cache instance.
 // - bucket: Name of the parent bucket.

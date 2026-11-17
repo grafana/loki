@@ -74,6 +74,48 @@ The following changes affect rolling back to Loki 3.x:
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
 
+### Kafka client upgraded to franz-go 1.22
+
+Loki uses the franz-go library as its Kafka client. This release upgrades franz-go from v1.21.7 to v1.22.2. franz-go 1.22 changes some defaults, and Loki overrides them so that its Kafka clients behave as before. You don't need to change your configuration.
+
+#### ApiVersions request version
+
+When a Kafka client connects to a broker, it first sends an ApiVersions request to find out which requests the broker supports. franz-go 1.21 sent version 4 of this request. franz-go 1.22 sends version 5. Some Kafka-compatible backends, such as WarpStream, close the connection when they receive version 5, instead of replying with an error that lets the client retry with version 4.
+
+To avoid this, Loki caps the ApiVersions request at version 4 by default.
+
+| Setting | Default | Valid values |
+|---|---|---|
+| `-kafka.api-versions-max-version` (`kafka_config.api_versions_max_version`) | `4` | `0` to `4` |
+
+- `1` to `4`: the highest ApiVersions version Loki sends.
+- `0`: no cap. franz-go 1.22.2 sends version 5. Use `0` only if your Kafka backend supports ApiVersions version 5.
+
+#### Maximum decompressed batch size
+
+Kafka stores records in compressed batches, and the Kafka client decompresses each batch it reads. franz-go 1.21 allowed a batch to decompress to up to 2147483647 bytes (2 GiB minus 1 byte). franz-go 1.22 lowers this limit to 1073741824 bytes (1 GiB). When a batch is bigger than the limit, the client stops reading that partition. The partition stays stuck until its offset is moved past that batch.
+
+To keep the franz-go 1.21 limit, this release adds a new setting.
+
+| Setting | Default | Valid values |
+|---|---|---|
+| `-kafka.max-decompress-batch-bytes` (`kafka_config.max_decompress_batch_bytes`) | `2147483647` (2 GiB minus 1 byte) | `0` to `2147483647` |
+
+- `1` to `2147483647`: the largest size, in bytes, that one batch may decompress to. `2147483647` is the highest value franz-go accepts.
+- `0`: use the franz-go 1.22 default of 1073741824 bytes (1 GiB).
+
+#### Reading after data loss
+
+Data loss means that, while a Kafka consumer is reading a partition, records it hasn't read yet no longer exist, for example because retention deleted them first. franz-go 1.21 then continued right after the missing records. franz-go 1.22 continues from the consumer's reset offset instead. Its default reset offset goes back one minute before the last record read, and re-reads that minute.
+
+Loki sets the reset offset for each consumer in code. You can't change it with a configuration option.
+
+| Consumer | After data loss, before this release | After data loss, with this release |
+|---|---|---|
+| Ingesters, data object builder, logline builder | Continue right after the missing records | Same: continue right after the missing records |
+| Ingest limits | Continue right after the missing records | Go back to when the pod started, minus `-ingest-limits.active-window` (default `2h`). On a pod that has run for a long time, this re-reads many records. |
+| Pattern ingester | Continue right after the missing records | Jump to the end of the topic, which skips the records it hasn't read |
+
 ### `ip()` label filters no longer keep lines with an `__error__` label
 
 An `ip()` label filter used to keep every log line that already carried an `__error__` label, without checking the address. It now compares the line like a numeric, duration, or bytes filter does. A line that failed in an earlier stage, such as `json`, usually has no value for the label, so the filter drops it. For example, `| json | addr = ip("10.0.0.0/8")` no longer returns the lines that failed to parse, and a metric query with this filter no longer fails on them. To keep those lines, combine the filter with an `__error__` filter, for example `| addr = ip("10.0.0.0/8") or __error__ != ""`.

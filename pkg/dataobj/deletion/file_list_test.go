@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"slices"
 	"testing"
@@ -41,7 +41,7 @@ func TestEncodeFileList(t *testing.T) {
 		require.NoError(t, err)
 		text, err := io.ReadAll(gz)
 		require.NoError(t, err)
-		require.Equal(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}
+		require.Equal(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}
 {"path":"index/v0/indexes/00/x"}
 {"path":"objects/tenants/a/aa/y"}
 `, string(text))
@@ -49,7 +49,7 @@ func TestEncodeFileList(t *testing.T) {
 }
 
 func TestOpenFileList(t *testing.T) {
-	header := `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}` + "\n"
+	header := `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00.0000005Z"}` + "\n"
 	path := fileListPath("a")
 
 	t.Run("reads the header and the paths of a stored list", func(t *testing.T) {
@@ -110,12 +110,12 @@ func TestOpenFileList(t *testing.T) {
 	}{
 		{"returns ErrMalformedFileList for an empty object", []byte{}},
 		{"returns ErrMalformedFileList for an object that is not gzip", []byte(header)},
-		{"returns ErrMalformedFileList for a header with an unknown field", gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z","extra":2}`+"\n")},
-		{"returns ErrMalformedFileList for a header with an unknown version", gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
+		{"returns ErrMalformedFileList for a header with an unknown field", gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T12:00:00Z","extra":2}`+"\n")},
+		{"returns ErrMalformedFileList for a version 1 header", gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 		{"returns ErrMalformedFileList for a header without a version", gzipText(t, `{"tenant":"a","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 		{"returns ErrMalformedFileList for a path record before the header", gzipText(t, `{"path":"objects/00/x"}`+"\n"+header)},
-		{"returns ErrMalformedFileList for a header without a creation time", gzipText(t, `{"version":1,"tenant":"a"}`+"\n")},
-		{"returns ErrMalformedFileList for a header that holds another tenant", gzipText(t, `{"version":1,"tenant":"b","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
+		{"returns ErrMalformedFileList for a header without a creation time", gzipText(t, `{"version":2,"tenant":"a"}`+"\n")},
+		{"returns ErrMalformedFileList for a header that holds another tenant", gzipText(t, `{"version":2,"tenant":"b","created_at":"2026-11-04T12:00:00Z"}`+"\n")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
@@ -210,7 +210,7 @@ func TestFileListWriter_Write(t *testing.T) {
 
 	t.Run("replaces an older stored list with malformed paths because it reads only the header", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		upload(t, bucket, list.Path(), gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"+`not json`+"\n"))
+		upload(t, bucket, list.Path(), gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"+`not json`+"\n"))
 
 		require.NoError(t, newTestWriter(bucket).Write(t.Context(), list))
 		require.Equal(t, list, readFileList(t, bucket, "a"))
@@ -318,13 +318,15 @@ func TestFileListWriter_Write(t *testing.T) {
 		require.Equal(t, 1, bucket.calls)
 	})
 
-	t.Run("returns ErrMalformedFileList without a retry when the stored list has an unknown version", func(t *testing.T) {
+	t.Run("returns ErrMalformedFileList without a retry and keeps a stored version 1 list", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
-		upload(t, inner, list.Path(), gzipText(t, `{"version":2,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n"))
+		stored := gzipText(t, `{"version":1,"tenant":"a","created_at":"2026-11-04T11:00:00Z"}`+"\n")
+		upload(t, inner, list.Path(), stored)
 		bucket := &flakyBucket{Bucket: inner}
 
 		require.ErrorIs(t, newTestWriter(bucket).Write(t.Context(), list), ErrMalformedFileList)
 		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, string(stored), readRaw(t, inner, list.Path()))
 	})
 
 	t.Run("returns ErrFileListTooLarge without an attempt when the encoded list is larger than the limit", func(t *testing.T) {
@@ -433,11 +435,11 @@ func readUntilError(r *FileListReader) ([]string, error) {
 // list is at least size bytes.
 func incompressiblePaths(size int) []string {
 	const randomBytesPerPath = 4096
-	rng := rand.NewChaCha8([32]byte{})
 	paths := make([]string, 0, size/randomBytesPerPath+1)
 	buf := make([]byte, randomBytesPerPath)
 	for range size/randomBytesPerPath + 1 {
-		_, _ = rng.Read(buf)
+		// crypto/rand.Read never returns an error.
+		_, _ = rand.Read(buf)
 		paths = append(paths, "objects/"+hex.EncodeToString(buf))
 	}
 	slices.Sort(paths)

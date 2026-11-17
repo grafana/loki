@@ -135,9 +135,9 @@ func (v Validator) ValidateEntry(vCtx validationContext, labels labels.Labels, e
 	return "", nil
 }
 
-// ValidateLabels returns an error and the reason to discard the stream's data for if its labels
-// are invalid. Aggregated metric and pattern streams are not validated, as Loki creates those for
-// internal use. Like ValidateEntry, it does not report the discarded data itself; the caller does.
+// ValidateLabels returns the discard reason and an error if the stream's labels are invalid. Like
+// ValidateEntry, it reports nothing; the caller does. Aggregated metric and pattern streams are not
+// validated, as Loki creates those for internal use.
 func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter) (string, error) {
 	if ls.IsEmpty() {
 		return validation.MissingLabels, fmt.Errorf(validation.MissingLabelsErrorMsg)
@@ -177,9 +177,9 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 	return reason, err
 }
 
-// reportDiscardedData reports entryCount samples totaling entrySize bytes, of a stream with the given
-// labels, as discarded for reason: in the discarded samples and bytes metrics and to the usage tracker.
-// Every discard pushWithResolver makes is reported through here.
+// reportDiscardedData reports entryCount samples totaling entrySize bytes of a stream with labels as
+// discarded for reason, in the discarded samples and bytes metrics and to the usage tracker. Every
+// discard pushWithResolver makes is reported through here.
 func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize, entryCount int, format string) {
 	validation.DiscardedSamples.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entryCount))
 	validation.DiscardedBytes.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entrySize))

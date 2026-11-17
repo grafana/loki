@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
@@ -1095,5 +1096,5 @@ func isStreamIDPredicate(p Predicate) bool {
 }
 
 func isStreamIDColumn(col Column) bool {
-	return col.ColumnDesc().Type.Logical == "stream_id"
+	return col.ColumnDesc().Type.Logical == format.LogsColumnStreamID
 }
