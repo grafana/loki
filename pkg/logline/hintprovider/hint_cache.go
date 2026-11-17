@@ -75,9 +75,10 @@ type minDateProvider interface {
 	MinDate() time.Time
 }
 
-// needlePlanner reports the needles a lookup for expr uses, and the n-gram
-// length their terms are extracted with. Both decide what a lookup returns.
-type needlePlanner interface {
+// needlesProvider is an optional capability of a delegate, like minDateProvider.
+// Only the real provider has Needles, so the cache key checks for it and falls
+// back to the expression for any other delegate, such as a test stub.
+type needlesProvider interface {
 	Needles(expr syntax.Expr) (needles needle.Conjunctions, ngramLength int)
 }
 
@@ -380,7 +381,7 @@ func cacheKeyMinDate(delegate QueryHintProvider) string {
 // sets and n-gram length when it reports any needles, and the expression
 // otherwise.
 func cacheKeyQuery(delegate QueryHintProvider, expr syntax.Expr) string {
-	if p, ok := delegate.(needlePlanner); ok {
+	if p, ok := delegate.(needlesProvider); ok {
 		if needles, ngramLength := p.Needles(expr); len(needles) > 0 {
 			return fmt.Sprintf("n=%d f=%s", ngramLength, needles)
 		}
