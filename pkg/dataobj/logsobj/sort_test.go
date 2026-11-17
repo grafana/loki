@@ -34,7 +34,7 @@ func TestPlanSortRanges(t *testing.T) {
 	streamsOf := func(sizes []int64, keys []streams.SortKey) []sortedStream {
 		out := make([]sortedStream, len(sizes))
 		for i := range out {
-			out[i] = sortedStream{Stream: streams.Stream{ID: int64(i + 1)}, key: keys[i], sectionSize: sizes[i]}
+			out[i] = sortedStream{Stream: streams.Stream{ID: int64(i + 1)}, key: keys[i], size: sizes[i]}
 		}
 		return out
 	}
@@ -118,7 +118,7 @@ func TestPlanSortRanges(t *testing.T) {
 	})
 }
 
-func TestNewSortedStreamTable(t *testing.T) {
+func TestNewSortedStreams(t *testing.T) {
 	seqOf := func(list ...streams.Stream) result.Seq[streams.Stream] {
 		return result.Iter(func(yield func(streams.Stream) bool) error {
 			for _, s := range list {
@@ -134,7 +134,7 @@ func TestNewSortedStreamTable(t *testing.T) {
 	}
 	schema := []string{"label:app"}
 
-	t.Run("gives the streams the new IDs 1 to N in sort key order and maps the old IDs to them", func(t *testing.T) {
+	t.Run("gives the streams the new IDs 1 to N in sort key order", func(t *testing.T) {
 		input := []streams.Stream{stream(1, "c", 0, 0), stream(2, "a", 0, 0), stream(3, "b", 0, 0)}
 		keyOf := func(s streams.Stream) streams.SortKey {
 			key, err := streamSortKey(s.Labels, schema, streams.DefaultShardLayout())
@@ -144,36 +144,46 @@ func TestNewSortedStreamTable(t *testing.T) {
 		wantOrder := slices.Clone(input)
 		slices.SortFunc(wantOrder, func(a, b streams.Stream) int { return streams.CompareSortKey(keyOf(a), keyOf(b)) })
 
-		table, err := newSortedStreamTable(seqOf(input...), "tenant", schema, streams.DefaultShardLayout(), 3)
+		sorted, err := newSortedStreams(seqOf(input...), "tenant", schema, streams.DefaultShardLayout(), 3)
 		require.NoError(t, err)
 
+		require.Len(t, sorted, len(wantOrder))
 		for i, want := range wantOrder {
-			got := table.sorted[i]
-			require.Equal(t, want.ID, got.oldID, "old ID at position %d", i)
-			require.Equal(t, int64(i+1), got.ID, "new ID at position %d", i)
-			require.Same(t, &table.sorted[i], table.byOldID[want.ID])
-			require.Equal(t, got.key, table.keysByOldID[want.ID])
+			require.Equal(t, want.ID, sorted[i].oldID, "old ID at position %d", i)
+			require.Equal(t, int64(i+1), sorted[i].ID, "new ID at position %d", i)
+			require.Equal(t, keyOf(want), sorted[i].key, "sort key at position %d", i)
 		}
-		require.Nil(t, table.byOldID[0])
 	})
 
 	t.Run("takes the section size from the stream stats and starts the counters at zero", func(t *testing.T) {
-		table, err := newSortedStreamTable(seqOf(stream(1, "a", 4, 100)), "tenant", schema, streams.DefaultShardLayout(), 1)
+		sorted, err := newSortedStreams(seqOf(stream(1, "a", 4, 100)), "tenant", schema, streams.DefaultShardLayout(), 1)
 		require.NoError(t, err)
 
-		require.Equal(t, int64(100+4*logs.RecordOverhead), table.sorted[0].sectionSize)
-		require.Zero(t, table.sorted[0].Rows)
-		require.Zero(t, table.sorted[0].UncompressedSize)
+		require.Equal(t, int64(100+4*logs.RecordOverhead), sorted[0].size)
+		require.Zero(t, sorted[0].Rows)
+		require.Zero(t, sorted[0].UncompressedSize)
 	})
 
 	t.Run("returns an error when an old ID is out of range", func(t *testing.T) {
-		_, err := newSortedStreamTable(seqOf(stream(1, "a", 0, 0), stream(5, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
+		_, err := newSortedStreams(seqOf(stream(1, "a", 0, 0), stream(5, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
 		require.ErrorContains(t, err, "stream id 5 out of range for tenant tenant with 2 streams")
 	})
 
 	t.Run("returns an error when two streams have the same old ID", func(t *testing.T) {
-		_, err := newSortedStreamTable(seqOf(stream(1, "a", 0, 0), stream(1, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
+		_, err := newSortedStreams(seqOf(stream(1, "a", 0, 0), stream(1, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
 		require.ErrorContains(t, err, "duplicate stream id for tenant tenant: old id 1")
+	})
+}
+
+func TestSortKeysByOldID(t *testing.T) {
+	t.Run("indexes the sort keys by old ID and leaves index 0 empty", func(t *testing.T) {
+		sorted := []sortedStream{
+			{oldID: 2, key: streams.SortKey{Hash: 20}},
+			{oldID: 3, key: streams.SortKey{Hash: 30}},
+			{oldID: 1, key: streams.SortKey{Hash: 10}},
+		}
+
+		require.Equal(t, []streams.SortKey{{}, {Hash: 10}, {Hash: 20}, {Hash: 30}}, sortKeysByOldID(sorted))
 	})
 }
 
@@ -343,12 +353,12 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 
 		sections, streamsSection, err := tenantSections(t.Context(), src, "tenant")
 		require.NoError(t, err)
-		table, err := newSortedStreamTable(streamsSectionIter(t.Context(), streamsSection), "tenant", nil, streams.DefaultShardLayout(), streamsSection.NumRows())
+		sorted, err := newSortedStreams(streamsSectionIter(t.Context(), streamsSection), "tenant", nil, streams.DefaultShardLayout(), streamsSection.NumRows())
 		require.NoError(t, err)
-		require.Len(t, table.sorted, numStreams)
-		plan = &sortPlan{table: table}
+		require.Len(t, sorted, numStreams)
+		plan = &sortPlan{streams: sorted}
 		for start := 0; start < numStreams; start += 4 {
-			plan.ranges = append(plan.ranges, table.sorted[start:start+4])
+			plan.ranges = append(plan.ranges, sorted[start:start+4])
 		}
 
 		cfg := testBuilderConfig
@@ -362,19 +372,19 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 		sorter, sections, plan := newRun(t, 2)
 
 		require.NoError(t, sorter.writeLogsSections(t.Context(), "tenant", sections, plan))
-		for _, s := range plan.table.sorted {
+		for _, s := range plan.streams {
 			require.Equal(t, rowsPerStream, s.Rows, "rows of stream %d", s.ID)
 		}
 	})
 
 	t.Run("returns the error of a range, with the range and the tenant, when more ranges than goroutines fail", func(t *testing.T) {
 		sorter, sections, plan := newRun(t, 2)
-		for _, s := range plan.table.sorted[4:] {
-			delete(plan.table.byOldID, s.oldID)
+		for i := 1; i < len(plan.ranges); i++ {
+			plan.ranges[i] = nil
 		}
 
 		err := sorter.writeLogsSections(t.Context(), "tenant", sections, plan)
-		require.ErrorContains(t, err, "missing stream ID remap")
+		require.ErrorContains(t, err, "no stream IDs to keep")
 		require.ErrorContains(t, err, "sorting stream range")
 		require.ErrorContains(t, err, "of tenant tenant")
 	})
@@ -392,7 +402,7 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 		plan.ranges = nil
 
 		require.NoError(t, sorter.writeLogsSections(t.Context(), "tenant", sections, plan))
-		for _, s := range plan.table.sorted {
+		for _, s := range plan.streams {
 			require.Zero(t, s.Rows)
 		}
 	})
