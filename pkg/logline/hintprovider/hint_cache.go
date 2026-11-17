@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
@@ -74,11 +75,10 @@ type minDateProvider interface {
 	MinDate() time.Time
 }
 
-// lookupParamsProvider reports what decides the needles a lookup uses, besides
-// the expression.
-type lookupParamsProvider interface {
-	NgramLength() int
-	MaxConjunctions() int
+// needlePlanner reports the needles a lookup for expr uses, and the n-gram
+// length their terms are extracted with. Both decide what a lookup returns.
+type needlePlanner interface {
+	Needles(expr syntax.Expr) (needles needle.Conjunctions, ngramLength int)
 }
 
 // CachingHintProvider wraps another QueryHintProvider with day-aligned caching.
@@ -225,12 +225,8 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	// Key on what the lookup does, so queries with the same needles share entries.
-	// The delegate is still asked about expr. Without needles, key on expr.
-	queryString := expr.String()
-	ngramLength, maxConjunctions := cacheKeyLookupParams(p.delegate)
-	if key, ok := needleKey(expr, ngramLength, maxConjunctions); ok {
-		queryString = key
-	}
+	// The delegate is still asked about expr.
+	queryString := cacheKeyQuery(p.delegate, expr)
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
 
@@ -380,14 +376,16 @@ func cacheKeyMinDate(delegate QueryHintProvider) string {
 	return minDate.Format(hintCacheDayLayout)
 }
 
-// cacheKeyLookupParams returns the delegate's n-gram length and needle set
-// limit, or zeros when it doesn't report them.
-func cacheKeyLookupParams(delegate QueryHintProvider) (ngramLength, maxConjunctions int) {
-	p, ok := delegate.(lookupParamsProvider)
-	if !ok {
-		return 0, 0
+// cacheKeyQuery returns the query part of the cache key: the delegate's needle
+// sets and n-gram length when it reports any needles, and the expression
+// otherwise.
+func cacheKeyQuery(delegate QueryHintProvider, expr syntax.Expr) string {
+	if p, ok := delegate.(needlePlanner); ok {
+		if needles, ngramLength := p.Needles(expr); len(needles) > 0 {
+			return fmt.Sprintf("n=%d f=%s", ngramLength, needles)
+		}
 	}
-	return p.NgramLength(), p.MaxConjunctions()
+	return expr.String()
 }
 
 func buildDayWindows(tenant, query, minDate string, from, through time.Time) []dayWindow {
@@ -412,17 +410,6 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 		})
 	}
 	return days
-}
-
-// needleKey returns the cache key for expr: the needle sets a lookup uses and
-// the n-gram length. ok is false with no needles, so the caller keys on the
-// expression.
-func needleKey(expr syntax.Expr, ngramLength, maxConjunctions int) (key string, ok bool) {
-	needles := SupportedQuery(expr, ngramLength, maxConjunctions)
-	if len(needles) == 0 {
-		return "", false
-	}
-	return fmt.Sprintf("n=%d f=%s", ngramLength, needles), true
 }
 
 func buildHintCacheLogicalKey(tenant, query, minDate, day string) string {

@@ -12,11 +12,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// Tests for the hint cache key (needleKey). There are three layers:
+// Tests for the hint cache key (cacheKeyQuery). There are three layers:
 //
 //  1. The key builder: which queries get the same key.
 //  2. The cache wiring: the key is used for entries and singleflight, and the
@@ -42,9 +43,11 @@ func needleKeyOf(t *testing.T, query string, ngram int) string {
 
 func needleKeyWith(t *testing.T, query string, ngram, maxConjunctions int) string {
 	t.Helper()
-	k, ok := needleKey(mustParseExpr(t, query), ngram, maxConjunctions)
-	require.True(t, ok, query)
-	return k
+	expr := mustParseExpr(t, query)
+	delegate := &ngramDelegate{stubHintProvider: &stubHintProvider{}, n: ngram, maxConj: maxConjunctions}
+	key := cacheKeyQuery(delegate, expr)
+	require.NotEqual(t, expr.String(), key, "no needles: %s", query)
+	return key
 }
 
 func TestNeedleKey(t *testing.T) {
@@ -86,7 +89,8 @@ func TestNeedleKey(t *testing.T) {
 		needleKeyOf(t, `{app="api"} |= "a" |= "b"`, 1))
 }
 
-func TestNeedleKey_NotUsable(t *testing.T) {
+// Without needles, the key is the expression.
+func TestCacheKeyQuery_WithoutNeedles(t *testing.T) {
 	for name, tc := range map[string]struct {
 		query string
 		ngram int
@@ -97,10 +101,14 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 		"or without a shared needle": {`{app="api"} |= "timeout" or "failure"`, 6},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram, 1)
-			require.False(t, ok)
+			expr := mustParseExpr(t, tc.query)
+			delegate := &ngramDelegate{stubHintProvider: &stubHintProvider{}, n: tc.ngram, maxConj: 1}
+			require.Equal(t, expr.String(), cacheKeyQuery(delegate, expr))
 		})
 	}
+
+	expr := mustParseExpr(t, keyTestLogQuery)
+	require.Equal(t, expr.String(), cacheKeyQuery(&stubHintProvider{}, expr), "a delegate that reports no needles")
 }
 
 // With more needle sets allowed, an or is keyed on its branches, so it no longer
@@ -115,8 +123,7 @@ func TestNeedleKey_OrSets(t *testing.T) {
 	require.Equal(t, two, needleKeyWith(t, `sum(count_over_time({app="api"} |= "timeout" or "failure" [5m]))`, ngram, 2))
 	require.NotEqual(t, two, needleKeyWith(t, `{app="api"} |= "timeout"`, ngram, 2))
 	// Three branches over the limit collapse to the needles they share: none.
-	_, ok := needleKey(mustParseExpr(t, `{app="api"} |= "timeout" or "failure" or "denied"`), ngram, 2)
-	require.False(t, ok)
+	require.Empty(t, SupportedQuery(mustParseExpr(t, `{app="api"} |= "timeout" or "failure" or "denied"`), ngram, 2))
 	require.Equal(t, two, needleKeyWith(t, or, ngram, 3), "the same sets at any limit that fits them")
 }
 
@@ -137,11 +144,7 @@ func TestNeedleKey_SurvivesReparse(t *testing.T) {
 	} {
 		expr := mustParseExpr(t, q)
 		for _, n := range []int{3, 6} {
-			key, ok := needleKey(expr, n, 2)
-			require.True(t, ok, q)
-			reparsed, ok := needleKey(mustParseExpr(t, expr.String()), n, 2)
-			require.True(t, ok, q)
-			require.Equal(t, key, reparsed, q)
+			require.Equal(t, needleKeyWith(t, q, n, 2), needleKeyWith(t, expr.String(), n, 2), q)
 		}
 	}
 }
@@ -159,9 +162,9 @@ type ngramDelegate struct {
 	exprs []string
 }
 
-func (d *ngramDelegate) NgramLength() int { return d.n }
-
-func (d *ngramDelegate) MaxConjunctions() int { return d.maxConj }
+func (d *ngramDelegate) Needles(expr syntax.Expr) (needle.Conjunctions, int) {
+	return SupportedQuery(expr, d.n, d.maxConj), d.n
+}
 
 func (d *ngramDelegate) ProvideHints(
 	ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time,

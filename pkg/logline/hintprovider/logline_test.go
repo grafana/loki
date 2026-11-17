@@ -267,6 +267,23 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
 }
 
+// The hint cache keys on Needles and PlanHints looks up Filters, so they must
+// be the same needles.
+func TestLoglineHintProvider_NeedlesMatchPlan(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 32, 2, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |= "timeout" or "failure"`)
+	needles, ngramLength := provider.Needles(expr)
+	require.Equal(t, 6, ngramLength)
+	require.Len(t, needles, 2)
+
+	plan, err := provider.PlanHints("tenant", expr, 0, model.Time(time.Hour.Milliseconds()))
+	require.NoError(t, err)
+	require.Equal(t, needles, plan.Filters)
+}
+
 func TestLoglineHintProvider_LookupParams(t *testing.T) {
 	indexStore := newTestStore(t)
 	provider, err := NewLoglineHintProvider(indexStore, 6, 32, 0, nil, log.NewNopLogger(), nil)

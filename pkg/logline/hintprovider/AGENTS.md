@@ -56,25 +56,23 @@ Query-shape support and hint lookup for logline index lookups.
 6. **Hint cache keys are day-aligned and keyed on needles**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
    - Logical format: `logline:2:<tenant>:<key>:<min-date>:<YYYY-MM-DD>`.
-   - `<key>` is `needleKey(expr, ngramLength, maxConjunctions)`: the needle sets
-     `SupportedQuery` compiles (`needle.Conjunctions`, already sorted and
-     normalized, formatted by its `String`), plus the n-gram length. Queries with
-     the same needle sets share an entry whatever else they contain. A metric query shares with the log query
-     it wraps, and Grafana's logs volume query, which appends `| drop __error__`,
-     shares with its log query. Stream matchers are not part of the key.
-   - With no needles, or when the delegate does not
-     report `NgramLength()` and `MaxConjunctions()` (like `MinDate()`; both are
-     needed, and a delegate with only one loses the sharing), the key is
-     `expr.String()`.
-   - `maxConjunctions` is not a field of the key. It decides which sets the key
-     holds, so the delegate reports the value its lookups use
-     (`MaxConjunctions()`, invariant 18), and the key is computed with it. The
-     lookup uses the needles the frontend sent, which come from the same plan.
+   - `<key>` is built by `cacheKeyQuery` from the delegate's `Needles(expr)`:
+     the needle sets it plans (`needle.Conjunctions`, already sorted and
+     normalized, formatted by its `String`) and the n-gram length. Queries with
+     the same needle sets share an entry whatever else they contain. A metric
+     query shares with the log query it wraps, and Grafana's logs volume query,
+     which appends `| drop __error__`, shares with its log query. Stream matchers
+     are not part of the key.
+   - With no needles, or when the delegate has no `Needles` method (like
+     `MinDate()`), the key is `expr.String()`.
+   - `PlanHints` plans with the same `Needles` call, and its result is what the
+     adapter sends to the querier (invariant 18). The key and the lookup
+     therefore come from one planner and one set of settings.
    - **Everything the lookup reads must be in the key.** The delegate is asked
      about the expression as written, so equal keys give equal hints only while
      the lookup reads nothing but the needle sets and the n-gram length. If it starts
      to read anything else, such as stream matchers, other pipeline stages or new
-     config, add that to `needleKey` and bump `hintCacheGeneration`.
+     config, add that to `cacheKeyQuery` and bump `hintCacheGeneration`.
      `TestNeedleKey_EqualKeysGetEqualHints` fails when equal keys stop giving
      equal hints.
    - Bump `hintCacheGeneration` when the key format or the meaning of a cached

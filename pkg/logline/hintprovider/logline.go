@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -166,7 +167,7 @@ func (p *LoglineHintProvider) PlanHints(
 		MaxParallel: int32(p.maxParallel),
 	}
 
-	filters := SupportedQuery(expr, p.ngramLength, p.maxConjunctions)
+	filters, _ := p.Needles(expr)
 	if len(filters) == 0 {
 		return plan, ErrUnsupported
 	}
@@ -242,22 +243,13 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 	return p.store.MinDate()
 }
 
-// NgramLength returns the n-gram length lookups use, so the hint cache can key
-// on it.
-func (p *LoglineHintProvider) NgramLength() int {
+// Needles returns the needles a lookup for expr uses and the n-gram length. The
+// hint cache keys on them, and PlanHints plans with them, so the two agree.
+func (p *LoglineHintProvider) Needles(expr syntax.Expr) (needle.Conjunctions, int) {
 	if p == nil {
-		return 0
+		return nil, 0
 	}
-	return p.ngramLength
-}
-
-// MaxConjunctions returns the most needle sets a query is planned into, so the
-// hint cache can key on the needles a lookup uses.
-func (p *LoglineHintProvider) MaxConjunctions() int {
-	if p == nil {
-		return 0
-	}
-	return p.maxConjunctions
+	return SupportedQuery(expr, p.ngramLength, p.maxConjunctions), p.ngramLength
 }
 
 func (p *LoglineHintProvider) openIndexReader(

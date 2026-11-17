@@ -216,16 +216,16 @@ func requireEqualAdapterHintBounds(t *testing.T, want, got []hintprovider.HintTi
 	}
 }
 
-func TestFrontendHintAdapter_NgramLength(t *testing.T) {
-	adapter := &frontendHintAdapter{inner: newAdapterTestProvider(t, newAdapterTestStore(t), 32)}
-	require.Equal(t, 6, adapter.NgramLength())
-}
-
-func TestFrontendHintAdapter_MaxConjunctions(t *testing.T) {
-	provider, err := hintprovider.NewLoglineHintProvider(newAdapterTestStore(t), 6, 32, 3, nil, log.NewNopLogger(), nil)
+// The hint cache keys on the adapter's needles, so they come from the provider's
+// n-gram length and needle set limit.
+func TestFrontendHintAdapter_Needles(t *testing.T) {
+	provider, err := hintprovider.NewLoglineHintProvider(newAdapterTestStore(t), 6, 32, 2, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	adapter := &frontendHintAdapter{inner: provider}
-	require.Equal(t, 3, adapter.MaxConjunctions())
+
+	needles, ngramLength := adapter.Needles(mustParseAdapterExpr(t, `{job="api"} |= "timeout" or "failure"`))
+	require.Equal(t, 6, ngramLength)
+	require.Equal(t, `{"FAILURE"} or {"TIMEOUT"}`, needles.String())
 }
 
 func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
