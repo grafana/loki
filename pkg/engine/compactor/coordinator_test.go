@@ -739,35 +739,89 @@ func TestExecuteLogCompaction(t *testing.T) {
 		requireEntriesMatchCalls(t, runner.snapshot(), swaps[0].newEntries)
 	})
 
-	t.Run("publishes the artifacts of each task as one run with the time range of the task and the posting keys of each artifact", func(t *testing.T) {
-		c, runner, replacer := newExecutor(t)
-		keys, err := postings.NewKeyRange(
-			postings.Key{Kind: postings.KindLabel, ColumnName: "app"},
-			postings.Key{Kind: postings.KindLabel, ColumnName: "env"},
-		)
+	// newWriterExecutor returns a coordinator that publishes to a real ToC
+	// writer, a plan of two log merge tasks whose sections lie in the window,
+	// and the time range of each task.
+	newWriterExecutor := func(t *testing.T) (*coordinator, *fakeRunner, logCompactionPlan, []timeRange) {
+		t.Helper()
+		c, runner, _ := newExecutor(t)
+		c.publisher = &tocPublisher{
+			writer:  metastore.NewTableOfContentsWriter(c.bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
+			timeout: time.Minute,
+		}
+		section := func(path string, start, end time.Duration) *compactionv2pb.SectionRef {
+			return &compactionv2pb.SectionRef{ObjectPath: path, MinTimestamp: window.Add(start).UnixNano(), MaxTimestamp: window.Add(end).UnixNano()}
+		}
+		timedPlan := logCompactionPlan{
+			window:         window,
+			sourceIndexRun: plan.sourceIndexRun,
+			tasks: []logCompactionTask{
+				newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section("logs/a", time.Hour, 2*time.Hour)}}}}),
+				newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section("logs/b", 3*time.Hour, 4*time.Hour)}}}}),
+			},
+		}
+		ranges := []timeRange{
+			newTimeRange(window.Add(time.Hour), window.Add(2*time.Hour)),
+			newTimeRange(window.Add(3*time.Hour), window.Add(4*time.Hour)),
+		}
+		return c, runner, timedPlan, ranges
+	}
+	columnKeys := func(t *testing.T, column string) postings.KeyRange {
+		t.Helper()
+		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column})
 		require.NoError(t, err)
-		epoch := time.Unix(0, 0).UTC()
+		return keys
+	}
+
+	t.Run("publishes the artifacts of each task as one run in the ToC with the time range of the task and the posting keys of each artifact", func(t *testing.T) {
+		c, runner, timedPlan, ranges := newWriterExecutor(t)
 		runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 			object := planObjectPaths(t, plan)[0]
 			return []v2.ResultArtifact{
-				{Path: object + "/index-1", PostingKeys: keys},
+				{Path: object + "/index-1", PostingKeys: columnKeys(t, "app")},
+				{Path: object + "/index-2", PostingKeys: columnKeys(t, "env")},
+			}, nil
+		}
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", timedPlan)
+		require.NoError(t, err)
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
+
+		pointers := mustLoadTenantIndexes(t.Context(), t, c.bucket, window)["acme"]
+		require.Len(t, pointers, 4)
+		byPath := make(map[string]indexpointers.IndexPointer, len(pointers))
+		for _, pointer := range pointers {
+			byPath[pointer.Path] = pointer
+		}
+		for i, object := range []string{"logs/a", "logs/b"} {
+			first, second := byPath[object+"/index-1"], byPath[object+"/index-2"]
+			require.NotZero(t, first.RunID, "the artifacts of a task form a run")
+			require.Equal(t, first.RunID, second.RunID, "the artifacts of a task form one run")
+			for _, pointer := range []indexpointers.IndexPointer{first, second} {
+				require.Equal(t, int32(2), pointer.RunLength)
+				require.Equal(t, newTimeRange(pointer.StartTs, pointer.EndTs), ranges[i], "every entry of a run takes the time range of its task")
+			}
+			require.Equal(t, columnKeys(t, "app"), first.PostingKeys)
+			require.Equal(t, columnKeys(t, "env"), second.PostingKeys)
+		}
+		require.NotEqual(t, byPath["logs/a/index-1"].RunID, byPath["logs/b/index-1"].RunID, "each task publishes a run of its own")
+	})
+
+	t.Run("returns an error and keeps the source index when an artifact of a task with several artifacts has no posting key bounds", func(t *testing.T) {
+		c, runner, timedPlan, _ := newWriterExecutor(t)
+		runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			object := planObjectPaths(t, plan)[0]
+			return []v2.ResultArtifact{
+				{Path: object + "/index-1", PostingKeys: columnKeys(t, "app")},
 				{Path: object + "/index-2"},
 			}, nil
 		}
 
-		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
-		require.NoError(t, err)
-		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
-
-		swaps := replacer.snapshot()
-		require.Len(t, swaps, 1)
-		entry := func(path string, keys postings.KeyRange) metastore.TableOfContentsEntry {
-			return metastore.TableOfContentsEntry{Path: path, StartTime: epoch, EndTime: epoch, PostingKeys: keys}
-		}
-		require.ElementsMatch(t, []metastore.IndexRunEntries{
-			{entry("logs/a/index-1", keys), entry("logs/a/index-2", postings.KeyRange{})},
-			{entry("logs/b/index-1", keys), entry("logs/b/index-2", postings.KeyRange{})},
-		}, swaps[0].newRuns)
+		_, err := c.executeLogCompaction(t.Context(), "acme", timedPlan)
+		require.ErrorContains(t, err, "has no posting key bounds")
+		pointers := mustLoadTenantIndexes(t.Context(), t, c.bucket, window)["acme"]
+		require.Len(t, pointers, 1)
+		require.Equal(t, "indexes/source", pointers[0].Path)
 	})
 
 	t.Run("swaps the source index when a task fails once and its retry succeeds", func(t *testing.T) {
