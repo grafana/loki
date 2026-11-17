@@ -16,29 +16,34 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/parallel"
 )
 
-// rankedSortKey holds the sort key of one stream and its rank, which is its
-// new stream ID after the sort in [Builder.FlushAndSort]. Independently
-// written objects do not share ranks.
-type rankedSortKey struct {
+// rankedStream holds what the sort needs to know about one stream: its sort key,
+// its rank, which is its new stream ID after the sort in
+// [Builder.FlushAndSort], and its size. Independently written objects do not
+// share ranks.
+type rankedStream struct {
 	rank int64
+	// size is the number of uncompressed bytes that the logs of the stream add
+	// to a logs section. It comes from the stream stats, so it counts duplicates
+	// that the sort can still drop. It is an upper bound.
+	size int64
 	streams.SortKey
 }
 
-// emptyRankedSortKey returns an unranked sort key (rank set to 0) for a label set.
-// SortKey fields are calculated from input labels ls.
-func emptyRankedSortKey(ls labels.Labels, schemaLabels []string, shardLayout streams.ShardLayout) (rankedSortKey, error) {
+// emptyRankedStream returns an unranked stream (rank and size set to 0) for a
+// label set. SortKey fields are calculated from input labels ls.
+func emptyRankedStream(ls labels.Labels, schemaLabels []string, shardLayout streams.ShardLayout) (rankedStream, error) {
 	schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
 	if err != nil {
-		return rankedSortKey{}, err
+		return rankedStream{}, err
 	}
 
-	return rankedSortKey{
+	return rankedStream{
 		SortKey: shardLayout.NewSortKey(ls, schemaKey),
 	}, nil
 }
 
 // sortKeys extracts the sort-tuple column for the k-way merge comparator.
-func sortKeys(remap []rankedSortKey) []streams.SortKey {
+func sortKeys(remap []rankedStream) []streams.SortKey {
 	out := make([]streams.SortKey, len(remap))
 	for i, entry := range remap {
 		out[i] = entry.SortKey
@@ -51,7 +56,7 @@ func sortKeys(remap []rankedSortKey) []streams.SortKey {
 //
 // It merges only the records of the streams in streamIDs, given by their stream
 // IDs in sections.
-func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedSortKey, streamIDs []int64) (result.Seq[logs.Record], error) {
+func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedStream, streamIDs []int64) (result.Seq[logs.Record], error) {
 	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap), streamIDs)
 	if err != nil {
 		return nil, err
@@ -91,10 +96,10 @@ type rankRange struct {
 	first, last int64
 }
 
-// planSortRanges splits the streams with ranks 1 to len(sizes)-1 into
+// planSortRanges splits the streams with ranks 1 to len(byRank)-1 into
 // contiguous ranges of at most targetSize uncompressed bytes each, so that each
-// range fills about one logs section. sizes and keys are indexed by rank, and
-// index 0 is unused. A stream larger than targetSize gets a range of its own.
+// range fills about one logs section. byRank is indexed by rank, and index 0 is
+// unused. A stream larger than targetSize gets a range of its own.
 //
 // Example with a targetSize of 100:
 //
@@ -113,8 +118,8 @@ type rankRange struct {
 // single merge returns the records of Y before the records of X. If X and Y sat
 // in two ranges, the sections of X would come first, and the order of the
 // records would change. So streams with the same key stay in one range.
-func planSortRanges(sizes []int64, keys []streams.SortKey, targetSize int64) []rankRange {
-	last := int64(len(sizes) - 1)
+func planSortRanges(byRank []rankedStream, targetSize int64) []rankRange {
+	last := int64(len(byRank) - 1)
 	if last < 1 {
 		return nil
 	}
@@ -125,8 +130,8 @@ func planSortRanges(sizes []int64, keys []streams.SortKey, targetSize int64) []r
 		size   int64
 	)
 	for rank := int64(1); rank < last; rank++ {
-		size += sizes[rank]
-		if size+sizes[rank+1] > targetSize && keys[rank].Compare(keys[rank+1]) != 0 {
+		size += byRank[rank].size
+		if size+byRank[rank+1].size > targetSize && byRank[rank].Compare(byRank[rank+1].SortKey) != 0 {
 			ranges = append(ranges, rankRange{first: first, last: rank})
 			first, size = rank+1, 0
 		}
@@ -134,22 +139,23 @@ func planSortRanges(sizes []int64, keys []streams.SortKey, targetSize int64) []r
 	return append(ranges, rankRange{first: first, last: last})
 }
 
-// sortKeysByRank returns the sort key of each stream in remap, indexed by
-// rank. remap is indexed by the stream ID before the remap.
-func sortKeysByRank(remap []rankedSortKey) []streams.SortKey {
-	keys := make([]streams.SortKey, len(remap))
+// rankedStreamsByRank returns the streams in remap, indexed by rank, where
+// index 0 is unused. remap is indexed by the stream ID before the remap, and
+// holds no stream at index 0.
+func rankedStreamsByRank(remap []rankedStream) []rankedStream {
+	byRank := make([]rankedStream, len(remap))
 	for _, entry := range remap {
 		if entry.rank > 0 {
-			keys[entry.rank] = entry.SortKey
+			byRank[entry.rank] = entry
 		}
 	}
-	return keys
+	return byRank
 }
 
 // streamIDsByRange returns, for each range, the stream IDs of the merged
 // sections whose rank falls in that range. remap is indexed by those stream
 // IDs. ranges must be sorted and contiguous.
-func streamIDsByRange(remap []rankedSortKey, ranges []rankRange) [][]int64 {
+func streamIDsByRange(remap []rankedStream, ranges []rankRange) [][]int64 {
 	ids := make([][]int64, len(ranges))
 	for id, entry := range remap {
 		if entry.rank <= 0 {
@@ -185,7 +191,7 @@ func (b *Builder) sortRangesInParallel(
 	ctx context.Context,
 	tenant string,
 	sections []*dataobj.Section,
-	remap []rankedSortKey,
+	remap []rankedStream,
 	rangeIDs [][]int64,
 	numStreams int,
 	newSection func() *logs.Builder,
@@ -208,8 +214,10 @@ func (b *Builder) sortRangesInParallel(
 			if err != nil {
 				return nil, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
 			}
-			// free has room for every builder, because at most parallelism
-			// ranges run at a time.
+			// Only a range that succeeded gives its builder back. Its last flush
+			// reset the builder, so the next range starts clean. A failed range
+			// drops its builder. free has room for every builder, because at
+			// most parallelism ranges run at a time.
 			free <- lb
 			return encoded, nil
 		},
@@ -238,7 +246,7 @@ func (b *Builder) sortRange(
 	ctx context.Context,
 	tenant string,
 	sections []*dataobj.Section,
-	remap []rankedSortKey,
+	remap []rankedStream,
 	streamIDs []int64,
 	lb *logs.Builder,
 	totals streamTotals,

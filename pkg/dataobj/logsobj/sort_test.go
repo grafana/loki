@@ -25,6 +25,13 @@ func TestPlanSortRanges(t *testing.T) {
 		}
 		return keys
 	}
+	byRank := func(sizes []int64, keys []streams.SortKey) []rankedStream {
+		out := make([]rankedStream, len(sizes))
+		for rank := range out {
+			out[rank] = rankedStream{rank: int64(rank), size: sizes[rank], SortKey: keys[rank]}
+		}
+		return out
+	}
 
 	for _, tc := range []struct {
 		name  string
@@ -66,14 +73,14 @@ func TestPlanSortRanges(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, planSortRanges(tc.sizes, tc.keys, 100))
+			require.Equal(t, tc.want, planSortRanges(byRank(tc.sizes, tc.keys), 100))
 		})
 	}
 }
 
 func TestStreamIDsByRange(t *testing.T) {
 	t.Run("assigns each stream ID to the range of its rank and skips unranked IDs", func(t *testing.T) {
-		remap := []rankedSortKey{
+		remap := []rankedStream{
 			{},        // ID 0 is unused.
 			{rank: 3}, // ID 1
 			{rank: 1}, // ID 2
@@ -188,7 +195,7 @@ func TestBuilder_SortRangesInParallel(t *testing.T) {
 		}
 		// No stream has a rank, so the merge of every range fails at its
 		// first record.
-		remap := make([]rankedSortKey, 21)
+		remap := make([]rankedStream, 21)
 		rangeIDs := [][]int64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}, {17, 18, 19, 20}}
 
 		cfg := testBuilderConfig

@@ -670,7 +670,7 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 		}
 
 		numStreams := streamsSection.NumRows()
-		streamIter, remappedStreams, sizeByRank, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
@@ -693,9 +693,8 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 		}
 
 		// The sort cuts the streams into ranges of about one logs section, and
-		// sorts the ranges on up to SortParallelism goroutines. sizeByRank is
-		// the size of each stream, by the position of the stream in sort order.
-		ranges := planSortRanges(sizeByRank, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
+		// sorts the ranges on up to SortParallelism goroutines.
+		ranges := planSortRanges(rankedStreamsByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
 		totals, err := b.sortRangesInParallel(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
 		if err != nil {
 			return nil, nil, err
@@ -865,7 +864,7 @@ func (t streamTotals) apply(s *streams.Stream) {
 
 type mappedStream struct {
 	stream  streams.Stream
-	mapping rankedSortKey
+	mapping rankedStream
 }
 
 // sortAndRemapStreams orders the streams by the globally stable stream order
@@ -881,25 +880,20 @@ type mappedStream struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-//
-// sortAndRemapStreams also returns the size that the records of each stream add
-// to a logs section, indexed by new stream ID, where index 0 is unused. The
-// size comes from the stream stats, so it counts duplicates that the sort can
-// still drop. It is an upper bound.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, []int64, error) {
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedStream, error) {
 	allStreams := make([]mappedStream, 0, numStreams)
-	lookup := make([]rankedSortKey, numStreams+1)
-	sizes := make([]int64, numStreams+1)
+	lookup := make([]rankedStream, numStreams+1)
 
 	for res := range iter {
 		stream, err := res.Value()
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
-		r, err := emptyRankedSortKey(stream.Labels, schemaLabels, shardLayout)
+		r, err := emptyRankedStream(stream.Labels, schemaLabels, shardLayout)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
+		r.size = stream.UncompressedSize + int64(stream.Rows)*logs.RecordOverhead
 		allStreams = append(allStreams, mappedStream{
 			stream:  stream,
 			mapping: r,
@@ -915,10 +909,10 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		newID := int64(i + 1)
 
 		if oldID <= 0 || oldID > int64(numStreams) {
-			return nil, nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
+			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
 		}
 		if prev := lookup[oldID]; prev.rank != 0 {
-			return nil, nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
+			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
 		}
 
 		allStreams[i].mapping.rank = newID
@@ -926,7 +920,6 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 
 		// Remap to the new stream ID.
 		allStreams[i].stream.ID = newID
-		sizes[newID] = allStreams[i].stream.UncompressedSize + int64(allStreams[i].stream.Rows)*logs.RecordOverhead
 	}
 
 	return result.Iter(func(yield func(streams.Stream) bool) error {
@@ -936,7 +929,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 			}
 		}
 		return nil
-	}), lookup, sizes, nil
+	}), lookup, nil
 }
 
 func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
