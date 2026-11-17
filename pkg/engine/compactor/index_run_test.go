@@ -1,10 +1,13 @@
 package compactor
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -64,6 +67,36 @@ func TestIndexRun_String(t *testing.T) {
 	})
 }
 
+func TestIndexRun_CheckLength(t *testing.T) {
+	run := func(sizes ...int32) indexRun {
+		var r indexRun
+		for i, size := range sizes {
+			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunLength: size})
+		}
+		return r
+	}
+
+	t.Run("accepts a run whose index objects record the number of index objects in the ToC", func(t *testing.T) {
+		require.NoError(t, run(2, 2).checkLength())
+	})
+
+	t.Run("accepts a run whose index objects record no size", func(t *testing.T) {
+		require.NoError(t, run(0, 0).checkLength())
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(3, 3).checkLength(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when a later index object records another size than the first", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 3).checkLength(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists more index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 2, 2).checkLength(), errCorruptIndex)
+	})
+}
+
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
 	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
@@ -78,5 +111,44 @@ func TestLayoutGroup_CountRuns(t *testing.T) {
 	t.Run("returns an error for an index object outside the group", func(t *testing.T) {
 		_, err := group.countRuns([]string{"unknown"})
 		require.Error(t, err)
+	})
+}
+
+// runOfEntry returns the index run of entry alone.
+func runOfEntry(entry indexpointers.IndexPointer) indexRun {
+	return indexRun{entries: []indexpointers.IndexPointer{entry}}
+}
+
+// runOfPath returns the index run of the index object at path alone.
+func runOfPath(path string) indexRun {
+	return runOfEntry(indexpointers.IndexPointer{Path: path})
+}
+
+func TestExistsInToC(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
+	pointer := func(path string) indexpointers.IndexPointer {
+		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: 1}
+	}
+	run := indexRun{entries: []indexpointers.IndexPointer{pointer("indexes/run/a"), pointer("indexes/run/b")}}
+
+	t.Run("reports true when the ToC lists every index object of the run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
+
+		exists, err := c.existsInToC(ctx, "acme", window, run)
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("reports false when the ToC lists only some index objects of the run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
+
+		exists, err := c.existsInToC(ctx, "acme", window, run)
+		require.NoError(t, err)
+		require.False(t, exists)
 	})
 }

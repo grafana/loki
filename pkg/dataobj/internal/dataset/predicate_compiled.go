@@ -88,6 +88,20 @@ func compilePredicate(p Predicate, lookup map[Column]int) (compiledPredicate, er
 		}
 		return compiledLessThanPredicate{columnIndex: idx, value: p.Value}, nil
 
+	case GreaterThanOrEqualPredicate:
+		idx, err := lookupColumnIndex(lookup, p.Column)
+		if err != nil {
+			return nil, err
+		}
+		return compiledGreaterThanOrEqualPredicate{columnIndex: idx, value: p.Value}, nil
+
+	case LessThanOrEqualPredicate:
+		idx, err := lookupColumnIndex(lookup, p.Column)
+		if err != nil {
+			return nil, err
+		}
+		return compiledLessThanOrEqualPredicate{columnIndex: idx, value: p.Value}, nil
+
 	case FuncPredicate:
 		idx, err := lookupColumnIndex(lookup, p.Column)
 		if err != nil {
@@ -179,6 +193,24 @@ type compiledLessThanPredicate struct {
 
 func (p compiledLessThanPredicate) eval(row Row) bool {
 	return CompareValues(&row.Values[p.columnIndex], &p.value) < 0
+}
+
+type compiledGreaterThanOrEqualPredicate struct {
+	columnIndex int
+	value       Value
+}
+
+func (p compiledGreaterThanOrEqualPredicate) eval(row Row) bool {
+	return CompareValues(&row.Values[p.columnIndex], &p.value) >= 0
+}
+
+type compiledLessThanOrEqualPredicate struct {
+	columnIndex int
+	value       Value
+}
+
+func (p compiledLessThanOrEqualPredicate) eval(row Row) bool {
+	return CompareValues(&row.Values[p.columnIndex], &p.value) <= 0
 }
 
 type compiledFuncPredicate struct {
