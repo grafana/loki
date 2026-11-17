@@ -50,6 +50,17 @@ type Service struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
+// logsobjBuilderConfig returns the config of the logsobj builder that builds
+// the data objects of the dataobj-builder. It sets the options that have no
+// YAML key or flag in the logsobj config.
+func logsobjBuilderConfig(cfg Config) logsobj.BuilderBaseConfig {
+	logsCfg := cfg.LogsobjBuilder
+	// The dataobj-builder always drops duplicates for new objects
+	logsCfg.DropDuplicates = true
+	logsCfg.SortParallelism = cfg.SortParallelism
+	return logsCfg
+}
+
 func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	const componentName = "dataobj-builder"
 	logger = log.With(logger, "component", componentName)
@@ -117,9 +128,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
 
-	// The dataobj-builder always drops duplicates for new objects
-	cfg.LogsobjBuilder.DropDuplicates = true
-	cfg.LogsobjBuilder.SortParallelism = cfg.SortParallelism
+	cfg.LogsobjBuilder = logsobjBuilderConfig(cfg)
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)

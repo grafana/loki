@@ -86,8 +86,13 @@ type BuilderBaseConfig struct {
 
 	// SortParallelism is the maximum number of goroutines that sort the logs of
 	// one tenant in FlushAndSort. A value of 1 or less sorts the stream ranges
-	// of a tenant one at a time. Each extra goroutine holds the memory of about
-	// one section.
+	// of a tenant one at a time.
+	//
+	// Each goroutine holds the records of a range in a section builder, up to the
+	// target section size, and the encoded sections of the range until they reach
+	// the object. A stream larger than a section makes a range with several
+	// sections. The sort never splits a stream, so a tenant with one large stream
+	// sorts on one goroutine.
 	SortParallelism int `yaml:"-"`
 
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
@@ -675,9 +680,9 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		// The sort drops duplicates itself, so the section builders must not
-		// drop any. Otherwise the stream totals would count records that the
-		// builders drop.
+		// drainLogsIter drops duplicates itself when DropDuplicates is set, so
+		// the section builders must not drop any. Otherwise the stream totals
+		// would count records that the builders drop.
 		newSection := func() *logs.Builder {
 			lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
 				PageSizeHint:     int(b.cfg.TargetPageSize),
@@ -695,7 +700,16 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 		// The sort cuts the streams into ranges of about one logs section, and
 		// sorts the ranges on up to SortParallelism goroutines.
 		ranges := planSortRanges(rankedStreamsByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
-		totals, err := b.sortRangesInParallel(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
+		if len(ranges) == 0 {
+			// The logs sections of the tenant hold records, but no stream
+			// owns them. A sort without ranges would drop all of them.
+			return nil, nil, fmt.Errorf("tenant %s has logs sections but no streams", tenant)
+		}
+		rangeIDs, err := streamIDsByRange(remappedStreams, ranges)
+		if err != nil {
+			return nil, nil, fmt.Errorf("assigning the streams of tenant %s to ranges: %w", tenant, err)
+		}
+		totals, err := b.sortRangesInParallel(ctx, tenant, sections, remappedStreams, rangeIDs, numStreams, newSection)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -869,7 +883,9 @@ type mappedStream struct {
 
 // sortAndRemapStreams orders the streams by the globally stable stream order
 // and reassigns stream IDs in that order. It returns an iterator over the
-// remapped streams and a mapping from old stream IDs to new stream IDs.
+// remapped streams, and a slice indexed by old stream ID. Each entry of the
+// slice holds the sort key of the stream, its new stream ID (its rank) and its
+// size.
 //
 // Stream IDs are originally assigned in the order streams are first recorded.
 // After ordering, streams are clustered by [shard_bucket, sort-schema, hash],

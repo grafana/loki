@@ -1,12 +1,16 @@
 package logsobj
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
@@ -66,6 +70,26 @@ func TestPlanSortRanges(t *testing.T) {
 			want: []rankRange{{first: 1, last: 2}, {first: 3, last: 4}},
 		},
 		{
+			name:  "keeps three streams with equal sort keys in one range even when it exceeds the target size",
+			sizes: []int64{0, 60, 60, 60, 10},
+			keys: []streams.SortKey{
+				{}, {Hash: 1}, {Hash: 1}, {Hash: 1}, {Hash: 2},
+			},
+			want: []rankRange{{first: 1, last: 3}, {first: 4, last: 4}},
+		},
+		{
+			name:  "keeps streams in one range when their total equals the target size",
+			sizes: []int64{0, 60, 40, 10},
+			keys:  distinctKeys(3),
+			want:  []rankRange{{first: 1, last: 2}, {first: 3, last: 3}},
+		},
+		{
+			name:  "returns one range for a single stream",
+			sizes: []int64{0, 500},
+			keys:  distinctKeys(1),
+			want:  []rankRange{{first: 1, last: 1}},
+		},
+		{
 			name:  "puts a stream larger than the target size in a range of its own",
 			sizes: []int64{0, 10, 500, 10},
 			keys:  distinctKeys(3),
@@ -89,41 +113,78 @@ func TestStreamIDsByRange(t *testing.T) {
 			{rank: 4}, // ID 5
 		}
 		ranges := []rankRange{{first: 1, last: 2}, {first: 3, last: 4}}
-		require.Equal(t, [][]int64{{2, 4}, {1, 5}}, streamIDsByRange(remap, ranges))
+		got, err := streamIDsByRange(remap, ranges)
+		require.NoError(t, err)
+		require.Equal(t, [][]int64{{2, 4}, {1, 5}}, got)
+	})
+
+	t.Run("returns an error when a rank is in no range", func(t *testing.T) {
+		remap := []rankedStream{{}, {rank: 1}, {rank: 5}}
+		_, err := streamIDsByRange(remap, []rankRange{{first: 1, last: 2}})
+		require.ErrorContains(t, err, "stream with old ID 2 and rank 5 is in no range")
 	})
 }
 
 func TestBuilder_FlushAndSortParallelism(t *testing.T) {
+	const (
+		rowsPerTenant = 3000
+		smallSection  = 32 << 10
+		hugeSection   = 1 << 29
+	)
 	cfg := BuilderBaseConfig{
 		TargetPageSize:          4 << 10,
 		MaxPageRows:             100,
 		TargetObjectSize:        1 << 30,
-		TargetSectionSize:       32 << 10,
+		TargetSectionSize:       smallSection,
 		BufferSize:              16 << 10,
 		SectionStripeMergeLimit: 2,
 	}
 
-	// flushAndSort fills a builder and sorts it with the given parallelism. The
-	// input is the same for every call. Every ninth record repeats the previous
-	// one, so that a builder that drops duplicates has work to do.
-	flushAndSort := func(t *testing.T, overrides TenantOverrides, dropDuplicates bool, parallelism int) *dataobj.Object {
+	type shape struct {
+		labels func(n int) string
+		line   func(tenant string, n int) string
+	}
+	shortLine := func(tenant string, n int) string {
+		return fmt.Sprintf("%s line %05d level=info msg=%q", tenant, n, "request done")
+	}
+	longLine := func(tenant string, n int) string {
+		return fmt.Sprintf("%s line %05d %s", tenant, n, strings.Repeat("x", 100))
+	}
+	manySmallStreams := shape{
+		labels: func(n int) string { return fmt.Sprintf(`{app="app-%d", pod="pod-%d"}`, n%7, n%211) },
+		line:   shortLine,
+	}
+	fewStreamsLargerThanASection := shape{
+		labels: func(n int) string { return fmt.Sprintf(`{app="app-%d"}`, n%3) },
+		line:   longLine,
+	}
+	oneStream := shape{
+		labels: func(int) string { return `{app="only"}` },
+		line:   longLine,
+	}
+
+	// flushAndSort fills a builder with the same input for every call and sorts
+	// it. Every ninth record repeats the previous one, so that a builder that
+	// drops duplicates has work to do.
+	flushAndSort := func(t *testing.T, sh shape, overrides TenantOverrides, dropDuplicates bool, parallelism int, sectionSize int) *dataobj.Object {
 		t.Helper()
 		cfg := cfg
 		cfg.SortParallelism = parallelism
 		cfg.DropDuplicates = dropDuplicates
+		cfg.TargetSectionSize = flagext.Bytes(sectionSize)
 		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
 
 		now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
 		for _, tenant := range []string{"tenant-a", "tenant-b"} {
-			for i := range 3000 {
+			for i := range rowsPerTenant {
 				n := i - i%9*(i%2)
 				ts := now.Add(time.Duration(n%97) * time.Second)
 				require.NoError(t, builder.Append(tenant, logproto.Stream{
-					Labels: fmt.Sprintf(`{app="app-%d", pod="pod-%d"}`, n%7, n%211),
+					Labels: sh.labels(n),
 					Entries: []push.Entry{{
 						Timestamp:          ts,
-						Line:               fmt.Sprintf("%s line %05d level=info msg=%q", tenant, n, "request done"),
+						Line:               sh.line(tenant, n),
 						StructuredMetadata: push.LabelsAdapter{{Name: "trace_id", Value: fmt.Sprintf("%08x", n*2654435761)}},
 					}},
 				}, ts))
@@ -137,72 +198,120 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 
 	for _, tc := range []struct {
 		name           string
+		shape          shape
 		overrides      TenantOverrides
 		dropDuplicates bool
+		multiSection   bool
 	}{
 		{
-			name:      "4 goroutines give the records and stream stats of 1 goroutine with the default sort schema",
-			overrides: NoTenantOverrides{},
+			name:         "gives the records and stream stats of a single range for many small streams with the default sort schema",
+			shape:        manySmallStreams,
+			overrides:    NoTenantOverrides{},
+			multiSection: true,
 		},
 		{
-			name:      "4 goroutines give the records and stream stats of 1 goroutine with a custom sort schema",
-			overrides: tenantOverrides{"tenant-a": {"label:pod"}, "tenant-b": {"label:pod"}},
+			name:         "gives the records and stream stats of a single range for many small streams with a custom sort schema",
+			shape:        manySmallStreams,
+			overrides:    tenantOverrides{"tenant-a": {"label:pod"}, "tenant-b": {"label:pod"}},
+			multiSection: true,
 		},
 		{
-			name:           "4 goroutines drop the same duplicates as 1 goroutine",
+			name:           "drops the duplicates of a single range for many small streams",
+			shape:          manySmallStreams,
 			overrides:      NoTenantOverrides{},
 			dropDuplicates: true,
+			multiSection:   true,
+		},
+		{
+			name:         "gives the records and stream stats of a single range for few streams that are larger than a section",
+			shape:        fewStreamsLargerThanASection,
+			overrides:    NoTenantOverrides{},
+			multiSection: true,
+		},
+		{
+			name:           "drops the duplicates of a single range for few streams that are larger than a section",
+			shape:          fewStreamsLargerThanASection,
+			overrides:      NoTenantOverrides{},
+			dropDuplicates: true,
+			multiSection:   true,
+		},
+		{
+			name:         "gives the records and stream stats of a single range for a tenant with one stream",
+			shape:        oneStream,
+			overrides:    NoTenantOverrides{},
+			multiSection: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			serial := flushAndSort(t, tc.overrides, tc.dropDuplicates, 1)
-			parallel := flushAndSort(t, tc.overrides, tc.dropDuplicates, 4)
+			// A section size above the size of all records puts every stream of
+			// a tenant in one range, which is a plain merge of the sections.
+			oracle := flushAndSort(t, tc.shape, tc.overrides, tc.dropDuplicates, 1, hugeSection)
+			require.Equal(t, 2, oracle.Sections().Count(logs.CheckSection), "the oracle must have one section for each tenant")
 
-			want := objectRecords(t, serial)
+			wantRecords := canonicalTies(objectRecords(t, oracle))
 			if tc.dropDuplicates {
-				require.Less(t, len(want), 6000, "the input must hold duplicates")
+				require.Less(t, len(wantRecords), 2*rowsPerTenant, "the input must hold duplicates")
 			} else {
-				require.Len(t, want, 6000)
+				require.Len(t, wantRecords, 2*rowsPerTenant)
 			}
-			require.Equal(t, want, objectRecords(t, parallel))
-			require.Equal(t, objectStreams(t, serial), objectStreams(t, parallel))
+			wantStreams := objectStreams(t, oracle)
 
-			// Each tenant must span several ranges, or the parallel path
-			// would not run.
-			require.Greater(t, parallel.Sections().Count(logs.CheckSection), 2*2)
+			single := flushAndSort(t, tc.shape, tc.overrides, tc.dropDuplicates, 1, smallSection)
+			parallel := flushAndSort(t, tc.shape, tc.overrides, tc.dropDuplicates, 4, smallSection)
+
+			// Both sort the same input sections, so even the order of records
+			// with the same stream and timestamp must agree.
+			require.Equal(t, objectRecords(t, single), objectRecords(t, parallel))
+			require.Equal(t, objectStreams(t, single), objectStreams(t, parallel))
+
+			for name, got := range map[string]*dataobj.Object{"1 goroutine": single, "4 goroutines": parallel} {
+				require.Equal(t, wantRecords, canonicalTies(objectRecords(t, got)), "records with %s", name)
+				require.Equal(t, wantStreams, objectStreams(t, got), "stream stats with %s", name)
+				if tc.multiSection {
+					require.Greater(t, got.Sections().Count(logs.CheckSection), 2*2, "the sort with %s must cut each tenant into several sections", name)
+				}
+			}
 		})
 	}
 }
 
 func TestBuilder_SortRangesInParallel(t *testing.T) {
-	t.Run("returns the error of the failed ranges when there are more ranges than goroutines", func(t *testing.T) {
+	const (
+		numStreams    = 20
+		rowsPerStream = 10
+	)
+
+	// The sections hold numStreams streams with the old IDs 1 to numStreams.
+	// Every stream has the rank of its old ID, and every sort key is equal.
+	newSorter := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, remap []rankedStream, rangeIDs [][]int64, newSection func() *logs.Builder) {
+		t.Helper()
 		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
-		for i := range 200 {
+		for i := range numStreams * rowsPerStream {
 			require.NoError(t, builder.Append("tenant", logproto.Stream{
-				Labels:  fmt.Sprintf(`{pod="pod-%d"}`, i%20),
+				Labels:  fmt.Sprintf(`{pod="pod-%d"}`, i%numStreams),
 				Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: "line"}},
 			}, now))
 		}
 		src, closer, err := builder.flushWithoutLayout()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-		var sections []*dataobj.Section
 		for _, sec := range src.Sections().Filter(logs.CheckSection) {
 			sections = append(sections, sec)
 		}
-		// No stream has a rank, so the merge of every range fails at its
-		// first record.
-		remap := make([]rankedStream, 21)
-		rangeIDs := [][]int64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}, {17, 18, 19, 20}}
+
+		remap = make([]rankedStream, numStreams+1)
+		for id := 1; id <= numStreams; id++ {
+			remap[id] = rankedStream{rank: int64(id)}
+		}
+		rangeIDs = [][]int64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}, {17, 18, 19, 20}}
 
 		cfg := testBuilderConfig
-		cfg.SortParallelism = 2
-		sorter, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		cfg.SortParallelism = parallelism
+		sorter, err = NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
-		newSection := func() *logs.Builder {
+		newSection = func() *logs.Builder {
 			lb := logs.NewBuilder(sorter.metrics.logs, logs.BuilderOptions{
 				PageSizeHint:   int(testBuilderConfig.TargetPageSize),
 				AppendStrategy: logs.AppendOrdered,
@@ -211,9 +320,51 @@ func TestBuilder_SortRangesInParallel(t *testing.T) {
 			lb.SetTenant("tenant")
 			return lb
 		}
-		_, err = sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
+		return sorter, sections, remap, rangeIDs, newSection
+	}
+
+	t.Run("adds the records of every range to the totals", func(t *testing.T) {
+		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
+
+		totals, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, numStreams, newSection)
+		require.NoError(t, err)
+		require.Len(t, totals, numStreams+1)
+		for id := 1; id <= numStreams; id++ {
+			require.Equal(t, rowsPerStream, totals[id].rows, "rows of stream %d", id)
+		}
+	})
+
+	t.Run("returns the error of a range, with the range and the tenant, when more ranges than goroutines fail", func(t *testing.T) {
+		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
+		for id := 5; id <= numStreams; id++ {
+			remap[id] = rankedStream{}
+		}
+
+		_, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, numStreams, newSection)
 		require.ErrorContains(t, err, "missing stream ID remap")
-		require.Zero(t, sorter.builder.Bytes())
+		require.ErrorContains(t, err, "sorting stream range")
+		require.ErrorContains(t, err, "of tenant tenant")
+	})
+
+	t.Run("returns the context error when the context is canceled while the ranges run", func(t *testing.T) {
+		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		cancelOnFirstSection := func() *logs.Builder {
+			cancel()
+			return newSection()
+		}
+
+		_, err := sorter.sortRangesInParallel(ctx, "tenant", sections, remap, rangeIDs, numStreams, cancelOnFirstSection)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("returns no error and zero totals when there are no ranges", func(t *testing.T) {
+		sorter, sections, remap, _, newSection := newSorter(t, 2)
+
+		totals, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, nil, numStreams, newSection)
+		require.NoError(t, err)
+		require.Equal(t, newStreamTotals(numStreams), totals)
 	})
 }
 
@@ -331,6 +482,25 @@ func objectRecords(t *testing.T, obj *dataobj.Object) []string {
 		}
 	}
 	return records
+}
+
+// canonicalTies returns records with the order of the records that share a
+// tenant, stream and timestamp made canonical. The sort does not define the
+// order of such records, and it can depend on how the input sections split.
+func canonicalTies(records []string) []string {
+	out := slices.Clone(records)
+	tieKey := func(record string) string {
+		return strings.Join(strings.SplitN(record, "|", 4)[:3], "|")
+	}
+	for start := 0; start < len(out); {
+		end := start + 1
+		for end < len(out) && tieKey(out[end]) == tieKey(out[start]) {
+			end++
+		}
+		slices.Sort(out[start:end])
+		start = end
+	}
+	return out
 }
 
 // objectStreams returns the ID, row count and uncompressed size of every

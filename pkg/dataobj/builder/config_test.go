@@ -2,6 +2,7 @@ package builder
 
 import (
 	"flag"
+	"strconv"
 	"testing"
 	"time"
 
@@ -28,33 +29,6 @@ func TestConfig_RegisterFlags(t *testing.T) {
 
 	require.NoError(t, f.Parse([]string{"-dataobj.builder.indexobj-builder.estimated-compression-ratio=4"}))
 	require.Equal(t, 4, cfg.IndexobjBuilder.EstimatedCompressionRatio)
-}
-
-func TestConfig_ValidateSortParallelism(t *testing.T) {
-	for _, tc := range []struct {
-		name            string
-		sortConcurrency int
-		wantErr         string
-	}{
-		{name: "accepts a sort parallelism of 1", sortConcurrency: 1},
-		{name: "accepts a sort parallelism above 1", sortConcurrency: 4},
-		{name: "rejects a sort parallelism of 0", sortConcurrency: 0, wantErr: "sort parallelism must be at least 1"},
-		{name: "rejects a negative sort concurrency", sortConcurrency: -1, wantErr: "sort parallelism must be at least 1"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var cfg Config
-			cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-			cfg.Topic = "test"
-			cfg.SortParallelism = tc.sortConcurrency
-
-			err := cfg.Validate()
-			if tc.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.EqualError(t, err, tc.wantErr)
-		})
-	}
 }
 
 func TestConfig_Validate(t *testing.T) {
@@ -101,5 +75,23 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("rejects a zero required replicas refresh interval", func(t *testing.T) {
 		cfg := newConfig(t, "-dataobj.builder.required-replicas-refresh-interval=0s")
 		require.Error(t, cfg.Validate())
+	})
+
+	t.Run("accepts a sort parallelism of 1 and above, read from the flag", func(t *testing.T) {
+		for _, parallelism := range []string{"1", "4"} {
+			cfg := newConfig(t, "-dataobj.builder.sort-parallelism="+parallelism)
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, parallelism, strconv.Itoa(cfg.SortParallelism))
+		}
+	})
+
+	t.Run("rejects a sort parallelism of 0", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-parallelism=0")
+		require.EqualError(t, cfg.Validate(), "sort parallelism must be at least 1")
+	})
+
+	t.Run("rejects a negative sort parallelism", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-parallelism=-1")
+		require.EqualError(t, cfg.Validate(), "sort parallelism must be at least 1")
 	})
 }

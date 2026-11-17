@@ -11,15 +11,31 @@ import (
 )
 
 func TestForEachOrdered(t *testing.T) {
-	t.Run("yields the results in index order even when early tasks finish last", func(t *testing.T) {
+	t.Run("yields the results in index order, one at a time, even when early tasks finish last", func(t *testing.T) {
 		const n = 20
-		var got []int
+		var (
+			got               []int
+			inYield, overlaps atomic.Int64
+			running, peak     atomic.Int64
+		)
 		err := ForEachOrdered(t.Context(), n, 4,
 			func(_ context.Context, i int) (int, error) {
+				now := running.Add(1)
+				for {
+					old := peak.Load()
+					if now <= old || peak.CompareAndSwap(old, now) {
+						break
+					}
+				}
+				defer running.Add(-1)
 				time.Sleep(time.Duration(n-i) * time.Millisecond)
 				return i * 10, nil
 			},
 			func(i, result int) error {
+				if inYield.Add(1) > 1 {
+					overlaps.Add(1)
+				}
+				defer inYield.Add(-1)
 				require.Equal(t, i*10, result)
 				got = append(got, i)
 				return nil
@@ -31,25 +47,36 @@ func TestForEachOrdered(t *testing.T) {
 			want[i] = i
 		}
 		require.Equal(t, want, got)
+		require.Zero(t, overlaps.Load(), "yield must not run concurrently")
+		require.Greater(t, peak.Load(), int64(1), "the tasks must overlap")
 	})
 
-	t.Run("never runs more tasks than the parallelism, and uses all of it", func(t *testing.T) {
+	t.Run("runs as many tasks at once as the parallelism allows, and no more", func(t *testing.T) {
 		var running, peak atomic.Int64
-		err := ForEachOrdered(t.Context(), 30, 3,
-			func(context.Context, int) (struct{}, error) {
-				now := running.Add(1)
-				for {
-					old := peak.Load()
-					if now <= old || peak.CompareAndSwap(old, now) {
-						break
+		release := make(chan struct{})
+		done := make(chan error, 1)
+		go func() {
+			done <- ForEachOrdered(t.Context(), 30, 3,
+				func(context.Context, int) (struct{}, error) {
+					now := running.Add(1)
+					for {
+						old := peak.Load()
+						if now <= old || peak.CompareAndSwap(old, now) {
+							break
+						}
 					}
-				}
-				time.Sleep(5 * time.Millisecond)
-				running.Add(-1)
-				return struct{}{}, nil
-			},
-			func(int, struct{}) error { return nil })
-		require.NoError(t, err)
+					<-release
+					running.Add(-1)
+					return struct{}{}, nil
+				},
+				func(int, struct{}) error { return nil })
+		}()
+
+		require.Eventually(t, func() bool { return running.Load() == 3 }, time.Second, time.Millisecond)
+		require.Never(t, func() bool { return running.Load() > 3 }, 20*time.Millisecond, time.Millisecond)
+
+		close(release)
+		require.NoError(t, <-done)
 		require.Equal(t, int64(3), peak.Load())
 	})
 
@@ -70,8 +97,8 @@ func TestForEachOrdered(t *testing.T) {
 		}()
 
 		require.Eventually(t, func() bool { return started.Load() == 2 }, time.Second, time.Millisecond)
-		time.Sleep(20 * time.Millisecond)
-		require.Equal(t, int64(2), started.Load(), "task 1 finished, but task 0 holds its slot until yield")
+		require.Never(t, func() bool { return started.Load() > 2 }, 20*time.Millisecond, time.Millisecond,
+			"task 1 finished, but task 0 holds its slot until yield")
 
 		close(release)
 		require.NoError(t, <-done)
@@ -79,11 +106,12 @@ func TestForEachOrdered(t *testing.T) {
 	})
 
 	t.Run("runs the tasks one at a time when the parallelism is below 1", func(t *testing.T) {
-		var running, peak atomic.Int64
+		var running atomic.Int64
+		var overlapped atomic.Bool
 		err := ForEachOrdered(t.Context(), 5, 0,
 			func(context.Context, int) (struct{}, error) {
-				if now := running.Add(1); now > peak.Load() {
-					peak.Store(now)
+				if running.Add(1) > 1 {
+					overlapped.Store(true)
 				}
 				time.Sleep(time.Millisecond)
 				running.Add(-1)
@@ -91,7 +119,19 @@ func TestForEachOrdered(t *testing.T) {
 			},
 			func(int, struct{}) error { return nil })
 		require.NoError(t, err)
-		require.Equal(t, int64(1), peak.Load())
+		require.False(t, overlapped.Load())
+	})
+
+	t.Run("yields every result when there are fewer tasks than the parallelism", func(t *testing.T) {
+		var got []int
+		err := ForEachOrdered(t.Context(), 2, 8,
+			func(_ context.Context, i int) (int, error) { return i, nil },
+			func(_, result int) error {
+				got = append(got, result)
+				return nil
+			})
+		require.NoError(t, err)
+		require.Equal(t, []int{0, 1}, got)
 	})
 
 	t.Run("returns the error of a task and cancels the other tasks", func(t *testing.T) {
@@ -106,6 +146,25 @@ func TestForEachOrdered(t *testing.T) {
 			},
 			func(int, int) error { return nil })
 		require.ErrorIs(t, err, errBoom)
+	})
+
+	t.Run("does not call yield for a result that is ready after another task failed", func(t *testing.T) {
+		errBoom := errors.New("boom")
+		var yields atomic.Int64
+		err := ForEachOrdered(t.Context(), 2, 2,
+			func(ctx context.Context, i int) (int, error) {
+				if i == 1 {
+					return 0, errBoom
+				}
+				<-ctx.Done()
+				return 7, nil
+			},
+			func(int, int) error {
+				yields.Add(1)
+				return nil
+			})
+		require.ErrorIs(t, err, errBoom)
+		require.Zero(t, yields.Load())
 	})
 
 	t.Run("returns the error of yield and stops the tasks", func(t *testing.T) {
@@ -126,13 +185,38 @@ func TestForEachOrdered(t *testing.T) {
 		require.Less(t, started.Load(), int64(100))
 	})
 
-	t.Run("returns the context error when the context is canceled", func(t *testing.T) {
+	t.Run("returns the context error when the context is canceled before the start", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		err := ForEachOrdered(ctx, 5, 2,
 			func(ctx context.Context, _ int) (int, error) { return 0, ctx.Err() },
 			func(int, int) error { return nil })
 		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("returns the context error and yields nothing when the context is canceled while the tasks run", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var running, yields atomic.Int64
+		done := make(chan error, 1)
+		go func() {
+			done <- ForEachOrdered(ctx, 10, 3,
+				func(ctx context.Context, _ int) (int, error) {
+					running.Add(1)
+					<-ctx.Done()
+					return 0, ctx.Err()
+				},
+				func(int, int) error {
+					yields.Add(1)
+					return nil
+				})
+		}()
+
+		require.Eventually(t, func() bool { return running.Load() == 3 }, time.Second, time.Millisecond)
+		cancel()
+		require.ErrorIs(t, <-done, context.Canceled)
+		require.Zero(t, yields.Load())
+		require.Equal(t, int64(3), running.Load(), "the tasks that did not start must stay skipped")
 	})
 
 	t.Run("does nothing for zero tasks", func(t *testing.T) {

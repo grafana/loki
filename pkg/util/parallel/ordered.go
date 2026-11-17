@@ -13,13 +13,15 @@ import (
 // to be safe for concurrent use.
 //
 // A task holds its slot until yield returns for its result. So at most
-// parallelism results are running, or waiting for an earlier result, at any
-// time, even when an early task is slow. This bounds the memory of the results.
+// parallelism results are running, waiting for an earlier result, or in yield
+// at any time, even when an early task is slow. This bounds the memory of the
+// results.
 //
 // The first error from work or yield cancels the context that work receives,
-// skips the tasks that did not start, and becomes the return value. A
-// parallelism below 1 runs the tasks one at a time. ForEachOrdered returns
-// after every started task returns.
+// skips the tasks that did not start, and becomes the return value. After the
+// first error, yield does not run again. A parallelism below 1 runs the tasks
+// one at a time. n must not be negative. ForEachOrdered returns after every
+// started task returns.
 func ForEachOrdered[T any](
 	ctx context.Context,
 	n, parallelism int,
@@ -58,6 +60,11 @@ func ForEachOrdered[T any](
 		for i := range n {
 			select {
 			case result := <-results[i]:
+				// A result and the cancellation can be ready together, and select
+				// picks one at random.
+				if err := gctx.Err(); err != nil {
+					return err
+				}
 				if err := yield(i, result); err != nil {
 					return err
 				}

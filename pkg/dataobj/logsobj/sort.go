@@ -17,9 +17,13 @@ import (
 )
 
 // rankedStream holds what the sort needs to know about one stream: its sort key,
-// its rank, which is its new stream ID after the sort in
-// [Builder.FlushAndSort], and its size. Independently written objects do not
-// share ranks.
+// its rank and its size.
+//
+// A stream is one label set of a tenant, one row of its streams section. Before
+// the sort, the logs sections refer to a stream by its old ID. In the sorted
+// object, the streams of a tenant get the new IDs 1 to N in sort order. The
+// rank of a stream is this new ID, so the stream with rank 1 sorts first. A
+// rank is unique only among the streams of one tenant in one sorted object.
 type rankedStream struct {
 	rank int64
 	// size is the number of uncompressed bytes that the logs of the stream add
@@ -42,7 +46,8 @@ func emptyRankedStream(ls labels.Labels, schemaLabels []string, shardLayout stre
 	}, nil
 }
 
-// sortKeys extracts the sort-tuple column for the k-way merge comparator.
+// sortKeys returns the sort key of each stream in remap, indexed by old ID, for
+// the k-way merge comparator.
 func sortKeys(remap []rankedStream) []streams.SortKey {
 	out := make([]streams.SortKey, len(remap))
 	for i, entry := range remap {
@@ -54,11 +59,12 @@ func sortKeys(remap []rankedStream) []streams.SortKey {
 // mergeAndRemapLogsIter merges sections which are ordered by the sort keys in
 // remap, injects sort-key sidecars, and rewrites their stream IDs to rank.
 //
-// It merges only the records of the streams in streamIDs. Each range of the
-// sort merges its own streams, so that the goroutines of the sort never read or
-// write the same record. streamIDs holds the old stream IDs, the ones that the
-// logs sections use before the sort, and the section readers use them to skip
-// the pages of other streams. The merged records get their rank as stream ID.
+// It merges only the records of the streams in streamIDs, which must not be
+// empty. Each range of the sort merges its own streams, so that the goroutines
+// of the sort never read or write the same record. streamIDs holds old IDs, and
+// the section readers use them to skip the rows of other streams. A record of a
+// stream that no range lists does not reach the merge, so the caller must give
+// every stream of the tenant to some range.
 func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedStream, streamIDs []int64) (result.Seq[logs.Record], error) {
 	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap), streamIDs)
 	if err != nil {
@@ -88,26 +94,23 @@ func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, rem
 	}), nil
 }
 
-// A stream is one label set of a tenant, one row of its streams section. The
-// logs sections of the object before the sort refer to a stream by its old ID.
-// In the sorted object, the streams of the tenant get the new IDs 1 to N in sort
-// order. The rank of a stream is this new ID, so the stream with rank 1 sorts
-// first. The logs of a stream stay together in the sorted object.
+// rankRange is the inclusive range [first, last] of ranks. The sort gives each
+// range to one goroutine.
 //
 // The sort never splits a stream between ranges. So a tenant that holds most of
 // its bytes in one stream sorts that stream on one goroutine, and more
 // goroutines do not make it faster.
-
-// rankRange is the inclusive range [first, last] of stream ranks. The sort
-// gives each range to one goroutine.
 type rankRange struct {
 	first, last int64
 }
 
 // planSortRanges splits the streams with ranks 1 to len(byRank)-1 into
-// contiguous ranges of at most targetSize uncompressed bytes each, so that each
-// range fills about one logs section. byRank is indexed by rank, and index 0 is
-// unused. A stream larger than targetSize gets a range of its own.
+// contiguous ranges of about targetSize uncompressed bytes, so that each range
+// fills about one logs section. byRank is indexed by rank, and index 0 is
+// unused. A range takes a new stream only while its total stays within
+// targetSize, with two exceptions. A stream larger than targetSize gets a range
+// of its own. Streams with the same sort key stay together, so such a range can
+// exceed targetSize.
 //
 // Example with a targetSize of 100:
 //
@@ -120,12 +123,11 @@ type rankRange struct {
 //
 // A range ends only between two streams with different sort keys [shard,
 // schema key, hash]. Two streams can share a sort key when their label hashes
-// collide. The merge orders such streams by their old IDs, from before the
-// sort, which can differ from their ranks (their new IDs). For example, streams
-// X and Y share a key. X has rank 1 and old ID 9, and Y has rank 2 and old ID 4. A
-// single merge returns the records of Y before the records of X. If X and Y sat
-// in two ranges, the sections of X would come first, and the order of the
-// records would change. So streams with the same key stay in one range.
+// collide. The merge orders such streams by their old IDs, which can differ
+// from their ranks. For example, streams X and Y share a key. X has rank 1 and
+// old ID 9, and Y has rank 2 and old ID 4. A single merge returns the records of
+// Y before the records of X. If X and Y sat in two ranges, the sections of X
+// would come first, and the order of the records would change.
 func planSortRanges(byRank []rankedStream, targetSize int64) []rankRange {
 	last := int64(len(byRank) - 1)
 	if last < 1 {
@@ -148,8 +150,7 @@ func planSortRanges(byRank []rankedStream, targetSize int64) []rankRange {
 }
 
 // rankedStreamsByRank returns the streams in remap, indexed by rank, where
-// index 0 is unused. remap is indexed by the stream ID before the remap, and
-// holds no stream at index 0.
+// index 0 is unused. remap is indexed by old ID, and holds no stream at index 0.
 func rankedStreamsByRank(remap []rankedStream) []rankedStream {
 	byRank := make([]rankedStream, len(remap))
 	for _, entry := range remap {
@@ -160,16 +161,17 @@ func rankedStreamsByRank(remap []rankedStream) []rankedStream {
 	return byRank
 }
 
-// streamIDsByRange returns, for each range, the stream IDs of the merged
-// sections whose rank falls in that range. remap is indexed by those stream
-// IDs. ranges must be sorted and contiguous.
-func streamIDsByRange(remap []rankedStream, ranges []rankRange) [][]int64 {
+// streamIDsByRange returns, for each range, the old IDs of the streams whose
+// rank falls in that range. remap is indexed by old ID. ranges must be sorted
+// and contiguous, and must cover every rank in remap. streamIDsByRange returns
+// an error if a rank is in no range.
+func streamIDsByRange(remap []rankedStream, ranges []rankRange) ([][]int64, error) {
 	ids := make([][]int64, len(ranges))
 	for id, entry := range remap {
 		if entry.rank <= 0 {
 			continue
 		}
-		i, _ := slices.BinarySearchFunc(ranges, entry.rank, func(r rankRange, rank int64) int {
+		i, found := slices.BinarySearchFunc(ranges, entry.rank, func(r rankRange, rank int64) int {
 			switch {
 			case r.last < rank:
 				return -1
@@ -179,19 +181,25 @@ func streamIDsByRange(remap []rankedStream, ranges []rankRange) [][]int64 {
 				return 0
 			}
 		})
+		if !found {
+			return nil, fmt.Errorf("stream with old ID %d and rank %d is in no range", id, entry.rank)
+		}
 		ids[i] = append(ids[i], int64(id))
 	}
-	return ids
+	return ids, nil
 }
 
 // sortRangesInParallel sorts the records of each range on up to
 // b.cfg.SortParallelism goroutines, and appends their sections to b.builder in
-// range order. rangeIDs holds the stream IDs of each range, in sections. It
-// returns the totals of the appended records, for streams with IDs from 1 to
+// range order. rangeIDs holds the old IDs of the streams of each range. It
+// returns the totals of the appended records, indexed by rank, for ranks 1 to
 // numStreams.
 //
-// At most SortParallelism ranges hold buffered records or encoded sections at
-// a time, even when an early range is slow.
+// At most SortParallelism ranges hold records or encoded sections at a time,
+// even when an early range is slow. A range keeps all of its encoded sections in
+// memory until the range before it is in b.builder, and b.builder writes them to
+// the scratch store only then. So a range with a stream much larger than the
+// target section size holds several sections in memory.
 //
 // The ranges reuse their section builders, so that a builder keeps the
 // capacity of its record buffer from one range to the next.
@@ -229,12 +237,12 @@ func (b *Builder) sortRangesInParallel(
 			free <- lb
 			return encoded, nil
 		},
-		// ForEachOrdered calls this on one goroutine, because b.builder is
-		// not safe for concurrent use.
-		func(_ int, encoded []*encodedSection) error {
+		// ForEachOrdered calls yield on one goroutine, in range order. b.builder
+		// needs both.
+		func(i int, encoded []*encodedSection) error {
 			for _, sec := range encoded {
 				if err := b.builder.Append(sec); err != nil {
-					return err
+					return fmt.Errorf("appending the sections of stream range %d of tenant %s: %w", i, tenant, err)
 				}
 			}
 			return nil
@@ -245,11 +253,13 @@ func (b *Builder) sortRangesInParallel(
 	return totals, nil
 }
 
-// sortRange merges the records of the streams in streamIDs and encodes them
-// into sections, each about the target section size. It adds the records to
-// totals. lb must be empty and hold the tenant; sortRange leaves it empty.
-// sortRange does not use b.builder, so it is safe to run on several goroutines
-// at once, as long as their streams differ.
+// sortRange merges the records of the streams in streamIDs, given by old ID, and
+// encodes them into sections, each about the target section size. It adds the
+// records to totals. lb must be empty and hold the tenant. After success,
+// sortRange leaves lb empty and holding the tenant. After an error, lb is in an
+// unknown state, and the caller must drop it. sortRange does not use b.builder,
+// so it is safe to run on several goroutines at once, as long as their streams
+// differ.
 func (b *Builder) sortRange(
 	ctx context.Context,
 	tenant string,
@@ -277,14 +287,14 @@ func (b *Builder) sortRange(
 
 // sectionRecorder is a [dataobj.SectionWriter] that keeps a copy of each
 // section written to it, so that the section can reach a [dataobj.Builder]
-// later.
+// later. The copies stay in memory.
 type sectionRecorder struct {
 	typ      dataobj.SectionType
 	sections []*encodedSection
 }
 
 func (r *sectionRecorder) WriteSection(opts *dataobj.WriteSectionOptions, data, metadata []byte) (int64, error) {
-	// The writer must not keep the slices that it receives, so copy them.
+	// The caller may reuse data and metadata after this call, so copy them.
 	sec := &encodedSection{
 		typ:      r.typ,
 		data:     bytes.Clone(data),

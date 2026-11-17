@@ -7,6 +7,7 @@ package sortmerge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 
@@ -20,15 +21,17 @@ import (
 
 // SchemaSortedIterator returns an iterator that performs a k-way merge of the
 // records of the streams in keepStreamIDs from multiple schema-sorted logs
-// sections. Each section reader skips the pages that hold no record of those
-// streams, except the stream ID pages. An empty keepStreamIDs merges no records.
+// sections. The section readers filter the rows with a stream ID predicate, and
+// they skip the rows of all other streams. It returns an error if keepStreamIDs
+// is empty. A record of a stream that is not in keepStreamIDs does not reach the
+// merge, and the merge reports nothing about it.
 // The input sections must belong to the same object and must therefore have the same StreamID key space.
 // The input sections must be sorted by the schema method: [shard ASC, schema key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
 // An additional ordering input is required to map StreamID to the corresponding external sort tuple ([0] unused).
 func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, keepStreamIDs []int64) (result.Seq[logs.Record], error) {
 	if len(keepStreamIDs) == 0 {
-		return result.Iter(func(func(logs.Record) bool) error { return nil }), nil
+		return nil, errors.New("sort merge: no stream IDs to keep")
 	}
 
 	sequences := make([]*sectionSequence, 0, len(sections))
@@ -90,9 +93,10 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 }
 
 // openSectionSequence opens a cursor over the rows of sec. A non-nil
-// keepStreamIDs reads only the rows of those streams. A non-empty
-// dropStreamIDs skips the rows of those streams, as
-// [RemappedSection.DropStreamIDs] does. The caller sets at most one of them.
+// keepStreamIDs reads only the rows of those streams, and a non-nil empty slice
+// reads none. A nil keepStreamIDs reads every row. A non-empty dropStreamIDs
+// skips the rows of those streams, as [RemappedSection.DropStreamIDs] does. The
+// caller sets at most one of them. If both are set, keepStreamIDs wins.
 func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, keepStreamIDs, dropStreamIDs []int64) (*sectionSequence, error) {
 	ds, err := logs.MakeColumnarDataset(sec)
 	if err != nil {
