@@ -98,8 +98,8 @@ type SectionReader interface {
 	// as the provided ctx is not canceled.
 	DataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
 
-	// MetadataRanges returns the bytes of each range of the metadata region, in
-	// the order of ranges.
+	// MetadataRanges returns the bytes of each range of the metadata region. The
+	// result has one slice for each range, in the order of ranges.
 	//
 	// It returns slices, not readers, so an implementation can return bytes
 	// that it holds in memory without a copy.
