@@ -2,11 +2,11 @@ package marshal
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"log"
 	"testing"
 	"time"
 
-	json "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
