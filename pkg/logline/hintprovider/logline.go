@@ -100,8 +100,14 @@ func (p *LoglineHintProvider) queryRanges(
 		req = &logproto.LoglineIndexRequest{}
 	}
 
-	ngramLength, maxParallel, maxConjunctions := p.lookupParams(req)
-	filters := SupportedQuery(expr, ngramLength, maxConjunctions)
+	ngramLength, maxParallel := p.lookupParams(req)
+	// Look up the needles the query-frontend planned, so the lookup matches its
+	// cache key. A request without any is from an older frontend, whose cap
+	// defaulted to one set.
+	filters := fromProtoConjunctions(req.Conjunctions)
+	if len(filters) == 0 {
+		filters = SupportedQuery(expr, ngramLength, 1)
+	}
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
@@ -136,9 +142,8 @@ func timeUnion(ranges []HintTimeRange) []HintTimeRange {
 	return NormalizeRanges(out)
 }
 
-func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel, maxConjunctions int) {
+func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
 	ngramLength, maxParallel = p.ngramLength, p.maxParallel
-	maxConjunctions = max(int(req.MaxConjunctions), 1)
 	if req.NgramLength > 0 {
 		ngramLength = int(req.NgramLength)
 	}
@@ -156,10 +161,9 @@ func (p *LoglineHintProvider) PlanHints(
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
 	plan := HintPlan{
-		Stats:           stats,
-		NgramLength:     int32(p.ngramLength),
-		MaxParallel:     int32(p.maxParallel),
-		MaxConjunctions: int32(p.maxConjunctions),
+		Stats:       stats,
+		NgramLength: int32(p.ngramLength),
+		MaxParallel: int32(p.maxParallel),
 	}
 
 	filters := SupportedQuery(expr, p.ngramLength, p.maxConjunctions)
@@ -219,13 +223,13 @@ func loglineIndexRequest(
 	expr syntax.Expr, from, through model.Time, plan HintPlan,
 ) *logproto.LoglineIndexRequest {
 	return &logproto.LoglineIndexRequest{
-		From:            from,
-		Through:         through,
-		Expr:            expr.String(),
-		Indexes:         ToProtoIndexMetas(plan.Indexes),
-		NgramLength:     plan.NgramLength,
-		MaxParallel:     plan.MaxParallel,
-		MaxConjunctions: plan.MaxConjunctions,
+		From:         from,
+		Through:      through,
+		Expr:         expr.String(),
+		Indexes:      ToProtoIndexMetas(plan.Indexes),
+		NgramLength:  plan.NgramLength,
+		MaxParallel:  plan.MaxParallel,
+		Conjunctions: ToProtoConjunctions(plan.Filters),
 	}
 }
 

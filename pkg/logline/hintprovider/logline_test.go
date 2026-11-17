@@ -272,20 +272,41 @@ func TestLoglineHintProvider_LookupParams(t *testing.T) {
 	provider, err := NewLoglineHintProvider(indexStore, 6, 32, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	ngram, parallel, conjunctions := provider.lookupParams(&logproto.LoglineIndexRequest{})
+	ngram, parallel := provider.lookupParams(&logproto.LoglineIndexRequest{})
 	require.Equal(t, 6, ngram)
 	require.Equal(t, 32, parallel)
-	require.Equal(t, 1, conjunctions)
 
-	ngram, parallel, conjunctions = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8, MaxConjunctions: 4})
+	ngram, parallel = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8})
 	require.Equal(t, 3, ngram)
 	require.Equal(t, 8, parallel)
-	require.Equal(t, 4, conjunctions)
+}
 
-	provider, err = NewLoglineHintProvider(indexStore, 6, 32, 4, nil, log.NewNopLogger(), nil)
+// The querier looks up the needles the query-frontend planned, and plans expr
+// itself only for a request without any.
+func TestLoglineHintProvider_QueryHints_UsesRequestNeedles(t *testing.T) {
+	indexStore := newTestStore(t)
+	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "9fA81cD2Ef0077aa", t0, t0.Add(5*time.Minute))
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
-	_, _, conjunctions = provider.lookupParams(&logproto.LoglineIndexRequest{})
-	require.Equal(t, 1, conjunctions, "an omitted request cap must not inherit the local planning cap")
+
+	hints := func(query string, sets []logproto.Conjunction) []logproto.HintTimeRange {
+		resp, err := provider.QueryHints(context.Background(), mustParseExpr(t, query), &logproto.LoglineIndexRequest{
+			From:         model.TimeFromUnixNano(t0.UnixNano()),
+			Through:      model.TimeFromUnixNano(t0.Add(5 * time.Minute).UnixNano()),
+			Indexes:      ToProtoIndexMetas(indexStore.Snapshot().Active()),
+			Conjunctions: sets,
+		})
+		require.NoError(t, err)
+		return resp.TimeRanges
+	}
+	const indexed, absent = `{job="api"} |= "9fA81cD2Ef0077aa"`, `{job="api"} |= "absent-needle"`
+	sets := []logproto.Conjunction{{Needles: []string{"9FA81CD2EF0077AA"}}}
+
+	require.NotEmpty(t, hints(indexed, nil), "no needles in the request: plan expr")
+	require.Empty(t, hints(absent, nil))
+	require.NotEmpty(t, hints(absent, sets), "the request's needles decide, not expr")
+	require.Empty(t, hints(indexed, []logproto.Conjunction{{Needles: []string{"ABSENT-NEEDLE"}}}))
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {

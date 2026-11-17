@@ -64,6 +64,7 @@ func TestFrontendHintAdapter_ProvideHints(t *testing.T) {
 		require.Equal(t, expr.String(), gotReq.Expr)
 		require.Equal(t, int32(6), gotReq.NgramLength)
 		require.Equal(t, int32(32), gotReq.MaxParallel)
+		require.Equal(t, []logproto.Conjunction{{Needles: []string{"9FA81CD2EF0077AA"}}}, gotReq.Conjunctions, "the needles the frontend planned")
 		require.Equal(t, hintprovider.ToProtoIndexMetas(indexStore.Snapshot().Active()), gotReq.Indexes)
 		require.Equal(t, []hintprovider.HintTimeRange{{Start: remoteStart, End: remoteEnd}}, hints.TimeRanges)
 		require.Equal(t, int32(7), stats.Snapshot().PeakConcurrency)

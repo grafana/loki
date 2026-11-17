@@ -68,7 +68,8 @@ Query-shape support and hint lookup for logline index lookups.
      `expr.String()`.
    - `maxConjunctions` is not a field of the key. It decides which sets the key
      holds, so the delegate reports the value its lookups use
-     (`MaxConjunctions()`, invariant 18), and the key is computed with it.
+     (`MaxConjunctions()`, invariant 18), and the key is computed with it. The
+     lookup uses the needles the frontend sent, which come from the same plan.
    - **Everything the lookup reads must be in the key.** The delegate is asked
      about the expression as written, so equal keys give equal hints only while
      the lookup reads nothing but the needle sets and the n-gram length. If it starts
@@ -184,7 +185,12 @@ Query-shape support and hint lookup for logline index lookups.
       once on the complete requirement. Compilation bounds DNF expansion and
       prunes at the end. Over the limit an operand or union collapses to its
       implied existing literals. 1 gives at most one set.
-    - The query-frontend sends its value in `LoglineIndexRequest.max_conjunctions`.
-      The querier uses it when above 0, otherwise 1 regardless of its local cap.
+    - The query-frontend plans the needles once, with its own cap, and sends
+      them in `LoglineIndexRequest.conjunctions`. The querier looks up those sets
+      and does not plan or take a cap. The hint cache key is built from the same
+      plan, so the key and the lookup cannot disagree, even while a rollout
+      changes how needles are extracted. A request without `conjunctions` is from
+      an older frontend, and the querier plans `expr` with one set, which is
+      what that frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.
