@@ -43,4 +43,10 @@ func TestLayoutSectionBuilder(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 	})
+
+	t.Run("returns an error and writes no section for the zero layout", func(t *testing.T) {
+		builder := dataobj.NewBuilder(nil)
+		require.ErrorContains(t, builder.Append(stats.NewLayoutSectionBuilder("acme", streams.Layout{})), "zero layout")
+		require.Zero(t, builder.Bytes())
+	})
 }

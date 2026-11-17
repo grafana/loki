@@ -1,6 +1,8 @@
 package stats
 
 import (
+	"errors"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -30,7 +32,14 @@ func (b *LayoutSectionBuilder) Type() dataobj.SectionType { return sectionType }
 
 // Flush writes the section to w. A LayoutSectionBuilder can flush any number
 // of sections.
+//
+// Flush returns an error for the zero layout. The zero layout has one shard
+// bucket and no stream order, so readers fail to decode a section that
+// records it. An index object without a layout has no stats section instead.
 func (b *LayoutSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
+	if b.layout.StreamOrder() == streams.StreamOrderUnspecified {
+		return 0, errors.New("layout section of the zero layout")
+	}
 	var enc columnar.Encoder
 	defer enc.Reset()
 	enc.SetSortInfo(streams.NewSortInfo(b.layout, nil))
