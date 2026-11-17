@@ -188,42 +188,46 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := NewRowReader(RowReaderOptions{
-		Dataset:          dset,
-		ProjectedColumns: cols,
+	empty := BinaryValue([]byte(""))
+	for name, predicate := range map[string]Predicate{
+		// Imitate predicate from logql: {last_name=""}
+		"an equality with an empty value":                          EqualPredicate{Column: cols[1], Value: empty},
+		"a less than or equal with an empty value":                 LessThanOrEqualPredicate{Column: cols[1], Value: empty},
+		"a not on a greater than with an empty value":              NotPredicate{Inner: GreaterThanPredicate{Column: cols[1], Value: empty}},
+		"an or of an equality and a less than with an empty value": OrPredicate{Left: EqualPredicate{Column: cols[1], Value: empty}, Right: LessThanPredicate{Column: cols[1], Value: empty}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := NewRowReader(RowReaderOptions{
+				Dataset:          dset,
+				ProjectedColumns: cols,
+				Predicates:       []Predicate{predicate},
+			})
+			t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		Predicates: []Predicate{
-			// Imitate predicate from logql: {last_name=""}
-			EqualPredicate{
-				Column: cols[1], // last_name column
-				Value:  BinaryValue([]byte("")),
-			},
-		},
-	})
-	defer r.Close()
+			actualRows, err := readDataset(t.Context(), r, 3)
+			require.NoError(t, err)
 
-	actualRows, err := readDataset(t.Context(), r, 3)
-	require.NoError(t, err)
+			actualFirstNames := make([]string, 0, len(actualRows))
+			actualLastNames := make([]string, 0, len(actualRows))
+			for _, row := range actualRows {
+				if row.Values[0].IsNil() && row.Values[1].IsNil() {
+					continue
+				}
+				actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
+				if !row.Values[1].IsNil() {
+					actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
+				} else {
+					actualLastNames = append(actualLastNames, "[nil]")
+				}
+			}
 
-	actualFirstNames := make([]string, 0, len(actualRows))
-	actualLastNames := make([]string, 0, len(actualRows))
-	for _, row := range actualRows {
-		if row.Values[0].IsNil() && row.Values[1].IsNil() {
-			continue
-		}
-		actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
-		if !row.Values[1].IsNil() {
-			actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
-		} else {
-			actualLastNames = append(actualLastNames, "[nil]")
-		}
+			// Filter expected data manually to verify
+			expectedFirstNames := []string{"Jim"}
+			expectedLastNames := []string{"[nil]"}
+			require.Equal(t, expectedFirstNames, actualFirstNames)
+			require.Equal(t, expectedLastNames, actualLastNames)
+		})
 	}
-
-	// Filter expected data manually to verify
-	expectedFirstNames := []string{"Jim"}
-	expectedLastNames := []string{"[nil]"}
-	require.Equal(t, expectedFirstNames, actualFirstNames)
-	require.Equal(t, expectedLastNames, actualLastNames)
 }
 
 func Test_RowReader_ReadWithPredicate_NoSecondary(t *testing.T) {
@@ -498,6 +502,24 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 
 					require.Equal(t, readRows(t, NotPredicate{Inner: GreaterThanPredicate{Column: tc.column, Value: v}}), lessOrEqual, "not greater than %v", v)
 					require.Equal(t, readRows(t, NotPredicate{Inner: LessThanPredicate{Column: tc.column, Value: v}}), greaterOrEqual, "not less than %v", v)
+
+					require.Equal(t, readRows(t, LessThanPredicate{Column: tc.column, Value: v}), readRows(t, NotPredicate{Inner: GreaterThanOrEqualPredicate{Column: tc.column, Value: v}}), "not greater than or equal to %v", v)
+					require.Equal(t, readRows(t, GreaterThanPredicate{Column: tc.column, Value: v}), readRows(t, NotPredicate{Inner: LessThanOrEqualPredicate{Column: tc.column, Value: v}}), "not less than or equal to %v", v)
+
+					// A range as the logs time range builds it, including ranges of one value and empty ranges.
+					for _, w := range tc.values {
+						var (
+							orForm = AndPredicate{
+								Left:  OrPredicate{Left: GreaterThanPredicate{Column: tc.column, Value: v}, Right: equal},
+								Right: OrPredicate{Left: EqualPredicate{Column: tc.column, Value: w}, Right: LessThanPredicate{Column: tc.column, Value: w}},
+							}
+							inclusiveForm = AndPredicate{
+								Left:  GreaterThanOrEqualPredicate{Column: tc.column, Value: v},
+								Right: LessThanOrEqualPredicate{Column: tc.column, Value: w},
+							}
+						)
+						require.Equal(t, readRows(t, orForm), readRows(t, inclusiveForm), "range from %v to %v", v, w)
+					}
 				}
 			})
 		}
@@ -1581,6 +1603,16 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			want:      rangeset.From(rangeset.Range{Start: 750, End: 1000}), // Page 3 of Timestamp column
 		},
 		{
+			name:      "equal to zero prunes the pages whose minimum is above zero",
+			predicate: EqualPredicate{Column: cols[0], Value: Int64Value(0)},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "less than or equal to zero prunes the pages whose minimum is above zero",
+			predicate: LessThanOrEqualPredicate{Column: cols[0], Value: Int64Value(0)},
+			want:      rangeset.Set{},
+		},
+		{
 			name:      "greater than or equal predicate above every page matches no row",
 			predicate: GreaterThanOrEqualPredicate{Column: cols[1], Value: Int64Value(1001)},
 			want:      rangeset.Set{},
@@ -1691,17 +1723,18 @@ func Test_BuildPredicateRanges(t *testing.T) {
 		})
 	}
 
-	t.Run("keeps a page for an empty value and prunes it for a value outside the statistics", func(t *testing.T) {
+	t.Run("keeps a page for an empty value, prunes a page with statistics outside them and keeps a page without statistics", func(t *testing.T) {
 		minValue, err := BinaryValue([]byte("b")).MarshalBinary()
 		require.NoError(t, err)
 		maxValue, err := BinaryValue([]byte("d")).MarshalBinary()
 		require.NoError(t, err)
 
 		dset := FromMemory([]*MemColumn{{
-			Desc: ColumnDesc{Tag: "message", Type: ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"}, RowsCount: 10},
-			Pages: []*MemPage{{
-				Desc: PageDesc{RowCount: 10, Stats: &datasetmd.Statistics{MinValue: minValue, MaxValue: maxValue}},
-			}},
+			Desc: ColumnDesc{Tag: "message", Type: ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"}, RowsCount: 15},
+			Pages: []*MemPage{
+				{Desc: PageDesc{RowCount: 10, ValuesCount: 10, Stats: &datasetmd.Statistics{MinValue: minValue, MaxValue: maxValue}}},
+				{Desc: PageDesc{RowCount: 5, ValuesCount: 5}},
+			},
 		}})
 		columns, err := result.Collect(dset.ListColumns(t.Context()))
 		require.NoError(t, err)
@@ -1711,12 +1744,12 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			predicate Predicate
 			want      rangeset.Set
 		}{
-			{"equal to an empty value keeps the page", EqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 10})},
-			{"equal to a value above the page prunes the page", EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.Set{}},
-			{"greater than or equal to an empty value keeps the page", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 10})},
-			{"less than or equal to an empty value keeps the page", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 10})},
-			{"greater than or equal to a value above the page prunes the page", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.Set{}},
-			{"less than or equal to a value below the page prunes the page", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("a"))}, rangeset.Set{}},
+			{"equal to an empty value keeps every page", EqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"equal to a value above the page prunes the page with statistics", EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
+			{"greater than or equal to an empty value keeps every page", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"less than or equal to an empty value keeps every page", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"greater than or equal to a value above the page prunes the page with statistics", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
+			{"less than or equal to a value below the page prunes the page with statistics", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("a"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
@@ -2290,9 +2323,9 @@ func BenchmarkPredicateExecution(b *testing.B) {
 	// These patterns filter the more_selective column with an inclusive range, as the time
 	// range of a logs section does. The first writes each bound as an or of a comparison and
 	// an equality. The second writes each bound as one predicate.
-	var (
-		lowerBound = col1Value
-		upperBound = col1Value + 200_000
+	const (
+		lowerBound = 100_000
+		upperBound = 300_000
 	)
 	predicatePatterns = append(predicatePatterns,
 		predicatePattern{

@@ -872,9 +872,11 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 // result in other NotPredicates that also need to be simplified.
 //
 // The rewrite pushes the NotPredicate down with De Morgan's laws. It replaces a
-// negated comparison with the opposite comparison. Each comparison rewrite is
-// exact for a null too, because CompareValues returns a negative, zero or
-// positive result for every pair.
+// negated comparison with the opposite comparison. Each rewrite is exact for the
+// rows, including a null, because CompareValues returns a negative, zero or
+// positive result for every pair. Page statistics skip nulls, so pruning by a
+// less than or less than or equal predicate can still drop a page whose null
+// rows pass.
 //
 // If the NotPredicate can't be simplified, simplifyNotPredicate returns an
 // error.
@@ -1010,6 +1012,9 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		//
 		// A GreaterThanOrEqualPredicate needs no such check, because no binary
 		// maxValue is below an empty value.
+		//
+		// A null also passes a LessThanPredicate or a LessThanOrEqualPredicate on any
+		// other value. The statistics do not show nulls, so the pruning ignores them.
 		switch p := p.(type) {
 		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page, or if p.Value is empty.
 			include = isEmptyBinary(p.Value) || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)

@@ -42,12 +42,20 @@ func TestCompilePredicate(t *testing.T) {
 			{"less than does not match an equal value", LessThanPredicate{Column: colA, Value: i(5)}, row(i(5), nilV), false},
 			{"less than does not match a larger value", LessThanPredicate{Column: colA, Value: i(5)}, row(i(6), nilV), false},
 
+			{"greater than or equal reads its own column", GreaterThanOrEqualPredicate{Column: colB, Value: i(5)}, row(i(1), i(5)), true},
+			{"greater than or equal ignores the other column", GreaterThanOrEqualPredicate{Column: colB, Value: i(5)}, row(i(9), i(1)), false},
+			{"greater than or equal matches a nil column against an empty binary value", GreaterThanOrEqualPredicate{Column: colA, Value: BinaryValue(nil)}, row(nilV, nilV), true},
+			{"greater than or equal does not match a nil column against a binary value", GreaterThanOrEqualPredicate{Column: colA, Value: BinaryValue([]byte("a"))}, row(nilV, nilV), false},
 			{"greater than or equal matches a larger value", GreaterThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(6), nilV), true},
 			{"greater than or equal matches an equal value", GreaterThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(5), nilV), true},
 			{"greater than or equal does not match a smaller value", GreaterThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(4), nilV), false},
 			{"greater than or equal does not match a nil column against a value", GreaterThanOrEqualPredicate{Column: colA, Value: i(5)}, row(nilV, nilV), false},
 			{"greater than or equal matches a nil column against a nil value", GreaterThanOrEqualPredicate{Column: colA, Value: nilV}, row(nilV, nilV), true},
 
+			{"less than or equal reads its own column", LessThanOrEqualPredicate{Column: colB, Value: i(5)}, row(i(9), i(5)), true},
+			{"less than or equal ignores the other column", LessThanOrEqualPredicate{Column: colB, Value: i(5)}, row(i(1), i(9)), false},
+			{"less than or equal matches a nil column against an empty binary value", LessThanOrEqualPredicate{Column: colA, Value: BinaryValue(nil)}, row(nilV, nilV), true},
+			{"less than or equal matches a nil column against a binary value", LessThanOrEqualPredicate{Column: colA, Value: BinaryValue([]byte("a"))}, row(nilV, nilV), true},
 			{"less than or equal matches a smaller value", LessThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(4), nilV), true},
 			{"less than or equal matches an equal value", LessThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(5), nilV), true},
 			{"less than or equal does not match a larger value", LessThanOrEqualPredicate{Column: colA, Value: i(5)}, row(i(6), nilV), false},
@@ -131,7 +139,7 @@ func TestCompilePredicate(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
 				_, err := compilePredicate(tc.pred, lookup)
-				require.Error(t, err)
+				require.ErrorContains(t, err, "not found in RowReader columns")
 			})
 		}
 	})
