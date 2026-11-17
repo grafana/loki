@@ -618,6 +618,28 @@ func TestDoIndexMerge(t *testing.T) {
 		require.True(t, got.Equal(layout))
 	})
 
+	t.Run("records the layout of sources that have only empty stats sections", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for _, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: path + "/log", ColumnName: "service", LabelValue: "api", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
+		}
+
+		artifact, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		require.NoError(t, err)
+		require.Empty(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path))
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)

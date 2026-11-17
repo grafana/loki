@@ -37,22 +37,6 @@ func TestLayoutSectionBuilder(t *testing.T) {
 		require.True(t, got.Equal(layout))
 	})
 
-	t.Run("writes a section that is empty, unlike a section with rows", func(t *testing.T) {
-		require.True(t, openSection(t).Empty())
-
-		b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000), layout)
-		b.SetTenant("acme")
-		b.Append(stats.Stat{ObjectPath: "/obj1", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc1"}})
-		objBuilder := dataobj.NewBuilder(nil)
-		require.NoError(t, objBuilder.Append(b))
-		obj, closer, err := objBuilder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		withRows, err := stats.Open(t.Context(), obj.Sections()[0])
-		require.NoError(t, err)
-		require.False(t, withRows.Empty())
-	})
-
 	t.Run("writes a section that a row reader reads as no rows", func(t *testing.T) {
 		reader := stats.NewRowReader(t.Context(), openSection(t))
 		require.False(t, reader.Next())

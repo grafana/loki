@@ -198,7 +198,7 @@ func layoutOfStats(shardBuckets uint32, rows []stats.Stat) streams.Layout {
 		return streams.Layout{}
 	}
 	var schemaLabels []string
-	if len(rows) > 0 && rows[0].SortSchema != "" {
+	if rows[0].SortSchema != "" {
 		schemaLabels = strings.Split(rows[0].SortSchema, ",")
 	}
 	return streams.NewLayout(streams.MustShardLayoutFromBuckets(shardBuckets), schemaLabels)

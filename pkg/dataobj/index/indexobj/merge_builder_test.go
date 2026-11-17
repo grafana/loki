@@ -366,6 +366,7 @@ func TestMergeBuilder_RecordsLayout(t *testing.T) {
 		obj, closer, err := b.Flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, 1, obj.Sections().Count(stats.CheckSection))
 		for _, sec := range obj.Sections().Filter(stats.CheckSection) {
 			opened, err := stats.Open(context.Background(), sec)
 			require.NoError(t, err)

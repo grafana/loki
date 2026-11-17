@@ -91,10 +91,35 @@ func (s *Section) Layout() (layout streams.Layout, ok bool, err error) {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
-// Empty reports whether the section has no columns, as a section from a
-// [LayoutSectionBuilder] has. An empty section has no rows. A section whose
-// columns are all of types that this code does not know is not empty.
+// Empty reports whether the section has no physical columns, as a section
+// from a [LayoutSectionBuilder] has. An empty section has no rows. A section
+// whose columns are all of types that this code does not know is not empty.
 func (s *Section) Empty() bool { return len(s.inner.Columns()) == 0 }
+
+// ObjectPathColumn returns the object_path column of the section. ok is false
+// for an empty section, which has no rows.
+//
+// It returns an error if a section that is not empty has no object_path column
+// or more than one. A reader that needs every object path must not skip such a
+// section, because it could miss object paths.
+func (s *Section) ObjectPathColumn() (column *Column, ok bool, err error) {
+	if s.Empty() {
+		return nil, false, nil
+	}
+	for _, c := range s.columns {
+		if c.Type != ColumnTypeObjectPath {
+			continue
+		}
+		if column != nil {
+			return nil, false, errors.New("stats section has more than one object_path column")
+		}
+		column = c
+	}
+	if column == nil {
+		return nil, false, errors.New("stats section has no object_path column")
+	}
+	return column, true, nil
+}
 
 // A Column represents one of the columns in the stats section. Valid columns
 // can only be retrieved by calling [Section.Columns].
