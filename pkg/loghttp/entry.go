@@ -143,23 +143,56 @@ func readLabelsInto(d *json.Decoder, b *labels.ScratchBuilder) error {
 
 // MarshalJSON encodes the entry as [ "<ts>", "<line>", {structured metadata}? ].
 // The structured metadata object is omitted when empty.
+//
+// Prefer MarshalJSONTo, which json/v2 uses when available and which avoids an intermediate buffer.
 func (e Entry) MarshalJSON() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, len(e.Line)+64))
 	// Escape <, > and & (Loki has done this since 2019); replace invalid UTF-8 rather than fail.
 	enc := jsontext.NewEncoder(buf, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true))
-	_ = enc.WriteToken(jsontext.BeginArray)
-	_ = enc.WriteToken(jsontext.String(strconv.FormatInt(e.Timestamp.UnixNano(), 10)))
-	_ = enc.WriteToken(jsontext.String(e.Line))
-	if !e.StructuredMetadata.IsEmpty() {
-		_ = enc.WriteToken(jsontext.BeginObject)
-		e.StructuredMetadata.Range(func(l labels.Label) {
-			_ = enc.WriteToken(jsontext.String(l.Name))
-			_ = enc.WriteToken(jsontext.String(l.Value))
-		})
-		_ = enc.WriteToken(jsontext.EndObject)
-	}
-	if err := enc.WriteToken(jsontext.EndArray); err != nil {
+	if err := e.MarshalJSONTo(enc); err != nil {
 		return nil, err
 	}
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil // the encoder terminates top-level values with a newline
+}
+
+// MarshalJSONTo implements json.MarshalerTo, writing directly to enc.
+// String escaping follows the options on enc.
+func (e Entry) MarshalJSONTo(enc *jsontext.Encoder) error {
+	// Timestamp is a quoted decimal integer; format it on the stack, as a ready-made JSON value.
+	var tsBuf [24]byte // '"' + up to 20 chars + '"'
+	ts := append(tsBuf[:0], '"')
+	ts = strconv.AppendInt(ts, e.Timestamp.UnixNano(), 10)
+	ts = append(ts, '"')
+
+	if err := enc.WriteToken(jsontext.BeginArray); err != nil {
+		return err
+	}
+	if err := enc.WriteValue(ts); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(e.Line)); err != nil {
+		return err
+	}
+	if !e.StructuredMetadata.IsEmpty() {
+		if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+			return err
+		}
+		var err error
+		e.StructuredMetadata.Range(func(l labels.Label) {
+			if err != nil {
+				return
+			}
+			if err = enc.WriteToken(jsontext.String(l.Name)); err != nil {
+				return
+			}
+			err = enc.WriteToken(jsontext.String(l.Value))
+		})
+		if err != nil {
+			return err
+		}
+		if err := enc.WriteToken(jsontext.EndObject); err != nil {
+			return err
+		}
+	}
+	return enc.WriteToken(jsontext.EndArray)
 }
