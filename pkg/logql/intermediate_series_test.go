@@ -378,5 +378,7 @@ func TestStreamRangeVectorIterator_ShouldNotReleaseAReservationItNeverMade(t *te
 	require.IsType(t, &streamRangeVectorIterator{}, rangeIt)
 
 	require.ErrorContains(t, drain(rangeIt), "failed to parse metric")
+	require.NoError(t, rangeIt.Close())
+	require.NoError(t, rangeIt.Close())
 	require.Equal(t, int64(1), counter.Current(), "the reservation belongs to another iterator")
 }
