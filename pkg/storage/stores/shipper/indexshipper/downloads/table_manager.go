@@ -77,6 +77,12 @@ type Config struct {
 	// NewTableManager, for a TenantFilter that cannot answer yet. Query
 	// readiness still runs periodically and on EnsureQueryReadiness.
 	SkipInitialQueryReadiness bool
+	// DropFilter, if set, answers which tenants in a table this instance no
+	// longer owns. After each query readiness run, the user index sets kept that
+	// it returns are evicted. Index sets downloaded on demand and the common
+	// index sets are not evicted this way, but are governed by CacheTTL. The
+	// index gateway with per-index ownership sets it.
+	DropFilter TenantFilter
 }
 
 type tableManager struct {
@@ -357,9 +363,10 @@ func (tm *tableManager) cleanupCache() error {
 	return nil
 }
 
-// EnsureQueryReadiness implements TableManager. Stop cancels it and waits for
-// it to return, and it does nothing once the table manager is stopped, so it
-// never downloads into closed tables.
+// EnsureQueryReadiness implements TableManager. With Config.DropFilter, it
+// then evicts the query ready index sets this instance no longer owns. Stop
+// cancels it and waits for it to return, and it does nothing once the table
+// manager is stopped, so it never downloads into closed tables.
 func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -370,7 +377,37 @@ func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
 	if err := tm.ctx.Err(); err != nil {
 		return err
 	}
-	return tm.ensureQueryReadiness(ctx)
+	err := tm.ensureQueryReadiness(ctx)
+	// Evict even if loading failed: an error loading one table must not keep
+	// every other table's no longer owned index sets in memory.
+	if tm.cfg.DropFilter != nil {
+		tm.dropNotOwned(ctx)
+	}
+	return err
+}
+
+// dropNotOwned evicts, in every table, the query ready user index sets that
+// Config.DropFilter says this instance no longer owns. Errors are logged per
+// table, and leave that table's index sets in place until the next run.
+func (tm *tableManager) dropNotOwned(ctx context.Context) {
+	tm.tablesMtx.RLock()
+	names := slices.Collect(maps.Keys(tm.tables))
+	tm.tablesMtx.RUnlock()
+
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[name]
+		tm.tablesMtx.RUnlock()
+		if !ok {
+			continue
+		}
+		if err := table.DropNotOwned(ctx, tm.cfg.DropFilter); err != nil {
+			level.Error(tm.logger).Log("msg", "failed to evict index sets no longer owned", "table", name, "err", err)
+		}
+	}
 }
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
