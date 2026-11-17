@@ -631,7 +631,7 @@ func TestDoIndexMerge(t *testing.T) {
 			uploadSections(t, bucket, path, stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
 		}
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
 		require.NoError(t, err)
 		require.Empty(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path))
 		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
