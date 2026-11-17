@@ -293,6 +293,69 @@ func TestBatchRangeVectorIterator_ShouldNotCountALabelSetThatFailsToParse(t *tes
 
 	require.ErrorContains(t, drain(rangeIt), "failed to parse metric")
 	require.Zero(t, counter.Current())
+	require.Zero(t, counter.Peak())
+}
+
+func TestBatchRangeVectorIterator_ShouldNotRaiseThePeakForALabelSetThatFailsToParseAfterValidOnes(t *testing.T) {
+	var (
+		start = time.Unix(10, 0)
+		end   = time.Unix(30, 0)
+		count = &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	)
+	good := iter.NewSeriesIterator(logproto.Series{
+		Labels:     `{app="a"}`,
+		Samples:    []logproto.Sample{{Timestamp: start.Add(time.Second).UnixNano(), Value: 1}},
+		StreamHash: 1,
+	})
+	bad := iter.NewSeriesIterator(logproto.Series{
+		Labels:     "not a label set",
+		Samples:    []logproto.Sample{{Timestamp: start.Add(2 * time.Second).UnixNano(), Value: 1}},
+		StreamHash: 2,
+	})
+	it := iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator([]iter.SampleIterator{good, bad}))
+
+	counter := newIntermediateSeriesCounter(0)
+	rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (10 * time.Second).Nanoseconds(), (5 * time.Second).Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, iteratorLimits{counter: counter})
+	require.NoError(t, err)
+
+	require.ErrorContains(t, drain(rangeIt), "failed to parse metric")
+	require.Equal(t, int64(1), counter.Current())
+	require.Equal(t, int64(1), counter.Peak())
+}
+
+func TestBatchRangeVectorIterator_ShouldReleaseItsLabelSetsOnClose(t *testing.T) {
+	var (
+		start = time.Unix(10, 0)
+		end   = time.Unix(30, 0)
+		count = &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	)
+	counter := newIntermediateSeriesCounter(0)
+	newIterator := func(n int) RangeVectorIterator {
+		rangeIt, err := newTimestampFirstRangeVectorIterator(distinctSeriesIterator(n, start.Add(time.Second)), count, (10 * time.Second).Nanoseconds(), (5 * time.Second).Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, iteratorLimits{counter: counter})
+		require.NoError(t, err)
+		return rangeIt
+	}
+
+	first := newIterator(4)
+	require.NoError(t, drain(first))
+	require.Equal(t, int64(4), counter.Current())
+	require.NoError(t, first.Close())
+	require.Zero(t, counter.Current())
+
+	second := newIterator(3)
+	require.NoError(t, drain(second))
+	require.NoError(t, second.Close())
+	require.Zero(t, counter.Current())
+	require.Equal(t, int64(4), counter.Peak(), "sequential iterators must not add up")
+
+	// A repeated Close must not release what another iterator still holds.
+	third := newIterator(2)
+	require.NoError(t, drain(third))
+	require.NoError(t, third.Close())
+	other := newIterator(1)
+	require.NoError(t, drain(other))
+	_ = third.Close()
+	require.Equal(t, int64(1), counter.Current())
 }
 
 func TestStreamRangeVectorIterator_ShouldNotReleaseAReservationItNeverMade(t *testing.T) {

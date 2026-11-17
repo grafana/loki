@@ -29,8 +29,8 @@ func newIntermediateSeriesCounter(limit int) *intermediateSeriesCounter {
 
 // Reserve adds n label sets to the count and returns errIntermediateSeriesLimit, leaving the
 // count unchanged, when that would take it over the limit. The limit is checked before the count
-// moves, so a failed reservation is never visible to other goroutines. Callers reserve before
-// allocating, so a failed reservation has allocated nothing.
+// moves, so a failed reservation is never visible to other goroutines. Callers reserve only once
+// the label set is built, so a failed parse never raises the peak.
 func (c *intermediateSeriesCounter) Reserve(n int) error {
 	if c == nil {
 		return nil
