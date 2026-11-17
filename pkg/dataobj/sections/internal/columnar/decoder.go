@@ -42,7 +42,10 @@ func (dec *Decoder) SectionMetadata(ctx context.Context) (*datasetmd.SectionMeta
 		return nil, err
 	}
 
-	rc, err := dec.sr.MetadataRange(ctx, int64(info.SectionMetadataOffset), int64(info.SectionMetadataLength))
+	rc, err := dec.sr.MetadataRange(ctx, dataobj.RelativeByteRange{
+		Offset: int64(info.SectionMetadataOffset),
+		Length: int64(info.SectionMetadataLength),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading section metadata: %w", err)
 	}
@@ -152,7 +155,7 @@ type dataRangeReader struct {
 var _ rangeio.Reader = (*dataRangeReader)(nil)
 
 func (rr dataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.DataRange(ctx, r.Offset, r.Len())
+	rc, err := rr.Inner.DataRange(ctx, dataobj.RelativeByteRange{Offset: r.Offset, Length: r.Len()})
 	if err != nil {
 		return 0, err
 	}

@@ -90,23 +90,21 @@ type SectionReader interface {
 	// ExtensionData will be nil if no extension data is available.
 	ExtensionData() []byte
 
-	// DataRange opens a reader of length bytes from the data region of a
-	// section. The offset argument determines where in the data region reading
-	// should start.
+	// DataRange opens a reader of r.Length bytes from the data region of a
+	// section. The reader starts r.Offset bytes after the start of that region.
 	//
-	// DataRange returns an error if the read fails or if offset+length goes
+	// DataRange returns an error if the read fails or if r.Offset+r.Length goes
 	// beyond the readable data region. The returned reader is only valid as long
 	// as the provided ctx is not canceled.
-	DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+	DataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
 
-	// MetadataRange opens a reader of length bytes from the metadata region of
-	// a section. The offset argument determines where in the metadata region
-	// reading should start.
+	// MetadataRange opens a reader of r.Length bytes from the metadata region of
+	// a section. The reader starts r.Offset bytes after the start of that region.
 	//
-	// MetadataRange returns an error if the read fails or if offset+length goes
-	// beyond the readable metadata region. The returned reader is only valid as long
-	// as the provided ctx is not canceled.
-	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+	// MetadataRange returns an error if the read fails or if r.Offset+r.Length
+	// goes beyond the readable metadata region. The returned reader is only valid
+	// as long as the provided ctx is not canceled.
+	MetadataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
 
 	// MetadataRanges returns the bytes of each range of the metadata region, in
 	// the order of ranges. It is the batch version of MetadataRange.

@@ -22,9 +22,9 @@ type sectionReader struct {
 
 func (sr *sectionReader) ExtensionData() []byte { return sr.extensionData }
 
-func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
-	if offset < 0 || length < 0 {
-		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", offset, length)
+func (sr *sectionReader) DataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error) {
+	if r.Offset < 0 || r.Length < 0 {
+		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", r.Offset, r.Length)
 	}
 
 	region := sr.sec.GetLayout().GetData()
@@ -39,19 +39,19 @@ func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (i
 	// Validate bounds within the range of the section. Subtract instead of add, so a large offset or
 	// length cannot overflow. An offset after the region makes the difference negative, and the
 	// length check rejects it.
-	if length > int64(region.Length)-offset {
-		return nil, fmt.Errorf("section data range is invalid: offset=%d length=%d region length=%d", offset, length, region.Length)
+	if r.Length > int64(region.Length)-r.Offset {
+		return nil, fmt.Errorf("section data range is invalid: offset=%d length=%d region length=%d", r.Offset, r.Length, region.Length)
 	}
 
-	absoluteOffset := sr.startOff + int64(region.Offset) + offset
-	return sr.rr.ReadRange(ctx, absoluteOffset, length)
+	absoluteOffset := sr.startOff + int64(region.Offset) + r.Offset
+	return sr.rr.ReadRange(ctx, absoluteOffset, r.Length)
 }
 
-// MetadataRange opens a reader of length bytes from the metadata region of the section. The offset
-// counts from the start of that region, not from the start of the object.
-func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
-	if offset < 0 || length < 0 {
-		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", offset, length)
+// MetadataRange opens a reader of r.Length bytes from the metadata region of the section. The offset
+// of r counts from the start of that region, not from the start of the object.
+func (sr *sectionReader) MetadataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error) {
+	if r.Offset < 0 || r.Length < 0 {
+		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", r.Offset, r.Length)
 	}
 
 	metadataRegion := sr.sec.GetLayout().GetMetadata()
@@ -66,12 +66,12 @@ func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64
 	// Validate bounds within the range of the section. Subtract instead of add, so a large offset or
 	// length cannot overflow. An offset after the region makes the difference negative, and the
 	// length check rejects it.
-	if length > int64(metadataRegion.Length)-offset {
-		return nil, fmt.Errorf("section metadata range is invalid: offset=%d length=%d region length=%d", offset, length, metadataRegion.Length)
+	if r.Length > int64(metadataRegion.Length)-r.Offset {
+		return nil, fmt.Errorf("section metadata range is invalid: offset=%d length=%d region length=%d", r.Offset, r.Length, metadataRegion.Length)
 	}
 
-	absoluteOffset := sr.startOff + int64(metadataRegion.Offset) + offset
-	return sr.rr.ReadRange(ctx, absoluteOffset, length)
+	absoluteOffset := sr.startOff + int64(metadataRegion.Offset) + r.Offset
+	return sr.rr.ReadRange(ctx, absoluteOffset, r.Length)
 }
 
 // MetadataRanges returns the bytes of each range of the metadata region of the section. The offset

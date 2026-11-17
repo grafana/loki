@@ -179,10 +179,10 @@ func TestBuilder_SectionOrder(t *testing.T) {
 			expect := appended[want[i]]
 			require.Equal(t, expect.typ, sec.Type, "section %d has the wrong type", i)
 			require.Equal(t, expect.metadata, readAll(t, func() (io.ReadCloser, error) {
-				return sec.Reader.MetadataRange(t.Context(), 0, sec.Reader.MetadataSize())
+				return sec.Reader.MetadataRange(t.Context(), RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
 			}))
 			require.Equal(t, expect.data, readAll(t, func() (io.ReadCloser, error) {
-				return sec.Reader.DataRange(t.Context(), 0, sec.Reader.DataSize())
+				return sec.Reader.DataRange(t.Context(), RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
 			}))
 		}
 

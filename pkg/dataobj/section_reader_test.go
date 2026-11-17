@@ -94,7 +94,7 @@ func TestSectionReader_MetadataRanges(t *testing.T) {
 
 func TestSectionReader_MetadataRange(t *testing.T) {
 	t.Run("returns the bytes of a range that starts after the start of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().MetadataRange(t.Context(), 5, 3)
+		rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: 5, Length: 3})
 		require.NoError(t, err)
 		defer rc.Close()
 
@@ -104,7 +104,7 @@ func TestSectionReader_MetadataRange(t *testing.T) {
 	})
 
 	t.Run("returns the bytes of a range that ends at the end of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().MetadataRange(t.Context(), 0, int64(len(testMetadataRegion)))
+		rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: 0, Length: int64(len(testMetadataRegion))})
 		require.NoError(t, err)
 		defer rc.Close()
 
@@ -128,7 +128,7 @@ func TestSectionReader_MetadataRange(t *testing.T) {
 		}
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
-				rc, err := newTestSectionReader().MetadataRange(t.Context(), tc.offset, tc.length)
+				rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: tc.offset, Length: tc.length})
 
 				require.EqualError(t, err, tc.wantErr)
 				require.Nil(t, rc)
@@ -151,7 +151,7 @@ func TestSectionReader_MetadataRange(t *testing.T) {
 				sr := &sectionReader{sec: &filemd.SectionInfo{Layout: &filemd.SectionLayout{Metadata: tc.region}}}
 
 				// An offset above 5 overflows the length check when the region length wraps around.
-				rc, err := sr.MetadataRange(t.Context(), 6, 1)
+				rc, err := sr.MetadataRange(t.Context(), RelativeByteRange{Offset: 6, Length: 1})
 
 				require.EqualError(t, err, tc.wantErr)
 				require.Nil(t, rc)
@@ -162,7 +162,7 @@ func TestSectionReader_MetadataRange(t *testing.T) {
 
 func TestSectionReader_DataRange(t *testing.T) {
 	t.Run("returns the bytes of a range that starts after the start of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().DataRange(t.Context(), 8, 4)
+		rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: 8, Length: 4})
 		require.NoError(t, err)
 		defer rc.Close()
 
@@ -172,7 +172,7 @@ func TestSectionReader_DataRange(t *testing.T) {
 	})
 
 	t.Run("returns the bytes of a range that ends at the end of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().DataRange(t.Context(), 0, int64(len(testDataRegion)))
+		rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: 0, Length: int64(len(testDataRegion))})
 		require.NoError(t, err)
 		defer rc.Close()
 
@@ -194,7 +194,7 @@ func TestSectionReader_DataRange(t *testing.T) {
 		}
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
-				rc, err := newTestSectionReader().DataRange(t.Context(), tc.offset, tc.length)
+				rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: tc.offset, Length: tc.length})
 
 				require.EqualError(t, err, tc.wantErr)
 				require.Nil(t, rc)
