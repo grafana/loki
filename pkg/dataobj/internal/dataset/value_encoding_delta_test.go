@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,25 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
+
+// malformedDeltaData holds the value 1234, which is valid, followed by a
+// malformed varint.
+var malformedDeltaData = []struct {
+	name string
+	data []byte
+	err  string
+}{
+	{
+		name: "the data ends inside a varint",
+		data: append(binary.AppendVarint(nil, 1234), 0x80),
+		err:  "delta: truncated value at offset 2",
+	},
+	{
+		name: "a varint overflows 64 bits",
+		data: append(binary.AppendVarint(nil, 1234), append(bytes.Repeat([]byte{0xff}, 9), 0x02)...),
+		err:  "delta: malformed value at offset 2",
+	},
+}
 
 func Test_delta(t *testing.T) {
 	numbers := []int64{
@@ -53,6 +73,18 @@ func Test_delta(t *testing.T) {
 	require.Equal(t, numbers, actual)
 }
 
+func Test_deltaDecoder_Decode(t *testing.T) {
+	for _, tc := range malformedDeltaData {
+		t.Run("returns an error and no values when "+tc.name, func(t *testing.T) {
+			var alloc memory.Allocator
+
+			arr, err := newDeltaDecoder(tc.data).Decode(&alloc, 5)
+			require.EqualError(t, err, tc.err)
+			require.Nil(t, arr)
+		})
+	}
+}
+
 func Test_deltaDecoder_Skip(t *testing.T) {
 	numbers := []int64{1234, 543, -2345, 1432, 99, -5}
 
@@ -63,21 +95,6 @@ func Test_deltaDecoder_Skip(t *testing.T) {
 		arr, err := dec.Decode(&alloc, count)
 		require.NoError(t, err)
 		return arr.(*columnar.Number[int64]).Values()
-	}
-
-	// decodedAndSkipped returns the number of values that Decode returns and that
-	// Skip skips for data. Each call uses a new decoder.
-	decodedAndSkipped := func(t *testing.T, data []byte, count int) (decoded, skipped int) {
-		t.Helper()
-
-		var alloc memory.Allocator
-		arr, err := newDeltaDecoder(data).Decode(&alloc, count)
-		require.ErrorIs(t, err, io.EOF)
-		decoded = arr.Len()
-
-		skipped, err = newDeltaDecoder(data).Skip(count)
-		require.NoError(t, err)
-		return decoded, skipped
 	}
 
 	t.Run("decodes the values after the skipped ones", func(t *testing.T) {
@@ -131,14 +148,13 @@ func Test_deltaDecoder_Skip(t *testing.T) {
 		require.Equal(t, numbers[5:], decodeDeltaNumbers(t, dec, 1))
 	})
 
-	t.Run("stops at a varint that overflows 64 bits like Decode", func(t *testing.T) {
-		first := encodeDeltaNumbers(t, numbers[0])
-		overflow := append(bytes.Repeat([]byte{0xff}, 9), 0x02)
-
-		decoded, skipped := decodedAndSkipped(t, append(first, overflow...), 3)
-		require.Equal(t, 1, decoded)
-		require.Equal(t, 1, skipped)
-	})
+	for _, tc := range malformedDeltaData {
+		t.Run("returns an error and the number of values before it when "+tc.name, func(t *testing.T) {
+			skipped, err := newDeltaDecoder(tc.data).Skip(5)
+			require.EqualError(t, err, tc.err)
+			require.Equal(t, 1, skipped)
+		})
+	}
 
 	t.Run("decodes the written values for random skip and read sizes", func(t *testing.T) {
 		const valueCount = 2000

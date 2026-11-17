@@ -26,6 +26,35 @@ var testStrings = []string{
 
 var batchSize = 64
 
+// malformedPlainData holds the value "ab", which is valid, followed by a
+// malformed value.
+var malformedPlainData = []struct {
+	name string
+	data []byte
+	err  string
+}{
+	{
+		name: "the data ends inside a length prefix",
+		data: []byte{2, 'a', 'b', 0x80},
+		err:  "plain: truncated value length at offset 3",
+	},
+	{
+		name: "a length prefix is longer than the longest uvarint",
+		data: append([]byte{2, 'a', 'b'}, bytes.Repeat([]byte{0xff}, binary.MaxVarintLen64+2)...),
+		err:  "plain: malformed value length at offset 3",
+	},
+	{
+		name: "a value runs past the end of the data",
+		data: []byte{2, 'a', 'b', 2, 'c'},
+		err:  "plain: value of 2 bytes at offset 3 runs past the end of the data",
+	},
+	{
+		name: "a length does not fit in an int",
+		data: append(binary.AppendUvarint([]byte{2, 'a', 'b'}, 1<<63), 'c'),
+		err:  "plain: value of 9223372036854775808 bytes at offset 3 runs past the end of the data",
+	},
+}
+
 func Test_plainBytesEncoder(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -59,6 +88,26 @@ func Test_plainBytesEncoder(t *testing.T) {
 	require.Equal(t, testStrings, out)
 }
 
+func Test_plainBytesDecoder_Decode(t *testing.T) {
+	for _, tc := range malformedPlainData {
+		t.Run("returns an error and no values when "+tc.name, func(t *testing.T) {
+			var alloc memory.Allocator
+
+			arr, err := newPlainBytesDecoder(tc.data).Decode(&alloc, 5)
+			require.EqualError(t, err, tc.err)
+			require.Nil(t, arr)
+		})
+	}
+
+	t.Run("returns an error and no values when the first value runs past the end of the data", func(t *testing.T) {
+		var alloc memory.Allocator
+
+		arr, err := newPlainBytesDecoder([]byte{5, 'c'}).Decode(&alloc, 1)
+		require.EqualError(t, err, "plain: value of 5 bytes at offset 0 runs past the end of the data")
+		require.Nil(t, arr)
+	})
+}
+
 func Test_plainBytesDecoder_Skip(t *testing.T) {
 	encodePlainStrings := func(t *testing.T, values ...string) []byte {
 		t.Helper()
@@ -86,23 +135,6 @@ func Test_plainBytesDecoder_Skip(t *testing.T) {
 		return out
 	}
 
-	// decodedAndSkipped returns the number of values that Decode returns and that
-	// Skip skips for data. Each call uses a new decoder.
-	decodedAndSkipped := func(t *testing.T, data []byte, count int) (decoded, skipped int) {
-		t.Helper()
-
-		var alloc memory.Allocator
-		arr, err := newPlainBytesDecoder(data).Decode(&alloc, count)
-		require.ErrorIs(t, err, io.EOF)
-		if arr != nil {
-			decoded = arr.Len()
-		}
-
-		skipped, err = newPlainBytesDecoder(data).Skip(count)
-		require.NoError(t, err)
-		return decoded, skipped
-	}
-
 	t.Run("decodes the values after the skipped ones", func(t *testing.T) {
 		dec := newPlainBytesDecoder(encodePlainStrings(t, "a", "", "ccc", "dddd", "e"))
 
@@ -126,7 +158,7 @@ func Test_plainBytesDecoder_Skip(t *testing.T) {
 	})
 
 	t.Run("skips fewer values and returns no error when the data ends first", func(t *testing.T) {
-		dec := newPlainBytesDecoder(encodePlainStrings(t, "a", "b"))
+		dec := newPlainBytesDecoder(encodePlainStrings(t, "a", ""))
 
 		skipped, err := dec.Skip(5)
 		require.NoError(t, err)
@@ -170,13 +202,13 @@ func Test_plainBytesDecoder_Skip(t *testing.T) {
 		require.Equal(t, []string{"last"}, decodePlainStrings(t, dec, 1))
 	})
 
-	t.Run("stops at a malformed length prefix like Decode", func(t *testing.T) {
-		data := append(encodePlainStrings(t, "ab"), bytes.Repeat([]byte{0xff}, binary.MaxVarintLen64+2)...)
-
-		decoded, skipped := decodedAndSkipped(t, data, 2)
-		require.Equal(t, 1, decoded)
-		require.Equal(t, 1, skipped)
-	})
+	for _, tc := range malformedPlainData {
+		t.Run("returns an error and the number of values before it when "+tc.name, func(t *testing.T) {
+			skipped, err := newPlainBytesDecoder(tc.data).Skip(5)
+			require.EqualError(t, err, tc.err)
+			require.Equal(t, 1, skipped)
+		})
+	}
 
 	t.Run("decodes the written values for random skip and read sizes", func(t *testing.T) {
 		const valueCount = 2000
