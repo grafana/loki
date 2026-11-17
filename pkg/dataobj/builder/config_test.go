@@ -78,10 +78,10 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("accepts a sort parallelism of 1 and above, read from the flag", func(t *testing.T) {
-		for _, parallelism := range []string{"1", "4"} {
-			cfg := newConfig(t, "-dataobj.builder.sort-parallelism="+parallelism)
+		for _, parallelism := range []int{1, 4} {
+			cfg := newConfig(t, "-dataobj.builder.sort-parallelism="+strconv.Itoa(parallelism))
 			require.NoError(t, cfg.Validate())
-			require.Equal(t, parallelism, strconv.Itoa(cfg.SortParallelism))
+			require.Equal(t, parallelism, cfg.SortParallelism)
 		}
 	})
 

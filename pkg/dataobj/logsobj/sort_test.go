@@ -201,45 +201,38 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 		shape          shape
 		overrides      TenantOverrides
 		dropDuplicates bool
-		multiSection   bool
 	}{
 		{
-			name:         "gives the records and stream stats of a single range for many small streams with the default sort schema",
-			shape:        manySmallStreams,
-			overrides:    NoTenantOverrides{},
-			multiSection: true,
+			name:      "gives the records and stream stats of a single range for many small streams with the default sort schema",
+			shape:     manySmallStreams,
+			overrides: NoTenantOverrides{},
 		},
 		{
-			name:         "gives the records and stream stats of a single range for many small streams with a custom sort schema",
-			shape:        manySmallStreams,
-			overrides:    tenantOverrides{"tenant-a": {"label:pod"}, "tenant-b": {"label:pod"}},
-			multiSection: true,
+			name:      "gives the records and stream stats of a single range for many small streams with a custom sort schema",
+			shape:     manySmallStreams,
+			overrides: tenantOverrides{"tenant-a": {"label:pod"}, "tenant-b": {"label:pod"}},
 		},
 		{
 			name:           "drops the duplicates of a single range for many small streams",
 			shape:          manySmallStreams,
 			overrides:      NoTenantOverrides{},
 			dropDuplicates: true,
-			multiSection:   true,
 		},
 		{
-			name:         "gives the records and stream stats of a single range for few streams that are larger than a section",
-			shape:        fewStreamsLargerThanASection,
-			overrides:    NoTenantOverrides{},
-			multiSection: true,
+			name:      "gives the records and stream stats of a single range for few streams that are larger than a section",
+			shape:     fewStreamsLargerThanASection,
+			overrides: NoTenantOverrides{},
 		},
 		{
 			name:           "drops the duplicates of a single range for few streams that are larger than a section",
 			shape:          fewStreamsLargerThanASection,
 			overrides:      NoTenantOverrides{},
 			dropDuplicates: true,
-			multiSection:   true,
 		},
 		{
-			name:         "gives the records and stream stats of a single range for a tenant with one stream",
-			shape:        oneStream,
-			overrides:    NoTenantOverrides{},
-			multiSection: true,
+			name:      "gives the records and stream stats of a single range for a tenant with one stream",
+			shape:     oneStream,
+			overrides: NoTenantOverrides{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -267,9 +260,7 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 			for name, got := range map[string]*dataobj.Object{"1 goroutine": single, "4 goroutines": parallel} {
 				require.Equal(t, wantRecords, canonicalTies(objectRecords(t, got)), "records with %s", name)
 				require.Equal(t, wantStreams, objectStreams(t, got), "stream stats with %s", name)
-				if tc.multiSection {
-					require.Greater(t, got.Sections().Count(logs.CheckSection), 2*2, "the sort with %s must cut each tenant into several sections", name)
-				}
+				require.Greater(t, got.Sections().Count(logs.CheckSection), 2*2, "the sort with %s must cut each tenant into several sections", name)
 			}
 		})
 	}
@@ -456,29 +447,17 @@ func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 func objectRecords(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
-	labelsByTenant := map[string]map[int64]string{}
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
-		streamsSection, err := streams.Open(t.Context(), sec)
-		require.NoError(t, err)
-		labels := map[int64]string{}
-		for res := range streams.IterSection(t.Context(), streamsSection) {
-			stream, err := res.Value()
-			require.NoError(t, err)
-			labels[stream.ID] = stream.Labels.String()
-		}
-		labelsByTenant[sec.Tenant] = labels
-	}
-
 	var records []string
 	for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+		streamLabels := tenantStreamLabels(t, obj, sec.Tenant)
 		logsSection, err := logs.Open(t.Context(), sec)
 		require.NoError(t, err)
 		for res := range logs.IterSection(t.Context(), logsSection) {
 			rec, err := res.Value()
 			require.NoError(t, err)
-			labels, ok := labelsByTenant[sec.Tenant][rec.StreamID]
+			ls, ok := streamLabels[rec.StreamID]
 			require.True(t, ok, "record of tenant %s refers to unknown stream %d", sec.Tenant, rec.StreamID)
-			records = append(records, fmt.Sprintf("%s|%s|%d|%s|%s", sec.Tenant, labels, rec.Timestamp.UnixNano(), rec.Metadata, rec.Line))
+			records = append(records, fmt.Sprintf("%s|%s|%d|%s|%s", sec.Tenant, ls, rec.Timestamp.UnixNano(), rec.Metadata, rec.Line))
 		}
 	}
 	return records

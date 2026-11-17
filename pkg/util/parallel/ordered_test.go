@@ -20,13 +20,7 @@ func TestForEachOrdered(t *testing.T) {
 		)
 		err := ForEachOrdered(t.Context(), n, 4,
 			func(_ context.Context, i int) (int, error) {
-				now := running.Add(1)
-				for {
-					old := peak.Load()
-					if now <= old || peak.CompareAndSwap(old, now) {
-						break
-					}
-				}
+				storeMax(&peak, running.Add(1))
 				defer running.Add(-1)
 				time.Sleep(time.Duration(n-i) * time.Millisecond)
 				return i * 10, nil
@@ -58,13 +52,7 @@ func TestForEachOrdered(t *testing.T) {
 		go func() {
 			done <- ForEachOrdered(t.Context(), 30, 3,
 				func(context.Context, int) (struct{}, error) {
-					now := running.Add(1)
-					for {
-						old := peak.Load()
-						if now <= old || peak.CompareAndSwap(old, now) {
-							break
-						}
-					}
+					storeMax(&peak, running.Add(1))
 					<-release
 					running.Add(-1)
 					return struct{}{}, nil
@@ -225,4 +213,13 @@ func TestForEachOrdered(t *testing.T) {
 			func(int, int) error { t.Fatal("yield must not run"); return nil })
 		require.NoError(t, err)
 	})
+}
+
+func storeMax(v *atomic.Int64, n int64) {
+	for {
+		old := v.Load()
+		if n <= old || v.CompareAndSwap(old, n) {
+			return
+		}
+	}
 }

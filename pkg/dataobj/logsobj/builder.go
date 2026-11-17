@@ -796,6 +796,15 @@ func (b *Builder) drainLogsIter(
 	totals streamTotals,
 	flush func(*logs.Builder) error,
 ) error {
+	flushAndReset := func() error {
+		if err := flush(lb); err != nil {
+			return err
+		}
+		lb.Reset()
+		lb.SetTenant(tenant)
+		return nil
+	}
+
 	var duplicates logs.DuplicateTracker
 	for rec := range iter {
 		select {
@@ -813,19 +822,12 @@ func (b *Builder) drainLogsIter(
 		totals.add(val)
 		lb.Append(val)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := flush(lb); err != nil {
+			if err := flushAndReset(); err != nil {
 				return err
 			}
-			lb.Reset()
-			lb.SetTenant(tenant)
 		}
 	}
-	if err := flush(lb); err != nil {
-		return err
-	}
-	lb.Reset()
-	lb.SetTenant(tenant)
-	return nil
+	return flushAndReset()
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
