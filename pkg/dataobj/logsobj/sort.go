@@ -5,16 +5,15 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync/atomic"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
+	"github.com/grafana/loki/v3/pkg/util/parallel"
 )
 
 // rankedSortKey holds the sort key of one stream and its rank, which is its
@@ -81,20 +80,39 @@ func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, rem
 	}), nil
 }
 
-// rankRange is the inclusive range [first, last] of stream ranks.
+// In a sorted object, the streams of a tenant get the IDs 1 to N in sort order.
+// A stream is one label set of the tenant, one row of its streams section. The
+// rank of a stream is this new ID, so the stream with rank 1 sorts first. The
+// logs of a stream stay together in the sorted object.
+
+// rankRange is the inclusive range [first, last] of stream ranks. The sort
+// gives each range to one goroutine.
 type rankRange struct {
 	first, last int64
 }
 
-// planSortRanges splits the stream ranks 1 to len(sizes)-1 into contiguous
-// ranges of at most targetSize uncompressed bytes each, so that each range
-// fills one logs section. sizes and keys are indexed by rank, and index 0 is
-// unused. A stream larger than targetSize gets a range of its own.
+// planSortRanges splits the streams with ranks 1 to len(sizes)-1 into
+// contiguous ranges of at most targetSize uncompressed bytes each, so that each
+// range fills about one logs section. sizes and keys are indexed by rank, and
+// index 0 is unused. A stream larger than targetSize gets a range of its own.
 //
-// A range ends only where the sort key [shard, schema key, hash] changes. The
-// merge orders streams with equal keys by their stream IDs in the input
-// sections, not by rank. So streams with equal keys must stay in one range,
-// or the ranges would not be contiguous in merge order.
+// Example with a targetSize of 100:
+//
+//	rank   1   2   3   4   5
+//	size  60  30  50  80  10
+//
+// Streams 1 and 2 fill 90 bytes, and stream 3 would take them over 100, so the
+// first range is [1, 2]. Stream 3 and stream 4 together are 130 bytes, so the
+// second range is [3, 3]. The last range is [4, 5].
+//
+// A range ends only between two streams with different sort keys [shard,
+// schema key, hash]. Two streams can share a sort key when their label hashes
+// collide. The merge orders such streams by their stream IDs in the input
+// sections, which can differ from their ranks. For example, streams X and Y
+// share a key. X has rank 1 and input ID 9, and Y has rank 2 and input ID 4. A
+// single merge returns the records of Y before the records of X. If X and Y sat
+// in two ranges, the sections of X would come first, and the order of the
+// records would change. So streams with the same key stay in one range.
 func planSortRanges(sizes []int64, keys []streams.SortKey, targetSize int64) []rankRange {
 	last := int64(len(sizes) - 1)
 	if last < 1 {
@@ -156,12 +174,10 @@ func streamIDsByRange(remap []rankedSortKey, ranges []rankRange) [][]int64 {
 // b.cfg.SortParallelism goroutines, and appends their sections to b.builder in
 // range order. rangeIDs holds the stream IDs of each range, in sections. It
 // returns the totals of the appended records, for streams with IDs from 1 to
-// numStreams, and the number of duplicates that it dropped.
+// numStreams.
 //
-// A range waits for a slot before it starts, and frees its slot only once
-// its sections are in b.builder. So at most SortParallelism ranges hold
-// buffered records or encoded sections at a time, even when an early range is
-// slow.
+// At most SortParallelism ranges hold buffered records or encoded sections at
+// a time, even when an early range is slow.
 //
 // The ranges reuse their section builders, so that a builder keeps the
 // capacity of its record buffer from one range to the next.
@@ -173,79 +189,49 @@ func (b *Builder) sortRangesInParallel(
 	rangeIDs [][]int64,
 	numStreams int,
 	newSection func() *logs.Builder,
-) (streamTotals, int, error) {
+) (streamTotals, error) {
 	var (
 		parallelism = max(1, b.cfg.SortParallelism)
 		totals      = newStreamTotals(numStreams)
-		duplicates  atomic.Int64
-		g, gctx     = errgroup.WithContext(ctx)
-		slots       = make(chan struct{}, parallelism)
 		free        = make(chan *logs.Builder, parallelism)
-		sorted      = make([]chan []*encodedSection, len(rangeIDs))
 	)
-	for i := range sorted {
-		sorted[i] = make(chan []*encodedSection, 1)
-	}
 
-	g.Go(func() error {
-		for i, ids := range rangeIDs {
+	err := parallel.ForEachOrdered(ctx, len(rangeIDs), parallelism,
+		func(ctx context.Context, i int) ([]*encodedSection, error) {
+			var lb *logs.Builder
 			select {
-			case slots <- struct{}{}:
-			case <-gctx.Done():
-				return gctx.Err()
+			case lb = <-free:
+			default:
+				lb = newSection()
 			}
-			g.Go(func() error {
-				var lb *logs.Builder
-				select {
-				case lb = <-free:
-				default:
-					lb = newSection()
-				}
-				encoded, dropped, err := b.sortRange(gctx, tenant, sections, remap, ids, lb, totals)
-				if err != nil {
-					return fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
-				}
-				// free has room for every builder, because at most
-				// parallelism ranges run at a time.
-				free <- lb
-				duplicates.Add(int64(dropped))
-				sorted[i] <- encoded
-				return nil
-			})
-		}
-		return nil
-	})
-
-	// Only this goroutine appends to b.builder, which is not safe for
-	// concurrent use.
-	g.Go(func() error {
-		for i := range rangeIDs {
-			var encoded []*encodedSection
-			select {
-			case encoded = <-sorted[i]:
-			case <-gctx.Done():
-				return gctx.Err()
+			encoded, err := b.sortRange(ctx, tenant, sections, remap, rangeIDs[i], lb, totals)
+			if err != nil {
+				return nil, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
 			}
+			// free has room for every builder, because at most parallelism
+			// ranges run at a time.
+			free <- lb
+			return encoded, nil
+		},
+		// ForEachOrdered calls this on one goroutine, because b.builder is
+		// not safe for concurrent use.
+		func(_ int, encoded []*encodedSection) error {
 			for _, sec := range encoded {
 				if err := b.builder.Append(sec); err != nil {
 					return err
 				}
 			}
-			<-slots
-		}
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, 0, err
+			return nil
+		})
+	if err != nil {
+		return nil, err
 	}
-	return totals, int(duplicates.Load()), nil
+	return totals, nil
 }
 
 // sortRange merges the records of the streams in streamIDs and encodes them
 // into sections, each about the target section size. It adds the records to
-// totals, and it returns the number of duplicates that it dropped. lb must be
-// empty and hold the tenant; sortRange leaves it empty.
+// totals. lb must be empty and hold the tenant; sortRange leaves it empty.
 // sortRange does not use b.builder, so it is safe to run on several goroutines
 // at once, as long as their streams differ.
 func (b *Builder) sortRange(
@@ -256,10 +242,10 @@ func (b *Builder) sortRange(
 	streamIDs []int64,
 	lb *logs.Builder,
 	totals streamTotals,
-) ([]*encodedSection, int, error) {
+) ([]*encodedSection, error) {
 	iter, err := mergeAndRemapLogsIter(ctx, sections, remap, streamIDs)
 	if err != nil {
-		return nil, 0, fmt.Errorf("creating sort iterator: %w", err)
+		return nil, fmt.Errorf("creating sort iterator: %w", err)
 	}
 
 	recorder := sectionRecorder{typ: lb.Type()}
@@ -267,11 +253,10 @@ func (b *Builder) sortRange(
 		_, err := lb.Flush(&recorder)
 		return err
 	}
-	dropped, err := b.fillSections(ctx, iter, lb, tenant, totals, flush)
-	if err != nil {
-		return nil, 0, err
+	if err := b.drainLogsIter(ctx, iter, lb, tenant, totals, flush); err != nil {
+		return nil, err
 	}
-	return recorder.sections, dropped, nil
+	return recorder.sections, nil
 }
 
 // sectionRecorder is a [dataobj.SectionWriter] that keeps a copy of each

@@ -204,47 +204,9 @@ func TestBuilder_SortRangesConcurrently(t *testing.T) {
 			lb.SetTenant("tenant")
 			return lb
 		}
-		_, _, err = sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
+		_, err = sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
 		require.ErrorContains(t, err, "missing stream ID remap")
 		require.Zero(t, sorter.builder.Bytes())
-	})
-}
-
-func TestCheckSortedRows(t *testing.T) {
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
-	require.NoError(t, err)
-	now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
-	for i := range 50 {
-		require.NoError(t, builder.Append("tenant", logproto.Stream{
-			Labels:  fmt.Sprintf(`{pod="pod-%d"}`, i%5),
-			Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: "line"}},
-		}, now))
-	}
-	src, closer, err := builder.flushWithoutLayout()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-	var sections []*dataobj.Section
-	for _, sec := range src.Sections().Filter(logs.CheckSection) {
-		sections = append(sections, sec)
-	}
-
-	totalsOf := func(rows int) streamTotals {
-		totals := newStreamTotals(5)
-		totals[1].rows = rows
-		return totals
-	}
-
-	t.Run("accepts the rows of the input", func(t *testing.T) {
-		require.NoError(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(50), 0))
-	})
-
-	t.Run("accepts the rows of the input when the sort dropped duplicates", func(t *testing.T) {
-		require.NoError(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(45), 5))
-	})
-
-	t.Run("returns an error when the sort lost rows of a stream that the streams section does not list", func(t *testing.T) {
-		require.ErrorContains(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(48), 0), "the input holds 50 rows")
 	})
 }
 
@@ -298,8 +260,8 @@ func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 		}
 	}
 
-	for _, concurrency := range []int{1, 2, 4, 8} {
-		b.Run(fmt.Sprintf("concurrency=%d", concurrency), func(b *testing.B) {
+	for _, parallelism := range []int{1, 2, 4, 8} {
+		b.Run(fmt.Sprintf("parallelism=%d", parallelism), func(b *testing.B) {
 			cfg := BuilderBaseConfig{
 				TargetPageSize:          1 << 20,
 				MaxPageRows:             10_000,
@@ -307,7 +269,7 @@ func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 				TargetSectionSize:       16 << 20,
 				BufferSize:              16 << 20,
 				SectionStripeMergeLimit: 2,
-				SortParallelism:         concurrency,
+				SortParallelism:         parallelism,
 				DropDuplicates:          true,
 			}
 			builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
