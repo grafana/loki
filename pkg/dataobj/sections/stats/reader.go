@@ -91,6 +91,11 @@ func (s *Section) Layout() (layout streams.Layout, ok bool, err error) {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// Empty reports whether the section has no columns, as a section from a
+// [LayoutSectionBuilder] has. An empty section has no rows. A section whose
+// columns are all of types that this code does not know is not empty.
+func (s *Section) Empty() bool { return len(s.inner.Columns()) == 0 }
+
 // A Column represents one of the columns in the stats section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //

@@ -318,13 +318,17 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 	return nil
 }
 
-// addStatsObjectPaths adds the object paths of a stats section. It returns an
-// error if the section has no object_path column or more than one, because
-// reading only one of several columns could miss object paths.
+// addStatsObjectPaths adds the object paths of a stats section. It adds
+// nothing for an empty section, which has no rows. It returns an error if any
+// other section has no object_path column or more than one, because reading
+// only one of several columns could miss object paths.
 func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) (err error) {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
 		return err
+	}
+	if sec.Empty() {
+		return nil
 	}
 	var columns []*stats.Column
 	for _, c := range sec.Columns() {
