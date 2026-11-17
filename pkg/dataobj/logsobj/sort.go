@@ -1,10 +1,14 @@
 package logsobj
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"slices"
+	"sync/atomic"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -49,7 +53,7 @@ func sortKeys(remap []rankedSortKey) []streams.SortKey {
 // It merges only the records of the streams in streamIDs, given by their stream
 // IDs in sections.
 func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedSortKey, streamIDs []int64) (result.Seq[logs.Record], error) {
-	iter, err := sortmerge.SchemaSortedStreamsIterator(ctx, sections, sortKeys(remap), streamIDs)
+	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap), streamIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -76,3 +80,236 @@ func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, rem
 		return nil
 	}), nil
 }
+
+// rankRange is the inclusive range [first, last] of stream ranks.
+type rankRange struct {
+	first, last int64
+}
+
+// planSortRanges splits the stream ranks 1 to len(sizes)-1 into contiguous
+// ranges of at most targetSize uncompressed bytes each, so that each range
+// fills one logs section. sizes and keys are indexed by rank, and index 0 is
+// unused. A stream larger than targetSize gets a range of its own.
+//
+// A range ends only where the sort key [shard, schema key, hash] changes. The
+// merge orders streams with equal keys by their stream IDs in the input
+// sections, not by rank. So streams with equal keys must stay in one range,
+// or the ranges would not be contiguous in merge order.
+func planSortRanges(sizes []int64, keys []streams.SortKey, targetSize int64) []rankRange {
+	last := int64(len(sizes) - 1)
+	if last < 1 {
+		return nil
+	}
+
+	var (
+		ranges []rankRange
+		first  = int64(1)
+		size   int64
+	)
+	for rank := int64(1); rank < last; rank++ {
+		size += sizes[rank]
+		if size+sizes[rank+1] > targetSize && keys[rank].Compare(keys[rank+1]) != 0 {
+			ranges = append(ranges, rankRange{first: first, last: rank})
+			first, size = rank+1, 0
+		}
+	}
+	return append(ranges, rankRange{first: first, last: last})
+}
+
+// sortKeysByRank returns the sort key of each stream in remap, indexed by
+// rank. remap is indexed by the stream ID before the remap.
+func sortKeysByRank(remap []rankedSortKey) []streams.SortKey {
+	keys := make([]streams.SortKey, len(remap))
+	for _, entry := range remap {
+		if entry.rank > 0 {
+			keys[entry.rank] = entry.SortKey
+		}
+	}
+	return keys
+}
+
+// streamIDsByRange returns, for each range, the stream IDs of the merged
+// sections whose rank falls in that range. remap is indexed by those stream
+// IDs. ranges must be sorted and contiguous.
+func streamIDsByRange(remap []rankedSortKey, ranges []rankRange) [][]int64 {
+	ids := make([][]int64, len(ranges))
+	for id, entry := range remap {
+		if entry.rank <= 0 {
+			continue
+		}
+		i, _ := slices.BinarySearchFunc(ranges, entry.rank, func(r rankRange, rank int64) int {
+			switch {
+			case r.last < rank:
+				return -1
+			case r.first > rank:
+				return 1
+			default:
+				return 0
+			}
+		})
+		ids[i] = append(ids[i], int64(id))
+	}
+	return ids
+}
+
+// sortRangesInParallel sorts the records of each range on up to
+// b.cfg.SortParallelism goroutines, and appends their sections to b.builder in
+// range order. rangeIDs holds the stream IDs of each range, in sections. It
+// returns the totals of the appended records, for streams with IDs from 1 to
+// numStreams, and the number of duplicates that it dropped.
+//
+// A range waits for a slot before it starts, and frees its slot only once
+// its sections are in b.builder. So at most SortParallelism ranges hold
+// buffered records or encoded sections at a time, even when an early range is
+// slow.
+//
+// The ranges reuse their section builders, so that a builder keeps the
+// capacity of its record buffer from one range to the next.
+func (b *Builder) sortRangesInParallel(
+	ctx context.Context,
+	tenant string,
+	sections []*dataobj.Section,
+	remap []rankedSortKey,
+	rangeIDs [][]int64,
+	numStreams int,
+	newSection func() *logs.Builder,
+) (streamTotals, int, error) {
+	var (
+		parallelism = max(1, b.cfg.SortParallelism)
+		totals      = newStreamTotals(numStreams)
+		duplicates  atomic.Int64
+		g, gctx     = errgroup.WithContext(ctx)
+		slots       = make(chan struct{}, parallelism)
+		free        = make(chan *logs.Builder, parallelism)
+		sorted      = make([]chan []*encodedSection, len(rangeIDs))
+	)
+	for i := range sorted {
+		sorted[i] = make(chan []*encodedSection, 1)
+	}
+
+	g.Go(func() error {
+		for i, ids := range rangeIDs {
+			select {
+			case slots <- struct{}{}:
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+			g.Go(func() error {
+				var lb *logs.Builder
+				select {
+				case lb = <-free:
+				default:
+					lb = newSection()
+				}
+				encoded, dropped, err := b.sortRange(gctx, tenant, sections, remap, ids, lb, totals)
+				if err != nil {
+					return fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
+				}
+				// free has room for every builder, because at most
+				// parallelism ranges run at a time.
+				free <- lb
+				duplicates.Add(int64(dropped))
+				sorted[i] <- encoded
+				return nil
+			})
+		}
+		return nil
+	})
+
+	// Only this goroutine appends to b.builder, which is not safe for
+	// concurrent use.
+	g.Go(func() error {
+		for i := range rangeIDs {
+			var encoded []*encodedSection
+			select {
+			case encoded = <-sorted[i]:
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+			for _, sec := range encoded {
+				if err := b.builder.Append(sec); err != nil {
+					return err
+				}
+			}
+			<-slots
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, 0, err
+	}
+	return totals, int(duplicates.Load()), nil
+}
+
+// sortRange merges the records of the streams in streamIDs and encodes them
+// into sections, each about the target section size. It adds the records to
+// totals, and it returns the number of duplicates that it dropped. lb must be
+// empty and hold the tenant; sortRange leaves it empty.
+// sortRange does not use b.builder, so it is safe to run on several goroutines
+// at once, as long as their streams differ.
+func (b *Builder) sortRange(
+	ctx context.Context,
+	tenant string,
+	sections []*dataobj.Section,
+	remap []rankedSortKey,
+	streamIDs []int64,
+	lb *logs.Builder,
+	totals streamTotals,
+) ([]*encodedSection, int, error) {
+	iter, err := mergeAndRemapLogsIter(ctx, sections, remap, streamIDs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("creating sort iterator: %w", err)
+	}
+
+	recorder := sectionRecorder{typ: lb.Type()}
+	flush := func(lb *logs.Builder) error {
+		_, err := lb.Flush(&recorder)
+		return err
+	}
+	dropped, err := b.fillSections(ctx, iter, lb, tenant, totals, flush)
+	if err != nil {
+		return nil, 0, err
+	}
+	return recorder.sections, dropped, nil
+}
+
+// sectionRecorder is a [dataobj.SectionWriter] that keeps a copy of each
+// section written to it, so that the section can reach a [dataobj.Builder]
+// later.
+type sectionRecorder struct {
+	typ      dataobj.SectionType
+	sections []*encodedSection
+}
+
+func (r *sectionRecorder) WriteSection(opts *dataobj.WriteSectionOptions, data, metadata []byte) (int64, error) {
+	// The writer must not keep the slices that it receives, so copy them.
+	sec := &encodedSection{
+		typ:      r.typ,
+		data:     bytes.Clone(data),
+		metadata: bytes.Clone(metadata),
+	}
+	if opts != nil {
+		copied := *opts
+		copied.ExtensionData = bytes.Clone(opts.ExtensionData)
+		sec.opts = &copied
+	}
+	r.sections = append(r.sections, sec)
+	return int64(len(data) + len(metadata)), nil
+}
+
+// encodedSection is a [dataobj.SectionBuilder] for a section that is already
+// encoded. Flush writes the same bytes each time.
+type encodedSection struct {
+	typ            dataobj.SectionType
+	opts           *dataobj.WriteSectionOptions
+	data, metadata []byte
+}
+
+func (s *encodedSection) Type() dataobj.SectionType { return s.typ }
+
+func (s *encodedSection) Flush(w dataobj.SectionWriter) (int64, error) {
+	return w.WriteSection(s.opts, s.data, s.metadata)
+}
+
+func (s *encodedSection) Reset() {}

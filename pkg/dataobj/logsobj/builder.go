@@ -84,11 +84,15 @@ type BuilderBaseConfig struct {
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
-	// SortConcurrency is the maximum number of goroutines that sort the logs of
+	// SortParallelism is the maximum number of goroutines that sort the logs of
 	// one tenant in FlushAndSort. A value of 1 or less sorts the stream ranges
 	// of a tenant one at a time. Each extra goroutine holds the memory of about
-	// one section. The dataobj builder sets it, so it has no flag here.
-	SortConcurrency int `yaml:"-"`
+	// one section.
+	//
+	// The index and compaction builders share this config but never sort in
+	// FlushAndSort, so it has no YAML key or flag here. The dataobj builder
+	// owns the setting and copies it in, as it does for DropDuplicates.
+	SortParallelism int `yaml:"-"`
 
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
@@ -670,7 +674,7 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 		}
 
 		numStreams := streamsSection.NumRows()
-		streamIter, remappedStreams, rankSizes, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
+		streamIter, remappedStreams, sizeByRank, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
@@ -692,8 +696,10 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return lb
 		}
 
-		ranges := planSortRanges(rankSizes, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
-		totals, duplicates, err := b.sortRangesConcurrently(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
+		// A range is a run of streams that fills about one logs section. The
+		// sort gives each range to one goroutine.
+		ranges := planSortRanges(sizeByRank, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
+		totals, duplicates, err := b.sortRangesInParallel(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
 		if err != nil {
 			return nil, nil, err
 		}

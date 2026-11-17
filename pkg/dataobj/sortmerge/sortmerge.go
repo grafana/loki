@@ -18,30 +18,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// SchemaSortedIterator returns an iterator that performs a k-way merge of records
-// from multiple schema-sorted logs sections.
+// SchemaSortedIterator returns an iterator that performs a k-way merge of the
+// records of the streams in keepStreamIDs from multiple schema-sorted logs
+// sections. Each section reader skips the pages that hold no record of those
+// streams, except the stream ID pages. An empty keepStreamIDs merges no records.
 // The input sections must belong to the same object and must therefore have the same StreamID key space.
 // The input sections must be sorted by the schema method: [shard ASC, schema key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
 // An additional ordering input is required to map StreamID to the corresponding external sort tuple ([0] unused).
-func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey) (result.Seq[logs.Record], error) {
-	return schemaSortedIterator(ctx, sections, ordering, nil)
-}
-
-// SchemaSortedStreamsIterator is like [SchemaSortedIterator], but it merges
-// only the records of the streams in keepStreamIDs. Each section reader skips
-// the pages that hold no record of those streams, except the stream ID pages.
-// An empty keepStreamIDs merges no records.
-func SchemaSortedStreamsIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, keepStreamIDs []int64) (result.Seq[logs.Record], error) {
+func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, keepStreamIDs []int64) (result.Seq[logs.Record], error) {
 	if len(keepStreamIDs) == 0 {
 		return result.Iter(func(func(logs.Record) bool) error { return nil }), nil
 	}
-	return schemaSortedIterator(ctx, sections, ordering, keepStreamIDs)
-}
 
-// schemaSortedIterator merges the records of sections. A nil keepStreamIDs
-// merges every record.
-func schemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, keepStreamIDs []int64) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	ready := false
 	defer func() {

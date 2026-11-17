@@ -86,7 +86,7 @@ func TestStreamIDsByRange(t *testing.T) {
 	})
 }
 
-func TestBuilder_FlushAndSortConcurrency(t *testing.T) {
+func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 	cfg := BuilderBaseConfig{
 		TargetPageSize:          4 << 10,
 		MaxPageRows:             100,
@@ -102,7 +102,7 @@ func TestBuilder_FlushAndSortConcurrency(t *testing.T) {
 	flushAndSort := func(t *testing.T, overrides TenantOverrides, dropDuplicates bool, concurrency int) *dataobj.Object {
 		t.Helper()
 		cfg := cfg
-		cfg.SortConcurrency = concurrency
+		cfg.SortParallelism = concurrency
 		cfg.DropDuplicates = dropDuplicates
 		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestBuilder_SortRangesConcurrently(t *testing.T) {
 		rangeIDs := [][]int64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}, {17, 18, 19, 20}}
 
 		cfg := testBuilderConfig
-		cfg.SortConcurrency = 2
+		cfg.SortParallelism = 2
 		sorter, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		newSection := func() *logs.Builder {
@@ -204,7 +204,7 @@ func TestBuilder_SortRangesConcurrently(t *testing.T) {
 			lb.SetTenant("tenant")
 			return lb
 		}
-		_, _, err = sorter.sortRangesConcurrently(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
+		_, _, err = sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
 		require.ErrorContains(t, err, "missing stream ID remap")
 		require.Zero(t, sorter.builder.Bytes())
 	})
@@ -248,10 +248,10 @@ func TestCheckSortedRows(t *testing.T) {
 	})
 }
 
-// BenchmarkBuilder_FlushAndSortConcurrency sorts an object that holds one
+// BenchmarkBuilder_FlushAndSortParallelism sorts an object that holds one
 // tenant with compressible logfmt lines, many streams and structured
 // metadata, so that the sort of that tenant sets the time of the whole sort.
-func BenchmarkBuilder_FlushAndSortConcurrency(b *testing.B) {
+func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 	const (
 		numRows    = 600_000
 		numStreams = 2_000
@@ -307,7 +307,7 @@ func BenchmarkBuilder_FlushAndSortConcurrency(b *testing.B) {
 				TargetSectionSize:       16 << 20,
 				BufferSize:              16 << 20,
 				SectionStripeMergeLimit: 2,
-				SortConcurrency:         concurrency,
+				SortParallelism:         concurrency,
 				DropDuplicates:          true,
 			}
 			builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})

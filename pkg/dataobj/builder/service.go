@@ -119,7 +119,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 
 	// The dataobj-builder always drops duplicates for new objects
 	cfg.LogsobjBuilder.DropDuplicates = true
-	cfg.LogsobjBuilder.SortConcurrency = cfg.SortConcurrency
+	cfg.LogsobjBuilder.SortParallelism = cfg.SortParallelism
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)

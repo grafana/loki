@@ -16,7 +16,7 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	require.Equal(t, 1, cfg.FlushConcurrency)
-	require.Equal(t, 1, cfg.SortConcurrency)
+	require.Equal(t, 1, cfg.SortParallelism)
 
 	require.Equal(t, 1<<20, int(cfg.LogsobjBuilder.TargetPageSize))
 	require.Equal(t, 8, cfg.LogsobjBuilder.EstimatedCompressionRatio)
@@ -30,22 +30,22 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.Equal(t, 4, cfg.IndexobjBuilder.EstimatedCompressionRatio)
 }
 
-func TestConfig_ValidateSortConcurrency(t *testing.T) {
+func TestConfig_ValidateSortParallelism(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		sortConcurrency int
 		wantErr         string
 	}{
-		{name: "accepts a sort concurrency of 1", sortConcurrency: 1},
-		{name: "accepts a sort concurrency above 1", sortConcurrency: 4},
-		{name: "rejects a sort concurrency of 0", sortConcurrency: 0, wantErr: "sort concurrency must be at least 1"},
-		{name: "rejects a negative sort concurrency", sortConcurrency: -1, wantErr: "sort concurrency must be at least 1"},
+		{name: "accepts a sort parallelism of 1", sortConcurrency: 1},
+		{name: "accepts a sort parallelism above 1", sortConcurrency: 4},
+		{name: "rejects a sort parallelism of 0", sortConcurrency: 0, wantErr: "sort parallelism must be at least 1"},
+		{name: "rejects a negative sort concurrency", sortConcurrency: -1, wantErr: "sort parallelism must be at least 1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var cfg Config
 			cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 			cfg.Topic = "test"
-			cfg.SortConcurrency = tc.sortConcurrency
+			cfg.SortParallelism = tc.sortConcurrency
 
 			err := cfg.Validate()
 			if tc.wantErr == "" {
