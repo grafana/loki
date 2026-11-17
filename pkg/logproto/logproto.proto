@@ -470,9 +470,8 @@ message LoglineIndexRequest {
   repeated Conjunction conjunctions = 8 [(gogoproto.nullable) = false];
 }
 
-// Conjunction is a set of needles a line must all contain. A needle.Conjunctions
-// plan, an OR of these, is a list of lists, which protobuf can't express
-// directly, so each inner list is wrapped in this message.
+// Conjunction is a set of needles a line must all contain. It wraps the inner
+// list because protobuf can't express a list of lists.
 message Conjunction {
   repeated string needles = 1;
 }

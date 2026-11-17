@@ -2505,7 +2505,7 @@ type LoglineIndexRequest struct {
 	// NgramLength or MaxParallel uses the querier's configured defaults.
 	NgramLength int32 `protobuf:"varint,5,opt,name=ngram_length,json=ngramLength,proto3" json:"ngram_length"`
 	MaxParallel int32 `protobuf:"varint,6,opt,name=max_parallel,json=maxParallel,proto3" json:"max_parallel"`
-	// Conjunctions are the needles the query-frontend planned for expr, ORed
+	// Conjunctions are the needles the query-frontend planned for expr, OR-ed
 	// together. The querier looks up these instead of planning expr itself.
 	// Empty means the request is from an older frontend.
 	Conjunctions []Conjunction `protobuf:"bytes,8,rep,name=conjunctions,proto3" json:"conjunctions"`
@@ -2578,9 +2578,8 @@ func (m *LoglineIndexRequest) GetConjunctions() []Conjunction {
 	return nil
 }
 
-// Conjunction is a set of needles a line must all contain. A needle.Conjunctions
-// plan, an OR of these, is a list of lists, which protobuf can't express
-// directly, so each inner list is wrapped in this message.
+// Conjunction is a set of needles a line must all contain. It wraps the inner
+// list because protobuf can't express a list of lists.
 type Conjunction struct {
 	Needles []string `protobuf:"bytes,1,rep,name=needles,proto3" json:"needles,omitempty"`
 }
