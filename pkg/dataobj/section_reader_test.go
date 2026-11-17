@@ -135,6 +135,29 @@ func TestSectionReader_MetadataRange(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("returns an error when the metadata region is too large", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			region  *filemd.Region
+			wantErr string
+		}{
+			{name: "the region offset is above MaxInt64", region: &filemd.Region{Offset: math.MaxInt64 + 1}, wantErr: "section metadata offset is too large"},
+			{name: "the region length is above MaxInt64", region: &filemd.Region{Length: math.MaxInt64 + 1}, wantErr: "section metadata length is too large"},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				// The section reader has a nil rangeReader, so a read before the validation panics and fails the test.
+				sr := &sectionReader{sec: &filemd.SectionInfo{Layout: &filemd.SectionLayout{Metadata: tc.region}}}
+
+				// An offset above 5 overflows the length check when the region length wraps around.
+				rc, err := sr.MetadataRange(t.Context(), 6, 1)
+
+				require.EqualError(t, err, tc.wantErr)
+				require.Nil(t, rc)
+			})
+		}
+	})
 }
 
 func TestSectionReader_DataRange(t *testing.T) {

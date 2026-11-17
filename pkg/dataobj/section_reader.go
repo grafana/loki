@@ -57,6 +57,10 @@ func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64
 	metadataRegion := sr.sec.GetLayout().GetMetadata()
 	if metadataRegion == nil {
 		return nil, fmt.Errorf("section has no metadata")
+	} else if metadataRegion.Offset > math.MaxInt64 {
+		return nil, fmt.Errorf("section metadata offset is too large")
+	} else if metadataRegion.Length > math.MaxInt64 {
+		return nil, fmt.Errorf("section metadata length is too large")
 	}
 
 	// Validate bounds within the range of the section. Subtract instead of add, so a large offset or
