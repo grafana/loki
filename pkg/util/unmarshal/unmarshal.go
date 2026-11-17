@@ -1,7 +1,8 @@
 package unmarshal
 
 import (
-	jsoniter "github.com/json-iterator/go"
+	jsonv1 "encoding/json"
+	"encoding/json/v2"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 )
@@ -17,5 +18,5 @@ func ReadTailResponseJSON(r *loghttp.TailResponse, reader WebsocketReader) error
 	if err != nil {
 		return err
 	}
-	return jsoniter.Unmarshal(data, r)
+	return json.Unmarshal(data, r, jsonv1.DefaultOptionsV1())
 }

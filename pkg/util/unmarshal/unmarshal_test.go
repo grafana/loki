@@ -1,13 +1,13 @@
 package unmarshal
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -301,7 +301,7 @@ func TestFullPushApiFlow(t *testing.T) {
 
 	// 2. Parse the raw values first and verify what's getting unmarshaled
 	var parsed map[string]interface{}
-	err := jsoniter.Unmarshal([]byte(jsonStr), &parsed)
+	err := json.Unmarshal([]byte(jsonStr), &parsed)
 	require.NoError(t, err)
 
 	// 3. Log the parsed values for inspection
@@ -332,7 +332,7 @@ func TestFullPushApiFlow(t *testing.T) {
 		"After unmarshaling, structured metadata should contain actual newlines")
 
 	// 8. Marshal it back like the query would do
-	marshaledData, err := jsoniter.Marshal(logEntry)
+	marshaledData, err := json.Marshal(logEntry)
 	require.NoError(t, err)
 	t.Logf("Marshaled entry: %s", string(marshaledData))
 
@@ -345,7 +345,7 @@ func TestFullPushApiFlow(t *testing.T) {
 
 	// 10. Unmarshal again and verify
 	var reUnmarshaled logproto.Entry
-	err = jsoniter.Unmarshal(marshaledData, &reUnmarshaled)
+	err = json.Unmarshal(marshaledData, &reUnmarshaled)
 	require.NoError(t, err)
 
 	// 11. Final verification
