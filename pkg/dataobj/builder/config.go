@@ -113,7 +113,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		&cfg.SortConcurrency,
 		prefix+"sort-concurrency",
 		1,
-		"The maximum number of goroutines that sort the logs of one tenant when a flush builds a data object. One tenant often holds most of the bytes of a flush, so its sort is the longest step of the flush. Each extra goroutine holds the memory of about one section. A flush can sort up to flush-concurrency objects at the same time.",
+		"The maximum number of goroutines that sort the logs of one tenant when a flush builds a data object. One tenant often holds most of the bytes of a flush, so its sort is the longest step of the flush. A value of 1 sorts the ranges of a tenant one at a time. Each extra goroutine holds the memory of about one section. A flush can sort up to flush-concurrency objects at the same time.",
 	)
 	f.IntVar(
 		&cfg.PartitionID,

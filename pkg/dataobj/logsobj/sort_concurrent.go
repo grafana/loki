@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 
@@ -88,7 +89,7 @@ func streamIDsByRange(remap []rankedSortKey, ranges []rankRange) [][]int64 {
 // b.cfg.SortConcurrency goroutines, and appends their sections to b.builder in
 // range order. rangeIDs holds the stream IDs of each range, in sections. It
 // returns the totals of the appended records, for streams with IDs from 1 to
-// numStreams.
+// numStreams, and the number of duplicates that it dropped.
 //
 // A range waits for a slot before it starts, and frees its slot only once
 // its sections are in b.builder. So at most SortConcurrency ranges hold
@@ -105,10 +106,11 @@ func (b *Builder) sortRangesConcurrently(
 	rangeIDs [][]int64,
 	numStreams int,
 	newSection func() *logs.Builder,
-) (streamTotals, error) {
+) (streamTotals, int, error) {
 	var (
-		concurrency = b.cfg.SortConcurrency
+		concurrency = max(1, b.cfg.SortConcurrency)
 		totals      = newStreamTotals(numStreams)
+		duplicates  atomic.Int64
 		g, gctx     = errgroup.WithContext(ctx)
 		slots       = make(chan struct{}, concurrency)
 		free        = make(chan *logs.Builder, concurrency)
@@ -132,13 +134,14 @@ func (b *Builder) sortRangesConcurrently(
 				default:
 					lb = newSection()
 				}
-				encoded, err := b.sortRange(gctx, tenant, sections, remap, ids, lb, totals)
+				encoded, dropped, err := b.sortRange(gctx, tenant, sections, remap, ids, lb, totals)
 				if err != nil {
 					return fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
 				}
 				// free has room for every builder, because at most
 				// concurrency ranges run at a time.
 				free <- lb
+				duplicates.Add(int64(dropped))
 				sorted[i] <- encoded
 				return nil
 			})
@@ -167,14 +170,15 @@ func (b *Builder) sortRangesConcurrently(
 	})
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return totals, nil
+	return totals, int(duplicates.Load()), nil
 }
 
 // sortRange merges the records of the streams in streamIDs and encodes them
 // into sections, each about the target section size. It adds the records to
-// totals. lb must be empty and hold the tenant; sortRange leaves it empty.
+// totals, and it returns the number of duplicates that it dropped. lb must be
+// empty and hold the tenant; sortRange leaves it empty.
 // sortRange does not use b.builder, so it is safe to run on several goroutines
 // at once, as long as their streams differ.
 func (b *Builder) sortRange(
@@ -185,10 +189,10 @@ func (b *Builder) sortRange(
 	streamIDs []int64,
 	lb *logs.Builder,
 	totals streamTotals,
-) ([]*encodedSection, error) {
+) ([]*encodedSection, int, error) {
 	iter, err := mergeAndRemapLogsIter(ctx, sections, remap, streamIDs)
 	if err != nil {
-		return nil, fmt.Errorf("creating sort iterator: %w", err)
+		return nil, 0, fmt.Errorf("creating sort iterator: %w", err)
 	}
 
 	recorder := sectionRecorder{typ: lb.Type()}
@@ -196,10 +200,11 @@ func (b *Builder) sortRange(
 		_, err := lb.Flush(&recorder)
 		return err
 	}
-	if err := b.fillSections(ctx, iter, lb, tenant, totals, flush); err != nil {
-		return nil, err
+	dropped, err := b.fillSections(ctx, iter, lb, tenant, totals, flush)
+	if err != nil {
+		return nil, 0, err
 	}
-	return recorder.sections, nil
+	return recorder.sections, dropped, nil
 }
 
 // sectionRecorder is a [dataobj.SectionWriter] that keeps a copy of each

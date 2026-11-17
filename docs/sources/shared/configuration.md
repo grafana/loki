@@ -1087,9 +1087,10 @@ dataobj:
 
     # The maximum number of goroutines that sort the logs of one tenant when a
     # flush builds a data object. One tenant often holds most of the bytes of a
-    # flush, so its sort is the longest step of the flush. Each extra goroutine
-    # holds the memory of about one section. A flush can sort up to
-    # flush-concurrency objects at the same time.
+    # flush, so its sort is the longest step of the flush. A value of 1 sorts
+    # the ranges of a tenant one at a time. Each extra goroutine holds the
+    # memory of about one section. A flush can sort up to flush-concurrency
+    # objects at the same time.
     # CLI flag: -dataobj.builder.sort-concurrency
     [sort_concurrency: <int> | default = 1]
 

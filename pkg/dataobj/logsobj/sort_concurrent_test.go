@@ -204,9 +204,47 @@ func TestBuilder_SortRangesConcurrently(t *testing.T) {
 			lb.SetTenant("tenant")
 			return lb
 		}
-		_, err = sorter.sortRangesConcurrently(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
+		_, _, err = sorter.sortRangesConcurrently(t.Context(), "tenant", sections, remap, rangeIDs, 20, newSection)
 		require.ErrorContains(t, err, "missing stream ID remap")
 		require.Zero(t, sorter.builder.Bytes())
+	})
+}
+
+func TestCheckSortedRows(t *testing.T) {
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+	require.NoError(t, err)
+	now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
+	for i := range 50 {
+		require.NoError(t, builder.Append("tenant", logproto.Stream{
+			Labels:  fmt.Sprintf(`{pod="pod-%d"}`, i%5),
+			Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: "line"}},
+		}, now))
+	}
+	src, closer, err := builder.flushWithoutLayout()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	var sections []*dataobj.Section
+	for _, sec := range src.Sections().Filter(logs.CheckSection) {
+		sections = append(sections, sec)
+	}
+
+	totalsOf := func(rows int) streamTotals {
+		totals := newStreamTotals(5)
+		totals[1].rows = rows
+		return totals
+	}
+
+	t.Run("accepts the rows of the input", func(t *testing.T) {
+		require.NoError(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(50), 0))
+	})
+
+	t.Run("accepts the rows of the input when the sort dropped duplicates", func(t *testing.T) {
+		require.NoError(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(45), 5))
+	})
+
+	t.Run("returns an error when the sort lost rows of a stream that the streams section does not list", func(t *testing.T) {
+		require.ErrorContains(t, checkSortedRows(t.Context(), "tenant", sections, totalsOf(48), 0), "the input holds 50 rows")
 	})
 }
 

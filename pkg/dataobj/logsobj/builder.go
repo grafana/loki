@@ -85,9 +85,9 @@ type BuilderBaseConfig struct {
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
 	// SortConcurrency is the maximum number of goroutines that sort the logs of
-	// one tenant in FlushAndSort. A value of 1 or less sorts on one goroutine.
-	// Each extra goroutine holds the memory of about one section. The dataobj
-	// builder sets it, so it has no flag here.
+	// one tenant in FlushAndSort. A value of 1 or less sorts the stream ranges
+	// of a tenant one at a time. Each extra goroutine holds the memory of about
+	// one section. The dataobj builder sets it, so it has no flag here.
 	SortConcurrency int `yaml:"-"`
 
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
@@ -692,24 +692,12 @@ func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[str
 			return lb
 		}
 
-		var (
-			totals streamTotals
-			ranges []rankRange
-		)
-		if b.cfg.SortConcurrency > 1 {
-			ranges = planSortRanges(rankSizes, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
-		}
-		if len(ranges) > 1 {
-			totals, err = b.sortRangesConcurrently(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
-		} else {
-			var logsIter result.Seq[logs.Record]
-			logsIter, err = mergeAndRemapLogsIter(ctx, sections, remappedStreams, nil)
-			if err != nil {
-				return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
-			}
-			totals, err = b.drainLogsIter(ctx, logsIter, newSection(), tenant, numStreams)
-		}
+		ranges := planSortRanges(rankSizes, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
+		totals, duplicates, err := b.sortRangesConcurrently(ctx, tenant, sections, remappedStreams, streamIDsByRange(remappedStreams, ranges), numStreams, newSection)
 		if err != nil {
+			return nil, nil, err
+		}
+		if err := checkSortedRows(ctx, tenant, sections, totals, duplicates); err != nil {
 			return nil, nil, err
 		}
 
@@ -775,26 +763,13 @@ func (b *Builder) Reset() {
 	b.state = builderStateEmpty
 }
 
-// drainLogsIter consumes iter, appending each record to lb and flushing
-// completed sections to b.builder whenever the section size target is exceeded.
-// It appends the final (possibly partial) section after the iterator is exhausted.
-//
-// If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
-// yield the records of each stream and timestamp together, as
-// [logs.DuplicateTracker] requires.
-//
-// drainLogsIter returns the totals of the appended records. The stream IDs of
-// the records must be in [1, numStreams].
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, numStreams int) (streamTotals, error) {
-	totals := newStreamTotals(numStreams)
-	err := b.fillSections(ctx, iter, lb, tenant, totals, func(lb *logs.Builder) error { return b.builder.Append(lb) })
-	return totals, err
-}
-
 // fillSections consumes iter and appends each record to lb. It passes lb to
 // flush whenever the section size target is exceeded and once more after iter
 // ends, and it resets lb after each flush. It adds each appended record to
-// totals, and it skips duplicates as drainLogsIter does.
+// totals, and with DropDuplicates set it skips duplicate records. It returns the number of records that it skipped. iter must
+// yield the records of each stream and timestamp together, as
+// [logs.DuplicateTracker] requires. The stream IDs of the records must be in
+// [1, len(totals)-1].
 //
 // fillSections writes only the entries of totals for the streams in iter, so
 // several calls can fill one totals at the same time if their streams differ.
@@ -805,36 +780,66 @@ func (b *Builder) fillSections(
 	tenant string,
 	totals streamTotals,
 	flush func(*logs.Builder) error,
-) error {
-	var duplicates logs.DuplicateTracker
+) (duplicates int, err error) {
+	var tracker logs.DuplicateTracker
 	for rec := range iter {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return tracker.Duplicates(), ctx.Err()
 		default:
 		}
 		val, err := rec.Value()
 		if err != nil {
-			return err
+			return tracker.Duplicates(), err
 		}
-		if b.cfg.DropDuplicates && duplicates.IsDuplicate(val) {
+		if b.cfg.DropDuplicates && tracker.IsDuplicate(val) {
 			continue
 		}
 		totals.add(val)
 		lb.Append(val)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := flush(lb); err != nil {
-				return err
+				return tracker.Duplicates(), err
 			}
 			lb.Reset()
 			lb.SetTenant(tenant)
 		}
 	}
 	if err := flush(lb); err != nil {
-		return err
+		return tracker.Duplicates(), err
 	}
 	lb.Reset()
 	lb.SetTenant(tenant)
+	return tracker.Duplicates(), nil
+}
+
+// checkSortedRows returns an error unless the rows in totals plus the dropped
+// duplicates equal the rows of the input sections. The sort reads only the
+// streams that the streams section lists, so a row of another stream would
+// otherwise vanish without an error.
+func checkSortedRows(ctx context.Context, tenant string, sections []*dataobj.Section, totals streamTotals, duplicates int) error {
+	var input uint64
+	for _, sec := range sections {
+		logsSection, err := logs.Open(ctx, sec)
+		if err != nil {
+			return fmt.Errorf("opening logs section of tenant %s: %w", tenant, err)
+		}
+		stats, err := logs.ReadStats(ctx, logsSection)
+		if err != nil {
+			return fmt.Errorf("reading logs section stats of tenant %s: %w", tenant, err)
+		}
+		if len(stats.Columns) > 0 {
+			input += stats.Columns[0].RowsCount
+		}
+	}
+
+	var sorted uint64
+	for _, total := range totals {
+		sorted += uint64(total.rows)
+	}
+	if sorted+uint64(duplicates) != input {
+		return fmt.Errorf("sorted %d rows and dropped %d duplicates for tenant %s, but the input holds %d rows", sorted, duplicates, tenant, input)
+	}
 	return nil
 }
 

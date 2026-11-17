@@ -46,18 +46,10 @@ func sortKeys(remap []rankedSortKey) []streams.SortKey {
 // mergeAndRemapLogsIter merges sections which are ordered by the sort keys in
 // remap, injects sort-key sidecars, and rewrites their stream IDs to rank.
 //
-// A nil streamIDs merges every record. Otherwise it merges only the records of
-// those streams, given by their stream IDs in sections.
+// It merges only the records of the streams in streamIDs, given by their stream
+// IDs in sections.
 func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedSortKey, streamIDs []int64) (result.Seq[logs.Record], error) {
-	var (
-		iter result.Seq[logs.Record]
-		err  error
-	)
-	if streamIDs == nil {
-		iter, err = sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap))
-	} else {
-		iter, err = sortmerge.SchemaSortedStreamsIterator(ctx, sections, sortKeys(remap), streamIDs)
-	}
+	iter, err := sortmerge.SchemaSortedStreamsIterator(ctx, sections, sortKeys(remap), streamIDs)
 	if err != nil {
 		return nil, err
 	}
