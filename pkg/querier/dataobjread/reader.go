@@ -253,20 +253,21 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 
 	// A panic in sendBatches drops the batch that it held. The garbage collector frees that
 	// batch, and the outer recover reports the panic itself.
-	batch, err := r.sendBatches(ctx, reader, task, make([]logs.Record, batchSize))
+	batch, err := r.sendBatches(ctx, reader, task, batchSize)
 	if batch != nil {
 		r.batchPool.put(batch)
 	}
 	return err
 }
 
-// sendBatches reads the rows of reader into rows and sends one batch of records per Read call
-// that returns rows. A send passes the batch to the consumer, which owns it from then on.
+// sendBatches reads up to batchSize rows of reader at a time, and sends one batch of records per
+// Read call that returns rows. A send passes the batch to the consumer, which owns it from then on.
 //
 // When sendBatches fails after it took a batch from the pool and did not send it, it returns
 // that batch, and the caller must return it to the pool. It never returns a batch that it sent,
 // because the consumer could then read lines that a scan copies into the same memory.
-func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, rows []logs.Record) (*readBatch, error) {
+func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, batchSize int) (*readBatch, error) {
+	rows := make([]logs.Record, batchSize)
 	for {
 		n, readErr := reader.Read(ctx, rows)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
