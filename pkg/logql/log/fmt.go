@@ -361,9 +361,9 @@ func readsAllFields(nodes []parse.Node) bool {
 				return true
 			}
 		case *parse.TemplateNode:
-			if n.Pipe != nil && readsAllFields([]parse.Node{n.Pipe}) {
-				return true
-			}
+			// The body of a named template is not part of the tree, so the fields it reads are
+			// unknown, and so are those of its argument.
+			return true
 		case *parse.IfNode:
 			if readsAllFieldsInBranch(n.BranchNode) {
 				return true

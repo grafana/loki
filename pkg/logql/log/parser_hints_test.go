@@ -805,6 +805,8 @@ func TestNewParserHint_ShouldExtractEveryFieldWhenATemplateReadsAllOfThem(t *tes
 		"line_format with range over the data":    {stages: log.Stages{lineFormat(`{{ range $k, $v := . }}{{ $k }}{{ end }}`)}, wantEveryField: true},
 		"line_format with the root as an operand": {stages: log.Stages{lineFormat(`{{ printf "%v" $ }}`)}, wantEveryField: true},
 		"line_format with index in a branch":      {stages: log.Stages{lineFormat(`{{ if .a }}{{ index . "b" }}{{ end }}`)}, wantEveryField: true},
+		"line_format calling a named template":    {stages: log.Stages{lineFormat(`{{define "echo"}}{{.}}{{end}}{{template "echo" .a}}`)}, wantEveryField: true},
+		"label_format calling a named template":   {stages: log.Stages{labelFormat(log.NewTemplateLabelFmt("z", `{{define "echo"}}{{.}}{{end}}{{template "echo" .a}}`))}, wantEveryField: true},
 		"label_format renaming":                   {stages: log.Stages{labelFormat(log.NewRenameLabelFmt("z", "a"))}},
 		"label_format with a template":            {stages: log.Stages{labelFormat(log.NewTemplateLabelFmt("z", `{{.a}}`))}},
 		"label_format with index":                 {stages: log.Stages{labelFormat(log.NewRenameLabelFmt("y", "a"), log.NewTemplateLabelFmt("z", `{{ index . "a" }}`))}, wantEveryField: true},
