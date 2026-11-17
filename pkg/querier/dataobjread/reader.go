@@ -118,9 +118,7 @@ func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator
 		capture:   xcap.CaptureFromContext(ctx),
 		statsCtx:  stats.FromContext(ctx),
 		batches:   make(chan *readBatch, maxConcurrency),
-		// At most 2*maxConcurrency+1 batches exist: at most one per scan, maxConcurrency queued,
-		// and one at the consumer. The pool holds them all, so put never overflows.
-		batchPool: newReadBatchPool(2*maxConcurrency+1, batchSize),
+		batchPool: newReadBatchPool(batchSize),
 		stopped:   make(chan struct{}),
 		cancel:    cancel,
 	}
@@ -308,19 +306,11 @@ func (r *LogReader) Next() bool {
 		// Stop the planner too: it must not keep planning objects for a query that has
 		// already failed.
 		r.tasks.Abort(err)
-
-		// The consumer reads no further batch, so free the pooled ones. Scans that are still
-		// running can refill the pool, and Close drains it again.
-		r.batchPool.drain()
 		return false
 	}
 	// A scan sends only batches with records, so the new batch has a record at position 0.
 	batch, ok := <-r.batches
 	if !ok {
-		// The channel closes only after every scan has exited. A scan returns an unsent batch to
-		// the pool, or drops it when it panics, so no batch is in use. Free the pooled batches
-		// now, because the closed reader can stay reachable until the query ends.
-		r.batchPool.drain()
 		return false
 	}
 	r.currBatch = batch
@@ -384,12 +374,10 @@ func (r *LogReader) Close() error {
 	r.cancel()
 	<-r.stopped
 
-	// The scans have exited, so nothing fills a batch again. Free the queued and pooled
-	// batches, because the closed reader can stay reachable until the query ends. The consumer
-	// returns its current batch when Next moves past the last record of the batch.
+	// The scans have exited, so nothing fills a batch again. Drop the queued batches, because the
+	// closed reader can stay reachable until the query ends.
 	for range r.batches {
 	}
-	r.batchPool.drain()
 
 	r.recordStats()
 	r.objects.release()
@@ -511,71 +499,41 @@ func (b *readBatch) reset() {
 // readBatchPool recycles read batches between the scans and the consumer, so a fill can reuse a
 // region instead of allocating one.
 //
-// The pool holds at most capacity batches, and get allocates a new batch when the pool is empty.
-// The caller sets capacity to the number of batches that can exist at once, so put never finds
-// the pool full.
+// Each [LogReader] owns its pool. A GC frees the batches that stay idle in the pool, so the pool
+// gives memory back under pressure and keeps nothing alive after the reader is gone.
 //
 // readBatchPool is safe for concurrent use.
-//
-// readBatchPool does not use sync.Pool, for three reasons:
-//   - A GC can drop the items of a sync.Pool during a query, which forces new allocations.
-//   - A package-level sync.Pool would keep line memory alive after the query ends, until two
-//     GC cycles pass.
-//   - sync.Pool has no capacity, so it cannot report a full pool.
-//
-// A per-reader channel frees its batches with the reader, and its capacity matches the bound
-// on live batches.
 type readBatchPool struct {
-	free      chan *readBatch
-	batchSize int
+	free sync.Pool
 }
 
-func newReadBatchPool(capacity, batchSize int) *readBatchPool {
-	return &readBatchPool{free: make(chan *readBatch, capacity), batchSize: batchSize}
+func newReadBatchPool(batchSize int) *readBatchPool {
+	p := &readBatchPool{}
+	p.free.New = func() any {
+		return &readBatch{records: make([]LogRecord, 0, batchSize)}
+	}
+	return p
 }
 
 // get returns a batch with no records.
 func (p *readBatchPool) get() *readBatch {
-	select {
-	case batch := <-p.free:
-		batch.pooled = false
-		return batch
-	default:
-		return &readBatch{records: make([]LogRecord, 0, p.batchSize)}
-	}
+	batch := p.free.Get().(*readBatch)
+	batch.pooled = false
+	return batch
 }
 
 // put returns batch to the pool. The caller must not use batch or its records after put.
 //
-// put panics in two cases that mean the ownership rules broke:
-//   - a second put of batch before the next get, and
-//   - a full pool, which means that more batches exist than the caller sized the pool for.
-//
-// Neither check catches every batch with two owners. That rule rests on the scans, which send a
-// batch or return it to the pool, never both.
+// put panics on a second put of batch before the next get, because the ownership rules broke.
+// The check does not catch every batch with two owners. That rule rests on the scans, which send
+// a batch or return it to the pool, never both.
 func (p *readBatchPool) put(batch *readBatch) {
 	if batch.pooled {
 		panic("dataobjread: read batch returned to the pool twice")
 	}
 	batch.reset()
 	batch.pooled = true
-
-	select {
-	case p.free <- batch:
-	default:
-		panic("dataobjread: read batch pool is full, so a batch has more than one owner")
-	}
-}
-
-// drain removes every batch from the pool, so the garbage collector can free them.
-func (p *readBatchPool) drain() {
-	for {
-		select {
-		case <-p.free:
-		default:
-			return
-		}
-	}
+	p.free.Put(batch)
 }
 
 // recordReader is the reader the sample iterator consumes.

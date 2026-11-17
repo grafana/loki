@@ -94,7 +94,7 @@ func TestLogReader(t *testing.T) {
 		}
 	})
 
-	t.Run("a long read uses no more batches than the pool holds", func(t *testing.T) {
+	t.Run("a long read reuses batches", func(t *testing.T) {
 		var (
 			streams []logproto.Stream
 			lines   int
@@ -122,10 +122,10 @@ func TestLogReader(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 		require.Equal(t, lines, read)
-		require.LessOrEqual(t, len(batches), 2*maxConcurrency+1)
+		require.Less(t, len(batches), read/2)
 	})
 
-	t.Run("a reader that yields every record frees every batch", func(t *testing.T) {
+	t.Run("a reader that yields every record holds no batch", func(t *testing.T) {
 		var entries []push.Entry
 		for i := range 10 {
 			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
@@ -135,11 +135,10 @@ func TestLogReader(t *testing.T) {
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
 		require.Len(t, drainReader(reader), len(entries))
 		require.Nil(t, reader.currBatch)
-		require.Empty(t, reader.batchPool.free)
 		require.NoError(t, reader.Close())
 	})
 
-	t.Run("closing a reader before it yields every record frees the queued and pooled batches", func(t *testing.T) {
+	t.Run("closing a reader before it yields every record drops the queued batches", func(t *testing.T) {
 		var entries []push.Entry
 		for i := range 10 {
 			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
@@ -150,11 +149,9 @@ func TestLogReader(t *testing.T) {
 		require.True(t, reader.Next())
 		require.NoError(t, reader.Close())
 		require.Empty(t, reader.batches)
-		require.Empty(t, reader.batchPool.free)
 
 		require.False(t, reader.Next())
 		require.Nil(t, reader.currBatch)
-		require.Empty(t, reader.batchPool.free)
 	})
 
 	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
@@ -227,7 +224,6 @@ func TestLogReader(t *testing.T) {
 		drainReader(reader)
 		require.Error(t, reader.Err(), "a failed scan must not be reported as success")
 		require.Error(t, reader.Close())
-		require.Empty(t, reader.batchPool.free)
 	})
 
 	t.Run("a cancelled context is reported rather than looking like a clean end", func(t *testing.T) {
@@ -470,51 +466,19 @@ func TestReadBatch_Fill(t *testing.T) {
 	})
 }
 
-func TestReadBatchPool_Get(t *testing.T) {
-	const batchSize = 4
-
-	t.Run("on an empty pool it returns a new batch with no records", func(t *testing.T) {
-		pool := newReadBatchPool(1, batchSize)
-
-		batch := pool.get()
-		require.Empty(t, batch.records)
-		require.Equal(t, batchSize, cap(batch.records))
-	})
-
-	t.Run("after a put it returns the same batch, which reuses its line region", func(t *testing.T) {
-		const streamID = int64(7)
-		task := lineTask(t, streamID)
-		pool := newReadBatchPool(1, batchSize)
-		batch := pool.get()
-		require.NoError(t, batch.fill(task, rowsOf(streamID, "first")))
-		require.Len(t, batch.records, 1)
-		region := &batch.records[0].line[0]
-
-		pool.put(batch)
-		recycled := pool.get()
-		require.Same(t, batch, recycled)
-		require.NoError(t, recycled.fill(task, rowsOf(streamID, "other")))
-		require.Len(t, recycled.records, 1)
-		require.Same(t, region, &recycled.records[0].line[0])
-	})
-}
-
-func TestReadBatchPool_Put(t *testing.T) {
-	const (
-		batchSize = 4
-		streamID  = int64(7)
-	)
+func TestReadBatch_Reset(t *testing.T) {
+	const streamID = int64(7)
 	task := lineTask(t, streamID)
 
-	t.Run("it drops the records", func(t *testing.T) {
-		pool := newReadBatchPool(1, batchSize)
-		batch := pool.get()
-		batch.records = append(batch.records, LogRecord{
-			streamLabels: labels.FromStrings("app", "a"),
-			metadata:     labels.FromStrings("level", "error"),
-		})
+	t.Run("it drops the records, including those past their length", func(t *testing.T) {
+		batch := readBatch{records: make([]LogRecord, 0, 4)}
+		batch.records = append(batch.records,
+			LogRecord{streamLabels: labels.FromStrings("app", "a"), metadata: labels.FromStrings("level", "error")},
+			LogRecord{streamLabels: labels.FromStrings("app", "b"), metadata: labels.FromStrings("level", "info")},
+		)
+		batch.records = batch.records[:1]
 
-		pool.put(batch)
+		batch.reset()
 		require.Empty(t, batch.records)
 		for _, record := range batch.records[:cap(batch.records)] {
 			require.Equal(t, LogRecord{}, record)
@@ -522,61 +486,79 @@ func TestReadBatchPool_Put(t *testing.T) {
 	})
 
 	t.Run("it releases the line region that the last fill did not use", func(t *testing.T) {
-		pool := newReadBatchPool(1, batchSize)
-		batch := pool.get()
+		var batch readBatch
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "short")))
-		pool.put(batch)
+		batch.reset()
 
-		batch = pool.get()
 		long := strings.Repeat("x", 100)
 		require.NoError(t, batch.fill(task, rowsOf(streamID, long)))
 		withBoth := batch.linesAlloc.AllocatedBytes()
 
-		pool.put(batch)
+		batch.reset()
 		require.Less(t, batch.linesAlloc.AllocatedBytes(), withBoth)
 		require.GreaterOrEqual(t, batch.linesAlloc.AllocatedBytes(), len(long))
 	})
 
 	t.Run("it keeps the line region after a fill that copied no line", func(t *testing.T) {
-		pool := newReadBatchPool(1, batchSize)
-		batch := pool.get()
+		var batch readBatch
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "first")))
-		pool.put(batch)
+		batch.reset()
 		allocated := batch.linesAlloc.AllocatedBytes()
 
-		batch = pool.get()
 		require.NoError(t, batch.fill(task, rowsOf(streamID, "")))
-		pool.put(batch)
+		batch.reset()
 		require.Equal(t, allocated, batch.linesAlloc.AllocatedBytes())
+	})
+}
+
+func TestReadBatchPool_Get(t *testing.T) {
+	const batchSize = 4
+
+	t.Run("on an empty pool it returns a new batch with no records", func(t *testing.T) {
+		pool := newReadBatchPool(batchSize)
+
+		batch := pool.get()
+		require.Empty(t, batch.records)
+		require.Equal(t, batchSize, cap(batch.records))
+		require.False(t, batch.pooled)
+	})
+
+	t.Run("after a put a later get returns the put batch, though sync.Pool may drop some puts", func(t *testing.T) {
+		pool := newReadBatchPool(batchSize)
+
+		var reused bool
+		for range 100 {
+			batch := pool.get()
+			pool.put(batch)
+			if recycled := pool.get(); recycled == batch {
+				require.False(t, recycled.pooled)
+				reused = true
+				break
+			}
+		}
+		require.True(t, reused)
+	})
+}
+
+func TestReadBatchPool_Put(t *testing.T) {
+	const batchSize = 4
+
+	t.Run("it resets the batch and marks it as pooled", func(t *testing.T) {
+		pool := newReadBatchPool(batchSize)
+		batch := pool.get()
+		batch.records = append(batch.records, LogRecord{streamLabels: labels.FromStrings("app", "a")})
+
+		pool.put(batch)
+		require.Empty(t, batch.records)
+		require.True(t, batch.pooled)
 	})
 
 	t.Run("it panics when the batch is already in the pool", func(t *testing.T) {
-		pool := newReadBatchPool(2, batchSize)
+		pool := newReadBatchPool(batchSize)
 		batch := pool.get()
 		pool.put(batch)
 
 		require.PanicsWithValue(t, "dataobjread: read batch returned to the pool twice", func() { pool.put(batch) })
-	})
-
-	t.Run("it panics when the pool is full", func(t *testing.T) {
-		pool := newReadBatchPool(1, batchSize)
-		first, second := pool.get(), pool.get()
-		pool.put(first)
-
-		require.PanicsWithValue(t, "dataobjread: read batch pool is full, so a batch has more than one owner", func() { pool.put(second) })
-	})
-}
-
-func TestReadBatchPool_Drain(t *testing.T) {
-	t.Run("it removes every batch from the pool", func(t *testing.T) {
-		pool := newReadBatchPool(2, 4)
-		first, second := pool.get(), pool.get()
-		pool.put(first)
-		pool.put(second)
-
-		pool.drain()
-		require.Empty(t, pool.free)
-		require.NotSame(t, first, pool.get())
 	})
 }
 
