@@ -30,7 +30,8 @@ const maxLoggedHintRanges = 10
 const hintRangeTimeFormat = "2006-01-02T15:04:05.000Z07:00"
 
 // HintSourcePreMinDate marks synthetic diagnostic provenance for ranges
-// representing query windows before store min_date. This must not be used for
+// representing query windows before the provider's MinDate: the store's
+// min_date, or the index retention cutoff when it is later. This must not be used for
 // required behavior because Source is intentionally omitted from cache payloads.
 const HintSourcePreMinDate = "pre_min_date"
 

@@ -7,7 +7,7 @@ Singleton compaction scheduler, run by the `logline-scheduler` target. Polls obj
 The scheduler has no config section of its own. `Config` is assembled from `logline.compaction` and `logline.retention`, which are named after what they control so they survive implementation moves. New settings go into those sections, never into a section named after this package.
 
 - `logline.compaction.job_state_dir` is required and must be durable (see invariant 3 and 5).
-- The retention period is not config: it comes from `limits.Limits`, the longest `limits_config.retention_period` across tenants.
+- The retention period is not config: it comes from `limits.Limits`, the longest `limits_config.retention_period` across tenants. The query-frontend reads the same limit and passes through data older than the cutoff, because its index may be gone. A change to how this cutoff is computed must change both.
 - The long poll timeout is `schedulerapi.LongPollTimeout`, a constant shared with the compactor. `Service.longPollTimeout` exists only so tests can shorten it.
 
 ## Invariants

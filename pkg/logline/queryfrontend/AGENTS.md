@@ -58,6 +58,10 @@ the querier rejects it.
   with `X-Logline-Index: live` skips that byte threshold. Dry-run, and live mode from
   the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
+- **Index retention**: `Deps.IndexRetention` gives the hint provider the retention
+  the scheduler deletes indexes by, and `pkg/loki` builds it from every tenant's
+  limits like the scheduler does. Data older than the cutoff is treated like data
+  before `min_date`, so it passes through as pre-min-date (hintprovider invariant 19).
 - **`max_conjunctions`** (default 1) bounds the needle sets a query is planned
   into. The frontend uses it for the eligibility check, the hint cache key and
   the plan, and sends the planned needles to the querier in

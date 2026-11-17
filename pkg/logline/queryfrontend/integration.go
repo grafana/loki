@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -63,6 +64,11 @@ type Deps struct {
 	ResultsCache cache.Config
 	// QueryIngestersWithin is querier.query_ingesters_within.
 	QueryIngestersWithin time.Duration
+	// IndexRetention reports the retention the logline scheduler deletes
+	// indexes by, the longest retention_period across tenants. Queries pass
+	// through data older than that instead of looking up indexes that may be
+	// gone. Nil means indexes are kept forever.
+	IndexRetention loglinelimits.Limits
 }
 
 type identityMiddleware struct{}
@@ -184,6 +190,9 @@ func WrapMiddlewareWithStore(
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)
+	}
+	if deps.IndexRetention != nil {
+		baseHintProvider.SetRetention(deps.IndexRetention)
 	}
 
 	var hintCache cache.Cache
