@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -61,23 +62,48 @@ func Test_bitmap(t *testing.T) {
 	}
 }
 
-func Test_bitmapDecoder_TruncatedData(t *testing.T) {
+func Test_bitmapDecoder_MalformedData(t *testing.T) {
 	tests := []struct {
-		name string
-		data []byte
+		name    string
+		data    []byte
+		decoded int // Values that Decode returns before the error.
+		err     string
 	}{
 		{
-			name: "rle_missing_value",
-			data: []byte{0x02}, // rle run length 1, missing value
+			name: "the data ends inside a run header",
+			data: []byte{0x81}, // The header of a bitpacked run is the two bytes 0x81 0x01.
+			err:  "bitmap: truncated run header at offset 0",
 		},
 		{
-			name: "bitpack_missing_set",
-			data: []byte{0x81}, // bitpack header for 1 set, missing data byte
+			name: "a run header is longer than the longest uvarint",
+			data: bytes.Repeat([]byte{0xff}, binary.MaxVarintLen64+2),
+			err:  "bitmap: malformed run header at offset 0",
+		},
+		{
+			name: "an RLE run has no value",
+			data: []byte{0x02}, // RLE run of length 1, missing value.
+			err:  "bitmap: truncated RLE value at offset 1",
+		},
+		{
+			name: "the value of an RLE run is longer than the longest uvarint",
+			data: append([]byte{0x02}, bytes.Repeat([]byte{0xff}, binary.MaxVarintLen64+2)...),
+			err:  "bitmap: malformed RLE value at offset 1",
+		},
+		{
+			name: "a bitpacked run has no set",
+			data: []byte{0x81, 0x01}, // Header of 1 set of width 1, missing the set.
+			err:  "bitmap: truncated bitpacked set at offset 2",
+		},
+		{
+			name:    "a run header after a valid run is truncated",
+			data:    []byte{0x0a, 0x01, 0x81}, // RLE run of 5 ones, then half a header.
+			decoded: 5,
+			err:     "bitmap: truncated run header at offset 2",
 		},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run("returns an error when "+tc.name, func(t *testing.T) {
 			dec := newBitmapDecoder(tc.data)
 			var alloc memory.Allocator
 
@@ -91,8 +117,8 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 
 			bm, ok := res.(*columnar.Bool)
 			require.True(t, ok)
-			require.ErrorIs(t, err, io.EOF)
-			require.Zero(t, bm.Len())
+			require.EqualError(t, err, tc.err)
+			require.Equal(t, tc.decoded, bm.Len())
 		})
 	}
 }

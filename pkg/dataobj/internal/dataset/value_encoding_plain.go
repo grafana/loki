@@ -97,7 +97,11 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 }
 
 // Decode decodes up to count values using the provided allocator to store the
-// At the end of the stream, Decode returns nil, [io.EOF].
+// values. At the end of the stream, Decode returns nil, [io.EOF].
+//
+// If the data ends before count values, Decode returns the values that exist
+// together with [io.EOF]. If a length prefix is truncated or malformed, or a
+// value runs past the end of the data, Decode returns an error and no values.
 //
 // The return value is a [columnar.UTF8].
 func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
@@ -136,8 +140,10 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 
 	for i := range count {
 		stringSize, uvarintSize := binary.Uvarint(data[off:])
-		if uvarintSize <= 0 {
-			if i == 0 {
+		if uvarintSize <= 0 || stringSize > uint64(len(data)-off-uvarintSize) {
+			if err := plainValueError(data, off, stringSize, uvarintSize); err != nil {
+				return nil, err
+			} else if i == 0 {
 				return nil, io.EOF
 			}
 
@@ -162,8 +168,9 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 	), nil
 }
 
-// Skip implements [valueDecoder]. A malformed or truncated length prefix ends
-// the data. Skip does not check that a value fits in the data.
+// Skip implements [valueDecoder]. It returns an error and the number of values
+// it skipped before the malformed one if a length prefix is truncated or
+// malformed, or if a value runs past the end of the data.
 func (dec *plainBytesDecoder) Skip(count int) (int, error) {
 	var (
 		data = dec.data
@@ -173,8 +180,9 @@ func (dec *plainBytesDecoder) Skip(count int) (int, error) {
 	)
 	for skipped < count {
 		stringSize, uvarintSize := binary.Uvarint(data[off:])
-		if uvarintSize <= 0 {
-			break
+		if uvarintSize <= 0 || stringSize > uint64(len(data)-off-uvarintSize) {
+			dec.off = off
+			return skipped, plainValueError(data, off, stringSize, uvarintSize)
 		}
 		off += uvarintSize + int(stringSize)
 		skipped++
@@ -188,4 +196,20 @@ func (dec *plainBytesDecoder) Skip(count int) (int, error) {
 func (dec *plainBytesDecoder) Reset(data []byte) {
 	dec.data = data
 	dec.off = 0
+}
+
+// plainValueError returns the error for the value at off in data, whose length
+// prefix is stringSize and takes uvarintSize bytes. It returns nil if the data
+// ends at off.
+func plainValueError(data []byte, off int, stringSize uint64, uvarintSize int) error {
+	switch {
+	case uvarintSize == 0 && off == len(data):
+		return nil
+	case uvarintSize == 0:
+		return fmt.Errorf("plain: truncated value length at offset %d", off)
+	case uvarintSize < 0:
+		return fmt.Errorf("plain: malformed value length at offset %d", off)
+	default:
+		return fmt.Errorf("plain: value of %d bytes at offset %d runs past the end of the data", stringSize, off)
+	}
 }

@@ -51,10 +51,9 @@ type valueDecoder interface {
 	// If the data ends before count values, Skip returns the number it skipped
 	// and a nil error, not io.EOF. If count is 0 or less, Skip skips no value.
 	//
-	// Skip stops early at data that it cannot parse, as Decode does. It does not
-	// check that the data is consistent, so malformed data can make a later call
-	// to Skip or Decode fail. A decoder that does not support skipping returns an
-	// error.
+	// If the data is malformed, Skip returns an error together with the number of
+	// values it skipped before the error. A decoder that does not support
+	// skipping also returns an error.
 	Skip(count int) (int, error)
 
 	// Reset discards any state and resets the decoder to read from data.

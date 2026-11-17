@@ -186,13 +186,20 @@ func Test_pageReader_SkipRows(t *testing.T) {
 		require.Equal(t, rows[4:], readNullableStrings(rest))
 	})
 
-	t.Run("returns an error when the page holds fewer values than its presence bitmap", func(t *testing.T) {
-		// Drop the last value (2 bytes) and recompute the checksum, so the page
-		// still opens.
+	// truncatedPageReader returns a reader of a page of 5 values, each of 1 byte
+	// with a 1-byte length prefix, without the last n bytes of its value data. The
+	// checksum is recomputed, so the page still opens.
+	truncatedPageReader := func(t *testing.T, n int) *pageReader {
+		t.Helper()
+
 		page := buildPage(t, uncompressedOpts, []string{"a", "b", "c", "d", "e"})
-		page.Data = page.Data[:len(page.Data)-2]
+		page.Data = page.Data[:len(page.Data)-n]
 		page.Desc.CRC32 = crc32.Checksum(page.Data, checksumTable)
-		pr := newPageReader(page, uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
+		return newPageReader(page, uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
+	}
+
+	t.Run("returns an error when the page holds fewer values than its presence bitmap", func(t *testing.T) {
+		pr := truncatedPageReader(t, 2)
 
 		_, err := pr.Seek(5, io.SeekStart)
 		require.NoError(t, err)
@@ -200,6 +207,27 @@ func Test_pageReader_SkipRows(t *testing.T) {
 		var alloc memory.Allocator
 		arr, err := pr.Read(t.Context(), &alloc, 1)
 		require.EqualError(t, err, "unexpected number of skipped values: 4, expected: 5")
+		require.Nil(t, arr)
+	})
+
+	t.Run("returns an error when a read value runs past the end of the page", func(t *testing.T) {
+		pr := truncatedPageReader(t, 1)
+
+		var alloc memory.Allocator
+		arr, err := pr.Read(t.Context(), &alloc, 5)
+		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
+		require.Nil(t, arr)
+	})
+
+	t.Run("returns an error when a skipped value runs past the end of the page", func(t *testing.T) {
+		pr := truncatedPageReader(t, 1)
+
+		_, err := pr.Seek(5, io.SeekStart)
+		require.NoError(t, err)
+
+		var alloc memory.Allocator
+		arr, err := pr.Read(t.Context(), &alloc, 1)
+		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
 		require.Nil(t, arr)
 	})
 }
