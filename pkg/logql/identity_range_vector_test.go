@@ -116,6 +116,49 @@ func TestIdentityBatchRangeVectorIterator_ShouldDropASeriesOnceItsLastSampleLeav
 	}, drainSeriesCounts(t, it))
 }
 
+func TestIdentityBatchRangeVectorIterator_ShouldDropASeriesWithANegativeTimestampOnceItLeavesTheWindow(t *testing.T) {
+	sec := func(s int64) int64 { return s * int64(time.Second) }
+	expr := mustRangeAggregation(t, `count_over_time({app="a"}[10s])`)
+	input := withValue([]labeledSample{{`{app="a"}`, sec(-20)}}, 1)
+
+	for name, newIterator := range map[string]func() (RangeVectorIterator, error){
+		"batch": func() (RangeVectorIterator, error) {
+			return newTimestampFirstRangeVectorIterator(newTimestampOrderedIterator(input), expr, sec(10), sec(5), sec(-15), sec(5), 0, iteratorLimits{})
+		},
+		"identity only": func() (RangeVectorIterator, error) {
+			return newTimestampFirstIdentityRangeVectorIterator(newTimestampOrderedIterator(input), expr, sec(10), sec(5), sec(-15), sec(5), 0, iteratorLimits{})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			it, err := newIterator()
+			require.NoError(t, err)
+			require.Equal(t, map[int64]int{-15_000: 1}, drainSeriesCounts(t, it))
+		})
+	}
+}
+
+func TestIdentityBatchRangeVectorIterator_ShouldNotKeepSeriesThatLeftTheWindow(t *testing.T) {
+	sec := func(s int64) int64 { return s * int64(time.Second) }
+	expr := mustRangeAggregation(t, `count_over_time({app="a"}[10s])`)
+
+	// Every second there is a series that never comes back.
+	var samples []labeledSample
+	for i := int64(1); i <= 100; i++ {
+		samples = append(samples, labeledSample{fmt.Sprintf(`{app="a", id="%d"}`, i), sec(i)})
+	}
+	it, err := newTimestampFirstIdentityRangeVectorIterator(newTimestampOrderedIterator(withValue(samples, 1)), expr, sec(10), sec(1), sec(1), sec(100), 0, iteratorLimits{})
+	require.NoError(t, err)
+	identity := it.(*identityBatchRangeVectorIterator)
+
+	for identity.Next() {
+		_, vec := identity.At()
+		require.LessOrEqual(t, len(identity.lastSeen), 10)
+		require.LessOrEqual(t, len(vec.SampleVector()), 10)
+	}
+	require.NoError(t, identity.Error())
+	require.Len(t, identity.seen, 100)
+}
+
 func TestIdentityBatchRangeVectorIterator_ShouldFailOnSeriesPastTheLimitLikeTheBatchIterator(t *testing.T) {
 	sec := func(s int64) int64 { return s * int64(time.Second) }
 	expr := mustRangeAggregation(t, `count_over_time({app="a"}[10s])`)

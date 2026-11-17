@@ -29,8 +29,12 @@ type identityBatchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
 	seeds                                [2]maphash.Seed
-	// lastSeen holds every series seen so far, as the batch iterator does with its metrics, so
-	// that the series limit counts the same series.
+	// seen holds every series seen so far, as the batch iterator does with its metrics, so that
+	// the series limit counts the same series.
+	seen map[seriesKey]struct{}
+	// lastSeen holds the series with a sample in the current window, with the timestamp of their
+	// last one. A series leaves it once that sample leaves the window, so a step costs the series
+	// it presents and not every series the query has seen.
 	lastSeen map[seriesKey]int64
 	errored  map[seriesKey]labels.Labels
 	at       []promql.Sample
@@ -65,6 +69,7 @@ func newTimestampFirstIdentityRangeVectorIterator(
 		end:      end,
 		selRange: selRange,
 		seeds:    [2]maphash.Seed{maphash.MakeSeed(), maphash.MakeSeed()},
+		seen:     map[seriesKey]struct{}{},
 		lastSeen: map[seriesKey]int64{},
 		errored:  map[seriesKey]labels.Labels{},
 		current:  start - step, // first loop iteration will set it to start
@@ -115,10 +120,11 @@ func (r *identityBatchRangeVectorIterator) load(start, end int64) {
 			continue
 		}
 		key := r.key(lbs)
-		if _, ok := r.lastSeen[key]; !ok {
-			if r.err = r.limits.validateMaxSeries(len(r.lastSeen) + 1); r.err != nil {
+		if _, ok := r.seen[key]; !ok {
+			if r.err = r.limits.validateMaxSeries(len(r.seen) + 1); r.err != nil {
 				return
 			}
+			r.seen[key] = struct{}{}
 			// A label value that contains the text parses to a series without the label, which
 			// costs a parse and nothing else.
 			if strings.Contains(lbs, logqlerr.ErrorLabel) {
@@ -130,7 +136,8 @@ func (r *identityBatchRangeVectorIterator) load(start, end int64) {
 				r.errored[key] = metric
 			}
 		}
-		r.lastSeen[key] = max(r.lastSeen[key], sample.Timestamp)
+		// The input is in timestamp order, so the latest sample is the last one.
+		r.lastSeen[key] = sample.Timestamp
 		_ = r.iter.Next()
 	}
 }
@@ -145,6 +152,8 @@ func (r *identityBatchRangeVectorIterator) At() (int64, StepResult) {
 	ts := (r.current + r.offset) / 1e+6
 	for key, last := range r.lastSeen {
 		if last <= rangeStart {
+			// The window only moves forward, so the series cannot come back into it.
+			delete(r.lastSeen, key)
 			continue
 		}
 		metric, ok := r.errored[key]
