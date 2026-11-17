@@ -1,7 +1,8 @@
 package unmarshal
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"strings"
@@ -14,6 +15,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy_loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
@@ -332,24 +336,32 @@ func TestFullPushApiFlow(t *testing.T) {
 		"After unmarshaling, structured metadata should contain actual newlines")
 
 	// 8. Marshal it back like the query would do
-	marshaledData, err := json.Marshal(logEntry)
-	require.NoError(t, err)
-	t.Logf("Marshaled entry: %s", string(marshaledData))
+	var buf bytes.Buffer
+	pushed := logqlmodel.Streams{{
+		Labels:  request.Streams[0].Labels,
+		Entries: request.Streams[0].Entries,
+	}}
+	flags := httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels)
+	require.NoError(t, marshal.WriteQueryResponseJSON(pushed, nil, stats.Result{}, &buf, flags))
+	marshaledData := buf.Bytes()
+	t.Logf("Marshaled response: %s", string(marshaledData))
 
 	// 9. Verify no double escaping in the JSON representation
 	// We can't easily check the exact JSON string since the order of fields might change
 	// and timestamps might be formatted differently, so we'll just check that double
 	// escaping doesn't happen
-	jsonOutput := string(marshaledData)
-	require.NotContains(t, jsonOutput, `\\n`, "JSON should not have double-escaped newlines")
+	require.NotContains(t, string(marshaledData), `\\n`, "JSON should not have double-escaped newlines")
 
 	// 10. Unmarshal again and verify
-	var reUnmarshaled logproto.Entry
-	err = json.Unmarshal(marshaledData, &reUnmarshaled)
-	require.NoError(t, err)
+	var reUnmarshaled loghttp.QueryResponse
+	require.NoError(t, json.Unmarshal(marshaledData, &reUnmarshaled))
 
 	// 11. Final verification
-	require.Equal(t, "a\nb\nc", reUnmarshaled.StructuredMetadata[0].Value,
+	result, ok := reUnmarshaled.Data.Result.(loghttp.Streams)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+	require.Len(t, result[0].Entries, 1)
+	require.Equal(t, "a\nb\nc", result[0].Entries[0].StructuredMetadata.Get("message"),
 		"After round-trip marshaling, structured metadata should still contain actual newlines")
 }
 
