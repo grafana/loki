@@ -59,6 +59,28 @@ type (
 		Value  Value  // Value for which rows in Column must be less than.
 	}
 
+	// A GreaterThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is greater than or equal to the
+	// provided Value.
+	//
+	// A null in Column passes this predicate only when Value is nil or an empty
+	// binary value.
+	GreaterThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be greater than or equal to.
+	}
+
+	// A LessThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is less than or equal to the
+	// provided Value.
+	//
+	// A null in Column is less than every Value, except nil and an empty binary
+	// Value, which it equals. So a null passes this predicate for every Value.
+	LessThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be less than or equal to.
+	}
+
 	// FuncPredicate is a [Predicate] which asserts that a row may only be
 	// included if the Value of the Column passes the Keep function.
 	//
@@ -115,16 +137,18 @@ func IsConstPredicate(p Predicate) (keep, ok bool) {
 	return false, false
 }
 
-func (AndPredicate) isPredicate()         {}
-func (OrPredicate) isPredicate()          {}
-func (NotPredicate) isPredicate()         {}
-func (TruePredicate) isPredicate()        {}
-func (FalsePredicate) isPredicate()       {}
-func (EqualPredicate) isPredicate()       {}
-func (InPredicate) isPredicate()          {}
-func (GreaterThanPredicate) isPredicate() {}
-func (LessThanPredicate) isPredicate()    {}
-func (FuncPredicate) isPredicate()        {}
+func (AndPredicate) isPredicate()                {}
+func (OrPredicate) isPredicate()                 {}
+func (NotPredicate) isPredicate()                {}
+func (TruePredicate) isPredicate()               {}
+func (FalsePredicate) isPredicate()              {}
+func (EqualPredicate) isPredicate()              {}
+func (InPredicate) isPredicate()                 {}
+func (GreaterThanPredicate) isPredicate()        {}
+func (LessThanPredicate) isPredicate()           {}
+func (GreaterThanOrEqualPredicate) isPredicate() {}
+func (LessThanOrEqualPredicate) isPredicate()    {}
+func (FuncPredicate) isPredicate()               {}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively
@@ -153,6 +177,8 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case InPredicate: // No children.
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
+	case GreaterThanOrEqualPredicate: // No children.
+	case LessThanOrEqualPredicate: // No children.
 	case FuncPredicate: // No children.
 
 	default:
@@ -176,6 +202,10 @@ func WalkPredicateColumn(p Predicate, fn func(Column)) {
 		case GreaterThanPredicate:
 			fn(p.Column)
 		case LessThanPredicate:
+			fn(p.Column)
+		case GreaterThanOrEqualPredicate:
+			fn(p.Column)
+		case LessThanOrEqualPredicate:
 			fn(p.Column)
 		case FuncPredicate:
 			fn(p.Column)
