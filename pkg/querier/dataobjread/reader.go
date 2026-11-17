@@ -329,6 +329,9 @@ func (r *LogReader) Next() bool {
 }
 
 // At returns the record the last Next fetched, so it panics unless Next returned true.
+//
+// The line of the record is valid only until the next call to Next, because the reader recycles
+// its memory. The other fields of the record stay valid.
 func (r *LogReader) At() LogRecord { return r.currBatch.records[r.currPos] }
 
 func (r *LogReader) Err() error {
