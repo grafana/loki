@@ -154,7 +154,7 @@ func (s *chunkStore) flushChunk(ctx context.Context, mc *chunkenc.MemChunk, labe
 	fp := ingesterclient.Fingerprint(lbs)
 
 	firstTime, lastTime := util.RoundToMilliseconds(mc.Bounds())
-	c := chunk.NewChunk(s.tenant, fp, metric, chunkenc.NewFacade(mc, 0, 0), firstTime, lastTime)
+	c := chunk.NewChunk(s.tenant, fp, metric, chunkenc.NewFacade(mc, 0, 0), firstTime, lastTime, 0)
 	if err := c.Encode(); err != nil {
 		return err
 	}

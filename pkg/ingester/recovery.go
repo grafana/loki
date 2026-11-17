@@ -1,13 +1,13 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"runtime"
 	"sync"
-
-	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,6 +32,51 @@ func (NoopWALReader) Next() bool     { return false }
 func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
+
+// errStaleCheckpoint is returned when the latest checkpoint doesn't match the WAL segments, for
+// example because the segment files were deleted but the checkpoint directory was left behind.
+var errStaleCheckpoint = errors.New("stale WAL checkpoint")
+
+// checkStaleCheckpoint returns an error wrapping errStaleCheckpoint if the latest checkpoint
+// doesn't match the WAL segments. It must run before the WAL is opened, because opening the WAL
+// creates a new segment that can hide a stale checkpoint.
+func checkStaleCheckpoint(dir string) error {
+	_, checkpointIdx, err := lastCheckpoint(dir)
+	if err != nil {
+		return fmt.Errorf("finding latest checkpoint: %w", err)
+	}
+	if checkpointIdx < 0 {
+		return nil
+	}
+	first, last, err := wlog.Segments(dir)
+	if err != nil {
+		return fmt.Errorf("listing WAL segments: %w", err)
+	}
+	if first < 0 {
+		return fmt.Errorf("%w: checkpoint %d exists but there are no WAL segments in %s", errStaleCheckpoint, checkpointIdx, dir)
+	}
+	if next := checkpointIdx + 1; next < first || next > last {
+		return fmt.Errorf("%w: checkpoint %d is not contiguous with WAL segments %d-%d in %s, expected segment %d to exist", errStaleCheckpoint, checkpointIdx, first, last, dir, next)
+	}
+	return nil
+}
+
+// warnOnStaleCheckpoint logs anything checkStaleCheckpoint finds and otherwise ignores it.
+func warnOnStaleCheckpoint(dir string, logger log.Logger) {
+	err := checkStaleCheckpoint(dir)
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, errStaleCheckpoint) {
+		level.Warn(logger).Log("msg", "unable to check the WAL checkpoint against the WAL segments", "err", err)
+		return
+	}
+	level.Error(logger).Log(
+		"msg", "stale WAL checkpoint found, replaying it may flush old data",
+		"hint", "WAL segment files were probably deleted without the checkpoint directory",
+		"err", err,
+	)
+}
 
 func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
 	// Proactively clean up stale checkpoints at startup before recovery
@@ -84,7 +129,7 @@ type Recoverer interface {
 	NumWorkers() int
 	Series(series *Series) error
 	SetStream(ctx context.Context, userID string, series record.RefSeries) error
-	Push(userID string, entries wal.RefEntries) error
+	Push(userID string, ingestedAt time.Time, entries wal.RefEntries) error
 	Done() <-chan struct{}
 }
 
@@ -187,7 +232,7 @@ func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series
 	return nil
 }
 
-func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
+func (r *ingesterRecoverer) Push(userID string, ingestedAt time.Time, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
@@ -199,8 +244,13 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 			return fmt.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 		}
 
+		// Disabling V4 records also drops the record timestamps already in the WAL.
+		if !r.ing.cfg.WAL.RecordV4Enabled {
+			ingestedAt = time.Time{}
+		}
+
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).PushWalReplay(context.Background(), entries.Entries, entries.Counter, r.ing.customStreamsTracker)
+		bytesAdded, err := s.(*stream).PushWalReplay(context.Background(), entries.Entries, entries.Counter, r.ing.customStreamsTracker, ingestedAt)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -262,7 +312,7 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
-				data:   entries,
+				data:   walEntries{RefEntries: entries, ingestedAt: rec.IngestedAt},
 			}
 		}
 
@@ -278,13 +328,13 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 				if !ok {
 					return
 				}
-				entries, ok := next.data.(wal.RefEntries)
+				entries, ok := next.data.(walEntries)
 				var err error
 				if !ok {
 					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
 				}
 				if err == nil {
-					err = recoverer.Push(next.userID, entries)
+					err = recoverer.Push(next.userID, entries.ingestedAt, entries.RefEntries)
 				}
 
 				// Pass the error back, but respect the quit signal.
@@ -355,6 +405,12 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 type recoveryInput struct {
 	userID string
 	data   interface{}
+}
+
+// walEntries are a stream's entries from a WAL record, along with the record's IngestedAt.
+type walEntries struct {
+	wal.RefEntries
+	ingestedAt time.Time
 }
 
 // recoverGeneric enables reusing the ability to recover from WALs of different types

@@ -1,6 +1,7 @@
 package kgo
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -11,6 +12,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -164,7 +166,9 @@ type broker struct {
 	//
 	// Produce requests go to cxnProduce, fetch to cxnFetch, join/sync go
 	// to cxnGroup, anything with TimeoutMillis goes to cxnSlow, and
-	// everything else goes to cxnNormal.
+	// everything else goes to cxnNormal. ListOffsets v10+ has
+	// TimeoutMillis, but Kafka answers it late only when it reads tiered
+	// storage, so ListOffsets stays on cxnNormal.
 	cxnNormal  *brokerCxn
 	cxnProduce *brokerCxn
 	cxnFetch   *brokerCxn
@@ -179,14 +183,26 @@ type broker struct {
 	dead atomic.Bool
 }
 
-// brokerVersions is loaded once (and potentially a few times concurrently if
-// multiple connections are opening at once) and then forever stored for a
+// brokerVersions is loaded on every connection (and potentially a few times
+// concurrently if multiple connections are opening at once) and stored for a
 // broker.
 type brokerVersions struct {
 	maxVers  map[int16]int16
 	minVers  map[int16]int16
 	features map[string]int16
+
+	// learnedAt is when we last began ApiVersions at our own max version
+	// and learned this broker's from the reply. A connection that begins
+	// at the cached version instead carries the time over, so that we ask
+	// at our own max again once the cache is relearnVersionsAfter old.
+	learnedAt time.Time
 }
+
+// relearnVersionsAfter is how long a connection begins ApiVersions at the
+// max version a broker previously told us before we ask at our own max
+// again. A broker upgraded in place is asked to check the cluster and node
+// we expect (KIP-1242) within this long.
+const relearnVersionsAfter = time.Hour
 
 func (v *brokerVersions) maxVersion(key int16) int16 {
 	if version, ok := v.maxVers[key]; ok {
@@ -317,7 +333,22 @@ func (b *broker) waitResp(ctx context.Context, req kmsg.Request) (kmsg.Response,
 	return resp, err
 }
 
+// growStack grows a goroutine's stack while it has one frame. Our request
+// and response workers exit when idle, so each new one starts with the
+// minimum stack and would otherwise grow it midway through serializing or
+// compressing, copying every frame above it. CockroachDB's growstack package
+// does the same.
+//
+//go:noinline
+func growStack() {
+	const size = 4 << 10
+	var b [size]byte
+	b[0] = 1
+	runtime.KeepAlive(&b)
+}
+
 func (b *broker) handleReqs(pr promisedReq) {
+	growStack()
 	var more, dead bool
 start:
 	if dead {
@@ -595,12 +626,16 @@ start:
 
 	rt, _ := cxn.cl.connTimeouter.timeouts(req)
 
+	ctx, promise := pr.ctx, pr.promise
+	if cxn.isNormalCxn {
+		ctx, promise = cxn.abandonOnCancel(ctx, promise)
+	}
 	cxn.waitResp(promisedResp{
-		pr.ctx,
+		ctx,
 		corrID,
 		req.IsFlexible() && req.Key() != 18, // response header not flexible if ApiVersions; see promisedResp doc
 		req.ResponseKind(),
-		pr.promise,
+		promise,
 		rt,
 		bytesWritten,
 		writeWait,
@@ -649,11 +684,17 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 	case reqKey == 0:
 		pcxn = &b.cxnProduce
 		isProduceCxn = true
-	case reqKey == 1 || reqKey == 78: // Fetch or ShareFetch (both long-poll)
+	case reqKey == 1 || reqKey == 78 || reqKey == 79:
+		// Fetch and ShareFetch long-poll. ShareAcknowledge shares the
+		// ShareFetch connection: the broker ties a share session to it
+		// and releases the member's records when it closes, so acks
+		// and renews keep it from going idle. The share source sends
+		// one of the two at a time.
 		pcxn = &b.cxnFetch
 		isFetchCxn = true
 	case reqKey == 11 || reqKey == 14: // join || sync
 		pcxn = &b.cxnGroup
+	case reqKey == 2: // list offsets stays on cxnNormal
 	case isTimeout:
 		pcxn = &b.cxnSlow
 	}
@@ -675,6 +716,13 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 
 	if reuse && *pcxn != nil && !(*pcxn).dead.Load() {
 		return *pcxn, nil
+	}
+
+	// A stopped broker never comes back (stopForever is final): a metadata
+	// update or rebootstrap removed it. Fail fast rather than dial an
+	// address we no longer trust; the request retries on a live broker.
+	if b.dead.Load() {
+		return nil, errChosenBrokerDead
 	}
 
 	var tries int
@@ -704,14 +752,18 @@ doConnect:
 
 		addr:   b.addr,
 		conn:   conn,
+		br:     bufio.NewReaderSize(conn, 4<<10),
 		deadCh: make(chan struct{}),
+
+		isNormalCxn: pcxn == &b.cxnNormal,
 	}
+	cxn.unwatchClientCtx = context.AfterFunc(b.cl.ctx, func() { conn.SetDeadline(time.Now()) })
 	if err = cxn.init(isProduceCxn, tries); err != nil {
 		// EventHubs does not handle v4 and resets the connection. We
 		// retry twice. On the first and second attempt, we try our max
 		// version possible (as should be allowed). On the third try,
 		// we downgrade to v0 (see requestAPIVersions).
-		if er := (*errApiVersionsReset)(nil); errors.As(err, &er) && tries < 3 {
+		if _, ok := errors.AsType[*errApiVersionsReset](err); ok && tries < 3 {
 			cxn.die()
 			goto doConnect
 		}
@@ -851,6 +903,10 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 // brokerCxn manages an actual connection to a Kafka broker. This is separate
 // the broker struct to allow lazy connection (re)creation.
 type brokerCxn struct {
+	br *bufio.Reader // wraps conn for more efficient size + body reading; read br, not conn
+
+	unwatchClientCtx func() bool // unhooks the client context (canceled on Close) from killing the conn
+
 	throttleUntil atomic.Int64 // atomic nanosec
 
 	conn net.Conn
@@ -889,6 +945,8 @@ type brokerCxn struct {
 	// reauthentication can never happen in place; see handleReq and
 	// loadConnection.
 	hasDiscard bool
+
+	isNormalCxn bool // see abandonOnCancel
 
 	// reauthPending is set by the broker worker when the sasl expiry has
 	// passed but responses are still in flight (handleResps owns reads,
@@ -989,7 +1047,7 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 }
 
 func (cxn *brokerCxn) requestAPIVersions(tries int) error {
-	maxVersion := int16(4)
+	maxVersion := int16(5)
 	if tries >= 3 { // on the third try, we pin to v0; see above in cxn initialization
 		maxVersion = 0
 	} else if cxn.cl.cfg.maxVersions != nil {
@@ -1003,11 +1061,32 @@ func (cxn *brokerCxn) requestAPIVersions(tries int) error {
 		}
 	}
 
+	// A broker we connected to before told us its ApiVersions max. If it
+	// is below ours, begin there: a request above the broker's max is
+	// answered UNSUPPORTED_VERSION and retried, one extra round trip per
+	// connection. Once the cache is old enough, we ask at our own max
+	// again in case the broker was upgraded.
+	learnedAt := time.Now()
+	if v := cxn.b.loadVersions(); v != nil && time.Since(v.learnedAt) < relearnVersionsAfter {
+		if cached := v.maxVersion(18); cached >= 0 && cached < maxVersion {
+			maxVersion = cached
+			learnedAt = v.learnedAt
+		}
+	}
+
 start:
 	req := kmsg.NewPtrApiVersionsRequest()
 	req.Version = maxVersion
 	req.ClientSoftwareName = cxn.cl.cfg.softwareName
 	req.ClientSoftwareVersion = cxn.cl.cfg.softwareVersion
+	// KIP-1242: name the cluster and node we expect to reach. Seeds have
+	// no node ID and get neither.
+	if maxVersion >= 5 && cxn.b.meta.NodeID >= 0 {
+		if clusterID := cxn.cl.clusterID.Load(); clusterID != nil {
+			req.ClusterID = clusterID
+			req.NodeID = cxn.b.meta.NodeID
+		}
+	}
 	cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing api versions request", "broker", logID(cxn.b.meta.NodeID), "version", maxVersion)
 	corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 	if writeErr != nil {
@@ -1019,8 +1098,7 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
-		var errno syscall.Errno
-		if errors.As(err, &errno) && isConnReset(errno) {
+		if errno, ok := errors.AsType[syscall.Errno](err); ok && isConnReset(errno) {
 			return &errApiVersionsReset{err}
 		} else if errors.Is(err, io.EOF) {
 			cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker received EOF during api versions discovery, which often happens when the broker requires TLS and the client is not using it (is TLS misconfigured?)", "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
@@ -1082,6 +1160,14 @@ start:
 	// Checked before ApiKeys below: an error can come with an empty key table.
 	if !sawUnsupportedVersion {
 		if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
+			// The broker is not who our metadata says it is. Drop
+			// every discovered broker and rediscover the cluster
+			// from the seeds; the request that opened this
+			// connection retries once metadata has refreshed.
+			if errors.Is(err, kerr.RebootstrapRequired) && req.ClusterID != nil {
+				cxn.cl.rebootstrapMisrouted(cxn.b, *req.ClusterID)
+				return errChosenBrokerDead
+			}
 			return err
 		}
 	}
@@ -1090,6 +1176,7 @@ start:
 	}
 
 	v := newBrokerVersions(len(resp.ApiKeys))
+	v.learnedAt = learnedAt
 	for _, key := range resp.ApiKeys {
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion
@@ -1400,38 +1487,52 @@ func (cxn *brokerCxn) writeConn(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if cxn.cl.ctx.Err() != nil {
+		return 0, 0, 0, time.Time{}, ErrClientClosed
+	}
 	if timeout > 0 {
 		cxn.conn.SetWriteDeadline(time.Now().Add(timeout))
 	}
 	defer cxn.conn.SetWriteDeadline(time.Time{})
-	writeDone := make(chan struct{})
-	go func() {
-		defer close(writeDone)
-		writeStart := time.Now()
-		bytesWritten, writeErr = cxn.conn.Write(buf)
-		// As soon as we are done writing, we track that we have now
-		// enqueued this request for reading.
-		readEnqueue = time.Now()
-		writeWait = writeStart.Sub(enqueuedForWritingAt)
-		timeToWrite = readEnqueue.Sub(writeStart)
-	}()
-	select {
-	case <-writeDone:
-	case <-cxn.cl.ctx.Done():
-		cxn.conn.SetWriteDeadline(time.Now())
-		<-writeDone
-		if writeErr != nil {
+	stop := cxn.watchCtxCancel(ctx, cxn.conn.SetWriteDeadline)
+	writeStart := time.Now()
+	bytesWritten, writeErr = cxn.conn.Write(buf)
+	// As soon as we are done writing, we track that we have now
+	// enqueued this request for reading.
+	readEnqueue = time.Now()
+	writeWait = writeStart.Sub(enqueuedForWritingAt)
+	timeToWrite = readEnqueue.Sub(writeStart)
+	ctxInterrupted := stop()
+	if writeErr != nil {
+		if cxn.cl.ctx.Err() != nil {
 			writeErr = ErrClientClosed
-		}
-	case <-ctx.Done():
-		cxn.conn.SetWriteDeadline(time.Now())
-		<-writeDone
-		if writeErr != nil && ctx.Err() != nil {
+		} else if ctxInterrupted && ctx.Err() != nil {
 			writeErr = ctx.Err()
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &writeErr)
 		}
 	}
 	return bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
+}
+
+// watchCtxCancel watches ctx in a context.AfterFunc. If ctx is canceled,
+// deadlineFn is called. The returned func stops watching ctx and returns
+// whether deadlineFn was called.
+func (cxn *brokerCxn) watchCtxCancel(ctx context.Context, deadlineFn func(time.Time) error) func() bool {
+	if ctx.Done() == nil || ctx == cxn.cl.ctx {
+		return func() bool { return false }
+	}
+	fired := make(chan struct{})
+	stopFn := context.AfterFunc(ctx, func() {
+		deadlineFn(time.Now())
+		close(fired)
+	})
+	return func() bool {
+		if stopFn() {
+			return false
+		}
+		<-fired
+		return true
+	}
 }
 
 func (cxn *brokerCxn) readConn(
@@ -1448,51 +1549,45 @@ func (cxn *brokerCxn) readConn(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if cxn.cl.ctx.Err() != nil {
+		return 0, nil, 0, 0, ErrClientClosed
+	}
 	if timeout > 0 {
 		cxn.conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 	defer cxn.conn.SetReadDeadline(time.Time{})
-	readDone := make(chan struct{})
-	go func() {
-		defer close(readDone)
-		readStart := time.Now()
-		defer func() {
-			timeToRead = time.Since(readStart)
-			readWait = readStart.Sub(enqueuedForReadingAt)
-		}()
-		if nread, err = io.ReadFull(cxn.conn, cxn.sizeBuf[:]); err != nil {
-			return
-		}
-		var size int32
-		if size, err = cxn.parseReadSize(cxn.sizeBuf[:]); err != nil {
-			return
-		}
-		buf = make([]byte, size)
-		var nread2 int
-		nread2, err = io.ReadFull(cxn.conn, buf)
-		nread += nread2
-		buf = buf[:nread2]
-		if err != nil {
-			return
-		}
-	}()
-	select {
-	case <-readDone:
-	case <-cxn.cl.ctx.Done():
-		cxn.conn.SetReadDeadline(time.Now())
-		<-readDone
-		if err != nil {
+	stop := cxn.watchCtxCancel(ctx, cxn.conn.SetReadDeadline)
+	readStart := time.Now()
+	nread, buf, err = cxn.readSizeAndBody()
+	timeToRead = time.Since(readStart)
+	readWait = readStart.Sub(enqueuedForReadingAt)
+	ctxInterrupted := stop()
+	if err != nil {
+		if cxn.cl.ctx.Err() != nil {
 			err = ErrClientClosed
-		}
-	case <-ctx.Done():
-		cxn.conn.SetReadDeadline(time.Now())
-		<-readDone
-		if err != nil && ctx.Err() != nil {
+		} else if ctxInterrupted && ctx.Err() != nil {
 			err = ctx.Err()
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &err)
 		}
 	}
 	return nread, buf, readWait, timeToRead, err
+}
+
+func (cxn *brokerCxn) readSizeAndBody() (int, []byte, error) {
+	nread, err := io.ReadFull(cxn.br, cxn.sizeBuf[:])
+	if err != nil {
+		return nread, nil, err
+	}
+	size, err := cxn.parseReadSize(cxn.sizeBuf[:])
+	if err != nil {
+		return nread, nil, err
+	}
+	buf := make([]byte, size)
+	// Past what br already holds, bufio reads a body larger than its 4KiB
+	// buffer straight into buf, so, on a large body, at most 4KiB is copied
+	// twice.
+	nread2, err := io.ReadFull(cxn.br, buf)
+	return nread + nread2, buf[:nread2], err
 }
 
 // Parses a length 4 slice and enforces the min / max read size based off the
@@ -1529,7 +1624,7 @@ func (cxn *brokerCxn) parseReadSize(sizeBuf []byte) (int32, error) {
 			}
 			return 0, fmt.Errorf("invalid large response size %d > limit %d; the first three bytes received appear to be a tls alert record for %s; is this a plaintext connection speaking to a tls endpoint?", size, maxSize, versionGuess)
 		}
-		return 0, fmt.Errorf("invalid large response size %d > limit %d", size, maxSize)
+		return 0, fmt.Errorf("invalid large response size %d > limit %d: %w", size, maxSize, errResponseTooLarge)
 	}
 	return size, nil
 }
@@ -1627,10 +1722,35 @@ func (cxn *brokerCxn) die() {
 			h.OnBrokerDisconnect(cxn.b.meta, cxn.conn)
 		}
 	})
+	cxn.unwatchClientCtx()
 	cxn.conn.Close()
 	close(cxn.deadCh)
 	cxn.resps.die()
 	cxn.failParked()
+}
+
+// On cxnNormal, a request canceled after it is written fails immediately and
+// its response is dropped when it arrives, rather than killing the
+// connection: Kafka handles the request regardless, and killing the
+// connection fails every request in flight on it. Other connections still
+// die on cancel: Kafka can hold their requests for a long time and handles
+// one request per connection at a time.
+func (cxn *brokerCxn) abandonOnCancel(ctx context.Context, promise func(kmsg.Response, error)) (context.Context, func(kmsg.Response, error)) {
+	if ctx.Done() == nil || ctx == cxn.cl.ctx {
+		return ctx, promise
+	}
+	stop := context.AfterFunc(ctx, func() {
+		err := ctx.Err()
+		if cxn.cl.ctx.Err() != nil {
+			err = ErrClientClosed
+		}
+		promise(nil, err)
+	})
+	return context.WithoutCancel(ctx), func(resp kmsg.Response, err error) {
+		if stop() { // false: the cancel already failed the promise
+			promise(resp, err)
+		}
+	}
 }
 
 // waitResp, called serially by a broker's handleReqs, manages handling a
@@ -1722,7 +1842,7 @@ func (cxn *brokerCxn) discard() {
 
 		go func() {
 			defer close(readDone)
-			if nread, err = io.ReadFull(cxn.conn, discardBuf[:4]); err != nil {
+			if nread, err = io.ReadFull(cxn.br, discardBuf[:4]); err != nil {
 				if i == 0 && errors.Is(err, os.ErrDeadlineExceeded) {
 					firstTimeout = true
 				}
@@ -1753,7 +1873,7 @@ func (cxn *brokerCxn) discard() {
 				if int(size) < len(discard) {
 					discard = discard[:size]
 				}
-				nread2, err = cxn.conn.Read(discard)
+				nread2, err = cxn.br.Read(discard)
 				nread += nread2
 				size -= int32(nread2) // nread2 max is len(discardBuf), 256
 			}
@@ -1783,6 +1903,7 @@ func (cxn *brokerCxn) discard() {
 
 // handleResps serially handles all broker responses for an single connection.
 func (cxn *brokerCxn) handleResps(pr promisedResp) {
+	growStack()
 	var more, dead bool
 start:
 	if dead {

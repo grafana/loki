@@ -176,7 +176,7 @@ func WithCompactSeqIndent(compact ...bool) Option {
 //
 // When enabled, loading will return an error if the YAML input contains fields
 // that do not correspond to any fields in the target struct.
-// When called without arguments, defaults to true.
+// Calling WithKnownFields() enables checking; it is disabled by default.
 func WithKnownFields(knownFields ...bool) Option {
 	if len(knownFields) > 1 {
 		return func(o *Options) error {
@@ -196,10 +196,8 @@ func WithKnownFields(knownFields ...bool) Option {
 //
 // When called without arguments, defaults to true.
 //
-// This is useful when you expect exactly one document and want behavior
-// similar to [yaml.Unmarshal].
-//
-// [yaml.Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
+// This ignores later documents, including their syntax errors.
+// Omit this option with Load to require exactly one document.
 func WithSingleDocument(singleDocument ...bool) Option {
 	if len(singleDocument) > 1 {
 		return func(o *Options) error {
@@ -271,8 +269,9 @@ func WithAllDocuments(all ...bool) Option {
 
 // WithLineWidth sets the preferred line width for YAML output.
 //
-// When encoding long strings, the encoder will attempt to wrap them at this
-// width using literal block style (|). Set to -1 or 0 for unlimited width.
+// The emitter attempts to wrap long scalars without changing their value.
+// Long words may exceed this width.
+// Set to -1 or 0 for unlimited width.
 //
 // The default is 80 characters.
 func WithLineWidth(width int) Option {
@@ -288,7 +287,7 @@ func WithLineWidth(width int) Option {
 // WithUnicode controls whether non-ASCII characters are allowed in YAML output.
 //
 // When true, non-ASCII characters appear as-is (e.g., "café").
-// When false, non-ASCII characters are escaped (e.g., "caf\u00e9").
+// When false, non-ASCII characters are escaped (e.g., "caf\xE9").
 // When called without arguments, defaults to true.
 //
 // The default is true.
@@ -326,11 +325,12 @@ func WithUniqueKeys(uniqueKeys ...bool) Option {
 	}
 }
 
-// WithCanonical forces canonical YAML output format.
+// WithCanonical selects the emitter's canonical YAML layout.
 //
-// When enabled, the encoder outputs strictly canonical YAML with explicit
-// tags for all values. This produces verbose output primarily useful for
-// debugging and YAML spec compliance testing.
+// It emits explicit document starts, flow collections, and quoted scalars.
+// Tags still depend on the node graph and desolver; this option alone does not
+// force an explicit tag on every value.
+// Scalar types may change when reloading canonical output.
 // When called without arguments, defaults to true.
 //
 // The default is false.

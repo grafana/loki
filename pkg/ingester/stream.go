@@ -99,6 +99,17 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+
+	// ingestedAt is the highest timestamp of the ingested kafka records whose
+	// entries went into this chunk.
+	ingestedAt time.Time
+}
+
+// observeRecordTimestamp keeps the highest record timestamp that fed the chunk.
+func (c *chunkDesc) observeRecordTimestamp(ts time.Time) {
+	if ts.After(c.ingestedAt) {
+		c.ingestedAt = ts
+	}
 }
 
 type entryWithError struct {
@@ -178,14 +189,15 @@ func (s *stream) Push(
 	usageTracker push.UsageTracker,
 	// format of the request - loki or otlp, mainly used for metrics
 	format string,
-
+	// Timestamp of the Kafka record the entries were ingested from.
+	recordTime time.Time,
 ) (int, error) {
 	toStore, invalid := s.validateEntries(ctx, entries, false, rateLimitWholeStream, usageTracker, format)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format, recordTime)
 	if len(storedEntries) > 0 && record != nil {
 		record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
 	}
@@ -210,6 +222,8 @@ func (s *stream) PushWalReplay(
 	// bypasses both the check and the validity window, as live pushes do.
 	counter int64,
 	usageTracker push.UsageTracker,
+	// Timestamp of the Kafka record the entries were ingested from, as logged in the WAL.
+	recordTime time.Time,
 ) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
@@ -228,7 +242,7 @@ func (s *stream) PushWalReplay(
 	const format = "loki"
 	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
 
-	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format, recordTime)
 	if len(storedEntries) > 0 {
 		s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 	}
@@ -238,7 +252,7 @@ func (s *stream) PushWalReplay(
 
 // appendEntries makes sure the stream has a chunk, stores the validated entries
 // and keeps the memory chunk metric up to date. chunkMtx must be held.
-func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, recordTime time.Time) (int, []logproto.Entry, []entryWithError) {
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -248,7 +262,7 @@ func (s *stream) appendEntries(ctx context.Context, entries []logproto.Entry, us
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, entries, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, entries, usageTracker, format, recordTime)
 
 	if len(s.chunks) != prevNumChunks {
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
@@ -338,7 +352,7 @@ func (s *stream) sendToTailers(entries []logproto.Entry) {
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string, recordTime time.Time) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -369,6 +383,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
+		chunk.observeRecordTimestamp(recordTime)
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp

@@ -23,10 +23,12 @@
   // sets force.enabled to true, and that overrides 'enabled: false' in every packageRule.
   ignoreDeps: [
     'github.com/grafana/loki/pkg/push',
+    'hashicorp/terraform',
   ],
   prHourlyLimit: 4,
   baseBranchPatterns: [
     'main',
+    'release-4.0.0', // in-flight release
     'release-3.7.x', // Update when a new release is out, 2 minors, 1 major.
     'release-3.6.x', // Also ensure to update the 'packageRules' section to match
   ],
@@ -242,6 +244,7 @@
       // Release branches take security updates only. 'vulnerabilityAlerts' is merged after
       // packageRules, so disabling everything here still lets security PRs through.
       matchBaseBranches: [
+        'release-4.0.0',
         'release-3.7.x',
         'release-3.6.x',
       ],

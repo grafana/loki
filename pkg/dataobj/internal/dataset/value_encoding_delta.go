@@ -139,6 +139,34 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 	return columnar.NewNumber[int64](values, memory.Bitmap{}), nil
 }
 
+// Skip implements [valueDecoder]. A malformed or truncated varint ends the
+// data.
+func (dec *deltaDecoder) Skip(count int) (int, error) {
+	var (
+		buf  = dec.buf
+		off  = dec.off
+		prev = dec.prev
+
+		skipped int
+	)
+	for skipped < count {
+		delta, n := varint(buf[off:])
+		if n <= 0 {
+			break
+		}
+
+		off += n
+		// Each value is the previous value plus a delta. Keep prev up to date so
+		// that a later Decode returns the right values.
+		prev += delta
+		skipped++
+	}
+
+	dec.off = off
+	dec.prev = prev
+	return skipped, nil
+}
+
 // Reset resets the deltaDecoder to its initial state.
 func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0

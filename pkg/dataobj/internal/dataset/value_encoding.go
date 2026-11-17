@@ -45,6 +45,18 @@ type valueDecoder interface {
 	// At the end of the stream, Decode returns nil, [io.EOF].
 	Decode(alloc *memory.Allocator, count int) (columnar.Array, error)
 
+	// Skip moves past up to count values without building an array for them. It
+	// returns the number of values it skipped.
+	//
+	// If the data ends before count values, Skip returns the number it skipped
+	// and a nil error, not io.EOF. If count is 0 or less, Skip skips no value.
+	//
+	// Skip stops early at data that it cannot parse, as Decode does. It does not
+	// check that the data is consistent, so malformed data can make a later call
+	// to Skip or Decode fail. A decoder that does not support skipping returns an
+	// error.
+	Skip(count int) (int, error)
+
 	// Reset discards any state and resets the decoder to read from data.
 	// This permits reusing a decoder rather than allocating a new one.
 	Reset(data []byte)

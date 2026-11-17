@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -582,6 +583,12 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 
 	err := dec.DecodeTo(&bm, count)
 	return columnar.NewBool(bm, memory.Bitmap{}), err
+}
+
+// Skip implements [valueDecoder]. It always returns an error. bitmapDecoder
+// reads presence data with DecodeTo, and nothing skips presence data.
+func (dec *bitmapDecoder) Skip(_ int) (int, error) {
+	return 0, errors.New("dataset.bitmapDecoder: Skip is not implemented")
 }
 
 func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {

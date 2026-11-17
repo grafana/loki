@@ -164,6 +164,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
+		OutputLevel: 2,
 	}
 
 	plan := buildLogMergePlan("t1", window, task)
@@ -176,6 +177,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
+	require.Equal(t, uint32(2), node.OutputLevel)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
