@@ -87,7 +87,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/query-frontend\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
+                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/query-frontend\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
                   "legendFormat": "{{status}}",
                   "refId": "A"
                }
@@ -1089,17 +1089,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.5",
                   "refId": "C"
                }
@@ -1196,17 +1196,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": ".99-{{route}}",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": ".9-{{route}}",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/querier\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_labels|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": ".5-{{route}}",
                   "refId": "C"
                }
