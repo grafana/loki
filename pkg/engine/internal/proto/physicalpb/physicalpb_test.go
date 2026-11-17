@@ -16,7 +16,7 @@ import (
 // [physical.Plan] into a [Plan] and back.
 func Test(t *testing.T) {
 	var (
-		parent = &physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant-a", SourceIndexPath: "index/0", ObjectPaths: []string{"objects/0"}}
+		parent = &physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant-a", SourceIndexPaths: []string{"index/0"}, ObjectPaths: []string{"objects/0"}}
 		child  = &physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant-a", ToCWindowStart: 1_700_000_000_000_000_000}
 	)
 
@@ -104,4 +104,19 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 	require.Equal(t, want.Tenant, got.Tenant)
 	require.Equal(t, want.ToCWindowStart, got.ToCWindowStart)
 	require.Equal(t, want.Runs, got.Runs)
+}
+
+func TestIndexFilter_RoundTrip(t *testing.T) {
+	t.Run("keeps every source path of an index run in order", func(t *testing.T) {
+		want := &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme",
+			SourceIndexPaths: []string{"index/b", "index/a"}, ObjectPaths: []string{"logs/a"},
+		}
+		var pb physicalpb.IndexFilter
+		require.NoError(t, pb.UnmarshalPhysical(want))
+
+		got, err := pb.MarshalPhysical(want.NodeID)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
 }

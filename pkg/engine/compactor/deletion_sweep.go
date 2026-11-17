@@ -105,6 +105,7 @@ func (s *sweepScheduler) sweep(ctx context.Context, tenant string) {
 		return
 	}
 	defer func() { <-s.slots }()
+	level.Info(s.logger).Log("msg", "dispatching deletion sweep", "tenant", tenant, "minute", sweepMinute(tenant))
 
 	// A sweep is safe to stop at any time: a stopped scan stores nothing, and
 	// the next sweep starts over. So shutdown stops a running sweep.

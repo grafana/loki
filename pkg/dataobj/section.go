@@ -69,6 +69,13 @@ func (ty SectionType) String() string {
 	return base
 }
 
+// RelativeByteRange is a range of Length bytes inside a region of a section. It
+// starts Offset bytes after the start of the region. Each method that takes a
+// RelativeByteRange names its region.
+type RelativeByteRange struct {
+	Offset, Length int64
+}
+
 // SectionReader is a low-level interface to read data ranges and metadata from
 // a section.
 //
@@ -100,6 +107,16 @@ type SectionReader interface {
 	// beyond the readable metadata region. The returned reader is only valid as long
 	// as the provided ctx is not canceled.
 	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+
+	// MetadataRanges returns the bytes of each range of the metadata region, in
+	// the order of ranges. It is the batch version of MetadataRange.
+	//
+	// It returns slices, not readers, so an implementation can return bytes
+	// that it holds in memory without a copy.
+	//
+	// A returned slice can alias memory that other section readers share. The
+	// caller must not modify it. The slice stays valid after the call returns.
+	MetadataRanges(ctx context.Context, ranges []RelativeByteRange) ([][]byte, error)
 
 	// DataSize returns the total size of the data region of a section. DataSize
 	// returns 0 for sections with no data region.

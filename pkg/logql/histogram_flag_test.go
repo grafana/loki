@@ -129,6 +129,31 @@ func TestEngine_OtherQueriesDoNotNeedTheFlag(t *testing.T) {
 	}
 }
 
+// A component that passes a query on, such as the query frontend, uses CheckHistograms to refuse it as the
+// engine would.
+func TestEngineOpts_CheckHistograms(t *testing.T) {
+	off, on := EngineOpts{}, EngineOpts{EnableHistograms: true}
+
+	for _, tc := range histogramQueries {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := syntax.ParseExprWithoutValidation(tc.query)
+			require.NoError(t, err)
+
+			err = off.CheckHistograms(expr)
+			require.ErrorIs(t, err, logqlerr.ErrParse)
+			require.ErrorContains(t, err, "-"+histogramFlagName)
+			require.NoError(t, on.CheckHistograms(expr))
+		})
+	}
+
+	t.Run("a query without histograms", func(t *testing.T) {
+		expr, err := syntax.ParseExpr(`sum by (app) (rate({app="a"}[1m]))`)
+		require.NoError(t, err)
+		require.NoError(t, off.CheckHistograms(expr))
+		require.NoError(t, on.CheckHistograms(expr))
+	})
+}
+
 func TestDownstreamEngine_HistogramsAreOffByDefault(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 	regular := NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, histogramSevenValues), NoLimits, log.NewNopLogger())

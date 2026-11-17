@@ -184,3 +184,32 @@ func TestAPIVersionsMaxVersionMustBeValid(t *testing.T) {
 		})
 	}
 }
+
+// TestMaxDecompressBatchBytesMustBeValid checks that limits from 0 to the
+// default are accepted and everything else is rejected.
+func TestMaxDecompressBatchBytesMustBeValid(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       int
+		expectedErr error
+	}{
+		{name: "the default is valid", value: DefaultMaxDecompressBatchBytes},
+		{name: "zero is valid, and uses the franz-go default", value: 0},
+		{name: "a custom value is valid", value: 1 << 20}, // 1 MiB
+		{name: "negative is invalid", value: -1, expectedErr: ErrInvalidMaxDecompressBatchBytes},
+		{name: "above the default is invalid", value: DefaultMaxDecompressBatchBytes + 1, expectedErr: ErrInvalidMaxDecompressBatchBytes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validProducerConfig()
+			cfg.MaxDecompressBatchBytes = tt.value
+
+			err := cfg.Validate()
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
