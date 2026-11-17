@@ -107,8 +107,9 @@ type TableOfContentsEntry struct {
 }
 
 // IndexRunEntries holds the entries of the index objects of one run. A
-// query reads the index objects of a run as one index. A run is never empty,
-// and the entries of a run of more than one entry share one time range.
+// query reads the index objects of a run as one index. A run is never empty.
+// The entries of a run of more than one entry share one time range, and each
+// has posting key bounds.
 type IndexRunEntries []TableOfContentsEntry
 
 // WatermarkUpdate raises the watermark of a Kafka topic and partition in a
@@ -271,8 +272,9 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 // It returns an error without retrying if:
 //   - the arguments are not valid: exactly one of oldPaths and newRuns is
 //     empty, a run is empty or too long, an entry lies outside window, the
-//     entries of a run of more than one entry have different time ranges, or
-//     a path of such a run appears twice or is in oldPaths,
+//     entries of a run of more than one entry have different time ranges, an
+//     entry of such a run has no posting key bounds, or a path of such a run
+//     appears twice or is in oldPaths,
 //   - the ToC does not exist, holds another tenant, or lacks a path in
 //     oldPaths,
 //   - the ToC keeps a path of a run of more than one entry.
@@ -338,8 +340,12 @@ func runLengthOf(entries int) (int32, error) {
 // validateNewRuns returns an error if a run of newRuns is empty or too long,
 // or if an entry has no valid time range or lies in another window. For a run
 // of more than one entry, it also returns an error if the entries have
-// different time ranges, or if the path of an entry appears twice in newRuns
-// or is in oldPaths.
+// different time ranges, if an entry has no posting key bounds, or if the path
+// of an entry appears twice in newRuns or is in oldPaths.
+//
+// A run splits its postings by posting key, and queries read only the index
+// objects whose key bounds hold the columns that they need. An entry without
+// bounds shows that the writer of the run did not record where it split.
 //
 // A path in oldPaths and in a new run would make a retry after a lost
 // response remove part of the new run.
@@ -356,6 +362,13 @@ func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntr
 			if !entry.StartTime.Equal(run[0].StartTime) || !entry.EndTime.Equal(run[0].EndTime) {
 				return fmt.Errorf("replace-index-pointers: entry %s of a new run spans %s to %s, but entry %s spans %s to %s",
 					entry.Path, entry.StartTime, entry.EndTime, run[0].Path, run[0].StartTime, run[0].EndTime)
+			}
+		}
+		if len(run) > 1 {
+			for _, entry := range run {
+				if entry.PostingKeys.IsZero() {
+					return fmt.Errorf("replace-index-pointers: entry %s of a new run has no posting key bounds", entry.Path)
+				}
 			}
 		}
 		for _, entry := range run {

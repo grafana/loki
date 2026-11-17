@@ -511,14 +511,14 @@ func TestReplaceIndexPointers(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old-a", 4), runPointer("idx/old-b", 4), runPointer("idx/kept-a", 2), runPointer("idx/kept-b", 2))
 		writer := newTableOfContentsWriter(t, bucket)
-		entry := func(path string) TableOfContentsEntry {
-			return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20)}
-		}
+		entry := func(path string) TableOfContentsEntry { return runEntry(t, path) }
 		inRun := func(path string, runID indexpointers.RunID, size int32) indexpointers.IndexPointer {
 			pointer := runPointer(path, runID)
-			pointer.RunLength = size
+			pointer.RunLength, pointer.PostingKeys = size, columnKeys(t, path)
 			return pointer
 		}
+		single := runPointer("idx/single", 0)
+		single.PostingKeys = columnKeys(t, "idx/single")
 
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old-a", "idx/old-b"}, []IndexRunEntries{
 			{entry("idx/first-a"), entry("idx/first-b")},
@@ -532,7 +532,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			runPointer("idx/kept-b", 2),
 			inRun("idx/first-a", 5, 2),
 			inRun("idx/first-b", 5, 2),
-			runPointer("idx/single", 0),
+			single,
 			inRun("idx/second-a", 6, 3),
 			inRun("idx/second-b", 6, 3),
 			inRun("idx/second-c", 6, 3),
@@ -579,10 +579,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0))
 		writer := newTableOfContentsWriter(t, bucket)
-		run := IndexRunEntries{
-			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
-			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
-		}
+		run := IndexRunEntries{runEntry(t, "idx/new-a"), runEntry(t, "idx/new-b")}
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{run})
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -602,10 +599,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 		writer := newTableOfContentsWriter(t, bucket)
 
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
-			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
-			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
-		}})
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{runEntry(t, "idx/new-a"), runEntry(t, "idx/new-b")}})
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
@@ -619,10 +613,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 		writer := newTableOfContentsWriter(t, bucket)
 
-		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
-			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
-			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
-		}})
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{runEntry(t, "idx/new-a"), runEntry(t, "idx/new-b")}})
 		require.ErrorIs(t, err, errRunPathInToC)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
@@ -1060,9 +1051,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		})
 	}
 
-	entry := func(path string) TableOfContentsEntry {
-		return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20)}
-	}
+	entry := func(path string) TableOfContentsEntry { return runEntry(t, path) }
 	for _, tc := range []struct {
 		name    string
 		newRuns []IndexRunEntries
@@ -1082,7 +1071,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			name: "returns an error without touching storage when the entries of a new run have different time ranges",
 			newRuns: []IndexRunEntries{{
 				entry("idx/a-new"),
-				{Path: "idx/b-new", StartTime: unixTime(10), EndTime: unixTime(30)},
+				{Path: "idx/b-new", StartTime: unixTime(10), EndTime: unixTime(30), PostingKeys: columnKeys(t, "idx/b-new")},
 			}},
 			wantErr: "entry idx/b-new of a new run spans",
 		},
@@ -1090,9 +1079,17 @@ func TestReplaceIndexPointers(t *testing.T) {
 			name: "returns an error without touching storage when the entries of a new run start at different times",
 			newRuns: []IndexRunEntries{{
 				entry("idx/a-new"),
-				{Path: "idx/b-new", StartTime: unixTime(5), EndTime: unixTime(20)},
+				{Path: "idx/b-new", StartTime: unixTime(5), EndTime: unixTime(20), PostingKeys: columnKeys(t, "idx/b-new")},
 			}},
 			wantErr: "entry idx/b-new of a new run spans",
+		},
+		{
+			name: "returns an error without touching storage when an entry of a new run has no posting key bounds",
+			newRuns: []IndexRunEntries{{
+				entry("idx/a-new"),
+				{Path: "idx/b-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+			}},
+			wantErr: "entry idx/b-new of a new run has no posting key bounds",
 		},
 		{
 			name:    "returns an error without touching storage when an entry of a new run has an old path",
@@ -1491,6 +1488,22 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	require.NoError(t, err)
 	require.NoError(t, bucket.Upload(t.Context(), path, reader))
 	require.NoError(t, reader.Close())
+}
+
+// runEntry returns the entry of an index object of a run at path, from 10 to
+// 20 seconds after the Unix epoch. Its posting key bounds hold the one column
+// named path.
+func runEntry(t *testing.T, path string) TableOfContentsEntry {
+	t.Helper()
+	return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20), PostingKeys: columnKeys(t, path)}
+}
+
+// columnKeys returns the posting key range of the label column column.
+func columnKeys(t *testing.T, column string) postings.KeyRange {
+	t.Helper()
+	keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column})
+	require.NoError(t, err)
+	return keys
 }
 
 // runsOfOne returns one run for each entry.
