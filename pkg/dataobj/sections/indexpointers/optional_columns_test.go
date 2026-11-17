@@ -22,9 +22,9 @@ func optionalFieldPointers(t *testing.T) []IndexPointer {
 	buckets := NewShardBuckets(streams.MustShardLayoutFromBuckets(64))
 
 	return []IndexPointer{
-		{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 1, PostingKeys: keys, ShardBuckets: buckets},
+		{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 1, RunLength: 2, PostingKeys: keys, ShardBuckets: buckets},
 		{Path: "indexes/b", StartTs: unixTime(30).UTC(), EndTs: unixTime(40).UTC(), ShardBuckets: buckets},
-		{Path: "indexes/c", StartTs: unixTime(50).UTC(), EndTs: unixTime(60).UTC(), RunID: 1, PostingKeys: keys},
+		{Path: "indexes/c", StartTs: unixTime(50).UTC(), EndTs: unixTime(60).UTC(), RunID: 1, RunLength: 2, PostingKeys: keys},
 		{Path: "indexes/d", StartTs: unixTime(70).UTC(), EndTs: unixTime(80).UTC()},
 	}
 }
@@ -61,6 +61,7 @@ func TestIter(t *testing.T) {
 			pointer, err := res.Value()
 			require.NoError(t, err)
 			require.Zero(t, pointer.RunID)
+			require.Zero(t, pointer.RunLength)
 			require.True(t, pointer.PostingKeys.IsZero())
 			require.Zero(t, pointer.ShardBuckets)
 		}
@@ -122,6 +123,29 @@ func TestRunIDFromValue(t *testing.T) {
 
 	t.Run("returns an error when the value is negative", func(t *testing.T) {
 		_, err := RunIDFromValue(-1)
+		require.Error(t, err)
+	})
+}
+
+func TestRunLengthFromValue(t *testing.T) {
+	t.Run("returns the run length for a positive value", func(t *testing.T) {
+		size, err := RunLengthFromValue(3)
+		require.NoError(t, err)
+		require.Equal(t, int32(3), size)
+	})
+
+	t.Run("returns an error when the value is zero", func(t *testing.T) {
+		_, err := RunLengthFromValue(0)
+		require.Error(t, err)
+	})
+
+	t.Run("returns an error when the value is negative", func(t *testing.T) {
+		_, err := RunLengthFromValue(-1)
+		require.Error(t, err)
+	})
+
+	t.Run("returns an error when the value does not fit in 32 bits", func(t *testing.T) {
+		_, err := RunLengthFromValue(1 << 40)
 		require.Error(t, err)
 	})
 }

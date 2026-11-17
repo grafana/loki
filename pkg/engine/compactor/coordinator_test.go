@@ -140,9 +140,11 @@ type fakeReplacer struct {
 }
 
 type replaceCall struct {
-	window     time.Time
-	tenant     string
-	oldPaths   []string
+	window   time.Time
+	tenant   string
+	oldPaths []string
+	newRuns  []metastore.IndexRunEntries
+	// newEntries are the entries of newRuns, in order.
 	newEntries []metastore.TableOfContentsEntry
 }
 
@@ -151,10 +153,14 @@ func (f *fakeReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newEntries []metastore.TableOfContentsEntry,
+	newRuns []metastore.IndexRunEntries,
 ) (bool, error) {
+	var newEntries []metastore.TableOfContentsEntry
+	for _, run := range newRuns {
+		newEntries = append(newEntries, run...)
+	}
 	f.mu.Lock()
-	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsEntry(nil), newEntries...)})
+	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.IndexRunEntries(nil), newRuns...), newEntries})
 	f.mu.Unlock()
 	return f.swapped, f.err
 }
@@ -2079,17 +2085,20 @@ func (r *concurrentRemovalReplacer) ReplaceIndexPointers(
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newEntries []metastore.TableOfContentsEntry,
+	newRuns []metastore.IndexRunEntries,
 ) (bool, error) {
 	require.Contains(r.t, oldPaths, r.removed)
-	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.TableOfContentsEntry{{
+	require.NotEmpty(r.t, newRuns)
+	require.NotEmpty(r.t, newRuns[0])
+	first := newRuns[0][0]
+	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.IndexRunEntries{{{
 		Path:      "indexes/concurrent",
-		StartTime: newEntries[0].StartTime,
-		EndTime:   newEntries[0].EndTime,
-	}})
+		StartTime: first.StartTime,
+		EndTime:   first.EndTime,
+	}}})
 	require.NoError(r.t, err)
 	require.True(r.t, swapped)
-	return r.writer.ReplaceIndexPointers(ctx, window, tenant, oldPaths, newEntries)
+	return r.writer.ReplaceIndexPointers(ctx, window, tenant, oldPaths, newRuns)
 }
 
 func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant string, paths []string) objstore.Bucket {
@@ -3501,6 +3510,71 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 		require.False(t, anyError)
 		require.Empty(t, plans)
 		require.Zero(t, singleObjectRuns)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
+	})
+
+	indexAtPosting := func(logPath, value string) postings.Row {
+		return postings.Row{
+			Kind: postings.KindLabel, ObjectPath: logPath, ColumnName: "common", LabelValue: value,
+			MinTimestamp: 10, MaxTimestamp: 20, ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
+			MaxShardBucket: streams.DefaultShardLayout().Buckets() - 1,
+		}
+	}
+	// indexAt writes an index object at path with the postings and stats rows
+	// of one log object, and returns its ToC entry.
+	indexAt := func(t *testing.T, bucket objstore.Bucket, path string, runID indexpointers.RunID, runLength int32) indexpointers.IndexPointer {
+		t.Helper()
+		logPath := "logs/" + path
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
+			stats: []stats.Stat{{
+				ObjectPath: logPath, SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100,
+			}},
+			postings: []postings.Row{
+				indexAtPosting(logPath, "a"),
+				indexAtPosting(logPath, "z"),
+			},
+		})
+		return indexpointers.IndexPointer{Path: path, StartTs: window.Add(time.Hour), EndTs: window.Add(2 * time.Hour), RunID: runID, RunLength: runLength}
+	}
+	// shortRun returns the ToC entries of two index objects of a run that
+	// records three index objects.
+	shortRun := func(t *testing.T, bucket objstore.Bucket) []indexpointers.IndexPointer {
+		t.Helper()
+		return []indexpointers.IndexPointer{
+			indexAt(t, bucket, "indexes/run/a", 1, 3),
+			indexAt(t, bucket, "indexes/run/b", 1, 3),
+		}
+	}
+
+	t.Run("IndexMerge skips an index run that the ToC lists only in part, counts it, and still merges the other indexes", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		pointers := append(shortRun(t, bucket),
+			indexAt(t, bucket, "indexes/single-a", 0, 0),
+			indexAt(t, bucket, "indexes/single-b", 0, 0),
+		)
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		_, err := c.compactTenantIndexes(ctx, "acme", window, pointers)
+		require.NoError(t, err)
+		calls := runner.snapshot()
+		require.NotEmpty(t, calls)
+		for _, call := range calls {
+			require.NotContains(t, planObjectPaths(t, call.plan), "indexes/run/a")
+			require.NotContains(t, planObjectPaths(t, call.plan), "indexes/run/b")
+		}
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
+	})
+
+	t.Run("LogMerge skips an index run that the ToC lists only in part, counts it, and reports no planning error", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writeToCWithPointers(ctx, t, bucket, "acme", window, shortRun(t, bucket)...)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		plans, _, anyError := c.planLogCompactions(ctx, "acme")
+		require.False(t, anyError)
+		require.Empty(t, plans)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelLogMerge)))
 	})
 }

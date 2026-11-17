@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -39,12 +40,14 @@ type QueryHintProvider interface {
 }
 
 type HintPlan struct {
-	Filters     []string
+	Filters     needle.Conjunctions
 	Ranges      []HintTimeRange // pre-min-date passthrough, if any
 	Indexes     []store.Meta
 	Stats       *QueryStats
 	NgramLength int32
 	MaxParallel int32
+	// MaxConjunctions is the most needle sets Filters was planned into.
+	MaxConjunctions int32
 }
 
 // HintTimeRange is a half-open time window [Start, End) that may contain
