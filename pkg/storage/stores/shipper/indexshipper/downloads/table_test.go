@@ -65,9 +65,9 @@ func buildTestTable(t *testing.T, path string) (*table, stopFunc) {
 	storageClient := buildTestStorageClient(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
-	table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
+	table := newTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}, newMetrics(nil), testDownloadTimeout).(*table)
+	}, newMetrics(nil), testDownloadTimeout, tableOptions{}).(*table)
 	_, usersWithIndex, err := table.storageClient.ListFiles(context.Background(), tableName, false)
 	require.NoError(t, err)
 	require.NoError(t, table.EnsureQueryReadiness(context.Background(), usersWithIndex))
@@ -257,9 +257,9 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cachePath := t.TempDir()
-			table := NewTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
+			table := newTable(tableName, cachePath, storageClient, func(path string) (index.Index, error) {
 				return openMockIndexFile(t, path), nil
-			}, newMetrics(nil), testDownloadTimeout).(*table)
+			}, newMetrics(nil), testDownloadTimeout, tableOptions{}).(*table)
 			defer func() {
 				table.Close()
 			}()
@@ -402,9 +402,9 @@ func TestLoadTable(t *testing.T) {
 	storageClient = newStorageClientWithFakeObjectsInList(storageClient)
 
 	// try loading the table.
-	table, err := LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
+	table, err := loadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}, newMetrics(nil), testDownloadTimeout)
+	}, newMetrics(nil), testDownloadTimeout, tableOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -422,9 +422,9 @@ func TestLoadTable(t *testing.T) {
 	setupIndexesAtPath(t, userID, filepath.Join(tablePathInStorage, userID), 5, 10)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
-	table, err = LoadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
+	table, err = loadTable(tableName, tablePathInCache, storageClient, func(path string) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}, newMetrics(nil), testDownloadTimeout)
+	}, newMetrics(nil), testDownloadTimeout, tableOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -477,4 +477,28 @@ func verifyIndexForEach(t *testing.T, expectedIndexes []string, forEachFunc func
 	sort.Strings(indexesFound)
 	sort.Strings(expectedIndexes)
 	require.Equal(t, expectedIndexes, indexesFound)
+}
+
+func TestTableQueryReadinessRefreshesOwnedFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	setupReconcileTable(t, tempDir, "u1")
+	keep := "u1-0"
+	filter := func(_, _ string, files []storage.IndexFile) ([]storage.IndexFile, error) {
+		var owned []storage.IndexFile
+		for _, file := range files {
+			if file.Name == keep {
+				owned = append(owned, file)
+			}
+		}
+		return owned, nil
+	}
+	tbl := newReconcileTable(t, tempDir, newOpenRecorder(), tableOptions{fileFilter: filter})
+	ctx := context.Background()
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+	require.ElementsMatch(t, []string{"0", "1", "u1-0"}, forEachNames(t, tbl, "u1"))
+	keep = "u1-1"
+	// Reconciliation must refresh an already-query-ready tenant immediately,
+	// without waiting for the independent periodic sync loop.
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+	require.ElementsMatch(t, []string{"0", "1", "u1-1"}, forEachNames(t, tbl, "u1"))
 }

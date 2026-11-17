@@ -115,7 +115,7 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 	t.Run("an ACTIVE instance drops exactly what it does not own", func(t *testing.T) {
 		r := newTestRing(t, instances)
 		for _, inst := range instances {
-			f := NewIndexOwnershipFilter(r, inst.id)
+			f := NewIndexOwnershipFilter(r, inst.id, nil, nil)
 			drop, err := f.FilterTenantsToDrop(table, tenants)
 			require.NoError(t, err)
 			owned, err := f.FilterTenants(table, tenants)
@@ -146,9 +146,9 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 			before := newTestRing(t, instances)
 			during := newTestRing(t, tc.during())
 			for _, inst := range instances {
-				held, err := NewIndexOwnershipFilter(before, inst.id).FilterTenants(table, tenants)
+				held, err := NewIndexOwnershipFilter(before, inst.id, nil, nil).FilterTenants(table, tenants)
 				require.NoError(t, err)
-				drop, err := NewIndexOwnershipFilter(during, inst.id).FilterTenantsToDrop(table, held)
+				drop, err := NewIndexOwnershipFilter(during, inst.id, nil, nil).FilterTenantsToDrop(table, held)
 				require.NoError(t, err)
 				require.Empty(t, drop, "instance %s", inst.id)
 			}
@@ -160,12 +160,12 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 		after := newTestRing(t, append(slices.Clone(instances), newcomer))
 		var dropped int
 		for _, inst := range instances {
-			held, err := NewIndexOwnershipFilter(before, inst.id).FilterTenants(table, tenants)
+			held, err := NewIndexOwnershipFilter(before, inst.id, nil, nil).FilterTenants(table, tenants)
 			require.NoError(t, err)
-			drop, err := NewIndexOwnershipFilter(after, inst.id).FilterTenantsToDrop(table, held)
+			drop, err := NewIndexOwnershipFilter(after, inst.id, nil, nil).FilterTenantsToDrop(table, held)
 			require.NoError(t, err)
 			for _, tenant := range drop {
-				owners, err := NewIndexOwnership(after).Owners(tenant, table, IndexOwnersRead)
+				owners, err := NewIndexOwnership(after).Owners(tenant, table, WholeIndexShard, IndexOwnersRead)
 				require.NoError(t, err)
 				require.True(t, owners.Includes(newcomer.id), "instance %s drops tenant %s, which did not move to %s", inst.id, tenant, newcomer.id)
 			}
@@ -179,7 +179,7 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 			withSelf := slices.Clone(instances)
 			withSelf[0].state = state
 			r := newTestRing(t, withSelf)
-			drop, err := NewIndexOwnershipFilter(r, instances[0].id).FilterTenantsToDrop(table, tenants)
+			drop, err := NewIndexOwnershipFilter(r, instances[0].id, nil, nil).FilterTenantsToDrop(table, tenants)
 			require.NoError(t, err)
 			require.Empty(t, drop)
 		})
@@ -187,14 +187,14 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 
 	t.Run("an instance missing from the ring drops nothing", func(t *testing.T) {
 		r := newTestRing(t, instances)
-		drop, err := NewIndexOwnershipFilter(r, "not-in-the-ring").FilterTenantsToDrop(table, tenants)
+		drop, err := NewIndexOwnershipFilter(r, "not-in-the-ring", nil, nil).FilterTenantsToDrop(table, tenants)
 		require.NoError(t, err)
 		require.Empty(t, drop)
 	})
 
 	t.Run("an empty ring drops nothing", func(t *testing.T) {
 		r := newTestRing(t, nil)
-		drop, err := NewIndexOwnershipFilter(r, instances[0].id).FilterTenantsToDrop(table, tenants)
+		drop, err := NewIndexOwnershipFilter(r, instances[0].id, nil, nil).FilterTenantsToDrop(table, tenants)
 		require.Error(t, err)
 		require.Empty(t, drop)
 	})
