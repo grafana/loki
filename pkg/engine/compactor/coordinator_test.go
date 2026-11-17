@@ -739,7 +739,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		requireEntriesMatchCalls(t, runner.snapshot(), swaps[0].newEntries)
 	})
 
-	t.Run("publishes the artifacts of each task as one run with the time range and posting keys of each artifact", func(t *testing.T) {
+	t.Run("publishes the artifacts of each task as one run with the time range of the task and the posting keys of each artifact", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
 		keys, err := postings.NewKeyRange(
 			postings.Key{Kind: postings.KindLabel, ColumnName: "app"},
@@ -750,7 +750,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 			object := planObjectPaths(t, plan)[0]
 			return []v2.ResultArtifact{
-				{Path: object + "/index-1", MinTime: epoch, MaxTime: epoch, PostingKeys: keys},
+				{Path: object + "/index-1", PostingKeys: keys},
 				{Path: object + "/index-2"},
 			}, nil
 		}
@@ -3436,9 +3436,9 @@ func TestOutputRuns(t *testing.T) {
 	window := imWindow()
 	at := func(offset time.Duration) time.Time { return window.Add(offset).UTC() }
 	buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
-	outputs := []outputBounds{
-		{inputs: newTimeRange(at(time.Hour), at(3*time.Hour)), shardBuckets: buckets},
-		{inputs: newTimeRange(at(2*time.Hour), at(4*time.Hour)), shardBuckets: buckets},
+	planned := []plannedRun{
+		{timeRange: newTimeRange(at(time.Hour), at(3*time.Hour)), shardBuckets: buckets},
+		{timeRange: newTimeRange(at(2*time.Hour), at(4*time.Hour)), shardBuckets: buckets},
 	}
 	keys, err := postings.NewKeyRange(
 		postings.Key{Kind: postings.KindLabel, ColumnName: "app"},
@@ -3446,49 +3446,28 @@ func TestOutputRuns(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Run("returns one run per task with the time range and posting keys of each artifact and the layout of its task", func(t *testing.T) {
-		runs, err := outputRuns(outputs, [][]v2.ResultArtifact{
-			{
-				{Path: "a", MinTime: at(time.Hour), MaxTime: at(2 * time.Hour), PostingKeys: keys},
-				{Path: "b", MinTime: at(2 * time.Hour), MaxTime: at(3 * time.Hour)},
-			},
-			{{Path: "c", MinTime: at(4 * time.Hour), MaxTime: at(4 * time.Hour)}},
+	t.Run("returns one run per task with the time range and layout of the task and the posting keys of each artifact", func(t *testing.T) {
+		runs, err := outputRuns(planned, [][]v2.ResultArtifact{
+			{{Path: "a", PostingKeys: keys}, {Path: "b"}},
+			{{Path: "c"}},
 		})
 		require.NoError(t, err)
 		require.Equal(t, []metastore.IndexRunEntries{
 			{
-				{Path: "a", StartTime: at(time.Hour), EndTime: at(2 * time.Hour), ShardBuckets: buckets, PostingKeys: keys},
-				{Path: "b", StartTime: at(2 * time.Hour), EndTime: at(3 * time.Hour), ShardBuckets: buckets},
+				{Path: "a", StartTime: at(time.Hour), EndTime: at(3 * time.Hour), ShardBuckets: buckets, PostingKeys: keys},
+				{Path: "b", StartTime: at(time.Hour), EndTime: at(3 * time.Hour), ShardBuckets: buckets},
 			},
-			{{Path: "c", StartTime: at(4 * time.Hour), EndTime: at(4 * time.Hour), ShardBuckets: buckets}},
+			{{Path: "c", StartTime: at(2 * time.Hour), EndTime: at(4 * time.Hour), ShardBuckets: buckets}},
 		}, runs)
-	})
-
-	t.Run("gives an artifact without a time range the time range of the inputs of its task", func(t *testing.T) {
-		runs, err := outputRuns(outputs[:1], [][]v2.ResultArtifact{{{Path: "a"}}})
-		require.NoError(t, err)
-		require.Equal(t, []metastore.IndexRunEntries{
-			{{Path: "a", StartTime: at(time.Hour), EndTime: at(3 * time.Hour), ShardBuckets: buckets}},
-		}, runs)
-	})
-
-	t.Run("returns an error when an artifact starts before the inputs of its task", func(t *testing.T) {
-		_, err := outputRuns(outputs[1:], [][]v2.ResultArtifact{{{Path: "a", MinTime: at(time.Hour), MaxTime: at(3 * time.Hour)}}})
-		require.ErrorContains(t, err, "outside the inputs of its task")
-	})
-
-	t.Run("returns an error when an artifact ends after the inputs of its task", func(t *testing.T) {
-		_, err := outputRuns(outputs[:1], [][]v2.ResultArtifact{{{Path: "a", MinTime: at(2 * time.Hour), MaxTime: at(4 * time.Hour)}}})
-		require.ErrorContains(t, err, "outside the inputs of its task")
 	})
 
 	t.Run("returns an error when a task has no artifacts", func(t *testing.T) {
-		_, err := outputRuns(outputs[:1], [][]v2.ResultArtifact{{}})
+		_, err := outputRuns(planned[:1], [][]v2.ResultArtifact{{}})
 		require.ErrorContains(t, err, "no artifacts")
 	})
 
 	t.Run("returns an error when the artifacts are of another number of tasks", func(t *testing.T) {
-		_, err := outputRuns(outputs, [][]v2.ResultArtifact{{{Path: "a"}}})
+		_, err := outputRuns(planned, [][]v2.ResultArtifact{{{Path: "a"}}})
 		require.ErrorContains(t, err, "for 2 tasks")
 	})
 }

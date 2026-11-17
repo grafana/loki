@@ -219,7 +219,7 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
 
-	t.Run("reports the time range and posting key bounds of the kept postings rows only", func(t *testing.T) {
+	t.Run("reports the posting key bounds of the kept postings rows only", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c"}
 		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
@@ -230,8 +230,6 @@ func TestDoIndexFilter(t *testing.T) {
 			ObjectPaths: []string{"logs/a", "logs/b"},
 		}))
 		require.NoError(t, err)
-		require.Equal(t, time.Unix(0, 1_000).UTC(), artifact.MinTime)
-		require.Equal(t, time.Unix(0, 1_001).UTC(), artifact.MaxTime)
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "logs/a"}, artifact.PostingKeys.Min())
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "logs/b"}, artifact.PostingKeys.Max())
 	})

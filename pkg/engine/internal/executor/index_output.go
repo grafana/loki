@@ -3,8 +3,6 @@ package executor
 import (
 	"context"
 	"fmt"
-	"math"
-	"time"
 
 	"github.com/thanos-io/objstore"
 
@@ -17,24 +15,21 @@ import (
 )
 
 // indexOutput is one index object that an index merge or filter writes for
-// one tenant. It records the time range and the posting key bounds of its
-// postings rows, so the result artifact of the object can report them.
+// one tenant. It records the posting key bounds of its postings rows, so the
+// result artifact of the object can report them.
 type indexOutput struct {
 	tenant  string
 	builder *indexobj.MergeBuilder
-	bounds  rowBounds
+	keys    keyBounds
 }
 
-// rowBounds is the time range and the posting key bounds of the postings rows
+// keyBounds is the smallest and the largest posting key of the postings rows
 // of an index output. The zero value has no rows.
-type rowBounds struct {
-	// hasPostings is true once the output got a postings row. hasTime is true
-	// once it got a row with a time range. The fields that follow each of
-	// them have no meaning before that.
-	hasPostings      bool
-	minKey, maxKey   postings.Key
-	hasTime          bool
-	minTime, maxTime int64
+type keyBounds struct {
+	// hasPostings is true once the output got a postings row. min and max
+	// have no meaning before that.
+	hasPostings bool
+	min, max    postings.Key
 }
 
 // newIndexOutput returns an empty output for tenant. The log objects of its
@@ -50,17 +45,11 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 
 // appendPostingsRow writes row to the output. It returns an error if the key
 // of row sorts before the key of the previous row, because the posting key
-// bounds of the output are its first and last key. It also returns an error
-// if the time range of row ends before it starts, unless row is a bloom row of
-// a column with no observed values.
+// bounds of the output are its first and last key.
 func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 	key := row.Key()
-	if o.bounds.hasPostings && key.Compare(o.bounds.maxKey) < 0 {
-		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, o.bounds.maxKey)
-	}
-	unobserved := isUnobservedBloomRow(row)
-	if !unobserved && row.MinTimestamp > row.MaxTimestamp {
-		return fmt.Errorf("postings row with key %v has a time range that ends at %d, before its start at %d", key, row.MaxTimestamp, row.MinTimestamp)
+	if o.keys.hasPostings && key.Compare(o.keys.max) < 0 {
+		return fmt.Errorf("postings row with key %v sorts before the previous key %v", key, o.keys.max)
 	}
 
 	var err error
@@ -76,27 +65,11 @@ func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 		return err
 	}
 
-	b := &o.bounds
-	if !b.hasPostings {
-		b.hasPostings, b.minKey = true, key
+	if !o.keys.hasPostings {
+		o.keys.hasPostings, o.keys.min = true, key
 	}
-	b.maxKey = key
-	if unobserved {
-		return nil
-	}
-	if !b.hasTime {
-		b.hasTime, b.minTime, b.maxTime = true, row.MinTimestamp, row.MaxTimestamp
-	}
-	b.minTime = min(b.minTime, row.MinTimestamp)
-	b.maxTime = max(b.maxTime, row.MaxTimestamp)
+	o.keys.max = key
 	return nil
-}
-
-// isUnobservedBloomRow reports whether row is a bloom row of a column with no
-// observed values. Such a row keeps the start values of its time range,
-// MaxInt64 and MinInt64, so it has no time range.
-func isUnobservedBloomRow(row postings.Row) bool {
-	return row.Kind == postings.KindBloom && row.MinTimestamp == math.MaxInt64 && row.MaxTimestamp == math.MinInt64
 }
 
 func (o *indexOutput) appendStat(stat stats.Stat) error {
@@ -106,24 +79,19 @@ func (o *indexOutput) appendStat(stat stats.Stat) error {
 // reset releases the resources of the output and empties it.
 func (o *indexOutput) reset() {
 	o.builder.Reset()
-	o.bounds = rowBounds{}
+	o.keys = keyBounds{}
 }
 
 // artifact returns the result artifact of the output when it is uploaded to
-// path. An output without postings rows has no posting key bounds, and one
-// without a postings row with a time range has no time range.
+// path. An output without postings rows has no posting key bounds.
 func (o *indexOutput) artifact(path string) (v2.ResultArtifact, error) {
 	artifact := v2.ResultArtifact{Path: path}
-	if o.bounds.hasPostings {
-		keys, err := postings.NewKeyRange(o.bounds.minKey, o.bounds.maxKey)
+	if o.keys.hasPostings {
+		keys, err := postings.NewKeyRange(o.keys.min, o.keys.max)
 		if err != nil {
 			return v2.ResultArtifact{}, fmt.Errorf("posting key bounds of index %q: %w", path, err)
 		}
 		artifact.PostingKeys = keys
-	}
-	if o.bounds.hasTime {
-		artifact.MinTime = time.Unix(0, o.bounds.minTime).UTC()
-		artifact.MaxTime = time.Unix(0, o.bounds.maxTime).UTC()
 	}
 	return artifact, nil
 }

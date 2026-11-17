@@ -23,8 +23,8 @@ func TestReadCompactionResult(t *testing.T) {
 	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 	want := []v2.ResultArtifact{
-		{Path: "indexes/result-a", MinTime: time.Unix(0, 10).UTC(), MaxTime: time.Unix(0, 20).UTC()},
-		{Path: "indexes/result-b", MinTime: time.Unix(0, 15).UTC(), MaxTime: time.Unix(0, 30).UTC()},
+		{Path: "indexes/result-a"},
+		{Path: "indexes/result-b"},
 	}
 	resultRecord := func() arrow.RecordBatch {
 		rec, err := v2.EncodeResultArtifacts(mem, want)

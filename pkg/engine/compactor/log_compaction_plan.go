@@ -70,13 +70,13 @@ func (p logCompactionPlan) physicalPlans(tenant string) []*physical.Plan {
 	return plans
 }
 
-// outputBounds returns the output bounds of each task, in task order.
-func (p logCompactionPlan) outputBounds() []outputBounds {
-	bounds := make([]outputBounds, len(p.tasks))
+// plannedRuns returns the planned run of each task, in task order.
+func (p logCompactionPlan) plannedRuns() []plannedRun {
+	planned := make([]plannedRun, len(p.tasks))
 	for i, task := range p.tasks {
-		bounds[i] = outputBounds{inputs: task.inputTimeRange(), shardBuckets: p.shardBuckets}
+		planned[i] = plannedRun{timeRange: task.inputTimeRange(), shardBuckets: p.shardBuckets}
 	}
-	return bounds
+	return planned
 }
 
 // logCompactionTask is one unit of work in a log compaction plan.
@@ -85,8 +85,7 @@ type logCompactionTask interface {
 	physicalPlan(tenant string, window time.Time) *physical.Plan
 
 	// inputTimeRange returns the time range of the inputs of the task. Every
-	// output of the task lies in it. The coordinator checks the time range of
-	// each artifact against it, and uses it for an artifact without one.
+	// ToC entry of the run that the task writes takes it.
 	inputTimeRange() timeRange
 
 	// logStats returns the log data that the task reads. Its bytes are zero

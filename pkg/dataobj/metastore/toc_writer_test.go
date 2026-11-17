@@ -1068,6 +1068,14 @@ func TestReplaceIndexPointers(t *testing.T) {
 			wantErr: "idx/a-new of a new run appears more than once",
 		},
 		{
+			name: "returns an error without touching storage when the entries of a new run have different time ranges",
+			newRuns: []IndexRunEntries{{
+				entry("idx/a-new"),
+				{Path: "idx/b-new", StartTime: unixTime(10), EndTime: unixTime(30)},
+			}},
+			wantErr: "entry idx/b-new of a new run spans",
+		},
+		{
 			name:    "returns an error without touching storage when an entry of a new run has an old path",
 			newRuns: []IndexRunEntries{{entry("idx/a-0"), entry("idx/b-new")}},
 			wantErr: "idx/a-0 of a new run appears more than once or is an old path",

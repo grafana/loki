@@ -958,8 +958,6 @@ func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	indexPath := arts.Path
 	// Index path follows content-hash format: indexes/tenants/<tenant>/<h2>/<hrest>
 	require.Contains(t, indexPath, "indexes/tenants/T/", "index path must follow content-hash format")
-	require.Equal(t, base, arts.MinTime, "artifact must report the time range of the index")
-	require.Equal(t, base.Add(time.Second), arts.MaxTime, "artifact must report the time range of the index")
 	require.True(t, arts.PostingKeys.IsZero(), "log merge does not track posting key bounds")
 
 	// Index exists in the index bucket

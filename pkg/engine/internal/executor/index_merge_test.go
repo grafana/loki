@@ -567,7 +567,7 @@ func TestDoIndexMerge(t *testing.T) {
 		require.ErrorContains(t, err, "records no stream layout")
 	})
 
-	t.Run("reports the time range and posting key bounds of the postings rows of its output", func(t *testing.T) {
+	t.Run("reports the posting key bounds of the postings rows of its output", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		observe := func(column string, ts int64) postings.LabelObservation {
 			return postings.LabelObservation{
@@ -580,13 +580,11 @@ func TestDoIndexMerge(t *testing.T) {
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
 		require.NoError(t, err)
-		require.Equal(t, time.Unix(0, 100).UTC(), artifact.MinTime)
-		require.Equal(t, time.Unix(0, 300).UTC(), artifact.MaxTime)
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "v"}, artifact.PostingKeys.Min())
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "v"}, artifact.PostingKeys.Max())
 	})
 
-	t.Run("reports no time range and no posting key bounds when its output has no postings rows", func(t *testing.T) {
+	t.Run("reports no posting key bounds when its output has no postings rows", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
 			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
@@ -595,8 +593,6 @@ func TestDoIndexMerge(t *testing.T) {
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
 		require.NoError(t, err)
-		require.True(t, artifact.MinTime.IsZero())
-		require.True(t, artifact.MaxTime.IsZero())
 		require.True(t, artifact.PostingKeys.IsZero())
 	})
 

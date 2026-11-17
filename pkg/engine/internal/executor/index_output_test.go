@@ -1,9 +1,7 @@
 package executor
 
 import (
-	"math"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -12,13 +10,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestIndexOutput_AppendPostingsRow(t *testing.T) {
-	label := func(column string, minTS, maxTS int64) postings.Row {
-		return postings.Row{
-			Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: column, LabelValue: "v",
-			StreamIDBitmap: []byte{1}, MinTimestamp: minTS, MaxTimestamp: maxTS,
-		}
+// labelPostingsRow returns a label postings row of the log object logs/a with
+// the given column.
+func labelPostingsRow(column string) postings.Row {
+	return postings.Row{
+		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: column, LabelValue: "v",
+		StreamIDBitmap: []byte{1}, MinTimestamp: 10, MaxTimestamp: 20,
 	}
+}
+
+func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 	newOutput := func(t *testing.T) *indexOutput {
 		t.Helper()
 		out, err := newTestExecutorContext(t, objstore.NewInMemBucket()).newIndexOutput("acme", streams.Layout{})
@@ -27,73 +28,38 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		return out
 	}
 
+	t.Run("reports the keys of the first and the last row as its posting key bounds", func(t *testing.T) {
+		out := newOutput(t)
+		for _, column := range []string{"app", "env", "zone"} {
+			require.NoError(t, out.appendPostingsRow(labelPostingsRow(column)))
+		}
+
+		artifact, err := out.artifact("indexes/out")
+		require.NoError(t, err)
+		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
+		require.Equal(t, "zone", artifact.PostingKeys.Max().ColumnName)
+	})
+
 	t.Run("returns an error when a row sorts before the previous row", func(t *testing.T) {
 		out := newOutput(t)
-		require.NoError(t, out.appendPostingsRow(label("env", 10, 20)))
-		require.ErrorContains(t, out.appendPostingsRow(label("app", 10, 20)), "sorts before the previous key")
-	})
-
-	t.Run("returns an error when a label row has a time range that ends before it starts", func(t *testing.T) {
-		out := newOutput(t)
-		require.ErrorContains(t, out.appendPostingsRow(label("app", 20, 10)), "ends at 10, before its start at 20")
-	})
-
-	t.Run("returns an error when a label row has the start values of an unobserved bloom column", func(t *testing.T) {
-		out := newOutput(t)
-		require.ErrorContains(t, out.appendPostingsRow(label("app", math.MaxInt64, math.MinInt64)), "before its start")
-	})
-
-	unsetBloom := postings.Row{
-		Kind: postings.KindBloom, ObjectPath: "logs/a", ColumnName: "trace_id", BloomFilter: []byte{1},
-		MinTimestamp: math.MaxInt64, MaxTimestamp: math.MinInt64,
-	}
-
-	t.Run("reports posting key bounds and no time range when its only row is a bloom row with no observed values", func(t *testing.T) {
-		out := newOutput(t)
-		require.NoError(t, out.appendPostingsRow(unsetBloom))
-
-		artifact, err := out.artifact("indexes/out")
-		require.NoError(t, err)
-		require.NoError(t, artifact.Validate())
-		require.True(t, artifact.MinTime.IsZero())
-		require.Equal(t, "trace_id", artifact.PostingKeys.Min().ColumnName)
-	})
-
-	t.Run("reports the time range of the label rows after a bloom row with no observed values", func(t *testing.T) {
-		out := newOutput(t)
-		require.NoError(t, out.appendPostingsRow(unsetBloom))
-		require.NoError(t, out.appendPostingsRow(label("app", 10, 20)))
-
-		artifact, err := out.artifact("indexes/out")
-		require.NoError(t, err)
-		require.Equal(t, time.Unix(0, 10).UTC(), artifact.MinTime)
-		require.Equal(t, time.Unix(0, 20).UTC(), artifact.MaxTime)
-		require.Equal(t, "trace_id", artifact.PostingKeys.Min().ColumnName)
-		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
+		require.NoError(t, out.appendPostingsRow(labelPostingsRow("env")))
+		require.ErrorContains(t, out.appendPostingsRow(labelPostingsRow("app")), "sorts before the previous key")
 	})
 }
 
 func TestIndexOutput_Upload(t *testing.T) {
-	label := func(column string, minTS, maxTS int64) postings.Row {
-		return postings.Row{
-			Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: column, LabelValue: "v",
-			StreamIDBitmap: []byte{1}, MinTimestamp: minTS, MaxTimestamp: maxTS,
-		}
-	}
 	t.Run("reports only the rows appended after a successful upload", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		out, err := newTestExecutorContext(t, bucket).newIndexOutput("acme", streams.Layout{})
 		require.NoError(t, err)
 		t.Cleanup(out.reset)
-		require.NoError(t, out.appendPostingsRow(label("env", 10, 20)))
+		require.NoError(t, out.appendPostingsRow(labelPostingsRow("env")))
 		_, _, _, err = out.upload(t.Context(), bucket)
 		require.NoError(t, err)
 
-		require.NoError(t, out.appendPostingsRow(label("app", 30, 40)))
+		require.NoError(t, out.appendPostingsRow(labelPostingsRow("app")))
 		artifact, err := out.artifact("indexes/out")
 		require.NoError(t, err)
-		require.Equal(t, time.Unix(0, 30).UTC(), artifact.MinTime)
-		require.Equal(t, time.Unix(0, 40).UTC(), artifact.MaxTime)
 		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
 	})

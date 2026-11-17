@@ -1280,8 +1280,8 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 		require.Len(t, after, 1, "the run and the other index must merge into one index")
 		requireToCShardBuckets(ctx, t, bucket, tenant, window, after[0].Path)
-		require.Equal(t, time.Unix(0, ts).UTC(), after[0].StartTs.UTC(), "the entry starts at the first postings row of the merged index")
-		require.Equal(t, time.Unix(0, ts+10).UTC(), after[0].EndTs.UTC(), "the entry ends at the last postings row of the merged index")
+		require.Equal(t, start, after[0].StartTs.UTC(), "the entry takes the time range of the merged indexes")
+		require.Equal(t, end, after[0].EndTs.UTC(), "the entry takes the time range of the merged indexes")
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}, after[0].PostingKeys.Min())
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "dev"}, after[0].PostingKeys.Max())
 

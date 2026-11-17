@@ -330,12 +330,15 @@ func runLengthOf(entries int) (int32, error) {
 	return int32(entries), nil
 }
 
-// validateNewRuns returns an error if a run of newRuns is empty or too long, if an entry
-// has no valid time range or lies in another window, or if the path of an
-// entry of a run of more than one entry appears twice in newRuns or is in
-// oldPaths.
+// validateNewRuns returns an error if a run of newRuns is empty or too long,
+// or if an entry has no valid time range or lies in another window. For a run
+// of more than one entry, it also returns an error if the entries have
+// different time ranges, or if the path of an entry appears twice in newRuns
+// or is in oldPaths.
 //
-// A path in oldPaths and in such a run would make a retry after a lost
+// A query filters the entries of a ToC by time. Entries of one run with one
+// time range keep the run whole: the query reads all of its index objects or
+// none. A path in oldPaths and in a new run would make a retry after a lost
 // response remove part of the new run.
 func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntries) error {
 	pathCounts := make(map[string]int)
@@ -345,6 +348,12 @@ func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntr
 	for _, run := range newRuns {
 		if _, err := runLength(run); err != nil {
 			return err
+		}
+		for _, entry := range run[1:] {
+			if !entry.StartTime.Equal(run[0].StartTime) || !entry.EndTime.Equal(run[0].EndTime) {
+				return fmt.Errorf("replace-index-pointers: entry %s of a new run spans %s to %s, but entry %s spans %s to %s",
+					entry.Path, entry.StartTime, entry.EndTime, run[0].Path, run[0].StartTime, run[0].EndTime)
+			}
 		}
 		for _, entry := range run {
 			entryWindow, err := entry.TimeWindow()

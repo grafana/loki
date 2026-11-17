@@ -429,7 +429,7 @@ func (c *coordinator) executeLogCompaction(
 	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
 	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
-	newRuns, err := outputRuns(plan.outputBounds(), artifacts)
+	newRuns, err := outputRuns(plan.plannedRuns(), artifacts)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
 	}
@@ -700,7 +700,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		entriesByPath[entry.Path] = entry
 	}
 	plans := make([]*physical.Plan, len(tasks))
-	bounds := make([]outputBounds, len(tasks))
+	planned := make([]plannedRun, len(tasks))
 	for i, task := range tasks {
 		start, end, err := indexTaskBounds(task, entriesByPath)
 		if err != nil {
@@ -709,7 +709,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		plans[i] = buildIndexMergePlan(tenant, window, task)
 		// A merge keeps the layout of its inputs, so the output has the
 		// layout of the group.
-		bounds[i] = outputBounds{inputs: newTimeRange(start.UTC(), end.UTC()), shardBuckets: group.shardBuckets()}
+		planned[i] = plannedRun{timeRange: newTimeRange(start.UTC(), end.UTC()), shardBuckets: group.shardBuckets()}
 	}
 
 	artifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
@@ -720,7 +720,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
 	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
-	newRuns, err := outputRuns(bounds, artifacts)
+	newRuns, err := outputRuns(planned, artifacts)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
@@ -797,59 +797,50 @@ func newTimeRange(start, end time.Time) timeRange {
 	return timeRange{start: start, end: end}
 }
 
-// outputBounds holds what the coordinator knows about the index objects of one
-// task before the task runs: the time range of its inputs, which holds the
-// time range of every output, and the shard layout of the outputs.
-type outputBounds struct {
-	inputs       timeRange
+// plannedRun holds what planning knows about the index run that one task
+// writes: its time range, which is the time range of the task inputs, and its
+// shard layout, which is the layout of the inputs.
+//
+// Every entry of the run takes both. A query filters the entries of a ToC by
+// time, so entries with one time range keep the run whole: the query reads all
+// of its index objects or none of them.
+type plannedRun struct {
+	timeRange    timeRange
 	shardBuckets indexpointers.ShardBuckets
 }
 
-// entries returns one ToC run with an entry for each artifact. Each entry
-// takes the posting key bounds of its artifact. It takes the time range of
-// the artifact if the artifact has one, and the input time range of b
-// otherwise.
-//
-// It returns an error if artifacts is empty, or if an artifact has a time
-// range outside the input time range of b. Such an artifact shows a fault in
-// the task, and its entry could fall outside the window of the ToC.
-func (b outputBounds) entries(artifacts []v2.ResultArtifact) (metastore.IndexRunEntries, error) {
+// entries returns the run with an entry for each artifact. Each entry takes the
+// path and the posting key bounds of its artifact. It returns an error if
+// artifacts is empty.
+func (r plannedRun) entries(artifacts []v2.ResultArtifact) (metastore.IndexRunEntries, error) {
 	if len(artifacts) == 0 {
 		return nil, errors.New("task has no artifacts")
 	}
 	run := make(metastore.IndexRunEntries, 0, len(artifacts))
 	for _, artifact := range artifacts {
-		entry := metastore.TableOfContentsEntry{
+		run = append(run, metastore.TableOfContentsEntry{
 			Path:         artifact.Path,
-			StartTime:    b.inputs.start,
-			EndTime:      b.inputs.end,
-			ShardBuckets: b.shardBuckets,
+			StartTime:    r.timeRange.start,
+			EndTime:      r.timeRange.end,
+			ShardBuckets: r.shardBuckets,
 			PostingKeys:  artifact.PostingKeys,
-		}
-		if !artifact.MinTime.IsZero() {
-			if artifact.MinTime.Before(b.inputs.start) || artifact.MaxTime.After(b.inputs.end) {
-				return nil, fmt.Errorf("artifact %s spans %s to %s, outside the inputs of its task from %s to %s",
-					artifact.Path, artifact.MinTime, artifact.MaxTime, b.inputs.start, b.inputs.end)
-			}
-			entry.StartTime, entry.EndTime = artifact.MinTime.UTC(), artifact.MaxTime.UTC()
-		}
-		run = append(run, entry)
+		})
 	}
 	return run, nil
 }
 
 // outputRuns returns one run for each task: the ToC entries of the artifacts
-// of the task. bounds and artifacts must both be in task order.
+// of the task. planned and artifacts must both be in task order.
 //
 // A length mismatch returns an error. It stops a ToC swap that would drop a
 // result or reference the wrong object.
-func outputRuns(bounds []outputBounds, artifacts [][]v2.ResultArtifact) ([]metastore.IndexRunEntries, error) {
-	if len(bounds) != len(artifacts) {
-		return nil, fmt.Errorf("got artifacts of %d tasks for %d tasks", len(artifacts), len(bounds))
+func outputRuns(planned []plannedRun, artifacts [][]v2.ResultArtifact) ([]metastore.IndexRunEntries, error) {
+	if len(planned) != len(artifacts) {
+		return nil, fmt.Errorf("got artifacts of %d tasks for %d tasks", len(artifacts), len(planned))
 	}
-	runs := make([]metastore.IndexRunEntries, 0, len(bounds))
-	for i, taskBounds := range bounds {
-		run, err := taskBounds.entries(artifacts[i])
+	runs := make([]metastore.IndexRunEntries, 0, len(planned))
+	for i, plannedRun := range planned {
+		run, err := plannedRun.entries(artifacts[i])
 		if err != nil {
 			return nil, fmt.Errorf("task %d: %w", i, err)
 		}
