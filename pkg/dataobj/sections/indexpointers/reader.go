@@ -458,6 +458,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeMinPostingKey: arrow.BinaryTypes.Binary,
 	ColumnTypeMaxPostingKey: arrow.BinaryTypes.Binary,
 	ColumnTypeShardBuckets:  arrow.PrimitiveTypes.Int64,
+	ColumnTypeRunLength:     arrow.PrimitiveTypes.Int64,
 }
 
 func columnToField(col *Column) arrow.Field {

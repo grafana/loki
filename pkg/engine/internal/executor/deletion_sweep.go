@@ -26,7 +26,7 @@ func (c *Context) executeDeletionSweep(node *physical.DeletionSweep) Pipeline {
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		rec, err := v2.EncodeResultArtifacts(memory.DefaultAllocator, []v2.ResultArtifact{*artifact})
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}

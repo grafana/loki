@@ -49,7 +49,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load(), "the warm open is served entirely from the cache")
 
 		sec := obj.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		gotMeta := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
+		})
 		require.Equal(t, []byte("streams-meta"), gotMeta)
 	})
 
@@ -72,7 +74,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
 		require.NoError(t, err)
 		sec := obj.Sections()[0]
-		gotData := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+		gotData := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
 		require.Zero(t, cb.getRanges.Load())
 		require.Equal(t, []byte("streams-data"), gotData)
 	})
@@ -97,7 +101,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
 		require.NoError(t, err)
 		sec := obj.Sections()[0]
-		gotData := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+		gotData := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
 		require.Positive(t, cb.getRanges.Load())
 		require.Equal(t, data, gotData)
 	})
@@ -122,7 +128,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Empty(t, logger.Entries(), "the cached region decodes, so the open does not fall back to a direct read")
 
 		sec := obj.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		gotMeta := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
+		})
 		require.Zero(t, cb.getRanges.Load(), "the warm open serves the section metadata from the cache")
 		require.Equal(t, []byte("streams-meta"), gotMeta)
 	})
@@ -155,10 +163,10 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 			require.Equal(t, direct.Sections()[i].Tenant, cached.Sections()[i].Tenant)
 
 			wantData := readAll(t, func() (io.ReadCloser, error) {
-				return direct.Sections()[i].Reader.DataRange(ctx, 0, direct.Sections()[i].Reader.DataSize())
+				return direct.Sections()[i].Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: direct.Sections()[i].Reader.DataSize()})
 			})
 			gotData := readAll(t, func() (io.ReadCloser, error) {
-				return cached.Sections()[i].Reader.DataRange(ctx, 0, cached.Sections()[i].Reader.DataSize())
+				return cached.Sections()[i].Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: cached.Sections()[i].Reader.DataSize()})
 			})
 			require.Equal(t, wantData, gotData)
 		}
@@ -193,13 +201,13 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		logsSec := sectionByKind(t, obj.Sections(), "logs")
 
 		streamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
+			return streamsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: streamsSec.Reader.MetadataSize()})
 		})
 		require.Zero(t, cb.getRanges.Load(), "streams metadata is served from the cached region")
 		require.Equal(t, []byte("streams-meta"), streamsMeta)
 
 		logsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return logsSec.Reader.MetadataRange(ctx, 0, logsSec.Reader.MetadataSize())
+			return logsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: logsSec.Reader.MetadataSize()})
 		})
 		require.Positive(t, cb.getRanges.Load(), "logs metadata is outside the cached region and falls through to storage")
 		require.Equal(t, bigLogsMeta, logsMeta)
@@ -232,14 +240,14 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 
 		logsSec := sectionByKind(t, obj.Sections(), "logs")
 		gotLogsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return logsSec.Reader.MetadataRange(ctx, 0, logsSec.Reader.MetadataSize())
+			return logsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: logsSec.Reader.MetadataSize()})
 		})
 		require.Zero(t, cb.getRanges.Load(), "the logs metadata is served from the cached region too, since the region has to span past it anyway")
 		require.Equal(t, logsMeta, gotLogsMeta)
 
 		streamsSec := sectionByKind(t, obj.Sections(), "streams")
 		gotStreamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
+			return streamsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: streamsSec.Reader.MetadataSize()})
 		})
 		require.Zero(t, cb.getRanges.Load(), "the streams metadata is served from the cached region even though it is appended after the logs section")
 		require.Equal(t, streamsMeta, gotStreamsMeta)
@@ -268,7 +276,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 
 		sec := obj.Sections()[0]
 		gotMeta := readAll(t, func() (io.ReadCloser, error) {
-			return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize())
+			return sec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
 		})
 		require.Positive(t, cb.getRanges.Load(), "the only section is a logs section, so its metadata always falls through")
 		require.Equal(t, logsMeta, gotMeta)
@@ -303,7 +311,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 
 		streamsSec := sectionByKind(t, obj.Sections(), "streams")
 		gotStreamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
+			return streamsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: streamsSec.Reader.MetadataSize()})
 		})
 		require.Zero(t, cb.getRanges.Load(), "the streams metadata is served from the cached region despite sitting between two logs sections")
 		require.Equal(t, streamsMeta, gotStreamsMeta)
@@ -313,7 +321,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		// wrongly include this one's metadata in the cached region too.
 		lastLogsSec := obj.Sections()[2]
 		gotLastLogsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return lastLogsSec.Reader.MetadataRange(ctx, 0, lastLogsSec.Reader.MetadataSize())
+			return lastLogsSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: lastLogsSec.Reader.MetadataSize()})
 		})
 		require.Positive(t, cb.getRanges.Load(), "the last logs section's metadata is outside the cached region and falls through to storage")
 		require.Equal(t, lastLogsMeta, gotLastLogsMeta)
@@ -350,7 +358,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 
 		pointersSec := sectionByKind(t, obj.Sections(), "pointers")
 		gotMeta := readAll(t, func() (io.ReadCloser, error) {
-			return pointersSec.Reader.MetadataRange(ctx, 0, pointersSec.Reader.MetadataSize())
+			return pointersSec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: pointersSec.Reader.MetadataSize()})
 		})
 		require.Zero(t, cb.getRanges.Load())
 		require.Equal(t, bigMeta, gotMeta)
@@ -385,7 +393,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load(), "the second open is served entirely from the cached file metadata")
 
 		sec := reopened.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		gotMeta := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
+		})
 		require.Positive(t, cb.getRanges.Load(), "the section's own metadata is outside the cached region and falls through to storage")
 		require.Equal(t, oversizedMeta, gotMeta, "section metadata round-trips through the direct read")
 	})
@@ -512,7 +522,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Contains(t, logger.Entries()[0], "obj", "the log identifies which key was affected")
 
 		sec := obj.Sections()[0]
-		got := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+		got := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
 		require.Equal(t, []byte("data-0"), got)
 	})
 
@@ -579,8 +591,12 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, len(noOption.Sections()), len(nilCache.Sections()))
 		sec := noOption.Sections()[0]
 		nilSec := nilCache.Sections()[0]
-		require.Equal(t, readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) }),
-			readAll(t, func() (io.ReadCloser, error) { return nilSec.Reader.DataRange(ctx, 0, nilSec.Reader.DataSize()) }))
+		require.Equal(t, readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		}),
+			readAll(t, func() (io.ReadCloser, error) {
+				return nilSec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: nilSec.Reader.DataSize()})
+			}))
 	})
 
 	t.Run("passing a typed nil concrete cache behaves the same as omitting the option", func(t *testing.T) {
@@ -603,9 +619,11 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, len(noOption.Sections()), len(typedNilCache.Sections()))
 		sec := noOption.Sections()[0]
 		typedNilSec := typedNilCache.Sections()[0]
-		require.Equal(t, readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) }),
+		require.Equal(t, readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		}),
 			readAll(t, func() (io.ReadCloser, error) {
-				return typedNilSec.Reader.DataRange(ctx, 0, typedNilSec.Reader.DataSize())
+				return typedNilSec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: typedNilSec.Reader.DataSize()})
 			}))
 	})
 }
@@ -633,7 +651,9 @@ func TestFromBucket_MetadataPrefetcher(t *testing.T) {
 		}
 
 		sec := obj.Sections()[0]
-		meta = readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		meta = readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.MetadataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.MetadataSize()})
+		})
 		return meta, cb.getRanges.Load(), nil
 	}
 
