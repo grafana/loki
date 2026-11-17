@@ -152,11 +152,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		st, err := parseTime(sp)
 		if err != nil {
 			http.Error(w, "invalid start time: require unix seconds or RFC3339 format", http.StatusBadRequest)
+			return
 		}
 
 		et, err := parseTime(ep)
 		if err != nil {
 			http.Error(w, "invalid end time: require unix seconds or RFC3339 format", http.StatusBadRequest)
+			return
 		}
 
 		timeRange = &TimeRange{

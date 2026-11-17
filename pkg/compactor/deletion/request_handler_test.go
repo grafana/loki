@@ -373,6 +373,44 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			require.Equal(t, w.Code, http.StatusBadRequest)
 			require.Equal(t, "no org id\n", w.Body.String())
 		})
+
+		for _, tc := range []struct {
+			name       string
+			start, end string
+			expected   string
+		}{
+			{
+				name:     "invalid start time",
+				start:    "abc",
+				end:      "0000000001",
+				expected: "invalid start time: require unix seconds or RFC3339 format\n",
+			},
+			{
+				name:     "invalid end time",
+				start:    "0000000001",
+				end:      "abc",
+				expected: "invalid end time: require unix seconds or RFC3339 format\n",
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				store := &mockDeleteRequestsStore{}
+				store.getAllResult = []deletionproto.DeleteRequest{{RequestID: "test-request-1", Status: deletionproto.StatusReceived}}
+				h := NewDeleteRequestHandler(store, 0, 0, nil)
+
+				req := buildRequest("org-id", ``, "", "", false)
+				params := req.URL.Query()
+				params.Set("start", tc.start)
+				params.Set("end", tc.end)
+				req.URL.RawQuery = params.Encode()
+
+				w := httptest.NewRecorder()
+				h.GetAllDeleteRequestsHandler(w, req)
+
+				require.Equal(t, http.StatusBadRequest, w.Code)
+				require.Equal(t, tc.expected, w.Body.String())
+				require.Empty(t, store.getAllUser)
+			})
+		}
 	})
 }
 
