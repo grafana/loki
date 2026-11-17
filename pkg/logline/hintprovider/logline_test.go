@@ -304,7 +304,8 @@ func TestLoglineHintProvider_QueryHints_UsesRequestNeedles(t *testing.T) {
 	indexStore := newTestStore(t)
 	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "9fA81cD2Ef0077aa", t0, t0.Add(5*time.Minute))
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
+	// A cap above one, to show a request without needles doesn't use it.
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 4, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	hints := func(query string, sets []logproto.Conjunction) []logproto.HintTimeRange {
@@ -324,6 +325,13 @@ func TestLoglineHintProvider_QueryHints_UsesRequestNeedles(t *testing.T) {
 	require.Empty(t, hints(absent, nil))
 	require.NotEmpty(t, hints(absent, sets), "the request's needles decide, not expr")
 	require.Empty(t, hints(indexed, []logproto.Conjunction{{Needles: []string{"ABSENT-NEEDLE"}}}))
+
+	// With one set an or shares no needle, so it passes everything through.
+	// Two sets would narrow it to the indexed document.
+	orQuery := `{job="api"} |= "9fA81cD2Ef0077aa" or "absent-needle"`
+	got := hints(orQuery, nil)
+	require.Len(t, got, 1)
+	require.True(t, got[0].Start.IsZero(), "planned with one set, not the provider's cap")
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {

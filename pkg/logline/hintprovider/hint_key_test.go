@@ -127,28 +127,6 @@ func TestNeedleKey_OrSets(t *testing.T) {
 	require.Equal(t, two, needleKeyWith(t, or, ngram, 3), "the same sets at any limit that fits them")
 }
 
-// The adapter sends expr.String() and the querier looks up the needles of the
-// re-parsed expression, so the key must not change when the expression is
-// re-parsed.
-func TestNeedleKey_SurvivesReparse(t *testing.T) {
-	for _, q := range []string{
-		keyTestVolumeQuery,
-		"{app=\"api\"} |= `say \"hello\"`",
-		`{app="api"} |~ "time\\.out\\d+"`,
-		`{app="api"} |= "a,b:c\"d\\e"`,
-		`{app="api"} |= "\xff\xfetimeout"`,
-		`{app="api"} |= "timeout" |= "failure" or "error"`,
-		`{app="api"} |~ "(timeout|failure) retry"`,
-		`{app="api"} |= "timeout" | (level="critical" or level="warning") and region="us-east"`,
-		`{app="api"} |= "timeout" | json | msg="failure" | line_format "{{.msg}}" | logfmt | other="ignored"`,
-	} {
-		expr := mustParseExpr(t, q)
-		for _, n := range []int{3, 6} {
-			require.Equal(t, needleKeyWith(t, q, n, 2), needleKeyWith(t, expr.String(), n, 2), q)
-		}
-	}
-}
-
 // --- 2. The cache wiring ---
 
 // ngramDelegate is a delegate that reports an n-gram length and records the

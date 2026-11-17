@@ -186,9 +186,9 @@ Query-shape support and hint lookup for logline index lookups.
     - The query-frontend plans the needles once, with its own cap, and sends
       them in `LoglineIndexRequest.conjunctions`. The querier looks up those sets
       and does not plan or take a cap. The hint cache key is built from the same
-      plan, so the key and the lookup cannot disagree, even while a rollout
-      changes how needles are extracted. A request without `conjunctions` is from
-      an older frontend, and the querier plans `expr` with one set, which is
-      what that frontend's default planned.
+      plan, so the key and the lookup cannot disagree. During a rollout that
+      holds only once every querier runs this version. A request without
+      `conjunctions` is from an older frontend, and the querier plans `expr`
+      with one set, which is what that frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.

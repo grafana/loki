@@ -28,7 +28,9 @@ type LoglineHintProvider struct {
 	store       *store.Store
 	ngramLength int
 	maxParallel int
-	// maxConjunctions is the local planning cap, sent explicitly with lookups.
+	// maxConjunctions is the most needle sets a query is planned into. It
+	// applies where the query-frontend plans; the querier uses the needles it
+	// is sent.
 	maxConjunctions int
 	// queryMultipleObserver is optional and receives one callback per
 	// QueryMultiple call with termination reason and term batches processed.
