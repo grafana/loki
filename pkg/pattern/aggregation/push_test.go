@@ -351,6 +351,91 @@ func testPayload() (time.Time, string) {
 	return ts, payload
 }
 
+func Test_PushStop(t *testing.T) {
+	lbls := labelSet("test", "test")
+	structuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: "info"},
+	}
+	responses := make(chan response, 1)
+	backoffCfg := backoff.Config{
+		MinBackoff: 10 * time.Millisecond,
+		MaxBackoff: 20 * time.Millisecond,
+		MaxRetries: 1,
+	}
+
+	t.Run("sends buffered entries on stop", func(t *testing.T) {
+		mock := httptest.NewServer(createServerHandler(responses))
+		defer mock.Close()
+
+		// The push period is far longer than the test, so a request can only
+		// have been sent by the push on Stop.
+		push, err := NewPush(
+			mock.Listener.Addr().String(),
+			testTenant,
+			2*time.Second,
+			time.Hour,
+			config.DefaultHTTPClientConfig,
+			"", "",
+			false,
+			&backoffCfg,
+			log.NewNopLogger(),
+			NewMetrics(nil),
+		)
+		require.NoError(t, err)
+
+		ts, payload := testPayload()
+		push.WriteEntry(ts, payload, lbls, structuredMetadata)
+		push.Stop()
+
+		select {
+		case resp := <-responses:
+			assertResponse(t, resp, false, lbls, ts, payload)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for the entries buffered before Stop to be sent")
+		}
+	})
+
+	t.Run("entries are pushed in timestamp order per stream", func(t *testing.T) {
+		mock := httptest.NewServer(createServerHandler(responses))
+		defer mock.Close()
+
+		push, err := NewPush(
+			mock.Listener.Addr().String(),
+			testTenant,
+			2*time.Second,
+			50*time.Millisecond,
+			config.DefaultHTTPClientConfig,
+			"", "",
+			false,
+			&backoffCfg,
+			log.NewNopLogger(),
+			NewMetrics(nil),
+		)
+		require.NoError(t, err)
+		defer push.Stop()
+
+		now := time.Now().Truncate(time.Second).UTC()
+		push.WriteEntry(now, "newest", lbls, structuredMetadata)
+		push.WriteEntry(now.Add(-2*time.Minute), "oldest", lbls, structuredMetadata)
+		push.WriteEntry(now.Add(-time.Minute), "middle", lbls, structuredMetadata)
+
+		select {
+		case resp := <-responses:
+			require.Len(t, resp.pushReq.Streams, 1)
+			entries := resp.pushReq.Streams[0].Entries
+			require.Len(t, entries, 3)
+			require.Equal(t, now.Add(-2*time.Minute), entries[0].Timestamp)
+			require.Equal(t, "oldest", entries[0].Line)
+			require.Equal(t, now.Add(-time.Minute), entries[1].Timestamp)
+			require.Equal(t, "middle", entries[1].Line)
+			require.Equal(t, now, entries[2].Timestamp)
+			require.Equal(t, "newest", entries[2].Line)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout")
+		}
+	})
+}
+
 func Test_PushRetryStatusCodes(t *testing.T) {
 	tests := []struct {
 		name string

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -162,7 +163,7 @@ func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels, structured
 	p.entries.add(entry{ts: ts, entry: e, labels: lbls, structuredMetadata: structuredMetadata})
 }
 
-// Stop will cancel any ongoing requests and stop the goroutine listening for requests
+// Stop sends any buffered entries and stops the goroutine listening for requests
 func (p *Push) Stop() {
 	p.quitOnce.Do(func() {
 		close(p.quit)
@@ -209,6 +210,13 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		if err != nil {
 			continue
 		}
+
+		// Loki rejects entries more than max_chunk_age/2 older than the newest
+		// entry in a stream, so a shutdown flush spanning retain_for is only
+		// accepted if the entries are pushed in timestamp order.
+		slices.SortStableFunc(entries, func(a, b logproto.Entry) int {
+			return a.Timestamp.Compare(b.Timestamp)
+		})
 
 		streams = append(streams, logproto.Stream{
 			Labels:  s,
@@ -266,47 +274,56 @@ func (p *Push) run(pushPeriod time.Duration) {
 	for {
 		select {
 		case <-p.quit:
+			// Send the entries buffered since the last push, which on shutdown
+			// includes the whole shutdown flush, so they are not dropped.
+			p.pushEntries(ctx)
 			cancel()
 			return
 		case <-pushTicker.C:
 			pushTicker.Reset(pushPeriod)
-			payload, err := p.buildPayload(ctx)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
-				continue
-			}
-
-			if len(payload) == 0 {
-				level.Warn(p.logger).Log("msg", "skipping aggregation push, payload is empty")
-				continue
-			}
-
-			// We will use a timeout within each attempt to send
-			backoff := backoff.New(context.Background(), *p.backoff)
-
-			// send log with retry
-			for {
-				status := 0
-				status, err = p.send(ctx, payload)
-				if err == nil {
-					level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
-					break
-				}
-
-				if status > 0 && !util.IsRateLimited(status) && !util.IsServerError(status) {
-					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
-					break
-				}
-
-				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
-					break
-				}
-				level.Warn(p.logger).
-					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
-				backoff.Wait()
-			}
+			p.pushEntries(ctx)
 		}
+	}
+}
+
+// pushEntries builds a payload of the buffered entries and sends it to Loki,
+// retrying each push with the configured backoff.
+func (p *Push) pushEntries(ctx context.Context) {
+	payload, err := p.buildPayload(ctx)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
+		return
+	}
+
+	if len(payload) == 0 {
+		level.Warn(p.logger).Log("msg", "skipping aggregation push, payload is empty")
+		return
+	}
+
+	// We will use a timeout within each attempt to send
+	backoff := backoff.New(context.Background(), *p.backoff)
+
+	// send log with retry
+	for {
+		status := 0
+		status, err = p.send(ctx, payload)
+		if err == nil {
+			level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
+			break
+		}
+
+		if status > 0 && !util.IsRateLimited(status) && !util.IsServerError(status) {
+			level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
+			break
+		}
+
+		if !backoff.Ongoing() {
+			level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
+			break
+		}
+		level.Warn(p.logger).
+			Log("msg", "failed to send entry, retrying", "status", status, "error", err)
+		backoff.Wait()
 	}
 }
 
