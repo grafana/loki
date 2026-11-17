@@ -96,13 +96,13 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 		SectionStripeMergeLimit: 2,
 	}
 
-	// flushAndSort fills a builder and sorts it with the given concurrency. The
+	// flushAndSort fills a builder and sorts it with the given parallelism. The
 	// input is the same for every call. Every ninth record repeats the previous
 	// one, so that a builder that drops duplicates has work to do.
-	flushAndSort := func(t *testing.T, overrides TenantOverrides, dropDuplicates bool, concurrency int) *dataobj.Object {
+	flushAndSort := func(t *testing.T, overrides TenantOverrides, dropDuplicates bool, parallelism int) *dataobj.Object {
 		t.Helper()
 		cfg := cfg
-		cfg.SortParallelism = concurrency
+		cfg.SortParallelism = parallelism
 		cfg.DropDuplicates = dropDuplicates
 		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			serial := flushAndSort(t, tc.overrides, tc.dropDuplicates, 1)
-			concurrent := flushAndSort(t, tc.overrides, tc.dropDuplicates, 4)
+			parallel := flushAndSort(t, tc.overrides, tc.dropDuplicates, 4)
 
 			want := objectRecords(t, serial)
 			if tc.dropDuplicates {
@@ -157,17 +157,17 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 			} else {
 				require.Len(t, want, 6000)
 			}
-			require.Equal(t, want, objectRecords(t, concurrent))
-			require.Equal(t, objectStreams(t, serial), objectStreams(t, concurrent))
+			require.Equal(t, want, objectRecords(t, parallel))
+			require.Equal(t, objectStreams(t, serial), objectStreams(t, parallel))
 
-			// Each tenant must span several ranges, or the concurrent path
+			// Each tenant must span several ranges, or the parallel path
 			// would not run.
-			require.Greater(t, concurrent.Sections().Count(logs.CheckSection), 2*2)
+			require.Greater(t, parallel.Sections().Count(logs.CheckSection), 2*2)
 		})
 	}
 }
 
-func TestBuilder_SortRangesConcurrently(t *testing.T) {
+func TestBuilder_SortRangesInParallel(t *testing.T) {
 	t.Run("returns the error of the failed ranges when there are more ranges than goroutines", func(t *testing.T) {
 		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
