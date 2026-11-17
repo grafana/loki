@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -800,6 +801,117 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, res.Data, rangeRes.Data)
+		})
+	}
+}
+
+// recordingDownstreamer records the expression and the start of every query it runs.
+type recordingDownstreamer struct {
+	MockDownstreamer
+	mu      sync.Mutex
+	queries []string
+}
+
+func (d *recordingDownstreamer) Downstreamer(context.Context) Downstreamer { return d }
+
+func (d *recordingDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	d.mu.Lock()
+	for _, q := range queries {
+		d.queries = append(d.queries, fmt.Sprintf("%s @ %s", q.Params.GetExpression(), q.Params.Start().UTC().Format(time.TimeOnly)))
+	}
+	d.mu.Unlock()
+	return d.MockDownstreamer.Downstream(ctx, queries, acc)
+}
+
+func TestRangeMappingSharesOffsetLegs(t *testing.T) {
+	streams := randomStreams(60, 30, 3, []string{"a", "b", "c", "d"}, false)
+
+	for _, tc := range []struct {
+		name            string
+		query           string
+		splitByInterval time.Duration
+		start, end      time.Time
+		step            time.Duration
+		expected        []string
+	}{
+		{
+			name:            "legs share one query that starts earlier by the range they span",
+			query:           `sum(count_over_time({a=~".+"}[5s]))`,
+			splitByInterval: time.Second,
+			start:           time.Unix(10, 0),
+			end:             time.Unix(20, 0),
+			step:            time.Second,
+			expected:        []string{`sum(count_over_time({a=~".+"}[1s])) @ 00:00:06`},
+		},
+		{
+			name:            "the shared query keeps the offset of the query",
+			query:           `rate({a=~".+"}[4s] offset 2s)`,
+			splitByInterval: time.Second,
+			start:           time.Unix(10, 0),
+			end:             time.Unix(20, 0),
+			step:            time.Second,
+			expected:        []string{`count_over_time({a=~".+"}[1s] offset 2s) @ 00:00:07`},
+		},
+		{
+			name:            "legs of different ranges do not share a query",
+			query:           `sum(count_over_time({a=~".+"}[3s]))`,
+			splitByInterval: 2 * time.Second,
+			start:           time.Unix(10, 0),
+			end:             time.Unix(20, 0),
+			step:            time.Second,
+			expected: []string{
+				`sum(count_over_time({a=~".+"}[1s] offset 2s)) @ 00:00:10`,
+				`sum(count_over_time({a=~".+"}[2s])) @ 00:00:10`,
+			},
+		},
+		{
+			name:            "legs do not share a query when the window is shorter than the gap between them",
+			query:           `sum(count_over_time({a=~".+"}[4s]))`,
+			splitByInterval: 2 * time.Second,
+			start:           time.Unix(10, 0),
+			end:             time.Unix(10, 0),
+			step:            time.Second,
+			expected: []string{
+				`sum(count_over_time({a=~".+"}[2s] offset 2s)) @ 00:00:10`,
+				`sum(count_over_time({a=~".+"}[2s])) @ 00:00:10`,
+			},
+		},
+		{
+			name:            "legs do not share a query when their offsets are not whole steps",
+			query:           `sum(count_over_time({a=~".+"}[2s]))`,
+			splitByInterval: time.Second,
+			start:           time.Unix(10, 0),
+			end:             time.Unix(20, 0),
+			step:            2 * time.Second,
+			expected: []string{
+				`sum(count_over_time({a=~".+"}[1s] offset 1s)) @ 00:00:10`,
+				`sum(count_over_time({a=~".+"}[1s])) @ 00:00:10`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			regularEngine := NewEngine(EngineOpts{}, NewMockQuerier(3, streams), NoLimits, log.NewNopLogger())
+			downstreamer := &recordingDownstreamer{MockDownstreamer: MockDownstreamer{regularEngine}}
+			downstreamEngine := NewDownstreamEngine(EngineOpts{}, downstreamer, NoLimits, log.NewNopLogger())
+
+			params, err := NewLiteralParams(tc.query, tc.start, tc.end, tc.step, 0, logproto.FORWARD, 100, nil, nil)
+			require.NoError(t, err)
+
+			res, err := regularEngine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
+			require.NoError(t, err)
+			noop, rangeExpr, err := rangeMapper.Parse(syntax.MustParseExpr(tc.query))
+			require.NoError(t, err)
+			require.False(t, noop)
+
+			rangeRes, err := downstreamEngine.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: rangeExpr}).Exec(ctx)
+			require.NoError(t, err)
+
+			require.Equal(t, res.Data, rangeRes.Data)
+			require.ElementsMatch(t, tc.expected, downstreamer.queries)
 		})
 	}
 }
