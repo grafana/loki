@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -42,8 +43,8 @@ func (f *fakeInnerCodec) QueryRequestUnwrap(ctx context.Context, req *queryrange
 func TestCodec_QueryRequestUnwrap_InjectsLBACIntoReturnedCtx(t *testing.T) {
 	policySet := LabelPolicySet{
 		"test_tenant": []*types.LabelPolicy{
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 			}},
 		},
 	}
@@ -118,4 +119,32 @@ func TestCodec_QueryRequestUnwrap_InvalidMetadataReturnsError(t *testing.T) {
 
 	_, _, err := codec.QueryRequestUnwrap(context.Background(), req)
 	require.Error(t, err)
+}
+
+// TestCodec_QueryRequestUnwrap_InvalidPolicyReturnsError checks that a policy whose matcher can't
+// be compiled fails the request, rather than the policy being dropped.
+func TestCodec_QueryRequestUnwrap_InvalidPolicyReturnsError(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		metadata string
+	}{
+		{name: "unknown match type", metadata: `{"test_tenant":[{"selector":[{"type":9,"name":"env","value":"dev"}]}]}`},
+		{name: "invalid regex", metadata: `{"test_tenant":[{"selector":[{"type":3,"name":"env","value":"("}]}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &queryrange.QueryRequest{
+				Metadata: map[string]string{
+					HTTPHeaderKey: tc.metadata,
+				},
+				Request: &queryrange.QueryRequest_Series{
+					Series: &queryrange.LokiSeriesRequest{},
+				},
+			}
+
+			codec := NewCodec(&fakeInnerCodec{Codec: queryrange.Codec{}})
+
+			_, _, err := codec.QueryRequestUnwrap(context.Background(), req)
+			require.Error(t, err)
+		})
+	}
 }

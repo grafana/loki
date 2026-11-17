@@ -1,6 +1,7 @@
 package labelaccess
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -19,13 +20,7 @@ func TestLabelPolicySetString(t *testing.T) {
 	m2, err := labels.NewMatcher(labels.MatchNotEqual, "level", "info")
 	require.Nil(t, err)
 
-	policy := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 2),
-	}
-	policy.Selector[0], err = types.LabelMatcherFromPromLabel(m1)
-	require.Nil(t, err)
-	policy.Selector[1], err = types.LabelMatcherFromPromLabel(m2)
-	require.Nil(t, err)
+	policy := &types.LabelPolicy{Selector: []*labels.Matcher{m1, m2}}
 
 	instancePolicyMap["tenant1"] = []*types.LabelPolicy{policy}
 
@@ -35,21 +30,12 @@ func TestLabelPolicySetString(t *testing.T) {
 	m3, err := labels.NewMatcher(labels.MatchNotRegexp, "env", "p.*")
 	require.Nil(t, err)
 
-	policy2 := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 1),
-	}
-	policy2.Selector[0], err = types.LabelMatcherFromPromLabel(m3)
-	require.Nil(t, err)
+	policy2 := &types.LabelPolicy{Selector: []*labels.Matcher{m3}}
 
 	m4, err := labels.NewMatcher(labels.MatchRegexp, "blah", "p.*")
 	require.Nil(t, err)
 
-	policy3 := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 1),
-	}
-	policy3.Selector[0], err = types.LabelMatcherFromPromLabel(m4)
-
-	require.Nil(t, err)
+	policy3 := &types.LabelPolicy{Selector: []*labels.Matcher{m4}}
 
 	instancePolicyMap["tenant2"] = []*types.LabelPolicy{policy2, policy3}
 
@@ -65,9 +51,22 @@ func mustPolicy(t *testing.T, matchType labels.MatchType, name, value string) *t
 	t.Helper()
 	m, err := labels.NewMatcher(matchType, name, value)
 	require.NoError(t, err)
-	lm, err := types.LabelMatcherFromPromLabel(m)
-	require.NoError(t, err)
-	return &types.LabelPolicy{Selector: []*types.LabelMatcher{lm}}
+	return &types.LabelPolicy{Selector: []*labels.Matcher{m}}
+}
+
+// withoutCompiledRegex copies policies, leaving out each matcher's compiled regex. It holds a func,
+// which reflect.DeepEqual never considers equal, so policies with regex matchers can't be compared
+// otherwise.
+func withoutCompiledRegex(policies []*types.LabelPolicy) []*types.LabelPolicy {
+	out := make([]*types.LabelPolicy, len(policies))
+	for i, p := range policies {
+		selector := make([]*labels.Matcher, len(p.Selector))
+		for j, m := range p.Selector {
+			selector[j] = &labels.Matcher{Type: m.Type, Name: m.Name, Value: m.Value}
+		}
+		out[i] = &types.LabelPolicy{Selector: selector}
+	}
+	return out
 }
 
 func TestLabelPolicySetHashOrderIndependent(t *testing.T) {
@@ -163,7 +162,7 @@ func TestInjectAndExtractLabelMatchersContext(t *testing.T) {
 			name: "single policy is injected and extracted correctly",
 			matchers: LabelPolicySet{
 				"tenant1": {
-					{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+					{Selector: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "prod")}},
 				},
 			},
 		},
@@ -171,8 +170,8 @@ func TestInjectAndExtractLabelMatchersContext(t *testing.T) {
 			name: "multiple policies are injected and extracted correctly",
 			matchers: LabelPolicySet{
 				"tenant1": {
-					{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "env", Value: ".*"}}},
-					{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "classification", Value: "secret"}}},
+					{Selector: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "env", ".*")}},
+					{Selector: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "classification", "secret")}},
 				},
 			},
 		},
@@ -180,14 +179,14 @@ func TestInjectAndExtractLabelMatchersContext(t *testing.T) {
 			name: "multiple tenants are injected and extracted correctly",
 			matchers: LabelPolicySet{
 				"tenant1": {
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "classification", Value: "secret"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchEqual, "classification", "secret"),
 					}},
-					{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "classification", Value: "secret"}}},
+					{Selector: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "classification", "secret")}},
 				},
 				"tenant2": {
-					{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "level", Value: "info"}}},
+					{Selector: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "level", "info")}},
 				},
 			},
 		},
@@ -212,7 +211,7 @@ func TestInjectAndExtractLabelMatchersContext(t *testing.T) {
 
 			require.Equal(t, len(tc.matchers), len(extracted))
 			for tenant, expectedPolicies := range tc.matchers {
-				require.ElementsMatch(t, expectedPolicies, extracted[tenant])
+				require.ElementsMatch(t, withoutCompiledRegex(expectedPolicies), withoutCompiledRegex(extracted[tenant]))
 			}
 		})
 	}
@@ -221,4 +220,25 @@ func TestInjectAndExtractLabelMatchersContext(t *testing.T) {
 		_, err := ExtractLabelMatchersContext(t.Context())
 		require.ErrorIs(t, err, errNoMatcherSource)
 	})
+}
+
+// TestLabelPolicySetStringAndHashGolden pins the output of String and hash. hash is part of the
+// results cache key, so a change to either would cause cache misses when rolled out.
+func TestLabelPolicySetStringAndHashGolden(t *testing.T) {
+	const encoded = `{"tenant1":[{"selector":[{"type":1,"name":"env","value":"dev"},{"type":2,"name":"level","value":"info"}]},{"selector":[{"type":3,"name":"app","value":"api|web"},{"type":4,"name":"class","value":"secre.*"}]}],"tenant2":[{"selector":[{"type":1,"name":"q","value":"a\"b"}]},{}]}`
+	var set LabelPolicySet
+	require.NoError(t, json.Unmarshal([]byte(encoded), &set))
+
+	require.Equal(t, "tenant1:[{env=\"dev\",level!=\"info\",},{app=~\"api|web\",class!~\"secre.*\",},] tenant2:[{q=\"a\\\"b\",},{},] ", set.String())
+	require.Equal(t, "12049742001303896576", set.hash())
+	require.Equal(t,
+		"&LabelPolicy{Selector:[]*LabelMatcher{&LabelMatcher{Type:LABEL_MATCHER_TYPE_EQ,Name:env,Value:dev,},&LabelMatcher{Type:LABEL_MATCHER_TYPE_NEQ,Name:level,Value:info,},},}",
+		set["tenant1"][0].String())
+	require.Equal(t,
+		"&LabelPolicy{Selector:[]*LabelMatcher{&LabelMatcher{Type:LABEL_MATCHER_TYPE_RE,Name:app,Value:api|web,},&LabelMatcher{Type:LABEL_MATCHER_TYPE_NRE,Name:class,Value:secre.*,},},}",
+		set["tenant1"][1].String())
+
+	reencoded, err := json.Marshal(set)
+	require.NoError(t, err)
+	require.Equal(t, encoded, string(reencoded))
 }

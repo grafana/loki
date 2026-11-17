@@ -95,11 +95,7 @@ func (l LabelPolicySet) String() string {
 		for _, p := range canonicalPolicies(l[t]) {
 			sb.WriteString("{")
 			for _, lm := range p.Selector {
-				plm, err := types.LabelMatcherToPromLabel(lm)
-				if err != nil {
-					_ = level.Error(util_log.Logger).Log("msg", "unexpected error transforming LabelMatcher", "err", err)
-				}
-				sb.WriteString(plm.String())
+				sb.WriteString(lm.String())
 				sb.WriteString(",")
 			}
 			sb.WriteString("},")
@@ -109,18 +105,13 @@ func (l LabelPolicySet) String() string {
 	return sb.String()
 }
 
-func policyToHeaderValue(instanceName string, policy *types.LabelPolicy) (string, error) {
+func policyToHeaderValue(instanceName string, policy *types.LabelPolicy) string {
 	matchers := make([]string, len(policy.Selector))
-
-	for i := range policy.Selector {
-		matcher, err := types.LabelMatcherToPromLabel(policy.Selector[i])
-		if err != nil {
-			return "", err
-		}
-		matchers[i] = matcher.String()
+	for i, m := range policy.Selector {
+		matchers[i] = m.String()
 	}
 
-	return instanceName + ":" + url.PathEscape("{"+strings.Join(matchers, ", ")+"}"), nil
+	return instanceName + ":" + url.PathEscape("{"+strings.Join(matchers, ", ")+"}")
 }
 
 func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, error) {
@@ -138,17 +129,7 @@ func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, err
 		return "", nil, fmt.Errorf("%w '%s', error: '%v'", errInvalidSelector, selectorString, err)
 	}
 
-	policy := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, len(matchers)),
-	}
-	for i, matcher := range matchers {
-		policy.Selector[i], err = types.LabelMatcherFromPromLabel(matcher)
-		if err != nil {
-			return "", nil, err
-		}
-	}
-
-	return components[0], policy, nil
+	return components[0], &types.LabelPolicy{Selector: matchers}, nil
 }
 
 // InjectLabelMatchersHTTP takes the provided matcher protobufs and stores them as HTTP headers
@@ -159,11 +140,7 @@ func InjectLabelMatchersHTTP(r *http.Request, instancePolicyMap LabelPolicySet) 
 	r.Header.Del(HTTPHeaderKey)
 	for instanceName, policies := range instancePolicyMap {
 		for _, policy := range policies {
-			encodedPolicy, err := policyToHeaderValue(instanceName, policy)
-			if err != nil {
-				return err
-			}
-			r.Header.Add(HTTPHeaderKey, encodedPolicy)
+			r.Header.Add(HTTPHeaderKey, policyToHeaderValue(instanceName, policy))
 		}
 	}
 	return nil
@@ -218,11 +195,7 @@ func InjectLabelMatchersContext(ctx context.Context, matchers LabelPolicySet) co
 	var encodedPolicies []string
 	for instanceName, policies := range matchers {
 		for _, policy := range policies {
-			encoded, err := policyToHeaderValue(instanceName, policy)
-			if err != nil {
-				continue
-			}
-			encodedPolicies = append(encodedPolicies, encoded)
+			encodedPolicies = append(encodedPolicies, policyToHeaderValue(instanceName, policy))
 		}
 	}
 
