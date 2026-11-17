@@ -33,6 +33,7 @@ var formatToAccept = map[Format]goautoneg.Accept{}
 func init() {
 	for _, f := range []Format{
 		FmtText,
+		FmtText_1_0_0,
 		FmtProtoDelim,
 		FmtProtoText,
 		FmtProtoCompact,
@@ -53,6 +54,7 @@ var (
 		FmtProtoText,
 		FmtProtoCompact,
 		FmtText,
+		FmtText_1_0_0,
 	}
 
 	defaultOpenMetricsAcceptedFormats = []Format{
@@ -62,12 +64,14 @@ var (
 		FmtProtoText,
 		FmtProtoCompact,
 		FmtText,
+		FmtText_1_0_0,
 	}
 )
 
 // DefaultAcceptedFormats returns a copy of standard accepted formats for Negotiate,
 // ordered by preference (delimited protobuf, protobuf text, compact protobuf text,
-// and Prometheus text format).
+// and Prometheus text formats). Version 0.0.4 remains the fallback when no
+// supported version is requested.
 func DefaultAcceptedFormats() []Format {
 	return slices.Clone(defaultAcceptedFormats)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -152,7 +153,7 @@ func TestWriteEntry(t *testing.T) {
 		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
-	t.Run("keeps the run ID, posting keys and shard layout of every entry when it adds an entry", func(t *testing.T) {
+	t.Run("keeps the run ID, run length, posting keys and shard layout of every entry when it adds an entry", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
 
@@ -162,7 +163,7 @@ func TestWriteEntry(t *testing.T) {
 		)
 		require.NoError(t, err)
 		buckets := indexpointers.NewShardBuckets(streams.MustShardLayoutFromBuckets(16))
-		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, PostingKeys: keys, ShardBuckets: buckets}
+		existing := indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(10).UTC(), EndTs: unixTime(20).UTC(), RunID: 3, RunLength: 2, PostingKeys: keys, ShardBuckets: buckets}
 		uploadToCPointers(t, bucket, tocPath, "tenant-a", existing)
 
 		writer := newTableOfContentsWriter(t, bucket)
@@ -435,7 +436,7 @@ func TestRebuildToc(t *testing.T) {
 		defer reader.Close()
 
 		rebuilt, err := writer.rebuildToc(context.Background(), builder, reader, tocChange{
-			add: []TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}},
+			add: runsOfOne([]TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}}),
 		})
 		require.NoError(t, err)
 		out := objstore.NewInMemBucket()
@@ -462,7 +463,7 @@ func TestRebuildToc(t *testing.T) {
 		require.NoError(t, err)
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
 		_, err = writer.rebuildToc(context.Background(), target, reader, tocChange{
-			add: []TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			add: runsOfOne([]TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		})
 		require.ErrorContains(t, err, "reading index pointers")
 		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
@@ -479,7 +480,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/run-a", "idx/other"},
-			[]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}})
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}}))
 		require.ErrorIs(t, err, errPartialRun)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
@@ -494,7 +495,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/run-a", "idx/run-b"},
-			[]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}})
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/new", StartTime: unixTime(10), EndTime: unixTime(20)}}))
 		require.NoError(t, err)
 		require.True(t, swapped)
 		require.ElementsMatch(t, []indexpointers.IndexPointer{
@@ -502,6 +503,96 @@ func TestReplaceIndexPointers(t *testing.T) {
 			runPointer("idx/kept-b", 2),
 			runPointer("idx/new", 0),
 		}, readToCPointers(t, bucket, tocPath))
+	})
+
+	t.Run("gives each new run of several entries the next run ID above every run ID of the ToC and records its size", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old-a", 4), runPointer("idx/old-b", 4), runPointer("idx/kept-a", 2), runPointer("idx/kept-b", 2))
+		writer := newTableOfContentsWriter(t, bucket)
+		entry := func(path string) TableOfContentsEntry {
+			return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20)}
+		}
+		inRun := func(path string, runID indexpointers.RunID, size int32) indexpointers.IndexPointer {
+			pointer := runPointer(path, runID)
+			pointer.RunLength = size
+			return pointer
+		}
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old-a", "idx/old-b"}, []IndexRunEntries{
+			{entry("idx/first-a"), entry("idx/first-b")},
+			{entry("idx/single")},
+			{entry("idx/second-a"), entry("idx/second-b"), entry("idx/second-c")},
+		})
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.ElementsMatch(t, []indexpointers.IndexPointer{
+			runPointer("idx/kept-a", 2),
+			runPointer("idx/kept-b", 2),
+			inRun("idx/first-a", 5, 2),
+			inRun("idx/first-b", 5, 2),
+			runPointer("idx/single", 0),
+			inRun("idx/second-a", 6, 3),
+			inRun("idx/second-b", 6, 3),
+			inRun("idx/second-c", 6, 3),
+		}, readToCPointers(t, bucket, tocPath))
+	})
+
+	t.Run("returns false and leaves the ToC unchanged when the ToC already holds a new run and none of the old paths", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0))
+		writer := newTableOfContentsWriter(t, bucket)
+		run := IndexRunEntries{
+			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
+			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
+		}
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{run})
+		require.NoError(t, err)
+		require.True(t, swapped)
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+
+		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{run})
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
+	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds the paths of a new run as runs of one and none of the old paths", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/new-a", 0), runPointer("idx/new-b", 0))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
+			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
+			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
+		}})
+		require.ErrorIs(t, err, errChangeSuperseded)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
+	t.Run("returns an error without retrying and leaves the ToC unchanged when the ToC keeps the path of an entry of a new run", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 0), runPointer("idx/new-b", 0))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{
+			{Path: "idx/new-a", StartTime: unixTime(10), EndTime: unixTime(20)},
+			{Path: "idx/new-b", StartTime: unixTime(10), EndTime: unixTime(20)},
+		}})
+		require.ErrorIs(t, err, errRunPathInToC)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+		require.Equal(t, 1, bucket.Calls(), "the call must not retry")
 	})
 
 	t.Run("replaces the old paths with the new entry and reports written", func(t *testing.T) {
@@ -518,7 +609,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-1"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -548,7 +639,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-1", "idx/a-2"},
-			[]TableOfContentsEntry{{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -582,7 +673,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-gone-1", "idx/a-1", "idx/a-gone-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}}),
 		)
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
@@ -610,7 +701,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-gone"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
@@ -632,7 +723,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-1"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -656,7 +747,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -678,7 +769,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -694,10 +785,10 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{
+			runsOfOne([]TableOfContentsEntry{
 				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
 				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
-			},
+			}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -717,7 +808,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-1"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)}}),
 		)
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
@@ -739,7 +830,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0", "idx/a-1"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.NoError(t, err)
 		require.False(t, swapped)
@@ -757,10 +848,10 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{
+			runsOfOne([]TableOfContentsEntry{
 				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
 				{Path: "idx/a-other", StartTime: unixTime(10), EndTime: unixTime(20)},
-			},
+			}),
 		)
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
@@ -776,7 +867,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
@@ -797,7 +888,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.NoError(t, err)
 		require.False(t, swapped)
@@ -821,7 +912,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -843,7 +934,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriterWithBackoff(t, bucket, 3)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.ErrorIs(t, err, errWriteFailed)
 		require.False(t, swapped)
@@ -862,7 +953,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}}),
 		)
 		require.ErrorIs(t, err, errUnrecoverable)
 		require.False(t, swapped)
@@ -892,7 +983,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		{
 			name:     "returns an error without touching storage when newEntries is empty",
 			oldPaths: []string{"idx/a-old"},
-			wantErr:  "no new entries",
+			wantErr:  "no new runs",
 		},
 		{
 			name:       "returns the TimeWindow error without touching storage when a new entry is not valid",
@@ -924,7 +1015,51 @@ func TestReplaceIndexPointers(t *testing.T) {
 			bucket := &failingBucket{Bucket: objstore.NewInMemBucket()}
 			writer := newTableOfContentsWriter(t, bucket)
 
-			swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA", tc.oldPaths, tc.newEntries)
+			swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA", tc.oldPaths, runsOfOne(tc.newEntries))
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+			require.False(t, swapped)
+			require.Zero(t, bucket.Calls())
+		})
+	}
+
+	entry := func(path string) TableOfContentsEntry {
+		return TableOfContentsEntry{Path: path, StartTime: unixTime(10), EndTime: unixTime(20)}
+	}
+	for _, tc := range []struct {
+		name    string
+		newRuns []IndexRunEntries
+		wantErr string
+	}{
+		{
+			name:    "returns an error without touching storage when a new run is empty",
+			newRuns: []IndexRunEntries{{entry("idx/a-new")}, {}},
+			wantErr: "empty new run",
+		},
+		{
+			name:    "returns an error without touching storage when a new run holds one path twice",
+			newRuns: []IndexRunEntries{{entry("idx/a-new"), entry("idx/a-new")}},
+			wantErr: "idx/a-new of a new run appears more than once",
+		},
+		{
+			name:    "returns an error without touching storage when an entry of a new run has an old path",
+			newRuns: []IndexRunEntries{{entry("idx/a-0"), entry("idx/b-new")}},
+			wantErr: "idx/a-0 of a new run appears more than once or is an old path",
+		},
+		{
+			name:    "returns an error without touching storage when an entry of a new run has the path of another new run of one entry",
+			newRuns: []IndexRunEntries{{entry("idx/a-new"), entry("idx/b-new")}, {entry("idx/b-new")}},
+			wantErr: "idx/b-new of a new run appears more than once",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := &failingBucket{Bucket: objstore.NewInMemBucket()}
+			writer := newTableOfContentsWriter(t, bucket)
+
+			swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA", []string{"idx/a-0"}, tc.newRuns)
 			if tc.wantErr == "" {
 				require.NoError(t, err)
 			} else {
@@ -943,7 +1078,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 
 		swapped, err := writer.ReplaceIndexPointers(context.Background(), window.Add(time.Hour), "tenantA",
 			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: window.Add(time.Hour), EndTime: window.Add(2 * time.Hour)}},
+			runsOfOne([]TableOfContentsEntry{{Path: "idx/a-new", StartTime: window.Add(time.Hour), EndTime: window.Add(2 * time.Hour)}}),
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
@@ -957,9 +1092,9 @@ func TestReplaceIndexPointers(t *testing.T) {
 		seedWatermarkToC(t, bucket, []string{"indexes/a", "indexes/b"}, []watermarks.Watermark{wm(0, 99), wm(1, 5)})
 		writer := newTableOfContentsWriter(t, bucket)
 
-		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a", "indexes/b"}, []TableOfContentsEntry{
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a", "indexes/b"}, runsOfOne([]TableOfContentsEntry{
 			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
-		})
+		}))
 		require.NoError(t, err)
 		require.True(t, replaced)
 
@@ -974,9 +1109,9 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, []string{"indexpointers", "watermarks"}, sectionKinds(ctx, t, bucket, wmTocPath()))
 		writer := newTableOfContentsWriter(t, bucket)
 
-		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, []TableOfContentsEntry{
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/a"}, runsOfOne([]TableOfContentsEntry{
 			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
-		})
+		}))
 		require.NoError(t, err)
 		require.True(t, replaced)
 
@@ -991,9 +1126,9 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(ctx, t, bucket, wmTocPath())
 		writer := newTableOfContentsWriter(t, bucket)
 
-		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/gone"}, []TableOfContentsEntry{
+		replaced, err := writer.ReplaceIndexPointers(ctx, unixTime(0), wmTenant, []string{"indexes/gone"}, runsOfOne([]TableOfContentsEntry{
 			{Path: "indexes/merged", StartTime: unixTime(10), EndTime: unixTime(20)},
-		})
+		}))
 
 		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, replaced)
@@ -1308,6 +1443,15 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	require.NoError(t, reader.Close())
 }
 
+// runsOfOne returns one run for each entry.
+func runsOfOne(entries []TableOfContentsEntry) []IndexRunEntries {
+	var runs []IndexRunEntries
+	for _, entry := range entries {
+		runs = append(runs, IndexRunEntries{entry})
+	}
+	return runs
+}
+
 // runPointer returns a pointer to the index object at path in the run runID,
 // from 10 to 20 seconds after the Unix epoch.
 func runPointer(path string, runID indexpointers.RunID) indexpointers.IndexPointer {
@@ -1421,5 +1565,27 @@ func TestForEachTocPointer(t *testing.T) {
 			return nil
 		}))
 		require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, paths)
+	})
+}
+
+func TestRunLengthOf(t *testing.T) {
+	t.Run("returns the number of entries of a run", func(t *testing.T) {
+		length, err := runLengthOf(3)
+		require.NoError(t, err)
+		require.Equal(t, int32(3), length)
+	})
+
+	t.Run("returns an error when the run is empty", func(t *testing.T) {
+		_, err := runLengthOf(0)
+		require.ErrorContains(t, err, "empty new run")
+	})
+
+	t.Run("returns an error when the run has more entries than an int32 holds", func(t *testing.T) {
+		if math.MaxInt == math.MaxInt32 {
+			t.Skip("an int holds no value above math.MaxInt32 on this platform")
+		}
+		tooLong := int64(math.MaxInt32) + 1
+		_, err := runLengthOf(int(tooLong))
+		require.ErrorContains(t, err, "too long")
 	})
 }

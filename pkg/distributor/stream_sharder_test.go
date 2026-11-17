@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -9,11 +10,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const streamSharderTestTenant = "tenant"
@@ -226,5 +230,57 @@ func TestStreamSharder_MixedShardStreams(t *testing.T) {
 			require.Equal(t, "on", s.shardStreamsEnabledPolicy)
 			require.Equal(t, "off", s.shardStreamsDisabledPolicy)
 		}
+	}
+}
+
+func TestShardStreams_WarnsOnMixedShardStreams(t *testing.T) {
+	now := time.Now()
+	lbls := labels.FromStrings("app", "a")
+	shardingOff := false
+
+	lim := &validation.Limits{}
+	flagext.DefaultValues(lim)
+	lim.ShardStreams.Enabled = true
+	lim.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"off": {ShardStreams: &validation.PerPolicyConfigOverride{Enabled: &shardingOff}},
+	}
+	overrides, err := validation.NewOverrides(*lim, nil)
+	require.NoError(t, err)
+	validator, err := NewValidator(overrides, nil)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name     string
+		policies []string
+		wantWarn bool
+	}{
+		{name: "policies that agree", policies: []string{"on", "on-too"}},
+		{name: "policies that disagree", policies: []string{"on", "off"}, wantWarn: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			d := &Distributor{
+				logger:       log.NewLogfmtLogger(&logs),
+				validator:    validator,
+				rateStore:    &fakeRateStore{},
+				m:            newMetrics(prometheus.NewPedanticRegistry()),
+				shardTracker: NewShardTracker(),
+			}
+			d.cfg.IngestLimitsEnabled = true
+
+			accepted := make([]acceptedStream, 0, len(tc.policies))
+			for _, policy := range tc.policies {
+				accepted = append(accepted, acceptedStream{stream: newTestShardedStream(lbls, now), lbs: lbls, policy: policy})
+			}
+			sharded := d.shardStreams(streamSharderTestTenant, now, accepted)
+
+			require.Len(t, sharded.streams, len(tc.policies))
+			if !tc.wantWarn {
+				require.Empty(t, logs.String())
+				return
+			}
+			require.Contains(t, logs.String(), "level=warn")
+			require.Contains(t, logs.String(), "enabled_policy=on disabled_policy=off")
+		})
 	}
 }

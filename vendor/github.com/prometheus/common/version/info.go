@@ -82,7 +82,7 @@ func BuildContext() string {
 // Slog returns a slice of strings for use with structured logging.
 //
 // Example:
-// logger := promslog.New(promslog.Config{})
+// logger := promslog.New(&promslog.Config{})
 // logger.Info("Starting Prometheus Server", version.Slog()...)
 func Slog() []any {
 	return []any{

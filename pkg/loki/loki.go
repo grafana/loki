@@ -372,10 +372,8 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
 	}
-	if c.Ingester.KafkaIngestion.Enabled {
-		if err := c.DataObj.Validate(); err != nil {
-			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
-		}
+	if err := c.DataObj.Validate(c.Ingester.KafkaIngestion.Enabled); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 	}
 	if c.DataObj.Enabled {
 		if err := c.DataObj.Metastore.Validate(c.DataObj.StorageLag); err != nil {
@@ -504,13 +502,17 @@ type Loki struct {
 	scratchStore              scratch.Store
 
 	// The DataObjCache module sets the caches. They are nil when data objects are disabled or no metadata cache is
-	// configured. The DataObjMetastore module sets the bucket and the metastore. They are nil when data objects are
-	// disabled.
+	// configured. The logs cache is also nil when the metadata prefetcher is enabled. The DataObjMetastore module sets
+	// the bucket and the metastore. They are nil when data objects are disabled.
 	dataObjLogsCache  *metadata.Cache
 	dataObjIndexCache *metadata.Cache
 	dataObjTOCCache   *metadata.Cache
 	dataObjBucket     objstore.Bucket
 	dataObjMetastore  *metastore.ObjectMetastore
+
+	// The DataObjCache module sets the metadata prefetcher. It is nil when data objects or the prefetcher are
+	// disabled.
+	dataObjMetadataPrefetcher *metadata.CachedPrefetcher
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
