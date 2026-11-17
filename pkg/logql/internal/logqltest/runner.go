@@ -197,6 +197,8 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 		// Every engine runs with max and min grouping pushdown on.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMinMaxPushdownStackName, withMinMaxGroupingPushdown())),
+		// Every engine runs with restricted parsing on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardRestrictedParsingStackName, withRestrictedParsing())),
 	}
 }
 

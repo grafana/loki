@@ -2051,3 +2051,112 @@ func TestEngine_PushMinMaxGrouping_ShouldReturnWhatItReturnsWithoutIt(t *testing
 		})
 	}
 }
+
+// restrictedParsingStreams returns streams of json lines that differ in fields no query below
+// groups by, so merging the series of a group at the source would show.
+func restrictedParsingStreams(end time.Time) []logproto.Stream {
+	var streams []logproto.Stream
+	for p := range 3 {
+		var entries []logproto.Entry
+		for ts, i := time.Unix(0, 0), 0; !ts.After(end); ts, i = ts.Add(time.Second), i+1 {
+			v := fmt.Sprintf("%d", (i*7+p*3)%11)
+			if i%13 == 0 {
+				v = "NaN"
+			}
+			w := fmt.Sprintf("%d", i%9)
+			if i%17 == 0 {
+				w = "oops"
+			}
+			entries = append(entries, logproto.Entry{
+				Timestamp: ts,
+				Line:      fmt.Sprintf(`{"v":%q,"w":%q,"d":"%ds","x":"g%d","ok":"%t","id":"%d","a":"%d","level":"l%d","junk":"%d"}`, v, w, i%9, i%3, i%4 != 0, i, i%5, i%2, p),
+			})
+		}
+		streams = append(streams, logproto.Stream{
+			Labels:  fmt.Sprintf(`{app="a", pod="p%d", level="s%d"}`, p, p%2),
+			Entries: entries,
+		})
+	}
+	return streams
+}
+
+func TestEngine_RestrictedParsing_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, restricted bool, query string, step int) (string, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, restrictedParsingStreams(end))
+		eng := NewEngine(EngineOpts{RestrictedParsing: restricted}, querier, &fakeLimits{maxSeries: 10000, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		res, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprint(res.Data), nil
+	}
+
+	for name, query := range map[string]string{
+		"count of a filtered json":               `count(count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"count by of a filtered json":            `count by (x) (count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"avg of a json":                          `avg(count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"stddev by of a json":                    `stddev by (x) (count_over_time({app="a"} | json [1m]))`,
+		"sum by of a json":                       `sum by (x) (count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"sum without of a json":                  `sum without (id, a, junk) (count_over_time({app="a"} | json [1m]))`,
+		"max by of max_over_time":                `max by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of max_over_time filtered":       `max by (x) (max_over_time({app="a"} | json | ok="true" | unwrap v [1m]))`,
+		"max by two labels":                      `max by (x, pod) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by a stream label":                  `max by (pod) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by an empty grouping":               `max(max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by the unwrap label":                `max by (v) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max without":                            `max without (id, a, junk, ok) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of a conversion":                 `max by (x) (max_over_time({app="a"} | json | unwrap duration(d) [1m]))`,
+		"max by that keeps errored lines":        `max by (x) (max_over_time({app="a"} | json | unwrap v | __error__!="" [1m]))`,
+		"max by that drops errored lines":        `max by (x) (max_over_time({app="a"} | json | unwrap v | __error__="" [1m]))`,
+		"max by of an unwrap with a post filter": `max by (x) (max_over_time({app="a"} | json | unwrap v | v > 3 [1m]))`,
+		"max by a clashing label":                `max by (level_extracted) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by a clashing label filtered":       `max by (level) (max_over_time({app="a"} | json | level_extracted="l1" | unwrap v [1m]))`,
+		"max by a clashing unwrap":               `max by (x) (max_over_time({app="a"} | json | unwrap level_extracted [1m]))`,
+		"min by of min_over_time":                `min by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"min by of min_over_time with a label":   `min by (a) (min_over_time({app="a"} | json | x="g1" | unwrap v [1m]))`,
+		"max by of min_over_time":                `max by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of avg_over_time":                `max by (x) (avg_over_time({app="a"} | json | unwrap v [1m]))`,
+		"sum by of max_over_time":                `sum by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of rate":                         `max by (x) (rate({app="a"} | json [1m]))`,
+		"sum by of sum_over_time":                `sum by (x) (sum_over_time({app="a"} | json | unwrap v [1m]))`,
+		"sum by the unwrap label":                `sum by (v) (sum_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by with a range grouping":           `max by (x) (max_over_time({app="a"} | json | unwrap v [1m]) by (a))`,
+		"label_format template":                  `max by (z) (max_over_time({app="a"} | json | label_format z="{{.a}}{{.x}}" | unwrap v [1m]))`,
+		"label_format rename":                    `max by (z) (max_over_time({app="a"} | json | label_format z=a | unwrap v [1m]))`,
+		"label_format with index":                `max by (z) (max_over_time({app="a"} | json | label_format z=` + "`{{ index . \"a\" }}`" + ` | unwrap v [1m]))`,
+		"line_format template":                   `max(max_over_time({app="a"} | json | line_format "k={{.a}}" | logfmt | unwrap k [1m]))`,
+		"line_format with index":                 `max(max_over_time({app="a"} | json | line_format ` + "`k={{ index . \"a\" }}`" + ` | logfmt | unwrap k [1m]))`,
+		"line_format filtered with index":        `sum(count_over_time({app="a"} | json | line_format ` + "`{{ index . \"a\" }}-{{ index . \"x\" }}`" + ` |= "3-g1" [1m]))`,
+		"and on the max":                         `max by (x) (max_over_time({app="a"} | json | unwrap v [1m])) and on (x) max by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"binary operation":                       `max by (x) (max_over_time({app="a"} | json | unwrap v [1m])) / on (x) min by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"label_replace over a max":               `label_replace(max by (x) (max_over_time({app="a"} | json | unwrap v [1m])), "y", "$1", "x", "(.*)")`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, step := range []int{0, 30, 90} {
+				off, errOff := run(t, false, query, step)
+				on, errOn := run(t, true, query, step)
+				if errOff != nil {
+					require.ErrorContains(t, errOn, "pipeline error: 'SampleExtractionErr'")
+					require.ErrorContains(t, errOff, "pipeline error: 'SampleExtractionErr'")
+					continue
+				}
+				require.NoError(t, errOn)
+				if name != "max by that keeps errored lines" {
+					require.NotEmpty(t, off)
+				}
+				require.Equal(t, off, on, "step %d", step)
+			}
+		})
+	}
+}

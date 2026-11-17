@@ -190,6 +190,7 @@ type EngineOpts struct {
 	IdentityOnlyRangeIterator bool `yaml:"identity_only_range_iterator" category:"experimental"`
 	HashKeyedRangeIterator    bool `yaml:"hash_keyed_range_iterator" category:"experimental"`
 	PushMinMaxGrouping        bool `yaml:"push_min_max_grouping" category:"experimental"`
+	RestrictedParsing         bool `yaml:"restricted_parsing" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -204,6 +205,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.BoolVar(&opts.HashKeyedRangeIterator, prefix+"hash-keyed-range-iterator", false, "Experimental: Keep the series of the range iterator of a query that reads the values of its series but few or no labels, such as avg(max_over_time(...)), by a hash, and keep only the labels that the query reads, instead of all the labels.")
 	f.BoolVar(&opts.IdentityOnlyRangeIterator, prefix+"identity-only-range-iterator", false, "Experimental: Keep only a hash and the last timestamp of each series in the range iterator of a query that reads only which series exist, such as count(count_over_time(...)), instead of the labels and the points.")
 	f.BoolVar(&opts.PushMinMaxGrouping, prefix+"push-min-max-grouping", false, "Experimental: Push the by grouping of max and min into max_over_time and min_over_time, so the range iterator holds only the label sets of the grouping instead of every label set.")
+	f.BoolVar(&opts.RestrictedParsing, prefix+"restricted-parsing", false, "Experimental: Make the json and logfmt parsers of a range aggregation extract only the fields that its parent aggregation reads, where the parent needs neither the labels it does not group by nor the series kept apart, such as max by (x) (max_over_time(... | unwrap y [5m])).")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -224,6 +226,9 @@ type queryOpts struct {
 	hashKeyedRangeIterator bool
 	// pushMinMaxGrouping controls if max and min push their by grouping into the range aggregation.
 	pushMinMaxGrouping bool
+	// restrictedParsing controls if the extractor of a range aggregation parses only the fields
+	// that its parent reads, where the parent does not need the series kept apart.
+	restrictedParsing bool
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
@@ -235,6 +240,7 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 		identityOnlyRangeIterator: opts.IdentityOnlyRangeIterator,
 		hashKeyedRangeIterator:    opts.HashKeyedRangeIterator,
 		pushMinMaxGrouping:        opts.PushMinMaxGrouping,
+		restrictedParsing:         opts.RestrictedParsing,
 	}
 }
 
@@ -464,7 +470,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withIdentityOnlyRangeIterator(q.opts.identityOnlyRangeIterator).withHashKeyedRangeIterator(q.opts.hashKeyedRangeIterator).withMinMaxGroupingPushdown(q.opts.pushMinMaxGrouping))
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withIdentityOnlyRangeIterator(q.opts.identityOnlyRangeIterator).withHashKeyedRangeIterator(q.opts.hashKeyedRangeIterator).withMinMaxGroupingPushdown(q.opts.pushMinMaxGrouping).withRestrictedParsing(q.opts.restrictedParsing))
 	if err != nil {
 		return nil, err
 	}

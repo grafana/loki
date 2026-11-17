@@ -29,6 +29,7 @@ const (
 	queryFrontendNoShardIdentityOnlyStackName         = "query-frontend + query-scheduler (no sharding, timestamp-first, identity-only range iterator)"
 	queryFrontendNoShardHashKeyedStackName            = "query-frontend + query-scheduler (no sharding, timestamp-first, hash-keyed range iterator)"
 	queryFrontendNoShardMinMaxPushdownStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first, min/max grouping pushdown)"
+	queryFrontendNoShardRestrictedParsingStackName    = "query-frontend + query-scheduler (no sharding, timestamp-first, restricted parsing)"
 )
 
 var (
@@ -46,6 +47,7 @@ var (
 		queryFrontendNoShardIdentityOnlyStackName,
 		queryFrontendNoShardHashKeyedStackName,
 		queryFrontendNoShardMinMaxPushdownStackName,
+		queryFrontendNoShardRestrictedParsingStackName,
 	}
 )
 
@@ -126,6 +128,9 @@ type stackOptions struct {
 	// pushMinMaxGrouping turns on PushMinMaxGrouping in every engine the stack runs, in the querier
 	// and in the query-frontend.
 	pushMinMaxGrouping bool
+	// restrictedParsing turns on RestrictedParsing in every engine the stack runs, in the querier
+	// and in the query-frontend.
+	restrictedParsing bool
 
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
@@ -166,6 +171,12 @@ func withMinMaxGroupingPushdown() stackOption {
 	return func(o *stackOptions) { o.pushMinMaxGrouping = true }
 }
 
+// withRestrictedParsing returns the stackOption that turns on RestrictedParsing in every engine of
+// the stack.
+func withRestrictedParsing() stackOption {
+	return func(o *stackOptions) { o.restrictedParsing = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -184,6 +195,7 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	engineOpts.IdentityOnlyRangeIterator = o.identityOnlyRangeIterator
 	engineOpts.HashKeyedRangeIterator = o.hashKeyedRangeIterator
 	engineOpts.PushMinMaxGrouping = o.pushMinMaxGrouping
+	engineOpts.RestrictedParsing = o.restrictedParsing
 	return engineOpts
 }
 

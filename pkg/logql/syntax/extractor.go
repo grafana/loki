@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -38,6 +39,13 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 			without = grp.Without
 			noLabels = grp.Singleton()
 		}
+	}
+
+	// An unwrap removes its label from the series, so a grouping that names it cannot keep it.
+	// Without the removal, an injected grouping by the unwrap label would label the series with it.
+	if override != nil && r.Left.Unwrap != nil && !without {
+		exprGroups = slices.DeleteFunc(slices.Clone(exprGroups), func(g string) bool { return g == r.Left.Unwrap.Identifier })
+		noLabels = len(exprGroups) == 0
 	}
 
 	// absent_over_time cannot be grouped (yet?), so set noLabels=true

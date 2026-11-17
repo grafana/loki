@@ -2080,6 +2080,10 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 
 // CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
 //
+// It can when merging the series that share the grouping before the range aggregation gives the same
+// answer as merging them after it: sum over the range aggregations that count or add, and max and min
+// over their own range aggregation.
+//
 // An injected grouping replaces the extractor's label set at extraction time. It reaches the
 // extractor only when the range aggregation carries no grouping of its own, because that one
 // wins. max and min qualify only over the matching range operation, and only for a by grouping,

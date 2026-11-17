@@ -283,3 +283,35 @@ func TestKeepsErroredLines(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestVectorAggregationExpr_Extractor_ShouldGroupBeforeTheRangeAggregationOnlyWhereMergingIsSound(t *testing.T) {
+	const line = `{"x":"1","v":"5","id":"9"}`
+	for name, tc := range map[string]struct {
+		query      string
+		wantLabels string
+	}{
+		"max over max_over_time keeps the grouping":      {query: `max by (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{x="1"}`},
+		"min over min_over_time keeps the grouping":      {query: `min by (x) (min_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{x="1"}`},
+		"max over max_over_time with an empty grouping":  {query: `max(max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{}`},
+		"max over max_over_time grouped by the unwrap":   {query: `max by (v) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{}`},
+		"max over max_over_time grouped by the unwrap+x": {query: `max by (v, x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{x="1"}`},
+		"sum over sum_over_time grouped by the unwrap":   {query: `sum by (v) (sum_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{}`},
+		"max over avg_over_time keeps every label":       {query: `max by (x) (avg_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
+		"max over min_over_time keeps every label":       {query: `max by (x) (min_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
+		"sum over max_over_time keeps every label":       {query: `sum by (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a", x="1"}`},
+		"max over rate keeps every label":                {query: `max by (x) (rate({job="a"} | json [1m]))`, wantLabels: `{id="9", job="a", v="5", x="1"}`},
+		"max without drops only the labels it names":     {query: `max without (x) (max_over_time({job="a"} | json | unwrap v [1m]))`, wantLabels: `{id="9", job="a"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+
+			extractor, err := expr.Extractor()
+			require.NoError(t, err)
+
+			sample, ok := extractor.ForStream(labels.FromStrings("job", "a")).ProcessString(1, line, labels.EmptyLabels())
+			require.True(t, ok)
+			require.Equal(t, tc.wantLabels, sample.Labels.String())
+		})
+	}
+}
