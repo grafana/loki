@@ -2,6 +2,7 @@ package marshal
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -9,7 +10,6 @@ import (
 	"testing/quick"
 	"time"
 
-	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	utiljson "github.com/grafana/loki/v3/pkg/util/json"
 )
 
 const emptyStats = `{
@@ -1059,17 +1060,15 @@ func randSample(rand *rand.Rand) promql.Sample {
 func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
-		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js, nil)
-		require.NoError(t, err)
-		js.Flush()
+		e := utiljson.Latching(newEncoder(&buf))
+		encodeResult(w.Value, e, nil)
+		require.NoError(t, e.Err())
 		actual := buf.String()
 
 		buf.Reset()
 		v, err := NewResultValue(w.Value)
 		require.NoError(t, err)
-		js.WriteVal(v)
-		js.Flush()
+		require.NoError(t, writeJSON(&buf, v))
 		expected := buf.String()
 
 		require.JSONEq(t, expected, actual)
