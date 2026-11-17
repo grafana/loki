@@ -206,6 +206,21 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	opts.LogExecutingQuery = true
 }
 
+// CheckHistograms returns an error if expr uses the histogram functions and they are not enabled. The engine
+// makes the same check before it evaluates a query. A component that passes a query on without evaluating it,
+// such as the query frontend, calls this to refuse the query before it does any work for it.
+func (opts *EngineOpts) CheckHistograms(expr syntax.Expr) error {
+	return checkHistograms(opts.EnableHistograms, expr)
+}
+
+// checkHistograms returns errHistogramsDisabled for an expression that uses histograms when they are not enabled.
+func checkHistograms(enabled bool, expr syntax.Expr) error {
+	if !enabled && syntax.UsesHistograms(expr) {
+		return errHistogramsDisabled
+	}
+	return nil
+}
+
 // queryOpts is the subset of EngineOpts that a query reads at execution time. The remaining
 // EngineOpts fields only matter when an engine or its evaluator is constructed.
 type queryOpts struct {
@@ -426,8 +441,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
-	if !q.opts.histogramsEnabled && syntax.UsesHistograms(expr) {
-		return nil, errHistogramsDisabled
+	if err := checkHistograms(q.opts.histogramsEnabled, expr); err != nil {
+		return nil, err
 	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
