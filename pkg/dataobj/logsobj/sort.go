@@ -54,8 +54,11 @@ func sortKeys(remap []rankedStream) []streams.SortKey {
 // mergeAndRemapLogsIter merges sections which are ordered by the sort keys in
 // remap, injects sort-key sidecars, and rewrites their stream IDs to rank.
 //
-// It merges only the records of the streams in streamIDs, given by their stream
-// IDs in sections.
+// It merges only the records of the streams in streamIDs. Each range of the
+// sort merges its own streams, so that the goroutines of the sort never read or
+// write the same record. streamIDs holds the old stream IDs, the ones that the
+// logs sections use before the sort, and the section readers use them to skip
+// the pages of other streams. The merged records get their rank as stream ID.
 func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, remap []rankedStream, streamIDs []int64) (result.Seq[logs.Record], error) {
 	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, sortKeys(remap), streamIDs)
 	if err != nil {
@@ -85,10 +88,15 @@ func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, rem
 	}), nil
 }
 
-// In a sorted object, the streams of a tenant get the IDs 1 to N in sort order.
-// A stream is one label set of the tenant, one row of its streams section. The
-// rank of a stream is this new ID, so the stream with rank 1 sorts first. The
-// logs of a stream stay together in the sorted object.
+// A stream is one label set of a tenant, one row of its streams section. The
+// logs sections of the object before the sort refer to a stream by its old ID.
+// In the sorted object, the streams of the tenant get the new IDs 1 to N in sort
+// order. The rank of a stream is this new ID, so the stream with rank 1 sorts
+// first. The logs of a stream stay together in the sorted object.
+//
+// The sort never splits a stream between ranges. So a tenant that holds most of
+// its bytes in one stream sorts that stream on one goroutine, and more
+// goroutines do not make it faster.
 
 // rankRange is the inclusive range [first, last] of stream ranks. The sort
 // gives each range to one goroutine.
@@ -112,9 +120,9 @@ type rankRange struct {
 //
 // A range ends only between two streams with different sort keys [shard,
 // schema key, hash]. Two streams can share a sort key when their label hashes
-// collide. The merge orders such streams by their stream IDs in the input
-// sections, which can differ from their ranks. For example, streams X and Y
-// share a key. X has rank 1 and input ID 9, and Y has rank 2 and input ID 4. A
+// collide. The merge orders such streams by their old IDs, from before the
+// sort, which can differ from their ranks (their new IDs). For example, streams
+// X and Y share a key. X has rank 1 and old ID 9, and Y has rank 2 and old ID 4. A
 // single merge returns the records of Y before the records of X. If X and Y sat
 // in two ranges, the sections of X would come first, and the order of the
 // records would change. So streams with the same key stay in one range.
