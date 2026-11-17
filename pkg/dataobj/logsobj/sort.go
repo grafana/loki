@@ -114,6 +114,17 @@ func newStreamTable(iter result.Seq[streams.Stream], tenant string, schemaLabels
 	return table, nil
 }
 
+// sortPlan says how to sort the logs of one tenant.
+type sortPlan struct {
+	// table holds the streams of the tenant in sort order.
+	table *streamTable
+
+	// ranges splits table.sorted into groups of consecutive streams. The sort
+	// handles the groups independently, each on one goroutine, and each group
+	// fills about one logs section. They are sub-slices of table.sorted.
+	ranges [][]sortedStream
+}
+
 // oldIDs returns the old IDs of the streams.
 func oldIDs(list []sortedStream) []int64 {
 	ids := make([]int64, len(list))
@@ -215,31 +226,34 @@ func planSortRanges(sorted []sortedStream, targetSize int64) [][]sortedStream {
 	return ranges
 }
 
-// runRanges sorts the records of each range on up to b.cfg.SortParallelism
-// goroutines, and appends their sections to b.builder in range order. It adds
-// each appended record to the counters of its stream in table.
+// writeLogsSections sorts the records of the tenant, and appends the sorted
+// logs sections to b.builder. It sorts each range of the plan on up to
+// b.cfg.SortParallelism goroutines, and appends the sections of the ranges in
+// range order. It adds each appended record to the counters of its stream in
+// the plan. originalLogs are the logs sections of the tenant in the object that
+// the sort reads.
 //
 // At most SortParallelism ranges hold records or encoded sections at a time,
 // even when an early range is slow. A range keeps all of its encoded sections in
 // memory until the range before it is in b.builder, and b.builder writes them to
 // the scratch store only then. So a range with a stream much larger than the
-// target section size holds several sections in memory.
+// target section size holds several sections in memory. A section builder holds
+// the records of a range up to the target section size.
 //
 // The ranges reuse their section builders, so that a builder keeps the
 // capacity of its record buffer from one range to the next.
-func (b *Builder) runRanges(
+func (b *Builder) writeLogsSections(
 	ctx context.Context,
 	tenant string,
-	sections []*dataobj.Section,
-	table *streamTable,
-	ranges [][]sortedStream,
+	originalLogs []*dataobj.Section,
+	plan *sortPlan,
 ) error {
 	var (
 		parallelism = max(1, b.cfg.SortParallelism)
 		free        = make(chan *logs.Builder, parallelism)
 	)
 
-	return parallel.ForEachOrdered(ctx, len(ranges), parallelism,
+	return parallel.ForEachOrdered(ctx, len(plan.ranges), parallelism,
 		func(ctx context.Context, i int) ([]*encodedSection, error) {
 			var lb *logs.Builder
 			select {
@@ -247,7 +261,7 @@ func (b *Builder) runRanges(
 			default:
 				lb = b.newSectionBuilder(tenant)
 			}
-			encoded, err := b.sortRange(ctx, tenant, sections, table, ranges[i], lb)
+			encoded, err := b.sortRange(ctx, tenant, originalLogs, plan.table, plan.ranges[i], lb)
 			if err != nil {
 				return nil, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
 			}

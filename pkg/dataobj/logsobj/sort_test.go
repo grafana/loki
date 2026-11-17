@@ -318,7 +318,7 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 	}
 }
 
-func TestBuilder_RunRanges(t *testing.T) {
+func TestBuilder_WriteLogsSections(t *testing.T) {
 	const (
 		numStreams    = 20
 		rowsPerStream = 10
@@ -326,7 +326,7 @@ func TestBuilder_RunRanges(t *testing.T) {
 
 	// newRun builds an object with numStreams streams of rowsPerStream records,
 	// and cuts its streams into five ranges of four streams.
-	newRun := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, table *streamTable, ranges [][]sortedStream) {
+	newRun := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, plan *sortPlan) {
 		t.Helper()
 		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
@@ -343,54 +343,56 @@ func TestBuilder_RunRanges(t *testing.T) {
 
 		sections, streamsSection, err := tenantSections(t.Context(), src, "tenant")
 		require.NoError(t, err)
-		table, err = newStreamTable(streamsSectionIter(t.Context(), streamsSection), "tenant", nil, streams.DefaultShardLayout(), streamsSection.NumRows())
+		table, err := newStreamTable(streamsSectionIter(t.Context(), streamsSection), "tenant", nil, streams.DefaultShardLayout(), streamsSection.NumRows())
 		require.NoError(t, err)
 		require.Len(t, table.sorted, numStreams)
+		plan = &sortPlan{table: table}
 		for start := 0; start < numStreams; start += 4 {
-			ranges = append(ranges, table.sorted[start:start+4])
+			plan.ranges = append(plan.ranges, table.sorted[start:start+4])
 		}
 
 		cfg := testBuilderConfig
 		cfg.SortParallelism = parallelism
 		sorter, err = NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
-		return sorter, sections, table, ranges
+		return sorter, sections, plan
 	}
 
 	t.Run("adds the records of every range to the counters of their streams", func(t *testing.T) {
-		sorter, sections, table, ranges := newRun(t, 2)
+		sorter, sections, plan := newRun(t, 2)
 
-		require.NoError(t, sorter.runRanges(t.Context(), "tenant", sections, table, ranges))
-		for _, s := range table.sorted {
+		require.NoError(t, sorter.writeLogsSections(t.Context(), "tenant", sections, plan))
+		for _, s := range plan.table.sorted {
 			require.Equal(t, rowsPerStream, s.Rows, "rows of stream %d", s.ID)
 		}
 	})
 
 	t.Run("returns the error of a range, with the range and the tenant, when more ranges than goroutines fail", func(t *testing.T) {
-		sorter, sections, table, ranges := newRun(t, 2)
-		for _, s := range table.sorted[4:] {
-			table.byOldID[s.oldID] = nil
+		sorter, sections, plan := newRun(t, 2)
+		for _, s := range plan.table.sorted[4:] {
+			plan.table.byOldID[s.oldID] = nil
 		}
 
-		err := sorter.runRanges(t.Context(), "tenant", sections, table, ranges)
+		err := sorter.writeLogsSections(t.Context(), "tenant", sections, plan)
 		require.ErrorContains(t, err, "missing stream ID remap")
 		require.ErrorContains(t, err, "sorting stream range")
 		require.ErrorContains(t, err, "of tenant tenant")
 	})
 
 	t.Run("returns the context error when the context is canceled", func(t *testing.T) {
-		sorter, sections, table, ranges := newRun(t, 2)
+		sorter, sections, plan := newRun(t, 2)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		require.ErrorIs(t, sorter.runRanges(ctx, "tenant", sections, table, ranges), context.Canceled)
+		require.ErrorIs(t, sorter.writeLogsSections(ctx, "tenant", sections, plan), context.Canceled)
 	})
 
 	t.Run("returns no error and leaves the counters at zero when there are no ranges", func(t *testing.T) {
-		sorter, sections, table, _ := newRun(t, 2)
+		sorter, sections, plan := newRun(t, 2)
+		plan.ranges = nil
 
-		require.NoError(t, sorter.runRanges(t.Context(), "tenant", sections, table, nil))
-		for _, s := range table.sorted {
+		require.NoError(t, sorter.writeLogsSections(t.Context(), "tenant", sections, plan))
+		for _, s := range plan.table.sorted {
 			require.Zero(t, s.Rows)
 		}
 	})
