@@ -28,9 +28,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		if err != nil {
 			return v2.ResultArtifact{}, err
 		}
-		var artifact v2.ResultArtifact
-		require.NoError(t, artifact.FromRecordBatch(rec))
-		return artifact, nil
+		return oneArtifact(t)(v2.DecodeResultArtifacts(rec))
 	}
 
 	newBucket := func(t *testing.T) objstore.Bucket {
