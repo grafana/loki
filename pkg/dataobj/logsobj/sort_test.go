@@ -11,11 +11,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -23,16 +25,27 @@ import (
 
 func TestPlanSortRanges(t *testing.T) {
 	distinctKeys := func(n int) []streams.SortKey {
-		keys := make([]streams.SortKey, n+1)
-		for rank := range keys {
-			keys[rank] = streams.SortKey{Hash: uint64(rank)}
+		keys := make([]streams.SortKey, n)
+		for i := range keys {
+			keys[i] = streams.SortKey{Hash: uint64(i)}
 		}
 		return keys
 	}
-	byRank := func(sizes []int64, keys []streams.SortKey) []rankedStream {
-		out := make([]rankedStream, len(sizes))
-		for rank := range out {
-			out[rank] = rankedStream{rank: int64(rank), size: sizes[rank], SortKey: keys[rank]}
+	streamsOf := func(sizes []int64, keys []streams.SortKey) []sortedStream {
+		out := make([]sortedStream, len(sizes))
+		for i := range out {
+			out[i] = sortedStream{Stream: streams.Stream{ID: int64(i + 1)}, key: keys[i], size: sizes[i]}
+		}
+		return out
+	}
+	idsOf := func(ranges [][]sortedStream) [][]int64 {
+		var out [][]int64
+		for _, r := range ranges {
+			ids := make([]int64, len(r))
+			for i := range r {
+				ids[i] = r[i].ID
+			}
+			out = append(out, ids)
 		}
 		return out
 	}
@@ -41,87 +54,126 @@ func TestPlanSortRanges(t *testing.T) {
 		name  string
 		sizes []int64
 		keys  []streams.SortKey
-		want  []rankRange
+		want  [][]int64
 	}{
 		{
-			name:  "returns no range when there are no streams",
-			sizes: []int64{0},
-			keys:  distinctKeys(0),
-			want:  nil,
+			name: "returns no range when there are no streams",
+			want: nil,
 		},
 		{
 			name:  "returns one range when all streams fit in the target size",
-			sizes: []int64{0, 10, 10, 10},
+			sizes: []int64{10, 10, 10},
 			keys:  distinctKeys(3),
-			want:  []rankRange{{first: 1, last: 3}},
+			want:  [][]int64{{1, 2, 3}},
 		},
 		{
 			name:  "ends a range before the stream that would take it over the target size",
-			sizes: []int64{0, 60, 30, 50, 80, 10},
+			sizes: []int64{60, 30, 50, 80, 10},
 			keys:  distinctKeys(5),
-			want:  []rankRange{{first: 1, last: 2}, {first: 3, last: 3}, {first: 4, last: 5}},
+			want:  [][]int64{{1, 2}, {3}, {4, 5}},
 		},
 		{
 			name:  "keeps streams with equal sort keys in one range even when it exceeds the target size",
-			sizes: []int64{0, 60, 50, 30, 40},
-			keys: []streams.SortKey{
-				{}, {Hash: 1}, {Hash: 1}, {Hash: 2}, {Hash: 3},
-			},
-			want: []rankRange{{first: 1, last: 2}, {first: 3, last: 4}},
+			sizes: []int64{60, 50, 30, 40},
+			keys:  []streams.SortKey{{Hash: 1}, {Hash: 1}, {Hash: 2}, {Hash: 3}},
+			want:  [][]int64{{1, 2}, {3, 4}},
 		},
 		{
 			name:  "keeps three streams with equal sort keys in one range even when it exceeds the target size",
-			sizes: []int64{0, 60, 60, 60, 10},
-			keys: []streams.SortKey{
-				{}, {Hash: 1}, {Hash: 1}, {Hash: 1}, {Hash: 2},
-			},
-			want: []rankRange{{first: 1, last: 3}, {first: 4, last: 4}},
+			sizes: []int64{60, 60, 60, 10},
+			keys:  []streams.SortKey{{Hash: 1}, {Hash: 1}, {Hash: 1}, {Hash: 2}},
+			want:  [][]int64{{1, 2, 3}, {4}},
 		},
 		{
 			name:  "keeps streams in one range when their total equals the target size",
-			sizes: []int64{0, 60, 40, 10},
+			sizes: []int64{60, 40, 10},
 			keys:  distinctKeys(3),
-			want:  []rankRange{{first: 1, last: 2}, {first: 3, last: 3}},
+			want:  [][]int64{{1, 2}, {3}},
 		},
 		{
 			name:  "returns one range for a single stream",
-			sizes: []int64{0, 500},
+			sizes: []int64{500},
 			keys:  distinctKeys(1),
-			want:  []rankRange{{first: 1, last: 1}},
+			want:  [][]int64{{1}},
 		},
 		{
 			name:  "puts a stream larger than the target size in a range of its own",
-			sizes: []int64{0, 10, 500, 10},
+			sizes: []int64{10, 500, 10},
 			keys:  distinctKeys(3),
-			want:  []rankRange{{first: 1, last: 1}, {first: 2, last: 2}, {first: 3, last: 3}},
+			want:  [][]int64{{1}, {2}, {3}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, planSortRanges(byRank(tc.sizes, tc.keys), 100))
+			require.Equal(t, tc.want, idsOf(planSortRanges(streamsOf(tc.sizes, tc.keys), 100)))
 		})
 	}
+
+	t.Run("returns ranges that share the memory of the sorted streams", func(t *testing.T) {
+		sorted := streamsOf([]int64{60, 60}, distinctKeys(2))
+		ranges := planSortRanges(sorted, 100)
+		require.Len(t, ranges, 2)
+
+		ranges[1][0].Rows = 7
+		require.Equal(t, 7, sorted[1].Rows)
+	})
 }
 
-func TestStreamIDsByRange(t *testing.T) {
-	t.Run("assigns each stream ID to the range of its rank and skips unranked IDs", func(t *testing.T) {
-		remap := []rankedStream{
-			{},        // ID 0 is unused.
-			{rank: 3}, // ID 1
-			{rank: 1}, // ID 2
-			{},        // ID 3 has no rank.
-			{rank: 2}, // ID 4
-			{rank: 4}, // ID 5
+func TestNewStreamTable(t *testing.T) {
+	seqOf := func(list ...streams.Stream) result.Seq[streams.Stream] {
+		return result.Iter(func(yield func(streams.Stream) bool) error {
+			for _, s := range list {
+				if !yield(s) {
+					return nil
+				}
+			}
+			return nil
+		})
+	}
+	stream := func(id int64, app string, rows int, size int64) streams.Stream {
+		return streams.Stream{ID: id, Labels: labels.FromStrings("app", app), Rows: rows, UncompressedSize: size}
+	}
+	schema := []string{"label:app"}
+
+	t.Run("gives the streams the new IDs 1 to N in sort key order and maps the old IDs to them", func(t *testing.T) {
+		input := []streams.Stream{stream(1, "c", 0, 0), stream(2, "a", 0, 0), stream(3, "b", 0, 0)}
+		keyOf := func(s streams.Stream) streams.SortKey {
+			key, err := streamSortKey(s.Labels, schema, streams.DefaultShardLayout())
+			require.NoError(t, err)
+			return key
 		}
-		ranges := []rankRange{{first: 1, last: 2}, {first: 3, last: 4}}
-		got, err := streamIDsByRange(remap, ranges)
+		wantOrder := slices.Clone(input)
+		slices.SortFunc(wantOrder, func(a, b streams.Stream) int { return streams.CompareSortKey(keyOf(a), keyOf(b)) })
+
+		table, err := newStreamTable(seqOf(input...), "tenant", schema, streams.DefaultShardLayout(), 3)
 		require.NoError(t, err)
-		require.Equal(t, [][]int64{{2, 4}, {1, 5}}, got)
+
+		for i, want := range wantOrder {
+			got := table.sorted[i]
+			require.Equal(t, want.ID, got.oldID, "old ID at position %d", i)
+			require.Equal(t, int64(i+1), got.ID, "new ID at position %d", i)
+			require.Same(t, &table.sorted[i], table.byOldID[want.ID])
+			require.Equal(t, got.key, table.keysByOldID[want.ID])
+		}
+		require.Nil(t, table.byOldID[0])
 	})
 
-	t.Run("returns an error when a rank is in no range", func(t *testing.T) {
-		remap := []rankedStream{{}, {rank: 1}, {rank: 5}}
-		_, err := streamIDsByRange(remap, []rankRange{{first: 1, last: 2}})
-		require.ErrorContains(t, err, "stream with old ID 2 and rank 5 is in no range")
+	t.Run("takes the size from the stream stats and starts the counters at zero", func(t *testing.T) {
+		table, err := newStreamTable(seqOf(stream(1, "a", 4, 100)), "tenant", schema, streams.DefaultShardLayout(), 1)
+		require.NoError(t, err)
+
+		require.Equal(t, int64(100+4*logs.RecordOverhead), table.sorted[0].size)
+		require.Zero(t, table.sorted[0].Rows)
+		require.Zero(t, table.sorted[0].UncompressedSize)
+	})
+
+	t.Run("returns an error when an old ID is out of range", func(t *testing.T) {
+		_, err := newStreamTable(seqOf(stream(1, "a", 0, 0), stream(5, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
+		require.ErrorContains(t, err, "stream id 5 out of range for tenant tenant with 2 streams")
+	})
+
+	t.Run("returns an error when two streams have the same old ID", func(t *testing.T) {
+		_, err := newStreamTable(seqOf(stream(1, "a", 0, 0), stream(1, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
+		require.ErrorContains(t, err, "duplicate stream id for tenant tenant: old id 1")
 	})
 }
 
@@ -266,15 +318,15 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 	}
 }
 
-func TestBuilder_SortRangesInParallel(t *testing.T) {
+func TestBuilder_RunRanges(t *testing.T) {
 	const (
 		numStreams    = 20
 		rowsPerStream = 10
 	)
 
-	// The sections hold numStreams streams with the old IDs 1 to numStreams.
-	// Every stream has the rank of its old ID, and every sort key is equal.
-	newSorter := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, remap []rankedStream, rangeIDs [][]int64, newSection func() *logs.Builder) {
+	// newRun builds an object with numStreams streams of rowsPerStream records,
+	// and cuts its streams into five ranges of four streams.
+	newRun := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, table *streamTable, ranges [][]sortedStream) {
 		t.Helper()
 		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
@@ -288,74 +340,59 @@ func TestBuilder_SortRangesInParallel(t *testing.T) {
 		src, closer, err := builder.flushWithoutLayout()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		for _, sec := range src.Sections().Filter(logs.CheckSection) {
-			sections = append(sections, sec)
-		}
 
-		remap = make([]rankedStream, numStreams+1)
-		for id := 1; id <= numStreams; id++ {
-			remap[id] = rankedStream{rank: int64(id)}
+		sections, streamsSection, err := tenantSections(t.Context(), src, "tenant")
+		require.NoError(t, err)
+		table, err = newStreamTable(streamsSectionIter(t.Context(), streamsSection), "tenant", nil, streams.DefaultShardLayout(), streamsSection.NumRows())
+		require.NoError(t, err)
+		require.Len(t, table.sorted, numStreams)
+		for start := 0; start < numStreams; start += 4 {
+			ranges = append(ranges, table.sorted[start:start+4])
 		}
-		rangeIDs = [][]int64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}, {17, 18, 19, 20}}
 
 		cfg := testBuilderConfig
 		cfg.SortParallelism = parallelism
 		sorter, err = NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
-		newSection = func() *logs.Builder {
-			lb := logs.NewBuilder(sorter.metrics.logs, logs.BuilderOptions{
-				PageSizeHint:   int(testBuilderConfig.TargetPageSize),
-				AppendStrategy: logs.AppendOrdered,
-				SortOrder:      logs.SortSchemaASC,
-			})
-			lb.SetTenant("tenant")
-			return lb
-		}
-		return sorter, sections, remap, rangeIDs, newSection
+		return sorter, sections, table, ranges
 	}
 
-	t.Run("adds the records of every range to the totals", func(t *testing.T) {
-		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
+	t.Run("adds the records of every range to the counters of their streams", func(t *testing.T) {
+		sorter, sections, table, ranges := newRun(t, 2)
 
-		totals, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, numStreams, newSection)
-		require.NoError(t, err)
-		require.Len(t, totals, numStreams+1)
-		for id := 1; id <= numStreams; id++ {
-			require.Equal(t, rowsPerStream, totals[id].rows, "rows of stream %d", id)
+		require.NoError(t, sorter.runRanges(t.Context(), "tenant", sections, table, ranges))
+		for _, s := range table.sorted {
+			require.Equal(t, rowsPerStream, s.Rows, "rows of stream %d", s.ID)
 		}
 	})
 
 	t.Run("returns the error of a range, with the range and the tenant, when more ranges than goroutines fail", func(t *testing.T) {
-		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
-		for id := 5; id <= numStreams; id++ {
-			remap[id] = rankedStream{}
+		sorter, sections, table, ranges := newRun(t, 2)
+		for _, s := range table.sorted[4:] {
+			table.byOldID[s.oldID] = nil
 		}
 
-		_, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, rangeIDs, numStreams, newSection)
+		err := sorter.runRanges(t.Context(), "tenant", sections, table, ranges)
 		require.ErrorContains(t, err, "missing stream ID remap")
 		require.ErrorContains(t, err, "sorting stream range")
 		require.ErrorContains(t, err, "of tenant tenant")
 	})
 
-	t.Run("returns the context error when the context is canceled while the ranges run", func(t *testing.T) {
-		sorter, sections, remap, rangeIDs, newSection := newSorter(t, 2)
+	t.Run("returns the context error when the context is canceled", func(t *testing.T) {
+		sorter, sections, table, ranges := newRun(t, 2)
 		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-		cancelOnFirstSection := func() *logs.Builder {
-			cancel()
-			return newSection()
-		}
+		cancel()
 
-		_, err := sorter.sortRangesInParallel(ctx, "tenant", sections, remap, rangeIDs, numStreams, cancelOnFirstSection)
-		require.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, sorter.runRanges(ctx, "tenant", sections, table, ranges), context.Canceled)
 	})
 
-	t.Run("returns no error and zero totals when there are no ranges", func(t *testing.T) {
-		sorter, sections, remap, _, newSection := newSorter(t, 2)
+	t.Run("returns no error and leaves the counters at zero when there are no ranges", func(t *testing.T) {
+		sorter, sections, table, _ := newRun(t, 2)
 
-		totals, err := sorter.sortRangesInParallel(t.Context(), "tenant", sections, remap, nil, numStreams, newSection)
-		require.NoError(t, err)
-		require.Equal(t, newStreamTotals(numStreams), totals)
+		require.NoError(t, sorter.runRanges(t.Context(), "tenant", sections, table, nil))
+		for _, s := range table.sorted {
+			require.Zero(t, s.Rows)
+		}
 	})
 }
 

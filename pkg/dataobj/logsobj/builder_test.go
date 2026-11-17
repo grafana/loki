@@ -304,9 +304,9 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 	// The sort assigns stream IDs in sort key order. appendedFirst sorts after
 	// appendedSecond, so the sort swaps their IDs.
 	sortKey := func(ls labels.Labels) streams.SortKey {
-		key, err := emptyRankedStream(ls, nil, streams.DefaultShardLayout())
+		key, err := streamSortKey(ls, nil, streams.DefaultShardLayout())
 		require.NoError(t, err)
-		return key.SortKey
+		return key
 	}
 	appendedFirst, appendedSecond := labels.FromStrings("app", "x"), labels.FromStrings("app", "y")
 	if streams.CompareSortKey(sortKey(appendedFirst), sortKey(appendedSecond)) < 0 {
