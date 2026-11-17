@@ -415,17 +415,9 @@ func buildDayWindows(tenant, query, minDate string, from, through time.Time) []d
 }
 
 // needleKey returns the cache key for expr: the needle sets a lookup uses and
-// the n-gram length. ok is false when there is nothing to share, so the caller
-// keys on the expression.
+// the n-gram length. ok is false with no needles, so the caller keys on the
+// expression.
 func needleKey(expr syntax.Expr, ngramLength, maxConjunctions int) (key string, ok bool) {
-	selector := expr
-	if inner, isMetric := metricLogSelector(expr); isMetric && inner != nil {
-		selector = inner
-	}
-	// A binary operation has a selector on each side, so it has no single plan.
-	if _, isLog := selector.(syntax.LogSelectorExpr); !isLog {
-		return "", false
-	}
 	needles := SupportedQuery(expr, ngramLength, maxConjunctions)
 	if len(needles) == 0 {
 		return "", false

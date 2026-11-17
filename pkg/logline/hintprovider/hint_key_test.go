@@ -95,7 +95,6 @@ func TestNeedleKey_NotUsable(t *testing.T) {
 		"no n-gram length": {keyTestLogQuery, 0},
 		// With one needle set, an or shares no needle across its branches.
 		"or without a shared needle": {`{app="api"} |= "timeout" or "failure"`, 6},
-		"binary operation":           {`count_over_time({app="api"} |= "timeout" [5m]) / count_over_time({app="api"} |= "timeout" [5m])`, 6},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, ok := needleKey(mustParseExpr(t, tc.query), tc.ngram, 1)
