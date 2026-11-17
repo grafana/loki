@@ -242,6 +242,9 @@ func formatHistogramParam(v float64) string {
 		return "+Inf"
 	case math.IsInf(v, -1):
 		return "-Inf"
+	case v == 0 && math.Signbit(v):
+		// -0 would be read as a duration of zero, the only number that is a duration without a unit.
+		return "-0.0"
 	default:
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	}
