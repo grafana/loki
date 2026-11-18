@@ -101,6 +101,10 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to count values, storing the results into a new
 // [columnar.Int64] array obtained from the provided allocator. At the end of
 // the stream, Decode returns an [io.EOF].
+//
+// If the data ends before count values, Decode returns the values that exist
+// together with [io.EOF]. If a varint is truncated or malformed, Decode returns
+// an error and no values.
 func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
 	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
 	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
@@ -128,6 +132,10 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 	for i := range count {
 		delta, n := varint(buf[off:])
 		if n <= 0 {
+			if err := deltaVarintError(buf, off, n); err != nil {
+				return nil, err
+			}
+
 			valuesBuf.Resize(i)
 			return columnar.NewNumber[int64](values[:i], memory.Bitmap{}), io.EOF
 		}
@@ -139,9 +147,52 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 	return columnar.NewNumber[int64](values, memory.Bitmap{}), nil
 }
 
+// Skip implements [valueDecoder]. It returns an error and the number of values
+// it skipped before the malformed one if a varint is truncated or malformed.
+func (dec *deltaDecoder) Skip(count int) (int, error) {
+	var (
+		buf  = dec.buf
+		off  = dec.off
+		prev = dec.prev
+
+		skipped int
+		err     error
+	)
+	for skipped < count {
+		delta, n := varint(buf[off:])
+		if n <= 0 {
+			err = deltaVarintError(buf, off, n)
+			break
+		}
+
+		off += n
+		// Each value is the previous value plus a delta. Keep prev up to date so
+		// that a later Decode returns the right values.
+		prev += delta
+		skipped++
+	}
+
+	dec.off = off
+	dec.prev = prev
+	return skipped, err
+}
+
 // Reset resets the deltaDecoder to its initial state.
 func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
 	dec.off = 0
 	dec.buf = data
+}
+
+// deltaVarintError returns the error for the varint at off in buf, which varint
+// reported with size n. It returns nil if the data ends at off.
+func deltaVarintError(buf []byte, off, n int) error {
+	switch {
+	case n == 0 && off == len(buf):
+		return nil
+	case n == 0:
+		return fmt.Errorf("delta: truncated value at offset %d", off)
+	default:
+		return fmt.Errorf("delta: malformed value at offset %d", off)
+	}
 }

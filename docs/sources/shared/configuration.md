@@ -1147,6 +1147,42 @@ dataobj:
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
+  metadata_prefetcher:
+    # Experimental: Serve the metadata of log objects from separate cache items,
+    # so a query reads only the metadata it needs.
+    # CLI flag: -dataobj.metadata-prefetcher.enabled
+    [enabled: <boolean> | default = false]
+
+    # The codec of the cache items. Supported values are: "zstd", "none". With
+    # "none", the cache items stay uncompressed.
+    # CLI flag: -dataobj.metadata-prefetcher.compression
+    [compression: <string> | default = "zstd"]
+
+    # A cache item stays uncompressed when compression shrinks it by less than
+    # this ratio.
+    # CLI flag: -dataobj.metadata-prefetcher.min-compression-ratio
+    [min_compression_ratio: <float> | default = 1.5]
+
+    # Size in bytes of the first object storage read of an object whose metadata
+    # is not cached. The header and the file metadata of the object must fit in
+    # it, or the prefetcher skips the object. The minimum is 16 KiB.
+    # CLI flag: -dataobj.metadata-prefetcher.head-bytes
+    [head_bytes: <int> | default = 262144]
+
+    # The largest metadata region, in bytes, that the prefetcher handles. The
+    # metadata region of an object is the part of the object from its start to
+    # the end of the metadata of all sections. The prefetcher skips an object
+    # with a larger region, and a query reads the metadata of that object
+    # directly. When the metadata cache has a maximum item size
+    # (-dataobj.metadata-cache.memcached.max-item-size, where 0 means no
+    # maximum), this value plus 64 KiB must not exceed it.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
+    [max_region_bytes: <int> | default = 4194304]
+
+    # The time limit of the load that follows a cache miss.
+    # CLI flag: -dataobj.metadata-prefetcher.load-timeout
+    [load_timeout: <duration> | default = 5s]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -1264,19 +1300,28 @@ dataobj:
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
     deletion_sweep:
-      # Experimental: Sweep each tenant once an hour and record its objects in
-      # its deletion file list. Only tenants with the
-      # dataobj_deletion_sweep_enabled limit
+      # Experimental: Check each tenant once an hour. Scan the tenant
+      # directories of a tenant at most once every 23 hours for objects that no
+      # table of contents (ToC) file can reach, and store them in the deletion
+      # file list of the tenant. The sweep ignores objects outside the tenant
+      # directories. Only tenants with the dataobj_deletion_sweep_enabled limit
       # (-dataobj-compaction.deletion-sweep.enable) set to true are swept.
       # Requires dataobj compaction to be enabled.
       # CLI flag: -dataobj.compaction.deletion-sweep.enabled
       [enabled: <boolean> | default = false]
 
       # Experimental: Maximum number of deletion sweeps that run at the same
-      # time, across all tenants. Each sweep scans the uncompacted objects of
-      # the whole bucket.
+      # time, across all tenants. Each sweep lists the tenant directories and
+      # reads the table of contents (ToC) files and index objects of the tenant.
       # CLI flag: -dataobj.compaction.deletion-sweep.max-concurrent-sweeps
       [max_concurrent_sweeps: <int> | default = 4]
+
+      # Experimental: Log a summary and examples of the deletion candidates,
+      # instead of deleting them. A candidate is an object that no table of
+      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
+      # Only true is supported.
+      # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
+      [dry_run: <boolean> | default = true]
 
     worker:
       # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
@@ -3628,9 +3673,11 @@ ring:
   # CLI flag: -index-gateway.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Deprecated: How many index gateway instances are assigned to each tenant.
-  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
-  # setting.
+  # Number of index gateway instances that own each key in the index gateway
+  # ring. It is the default for -index-gateway.shard-size, which can also be set
+  # per tenant. When -index-gateway.per-index-ownership.enabled is true, it is
+  # also the number of index gateways that own each (tenant, table) index, so
+  # index gateways and their clients must use the same value.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 
@@ -4630,8 +4677,12 @@ shard_streams:
 # CLI flag: -dataobj-compaction.log.enable
 [dataobj_log_compaction_enabled: <boolean> | default = false]
 
-# Experimental. Whether the dataobj deletion sweep runs for the tenant. The
-# sweep also needs -dataobj.compaction.deletion-sweep.enabled.
+# Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
+# finds the objects of the tenant that no table of contents (ToC) file can
+# reach. An object that two sweeps, at least 23 hours apart, both find
+# unreachable is a deletion candidate. Sweeps log a summary and examples of the
+# candidates, and delete nothing. The sweep also needs
+# -dataobj.compaction.deletion-sweep.enabled.
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
@@ -5263,6 +5314,15 @@ engine:
   # output cannot be smaller. Logs Drilldown requests are exempt.
   # CLI flag: -querier.engine.max-query-series-cutoff
   [max_query_series_cutoff: <boolean> | default = false]
+
+  # Experimental: Enable the histogram functions, histogram_over_time and the
+  # functions that read its result, such as histogram_quantile. The functions
+  # are in development, so a query that uses one fails while this is disabled.
+  # Enable it on the queriers, on the query frontends, and on the rulers that
+  # evaluate rules themselves, because each of them refuses a query that uses
+  # histograms without it.
+  # CLI flag: -querier.engine.enable-histograms
+  [enable_histograms: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

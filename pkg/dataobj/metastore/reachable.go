@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -75,11 +76,23 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // does not make the object garbage: a new log object stays unreachable until
 // an index object references it.
 //
-// A missing ToC is not an error. ReachableObjects returns an error, and no
-// paths, if it cannot read a ToC or an index object. It also returns an error
-// for any content that it cannot interpret, for example a section of an
-// unknown type, a ToC of another tenant, or a path that is not clean and
-// relative. A partial result would make reachable objects look unreachable.
+// A missing ToC is not an error. A missing index object that a ToC points to
+// is not an error either. The index builder stores an index object before it
+// adds it to a ToC, so a process outside Loki removed it. No query can read
+// the objects that it referenced. ReachableObjects returns
+// the index object itself as reachable, and counts it in the stats.
+//
+// ReachableObjects reads only the stats sections of an index object. It
+// skips the postings sections, and the streams and pointers sections of old
+// index objects. Queries read the postings sections only, and the index
+// builder computes the postings and the stats from the same rows. So these
+// sections reference no log object that a query can read.
+//
+// ReachableObjects returns an error, and no paths, if it cannot read a ToC or
+// an index object for another reason. It also returns an error for any
+// content that it cannot interpret, for example a section of an unknown
+// type, a ToC of another tenant, or a path that is not clean and relative. A
+// partial result would make reachable objects look unreachable.
 //
 // maxOpenFiles limits the index objects that ReachableObjects opens at the
 // same time. It must be at least 1.
@@ -88,21 +101,21 @@ func ListTableOfContentsWindows(ctx context.Context, bucket objstore.BucketReade
 // a different time, and index builders and compaction change the ToCs during
 // the call. An object can become reachable or unreachable during or after the
 // call.
-func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, maxOpenFiles int) ([]string, error) {
+func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, maxOpenFiles int) ([]string, ReachabilityStats, error) {
 	if tenantID == "" {
-		return nil, errors.New("tenant must not be empty")
+		return nil, ReachabilityStats{}, errors.New("tenant must not be empty")
 	}
 	if err := tenant.ValidTenantID(tenantID); err != nil {
-		return nil, fmt.Errorf("invalid tenant %q: %w", tenantID, err)
+		return nil, ReachabilityStats{}, fmt.Errorf("invalid tenant %q: %w", tenantID, err)
 	}
 	if maxOpenFiles < 1 {
-		return nil, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
+		return nil, ReachabilityStats{}, fmt.Errorf("max open files must be at least 1, got %d", maxOpenFiles)
 	}
 	indexBucket := NewIndexBucket(bucket)
 
 	windows, err := ListTableOfContentsWindows(ctx, indexBucket)
 	if err != nil {
-		return nil, err
+		return nil, ReachabilityStats{}, err
 	}
 
 	walk := &reachabilityWalk{
@@ -113,21 +126,38 @@ func ReachableObjects(ctx context.Context, bucket objstore.Bucket, tenantID stri
 	return walk.run(ctx, windows, maxOpenFiles)
 }
 
+// ReachabilityStats counts the index objects that ReachableObjects skipped.
+type ReachabilityStats struct {
+	// MissingIndexObjects is the number of index objects that a ToC points
+	// to, but that do not exist.
+	MissingIndexObjects int
+}
+
+// legacyPointersSectionType is the type of the pointers sections of old index
+// objects. Loki no longer reads or writes them. [dataobj.SectionType.Equals]
+// ignores the version, so it matches pointers sections of every version.
+var legacyPointersSectionType = dataobj.SectionType{
+	Namespace: "github.com/grafana/loki",
+	Kind:      "pointers",
+	Version:   2,
+}
+
 // reachabilityWalk holds the state of one ReachableObjects call. The index
-// goroutines add paths, so reachableMu guards reachable. Call run at most
-// once.
+// goroutines add paths and update the stats, so reachableMu guards reachable
+// and stats. Call run at most once.
 type reachabilityWalk struct {
 	indexBucket objstore.BucketReader
 	tenant      string
 
 	reachableMu sync.Mutex
 	reachable   map[string]struct{}
+	stats       ReachabilityStats
 }
 
 // run reads the ToC of the tenant in each window, and the index objects that
 // it points to. It opens each index object once, and at most maxOpenFiles of
-// them at the same time. It returns the sorted reachable paths.
-func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpenFiles int) ([]string, error) {
+// them at the same time. It returns the sorted reachable paths and the stats.
+func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpenFiles int) ([]string, ReachabilityStats, error) {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxOpenFiles)
 	opened := make(map[string]struct{})
@@ -138,9 +168,9 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 			// context error. Return the error of the index read first, because
 			// it is the cause.
 			if waitErr := g.Wait(); waitErr != nil {
-				return nil, waitErr
+				return nil, ReachabilityStats{}, waitErr
 			}
-			return nil, err
+			return nil, ReachabilityStats{}, err
 		}
 		for _, indexPath := range indexPaths {
 			if _, ok := opened[indexPath]; ok {
@@ -152,7 +182,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 		}
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, ReachabilityStats{}, err
 	}
 
 	paths := make([]string, 0, len(w.reachable))
@@ -160,7 +190,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 		paths = append(paths, p)
 	}
 	slices.Sort(paths)
-	return paths, nil
+	return paths, w.stats, nil
 }
 
 func (w *reachabilityWalk) add(p string) {
@@ -249,13 +279,29 @@ func (w *reachabilityWalk) readToC(ctx context.Context, tocPath string) (data []
 // can have no tenant. A filter by tenant could drop paths that the tenant can
 // read. The paths of other tenants only make the result larger.
 //
-// It returns an error for a section that it does not know. A new section type
-// could reference log objects, and skipping it would make them look
-// unreachable.
+// It skips postings sections, and the streams and pointers sections of old
+// index objects. It returns an error for a section of any other type. A new
+// section type could reference log objects, and skipping it would make them
+// look unreachable.
+//
+// It counts a missing index object, and adds nothing for it. It asks the
+// bucket with Exists instead of checking the open error. That error wraps the
+// bucket error with fmt.Errorf, and some buckets detect a missing object only
+// in an unwrapped error.
 func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath string) error {
 	obj, err := dataobj.FromBucket(ctx, w.indexBucket, indexPath, indexPrefetchBytes)
 	if err != nil {
-		return fmt.Errorf("opening index object %s: %w", indexPath, err)
+		exists, existsErr := w.indexBucket.Exists(ctx, indexPath)
+		if existsErr != nil {
+			return fmt.Errorf("opening index object %s: %w", indexPath, errors.Join(err, existsErr))
+		}
+		if exists {
+			return fmt.Errorf("opening index object %s: %w", indexPath, err)
+		}
+		w.reachableMu.Lock()
+		defer w.reachableMu.Unlock()
+		w.stats.MissingIndexObjects++
+		return nil
 	}
 
 	for i, section := range obj.Sections() {
@@ -264,7 +310,7 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 			if err := w.addStatsObjectPaths(ctx, section); err != nil {
 				return fmt.Errorf("reading object paths of section %d of index object %s: %w", i, indexPath, err)
 			}
-		case postings.CheckSection(section), watermarks.CheckSection(section):
+		case postings.CheckSection(section), streams.CheckSection(section), legacyPointersSectionType.Equals(section.Type):
 		default:
 			return fmt.Errorf("index object %s: section %d has unknown type %s, so the log objects that it references are unknown", indexPath, i, section.Type)
 		}
@@ -272,24 +318,25 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 	return nil
 }
 
-// addStatsObjectPaths adds the object paths of a stats section. It returns an
-// error if the section has no object_path column or more than one, because
-// reading only one of several columns could miss object paths.
+// addStatsObjectPaths adds the object paths of a stats section. It adds
+// nothing for an empty section, which has no rows. It returns an error for any
+// other section that has no object_path column or more than one, because a
+// missed object path makes its log object look unreachable.
 func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) (err error) {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
 		return err
 	}
-	var columns []*stats.Column
-	for _, c := range sec.Columns() {
-		if c.Type == stats.ColumnTypeObjectPath {
-			columns = append(columns, c)
-		}
+	column, ok, err := sec.ObjectPathColumn()
+	if err != nil {
+		return err
 	}
-	if len(columns) != 1 {
-		return fmt.Errorf("stats section has %d object_path columns, want 1", len(columns))
+	if !ok {
+		// An empty section records only the layout of an index object of a
+		// run that holds no stats rows. It references no log objects.
+		return nil
 	}
-	reader := stats.NewReader(stats.ReaderOptions{Columns: columns})
+	reader := stats.NewReader(stats.ReaderOptions{Columns: []*stats.Column{column}})
 	defer util.CloseAndHandleError(reader, &err)
 	if err := reader.Open(ctx); err != nil {
 		return err
