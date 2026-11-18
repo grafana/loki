@@ -183,8 +183,15 @@ func (t *IntermediateSeriesBreadcrumbThresholds) setInts(values []int) error {
 
 // UnmarshalYAML implements yaml.Unmarshaler. It accepts a list of integers or a comma-separated string.
 func (t *IntermediateSeriesBreadcrumbThresholds) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var values []int
-	if err := unmarshal(&values); err == nil {
+	var entries []*int
+	if err := unmarshal(&entries); err == nil {
+		values := make([]int, 0, len(entries))
+		for _, e := range entries {
+			if e == nil {
+				return errors.New("intermediate series breadcrumb threshold must not be null")
+			}
+			values = append(values, *e)
+		}
 		return t.setInts(values)
 	}
 	var s string

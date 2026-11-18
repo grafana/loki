@@ -5,7 +5,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"strings"
+	"regexp"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -462,6 +463,49 @@ func TestIntermediateSeriesCounter_ShouldNotifyOnceUnderConcurrentUse(t *testing
 	require.Equal(t, int64(1), calls.Load())
 }
 
+func TestIntermediateSeriesCounter_ShouldNotifyEachThresholdOnceUnderConcurrentUseWithReleases(t *testing.T) {
+	var (
+		mtx sync.Mutex
+		got []int64
+	)
+	thresholds := []int{10, 100, 1000, 3000}
+	c := newIntermediateSeriesCounter(0).notifyOnCrossing(thresholds, func(threshold, _ int64) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		got = append(got, threshold)
+	})
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 500 {
+				require.NoError(t, c.Reserve(2))
+				c.Release(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.Equal(t, int64(4000), c.Current())
+	require.ElementsMatch(t, []int64{10, 100, 1000, 3000}, got)
+}
+
+func TestIntermediateSeriesCounter_ShouldNotNotifyForAReservationOverTheLimit(t *testing.T) {
+	var got []int64
+	c := newIntermediateSeriesCounter(5).notifyOnCrossing([]int{3, 10}, func(threshold, _ int64) {
+		got = append(got, threshold)
+	})
+
+	require.NoError(t, c.Reserve(4))
+	require.ErrorIs(t, c.Reserve(10), errIntermediateSeriesLimit)
+
+	require.Equal(t, []int64{3}, got)
+	require.Equal(t, int64(4), c.Current())
+	require.Equal(t, int64(4), c.Peak())
+}
+
 func TestIntermediateSeriesBreadcrumbThresholds_ShouldRoundTripThroughAFlag(t *testing.T) {
 	for name, tc := range map[string]struct {
 		in      string
@@ -512,6 +556,9 @@ func TestIntermediateSeriesBreadcrumbThresholds_ShouldUnmarshalFromYAML(t *testi
 		"negative in list":  {in: "[10, -1]", wantErr: true},
 		"zero in list":      {in: "[0]", wantErr: true},
 		"non-int in list":   {in: "[10, x]", wantErr: true},
+		"null in list":      {in: "[null]", wantErr: true},
+		"null among values": {in: "[10, null, 50]", wantErr: true},
+		"blank block item":  {in: "\n  - 10\n  -\n  - 50", wantErr: true},
 		"negative in csv":   {in: "\"10,-1\"", wantErr: true},
 		"map is not a list": {in: "{a: 1}", wantErr: true},
 	} {
@@ -533,16 +580,17 @@ func TestIntermediateSeriesBreadcrumbThresholds_ShouldUnmarshalFromYAML(t *testi
 
 func TestEngine_ShouldLogOneBreadcrumbForEachThresholdAJobCrosses(t *testing.T) {
 	var (
-		start = time.Unix(60, 0)
-		end   = time.Unix(120, 0)
+		start      = time.Unix(60, 0)
+		end        = time.Unix(120, 0)
+		breadcrumb = regexp.MustCompile(`threshold=(\d+) intermediate_series=(\d+)`)
 	)
 	for name, tc := range map[string]struct {
 		thresholds []int
-		want       int
+		want       []int64
 	}{
-		"crosses two thresholds":  {thresholds: []int{2, 4, 100}, want: 2},
-		"under the lowest":        {thresholds: []int{100}, want: 0},
-		"turned off with no list": {thresholds: nil, want: 0},
+		"crosses two thresholds":  {thresholds: []int{2, 4, 100}, want: []int64{2, 4}},
+		"under the lowest":        {thresholds: []int{100}, want: nil},
+		"turned off with no list": {thresholds: nil, want: nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
@@ -553,11 +601,31 @@ func TestEngine_ShouldLogOneBreadcrumbForEachThresholdAJobCrosses(t *testing.T) 
 			_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.NoError(t, err)
 
-			require.Equal(t, tc.want, strings.Count(buf.String(), "intermediate_series="), buf.String())
-			if tc.want > 0 {
+			var thresholds []int64
+			for _, m := range breadcrumb.FindAllStringSubmatch(buf.String(), -1) {
+				threshold, err := strconv.ParseInt(m[1], 10, 64)
+				require.NoError(t, err)
+				current, err := strconv.ParseInt(m[2], 10, 64)
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, current, threshold, buf.String())
+				thresholds = append(thresholds, threshold)
+			}
+			require.Equal(t, tc.want, thresholds, buf.String())
+			if len(tc.want) > 0 {
 				require.Contains(t, buf.String(), "tenant=fake")
 				require.Contains(t, buf.String(), "count_over_time")
 			}
 		})
 	}
+}
+
+func TestEngine_ShouldNotFailAJobThatCrossesAThresholdWithoutALogger(t *testing.T) {
+	end := time.Unix(120, 0)
+	eng := NewEngine(EngineOpts{IntermediateSeriesBreadcrumbs: []int{2}}, NewMockQuerier(1, distinctStreams(5, end)), NoLimits, nil)
+	params, err := NewLiteralParams(`count(count_over_time({app="a"}[1m]))`, time.Unix(60, 0), end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+	require.NoError(t, err)
+
+	_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+
+	require.NoError(t, err)
 }
