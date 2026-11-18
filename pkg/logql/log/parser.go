@@ -719,9 +719,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// after the loop: an empty label that the loop had set in advance would count as extracted, so
 	// it would block a renamed key and make AllRequiredExtracted stop the loop too early. A name
 	// that a stream label or structured metadata holds, or that a parser stage already extracted,
-	// gets no label.
+	// gets no label. The builder says what a stage extracted, because the hints only grow: they still
+	// list a label that a later stage, such as `drop`, deleted.
 	for id := range l.expressions {
-		if lbs.ParserLabelHints().Extracted(id) {
+		if lbs.HasInCategory(id, ParsedLabel) {
 			continue
 		}
 		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
