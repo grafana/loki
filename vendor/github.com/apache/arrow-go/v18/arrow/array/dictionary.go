@@ -518,6 +518,12 @@ type IndexBuilder struct {
 	UnsafeAppend func(int)
 }
 
+func appendDictionaryIndices[T arrow.IntType | arrow.UintType](dst []T, indices []int) {
+	for i, idx := range indices {
+		dst[i] = T(idx)
+	}
+}
+
 func createIndexBuilder(mem memory.Allocator, dt arrow.FixedWidthDataType) (ret IndexBuilder, err error) {
 	ret = IndexBuilder{Builder: NewBuilder(mem, dt)}
 	switch dt.ID() {
@@ -628,6 +634,17 @@ func createMemoTable(mem memory.Allocator, dt arrow.DataType) (ret hashing.MemoT
 	return
 }
 
+// DictionaryBuilder builds dictionary-encoded arrays, adding each distinct
+// value to the dictionary once.
+//
+// Consecutive calls to NewArray or NewDictionaryArray may return arrays that
+// share one dictionary when no new values were added in between. The builder
+// caches the last full dictionary. It drops its reference when that
+// dictionary is replaced, on checkpoint restore, on ResetFull, or on its
+// final Release. Releasing all returned arrays alone does not free the cached
+// dictionary. Release the builder before checking that its allocator is
+// empty. Treat the shared dictionary data as immutable. For example, do not
+// call [arrow.ArrayData.Reset] on it.
 type DictionaryBuilder interface {
 	Builder
 
@@ -646,6 +663,7 @@ type dictionaryBuilder struct {
 	deltaOffset int
 	memoTable   hashing.MemoTable
 	idxBuilder  IndexBuilder
+	dict        *Data
 }
 
 func createDictBuilder[T arrow.ValueType](mem memory.Allocator, idxbldr IndexBuilder, memo hashing.MemoTable, dt *arrow.DictionaryType, init arrow.Array) DictionaryBuilder {
@@ -845,6 +863,14 @@ func (b *dictionaryBuilder) Release() {
 			binmemo.Release()
 		}
 		b.memoTable = nil
+		b.releaseDict()
+	}
+}
+
+func (b *dictionaryBuilder) releaseDict() {
+	if b.dict != nil {
+		b.dict.Release()
+		b.dict = nil
 	}
 }
 
@@ -920,6 +946,7 @@ func (b *dictionaryBuilder) ResetFull() {
 	b.reset()
 	b.idxBuilder.NewArray().Release()
 	b.memoTable.Reset()
+	b.releaseDict()
 }
 
 type dictionaryBuilderCheckpoint struct {
@@ -933,6 +960,7 @@ func (c *dictionaryBuilderCheckpoint) capture() {
 
 func (c *dictionaryBuilderCheckpoint) restore() {
 	c.builder.memoTable.Truncate(c.size)
+	c.builder.releaseDict()
 }
 
 func (b *dictionaryBuilder) newCheckpoint() checkpointState {
@@ -1029,7 +1057,19 @@ func (b *dictionaryBuilder) newWithDictOffset(offset int) (indices, dict *Data, 
 	indices = idxarr.Data().(*Data)
 
 	b.deltaOffset = b.memoTable.Size()
-	dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, offset)
+	switch {
+	case offset != 0:
+		dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, offset)
+	case b.dict != nil && b.dict.length == b.deltaOffset:
+		b.dict.Retain()
+		dict = b.dict
+	default:
+		if dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, 0); err == nil {
+			b.releaseDict()
+			dict.Retain()
+			b.dict = dict
+		}
+	}
 	b.reset()
 	indices.Retain()
 	return
@@ -1181,57 +1221,42 @@ func (b *dictionaryBuilder) IndexBuilder() IndexBuilder {
 }
 
 func (b *dictionaryBuilder) AppendIndices(indices []int, valid []bool) {
-	b.length += len(indices)
+	if len(indices) != len(valid) && len(valid) != 0 {
+		panic("len(indices) != len(valid) && len(valid) != 0")
+	}
+
+	if len(indices) == 0 {
+		return
+	}
+
+	b.idxBuilder.Reserve(len(indices))
 	switch idxbldr := b.idxBuilder.Builder.(type) {
 	case *Int8Builder:
-		vals := make([]int8, len(indices))
-		for i, v := range indices {
-			vals[i] = int8(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int16Builder:
-		vals := make([]int16, len(indices))
-		for i, v := range indices {
-			vals[i] = int16(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int32Builder:
-		vals := make([]int32, len(indices))
-		for i, v := range indices {
-			vals[i] = int32(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int64Builder:
-		vals := make([]int64, len(indices))
-		for i, v := range indices {
-			vals[i] = int64(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint8Builder:
-		vals := make([]uint8, len(indices))
-		for i, v := range indices {
-			vals[i] = uint8(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint16Builder:
-		vals := make([]uint16, len(indices))
-		for i, v := range indices {
-			vals[i] = uint16(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint32Builder:
-		vals := make([]uint32, len(indices))
-		for i, v := range indices {
-			vals[i] = uint32(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint64Builder:
-		vals := make([]uint64, len(indices))
-		for i, v := range indices {
-			vals[i] = uint64(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	}
+	b.length += len(indices)
 }
 
 func (b *dictionaryBuilder) DictionarySize() int {
