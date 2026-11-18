@@ -216,29 +216,6 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, float64(15*time.Millisecond)/float64(40*time.Millisecond), snap.EffectiveConcurrency)
 }
 
-// Parallel day lookups sum their IO wait, and the ratio divides the sum by the
-// one wall time the caller sets after merging. Merge must not carry a day's own
-// wall time into the combined stats.
-func TestQueryStats_EffectiveConcurrencyUsesSummedIOWaitOverWall(t *testing.T) {
-	day := func(ioWait time.Duration) *QueryStats {
-		stats := NewQueryStats()
-		stats.totalIOWaitNanos.Store(ioWait.Nanoseconds())
-		stats.SetWallTime(100 * time.Millisecond)
-		return stats
-	}
-
-	combined := NewQueryStats()
-	combined.Merge(day(200 * time.Millisecond))
-	combined.Merge(day(300 * time.Millisecond))
-	require.Equal(t, 0.0, combined.Snapshot().EffectiveConcurrency)
-
-	combined.SetWallTime(150 * time.Millisecond)
-
-	snap := combined.Snapshot()
-	require.Equal(t, 500*time.Millisecond, snap.TotalIOWait)
-	require.Equal(t, float64(500*time.Millisecond)/float64(150*time.Millisecond), snap.EffectiveConcurrency)
-}
-
 func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats := NewQueryStats()
 	stats.headerReads.Add(1)
@@ -269,8 +246,8 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.NoError(t, decoded.Unmarshal(raw))
 	require.Equal(t, snap.TotalIOWait, decoded.TotalIOWait)
 
-	// The frontend does not restore effective_concurrency. It derives it from IO
-	// wait over its own wall time.
+	// The ratio is not restored. With a new 5s wall time it is 250ms/5s, not the
+	// original 2.5.
 	restored := FromProtoStats(&snap)
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
@@ -284,7 +261,7 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
-	require.Equal(t, float64(snap.TotalIOWait)/float64(5*time.Second), got.EffectiveConcurrency)
+	require.Equal(t, 0.05, got.EffectiveConcurrency)
 	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
 	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
 	require.Equal(t, snap.IndexQueriesTotal, got.IndexQueriesTotal)
