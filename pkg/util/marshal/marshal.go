@@ -26,8 +26,9 @@ import (
 
 // newEncoder returns an Encoder suitable for writing Loki API responses to w.
 // Log lines are HTML-escaped and invalid UTF-8 is replaced rather than rejected.
+// The names we write are fixed, so skip the duplicate-name check, which allocates for every object member.
 func newEncoder(w io.Writer) *jsontext.Encoder {
-	return jsontext.NewEncoder(w, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true))
+	return jsontext.NewEncoder(w, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
 }
 
 func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {

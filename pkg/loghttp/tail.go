@@ -38,7 +38,7 @@ type DroppedStream struct {
 // MarshalJSON implements json.Marshaller
 func (s *DroppedStream) MarshalJSON() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 64))
-	if err := s.MarshalJSONTo(jsontext.NewEncoder(buf, jsontext.AllowInvalidUTF8(true))); err != nil {
+	if err := s.MarshalJSONTo(jsontext.NewEncoder(buf, jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))); err != nil {
 		return nil, err
 	}
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil // the encoder terminates top-level values with a newline

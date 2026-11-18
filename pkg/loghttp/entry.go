@@ -148,7 +148,7 @@ func readLabelsInto(d *json.Decoder, b *labels.ScratchBuilder) error {
 func (e Entry) MarshalJSON() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, len(e.Line)+64))
 	// Escape <, > and & (Loki has done this since 2019); replace invalid UTF-8 rather than fail.
-	enc := jsontext.NewEncoder(buf, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true))
+	enc := jsontext.NewEncoder(buf, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
 	if err := e.MarshalJSONTo(enc); err != nil {
 		return nil, err
 	}
