@@ -1,6 +1,8 @@
 package iter
 
 import (
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -110,6 +112,26 @@ func TestHintTimeRangesForFingerprint(t *testing.T) {
 
 	unsharded := NewHintTimeRanges([]logproto.HintTimeRange{{Start: at(0), End: at(1)}}, base, at(8))
 	require.Equal(t, unsharded, unsharded.ForFingerprint(inShard(3)))
+}
+
+func TestHintTimeRangesTreatInvalidShardBitsAsEveryStream(t *testing.T) {
+	base := time.Unix(100, 0)
+	// fp is not in document shard 0 at any width.
+	fp := uint64(1<<63 | 1<<32)
+	for _, tc := range []struct {
+		bits    uint32
+		covered bool
+	}{
+		{bits: logline.MaxDocumentShardBits, covered: false},
+		{bits: logline.MaxDocumentShardBits + 1, covered: true},
+		{bits: 32, covered: true},
+		{bits: math.MaxUint32, covered: true},
+	} {
+		t.Run(fmt.Sprint(tc.bits), func(t *testing.T) {
+			ranges := NewHintTimeRanges([]logproto.HintTimeRange{{Start: base, End: base.Add(time.Millisecond), DocumentShardBits: tc.bits}}, base, base.Add(time.Millisecond))
+			require.Equal(t, tc.covered, ranges.ForFingerprint(fp).contains(base.UnixNano()))
+		})
+	}
 }
 
 func TestHintIterators(t *testing.T) {
