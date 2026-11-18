@@ -1,7 +1,10 @@
 package executor
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -100,8 +103,6 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 func TestIndexOutput_Finish(t *testing.T) {
 	ctx := t.Context()
 
-	// appendRows appends a label postings row for each column, then a stats
-	// row for each log object.
 	appendRows := func(t *testing.T, out *indexOutput, columns, logObjects []string) {
 		t.Helper()
 		for _, column := range columns {
@@ -151,7 +152,7 @@ func TestIndexOutput_Finish(t *testing.T) {
 			uploadedBytes += attrs.Size
 		}
 		require.Equal(t, uploadedBytes, sizes.compressed, "the compressed size counts every uploaded index object")
-		require.Positive(t, sizes.uncompressed)
+		require.Greater(t, sizes.uncompressed, int64(4096*(len(artifacts)-1)), "the uncompressed size counts every full index object")
 
 		var got []string
 		for i, artifact := range artifacts {
@@ -245,4 +246,33 @@ func TestIndexOutput_Finish(t *testing.T) {
 		require.Equal(t, "app", artifacts[0].PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifacts[0].PostingKeys.Max().ColumnName)
 	})
+
+	t.Run("returns the error of an upload at a cut", func(t *testing.T) {
+		bucket := &failingUploadBucket{Bucket: objstore.NewInMemBucket(), failOn: 1}
+		out, err := newSplittingContext(t, bucket).newIndexOutput("acme", splitOutputLayout)
+		require.NoError(t, err)
+		t.Cleanup(out.reset)
+
+		var appendErr error
+		for i := 0; appendErr == nil && i < 300; i++ {
+			appendErr = out.appendPostingsRow(ctx, labelPostingsRow(fmt.Sprintf("c%04d", i)))
+		}
+		require.ErrorIs(t, appendErr, errUploadFailed)
+	})
+}
+
+var errUploadFailed = errors.New("upload failed")
+
+// failingUploadBucket fails its failOn-th upload, counted from 1.
+type failingUploadBucket struct {
+	objstore.Bucket
+	failOn, uploads int
+}
+
+func (b *failingUploadBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
+	b.uploads++
+	if b.uploads == b.failOn {
+		return errUploadFailed
+	}
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }

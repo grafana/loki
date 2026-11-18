@@ -1786,6 +1786,39 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		require.Len(t, observer.uncompressedSizes, 1)
 		require.Positive(t, observer.uncompressedSizes[0])
 	})
+
+	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newSplittingContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifacts, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var uploaded int64
+		for _, artifact := range artifacts {
+			attrs, err := bucket.Attributes(ctx, artifact.Path)
+			require.NoError(t, err)
+			uploaded += attrs.Size
+		}
+		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+	})
 }
 
 func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {

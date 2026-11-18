@@ -22,9 +22,9 @@ import (
 // Postings rows must come first, in posting key order, then stats rows. The
 // output cuts a new index object before a postings row when the current one is
 // full and the posting key changes. So no posting key spans two index objects,
-// every index object holds postings, and all stats rows go into the last index
-// object. An earlier index object records the layout in an empty stats
-// section.
+// every index object of a run of several holds postings, and all stats rows go
+// into the last index object. An earlier index object records the layout in an
+// empty stats section.
 //
 // The output uploads each index object when it cuts it, so it holds only one
 // index object in memory.
@@ -125,7 +125,10 @@ func (o *indexOutput) appendStat(stat stats.Stat) error {
 }
 
 // reset releases the resources of the current index object and empties the
-// output.
+// output. It forgets the index objects that the output uploaded, but does not
+// delete them. A failed task leaves them in the bucket, unreferenced by any
+// ToC. Deleting them is not safe, because an index object at the same
+// content-hash path can be one that a ToC references.
 func (o *indexOutput) reset() {
 	o.builder.Reset()
 	o.keys = keyBounds{}

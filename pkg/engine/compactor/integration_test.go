@@ -1284,7 +1284,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		seedWide("indexes/wide-b", "logs/b", 1)
 		writeToCWithPointers(ctx, t, bucket, tenant, window, pointer("indexes/wide-a", 0), pointer("indexes/wide-b", 0))
 
-		small := flagextDefaultIndexobjConfig(t)
+		small := defaultIndexobjConfig(t)
 		small.TargetPageSize = 2048
 		small.TargetObjectSize = 4096
 		small.TargetSectionSize = 4096
@@ -1302,7 +1302,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 			require.Equal(t, end, entry.EndTs.UTC())
 			require.False(t, entry.PostingKeys.IsZero())
 			if i > 0 {
-				require.NotEqual(t, run[i-1].PostingKeys, entry.PostingKeys)
+				require.Negative(t, run[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()), "the key ranges of a run are disjoint and in order")
 			}
 			requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
 		}
@@ -1320,21 +1320,30 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		require.Len(t, columns, 300)
 		require.Equal(t, 2, statRows)
 
-		refs, _, err := logSectionRefsFor(ctx, bucket, tenant, groupIndexRuns(run)[0])
+		runs := groupIndexRuns(run)
+		require.Len(t, runs, 1)
+		refs, _, err := logSectionRefsFor(ctx, bucket, tenant, runs[0])
 		require.NoError(t, err)
-		require.Len(t, refs, 2, "log merge plans the log sections of every index object of the run")
+		require.Len(t, refs, 2, "log merge planning reads the stats rows of the run")
 
 		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
 		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
 		_, err = c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
 		require.NoError(t, err)
 		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		require.NotEmpty(t, after)
+		var merged []string
 		for _, entry := range after {
-			require.NotContains(t, []string{"indexes/plain"}, entry.Path, "the run and the other index must merge")
+			require.NotEqual(t, "indexes/plain", entry.Path, "the run and the other index must merge")
 			for _, old := range run {
 				require.NotEqual(t, old.Path, entry.Path, "the merge must replace every index object of the run")
 			}
+			postingRows, _ := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			for _, row := range postingRows {
+				merged = append(merged, row.ObjectPath+" "+row.ColumnName)
+			}
 		}
+		require.Len(t, merged, 302, "the merge keeps the 300 postings rows of the run and the 2 of the other index")
 	})
 
 	t.Run("merges every index object of a run with another index", func(t *testing.T) {
@@ -1538,9 +1547,9 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 	})
 }
 
-// flagextDefaultIndexobjConfig returns the default index object config of the
+// defaultIndexobjConfig returns the default index object config of the
 // compactor.
-func flagextDefaultIndexobjConfig(t *testing.T) logsobj.BuilderBaseConfig {
+func defaultIndexobjConfig(t *testing.T) logsobj.BuilderBaseConfig {
 	t.Helper()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
