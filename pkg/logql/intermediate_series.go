@@ -39,8 +39,8 @@ func newIntermediateSeriesCounter(limit int) *intermediateSeriesCounter {
 }
 
 // notifyOnCrossing makes the counter call fn the first time the count reaches each of thresholds,
-// and returns the counter. It must be called before the counter is shared. The count falling and
-// rising again does not call fn a second time.
+// and returns the counter. A threshold given more than once counts as one. It must be called
+// before the counter is shared. The count falling and rising again does not call fn a second time.
 func (c *intermediateSeriesCounter) notifyOnCrossing(thresholds []int, fn func(threshold, current int64)) *intermediateSeriesCounter {
 	c.thresholds = make([]int64, 0, len(thresholds))
 	for _, t := range thresholds {
@@ -49,6 +49,7 @@ func (c *intermediateSeriesCounter) notifyOnCrossing(thresholds []int, fn func(t
 		}
 	}
 	slices.Sort(c.thresholds)
+	c.thresholds = slices.Compact(c.thresholds)
 	c.onCrossing = fn
 	return c
 }

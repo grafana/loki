@@ -427,6 +427,14 @@ func TestIntermediateSeriesCounter_ShouldNotNotifyTwiceForChurnAroundAThreshold(
 	require.Equal(t, []int64{10}, *got)
 }
 
+func TestIntermediateSeriesCounter_ShouldNotifyOnceForADuplicatedThreshold(t *testing.T) {
+	c, got := crossings(50, 10, 50, 10)
+
+	require.NoError(t, c.Reserve(60))
+
+	require.Equal(t, []int64{10, 50}, *got)
+}
+
 func TestIntermediateSeriesCounter_ShouldNotifyEveryThresholdOneReservationJumpsOver(t *testing.T) {
 	c, got := crossings(50, 10)
 
