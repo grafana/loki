@@ -2,13 +2,19 @@ package dataobj
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // The test object starts with a header, so the section does not start at the start of the object.
@@ -36,6 +42,73 @@ func TestSectionReader_MetadataRanges(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Empty(t, got[0])
+	})
+
+	t.Run("records the bytes from memory and from storage and one merged request for a partly prefetched range", func(t *testing.T) {
+		const region = "test"
+		sr := newTestSectionReader()
+		sr.rr = &prefetchedRangeReader{inner: sr.rr, ranges: metadata.PrefetchedRanges{{Offset: 14, Data: []byte("2345")}}}
+		ctx := rangeio.WithConfig(t.Context(), &rangeio.Config{MaxParallelism: 1, CoalesceSize: 1 << 20, MaxRangeSize: 8 << 20, MinRangeSize: 1 << 20})
+		ctx, capture := xcap.NewCapture(ctx, nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+
+		got, err := sr.MetadataRanges(ctx, []RelativeByteRange{{Offset: 1, Length: 6}})
+
+		require.NoError(t, err)
+		require.Equal(t, [][]byte{[]byte("123456")}, got)
+		require.Equal(t, int64(4), xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromMemory))
+		require.Equal(t, int64(2), xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromStorage))
+		require.Equal(t, int64(1), xcap.ValueFromRegion[int64](capture, region, StatMetadataRequestsToStorage))
+	})
+
+	t.Run("records every byte as memory and no request when the reader reads from an io.ReaderAt", func(t *testing.T) {
+		const region = "test"
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+
+		got, err := newTestSectionReader().MetadataRanges(ctx, []RelativeByteRange{{Offset: 1, Length: 6}})
+
+		require.NoError(t, err)
+		require.Equal(t, [][]byte{[]byte("123456")}, got)
+		require.Equal(t, int64(6), xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromMemory))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromStorage))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, StatMetadataRequestsToStorage))
+	})
+
+	t.Run("records every byte as storage and one request when no prefetched range wraps the bucket reader", func(t *testing.T) {
+		const region = "test"
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), "obj", bytes.NewReader([]byte(testObjectHeader+testMetadataPadding+testMetadataRegion+testDataRegion+testObjectTrailer))))
+		sr := newTestSectionReader()
+		sr.rr = &bucketRangeReader{bucket: bucket, path: "obj"}
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+
+		got, err := sr.MetadataRanges(ctx, []RelativeByteRange{{Offset: 1, Length: 6}})
+
+		require.NoError(t, err)
+		require.Equal(t, [][]byte{[]byte("123456")}, got)
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromMemory))
+		require.Equal(t, int64(6), xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromStorage))
+		require.Equal(t, int64(1), xcap.ValueFromRegion[int64](capture, region, StatMetadataRequestsToStorage))
+	})
+
+	t.Run("records the request of a failed read but no bytes", func(t *testing.T) {
+		const region = "test"
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+		sr := newTestSectionReader()
+		sr.rr = hookedRangeReader{rangeReader: sr.rr, readRange: func(context.Context, int64, int64) (io.ReadCloser, error) {
+			return nil, errors.New("read failed")
+		}}
+
+		got, err := sr.MetadataRanges(ctx, []RelativeByteRange{{Offset: 1, Length: 6}})
+
+		require.EqualError(t, err, "read failed")
+		require.Nil(t, got)
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromMemory))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, StatMetadataBytesFromStorage))
+		require.Equal(t, int64(1), xcap.ValueFromRegion[int64](capture, region, StatMetadataRequestsToStorage))
 	})
 
 	t.Run("returns an error for a range that is not inside the metadata region", func(t *testing.T) {

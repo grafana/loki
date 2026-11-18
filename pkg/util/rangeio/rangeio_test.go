@@ -2,6 +2,7 @@ package rangeio_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
@@ -79,7 +81,8 @@ func FuzzReadRanges(f *testing.F) {
 			MaxRangeSize:   maxRange,
 		}
 		ctx := rangeio.WithConfig(t.Context(), &cfg)
-		err := rangeio.ReadRanges(ctx, byteRangeReader(testData), ranges)
+		reader := &countedReader{Reader: byteRangeReader(testData)}
+		stats, err := rangeio.ReadRanges(ctx, reader, ranges)
 		require.NoError(t, err)
 
 		// Test that all of our ranges are correctly filled.
@@ -87,6 +90,9 @@ func FuzzReadRanges(f *testing.F) {
 			expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
 			assert.Equal(t, r.Data, expect, "range was not filled correctly")
 		}
+
+		// Test that the stats count the reads that the reader got.
+		require.Equal(t, int64(stats.Requests), reader.calls.Load())
 	})
 }
 
@@ -102,18 +108,26 @@ func TestReadRanges(t *testing.T) {
 	tt := []struct {
 		name   string
 		ranges []testRange
+
+		// wantRequests is the number of reads that the default config makes. It merges ranges less
+		// than 1 MiB apart into one read. It splits a range above 8 MiB in halves, and then splits
+		// each half again to approach the maximum parallelism.
+		wantRequests int
 	}{
 		{
-			name:   "full range",
-			ranges: []testRange{{Off: 0, Len: len(testData)}},
+			name:         "full range",
+			ranges:       []testRange{{Off: 0, Len: len(testData)}},
+			wantRequests: 4,
 		},
 		{
-			name:   "partial range (from start)",
-			ranges: []testRange{{Off: 0, Len: len(testData) / 2}},
+			name:         "partial range (from start)",
+			ranges:       []testRange{{Off: 0, Len: len(testData) / 2}},
+			wantRequests: 4,
 		},
 		{
-			name:   "partial range (from middle)",
-			ranges: []testRange{{Off: len(testData) / 2, Len: len(testData) / 2}},
+			name:         "partial range (from middle)",
+			ranges:       []testRange{{Off: len(testData) / 2, Len: len(testData) / 2}},
+			wantRequests: 4,
 		},
 		{
 			name: "non-overlapping adjacent ranges",
@@ -122,6 +136,7 @@ func TestReadRanges(t *testing.T) {
 				{Off: 150, Len: 50}, // [150, 200)
 				{Off: 200, Len: 50}, // [200, 250)
 			},
+			wantRequests: 1,
 		},
 		{
 			name: "non-overlapping non-adjacent ranges",
@@ -130,6 +145,15 @@ func TestReadRanges(t *testing.T) {
 				{Off: 1000, Len: 200}, // [1000, 1200)
 				{Off: 5000, Len: 100}, // [5000, 5100)
 			},
+			wantRequests: 1,
+		},
+		{
+			name: "ranges farther apart than the coalesce size",
+			ranges: []testRange{
+				{Off: 100, Len: 50},       // [100, 150)
+				{Off: 50 << 20, Len: 100}, // [50 MiB, 50 MiB + 100)
+			},
+			wantRequests: 2,
 		},
 		{
 			name: "overlapping ranges",
@@ -138,6 +162,7 @@ func TestReadRanges(t *testing.T) {
 				{Off: 150, Len: 100}, // [150, 250)
 				{Off: 200, Len: 100}, // [200, 300)
 			},
+			wantRequests: 1,
 		},
 		{
 			name: "range overlaps multiple ranges",
@@ -146,6 +171,7 @@ func TestReadRanges(t *testing.T) {
 				{Off: 150, Len: 100}, // [150, 250)
 				{Off: 200, Len: 100}, // [200, 300)
 			},
+			wantRequests: 1,
 		},
 		{
 			name: "unsorted ranges",
@@ -154,6 +180,7 @@ func TestReadRanges(t *testing.T) {
 				{Off: 100, Len: 50},   // [100, 150)
 				{Off: 500, Len: 75},   // [500, 575)
 			},
+			wantRequests: 1,
 		},
 		{
 			name: "duplicate ranges",
@@ -161,6 +188,7 @@ func TestReadRanges(t *testing.T) {
 				{Off: 500, Len: 100}, // [500, 600)
 				{Off: 500, Len: 100}, // [500, 600)
 			},
+			wantRequests: 1,
 		},
 		{
 			name: "empty range",
@@ -168,6 +196,14 @@ func TestReadRanges(t *testing.T) {
 				{Off: 100, Len: 0},  // no data
 				{Off: 200, Len: 50}, // [200, 250)
 			},
+			wantRequests: 1,
+		},
+		{
+			name: "only an empty range",
+			ranges: []testRange{
+				{Off: 100, Len: 0}, // no data
+			},
+			wantRequests: 0,
 		},
 	}
 
@@ -181,7 +217,9 @@ func TestReadRanges(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err := rangeio.ReadRanges(t.Context(), byteRangeReader(testData), ranges)
+			reader := &countedReader{Reader: byteRangeReader(testData)}
+
+			stats, err := rangeio.ReadRanges(t.Context(), reader, ranges)
 			require.NoError(t, err)
 
 			// Validate our ranges were read correctly.
@@ -189,8 +227,21 @@ func TestReadRanges(t *testing.T) {
 				expect := testData[r.Offset:min(len(testData), int(r.Offset+r.Len()))]
 				assert.Equal(t, expect, r.Data, "range was not filled correctly")
 			}
+
+			// Validate the stats count the reads that the reader got.
+			require.Equal(t, tc.wantRequests, stats.Requests)
+			require.Equal(t, int64(stats.Requests), reader.calls.Load())
 		})
 	}
+
+	t.Run("returns the number of reads even when a read fails", func(t *testing.T) {
+		ranges := []rangeio.Range{{Offset: 0, Data: make([]byte, 4)}}
+
+		stats, err := rangeio.ReadRanges(t.Context(), failingReader{}, ranges)
+
+		require.EqualError(t, err, "read failed")
+		require.Equal(t, 1, stats.Requests)
+	})
 }
 
 type byteRangeReader []byte
@@ -213,4 +264,22 @@ func (b byteRangeReader) ReadRange(_ context.Context, r rangeio.Range) (int, err
 	}
 
 	return n, nil
+}
+
+// countedReader counts the ReadRange calls on the embedded reader.
+type countedReader struct {
+	rangeio.Reader
+	calls atomic.Int64
+}
+
+func (r *countedReader) ReadRange(ctx context.Context, rg rangeio.Range) (int, error) {
+	r.calls.Inc()
+	return r.Reader.ReadRange(ctx, rg)
+}
+
+// failingReader fails every read.
+type failingReader struct{}
+
+func (failingReader) ReadRange(context.Context, rangeio.Range) (int, error) {
+	return 0, errors.New("read failed")
 }

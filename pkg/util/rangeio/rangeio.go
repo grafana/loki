@@ -39,6 +39,13 @@ type Range struct {
 // Len returns the length of the range.
 func (r Range) Len() int64 { return int64(len(r.Data)) }
 
+// Stats describes the work of one call to [ReadRanges].
+type Stats struct {
+	// Requests is the number of calls that ReadRanges made to [Reader.ReadRange]. ReadRanges merges
+	// ranges that are close together into one call, and splits a large range into several calls.
+	Requests int
+}
+
 // Reader is the interface that wraps the basic ReadRange method. Reader is
 // similar to [io.ReaderAt], but allows providing a [context.Context] for
 // canceling the operation.
@@ -166,7 +173,9 @@ var bytesBufferPool = &sync.Pool{
 // ReadRanges returns an error if any call to r.ReadRange returns an error.
 // ReadRanges only returns [io.EOF] if one of the ranges is beyond the end of
 // the input source.
-func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
+//
+// ReadRanges returns the [Stats] of the call, even when it returns an error.
+func ReadRanges(ctx context.Context, r Reader, ranges []Range) (Stats, error) {
 	// We store our own start time so we can calculate read throughput at the
 	// end.
 	startTime := time.Now()
@@ -191,7 +200,10 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(cfg.effectiveParallelism())
 
-	var gotEOF atomic.Bool
+	var (
+		gotEOF   atomic.Bool
+		requests atomic.Int64
+	)
 
 	for _, targetRange := range optimized {
 		// Ignore ranges that happened to be empty.
@@ -200,6 +212,8 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		}
 
 		g.Go(func() error {
+			requests.Inc()
+
 			tr := tracedReader{inner: r}
 			n, err := tr.ReadRange(ctx, targetRange)
 
@@ -221,9 +235,12 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	// g.Wait returns after every read finished, so the count is final.
+	err := g.Wait()
+	stats := Stats{Requests: int(requests.Load())}
+	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return err
+		return stats, err
 	}
 
 	span.AddEvent("finished reading ranges")
@@ -252,7 +269,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 			if i == len(optimized) {
 				// This can't ever happen; our ranges are always inside the
 				// optimized slice.
-				return errors.New("requested offset missing from coalesced ranges")
+				return stats, errors.New("requested offset missing from coalesced ranges")
 			}
 
 			copied := copy(output, optimized[i].Data[offset-optimized[i].Offset:])
@@ -267,9 +284,9 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
 
 	if gotEOF.Load() {
-		return io.EOF
+		return stats, io.EOF
 	}
-	return nil
+	return stats, nil
 }
 
 // optimizeRanges optimizes the set of ranges based on cfg. The returned slice

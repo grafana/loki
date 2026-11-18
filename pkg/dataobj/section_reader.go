@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type sectionReader struct {
@@ -50,7 +51,8 @@ func (sr *sectionReader) DataRange(ctx context.Context, r RelativeByteRange) (io
 // MetadataRanges returns the bytes of each range of the metadata region of the section. The offset
 // of each range counts from the start of that region, not from the start of the object.
 //
-// It checks every range before it reads any.
+// It checks every range before it reads any. It records the metadata statistics from what the range
+// reader reports.
 func (sr *sectionReader) MetadataRanges(ctx context.Context, ranges []RelativeByteRange) ([][]byte, error) {
 	metadataRegion := sr.sec.GetLayout().GetMetadata()
 	if metadataRegion == nil {
@@ -74,7 +76,18 @@ func (sr *sectionReader) MetadataRanges(ctx context.Context, ranges []RelativeBy
 		}
 		absolute[i] = absoluteByteRange{Offset: regionOffset + r.Offset, Length: r.Length}
 	}
-	return sr.rr.ReadRanges(ctx, absolute)
+	results, stats, err := sr.rr.ReadRanges(ctx, absolute)
+
+	// Count the requests even when the read fails, as the object-store request statistics do.
+	region := xcap.RegionFromContext(ctx)
+	region.Record(StatMetadataRequestsToStorage.Observe(stats.storageRequests))
+	if err != nil {
+		return nil, err
+	}
+
+	region.Record(StatMetadataBytesFromMemory.Observe(stats.memoryBytes))
+	region.Record(StatMetadataBytesFromStorage.Observe(stats.storageBytes))
+	return results, nil
 }
 
 func (sr *sectionReader) DataSize() int64 {

@@ -128,7 +128,7 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 		}
 
 		reader := dataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
+		_, err := rangeio.ReadRanges(ctx, reader, ranges)
 		if err != nil {
 			return err
 		}

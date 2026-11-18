@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -659,6 +660,47 @@ func TestFromBucket_MetadataPrefetcher(t *testing.T) {
 		require.NoError(t, err)
 		require.Zero(t, reads)
 		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("records the metadata bytes that the prefetched ranges served", func(t *testing.T) {
+		const region = "test"
+		ctx, capture := xcap.NewCapture(ctx, nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
+		obj, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			return whole, nil
+		}), metadata.PrefetchSet{}))
+		require.NoError(t, err)
+		sec := obj.Sections()[0]
+
+		meta := readMetadata(ctx, t, sec.Reader)
+
+		require.Equal(t, []byte("streams-meta"), meta)
+		require.Equal(t, int64(len(meta)), xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataBytesFromMemory))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataBytesFromStorage))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataRequestsToStorage))
+	})
+
+	t.Run("records the bytes and the request that went to storage when the prefetched ranges miss the metadata", func(t *testing.T) {
+		const region = "test"
+		ctx, capture := xcap.NewCapture(ctx, nil)
+		ctx, _ = xcap.StartRegion(ctx, region)
+		head := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw[:bytes.Index(raw, []byte("streams-meta"))]}}}
+		cb := &countingBucket{Bucket: inmem}
+		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			return head, nil
+		}), metadata.PrefetchSet{}))
+		require.NoError(t, err)
+		sec := obj.Sections()[0]
+		readsBeforeMetadata := cb.getRanges.Load()
+
+		meta := readMetadata(ctx, t, sec.Reader)
+
+		require.Equal(t, []byte("streams-meta"), meta)
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataBytesFromMemory))
+		require.Equal(t, int64(len(meta)), xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataBytesFromStorage))
+		require.Equal(t, int64(1), xcap.ValueFromRegion[int64](capture, region, dataobj.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(1), cb.getRanges.Load()-readsBeforeMetadata, "one counted request must be one request to the bucket")
 	})
 
 	t.Run("asks the prefetcher for the object path and the prefetch set, with a reader of the object", func(t *testing.T) {

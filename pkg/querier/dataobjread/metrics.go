@@ -11,8 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// The component label values of the object-store metrics. Each names the phase of the read path that
-// issued the requests. The values are part of the metrics API.
+// The component label values of the object-store and metadata metrics. Each names the phase of the
+// read path that issued the reads. The values are part of the metrics API.
 const (
 	componentMetastore     = "metastore"
 	componentStreamsReader = "streams-reader"
@@ -49,6 +49,10 @@ type Metrics struct {
 	fetchedCompressedBytes    *prometheus.CounterVec
 	objectStoreRequests       *prometheus.CounterVec
 	objectStoreRequestsFailed *prometheus.CounterVec
+
+	metadataBytesFromMemory   *prometheus.CounterVec
+	metadataBytesFromStorage  *prometheus.CounterVec
+	metadataRequestsToStorage *prometheus.CounterVec
 }
 
 // NewMetrics registers the read path's metrics on reg.
@@ -74,11 +78,26 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "loki_querier_dataobj_object_store_requests_failed_total",
 			Help: "Object-store requests that failed for data-object queries, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
 		}, []string{"component", "operation"}),
+		metadataBytesFromMemory: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_querier_dataobj_metadata_bytes_from_memory_total",
+			Help: "Bytes of section metadata that data-object queries requested and that a prefetched range held, by read-path component. These bytes cost no object-store request.",
+		}, []string{"component"}),
+		metadataBytesFromStorage: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_querier_dataobj_metadata_bytes_from_storage_total",
+			Help: "Bytes of section metadata that data-object queries requested and that no prefetched range held, so the read went to object storage, by read-path component. It counts requested bytes, not transferred bytes. Compare it with loki_querier_dataobj_metadata_bytes_from_memory_total: a rising share read from storage means the prefetch does not cover the metadata that queries read.",
+		}, []string{"component"}),
+		metadataRequestsToStorage: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_querier_dataobj_metadata_storage_requests_total",
+			Help: "Object-store requests that data-object queries sent to read section metadata that no prefetched range held, by read-path component. Close reads merge into one request, and a large read splits into several requests. Every such request is also counted in loki_querier_dataobj_object_store_requests_total.",
+		}, []string{"component"}),
 	}
 
 	// Create every series at 0, so rate and increase see the first increment of a series.
 	for _, component := range components {
 		m.fetchedCompressedBytes.WithLabelValues(component)
+		m.metadataBytesFromMemory.WithLabelValues(component)
+		m.metadataBytesFromStorage.WithLabelValues(component)
+		m.metadataRequestsToStorage.WithLabelValues(component)
 		for _, op := range objectStoreOperations {
 			m.objectStoreRequests.WithLabelValues(component, op.label)
 			m.objectStoreRequestsFailed.WithLabelValues(component, op.label)
@@ -88,8 +107,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
-// Record adds the object-store requests and downloaded bytes of a finished query to the
-// per-component counters. The request counter includes the failed requests, and the failed counter
+// Record adds the object-store requests, downloaded bytes and metadata reads of a finished query to
+// the per-component counters. The object-store request counter includes the failed requests, and the failed counter
 // holds those alone.
 //
 // It attributes each region to the component of its root region, not of its own name. The metastore
@@ -101,9 +120,12 @@ func (m *Metrics) Record(capture *xcap.Capture) {
 	}
 
 	type totals struct {
-		fetchedCompressedBytes int64
-		requestsByOperation    []int64
-		failuresByOperation    []int64
+		fetchedCompressedBytes    int64
+		metadataBytesFromMemory   int64
+		metadataBytesFromStorage  int64
+		metadataRequestsToStorage int64
+		requestsByOperation       []int64
+		failuresByOperation       []int64
 	}
 	byComponent := map[string]*totals{}
 
@@ -120,6 +142,9 @@ func (m *Metrics) Record(capture *xcap.Capture) {
 
 		for _, r := range tree {
 			t.fetchedCompressedBytes += regionInt64(r, dataobj.StatObjectBytesDownloaded)
+			t.metadataBytesFromMemory += regionInt64(r, dataobj.StatMetadataBytesFromMemory)
+			t.metadataBytesFromStorage += regionInt64(r, dataobj.StatMetadataBytesFromStorage)
+			t.metadataRequestsToStorage += regionInt64(r, dataobj.StatMetadataRequestsToStorage)
 			for i, op := range objectStoreOperations {
 				t.requestsByOperation[i] += regionInt64(r, op.requests)
 				t.failuresByOperation[i] += regionInt64(r, op.failures)
@@ -130,6 +155,15 @@ func (m *Metrics) Record(capture *xcap.Capture) {
 	for component, t := range byComponent {
 		if t.fetchedCompressedBytes > 0 {
 			m.fetchedCompressedBytes.WithLabelValues(component).Add(float64(t.fetchedCompressedBytes))
+		}
+		if t.metadataBytesFromMemory > 0 {
+			m.metadataBytesFromMemory.WithLabelValues(component).Add(float64(t.metadataBytesFromMemory))
+		}
+		if t.metadataBytesFromStorage > 0 {
+			m.metadataBytesFromStorage.WithLabelValues(component).Add(float64(t.metadataBytesFromStorage))
+		}
+		if t.metadataRequestsToStorage > 0 {
+			m.metadataRequestsToStorage.WithLabelValues(component).Add(float64(t.metadataRequestsToStorage))
 		}
 		for i, op := range objectStoreOperations {
 			if t.requestsByOperation[i] > 0 {

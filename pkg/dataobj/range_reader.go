@@ -25,17 +25,36 @@ type rangeReader interface {
 	// multiple concurrent instances of ReadRange.
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
 
-	// ReadRanges returns the bytes of each range. The result has one slice for
-	// each range, in the order of ranges. It returns an error if a range has a
-	// negative offset or length, or an end that overflows an int64.
+	// ReadRanges returns the bytes of each range, and where the bytes came from.
+	// The result has one slice for each range, in the order of ranges. It
+	// returns an error if a range has a negative offset or length, or an end
+	// that overflows an int64.
 	//
 	// A returned slice can alias memory that the reader shares. The caller must
 	// not modify it.
 	//
+	// When ReadRanges returns an error, the readRangesStats count the requests that the
+	// call sent and no bytes.
+	//
 	// ReadRanges returns the same bytes as ReadRange. A reader that embeds
 	// another reader and overrides ReadRange must override ReadRanges too. The
 	// promoted ReadRanges would not call the new ReadRange.
-	ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error)
+	ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error)
+}
+
+// readRangesStats describes where the bytes of one [rangeReader.ReadRanges] call came from.
+type readRangesStats struct {
+	// memoryBytes is the number of requested bytes that a prefetched range held, or that a reader over
+	// an [io.ReaderAt] returned.
+	memoryBytes int64
+
+	// storageBytes is the number of requested bytes that no prefetched range held, so the reader read
+	// them from the object store. It counts requested bytes, not transferred bytes: the reader can
+	// merge two close reads into one read that also covers the bytes between them.
+	storageBytes int64
+
+	// storageRequests is the number of requests that the reader sent to the object store.
+	storageRequests int64
 }
 
 // absoluteByteRange is a range of bytes in an object. Its Offset counts from the
@@ -54,16 +73,17 @@ func validateAbsoluteByteRange(r absoluteByteRange) error {
 	return nil
 }
 
-// readRanges reads each range from rr into a new buffer.
-func readRanges(ctx context.Context, rr rangeReader, ranges []absoluteByteRange) ([][]byte, error) {
+// readRanges reads each range from rr into a new buffer. It counts every byte as read from storage.
+func readRanges(ctx context.Context, rr rangeReader, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
 	var (
-		results = make([][]byte, len(ranges))
-		toRead  = make([]rangeio.Range, 0, len(ranges))
+		results      = make([][]byte, len(ranges))
+		toRead       = make([]rangeio.Range, 0, len(ranges))
+		storageBytes int64
 	)
 
 	for i, r := range ranges {
 		if err := validateAbsoluteByteRange(r); err != nil {
-			return nil, err
+			return nil, readRangesStats{}, err
 		}
 		results[i] = make([]byte, r.Length)
 
@@ -71,22 +91,24 @@ func readRanges(ctx context.Context, rr rangeReader, ranges []absoluteByteRange)
 		// stretch the read of a range near it.
 		if r.Length > 0 {
 			toRead = append(toRead, rangeio.Range{Data: results[i], Offset: r.Offset})
+			storageBytes += r.Length
 		}
 	}
 
-	if err := readIORanges(ctx, rr, toRead); err != nil {
-		return nil, err
+	stats, err := readIORanges(ctx, rr, toRead)
+	if err != nil {
+		return nil, readRangesStats{storageRequests: int64(stats.Requests)}, err
 	}
-	return results, nil
+	return results, readRangesStats{storageBytes: storageBytes, storageRequests: int64(stats.Requests)}, nil
 }
 
 // readIORanges reads each range from rr into the Data of the range, with one rangeio call. It is
 // readRanges for rangeio ranges: the caller owns the buffers. rangeio can merge close ranges, so a
 // read can cover bytes that no range holds.
-func readIORanges(ctx context.Context, rr rangeReader, ranges []rangeio.Range) error {
+func readIORanges(ctx context.Context, rr rangeReader, ranges []rangeio.Range) (rangeio.Stats, error) {
 	// Skip rangeio for an empty slice. It would start an empty trace span.
 	if len(ranges) == 0 {
-		return nil
+		return rangeio.Stats{}, nil
 	}
 
 	return rangeio.ReadRanges(ctx, rangeIOReader{rr: rr}, ranges)
@@ -134,7 +156,7 @@ func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length
 	return rr.bucket.GetRange(ctx, rr.path, offset, length)
 }
 
-func (rr *bucketRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+func (rr *bucketRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
 	return readRanges(ctx, rr, ranges)
 }
 
@@ -166,8 +188,11 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, offset, length)}, nil
 }
 
-func (rr *readerAtRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
-	return readRanges(ctx, rr, ranges)
+func (rr *readerAtRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
+	results, stats, err := readRanges(ctx, rr, ranges)
+
+	// The reader sends no request to the object store, so its bytes are not storage bytes.
+	return results, readRangesStats{memoryBytes: stats.storageBytes}, err
 }
 
 // nopCloserWithObjectSize reads a section of an object and reports the size

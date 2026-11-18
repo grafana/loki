@@ -59,14 +59,21 @@ func Test_readerAtRangeReader_ReadRanges(t *testing.T) {
 	}
 
 	t.Run("returns the bytes of each range in the order of the ranges", func(t *testing.T) {
-		got, err := newReader().ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}, {Offset: 0, Length: 2}})
+		got, _, err := newReader().ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}, {Offset: 0, Length: 2}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"2345", "01"}, toStrings(got))
 	})
 
+	t.Run("counts every byte as memory and sends no request to the object store", func(t *testing.T) {
+		_, stats, err := newReader().ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}, {Offset: 0, Length: 2}})
+
+		require.NoError(t, err)
+		require.Equal(t, readRangesStats{memoryBytes: 6}, stats)
+	})
+
 	t.Run("returns every byte of a range when the reader returns one byte at a time", func(t *testing.T) {
-		got, err := oneByteRangeReader{newReader()}.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}})
+		got, _, err := oneByteRangeReader{newReader()}.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"2345"}, toStrings(got))
@@ -75,7 +82,7 @@ func Test_readerAtRangeReader_ReadRanges(t *testing.T) {
 	t.Run("does not read the bytes up to a range of zero length", func(t *testing.T) {
 		var reads recordedReads
 
-		got, err := reads.hook(newReader()).ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 2}, {Offset: 3, Length: 0}})
+		got, _, err := reads.hook(newReader()).ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 2}, {Offset: 3, Length: 0}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"01", ""}, toStrings(got))
@@ -83,10 +90,24 @@ func Test_readerAtRangeReader_ReadRanges(t *testing.T) {
 	})
 
 	t.Run("returns an error for a range with a negative length", func(t *testing.T) {
-		got, err := newReader().ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: -1}})
+		got, _, err := newReader().ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: -1}})
 
 		require.EqualError(t, err, "parameters must not be negative: offset=0 length=-1")
 		require.Nil(t, got)
+	})
+}
+
+func Test_bucketRangeReader_ReadRanges(t *testing.T) {
+	t.Run("counts every byte as read from storage and reports the requests that rangeio made", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		require.NoError(t, bucket.Upload(t.Context(), "obj", bytes.NewReader([]byte(backendSource))))
+		rr := &bucketRangeReader{bucket: bucket, path: "obj"}
+
+		got, stats, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 2, Length: 4}, {Offset: 0, Length: 2}})
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"2345", "01"}, toStrings(got))
+		require.Equal(t, readRangesStats{storageBytes: 6, storageRequests: 1}, stats)
 	})
 }
 
@@ -106,6 +127,6 @@ func (r oneByteRangeReader) ReadRange(ctx context.Context, offset, length int64)
 	}{iotest.OneByteReader(rc), rc}, nil
 }
 
-func (r oneByteRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+func (r oneByteRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
 	return readRanges(ctx, r, ranges)
 }

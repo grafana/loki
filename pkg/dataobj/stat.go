@@ -34,6 +34,29 @@ var (
 	// "transferred from storage" figure.
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
 
+	// StatMetadataBytes* count the bytes of section metadata that a task requested with
+	// [SectionReader.MetadataRange] and [SectionReader.MetadataRanges], split by where the reader got
+	// them. FromMemory counts the bytes that a prefetched range held, or that a reader over an
+	// [io.ReaderAt] returned. FromStorage counts the bytes that no prefetched range held, so the
+	// reader read them from the object store. A read that the prefetched ranges should have covered
+	// shows up as FromStorage.
+	//
+	// The two stats add up to the total length of the requested ranges. They count requested bytes,
+	// not transferred bytes. The reader can merge two close reads into one read that also covers the
+	// bytes between them. [StatObjectBytesDownloaded] counts the bytes that came from the object
+	// store.
+	//
+	// StatMetadataRequestsToStorage counts the object-store requests that read the FromStorage bytes.
+	// Close reads merge into one request, and a large read splits into several requests.
+	// [StatObjectRequestsGetRange] counts every range request, whatever it reads.
+	//
+	// A reader over a bucket without prefetched ranges counts every byte as FromStorage.
+	// [SectionReader.DataRange] records none of these stats. A failed call records the requests that
+	// it sent and no bytes.
+	StatMetadataBytesFromMemory   = xcap.NewStatisticInt64("dataobj.metadata.bytes.from_memory", xcap.AggregationTypeSum)
+	StatMetadataBytesFromStorage  = xcap.NewStatisticInt64("dataobj.metadata.bytes.from_storage", xcap.AggregationTypeSum)
+	StatMetadataRequestsToStorage = xcap.NewStatisticInt64("dataobj.metadata.requests.to_storage", xcap.AggregationTypeSum)
+
 	// StatObjectsOpened* count the objects that [FromBucket] opened. The compaction state of the key
 	// picks the statistic. See [IsCompactedObjectPath].
 	//

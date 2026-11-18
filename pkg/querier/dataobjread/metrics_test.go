@@ -19,8 +19,14 @@ func TestNewMetrics(t *testing.T) {
 		require.Equal(t, 4*3, testutil.CollectAndCount(m.objectStoreRequests))
 		require.Equal(t, 4*3, testutil.CollectAndCount(m.objectStoreRequestsFailed))
 		require.Equal(t, 4, testutil.CollectAndCount(m.fetchedCompressedBytes))
+		require.Equal(t, 4, testutil.CollectAndCount(m.metadataBytesFromMemory))
+		require.Equal(t, 4, testutil.CollectAndCount(m.metadataBytesFromStorage))
+		require.Equal(t, 4, testutil.CollectAndCount(m.metadataRequestsToStorage))
 		for _, component := range []string{"metastore", "streams-reader", "logs-reader", "other"} {
 			require.Zero(t, testutil.ToFloat64(m.fetchedCompressedBytes.WithLabelValues(component)))
+			require.Zero(t, testutil.ToFloat64(m.metadataBytesFromMemory.WithLabelValues(component)))
+			require.Zero(t, testutil.ToFloat64(m.metadataBytesFromStorage.WithLabelValues(component)))
+			require.Zero(t, testutil.ToFloat64(m.metadataRequestsToStorage.WithLabelValues(component)))
 			for _, operation := range []string{"attributes", "get", "get_range"} {
 				require.Zero(t, testutil.ToFloat64(m.objectStoreRequests.WithLabelValues(component, operation)))
 				require.Zero(t, testutil.ToFloat64(m.objectStoreRequestsFailed.WithLabelValues(component, operation)))
@@ -38,6 +44,15 @@ func TestMetrics_Record(t *testing.T) {
 	}
 	fetched := func(m *Metrics, component string) float64 {
 		return testutil.ToFloat64(m.fetchedCompressedBytes.WithLabelValues(component))
+	}
+	metadataFromMemory := func(m *Metrics, component string) float64 {
+		return testutil.ToFloat64(m.metadataBytesFromMemory.WithLabelValues(component))
+	}
+	metadataFromStorage := func(m *Metrics, component string) float64 {
+		return testutil.ToFloat64(m.metadataBytesFromStorage.WithLabelValues(component))
+	}
+	metadataStorageRequests := func(m *Metrics, component string) float64 {
+		return testutil.ToFloat64(m.metadataRequestsToStorage.WithLabelValues(component))
 	}
 
 	t.Run("it attributes requests and bytes to the component of each root region", func(t *testing.T) {
@@ -153,6 +168,49 @@ func TestMetrics_Record(t *testing.T) {
 		require.Equal(t, 100.0, fetched(m, "metastore"))
 		require.Zero(t, requests(m, "streams-reader", "get_range"), "the nested streams region must not count as the streams reader")
 		require.Zero(t, fetched(m, "other"), "a nested region must follow its root, not land in other")
+	})
+
+	t.Run("it attributes the metadata reads to the component of each root region", func(t *testing.T) {
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+
+		_, streamsRegion := xcap.StartRegion(ctx, regionStreamsReader)
+		streamsRegion.Record(dataobj.StatMetadataBytesFromMemory.Observe(900))
+		streamsRegion.Record(dataobj.StatMetadataBytesFromStorage.Observe(100))
+		streamsRegion.Record(dataobj.StatMetadataRequestsToStorage.Observe(2))
+
+		_, logsRegion := xcap.StartRegion(ctx, logs.RegionRead)
+		logsRegion.Record(dataobj.StatMetadataBytesFromMemory.Observe(50))
+		logsRegion.Record(dataobj.StatMetadataRequestsToStorage.Observe(0))
+
+		m := NewMetrics(nil)
+		m.Record(capture)
+
+		require.Equal(t, 900.0, metadataFromMemory(m, "streams-reader"))
+		require.Equal(t, 100.0, metadataFromStorage(m, "streams-reader"))
+		require.Equal(t, 2.0, metadataStorageRequests(m, "streams-reader"))
+		require.Equal(t, 50.0, metadataFromMemory(m, "logs-reader"))
+		require.Zero(t, metadataFromStorage(m, "logs-reader"))
+		require.Zero(t, metadataStorageRequests(m, "logs-reader"))
+		require.Zero(t, metadataFromMemory(m, "metastore"))
+	})
+
+	t.Run("it adds the metadata reads of a nested region to its root", func(t *testing.T) {
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+
+		metastoreCtx, root := xcap.StartRegion(ctx, "metastore.Sections")
+		root.Record(dataobj.StatMetadataBytesFromMemory.Observe(10))
+		_, nested := xcap.StartRegion(metastoreCtx, "streams.Reader.Read")
+		nested.Record(dataobj.StatMetadataBytesFromMemory.Observe(20))
+		nested.Record(dataobj.StatMetadataBytesFromStorage.Observe(5))
+		nested.Record(dataobj.StatMetadataRequestsToStorage.Observe(1))
+
+		m := NewMetrics(nil)
+		m.Record(capture)
+
+		require.Equal(t, 30.0, metadataFromMemory(m, "metastore"))
+		require.Equal(t, 5.0, metadataFromStorage(m, "metastore"))
+		require.Equal(t, 1.0, metadataStorageRequests(m, "metastore"))
+		require.Zero(t, metadataFromMemory(m, "streams-reader"))
 	})
 
 	t.Run("a root region with an unknown name counts as other", func(t *testing.T) {

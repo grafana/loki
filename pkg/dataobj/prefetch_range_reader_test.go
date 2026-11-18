@@ -177,7 +177,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 		var reads recordedReads
 		rr.inner = reads.hook(rr.inner)
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 11, Length: 3}})
+		got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 11, Length: 3}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"VWX"}, toStrings(got))
@@ -191,7 +191,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 	t.Run("returns the bytes in the order of the ranges, from memory and from the inner reader", func(t *testing.T) {
 		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{
+		got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{
 			{Offset: 20, Length: 2},
 			{Offset: 0, Length: 4},
 			{Offset: 8, Length: 5},
@@ -210,7 +210,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 		var reads recordedReads
 		rr.inner = reads.hook(rr.inner)
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 8, Length: 5}})
+		got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 8, Length: 5}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"89UVW"}, toStrings(got))
@@ -224,7 +224,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 
 		ctx := rangeio.WithConfig(t.Context(), &rangeio.Config{MaxParallelism: 1, CoalesceSize: 1 << 20, MaxRangeSize: 8 << 20, MinRangeSize: 1 << 20})
 
-		got, err := rr.ReadRanges(ctx, []absoluteByteRange{{Offset: 8, Length: 4}, {Offset: 16, Length: 6}})
+		got, _, err := rr.ReadRanges(ctx, []absoluteByteRange{{Offset: 8, Length: 4}, {Offset: 16, Length: 6}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"89UV", "ghij!?"}, toStrings(got))
@@ -240,7 +240,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 		var reads recordedReads
 		rr.inner = reads.hook(rr.inner)
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 10, Length: 3}, {Offset: 13, Length: 3}, {Offset: 11, Length: 4}})
+		got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 10, Length: 3}, {Offset: 13, Length: 3}, {Offset: 11, Length: 4}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"UVW", "XYZ", "VWXY"}, toStrings(got))
@@ -254,11 +254,49 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 		var reads recordedReads
 		rr.inner = reads.hook(rr.inner)
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 2}, {Offset: 3, Length: 0}})
+		got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 2}, {Offset: 3, Length: 0}})
 
 		require.NoError(t, err)
 		require.Equal(t, []string{"01", ""}, toStrings(got))
 		require.Equal(t, []readCall{{offset: 0, length: 2}}, reads.calls())
+	})
+
+	t.Run("records the requested bytes from memory and from storage and the requests to storage", func(t *testing.T) {
+		touching := metadata.PrefetchedRanges{
+			{Offset: 10, Data: []byte("UVW")},
+			{Offset: 13, Data: []byte("XYZ")},
+		}
+		tests := []struct {
+			name       string
+			prefetched metadata.PrefetchedRanges
+			ranges     []absoluteByteRange
+			config     *rangeio.Config
+			want       readRangesStats
+		}{
+			{name: "counts a range that one prefetched range holds as memory and sends no request", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 11, Length: 3}}, want: readRangesStats{memoryBytes: 3, storageBytes: 0, storageRequests: 0}},
+			{name: "counts a range outside every prefetched range as storage and sends one request", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 0, Length: 4}}, want: readRangesStats{memoryBytes: 0, storageBytes: 4, storageRequests: 1}},
+			{name: "counts the gap before a prefetched range as storage and the rest as memory", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 8, Length: 5}}, want: readRangesStats{memoryBytes: 3, storageBytes: 2, storageRequests: 1}},
+			{name: "counts the gap between two prefetched ranges as storage and the rest as memory", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 14, Length: 8}}, want: readRangesStats{memoryBytes: 4, storageBytes: 4, storageRequests: 1}},
+			{name: "counts a range across two touching prefetched ranges as memory and sends no request", prefetched: touching, ranges: []absoluteByteRange{{Offset: 11, Length: 4}}, want: readRangesStats{memoryBytes: 4, storageBytes: 0, storageRequests: 0}},
+			{name: "counts nothing for a range of zero length", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 3, Length: 0}}, want: readRangesStats{memoryBytes: 0, storageBytes: 0, storageRequests: 0}},
+			{name: "adds up the bytes of several ranges and merges close gaps into one request", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 11, Length: 3}, {Offset: 0, Length: 4}, {Offset: 8, Length: 5}}, want: readRangesStats{memoryBytes: 6, storageBytes: 6, storageRequests: 1}},
+			{name: "sends one request for each gap that is too far from the next one to merge", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 0, Length: 4}, {Offset: 8, Length: 5}}, config: &rangeio.Config{MaxParallelism: 4, CoalesceSize: 1, MaxRangeSize: 8 << 20, MinRangeSize: 1 << 20}, want: readRangesStats{memoryBytes: 3, storageBytes: 6, storageRequests: 2}},
+			{name: "sends several requests for a gap that is larger than the maximum range size", prefetched: prefetchedRanges, ranges: []absoluteByteRange{{Offset: 0, Length: 8}}, config: &rangeio.Config{MaxParallelism: 1, CoalesceSize: 1 << 20, MaxRangeSize: 4, MinRangeSize: 2}, want: readRangesStats{memoryBytes: 0, storageBytes: 8, storageRequests: 2}},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := t.Context()
+				if tc.config != nil {
+					ctx = rangeio.WithConfig(ctx, tc.config)
+				}
+				rr := newTestPrefetchedRangeReader([]byte(backendSource), tc.prefetched...)
+
+				_, stats, err := rr.ReadRanges(ctx, tc.ranges)
+
+				require.NoError(t, err)
+				require.Equal(t, tc.want, stats)
+			})
+		}
 	})
 
 	t.Run("returns an error for an invalid range", func(t *testing.T) {
@@ -275,7 +313,7 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
 
-				got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 1}, tc.r})
+				got, _, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 1}, tc.r})
 
 				require.EqualError(t, err, tc.wantErr)
 				require.Nil(t, got)
@@ -283,17 +321,18 @@ func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 		}
 	})
 
-	t.Run("returns the error of the inner reader", func(t *testing.T) {
+	t.Run("returns the error of the inner reader and the failed request but no bytes", func(t *testing.T) {
 		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
 		backend := rr.inner
 		rr.inner = hookedRangeReader{rangeReader: backend, readRange: func(context.Context, int64, int64) (io.ReadCloser, error) {
 			return nil, errors.New("read failed")
 		}}
 
-		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 4}})
+		got, stats, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 8, Length: 5}})
 
 		require.EqualError(t, err, "read failed")
 		require.Nil(t, got)
+		require.Equal(t, readRangesStats{storageRequests: 1}, stats)
 	})
 }
 
@@ -541,7 +580,7 @@ type hookedRangeReader struct {
 	readRange func(ctx context.Context, offset, length int64) (io.ReadCloser, error)
 }
 
-func (h hookedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+func (h hookedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
 	return readRanges(ctx, h, ranges)
 }
 

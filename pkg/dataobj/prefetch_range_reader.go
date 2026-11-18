@@ -63,15 +63,21 @@ func (rr *prefetchedRangeReader) ReadRange(ctx context.Context, offset int64, le
 //
 // When one prefetched range holds all the bytes of a requested range, the result aliases that
 // prefetched range. The capacity of that result equals its length.
-func (rr *prefetchedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+//
+// The readRangesStats count the requested bytes that prefetched ranges held, the requested bytes that the
+// inner reader read, and the requests that the call sent to the inner reader. A range that spans
+// both counts each part once.
+func (rr *prefetchedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, readRangesStats, error) {
 	var (
-		results = make([][]byte, len(ranges))
-		gaps    []rangeio.Range
+		results    = make([][]byte, len(ranges))
+		gaps       []rangeio.Range
+		totalBytes int64
 	)
 	for i, r := range ranges {
 		if err := validateAbsoluteByteRange(r); err != nil {
-			return nil, err
+			return nil, readRangesStats{}, err
 		}
+		totalBytes += r.Length
 
 		// Return a slice of the prefetched range when one range holds all the bytes. This saves an
 		// allocation and a copy.
@@ -89,10 +95,20 @@ func (rr *prefetchedRangeReader) ReadRanges(ctx context.Context, ranges []absolu
 	// Give rangeio only the gaps, so a call with every byte prefetched reads nothing. rangeio can still
 	// merge two close gaps into one read, to save a request. That read also covers the bytes between
 	// the gaps, even when they are prefetched.
-	if err := readIORanges(ctx, rr.inner, gaps); err != nil {
-		return nil, err
+	ioStats, err := readIORanges(ctx, rr.inner, gaps)
+	if err != nil {
+		return nil, readRangesStats{storageRequests: int64(ioStats.Requests)}, err
 	}
-	return results, nil
+
+	var storageBytes int64
+	for _, gap := range gaps {
+		storageBytes += gap.Len()
+	}
+	return results, readRangesStats{
+		memoryBytes:     totalBytes - storageBytes,
+		storageBytes:    storageBytes,
+		storageRequests: int64(ioStats.Requests),
+	}, nil
 }
 
 // openRangeSegmentReaders opens a reader on the inner reader for every segment without data, all at
