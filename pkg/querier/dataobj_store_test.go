@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -91,6 +92,28 @@ func TestWithDataObjMaxConcurrency(t *testing.T) {
 	t.Run("a value below one becomes one", func(t *testing.T) {
 		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(0)).maxConcurrency)
 		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(-5)).maxConcurrency)
+	})
+}
+
+func TestWithDataObjRangeConfig(t *testing.T) {
+	builder := objtest.NewBuilder(t)
+	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+	builder.Close()
+
+	newStore := func(opts ...DataObjStoreOption) *DataObjStore {
+		store, err := NewDataObjStore(&chunkStoreSpy{}, builder.Location().Bucket, builder.Metastore(), nil, opts...)
+		require.NoError(t, err)
+		return store
+	}
+
+	t.Run("the default is the data object default, not the rangeio default", func(t *testing.T) {
+		require.Equal(t, DefaultDataObjRangeConfig, newStore().rangeConfig)
+		require.NotEqual(t, rangeio.DefaultConfig, newStore().rangeConfig)
+	})
+
+	t.Run("a config replaces the default", func(t *testing.T) {
+		cfg := rangeio.Config{MaxParallelism: 3, CoalesceSize: 1, MaxRangeSize: 2, MinRangeSize: 1}
+		require.Equal(t, cfg, newStore(WithDataObjRangeConfig(cfg)).rangeConfig)
 	})
 }
 
