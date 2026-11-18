@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// columnReader is not safe for concurrent use.
 type columnReader struct {
 	column      Column
 	initialized bool // Whether the column reader has been initialized.

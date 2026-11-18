@@ -340,47 +340,48 @@ func TestSelection_and(t *testing.T) {
 func TestSelection_or(t *testing.T) {
 	const n = 6
 
-	var (
-		alloc memory.Allocator
-		outer = selectionOf(&alloc, n, 0, 1, 2, 3, 4)
-	)
+	var alloc memory.Allocator
 
 	t.Run("returns the rows that either selection selects", func(t *testing.T) {
 		a := selectionOf(&alloc, n, 0, 1)
 		b := selectionOf(&alloc, n, 1, 3)
 
-		got := a.or(&alloc, b, outer)
+		got := a.or(&alloc, b)
 		require.Equal(t, n, got.n)
 		require.Equal(t, []int{0, 1, 3}, selectedRows(got))
 	})
 
-	t.Run("returns outer when the selection selects every row", func(t *testing.T) {
+	t.Run("returns the selection of every row when the selection selects every row", func(t *testing.T) {
 		other := selectionOf(&alloc, n, 1)
 
-		require.Equal(t, selectedRows(outer), selectedRows(newSelectionAllRows(n).or(&alloc, other, outer)))
+		got := newSelectionAllRows(n).or(&alloc, other)
+		require.True(t, got.isAllRows())
+		require.Equal(t, n, got.n)
 	})
 
-	t.Run("returns outer when other selects every row", func(t *testing.T) {
+	t.Run("returns the selection of every row when other selects every row", func(t *testing.T) {
 		a := selectionOf(&alloc, n, 1)
 
-		require.Equal(t, selectedRows(outer), selectedRows(a.or(&alloc, newSelectionAllRows(n), outer)))
+		got := a.or(&alloc, newSelectionAllRows(n))
+		require.True(t, got.isAllRows())
+		require.Equal(t, n, got.n)
 	})
 
 	t.Run("returns no row when both selections select none", func(t *testing.T) {
 		a := selectionOf(&alloc, n)
 		b := selectionOf(&alloc, n)
 
-		require.Empty(t, selectedRows(a.or(&alloc, b, outer)))
+		require.Empty(t, selectedRows(a.or(&alloc, b)))
 	})
 
-	t.Run("panics when the selections or outer have a different number of rows", func(t *testing.T) {
+	t.Run("panics when the selections have a different number of rows", func(t *testing.T) {
 		a := selectionOf(&alloc, n, 1)
 
 		require.PanicsWithValue(t, "dataset: selections of 6 rows and 4 rows", func() {
-			a.or(&alloc, selectionOf(&alloc, 4, 1), outer)
+			a.or(&alloc, selectionOf(&alloc, 4, 1))
 		})
 		require.PanicsWithValue(t, "dataset: selections of 6 rows and 4 rows", func() {
-			a.or(&alloc, a, selectionOf(&alloc, 4, 1))
+			a.or(&alloc, newSelectionAllRows(4))
 		})
 	})
 }

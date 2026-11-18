@@ -190,13 +190,14 @@ func (s selection) and(alloc *memory.Allocator, other selection) selection {
 	return selection{bits: out, n: s.n}
 }
 
-// or returns the rows that s or other select. Both must be subsets of outer. If s
-// or other selects every row, the result is outer.
-func (s selection) or(alloc *memory.Allocator, other, outer selection) selection {
+// or returns the rows that s or other select.
+func (s selection) or(alloc *memory.Allocator, other selection) selection {
 	s.checkRows(other)
-	s.checkRows(outer)
-	if s.isAllRows() || other.isAllRows() {
-		return outer
+	switch {
+	case s.isAllRows():
+		return s
+	case other.isAllRows():
+		return other
 	}
 
 	out := memory.NewBitmap(alloc, s.n)

@@ -46,7 +46,7 @@ func (p *compiledOrPredicate) evalRecordBatch(ctx context.Context, rb *recordBat
 	if err != nil {
 		return sel, err
 	}
-	return left.or(rb.scratch, right, sel), nil
+	return left.or(rb.scratch, right), nil
 }
 
 // evalRecordBatch passes the rows that the inner predicate rejects.

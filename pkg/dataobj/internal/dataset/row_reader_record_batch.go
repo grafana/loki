@@ -652,7 +652,7 @@ func (rb *recordBatch) columnArray(ctx context.Context, idx int, sel selection) 
 		// right side of an And or an Or does. This caller needs other rows too. Read
 		// the union of both row sets, not the whole record batch. The
 		// statistics then count only rows that reached a predicate.
-		sel = rb.columns[idx].filled.or(rb.scratch, sel, newSelectionAllRows(rb.n))
+		sel = rb.columns[idx].filled.or(rb.scratch, sel)
 	}
 
 	arr, err := rb.reader.readUncompactedColumnBySelection(ctx, rb.scratch, idx, rb.row, rb.n, sel)

@@ -13,6 +13,10 @@ import (
 //
 // evalRow tests one row. evalRecordBatch tests the rows of a record batch,
 // and must pass exactly the rows that evalRow passes.
+//
+// The struct types that implement it use pointer receivers. This is slightly
+// faster than value receivers, which copy the struct on each call through the
+// interface.
 type compiledPredicate interface {
 	// evalRow reports whether row passes the predicate.
 	evalRow(row Row) bool
