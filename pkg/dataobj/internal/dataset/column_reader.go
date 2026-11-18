@@ -168,6 +168,20 @@ func (cr *columnReader) readPage(ctx context.Context, alloc *memory.Allocator, c
 	return arr, nil
 }
 
+// PageRanges returns the row range of each page of the column, in order. The
+// ranges are contiguous and start at row 0. The first call after a Reset lists
+// the pages, which can read from the object store. The returned slice belongs to
+// the reader and stays valid until the next call of [columnReader.Reset]. The
+// caller must not modify it.
+func (cr *columnReader) PageRanges(ctx context.Context) ([]rangeset.Range, error) {
+	if !cr.initialized {
+		if err := cr.init(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return cr.ranges, nil
+}
+
 // nextPage returns the page where cr.nextRow is contained. If cr.nextRow is
 // beyond the boundaries of the column, nextPage returns nil, -1, io.EOF.
 func (cr *columnReader) nextPage() (Page, int, error) {

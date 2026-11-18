@@ -2503,6 +2503,10 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 			require.NoError(t, builder.Append(i, val))
 		}
 
+		// Backfill the trailing rows of a sparse column, as the logs, streams and indexpointers
+		// section builders do. Then every column holds RowCount rows.
+		builder.Backfill(g.RowCount)
+
 		col, err := builder.Flush()
 		require.NoError(t, err)
 
