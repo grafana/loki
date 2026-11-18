@@ -80,6 +80,8 @@ type Config struct {
 	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
 
+	MultiLiteralLineFilter logql_log.MultiLiteralFilterConfig `yaml:"multi_literal_line_filter"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 
@@ -104,12 +106,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	cfg.MultiLiteralLineFilter.RegisterFlagsWithPrefix(prefix+"multi-literal-line-filter.", f)
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
+	}
+	if err := cfg.MultiLiteralLineFilter.Validate(); err != nil {
+		return errors.Wrap(err, "querier.multi_literal_line_filter")
 	}
 
 	// The querier does not deduplicate data objects against other sources. It reads them up to

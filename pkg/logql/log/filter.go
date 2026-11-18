@@ -337,11 +337,6 @@ func ChainOrMatcherFilterer(curr, newFilterer MatcherFilterer) MatcherFilterer {
 	return newOrFilter(curr, newFilterer)
 }
 
-// ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrFilter(curr, newFilterer Filterer) Filterer {
-	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(newFilterer))
-}
-
 func (a orFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) || a.right.Filter(line)
 }
@@ -660,6 +655,8 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (MatcherFilterer, er
 		return newRegexpFilter(regex, re, match)
 	}
 
+	// Merge before NewNotFilter, which turns an OR into an AND of negated legs.
+	filter = mergeContainsAny(filter)
 	if match {
 		return filter, nil
 	}

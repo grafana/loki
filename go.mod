@@ -36,6 +36,7 @@ require (
 	github.com/buger/jsonparser v1.6.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396
 	github.com/coder/quartz v0.3.1
 	github.com/containerd/fifo v1.1.0
 	github.com/cristalhq/hedgedhttp v0.9.2

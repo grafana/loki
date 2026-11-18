@@ -65,6 +65,7 @@ import (
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
@@ -530,6 +531,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
+
+	// Line filters are built without a config, so the setting applies to the whole process.
+	if err := logql_log.SetMultiLiteralFilter(t.Cfg.Querier.MultiLiteralLineFilter); err != nil {
+		return nil, err
+	}
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
 	if err != nil {
 		return nil, err

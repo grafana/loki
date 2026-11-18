@@ -718,6 +718,41 @@ func TestOrLineFilterEmptyOperandIsIgnored(t *testing.T) {
 		{`{app="foo"} |~ "" or "foo"`, []string{"foo", "foo bar"}},
 		{`{app="foo"} |= "foo" or "" |= "bar"`, []string{"foo bar"}},
 		{`{app="foo"} |= "" or ""`, lines},
+		{`{app="foo"} |= "" or "foo" or "q1" or "q2" or "q3" or "q4" or "q5"`, []string{"foo", "foo bar"}},
+	} {
+		t.Run(tt.q, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseLogSelector(tt.q, true)
+			require.NoError(t, err)
+			p, err := expr.Pipeline()
+			require.NoError(t, err)
+
+			sp := p.ForStream(labelBar)
+			var kept []string
+			for _, l := range lines {
+				if _, _, ok := sp.Process(0, []byte(l), labels.EmptyLabels()); ok {
+					kept = append(kept, l)
+				}
+			}
+			require.Equal(t, tt.kept, kept)
+		})
+	}
+}
+
+func TestOrLineFilterManyOperands(t *testing.T) {
+	require.NoError(t, log.SetMultiLiteralFilter(log.MultiLiteralFilterConfig{Enabled: true, CaseSensitiveMatcher: log.CaseSensitiveMatcherAhoCorasick}))
+	t.Cleanup(func() {
+		require.NoError(t, log.SetMultiLiteralFilter(log.MultiLiteralFilterConfig{}))
+	})
+	lines := []string{"l1", "l3 and more", "lax", "none", "L1"}
+	for _, tt := range []struct {
+		q    string
+		kept []string
+	}{
+		{`{app="foo"} |= "l1" or "l2" or "l3" or "l4" or "l5" or "l6"`, []string{"l1", "l3 and more"}},
+		{`{app="foo"} |~ "l1" or "l.x" or "l2" or "l3" or "l4" or "l5" or "l6"`, []string{"l1", "l3 and more", "lax"}},
+		{`{app="foo"} |~ "l1|l2|l3|l4|l5|l6" or "(?i)none"`, []string{"l1", "l3 and more", "none"}},
+		{`{app="foo"} !~ "l1|l2|l3|l4|l5|l6"`, []string{"lax", "none", "L1"}},
 	} {
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()

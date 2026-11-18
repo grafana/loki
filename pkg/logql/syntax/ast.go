@@ -862,20 +862,16 @@ func newLineFilterer(f LineFilter) (log.Filterer, error) {
 }
 
 func newOrLineFilter(f *LineFilterExpr) (log.Filterer, error) {
-	orFilter, err := newLineFilterer(f.LineFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	for or := f.Or; or != nil; or = or.Or {
+	var filters []log.Filterer
+	for or := f; or != nil; or = or.Or {
 		filter, err := newLineFilterer(or.LineFilter)
 		if err != nil {
 			return nil, err
 		}
-		orFilter = log.ChainOrFilter(orFilter, filter)
+		filters = append(filters, filter)
 	}
 
-	return orFilter, nil
+	return log.NewOrFilters(filters), nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {

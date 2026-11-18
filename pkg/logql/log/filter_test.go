@@ -8,6 +8,7 @@ import (
 )
 
 func Test_SimplifiedRegex(t *testing.T) {
+	enableMultiLiteralFilter(t, CaseSensitiveMatcherAhoCorasick)
 	fixtures := []string{
 		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
 		"foo, 世界", allunicode(), "fooÏbar",
@@ -62,11 +63,13 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i)界", true, newContainsFilter([]byte("界"), true), true},
 		{"(?i)ïB", true, newContainsFilter([]byte("ïB"), true), true},
 		{"(?:)foo|fatal|exception", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("fatal"), false)), newContainsFilter([]byte("exception"), false)), true},
-		{"(?i)foo|fatal|exception", true, newOrFilter(newOrFilter(newContainsFilter([]byte("FOO"), true), newContainsFilter([]byte("FATAL"), true)), newContainsFilter([]byte("exception"), true)), true},
-		{"(?i)f|foo|foobar", true, newOrFilter(newContainsFilter([]byte("F"), true), newOrFilter(newContainsFilter([]byte("FOO"), true), newContainsFilter([]byte("FOOBAR"), true))), true},
-		{"(?i)f|fatal|e.*", true, newOrFilter(newOrFilter(newContainsFilter([]byte("F"), true), newContainsFilter([]byte("FATAL"), true)), newContainsFilter([]byte("E"), true)), true},
+		{"(?i)foo|fatal|exception", true, newCaseInsensitiveContainsAnyFilter([][]byte{[]byte("foo"), []byte("fatal"), []byte("exception")}), true},
+		{"(?i)f|foo|foobar", true, newCaseInsensitiveContainsAnyFilter([][]byte{[]byte("f"), []byte("foo"), []byte("foobar")}), true},
+		{"(?i)f|fatal|e.*", true, newCaseInsensitiveContainsAnyFilter([][]byte{[]byte("f"), []byte("fatal"), []byte("e")}), true},
 		{"(?i).*foo.*", true, newContainsFilter([]byte("FOO"), true), true},
 		{".+", true, ExistsFilter, true},
+		{"foo|bar|uzz|zz|oob|  ", true, ahoCorasickMatcher{}.newFilter([][]byte{[]byte("foo"), []byte("bar"), []byte("uzz"), []byte("zz"), []byte("oob"), []byte("  ")}), true},
+		{"foo|bar|uzz|zz|oob|  ", true, NewNotFilter(ahoCorasickMatcher{}.newFilter([][]byte{[]byte("foo"), []byte("bar"), []byte("uzz"), []byte("zz"), []byte("oob"), []byte("  ")})), false},
 
 		// These regexes are rewritten to be non-greedy but no new
 		// filter is generated.

@@ -5351,6 +5351,19 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+multi_literal_line_filter:
+  # Test an OR of many literal line filters, such as |~ "a|b|c" or |= "a" or
+  # "b", in one pass over each line instead of one pass for each literal. It
+  # applies to the line filters that this process builds.
+  # CLI flag: -querier.multi-literal-line-filter.enabled
+  [enabled: <boolean> | default = false]
+
+  # Matcher for case-sensitive literals. Supported values: aho-corasick, dfa.
+  # The aho-corasick matcher is faster to scan but uses about 4 KB of memory for
+  # each byte of the literals. Case-insensitive literals always use dfa.
+  # CLI flag: -querier.multi-literal-line-filter.case-sensitive-matcher
+  [case_sensitive_matcher: <string> | default = "aho-corasick"]
 ```
 
 ### query_range
