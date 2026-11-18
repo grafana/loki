@@ -640,6 +640,47 @@ func TestDoIndexMerge(t *testing.T) {
 		require.True(t, got.Equal(layout))
 	})
 
+	t.Run("writes a run of several index objects that together hold the rows of an output of one index object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for i, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			for j := range 150 {
+				postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath: fmt.Sprintf("log-%d", i), ColumnName: fmt.Sprintf("c%04d", 2*j+i), LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("log-%d", i), SortSchema: "label:service", Labels: map[string]string{"service": "api"},
+				MinTimestamp: 100, MaxTimestamp: 200, RowCount: 1, UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
+		}
+		node := twoSources("source/index-a.dat", "source/index-b.dat")
+
+		single, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
+		require.NoError(t, err)
+		artifacts, err := newSplittingContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var gotPostings []postings.Row
+		var gotStats []stats.Stat
+		for i, artifact := range artifacts {
+			if i > 0 {
+				require.Negative(t, artifacts[i-1].PostingKeys.Max().Compare(artifact.PostingKeys.Min()))
+			}
+			gotPostings = append(gotPostings, readAllPostingsRowsFromBucket(t.Context(), t, bucket, artifact.Path)...)
+			gotStats = append(gotStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path)...)
+		}
+		require.Equal(t, readAllPostingsRowsFromBucket(t.Context(), t, bucket, single.Path), gotPostings)
+		require.Equal(t, readAllStatsRowsFromBucket(t, bucket, single.Path), gotStats)
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)

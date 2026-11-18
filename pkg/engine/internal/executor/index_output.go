@@ -14,13 +14,37 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// indexOutput is one index object that an index merge or filter writes for
-// one tenant. It records the posting key bounds of its postings rows, so the
-// result artifact of the object can report them.
+// indexOutput writes the output of an index merge or filter for one tenant as
+// an index run: one or more index objects cut by size. It records the posting
+// key bounds of each index object, so the result artifact of the object can
+// report them.
+//
+// Postings rows must come first, in posting key order, then stats rows. The
+// output cuts a new index object before a postings row when the current one is
+// full and the posting key changes. So no posting key spans two index objects,
+// every index object holds postings, and all stats rows go into the last index
+// object. An earlier index object records the layout in an empty stats
+// section.
+//
+// The output uploads each index object when it cuts it, so it holds only one
+// index object in memory.
 type indexOutput struct {
 	tenant  string
+	bucket  objstore.Bucket
 	builder *indexobj.MergeBuilder
-	keys    keyBounds
+
+	// keys holds the posting key bounds of the current index object.
+	keys keyBounds
+
+	// artifacts are the uploaded index objects, in posting key order.
+	artifacts []v2.ResultArtifact
+	sizes     outputSizes
+}
+
+// outputSizes holds the sizes of the uploaded index objects of an output, in
+// bytes.
+type outputSizes struct {
+	compressed, uncompressed int64
 }
 
 // keyBounds is the smallest and the largest of the posting keys that it got,
@@ -54,22 +78,32 @@ func (b keyBounds) keyRange() (postings.KeyRange, error) {
 	return postings.NewKeyRange(b.min, b.max)
 }
 
-// newIndexOutput returns an empty output for tenant. The log objects of its
-// rows must have layout. The caller must call reset when it is done with the
-// output.
+// newIndexOutput returns an empty output for tenant that uploads to the
+// bucket of c. The log objects of its rows must have layout. The caller must
+// call reset when it is done with the output.
 func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOutput, error) {
 	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, tenant, layout)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	return &indexOutput{tenant: tenant, builder: builder}, nil
+	return &indexOutput{tenant: tenant, bucket: c.bucket, builder: builder}, nil
 }
 
-// appendPostingsRow writes row to the output. It returns an error if the key
-// of row sorts before the key of the previous row, because the posting key
-// bounds of the output are its first and last key.
-func (o *indexOutput) appendPostingsRow(row postings.Row) error {
-	if err := o.keys.add(row.Key()); err != nil {
+// appendPostingsRow writes row to the output. It first uploads the current
+// index object if that object is full and the key of row differs from its last
+// key.
+//
+// It returns an error if the key of row sorts before the key of the previous
+// row, because the posting key bounds of each index object are its first and
+// last key.
+func (o *indexOutput) appendPostingsRow(ctx context.Context, row postings.Row) error {
+	key := row.Key()
+	if o.keys.hasKeys && o.builder.IsFull() && key.Compare(o.keys.max) > 0 {
+		if err := o.uploadCurrent(ctx); err != nil {
+			return err
+		}
+	}
+	if err := o.keys.add(key); err != nil {
 		return err
 	}
 
@@ -83,18 +117,35 @@ func (o *indexOutput) appendPostingsRow(row postings.Row) error {
 	}
 }
 
+// appendStat writes stat to the current index object. The output never cuts
+// an index object before a stats row, so all stats rows go into the last index
+// object.
 func (o *indexOutput) appendStat(stat stats.Stat) error {
 	return o.builder.AppendStat(o.tenant, stat)
 }
 
-// reset releases the resources of the output and empties it.
+// reset releases the resources of the current index object and empties the
+// output.
 func (o *indexOutput) reset() {
 	o.builder.Reset()
 	o.keys = keyBounds{}
+	o.artifacts = nil
+	o.sizes = outputSizes{}
 }
 
-// artifact returns the result artifact of the output at path. An output
-// without postings rows has no posting key bounds.
+// finish uploads the current index object and returns the artifacts of every
+// uploaded index object, in posting key order, and their total sizes.
+func (o *indexOutput) finish(ctx context.Context) ([]v2.ResultArtifact, outputSizes, error) {
+	if err := o.uploadCurrent(ctx); err != nil {
+		return nil, outputSizes{}, err
+	}
+	artifacts, sizes := o.artifacts, o.sizes
+	o.reset()
+	return artifacts, sizes, nil
+}
+
+// artifact returns the result artifact of the current index object at path.
+// An index object without postings rows has no posting key bounds.
 func (o *indexOutput) artifact(path string) (v2.ResultArtifact, error) {
 	keys, err := o.keys.keyRange()
 	if err != nil {
@@ -103,32 +154,34 @@ func (o *indexOutput) artifact(path string) (v2.ResultArtifact, error) {
 	return v2.ResultArtifact{Path: path, PostingKeys: keys}, nil
 }
 
-// upload flushes the output and uploads its index object to a content-hash
-// path in bucket. It returns the artifact of the object and the compressed
-// and uncompressed sizes of the object in bytes. The output is empty after a
-// successful upload.
-func (o *indexOutput) upload(ctx context.Context, bucket objstore.Bucket) (artifact v2.ResultArtifact, compressedBytes, uncompressedBytes int64, err error) {
+// uploadCurrent flushes the current index object and uploads it to a
+// content-hash path. It adds its artifact and sizes to the output and starts
+// an empty index object.
+func (o *indexOutput) uploadCurrent(ctx context.Context) (err error) {
 	// Read the size before Flush, because Flush resets the builder.
-	uncompressedBytes = int64(o.builder.GetEstimatedSize())
+	uncompressedBytes := int64(o.builder.GetEstimatedSize())
 
 	obj, closer, err := o.builder.Flush()
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("flushing index: %w", err)
+		return fmt.Errorf("flushing index: %w", err)
 	}
 	defer util.CloseAndHandleError(closer, &err)
 
 	path, err := compactedIndexPath(ctx, o.tenant, obj)
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("generating index path: %w", err)
+		return fmt.Errorf("generating index path: %w", err)
 	}
-	compressedBytes, err = uploadObject(ctx, bucket, path, obj)
+	compressedBytes, err := uploadObject(ctx, o.bucket, path, obj)
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, fmt.Errorf("uploading index %q: %w", path, err)
+		return fmt.Errorf("uploading index %q: %w", path, err)
 	}
-	artifact, err = o.artifact(path)
+	artifact, err := o.artifact(path)
 	if err != nil {
-		return v2.ResultArtifact{}, 0, 0, err
+		return err
 	}
-	o.reset()
-	return artifact, compressedBytes, uncompressedBytes, nil
+	o.artifacts = append(o.artifacts, artifact)
+	o.sizes.compressed += compressedBytes
+	o.sizes.uncompressed += uncompressedBytes
+	o.keys = keyBounds{}
+	return nil
 }
