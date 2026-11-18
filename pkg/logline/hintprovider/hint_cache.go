@@ -161,6 +161,9 @@ const maxSharedLookupAttempts = 3
 // call runs with the context of the caller that started it, so a caller that
 // only joined it retries when that context ends and its own is still live.
 // Retrying starts a new shared call under the retrying caller's context.
+// A caller that only joined the call gets the leader's stats with IO wait
+// cleared (see clearJoinerIOWait). A caller that ran the call itself, retries
+// included, keeps its own.
 func (p *CachingHintProvider) fetchDay(
 	gCtx, ctx context.Context,
 	tenant string,
@@ -214,9 +217,12 @@ func (p *CachingHintProvider) fetchDay(
 	}
 }
 
-// clearJoinerIOWait copies a shared lookup result and drops its IO wait.
-// This caller did not run the delegate call, so the leader's ReadAt time is
-// not this caller's IO.
+// clearJoinerIOWait returns a copy of a shared lookup result with its IO wait
+// cleared. A caller that only joined the call did not do the leader's reads, so
+// their ReadAt time is not its IO. Read counts and bytes are kept, so the
+// joiner still reports what the lookup cost. The result is copied because res
+// and res.stats are shared with the leader and the other joiners, who keep the
+// wait.
 func clearJoinerIOWait(res *provideHintsResult) *provideHintsResult {
 	if res == nil || res.stats == nil {
 		return res

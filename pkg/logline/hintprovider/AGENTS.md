@@ -132,6 +132,10 @@ Query-shape support and hint lookup for logline index lookups.
       up to `maxSharedLookupAttempts` times, and the retry runs under its own
       context. Retries are counted in
       `logline_hint_cache_singleflight_retries_total`.
+    - A caller that only joined a shared call reports the leader's read counts
+      and bytes but zero IO wait (`clearJoinerIOWait`), so `effective_concurrency`
+      (summed IO wait over the frontend's wall time) counts each read once. A
+      caller that retried and ran the call itself keeps its own IO wait.
 15. **v5 ranges come from the footer's layout, one per document shard**
     - v5 indexes have no document table. `rangesForCells` maps each matching
       cell to its bucket's range and its document shard through

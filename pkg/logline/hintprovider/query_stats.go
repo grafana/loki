@@ -148,7 +148,9 @@ func (s *QueryStats) WorkerFinished() {
 	s.activeWorkers.Add(-1)
 }
 
-// SetWallTime stores total wall time for the hint lookup.
+// SetWallTime stores the wall time of the whole hint lookup, measured by the
+// caller. It is the denominator of EffectiveConcurrency, which is 0 until it is
+// set. Merge and FromProtoStats do not carry it.
 func (s *QueryStats) SetWallTime(d time.Duration) {
 	if s == nil {
 		return
@@ -156,7 +158,9 @@ func (s *QueryStats) SetWallTime(d time.Duration) {
 	s.wallTimeNanos.Store(d.Nanoseconds())
 }
 
-// Merge adds counters from other into s.
+// Merge adds the counters of other into s and keeps the larger peak
+// concurrency. It does not merge wall time or active workers: the caller sets
+// wall time with SetWallTime.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil || s == other {
 		return
@@ -222,6 +226,8 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 }
 
 // Snapshot returns a frozen copy of the accumulator as the wire stats type.
+// EffectiveConcurrency is derived: TotalIOWait divided by the wall time set
+// with SetWallTime, or 0 when no wall time is set.
 func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	if s == nil {
 		return logproto.HintQueryStats{}
@@ -255,7 +261,7 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 		HeaderCacheMisses:         s.headerCacheMisses.Load(),
 		MetadataCacheMisses:       s.metadataCacheMisses.Load(),
 		ObjectStorageRequests:     objectStorageRequests,
-		TotalIOWait:               time.Duration(s.totalIOWaitNanos.Load()),
+		TotalIOWait:               time.Duration(totalIOWaitNanos),
 		TotalIOBytes:              s.totalIOBytes.Load(),
 		PeakConcurrency:           s.peakConcurrency.Load(),
 		EffectiveConcurrency:      effective,
@@ -272,7 +278,10 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	}
 }
 
-// fromProtoStats reconstructs a QueryStats accumulator from the wire type.
+// FromProtoStats reconstructs a QueryStats accumulator from the wire type. It
+// does not restore EffectiveConcurrency or wall time: the sender's ratio uses
+// the sender's wall time, so the caller sets its own with SetWallTime and
+// Snapshot recomputes the ratio from TotalIOWait.
 func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s := NewQueryStats()
 	if p == nil {
