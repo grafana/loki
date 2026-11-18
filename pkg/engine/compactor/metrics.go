@@ -58,7 +58,8 @@ type coordinatorMetrics struct {
 	// removed - added = net_reduction.
 	indexesRemovedTotal *prometheus.CounterVec // tenant
 
-	// indexesAddedTotal counts new compacted indexes written.
+	// indexesAddedTotal counts the index runs that compaction adds. A run
+	// counts as one index, as in indexesRemovedTotal.
 	indexesAddedTotal *prometheus.CounterVec // tenant
 
 	// tasksTotal counts compaction tasks of every kind that successful tenant
@@ -148,7 +149,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesAddedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_added_total",
-			Help: "Cumulative count of compacted index pointers written to the ToC by successful tenant cycles.",
+			Help: "Cumulative count of compacted indexes written to the ToC by successful tenant cycles. The index objects of one run count as one index.",
 		}, []string{labelTenant}),
 		tasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tasks_total",

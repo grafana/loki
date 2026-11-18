@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -42,17 +41,16 @@ func (dec *Decoder) SectionMetadata(ctx context.Context) (*datasetmd.SectionMeta
 		return nil, err
 	}
 
-	rc, err := dec.sr.MetadataRange(ctx, int64(info.SectionMetadataOffset), int64(info.SectionMetadataLength))
+	metadata, err := dec.sr.MetadataRanges(ctx, []dataobj.RelativeByteRange{{
+		Offset: int64(info.SectionMetadataOffset),
+		Length: int64(info.SectionMetadataLength),
+	}})
 	if err != nil {
 		return nil, fmt.Errorf("reading section metadata: %w", err)
 	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
 
 	var md datasetmd.SectionMetadata
-	if err := protocodec.Decode(br, &md); err != nil {
+	if err := protocodec.DecodeBytes(metadata[0], &md); err != nil {
 		return nil, fmt.Errorf("decoding section metadata: %w", err)
 	}
 	return &md, nil
@@ -82,44 +80,22 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 			region.Record(dataobj.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
 		}()
 
-		// columnMetadataBlobs[i] holds the metadata of columns[i]. A prefetched blob aliases its prefetched
-		// range. The other blobs are read in one call. rangeio would merge a prefetched blob with the gaps
-		// around it, and the gaps are not prefetched.
-		var (
-			columnMetadataBlobs = make([][]byte, len(columns))
-			ranges              = make([]rangeio.Range, 0, len(columns))
-			rangeColumn         = make([]int, 0, len(columns))
-			prefetched, _       = dec.sr.(prefetchedMetadataRangeReader)
-		)
-
+		ranges := make([]dataobj.RelativeByteRange, len(columns))
 		for i, column := range columns {
-			if prefetched != nil {
-				if blob, ok := prefetched.PrefetchedMetadataRange(int64(column.ColumnMetadataOffset), int64(column.ColumnMetadataLength)); ok {
-					columnMetadataBlobs[i] = blob
-					continue
-				}
-			}
-			ranges = append(ranges, rangeio.Range{
-				Data:   make([]byte, column.ColumnMetadataLength),
+			ranges[i] = dataobj.RelativeByteRange{
 				Offset: int64(column.ColumnMetadataOffset),
-			})
-			rangeColumn = append(rangeColumn, i)
-		}
-
-		// When every blob is prefetched, there is nothing to read, and ReadRanges would only start an empty
-		// span.
-		if len(ranges) > 0 {
-			if err := rangeio.ReadRanges(ctx, metadataRangeReader{Inner: dec.sr}, ranges); err != nil {
-				return err
-			}
-			for i, r := range ranges {
-				columnMetadataBlobs[rangeColumn[i]] = r.Data
+				Length: int64(column.ColumnMetadataLength),
 			}
 		}
 
-		for _, blob := range columnMetadataBlobs {
+		columnMetadata, err := dec.sr.MetadataRanges(ctx, ranges)
+		if err != nil {
+			return fmt.Errorf("reading the metadata of %d columns: %w", len(columns), err)
+		}
+
+		for _, encoded := range columnMetadata {
 			var md datasetmd.ColumnMetadata
-			if err := protocodec.Decode(bytes.NewReader(blob), &md); err != nil {
+			if err := protocodec.DecodeBytes(encoded, &md); err != nil {
 				return fmt.Errorf("decoding column metadata: %w", err)
 			}
 
@@ -130,28 +106,6 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 
 		return nil
 	})
-}
-
-// prefetchedMetadataRangeReader is a section reader that can return a range of its metadata region
-// from memory.
-type prefetchedMetadataRangeReader interface {
-	PrefetchedMetadataRange(offset, length int64) ([]byte, bool)
-}
-
-type metadataRangeReader struct {
-	Inner dataobj.SectionReader
-}
-
-var _ rangeio.Reader = (*metadataRangeReader)(nil)
-
-func (rr metadataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.MetadataRange(ctx, r.Offset, r.Len())
-	if err != nil {
-		return 0, err
-	}
-	defer rc.Close()
-
-	return io.ReadFull(rc, r.Data)
 }
 
 // ReadPages reads the provided set of pages, iterating over their data matching
@@ -196,7 +150,7 @@ type dataRangeReader struct {
 var _ rangeio.Reader = (*dataRangeReader)(nil)
 
 func (rr dataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.DataRange(ctx, r.Offset, r.Len())
+	rc, err := rr.Inner.DataRange(ctx, dataobj.RelativeByteRange{Offset: r.Offset, Length: r.Len()})
 	if err != nil {
 		return 0, err
 	}

@@ -180,6 +180,19 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error 
 			}
 			pointer.ShardBuckets = buckets
 
+		case ColumnTypeRunLength:
+			if columnValue.IsNil() {
+				continue
+			}
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			size, err := RunLengthFromValue(columnValue.Int64())
+			if err != nil {
+				return err
+			}
+			pointer.RunLength = size
+
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
 			// columns because it breaks forward compatibility. Should we log
@@ -192,7 +205,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error 
 		return err
 	}
 	pointer.PostingKeys = keys
-	return nil
+	return checkRunLength(*pointer)
 }
 
 // PostingKeysFromBounds returns the posting key range of a pointer from its
@@ -223,6 +236,17 @@ func RunIDFromValue(value int64) (RunID, error) {
 		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunID, value)
 	}
 	return RunID(value), nil
+}
+
+// RunLengthFromValue returns the run length with the given value, as the
+// run_length column stores it. It returns an error if value is not positive,
+// because writers store no value for an unknown length, or if value does not
+// fit in an int32.
+func RunLengthFromValue(value int64) (int32, error) {
+	if value <= 0 || value > math.MaxInt32 {
+		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunLength, value)
+	}
+	return int32(value), nil
 }
 
 // ShardBucketsFromCount returns the ShardBuckets with the given bucket count,

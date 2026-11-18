@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -48,14 +49,21 @@ type ParserHint interface {
 	Reset()
 }
 
-// LabelFilterHints let a parser stop parsing a line early once a label it
-// just extracted already fails a label filter positioned later in the
-// pipeline, instead of extracting the rest of the line only to have the
-// filter stage throw it away.
+// LabelFilterHints let a parser avoid work on a line that a label filter
+// positioned later in the pipeline would throw away. The parser can skip a
+// line that cannot pass the filter without parsing it, or stop parsing a
+// line once a label it just extracted already fails the filter.
 type LabelFilterHints interface {
 	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
+
+	// ShouldParseLine returns false when the line cannot pass the label filters after the parser,
+	// because it does not contain the values the parser would read their labels from. It returns
+	// true when there are no requirements, and when the label is already set by the stream,
+	// structured metadata or an earlier stage. The parser drops a line that it returns false for
+	// without parsing it.
+	ShouldParseLine(line []byte, lbs *LabelsBuilder) bool
 }
 
 type ParserHints struct {
@@ -180,6 +188,12 @@ type labelFilterHints struct {
 	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
 	labelFilters []LabelFilterer
 	labelNames   []string
+
+	// lineRequirements are what ShouldParseLine checks. They are independent of labelFilters, and a
+	// filter on more than one label can still contribute one. They stop at the first stage that can
+	// modify labels, like labelFilters.
+	lineRequirements []lineRequirement
+	decoded          bool // whether the parser is json or logfmt
 }
 
 func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
@@ -192,8 +206,20 @@ func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *Labe
 	return true
 }
 
+func (h *labelFilterHints) ShouldParseLine(line []byte, lbs *LabelsBuilder) bool {
+	for _, r := range h.lineRequirements {
+		// labelSet comes first because it costs less than a search of the line.
+		if !r.labelSet(lbs) && !r.need.mayHold(line) {
+			// json and logfmt can decode a \u escape into any byte that a requirement needs.
+			return h.decoded && bytes.Contains(line, unicodeEscape)
+		}
+	}
+	return true
+}
+
 // NewLabelFilterHints scans stages for label filters so a parser can stop
-// extracting a line as soon as one of them fails to match a label it just extracted.
+// extracting a line as soon as one of them fails to match a label it just extracted,
+// and can skip a line that cannot pass them without parsing it.
 //
 // The optimization works only with a single parser in the pipeline. With multiple parser
 // there is potentially an optimization here but this should rarely happen and would complicate
@@ -203,10 +229,12 @@ func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *Labe
 // and before any stage that modifies labels. If there is a single label filter before the parser it also
 // cannot be applied b/c the optimization is order independent.
 //
-// See TestNewLabelFilterHints_Boundary for the full list of supported and unsupported shapes.
+// See TestNewLabelFilterHints_Boundary for the full list of supported and unsupported shapes, and
+// appendLineRequirements for the filters that let a parser skip a line.
 func NewLabelFilterHints(stages Stages) LabelFilterHints {
 	var labelNames []string
 	var labelFilters []LabelFilterer
+	var lineRequirements []lineRequirement
 
 	isParser := func(s Stage) bool {
 		switch s.(type) {
@@ -249,10 +277,24 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		return NoLabelFilterHints()
 	}
 
+	var guaranteed [][]byte
+	for _, s := range stages[:parserIdx] {
+		if s.Hints().CanModifyLine {
+			guaranteed = nil
+		}
+		if f, ok := s.(StageFunc); ok {
+			guaranteed = appendLineFilterLiterals(guaranteed, f.lineFilter)
+		}
+	}
+
+	values := parserValuesOf(stages[parserIdx])
 	for i := parserIdx + 1; i < len(stages); i++ {
 		s := stages[i]
 
 		addIfLabelFilterer(s)
+		if f, ok := s.(LabelFilterer); ok {
+			lineRequirements = appendLineRequirements(lineRequirements, f, values, guaranteed)
+		}
 
 		// we found a stage that modifies labels, all future filters are not eligible for the optimization
 		// since ShouldContinueParsingLine is order independent
@@ -261,9 +303,10 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		}
 	}
 
-	if len(labelNames) == 0 {
+	lineRequirements = withinBudget(lineRequirements)
+	if len(labelNames) == 0 && len(lineRequirements) == 0 {
 		return NoLabelFilterHints()
 	}
 
-	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames}
+	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames, lineRequirements: lineRequirements, decoded: values == valuesDecoded}
 }
