@@ -562,9 +562,9 @@ func TestStatsCollectorMiddleware_SeriesLimitIncludesCompletedUsage(t *testing.T
 		switch req {
 		case pending:
 			close(pendingStarted)
-			return metricResponseWithScanUsage(200, "a"), nil
+			return withIntermediateSeriesPeak(metricResponseWithScanUsage(200, "a"), 12), nil
 		case first:
-			return metricResponseWithScanUsage(100, "a"), nil
+			return withIntermediateSeriesPeak(metricResponseWithScanUsage(100, "a"), 7), nil
 		default:
 			select {
 			case <-pendingStarted:
@@ -612,6 +612,13 @@ func TestStatsCollectorMiddleware_SeriesLimitIncludesCompletedUsage(t *testing.T
 	line := lines.only(t)
 	requireFailedQueryUsageShape(t, line)
 	require.Equal(t, util.HumanizeBytes(350), line["total_bytes"], "100 collected + 50 rejected + 200 pending")
+	require.Equal(t, "12", line["intermediate_series_peak"], "the largest peak of the jobs, not their sum")
+}
+
+// withIntermediateSeriesPeak returns resp after setting the peak its job reported.
+func withIntermediateSeriesPeak(resp *LokiPromResponse, peak int64) *LokiPromResponse {
+	resp.Statistics.Summary.IntermediateSeriesPeak = peak
+	return resp
 }
 
 // TestQueryUsageHTTPFlow exercises HTTP decoding, real middleware/collection

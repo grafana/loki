@@ -97,6 +97,28 @@ func TestLogSlowQuery(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 }
 
+func TestRecordRangeAndInstantQueryMetrics_ShouldLogTheIntermediateSeriesPeakWhenSet(t *testing.T) {
+	now := time.Now()
+	params := LiteralParams{
+		queryString: `count(count_over_time({foo="bar"}[5m]))`,
+		direction:   logproto.BACKWARD,
+		start:       now.Add(-time.Hour),
+		end:         now,
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`count(count_over_time({foo="bar"}[5m]))`),
+	}
+	record := func(peak int64) string {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", stats.Result{Summary: stats.Summary{IntermediateSeriesPeak: peak}}, nil, nil)
+		return buf.String()
+	}
+
+	require.Contains(t, record(12), "intermediate_series_peak=12")
+	require.NotContains(t, record(0), "intermediate_series_peak")
+}
+
 func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 	params := LiteralParams{
 		queryString: `{foo="bar"} |= "buzz"`,

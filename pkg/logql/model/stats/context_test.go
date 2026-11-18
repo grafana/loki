@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -363,6 +364,39 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 		EstimatedQueryBytes: 2048,
 	})
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
+}
+
+func TestSummaryMerge_ShouldTakeTheMaxIntermediateSeriesPeak(t *testing.T) {
+	s := Summary{}
+
+	s.Merge(Summary{IntermediateSeriesPeak: 7})
+	s.Merge(Summary{IntermediateSeriesPeak: 12})
+	s.Merge(Summary{IntermediateSeriesPeak: 3})
+	// The query-frontend's own job doesn't run any range iterators, so it reports zero.
+	s.Merge(Summary{IntermediateSeriesPeak: 0})
+
+	require.Equal(t, int64(12), s.IntermediateSeriesPeak)
+}
+
+func TestContext_RecordIntermediateSeriesPeak_ShouldKeepTheMaximum(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+
+	statsCtx.RecordIntermediateSeriesPeak(5)
+	statsCtx.RecordIntermediateSeriesPeak(9)
+	statsCtx.RecordIntermediateSeriesPeak(2)
+
+	require.Equal(t, int64(9), statsCtx.Result(0, 0, 0).Summary.IntermediateSeriesPeak)
+	require.NotPanics(t, func() { (*Context)(nil).RecordIntermediateSeriesPeak(1) })
+}
+
+func TestSummary_ShouldMarshalTheIntermediateSeriesPeakWhenSet(t *testing.T) {
+	set, err := json.Marshal(Summary{IntermediateSeriesPeak: 12})
+	require.NoError(t, err)
+	require.Contains(t, string(set), `"intermediateSeriesPeak":12`)
+
+	unset, err := json.Marshal(Summary{})
+	require.NoError(t, err)
+	require.NotContains(t, string(unset), "intermediateSeriesPeak")
 }
 
 func TestContext_RecordDataobjSectionsResolutionTime(t *testing.T) {

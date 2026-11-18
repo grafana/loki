@@ -472,6 +472,9 @@ func logFailedQueryUsage(
 		"failure_category", category,
 		"failure_reason", reason,
 	}
+	if discardedStats.Summary.IntermediateSeriesPeak > 0 {
+		logValues = append(logValues, "intermediate_series_peak", discardedStats.Summary.IntermediateSeriesPeak)
+	}
 	// Match regular query logs: attribution such as source, user and dashboard
 	// is supplied through query tags and logged with lowercase field names.
 	logValues = append(logValues, httpreq.TagsToKeyValues(httpreq.ExtractQueryTagsFromContext(ctx))...)
