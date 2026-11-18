@@ -171,6 +171,8 @@ func validateQuantileLabel(name string) error {
 	return nil
 }
 
+// Selector returns the log selector of the histogram that the function reads. It
+// returns the error of an expression that did not pass validation.
 func (e *HistogramFuncExpr) Selector() (LogSelectorExpr, error) {
 	if e.err != nil {
 		return nil, e.err
@@ -178,6 +180,8 @@ func (e *HistogramFuncExpr) Selector() (LogSelectorExpr, error) {
 	return e.Left.Selector()
 }
 
+// MatcherGroups returns the matchers of the histogram that the function reads. It
+// returns the error of an expression that did not pass validation.
 func (e *HistogramFuncExpr) MatcherGroups() ([]MatcherRange, error) {
 	if e.err != nil {
 		return nil, e.err
@@ -185,6 +189,9 @@ func (e *HistogramFuncExpr) MatcherGroups() ([]MatcherRange, error) {
 	return e.Left.MatcherGroups()
 }
 
+// Extractor returns the extractor of the histogram that the function reads. The
+// function itself does not read log lines. It returns the error of an expression
+// that did not pass validation.
 func (e *HistogramFuncExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
@@ -199,6 +206,8 @@ func (e *HistogramFuncExpr) Shardable(_ bool) bool {
 	return false
 }
 
+// Walk calls f on the function and then on the expression that it reads. It does
+// not go below the function if f returns false.
 func (e *HistogramFuncExpr) Walk(f WalkFn) {
 	if !f(e) {
 		return
@@ -208,6 +217,7 @@ func (e *HistogramFuncExpr) Walk(f WalkFn) {
 	}
 }
 
+// Accept calls the visitor for a histogram function.
 func (e *HistogramFuncExpr) Accept(v RootVisitor) { v.VisitHistogramFunc(e) }
 
 // args returns the arguments that are written before and after the histogram.
@@ -226,6 +236,7 @@ func (e *HistogramFuncExpr) args() (before, after []string) {
 	}
 }
 
+// String returns the expression in the form that the parser reads back.
 func (e *HistogramFuncExpr) String() string {
 	before, after := e.args()
 	parts := append(before, e.Left.String())

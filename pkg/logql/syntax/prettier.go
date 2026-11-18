@@ -405,6 +405,7 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 	return s
 }
 
+// Pretty returns the expression on one line if it fits, and with one argument per line if it does not.
 // e.g: histogram_quantile(0.99, sum by (path) (histogram_over_time({app="api"} | json | unwrap duration_seconds(duration) [5m])))
 func (e *HistogramFuncExpr) Pretty(level int) string {
 	s := Indent(level)
