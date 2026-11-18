@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -42,20 +41,16 @@ func (dec *Decoder) SectionMetadata(ctx context.Context) (*datasetmd.SectionMeta
 		return nil, err
 	}
 
-	rc, err := dec.sr.MetadataRange(ctx, dataobj.RelativeByteRange{
+	metadata, err := dec.sr.MetadataRanges(ctx, []dataobj.RelativeByteRange{{
 		Offset: int64(info.SectionMetadataOffset),
 		Length: int64(info.SectionMetadataLength),
-	})
+	}})
 	if err != nil {
 		return nil, fmt.Errorf("reading section metadata: %w", err)
 	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
 
 	var md datasetmd.SectionMetadata
-	if err := protocodec.Decode(br, &md); err != nil {
+	if err := protocodec.DecodeBytes(metadata[0], &md); err != nil {
 		return nil, fmt.Errorf("decoding section metadata: %w", err)
 	}
 	return &md, nil
