@@ -278,10 +278,13 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 		})
 	}
 
-	// step is >= configured split interval, let us just split the query interval by step
-	// TODO this is likely buggy when step >= query range, how should we handle this?
+	// The interval fits at most one step, and a split evaluates both its start and its end, so every
+	// step gets a split of its own. Splits that shared an end would evaluate that step twice.
 	if lokiReq.Step >= interval.Milliseconds() {
-		util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, factory)
+		step := time.Duration(lokiReq.Step) * time.Millisecond
+		for t := lokiReq.StartTs; !t.After(lokiReq.EndTs); t = t.Add(step) {
+			factory(t, t)
+		}
 
 		return reqs, true
 	}
