@@ -523,10 +523,11 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		gateways := &fakeGateways{}
 		client := newScriptedGatewayClient(t, ClientConfig{MaxInFlightRequests: 1}, reg, gateways, addrs)
 
-		require.NoError(t, client.inFlight.Start(ctx))
-		defer client.inFlight.Done()
+		slots, err := client.inFlight.reserve(ctx, 1)
+		require.NoError(t, err)
+		defer client.inFlight.release(slots)
 
-		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		_, err = client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 
 		requireShedError(t, err)
 		require.Empty(t, gateways.tried())
@@ -548,14 +549,15 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 
 		require.Zero(t, inFlight())
 
-		require.NoError(t, client.inFlight.Start(ctx))
-		require.Equal(t, float64(1), inFlight())
-
-		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		slots, err := client.inFlight.reserve(ctx, 1)
 		require.NoError(t, err)
 		require.Equal(t, float64(1), inFlight())
 
-		client.inFlight.Done()
+		_, err = client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+		require.Equal(t, float64(1), inFlight())
+
+		client.inFlight.release(slots)
 		require.Zero(t, inFlight())
 	})
 
@@ -564,7 +566,8 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		client := newScriptedGatewayClient(t, ClientConfig{MaxInFlightRequests: 0}, reg, &fakeGateways{}, addrs)
 
 		for range 100 {
-			require.NoError(t, client.inFlight.Start(ctx))
+			_, err := client.inFlight.reserve(ctx, 1)
+			require.NoError(t, err)
 		}
 
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
@@ -579,7 +582,7 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		require.Equal(t, float64(100), inFlight.GetGauge().GetValue())
 
 		for range 100 {
-			client.inFlight.Done()
+			client.inFlight.release(1)
 		}
 		inFlight = findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
 		require.NotNil(t, inFlight)
@@ -653,18 +656,9 @@ func TestClientConfig_Validate(t *testing.T) {
 			wantErr: "max-retries",
 		},
 		{
-			name:   "per_index sharding",
-			mutate: func(cfg *ClientConfig) { cfg.Sharding = ShardingPerIndex },
-		},
-		{
-			name:    "unknown sharding",
-			mutate:  func(cfg *ClientConfig) { cfg.Sharding = "per_tenant" },
-			wantErr: "sharding",
-		},
-		{
-			name:    "zero per-index concurrency",
-			mutate:  func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrency = 0 },
-			wantErr: "per-index-max-concurrency",
+			name:    "zero per-index concurrent parts",
+			mutate:  func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrentParts = 0 },
+			wantErr: "per-index-max-concurrent-parts",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -688,8 +682,8 @@ func TestClientConfig_Defaults(t *testing.T) {
 
 	require.Zero(t, cfg.MaxInFlightRequests)
 	require.Equal(t, -1, cfg.MaxRetries)
-	require.Equal(t, ShardingDefault, cfg.Sharding)
-	require.Equal(t, 8, cfg.PerIndexMaxConcurrency)
+	require.False(t, cfg.PerIndexOwnership)
+	require.Equal(t, 8, cfg.PerIndexMaxConcurrentParts)
 }
 
 func Test_jumpHashShuffleSharding(t *testing.T) {
