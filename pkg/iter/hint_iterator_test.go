@@ -92,6 +92,7 @@ func TestHintTimeRangesForFingerprint(t *testing.T) {
 		{name: "coarser and exact shard", fp: inShard(2), want: []int{0, 2, 4, 6}},
 		{name: "coarser shard", fp: inShard(3), want: []int{0, 2, 6}},
 		{name: "remapped fingerprint gets every shard", fp: logline.MaxMappedFingerprint, want: []int{0, 2, 4, 6}},
+		{name: "first fingerprint above the remapped ones", fp: logline.MaxMappedFingerprint + 1, want: []int{0, 6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			view := ranges.ForFingerprint(tc.fp)

@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/querybounds"
 )
@@ -3219,10 +3220,13 @@ func TestRangesOverlapping_LeafShards(t *testing.T) {
 		{"bounded inside one document shard", []string{bounded(20<<59+1, 20<<59+2)}, []hintprovider.HintTimeRange{wildcard, inShard(20)}},
 		{"bounded across two document shards", []string{bounded(3<<59|5, 4<<59|7)}, []hintprovider.HintTimeRange{wildcard, inShard(3), inShard(4)}},
 		{"bounded through the max fingerprint", []string{bounded(31<<59, math.MaxUint64)}, []hintprovider.HintTimeRange{wildcard, inShard(31)}},
-		// The ingester remaps colliding streams to fingerprints from 1, so the
-		// first query shard can hold a stream of any document shard.
+		// The ingester remaps colliding streams to fingerprints from 1 through
+		// logline.MaxMappedFingerprint, so a query shard starting there can hold
+		// a stream of any document shard.
 		{"first power-of-two shard", []string{"0_of_32"}, ranges},
 		{"bounded from the min fingerprint", []string{bounded(0, 1<<59-1)}, ranges},
+		{"bounded from the highest remapped fingerprint", []string{bounded(logline.MaxMappedFingerprint, 1<<59-1)}, ranges},
+		{"bounded from just above the remapped fingerprints", []string{bounded(logline.MaxMappedFingerprint+1, 1<<59-1)}, []hintprovider.HintTimeRange{wildcard}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shards, _, err := logql.ParseShards(tc.shards)
