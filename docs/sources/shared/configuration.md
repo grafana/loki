@@ -4299,7 +4299,7 @@ discover_generic_fields:
 # CLI flag: -querier.max-query-series
 [max_query_series: <int> | default = 500]
 
-# Experimental: Limit the maximum of label sets that a querier job may hold
+# Experimental: Limit the maximum number of label sets that a querier job may hold
 # while it evaluates a metric query. 0 to disable. Not enforced yet.
 # CLI flag: -querier.max-query-intermediate-series
 [max_query_intermediate_series: <int> | default = 0]
