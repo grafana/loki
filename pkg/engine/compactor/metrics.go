@@ -342,7 +342,7 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 		}, []string{labelTenant}),
 		outputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_uncompressed",
-			Help:    "Estimated in-memory size of the IndexMerge builder (postings + stats sections, pre-encoding) at Flush. One observation per task.",
+			Help:    "Estimated size of the index objects of a successful IndexMerge task at flush, summed over the index objects of the run of the task. Sections that the builder holds count before encoding, and sections that it already cut count as encoded. One observation per task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 		logMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{

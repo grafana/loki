@@ -98,16 +98,8 @@ type SectionReader interface {
 	// as the provided ctx is not canceled.
 	DataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
 
-	// MetadataRange opens a reader of r.Length bytes from the metadata region of
-	// a section. The reader starts r.Offset bytes after the start of that region.
-	//
-	// MetadataRange returns an error if the read fails or if r.Offset+r.Length
-	// goes beyond the readable metadata region. The returned reader is only valid
-	// as long as the provided ctx is not canceled.
-	MetadataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
-
-	// MetadataRanges returns the bytes of each range of the metadata region, in
-	// the order of ranges. It is the batch version of MetadataRange.
+	// MetadataRanges returns the bytes of each range of the metadata region. The
+	// result has one slice for each range, in the order of ranges.
 	//
 	// It returns slices, not readers, so an implementation can return bytes
 	// that it holds in memory without a copy.
