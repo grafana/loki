@@ -173,6 +173,10 @@ func evaluateRecordPredicate(p dataset.Predicate, ts time.Time) bool {
 		return ts.After(time.Unix(0, p.Value.Int64()))
 	case dataset.LessThanPredicate:
 		return ts.Before(time.Unix(0, p.Value.Int64()))
+	case dataset.GreaterThanOrEqualPredicate:
+		return !ts.Before(time.Unix(0, p.Value.Int64()))
+	case dataset.LessThanOrEqualPredicate:
+		return !ts.After(time.Unix(0, p.Value.Int64()))
 	case dataset.EqualPredicate:
 		return ts.Equal(time.Unix(0, p.Value.Int64()))
 

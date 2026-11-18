@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -23,10 +24,6 @@ const keyPrefix = "dataobj-metadata/v1:"
 // stuck backend could strand the load and its goroutine after all callers have left.
 const loadTimeout = 30 * time.Second
 
-// DefaultMaxItemBytes is the size limit NewCache falls back to when the caller does not know the
-// backend's real one.
-const DefaultMaxItemBytes = 8 << 20 // 8 MiB
-
 // KindLogsCache, KindIndexCache and KindTOCCache label the counters of a Cache by the kind of object
 // it serves. One backend can serve several Caches, and each Cache reports its own hits, misses and
 // errors.
@@ -36,18 +33,18 @@ const (
 	KindTOCCache   = "toc"
 )
 
-// NewBackend builds the cache backend that cfg describes. It also returns the largest region that the
-// backend stores, to pass to NewCache.
+// NewBackend builds the cache backend that cfg describes. It also returns the largest item that the
+// backend stores, or zero when the backend has no limit.
 //
 // The backend ignores a repeated Stop, so several Caches can share it. The limit is the memcached max
-// item size. Other backends, and a zero value, use DefaultMaxItemBytes.
+// item size. Other backends have no limit.
 func NewBackend(cfg cache.Config, reg prometheus.Registerer, logger log.Logger) (cache.Cache, int64, error) {
 	c, err := cache.New(cfg, reg, logger, stats.DataObjMetadataCache, constants.Loki)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	maxItemBytes := int64(DefaultMaxItemBytes)
+	var maxItemBytes int64
 	if cache.IsMemcacheSet(cfg) && cfg.MemcacheClient.MaxItemSize > 0 {
 		maxItemBytes = int64(cfg.MemcacheClient.MaxItemSize)
 	}
@@ -80,14 +77,18 @@ type Cache struct {
 // repeated Stop. The backend that NewBackend returns does. Keys are object paths, so objects of
 // different kinds that share a backend must not share a path.
 //
-// maxItemBytes is the largest item c's backend will actually store. A non-positive value falls back to
-// DefaultMaxItemBytes.
+// maxItemBytes is the largest item that the Cache stores. A non-positive value means no limit, and
+// MaxItemBytes then returns math.MaxInt64.
+//
+// The decoder bounds the metadata that it reads for an item by MaxItemBytes. Without a limit, a corrupt
+// layout can make it read and allocate a huge region. A caller that cannot trust the objects must set a
+// limit.
 func NewCache(c cache.Cache, maxItemBytes int64, kind string, m *CacheMetrics, logger log.Logger) *Cache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	if maxItemBytes <= 0 {
-		maxItemBytes = DefaultMaxItemBytes
+		maxItemBytes = math.MaxInt64
 	}
 	return &Cache{
 		cache:        c,
@@ -190,8 +191,7 @@ func (c *Cache) GetOrLoad(ctx context.Context, key string, accept func([]byte) b
 	}
 }
 
-// MaxItemBytes returns the largest item the backend will store: the value configured on NewCache, or
-// DefaultMaxItemBytes when that was not positive. The result is always positive.
+// MaxItemBytes returns the largest item that the Cache stores, or math.MaxInt64 when it has no limit.
 func (c *Cache) MaxItemBytes() int64 {
 	return c.maxItemBytes
 }

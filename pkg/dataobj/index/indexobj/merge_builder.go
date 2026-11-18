@@ -41,6 +41,10 @@ type MergeBuilder struct {
 	layout   streams.Layout
 	postings *postings.MergeBuilder
 
+	// wroteStats is true once the builder appended a stats section to the
+	// object it builds.
+	wroteStats bool
+
 	unflushedSizeEstimate int
 
 	state builderState
@@ -118,6 +122,7 @@ func (b *MergeBuilder) AppendStat(tenantID string, stat stats.Stat) error {
 		if err := b.builder.Append(tenantStats); err != nil {
 			return err
 		}
+		b.wroteStats = true
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
@@ -204,6 +209,11 @@ func (b *MergeBuilder) estimatedSize() int {
 
 // Flush flushes all buffered data and returns the built object.
 //
+// The object records the layout of the builder in a stats section, even if
+// the builder got no stats rows. A builder with the zero layout writes no stats
+// section: its index has no layout, which compaction accepts for an index whose
+// sources have none.
+//
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
 // it is closed. If an error is returned the closer is always nil.
@@ -221,8 +231,11 @@ func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	var flushErrors []error
 
-	if b.stats.EstimatedSize() > 0 {
+	switch {
+	case b.stats.EstimatedSize() > 0:
 		flushErrors = append(flushErrors, b.builder.Append(b.stats))
+	case !b.wroteStats && b.layout.StreamOrder() != streams.StreamOrderUnspecified:
+		flushErrors = append(flushErrors, b.builder.Append(stats.NewLayoutSectionBuilder(b.tenant, b.layout)))
 	}
 	if b.postings.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.postings))
@@ -285,5 +298,6 @@ func (b *MergeBuilder) Reset() {
 	b.currentSizeEstimate = 0
 	b.unflushedSizeEstimate = 0
 	b.builderFull = false
+	b.wroteStats = false
 	b.state = builderStateEmpty
 }

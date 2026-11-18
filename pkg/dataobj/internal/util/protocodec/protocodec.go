@@ -7,6 +7,7 @@ package protocodec
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -29,7 +30,7 @@ func Size(pb proto.Message) int {
 }
 
 // Encode encodes a protobuf message into w. Encoded messages can be decoded
-// with [Decode].
+// with [Decode] or [DecodeBytes].
 func Encode(w streamio.Writer, pb proto.Message) error {
 	buf := protoBufferPool.Get().(*proto.Buffer)
 	buf.Reset()
@@ -75,6 +76,28 @@ func Decode(r streamio.Reader, pb proto.Message) error {
 	}
 
 	if err := proto.Unmarshal(buf.Bytes(), pb); err != nil {
+		return fmt.Errorf("unmarshal proto message: %w", err)
+	}
+	return nil
+}
+
+// DecodeBytes decodes a message encoded with protocodec from the start of b and
+// stores it in pb.
+//
+// The message in pb does not alias b, so the caller can reuse b after the call.
+// DecodeBytes ignores the bytes after the message. It returns an error if b has
+// no valid size, is shorter than the message, or holds a message that does not
+// unmarshal.
+func DecodeBytes(b []byte, pb proto.Message) error {
+	size, n := binary.Uvarint(b)
+	if n <= 0 {
+		return errors.New("read proto message size: the size is truncated or too large")
+	}
+	if size > uint64(len(b)-n) {
+		return fmt.Errorf("read proto message: got=%d want=%d", len(b)-n, size)
+	}
+
+	if err := proto.Unmarshal(b[n:n+int(size)], pb); err != nil {
 		return fmt.Errorf("unmarshal proto message: %w", err)
 	}
 	return nil

@@ -1,10 +1,12 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/compactor"
@@ -24,6 +26,9 @@ type Config struct {
 	// holds the tables of contents (ToCs) that the resolver refreshes. It is enabled when a backend is
 	// configured.
 	MetadataCache cache.Config `yaml:"metadata_cache" doc:"description=Caches the metadata region of the log objects and index objects the querier reads, or the entire object if it is tiny. When the ToC resolver is enabled (-dataobj-metastore.toc-resolver.enabled), the cache also holds the tables of contents (ToCs) that the resolver refreshes. The cache is enabled when a backend is configured. Entries are keyed by object path, so the cache cannot differentiate entries between different buckets and clusters. Multiple installations must not share the same cache backend."`
+	// MetadataPrefetcher serves the metadata of log objects from entries that MetadataCache holds in
+	// pieces.
+	MetadataPrefetcher metadata.PrefetcherConfig `yaml:"metadata_prefetcher" category:"experimental"`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
@@ -39,6 +44,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
 	cfg.Metastore.RegisterFlags(f)
 	cfg.MetadataCache.RegisterFlagsWithPrefix("dataobj.metadata-cache.", "", f)
+	cfg.MetadataPrefetcher.RegisterFlagsWithPrefix("dataobj.metadata-prefetcher.", f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(
 		&cfg.StorageBucketPrefix,
@@ -77,6 +83,12 @@ func (cfg *Config) Validate(kafkaIngestionEnabled bool) error {
 		return err
 	}
 	if err := cfg.Compaction.Validate(); err != nil {
+		return err
+	}
+	if cfg.MetadataPrefetcher.Enabled && !cache.IsCacheConfigured(cfg.MetadataCache) {
+		return errors.New("the metadata prefetcher needs the metadata cache: configure dataobj.metadata_cache")
+	}
+	if err := cfg.MetadataPrefetcher.Validate(); err != nil {
 		return err
 	}
 	return nil
