@@ -275,32 +275,65 @@ func generatedSeries(streams, chunks int) sharding.ForSeries {
 }
 
 func TestChunkBatchBroadQueryBound(t *testing.T) {
-	const streams, chunks, budget = 10000, 20, 1024
+	const streams, chunks, budget = 10000, 20, 1536
 	var count, peak int
 	err := forEachChunkBatch(context.Background(), generatedSeries(streams, chunks), "fake", &logproto.ShardsRequest{}, nil, budget, func(batch []logproto.ChunkRefWithSizingInfo) error {
 		count += len(batch)
-		peak = max(peak, len(batch))
+		peak = max(peak, cap(batch))
 		return nil
 	})
 	require.NoError(t, err)
 	require.Equal(t, streams*chunks, count)
 	require.LessOrEqual(t, peak, budget)
-	t.Logf("unique refs=%d; peak batch refs=%d; budget=%d", count, peak, budget)
+	t.Logf("unique refs=%d; peak batch capacity=%d; budget=%d", count, peak, budget)
 }
 
-func BenchmarkBoundedShardPlanning(b *testing.B) {
-	for _, streams := range []int{1000, 36000} {
-		b.Run(fmt.Sprintf("refs=%d", streams*100), func(b *testing.B) {
-			series := generatedSeries(streams, 100)
-			req := &logproto.ShardsRequest{TargetBytesPerShard: 600 << 20}
+func TestChunkBatchSmallQuery(t *testing.T) {
+	err := forEachChunkBatch(t.Context(), generatedSeries(1, 10), "fake", &logproto.ShardsRequest{}, nil, shardPlanningBatchSize, func(batch []logproto.ChunkRefWithSizingInfo) error {
+		require.Len(t, batch, 10)
+		require.LessOrEqual(t, cap(batch), 1024)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func BenchmarkSmallShardPlanning(b *testing.B) {
+	req := &logproto.ShardsRequest{TargetBytesPerShard: 600 << 20}
+	MeasureShardPlanning(b, generatedSeries(100, 10), req, nil, 1000)
+}
+
+// MeasureShardPlanning runs the cap sweep for the external TSDB benchmark.
+func MeasureShardPlanning(b *testing.B, series sharding.ForSeries, req *logproto.ShardsRequest, matchers []*labels.Matcher, uniqueRefs int64) {
+	b.Helper()
+	for _, batchSize := range []int{16 << 10, 64 << 10, 128 << 10, 256 << 10, 512 << 10} {
+		b.Run(fmt.Sprintf("batch=%d", batchSize), func(b *testing.B) {
+			// Warm the indexes and measure the reference buffer capacity
+			// separately from the timed planner runs.
+			var peakSlots int
+			err := forEachChunkBatch(b.Context(), series, "synthetic", req, matchers, batchSize, func(batch []logproto.ChunkRefWithSizingInfo) error {
+				peakSlots = max(peakSlots, cap(batch))
+				return nil
+			})
+			require.NoError(b, err)
+			require.LessOrEqual(b, peakSlots, batchSize)
+			var scans int
+			countingSeries := sharding.ForSeriesFunc(func(ctx context.Context, user string, filter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool, ms ...*labels.Matcher) error {
+				scans++
+				return series.ForSeries(ctx, user, filter, from, through, fn, ms...)
+			})
+			ctx := b.Context()
 			b.ReportAllocs()
 			for b.Loop() {
-				resp, err := planShards(context.Background(), series, "fake", req, nil, false, shardPlanningBatchSize)
-				if err != nil || resp.Statistics.Index.TotalChunks != int64(streams*100) {
-					b.Fatalf("unexpected response: %v", err)
+				resp, err := planShards(ctx, countingSeries, "synthetic", req, matchers, false, batchSize)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if got := resp.Statistics.Index.TotalChunks; got != uniqueRefs {
+					b.Fatalf("resolved %d refs, want %d", got, uniqueRefs)
 				}
 			}
-			b.ReportMetric(shardPlanningBatchSize, "ref-budget")
+			b.ReportMetric(float64(scans)/float64(b.N), "scans/op")
+			b.ReportMetric(float64(peakSlots), "peak-ref-slots")
 		})
 	}
 }

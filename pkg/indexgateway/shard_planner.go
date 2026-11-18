@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
-const shardPlanningBatchSize = 16 << 10
+const shardPlanningBatchSize = 128 << 10
 
 // chunkKey identifies a chunk within the request's tenant.
 type chunkKey struct {
@@ -141,8 +141,15 @@ func forEachChunkBatch(ctx context.Context, series sharding.ForSeries, userID st
 					continue
 				}
 				if seen == nil {
-					seen = make(map[chunkKey]struct{}, batchSize)
-					refs = make([]logproto.ChunkRefWithSizingInfo, 0, batchSize)
+					// Small requests can finish well before reaching the cap.
+					initialSize := min(batchSize, 1024)
+					seen = make(map[chunkKey]struct{}, initialSize)
+					refs = make([]logproto.ChunkRefWithSizingInfo, 0, initialSize)
+				}
+				if len(refs) == cap(refs) {
+					grown := make([]logproto.ChunkRefWithSizingInfo, len(refs), min(2*cap(refs), batchSize))
+					copy(grown, refs)
+					refs = grown
 				}
 				seen[key] = struct{}{}
 				refs = append(refs, logproto.ChunkRefWithSizingInfo{
