@@ -1818,6 +1818,7 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		}
 		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
 		require.Len(t, observer.uncompressedSizes, 1)
+		require.Greater(t, observer.uncompressedSizes[0], int64(4096*(len(artifacts)-1)))
 	})
 }
 
