@@ -2125,7 +2125,7 @@ func TestPrefetchFilter_LeafShardGetsItsDocumentShards(t *testing.T) {
 		{Start: at(10), End: at(20), DocumentShard: 4, DocumentShardBits: 5},
 	})
 
-	run := func(t *testing.T, shard string, start, end time.Time) (*queryrange.LokiRequest, *queryrange.LokiResponse) {
+	run := func(t *testing.T, queryShard string, start, end time.Time) (*queryrange.LokiRequest, *queryrange.LokiResponse) {
 		var got *queryrange.LokiRequest
 		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			got = req.(*queryrange.LokiRequest)
@@ -2133,7 +2133,7 @@ func TestPrefetchFilter_LeafShardGetsItsDocumentShards(t *testing.T) {
 		})
 		handler := buildStack(&mockHintProvider{hints: &hintprovider.Hints{TimeRanges: hints}}, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 		req := newTestLokiRequest(`{job="test"} |= "error"`, start, end)
-		req.Shards = []string{shard}
+		req.Shards = []string{queryShard}
 		resp, err := handler.Do(testTenantContextWithLive(), req)
 		require.NoError(t, err)
 		return got, resp.(*queryrange.LokiResponse)
@@ -3207,9 +3207,9 @@ func TestRangesOverlapping_LeafShards(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name   string
-		shards []string
-		want   []hintprovider.HintTimeRange
+		name        string
+		queryShards []string
+		want        []hintprovider.HintTimeRange
 	}{
 		{"unsharded", nil, ranges},
 		{"same power of two", []string{"3_of_32"}, []hintprovider.HintTimeRange{wildcard, inShard(3)}},
@@ -3229,9 +3229,9 @@ func TestRangesOverlapping_LeafShards(t *testing.T) {
 		{"bounded from just above the remapped fingerprints", []string{bounded(logline.MaxMappedFingerprint+1, 1<<59-1)}, []hintprovider.HintTimeRange{wildcard}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			shards, _, err := logql.ParseShards(tc.shards)
+			queryShards, _, err := logql.ParseShards(tc.queryShards)
 			require.NoError(t, err)
-			require.Equal(t, tc.want, rangesOverlapping(ranges, shards, base, base.Add(time.Minute)))
+			require.Equal(t, tc.want, rangesOverlapping(ranges, queryShards, base, base.Add(time.Minute)))
 		})
 	}
 }

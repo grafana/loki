@@ -1275,14 +1275,14 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.passthrough(ctx, req)
 	}
 
-	shards, _, err := logql.ParseShards(requestShards(req))
+	queryShards, _, err := logql.ParseShards(requestQueryShards(req))
 	if err != nil {
 		h.metrics.passthroughSubRequests.WithLabelValues("unparseable_query").Inc()
-		level.Warn(logger).Log("msg", "cannot read the request shards, passing through", "err", err, "shards", requestShards(req))
+		level.Warn(logger).Log("msg", "cannot read the request's query shards, passing through", "err", err, "query_shards", requestQueryShards(req))
 		return h.passthrough(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, shards, readStart, overlapEnd)
+	overlapping := rangesOverlapping(result.ranges, queryShards, readStart, overlapEnd)
 	if len(overlapping) == 0 {
 		return h.skip(ctx, req, expr)
 	}
@@ -1354,9 +1354,11 @@ func requestExpr(req queryrangebase.Request) (syntax.Expr, error) {
 	return syntax.ParseExpr(req.GetQuery())
 }
 
-// requestShards returns the query shards of a shard request. A request
-// without shards reads every stream.
-func requestShards(req queryrangebase.Request) []string {
+// requestQueryShards returns the query shards of a sub-request. The shard
+// middleware gives each sub-request it shards one query shard. A sub-request
+// it does not shard has none and reads every stream. A request can also
+// arrive with several, because the shards form value repeats.
+func requestQueryShards(req queryrangebase.Request) []string {
 	switch r := req.(type) {
 	case *queryrange.LokiRequest:
 		return r.Shards
@@ -1547,10 +1549,10 @@ func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bo
 }
 
 // rangesOverlapping returns hint ranges that overlap [start, end] and can cover
-// a stream that a request with shards reads, which is any stream when shards
-// is empty. Assumes ranges are normalized: grouped by document shard, each
-// group sorted by Start.
-func rangesOverlapping(ranges []hintprovider.HintTimeRange, shards logql.Shards, start, end time.Time) []hintprovider.HintTimeRange {
+// a stream in queryShards, which is any stream when queryShards is empty.
+// Assumes ranges are normalized: grouped by document shard, each group sorted
+// by Start.
+func rangesOverlapping(ranges []hintprovider.HintTimeRange, queryShards logql.Shards, start, end time.Time) []hintprovider.HintTimeRange {
 	var result []hintprovider.HintTimeRange
 	for len(ranges) > 0 {
 		n := sort.Search(len(ranges), func(i int) bool {
@@ -1558,7 +1560,7 @@ func rangesOverlapping(ranges []hintprovider.HintTimeRange, shards logql.Shards,
 		})
 		group := ranges[:n]
 		ranges = ranges[n:]
-		if !coversShards(group[0], shards) {
+		if !coversQueryShards(group[0], queryShards) {
 			continue
 		}
 
@@ -1575,10 +1577,10 @@ func rangesOverlapping(ranges []hintprovider.HintTimeRange, shards logql.Shards,
 	return result
 }
 
-// coversShards reports whether r can cover a stream in one of shards, or in
-// any shard when shards is empty.
-func coversShards(r hintprovider.HintTimeRange, shards logql.Shards) bool {
-	return len(shards) == 0 || slices.ContainsFunc(shards, func(s logql.Shard) bool {
+// coversQueryShards reports whether r's document shard can hold a stream in
+// one of queryShards, or in any query shard when queryShards is empty.
+func coversQueryShards(r hintprovider.HintTimeRange, queryShards logql.Shards) bool {
+	return len(queryShards) == 0 || slices.ContainsFunc(queryShards, func(s logql.Shard) bool {
 		from, through := s.GetFromThrough()
 		return r.MatchesFingerprintRange(uint64(from), uint64(through))
 	})

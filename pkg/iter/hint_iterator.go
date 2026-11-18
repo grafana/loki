@@ -20,10 +20,11 @@ type HintTimeRanges struct {
 	enabled bool
 	// ranges is the time union of every document shard's ranges.
 	ranges []hintTimeRange
-	// shards is set when a hint has a document shard: shards[s] holds the
-	// ranges that cover the streams of document shard s at shardBits.
-	shardBits uint
-	shards    [][]hintTimeRange
+	// documentShards is set when a hint has a document shard:
+	// documentShards[s] holds the ranges that cover the streams of document
+	// shard s at documentShardBits.
+	documentShardBits uint
+	documentShards    [][]hintTimeRange
 }
 
 // NewHintTimeRanges clips, sorts, and merges query hint ranges without
@@ -36,10 +37,10 @@ func NewHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) 
 
 	for _, hint := range hints {
 		_, bits := documentShard(hint)
-		result.shardBits = max(result.shardBits, bits)
+		result.documentShardBits = max(result.documentShardBits, bits)
 	}
-	if result.shardBits > 0 {
-		result.shards = make([][]hintTimeRange, 1<<result.shardBits)
+	if result.documentShardBits > 0 {
+		result.documentShards = make([][]hintTimeRange, 1<<result.documentShardBits)
 	}
 
 	result.ranges = make([]hintTimeRange, 0, len(hints))
@@ -49,19 +50,20 @@ func NewHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) 
 			continue
 		}
 		result.ranges = append(result.ranges, clipped)
-		if result.shards != nil {
-			// At shardBits, the hint covers the shards whose top bits are its shard.
+		if result.documentShards != nil {
+			// At documentShardBits, the hint covers the document shards whose top
+			// bits are its shard.
 			shard, bits := documentShard(hint)
-			first := int(shard) << (result.shardBits - bits)
-			for s := first; s < first+1<<(result.shardBits-bits); s++ {
-				result.shards[s] = append(result.shards[s], clipped)
+			first := int(shard) << (result.documentShardBits - bits)
+			for s := first; s < first+1<<(result.documentShardBits-bits); s++ {
+				result.documentShards[s] = append(result.documentShards[s], clipped)
 			}
 		}
 	}
 
 	result.ranges = mergeHintRanges(result.ranges)
-	for s := range result.shards {
-		result.shards[s] = mergeHintRanges(result.shards[s])
+	for s := range result.documentShards {
+		result.documentShards[s] = mergeHintRanges(result.documentShards[s])
 	}
 	return result
 }
@@ -102,10 +104,10 @@ func mergeHintRanges(ranges []hintTimeRange) []hintTimeRange {
 // for a fingerprint the ingester may have remapped, whose document shard is
 // unknown (logline.MaxMappedFingerprint).
 func (r HintTimeRanges) ForFingerprint(fp uint64) HintTimeRanges {
-	if r.shards == nil || fp <= logline.MaxMappedFingerprint {
+	if r.documentShards == nil || fp <= logline.MaxMappedFingerprint {
 		return r
 	}
-	return HintTimeRanges{enabled: true, ranges: r.shards[logline.DocumentShard(fp, r.shardBits)]}
+	return HintTimeRanges{enabled: true, ranges: r.documentShards[logline.DocumentShard(fp, r.documentShardBits)]}
 }
 
 // clipHintRange clips the half-open interval [start, end) to [from, through)
