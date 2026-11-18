@@ -469,9 +469,11 @@ func logFailedQueryUsage(
 		"status", strconv.Itoa(status),
 		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
 		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
-		"intermediate_series_peak", discardedStats.Summary.IntermediateSeriesPeak,
 		"failure_category", category,
 		"failure_reason", reason,
+	}
+	if discardedStats.Summary.IntermediateSeriesPeak > 0 {
+		logValues = append(logValues, "intermediate_series_peak", discardedStats.Summary.IntermediateSeriesPeak)
 	}
 	// Match regular query logs: attribution such as source, user and dashboard
 	// is supplied through query tags and logged with lowercase field names.

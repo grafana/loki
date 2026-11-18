@@ -35,11 +35,12 @@ func wrapErr(sentinel, err error) error {
 }
 
 // failedQueryUsageFields lists the fixed fields of the failed-query usage line.
-// Request-specific query tags may add attribution fields.
+// Request-specific query tags may add attribution fields, and
+// intermediate_series_peak appears only when it is positive.
 var failedQueryUsageFields = []string{
 	"msg", "user_agent", "query", "query_hash", "query_type", "range_type", "length",
 	"start_delta", "end_delta", "step", "limit",
-	"status", "duration", "total_bytes", "intermediate_series_peak", "failure_category", "failure_reason",
+	"status", "duration", "total_bytes", "failure_category", "failure_reason",
 }
 
 // failedQueryUsageCapture collects the failed-query usage lines as key/value
@@ -103,6 +104,9 @@ func requireFailedQueryUsageShape(t *testing.T, line map[string]string, queryTag
 		fields = append(fields, k)
 	}
 	expectedFields := append(append([]string(nil), failedQueryUsageFields...), queryTagFields...)
+	if _, ok := line["intermediate_series_peak"]; ok {
+		expectedFields = append(expectedFields, "intermediate_series_peak")
+	}
 	require.ElementsMatch(t, expectedFields, fields)
 
 	// Spelled out as well: these were deliberately left off the line.
@@ -197,6 +201,7 @@ func TestStatsCollectorMiddleware_LogsFailedQueryUsage(t *testing.T) {
 
 			line := lines.only(t)
 			requireFailedQueryUsageShape(t, line)
+			require.NotContains(t, line, "intermediate_series_peak", "a failure that ran no job has no peak to report")
 			require.Equal(t, tc.query, line["query"])
 			require.Equal(t, fmt.Sprint(util.HashedQuery(tc.query)), line["query_hash"])
 			require.Equal(t, tc.wantQueryType, line["query_type"])
