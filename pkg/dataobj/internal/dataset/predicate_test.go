@@ -60,6 +60,8 @@ func TestWalkPredicateColumn(t *testing.T) {
 		{"visits the column of an in predicate", dataset.InPredicate{Column: a}, []dataset.Column{a}},
 		{"visits the column of a greater than predicate", dataset.GreaterThanPredicate{Column: a}, []dataset.Column{a}},
 		{"visits the column of a less than predicate", dataset.LessThanPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a greater than or equal predicate", dataset.GreaterThanOrEqualPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a less than or equal predicate", dataset.LessThanOrEqualPredicate{Column: a}, []dataset.Column{a}},
 		{"visits both sides of an and and the inside of a not in depth-first order", dataset.AndPredicate{Left: onA, Right: dataset.NotPredicate{Inner: onB}}, []dataset.Column{a, b}},
 		{"visits both sides of an or", dataset.OrPredicate{Left: onB, Right: onA}, []dataset.Column{b, a}},
 		{"visits a column once for each leaf that reads it", dataset.AndPredicate{Left: onA, Right: onA}, []dataset.Column{a, a}},

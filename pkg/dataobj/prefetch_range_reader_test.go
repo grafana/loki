@@ -2,9 +2,13 @@ package dataobj
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"io"
+	"math"
+	"slices"
+	"sync"
 	"testing"
 	"testing/synctest"
 
@@ -12,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 const backendSource = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -160,39 +165,136 @@ func TestPrefetchedRangeReader_ReadRange(t *testing.T) {
 	})
 }
 
-func TestPrefetchedRangeReader_Prefetched(t *testing.T) {
+func TestPrefetchedRangeReader_ReadRanges(t *testing.T) {
 	// "UVWXYZ" at offset 10 and "!?" at offset 20, with a gap between them.
 	prefetchedRanges := metadata.PrefetchedRanges{
 		{Offset: 10, Data: []byte("UVWXYZ")},
 		{Offset: 20, Data: []byte("!?")},
 	}
 
-	tests := []struct {
-		name       string
-		offset     int64
-		length     int64
-		wantString string
-		wantOK     bool
-	}{
-		{name: "a range inside one prefetched range is returned", offset: 11, length: 3, wantString: "VWX", wantOK: true},
-		{name: "a range that fills one prefetched range is returned", offset: 20, length: 2, wantString: "!?", wantOK: true},
-		{name: "a range that crosses two prefetched ranges is not returned", offset: 14, length: 8},
-		{name: "a range that starts before a prefetched range is not returned", offset: 9, length: 3},
-		{name: "a range that ends after a prefetched range is not returned", offset: 14, length: 3},
-		{name: "a range outside every prefetched range is not returned", offset: 30, length: 2},
-		{name: "a zero-length range inside a prefetched range is not returned", offset: 11, length: 0},
-	}
+	t.Run("returns a range that one prefetched range holds without a read and without a copy", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		var reads recordedReads
+		rr.inner = reads.hook(rr.inner)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 11, Length: 3}})
 
-			got, ok := rr.Prefetched(tc.offset, tc.length)
+		require.NoError(t, err)
+		require.Equal(t, []string{"VWX"}, toStrings(got))
+		require.Empty(t, reads.calls())
+		require.Same(t, &prefetchedRanges[0].Data[1], &got[0][0])
 
-			require.Equal(t, tc.wantOK, ok)
-			require.Equal(t, tc.wantString, string(got))
+		_ = append(got[0], '#')
+		require.Equal(t, "UVWXYZ", string(prefetchedRanges[0].Data), "an append to the result must not write into the prefetched range")
+	})
+
+	t.Run("returns the bytes in the order of the ranges, from memory and from the inner reader", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{
+			{Offset: 20, Length: 2},
+			{Offset: 0, Length: 4},
+			{Offset: 8, Length: 5},
+			{Offset: 14, Length: 8},
+			{Offset: 21, Length: 4},
+			{Offset: 8, Length: 16},
+			{Offset: 26, Length: 3},
 		})
-	}
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"!?", "0123", "89UVW", "YZghij!?", "?mno", "89UVWXYZghij!?mn", "qrs"}, toStrings(got))
+	})
+
+	t.Run("reads only the gap of a range that starts before a prefetched range", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		var reads recordedReads
+		rr.inner = reads.hook(rr.inner)
+
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 8, Length: 5}})
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"89UVW"}, toStrings(got))
+		require.Equal(t, []readCall{{offset: 8, length: 2}}, reads.calls())
+	})
+
+	t.Run("merges the gaps of different ranges into one read", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		var reads recordedReads
+		rr.inner = reads.hook(rr.inner)
+
+		ctx := rangeio.WithConfig(t.Context(), &rangeio.Config{MaxParallelism: 1, CoalesceSize: 1 << 20, MaxRangeSize: 8 << 20, MinRangeSize: 1 << 20})
+
+		got, err := rr.ReadRanges(ctx, []absoluteByteRange{{Offset: 8, Length: 4}, {Offset: 16, Length: 6}})
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"89UV", "ghij!?"}, toStrings(got))
+		require.Equal(t, []readCall{{offset: 8, length: 12}}, reads.calls())
+	})
+
+	t.Run("serves ranges next to each other and a range across them from memory", func(t *testing.T) {
+		touching := metadata.PrefetchedRanges{
+			{Offset: 10, Data: []byte("UVW")},
+			{Offset: 13, Data: []byte("XYZ")},
+		}
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), touching...)
+		var reads recordedReads
+		rr.inner = reads.hook(rr.inner)
+
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 10, Length: 3}, {Offset: 13, Length: 3}, {Offset: 11, Length: 4}})
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"UVW", "XYZ", "VWXY"}, toStrings(got))
+		require.Same(t, &touching[0].Data[0], &got[0][0], "a range that one prefetched range holds is not copied")
+		require.Same(t, &touching[1].Data[0], &got[1][0], "a range that one prefetched range holds is not copied")
+		require.Empty(t, reads.calls())
+	})
+
+	t.Run("returns an empty slice for a range of zero length and does not read up to it", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		var reads recordedReads
+		rr.inner = reads.hook(rr.inner)
+
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 2}, {Offset: 3, Length: 0}})
+
+		require.NoError(t, err)
+		require.Equal(t, []string{"01", ""}, toStrings(got))
+		require.Equal(t, []readCall{{offset: 0, length: 2}}, reads.calls())
+	})
+
+	t.Run("returns an error for an invalid range", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			r       absoluteByteRange
+			wantErr string
+		}{
+			{name: "has a negative offset", r: absoluteByteRange{Offset: -1, Length: 2}, wantErr: "parameters must not be negative: offset=-1 length=2"},
+			{name: "has a negative length", r: absoluteByteRange{Offset: 2, Length: -1}, wantErr: "parameters must not be negative: offset=2 length=-1"},
+			{name: "has an end that overflows", r: absoluteByteRange{Offset: math.MaxInt64, Length: 2}, wantErr: "range overflows int64: offset=9223372036854775807 length=2"},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+
+				got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 1}, tc.r})
+
+				require.EqualError(t, err, tc.wantErr)
+				require.Nil(t, got)
+			})
+		}
+	})
+
+	t.Run("returns the error of the inner reader", func(t *testing.T) {
+		rr := newTestPrefetchedRangeReader([]byte(backendSource), prefetchedRanges...)
+		backend := rr.inner
+		rr.inner = hookedRangeReader{rangeReader: backend, readRange: func(context.Context, int64, int64) (io.ReadCloser, error) {
+			return nil, errors.New("read failed")
+		}}
+
+		got, err := rr.ReadRanges(t.Context(), []absoluteByteRange{{Offset: 0, Length: 4}})
+
+		require.EqualError(t, err, "read failed")
+		require.Nil(t, got)
+	})
 }
 
 func TestRangeSegmentsFromPrefetchedRanges(t *testing.T) {
@@ -396,10 +498,51 @@ func newTestPrefetchedRangeReader(backendBytes []byte, ranges ...metadata.Prefet
 	}
 }
 
-// hookedRangeReader replaces the ReadRange of the embedded reader with readRange.
+type readCall struct{ offset, length int64 }
+
+// recordedReads records the reads that a hooked reader gets.
+type recordedReads struct {
+	mu    sync.Mutex
+	reads []readCall
+}
+
+// hook returns a reader that records the reads and serves them from inner.
+func (r *recordedReads) hook(inner rangeReader) rangeReader {
+	return hookedRangeReader{rangeReader: inner, readRange: func(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
+		r.mu.Lock()
+		r.reads = append(r.reads, readCall{offset: offset, length: length})
+		r.mu.Unlock()
+		return inner.ReadRange(ctx, offset, length)
+	}}
+}
+
+// calls returns the recorded reads, sorted by offset. The reads run in parallel, so their order varies.
+func (r *recordedReads) calls() []readCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	out := slices.Clone(r.reads)
+	slices.SortFunc(out, func(a, b readCall) int { return cmp.Compare(a.offset, b.offset) })
+	return out
+}
+
+func toStrings(blobs [][]byte) []string {
+	out := make([]string, len(blobs))
+	for i, blob := range blobs {
+		out[i] = string(blob)
+	}
+	return out
+}
+
+// hookedRangeReader replaces the ReadRange of the embedded reader with readRange. ReadRanges reads
+// through the hook too.
 type hookedRangeReader struct {
 	rangeReader
 	readRange func(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+}
+
+func (h hookedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+	return readRanges(ctx, h, ranges)
 }
 
 func (h hookedRangeReader) ReadRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {

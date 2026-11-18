@@ -554,7 +554,10 @@ func TestStatsCollectorMiddleware_SeriesLimitIncludesCompletedUsage(t *testing.T
 		{req: pending, ch: make(chan *packedResp, 1)},
 	}
 
-	// Delay rejection until the pending response has registered its statistics.
+	// The series limiter skips a split without running it once the limit is
+	// exceeded, so delay rejection until the first split has entered the limiter
+	// and the pending response has registered its statistics.
+	firstStarted := make(chan struct{})
 	pendingStarted := make(chan struct{})
 	var returned atomic.Int64
 	split := &splitByInterval{next: queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -564,12 +567,17 @@ func TestStatsCollectorMiddleware_SeriesLimitIncludesCompletedUsage(t *testing.T
 			close(pendingStarted)
 			return metricResponseWithScanUsage(200, "a"), nil
 		case first:
-			return metricResponseWithScanUsage(100, "a"), nil
+			close(firstStarted)
+			// Without series, the limiter cannot reject this response if it
+			// completes after the limit was exceeded.
+			return metricResponseWithScanUsage(100), nil
 		default:
-			select {
-			case <-pendingStarted:
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			for _, started := range []chan struct{}{firstStarted, pendingStarted} {
+				select {
+				case <-started:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
 			}
 
 			// Registration happens before sending to the buffered channel. Wait for
