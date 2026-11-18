@@ -17,6 +17,11 @@ import (
 // at any time, even when an early task is slow. This bounds the memory of the
 // results.
 //
+// This differs from dskit's concurrency.ForEachJob, which returns only an error
+// and frees a worker when the job function returns. With ForEachJob the caller
+// collects the results, and nothing limits how many finished results wait
+// behind a slow earlier task.
+//
 // The first error from work or yield cancels the context that work receives,
 // skips the tasks that did not start, and becomes the return value. After the
 // first error, yield does not run again. work does not start once the context
