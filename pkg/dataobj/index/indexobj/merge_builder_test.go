@@ -683,3 +683,27 @@ func TestMergeBuilder_FlushResetsBuilder(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeBuilder_GetEstimatedSize(t *testing.T) {
+	t.Run("counts a cut section by its encoded size only", func(t *testing.T) {
+		cfg := testBuilderConfig
+		cfg.TargetSectionSize = 1
+		b, err := NewMergeBuilder(cfg, nil, "tenant-1", streams.Layout{})
+		require.NoError(t, err)
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{
+			ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1},
+		}))
+
+		require.Positive(t, b.builder.Bytes(), "the entry must cut a section")
+		require.Equal(t, b.builder.Bytes(), b.GetEstimatedSize())
+	})
+
+	t.Run("counts a cut stats section by its encoded size only", func(t *testing.T) {
+		b, err := NewMergeBuilder(oneStatPerSectionConfig, nil, "tenant-1", testMergeLayout)
+		require.NoError(t, err)
+		appendStats(t, b, 1)
+
+		require.Positive(t, b.builder.Bytes(), "the stat must cut a section")
+		require.Equal(t, b.builder.Bytes(), b.GetEstimatedSize())
+	})
+}
