@@ -354,19 +354,23 @@ func ipFamilyNetwork(family string) (string, error) {
 
 // tcpResolverForFamily returns the TCP resolver the consistent hash selector
 // uses for the given IP family. "tcp4" and "tcp6" only look up A or AAAA
-// records respectively.
+// records respectively. IP literals are kept as they are, so one address of
+// the other family doesn't make the whole server list fail.
 func tcpResolverForFamily(family string) jumphash.TCPResolver {
+	network := ""
 	switch family {
 	case "ipv4":
-		return func(_, address string) (*net.TCPAddr, error) {
-			return net.ResolveTCPAddr("tcp4", address)
-		}
+		network = "tcp4"
 	case "ipv6":
-		return func(_, address string) (*net.TCPAddr, error) {
-			return net.ResolveTCPAddr("tcp6", address)
-		}
+		network = "tcp6"
 	default:
 		return net.ResolveTCPAddr
+	}
+	return func(_, address string) (*net.TCPAddr, error) {
+		if host, _, err := net.SplitHostPort(address); err == nil && net.ParseIP(host) != nil {
+			return net.ResolveTCPAddr("tcp", address)
+		}
+		return net.ResolveTCPAddr(network, address)
 	}
 }
 

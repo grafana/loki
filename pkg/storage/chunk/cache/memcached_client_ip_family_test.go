@@ -32,6 +32,8 @@ func TestIPFamilyNetwork(t *testing.T) {
 	}
 }
 
+// IP literals are kept as they are, so one address of the other family does not
+// make the whole server list fail.
 func TestTCPResolverForFamily(t *testing.T) {
 	for _, tc := range []struct {
 		family  string
@@ -41,9 +43,9 @@ func TestTCPResolverForFamily(t *testing.T) {
 		{family: "", address: "127.0.0.1:11211"},
 		{family: "", address: "[::1]:11211"},
 		{family: "ipv4", address: "127.0.0.1:11211"},
-		{family: "ipv4", address: "[::1]:11211", wantErr: true},
+		{family: "ipv4", address: "[::1]:11211"},
 		{family: "ipv6", address: "[::1]:11211"},
-		{family: "ipv6", address: "127.0.0.1:11211", wantErr: true},
+		{family: "ipv6", address: "127.0.0.1:11211"},
 	} {
 		t.Run(tc.family+" "+tc.address, func(t *testing.T) {
 			addr, err := tcpResolverForFamily(tc.family)("tcp", tc.address)
