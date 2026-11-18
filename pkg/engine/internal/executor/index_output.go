@@ -186,8 +186,9 @@ func (o *indexOutput) uploadCurrent(ctx context.Context) error {
 }
 
 // flushAndUpload flushes the current index object, uploads it to a
-// content-hash path and releases it. It returns the artifact and the sizes of
-// the index object only if the object was released without an error.
+// content-hash path and releases it. The artifact and the sizes have no
+// meaning if it returns an error, including an error that releases the index
+// object.
 func (o *indexOutput) flushAndUpload(ctx context.Context) (artifact v2.ResultArtifact, sizes outputSizes, err error) {
 	// Read the size before Flush, because Flush resets the builder.
 	uncompressedBytes := int64(o.builder.GetEstimatedSize())
