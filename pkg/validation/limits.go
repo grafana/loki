@@ -471,7 +471,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
-	f.IntVar(&l.MaxQueryIntermediateSeries, "querier.max-query-intermediate-series", 0, "Experimental: Limit the maximum of label sets that a querier job may hold while it evaluates a metric query. 0 to disable. Not enforced yet.")
+	f.IntVar(&l.MaxQueryIntermediateSeries, "querier.max-query-intermediate-series", 0, "Experimental: Limit the maximum number of label sets that a querier job may hold while it evaluates a metric query. 0 to disable. Not enforced yet.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
 	_ = l.MaxQueryRange.Set("0s")
 	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
