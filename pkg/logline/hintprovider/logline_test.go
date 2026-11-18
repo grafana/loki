@@ -262,6 +262,8 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
 	require.Greater(t, resp.Stats.TotalIOWait, time.Duration(0))
 
+	// The frontend does not restore effective_concurrency. It derives it from IO
+	// wait over its own wall time.
 	restored := FromProtoStats(resp.Stats)
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()

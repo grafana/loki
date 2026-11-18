@@ -211,15 +211,20 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(1), snap.IndexQueriesTermMiss)
 	require.Equal(t, int64(1), snap.IndexQueriesPositive)
 	require.Equal(t, int64(6), snap.TotalTermBatchesProcessed)
+
+	// Merge keeps the receiver's wall time: right's longer wall time is ignored.
+	require.Equal(t, float64(15*time.Millisecond)/float64(40*time.Millisecond), snap.EffectiveConcurrency)
 }
 
+// Parallel day lookups sum their IO wait, and the ratio divides the sum by the
+// one wall time the caller sets after merging. Merge must not carry a day's own
+// wall time into the combined stats.
 func TestQueryStats_EffectiveConcurrencyUsesSummedIOWaitOverWall(t *testing.T) {
 	day := func(ioWait time.Duration) *QueryStats {
 		stats := NewQueryStats()
 		stats.totalIOWaitNanos.Store(ioWait.Nanoseconds())
 		stats.SetWallTime(100 * time.Millisecond)
-		snap := stats.Snapshot()
-		return FromProtoStats(&snap)
+		return stats
 	}
 
 	combined := NewQueryStats()
@@ -264,6 +269,8 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.NoError(t, decoded.Unmarshal(raw))
 	require.Equal(t, snap.TotalIOWait, decoded.TotalIOWait)
 
+	// The frontend does not restore effective_concurrency. It derives it from IO
+	// wait over its own wall time.
 	restored := FromProtoStats(&snap)
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
