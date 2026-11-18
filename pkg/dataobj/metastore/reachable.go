@@ -328,8 +328,13 @@ func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dat
 		return err
 	}
 	column, ok, err := sec.ObjectPathColumn()
-	if err != nil || !ok {
+	if err != nil {
 		return err
+	}
+	if !ok {
+		// An empty section records only the layout of an index object of a
+		// run that holds no stats rows. It references no log objects.
+		return nil
 	}
 	reader := stats.NewReader(stats.ReaderOptions{Columns: []*stats.Column{column}})
 	defer util.CloseAndHandleError(reader, &err)

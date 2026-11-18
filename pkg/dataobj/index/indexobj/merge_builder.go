@@ -211,7 +211,8 @@ func (b *MergeBuilder) estimatedSize() int {
 //
 // The object records the layout of the builder in a stats section, even if
 // the builder got no stats rows. A builder with the zero layout writes no stats
-// section.
+// section: its index has no layout, which compaction accepts for an index whose
+// sources have none.
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
