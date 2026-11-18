@@ -151,25 +151,42 @@ func (t IntermediateSeriesBreadcrumbThresholds) String() string {
 
 // Set implements flag.Value.
 func (t *IntermediateSeriesBreadcrumbThresholds) Set(s string) error {
-	*t = nil
 	if s == "" {
-		return nil
+		return t.setInts(nil)
 	}
-	for _, part := range strings.Split(s, ",") {
+	parts := strings.Split(s, ",")
+	values := make([]int, 0, len(parts))
+	for _, part := range parts {
 		v, err := strconv.Atoi(strings.TrimSpace(part))
 		if err != nil {
 			return fmt.Errorf("invalid intermediate series breadcrumb threshold %q: %w", part, err)
 		}
+		values = append(values, v)
+	}
+	return t.setInts(values)
+}
+
+// setInts sets the thresholds to values, which must all be positive. It leaves t unchanged on error.
+func (t *IntermediateSeriesBreadcrumbThresholds) setInts(values []int) error {
+	for _, v := range values {
 		if v <= 0 {
 			return fmt.Errorf("intermediate series breadcrumb threshold must be positive, got %d", v)
 		}
-		*t = append(*t, v)
 	}
+	if len(values) == 0 {
+		*t = nil
+		return nil
+	}
+	*t = values
 	return nil
 }
 
-// UnmarshalYAML implements yaml.Unmarshaler.
+// UnmarshalYAML implements yaml.Unmarshaler. It accepts a list of integers or a comma-separated string.
 func (t *IntermediateSeriesBreadcrumbThresholds) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var values []int
+	if err := unmarshal(&values); err == nil {
+		return t.setInts(values)
+	}
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
