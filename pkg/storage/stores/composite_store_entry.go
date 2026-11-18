@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -197,7 +198,23 @@ func (c *storeEntry) GetShards(
 }
 
 func (c *storeEntry) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
-	return c.indexReader.HasForSeries(from, through)
+	series, ok := c.indexReader.HasForSeries(from, through)
+	if !ok {
+		return nil, false
+	}
+	return sharding.ForSeriesFunc(func(ctx context.Context, userID string, filter tsdb_index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdb_index.ChunkMeta) bool, matchers ...*labels.Matcher) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+		if err != nil {
+			return err
+		}
+		if shortcut {
+			return nil
+		}
+		return series.ForSeries(ctx, userID, filter, from, through, fn, matchers...)
+	}), true
 }
 
 func (c *storeEntry) HasChunkSizingInfo(from, through model.Time) bool {

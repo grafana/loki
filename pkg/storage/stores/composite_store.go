@@ -292,16 +292,23 @@ func sumShardBytes(r *logproto.ShardsResponse) uint64 {
 }
 
 func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
-	var impls []sharding.ForSeries
+	type periodReader struct {
+		from, through model.Time
+		series        sharding.ForSeries
+	}
+	var readers []periodReader
+	hasStores := false
 	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+		hasStores = true
 		impl, ok := store.HasForSeries(from, through)
 		if ok {
-			impls = append(impls, impl)
+			readers = append(readers, periodReader{from, through, impl})
 		}
 		return nil
 	})
 
-	if len(impls) == 0 {
+	// With no stores in range, the old chunk lookup returned an empty result.
+	if hasStores && len(readers) == 0 {
 		return nil, false
 	}
 
@@ -319,8 +326,11 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 			) (stop bool),
 			matchers ...*labels.Matcher,
 		) error {
-			for _, impl := range impls {
-				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
+			for _, reader := range readers {
+				if from <= through && (through < reader.from || from > reader.through) {
+					continue
+				}
+				if err := reader.series.ForSeries(ctx, userID, fpFilter, max(from, reader.from), min(through, reader.through), fn, matchers...); err != nil {
 					return err
 				}
 			}
