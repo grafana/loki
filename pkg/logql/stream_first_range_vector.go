@@ -50,6 +50,9 @@ type streamFirstRangeVectorIterator struct {
 	grouping     *syntax.Grouping
 	sortedGroups []string
 
+	// counter counts the series the iterator holds. It is nil when the job has no counter.
+	counter *intermediateSeriesCounter
+
 	loaded bool
 	series map[string]*accumulatedSeries
 	// outputs holds the grouping key of every output series the iterator has a series for.
@@ -75,6 +78,9 @@ type streamFirstRangeVectorIterator struct {
 //
 // A series that adds an output series beyond maxSeries fails the query. A Logs Drilldown request
 // instead keeps the output series it has and gets a warning.
+//
+// Every series the iterator holds counts against the intermediate series counter of ctx until
+// Close.
 func newStreamFirstRangeVectorIterator(
 	ctx context.Context,
 	it iter.PeekingSampleIterator,
@@ -114,6 +120,7 @@ func newStreamFirstRangeVectorIterator(
 		partialResultsAllowed: httpreq.IsLogsDrilldownRequest(ctx),
 		keepsErroredLines:     keepsErroredLines,
 		metadata:              metadata.FromContext(ctx),
+		counter:               intermediateSeriesCounterFromContext(ctx),
 		series:                map[string]*accumulatedSeries{},
 		outputs:               map[uint64]struct{}{},
 		currStepIdx:           -1,
@@ -155,7 +162,11 @@ func (r *streamFirstRangeVectorIterator) At() (int64, StepResult) {
 	return ts, SampleVector(r.currStepResult)
 }
 
+// Close releases the series the iterator reserved, so the job counter reflects what is held now.
+// Clearing r.series makes a repeated Close release nothing.
 func (r *streamFirstRangeVectorIterator) Close() error {
+	r.counter.Release(len(r.series))
+	clear(r.series)
 	return r.it.Close()
 }
 
@@ -236,6 +247,7 @@ func (r *streamFirstRangeVectorIterator) windowRange(ts int64) (lo, hi int, ok b
 //   - The series carries __error__ and the query does not keep errored lines.
 //   - The series adds an output series beyond the series limit, and the request does not allow
 //     partial results.
+//   - Holding the series takes the intermediate series counter over its limit.
 func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accumulatedSeries, error) {
 	if s, ok := r.series[lbs]; ok {
 		return s, nil
@@ -269,6 +281,9 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 		r.outputs[output] = struct{}{}
 	}
 
+	if err := r.counter.Reserve(1); err != nil {
+		return nil, err
+	}
 	s := &accumulatedSeries{metric: metric, steps: r.newAccumulator(r.lastStepIdx + 1)}
 	r.series[lbs] = s
 	return s, nil
