@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -41,6 +42,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -3128,6 +3130,69 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
+func TestDistributor_PushIngestionBlockedWriteFailureLog(t *testing.T) {
+	blockUntil := time.Now().Add(time.Hour)
+
+	for _, tc := range []struct {
+		name             string
+		blockStatusCode  int
+		expectError      bool
+		expectFailureLog bool
+	}{
+		{
+			name:            "blocked with status code 200 discards without a write failure log",
+			blockStatusCode: http.StatusOK,
+		},
+		{
+			name:             "blocked with a failure status code logs a write failure",
+			blockStatusCode:  456,
+			expectError:      true,
+			expectFailureLog: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.BlockIngestionUntil = flagext.Time(blockUntil)
+			limits.BlockIngestionStatusCode = tc.blockStatusCode
+
+			distributors, _ := prepareButDontStart(t, 1, 5, limits, nil)
+
+			buf := bytes.NewBuffer(nil)
+			distributors[0].writeFailuresManager = writefailures.NewManager(
+				log.NewLogfmtLogger(buf),
+				prometheus.NewRegistry(),
+				writefailures.Cfg{LogRate: loki_flagext.ByteSize(1000)},
+				runtime.DefaultTenantConfigs(),
+				"distributor",
+			)
+			startAndWaitRunningDistributors(t, distributors)
+
+			discarded := validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestion, "test", "0", "", constants.Loki)
+			before := testutil.ToFloat64(discarded)
+
+			response, err := distributors[0].Push(ctx, makeWriteRequest(1, 1024))
+
+			if tc.expectError {
+				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", blockUntil.Format(time.RFC3339), tc.blockStatusCode)
+				require.ErrorContains(t, err, expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, success, response)
+			}
+
+			// The drop is counted as discarded either way; only the error log differs.
+			require.Greater(t, testutil.ToFloat64(discarded), before)
+
+			if tc.expectFailureLog {
+				require.Contains(t, buf.String(), "write operation failed")
+			} else {
+				require.NotContains(t, buf.String(), "write operation failed")
 			}
 		})
 	}
