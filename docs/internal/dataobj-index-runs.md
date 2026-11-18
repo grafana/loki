@@ -4,7 +4,7 @@ An index run is a set of index objects that queries and compaction read as one l
 The dataobj-compactor writes the output of an index merge as a run of index objects cut by size,
 instead of one large index object.
 This document describes the design decisions behind runs: what a run is, the rules that keep runs
-correct, and the order in which the parts must be deployed.
+correct, and how queries and compaction read them.
 
 ## The problem
 
@@ -15,7 +15,10 @@ As compaction goes on, these index objects grow without limit.
 A large index object costs a query more than it needs.
 A query reads only the postings of the columns that its matchers and predicates name.
 But it opens every postings section of the index object to find them.
-A large index object also costs the compactor memory and time, because every merge rewrites it.
+A large index object also costs the compactor time, because every merge rewrites it.
+And the compactor builds the whole output of a merge before it can flush and upload it.
+So the memory of a merge grows with the size of its output.
+An index object without a size limit eventually needs more memory than a compactor has.
 
 ## The idea
 
@@ -176,48 +179,6 @@ A section whose columns are all of types that a reader does not know is not empt
 So a newer format cannot make the deletion sweep skip rows.
 See `stats.LayoutSectionBuilder`, `Section.Empty` and `Section.ObjectPathColumn` in
 `pkg/dataobj/sections/stats`.
-
-## Rollout order
-
-Each part must run on every component before the next part writes new data.
-Older code either drops the new data or fails on it.
-
-1. **Queries read runs** as one index.
-   A query that reads the index objects of a run as separate indexes drops results.
-2. **The ToC records runs.**
-   A ToC writer rewrites the kept entries of a ToC, and an older writer drops the columns that it does
-   not know.
-   A dropped `run_id` would split a run into independent indexes.
-3. **Compaction plans whole runs.**
-   An older planner would merge or replace part of a run.
-4. **Readers accept empty stats sections.**
-   An older reader fails to read the rows of an empty section.
-5. **Index merge cuts its output into runs.**
-
-Within one release, a coordinator must update before its workers.
-A new coordinator reads the result of an older worker as index objects with unknown key bounds.
-An older coordinator cannot read the result of a newer worker.
-Those tasks fail and run again until the coordinator updates.
-
-## Planned changes
-
-- **Merging runs one index object at a time.**
-  The index objects of a run cover disjoint key ranges.
-  So a merge can read a run as one stream that opens its index objects in key order.
-  It then holds only the current index object of each run open, instead of every index object of
-  every source run.
-- **Key bounds from log merge.**
-  Log merge builds its index with a builder that sorts postings only when it flushes.
-  So it reports no key bounds, and its output is a run of one index object with unknown bounds.
-  It will report key bounds too, and then every compacted entry will require them.
-- **A run check in queries.**
-  A query will check `run_length` after it filters the ToC by time and before it drops index objects
-  by key.
-  It then fails on a run that the ToC lists only in part.
-- **Indexes without a layout.**
-  Legacy indexes record no layout, and compaction merges them only with each other.
-  Loki will drop support for them.
-  Then a missing layout is an error everywhere.
 
 ## Open questions
 
