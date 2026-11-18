@@ -19,9 +19,12 @@ import (
 //
 // The first error from work or yield cancels the context that work receives,
 // skips the tasks that did not start, and becomes the return value. After the
-// first error, yield does not run again. A parallelism below 1 runs the tasks
-// one at a time. n must not be negative. ForEachOrdered returns after every
-// started task returns.
+// first error, yield does not run again. work does not start once the context
+// is done, but a task that is already running sees the cancellation only
+// through its context.
+//
+// A parallelism below 1 runs the tasks one at a time. n must not be negative.
+// ForEachOrdered returns after every started task returns.
 func ForEachOrdered[T any](
 	ctx context.Context,
 	n, parallelism int,
@@ -44,7 +47,16 @@ func ForEachOrdered[T any](
 			case <-gctx.Done():
 				return gctx.Err()
 			}
+			// A slot and the cancellation can be ready together, and select
+			// picks one at random.
+			if err := gctx.Err(); err != nil {
+				return err
+			}
 			g.Go(func() error {
+				// The context can end between the start of the task and here.
+				if err := gctx.Err(); err != nil {
+					return err
+				}
 				result, err := work(gctx, i)
 				if err != nil {
 					return err

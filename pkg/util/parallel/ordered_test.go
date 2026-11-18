@@ -166,6 +166,22 @@ func TestForEachOrdered(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 	})
 
+	t.Run("starts no task when the context is canceled before the start", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		var started atomic.Int64
+
+		err := ForEachOrdered(ctx, 1000, 1000,
+			func(context.Context, int) (int, error) {
+				started.Add(1)
+				return 0, nil
+			},
+			ignoreResult)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, started.Load())
+	})
+
 	t.Run("returns the context error and yields nothing when the context is canceled while the tasks run", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
