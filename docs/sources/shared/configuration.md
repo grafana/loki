@@ -5324,6 +5324,13 @@ engine:
   # CLI flag: -querier.engine.enable-histograms
   [enable_histograms: <boolean> | default = false]
 
+  # Experimental: Evaluate the max_query_series cut-off without failing queries
+  # early, and count the queries where it would have fired in
+  # loki_logql_series_cutoff_dry_run_total. Has no effect when
+  # max_query_series_cutoff is enabled.
+  # CLI flag: -querier.engine.max-query-series-cutoff-dry-run
+  [max_query_series_cutoff_dry_run: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
