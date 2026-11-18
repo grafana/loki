@@ -148,9 +148,8 @@ func (s *QueryStats) WorkerFinished() {
 	s.activeWorkers.Add(-1)
 }
 
-// SetWallTime stores the wall time of the whole hint lookup, measured by the
-// caller. It is the denominator of EffectiveConcurrency, which is 0 until it is
-// set. Merge and FromProtoStats do not carry it.
+// SetWallTime stores the lookup's wall time, the denominator of
+// EffectiveConcurrency (0 until set). Merge and FromProtoStats do not carry it.
 func (s *QueryStats) SetWallTime(d time.Duration) {
 	if s == nil {
 		return
@@ -278,10 +277,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	}
 }
 
-// FromProtoStats reconstructs a QueryStats accumulator from the wire type. It
-// does not restore EffectiveConcurrency or wall time: the sender's ratio uses
-// the sender's wall time, so the caller sets its own with SetWallTime and
-// Snapshot recomputes the ratio from TotalIOWait.
+// FromProtoStats rebuilds an accumulator from the wire type. It does not restore
+// wall time or EffectiveConcurrency; the caller sets its own wall time.
 func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s := NewQueryStats()
 	if p == nil {
