@@ -47,27 +47,6 @@ func WithDataObjHeadPrefetchBytes(bytes int64) DataObjStoreOption {
 	return func(s *DataObjStore) { s.prefetchBytes = bytes }
 }
 
-// DefaultDataObjRangeConfig is how a [DataObjStore] parallelises and coalesces its byte-range
-// reads, unless [WithDataObjRangeConfig] sets another config.
-//
-// It differs from [rangeio.DefaultConfig], which other components use. Replays of recorded logs
-// section reads against object storage, from inside the storage region, gave these results
-// against rangeio.DefaultConfig:
-//   - The 128 KiB coalesce size reads 0.9% more bytes than the read asks for, against 5.7%.
-//   - The 32 MiB maximum range size makes fewer requests per read, although the smaller
-//     coalesce size alone makes more.
-//   - The p99 latency of a read is about 10% lower. The p50 latency does not change.
-//
-// A large maximum range size needs the higher parallelism. ReadRanges splits ranges until it has
-// MaxParallelism of them, so a low parallelism leaves large requests, and those raised the p99
-// latency by a third.
-var DefaultDataObjRangeConfig = rangeio.Config{
-	MaxParallelism: 16,
-	CoalesceSize:   128 << 10,
-	MaxRangeSize:   32 << 20,
-	MinRangeSize:   1 << 20,
-}
-
 // WithDataObjRangeConfig sets how byte-range reads under the dataset layer are parallelised and
 // coalesced.
 func WithDataObjRangeConfig(cfg rangeio.Config) DataObjStoreOption {
@@ -132,7 +111,7 @@ func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastor
 		metrics:        dataobjread.NewMetrics(reg),
 		prefetchBytes:  dataobjread.DefaultHeadPrefetchBytes,
 		maxConcurrency: dataobjread.DefaultMaxConcurrency,
-		rangeConfig:    DefaultDataObjRangeConfig,
+		rangeConfig:    rangeio.DefaultConfig,
 	}
 	for _, opt := range opts {
 		opt(s)
