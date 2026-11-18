@@ -132,6 +132,8 @@ type Config struct {
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 
+	GETRequestForFlushAndShutdownEnabled bool `yaml:"get_request_for_flush_and_shutdown_enabled"`
+
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
 	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled."`
@@ -165,6 +167,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.BoolVar(&cfg.GETRequestForFlushAndShutdownEnabled, "ingester.get-request-for-flush-and-shutdown-enabled", true, "Accept GET requests on the /flush and /ingester/shutdown endpoints. Both endpoints change the ingester's state, so a GET request, for example from a crawler or a read-only client, can flush or shut down the ingester. Set to false to accept only POST requests. Kubernetes httpGet lifecycle hooks send GET requests and need this option enabled.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "Deprecated: use the per-tenant limit -limits.delegate-stream-limits-enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled.")
 }

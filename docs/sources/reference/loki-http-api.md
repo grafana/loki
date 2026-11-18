@@ -1360,6 +1360,10 @@ waiting for it to complete.
   If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
   Requests without `flush_index` are never rejected because of an index flush in progress.
 
+Loki also accepts `GET` on this endpoint, unless you set
+`-ingester.get-request-for-flush-and-shutdown-enabled` to `false`.
+Use `POST`, because the request changes the ingester's state.
+
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## Flush in-memory chunks for a tenant (experimental)
@@ -1490,7 +1494,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 ## Flush in-memory chunks and shut down
 
 ```bash
-GET, POST /ingester/shutdown
+POST /ingester/shutdown
 ```
 
 `/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
@@ -1510,6 +1514,10 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 
 This handler, in contrast to the deprecated `/ingester/flush_shutdown` handler, terminates the Loki process by default.
 This behaviour can be changed by setting the `terminate` query parameter to `false`.
+
+Loki also accepts `GET` on this endpoint, unless you set
+`-ingester.get-request-for-flush-and-shutdown-enabled` to `false`.
+Use `POST`, because the request changes the ingester's state.
 
 In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
 

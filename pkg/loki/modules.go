@@ -16,6 +16,7 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
@@ -917,28 +918,48 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
+	registerIngesterHTTPRoutes(t.Server.HTTP, t.Ingester, t.Cfg.Ingester.GETRequestForFlushAndShutdownEnabled)
+	return t.Ingester, nil
+}
+
+// ingesterHTTPHandlers is the part of ingester.Interface that is served over HTTP.
+type ingesterHTTPHandlers interface {
+	FlushHandler(w http.ResponseWriter, r *http.Request)
+	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
+	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	PrepareShutdown(w http.ResponseWriter, r *http.Request)
+	PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request)
+}
+
+// registerIngesterHTTPRoutes registers the ingester's operator endpoints. GET on
+// /flush and /ingester/shutdown is accepted only when getForFlushAndShutdown is
+// true, because both endpoints change state.
+func registerIngesterHTTPRoutes(router *mux.Router, i ingesterHTTPHandlers, getForFlushAndShutdown bool) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
+	flushAndShutdownMethods := []string{"POST"}
+	if getForFlushAndShutdown {
+		flushAndShutdownMethods = append(flushAndShutdownMethods, "GET")
+	}
+	router.Methods(flushAndShutdownMethods...).Path("/flush").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.FlushHandler)),
 	)
 	// Tenant-scoped flush (experimental). The tenant is the "tenant" param rather than
 	// X-Scope-OrgID because the caller is an operator, so it carries no auth
 	// middleware, like /flush.
-	t.Server.HTTP.Methods("POST").Path("/flush/tenant").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler)),
+	router.Methods("POST").Path("/flush/tenant").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.FlushTenantHandler)),
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
+	router.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.PrepareShutdown)),
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_partition_downscale").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PreparePartitionDownscaleHandler)),
+	router.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_partition_downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.PreparePartitionDownscaleHandler)),
 	)
-	t.Server.HTTP.Methods("POST", "GET").Path("/ingester/shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
+	router.Methods(flushAndShutdownMethods...).Path("/ingester/shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.ShutdownHandler)),
 	)
-	return t.Ingester, nil
 }
 
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {
