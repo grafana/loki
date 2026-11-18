@@ -21,6 +21,12 @@ func (xs FingerprintOffsets) Range(fpFilter FingerprintFilter) (minOffset, maxOf
 		minOffset = xs[lower-1][0]
 	}
 
+	// MaxUint64 is also the sentinel for an unbounded upper endpoint. When
+	// Match includes it, do not stop before a sample with that fingerprint.
+	if through == math.MaxUint64 && fpFilter.Match(math.MaxUint64) {
+		return minOffset, math.MaxUint64
+	}
+
 	upper := sort.Search(len(xs), func(i int) bool {
 		return xs[i][1] >= uint64(through)
 	})

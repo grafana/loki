@@ -367,7 +367,24 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 }
 
 func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
-	return c.idx, true
+	return sharding.ForSeriesFunc(func(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool, matchers ...*labels.Matcher) error {
+		cleaned, shard, err := cleanMatchers(matchers...)
+		if err != nil {
+			return err
+		}
+		if shard == nil {
+			return c.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, cleaned...)
+		}
+		if fpFilter == nil {
+			fpFilter = shard
+		}
+		return c.idx.ForSeries(ctx, userID, fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) bool {
+			if !shard.Match(fp) {
+				return false
+			}
+			return fn(ls, fp, chks)
+		}, cleaned...)
+	}), true
 }
 
 func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {

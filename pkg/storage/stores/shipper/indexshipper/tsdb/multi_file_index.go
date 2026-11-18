@@ -164,7 +164,8 @@ func shardOverlaps(idx Index, fpFilter index.FingerprintFilter) bool {
 	}
 	fileFrom, fileThrough := sharded.FingerprintBounds()
 	queryFrom, queryThrough := fpFilter.GetFromThrough()
-	return fileFrom < queryThrough && queryFrom < fileThrough
+	// The final file range uses MaxUint64 as an unbounded endpoint.
+	return fileFrom < queryThrough && (queryFrom < fileThrough || fileThrough == math.MaxUint64)
 }
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {

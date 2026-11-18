@@ -260,6 +260,9 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 		defer scan.Close()
 
 		for p.Next() {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
 				return err
