@@ -497,6 +497,40 @@ func TestEngineOpts_ShouldReadBreadcrumbThresholdsFromYAML(t *testing.T) {
 	require.Equal(t, IntermediateSeriesBreadcrumbThresholds{5, 7}, opts.IntermediateSeriesBreadcrumbs)
 }
 
+func TestIntermediateSeriesBreadcrumbThresholds_ShouldUnmarshalFromYAML(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in      string
+		want    IntermediateSeriesBreadcrumbThresholds
+		wantErr bool
+	}{
+		"list":              {in: "[10, 50, 100]", want: IntermediateSeriesBreadcrumbThresholds{10, 50, 100}},
+		"block list":        {in: "\n  - 10\n  - 50", want: IntermediateSeriesBreadcrumbThresholds{10, 50}},
+		"empty list":        {in: "[]", want: nil},
+		"csv string":        {in: "\"10,50\"", want: IntermediateSeriesBreadcrumbThresholds{10, 50}},
+		"empty string":      {in: "\"\"", want: nil},
+		"single number":     {in: "10", want: IntermediateSeriesBreadcrumbThresholds{10}},
+		"negative in list":  {in: "[10, -1]", wantErr: true},
+		"zero in list":      {in: "[0]", wantErr: true},
+		"non-int in list":   {in: "[10, x]", wantErr: true},
+		"negative in csv":   {in: "\"10,-1\"", wantErr: true},
+		"map is not a list": {in: "{a: 1}", wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := IntermediateSeriesBreadcrumbThresholds{1}
+			err := yaml.Unmarshal([]byte("v: "+tc.in+"\n"), &struct {
+				V *IntermediateSeriesBreadcrumbThresholds `yaml:"v"`
+			}{V: &got})
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Equal(t, IntermediateSeriesBreadcrumbThresholds{1}, got, "an invalid value must not change the thresholds")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestEngine_ShouldLogOneBreadcrumbForEachThresholdAJobCrosses(t *testing.T) {
 	var (
 		start = time.Unix(60, 0)
