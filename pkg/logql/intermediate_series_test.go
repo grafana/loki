@@ -383,6 +383,46 @@ func TestStreamRangeVectorIterator_ShouldNotReleaseAReservationItNeverMade(t *te
 	require.Equal(t, int64(1), counter.Current(), "the reservation belongs to another iterator")
 }
 
+func TestStreamRangeVectorIterator_ShouldNotRaiseThePeakForALabelSetThatFailsToParse(t *testing.T) {
+	var (
+		start = time.Unix(10, 0)
+		end   = time.Unix(30, 0)
+		count = &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	)
+	newSeries := func(lbs string, hash uint64, ts time.Time) iter.SampleIterator {
+		return iter.NewSeriesIterator(logproto.Series{
+			Labels:     lbs,
+			Samples:    []logproto.Sample{{Timestamp: ts.UnixNano(), Value: 1}},
+			StreamHash: hash,
+		})
+	}
+	good := func() iter.SampleIterator { return newSeries(`{app="a"}`, 1, start.Add(-time.Second)) }
+	bad := func() iter.SampleIterator { return newSeries("not a label set", 2, start.Add(-500*time.Millisecond)) }
+
+	for name, tc := range map[string]struct {
+		series   func() []iter.SampleIterator
+		wantPeak int64
+	}{
+		"as the first label":  {series: func() []iter.SampleIterator { return []iter.SampleIterator{bad()} }, wantPeak: 0},
+		"after a valid label": {series: func() []iter.SampleIterator { return []iter.SampleIterator{good(), bad()} }, wantPeak: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			counter := newIntermediateSeriesCounter(0)
+			it := iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator(tc.series()))
+			rangeIt, err := newTimestampFirstRangeVectorIterator(it, count, (2 * time.Second).Nanoseconds(), (5 * time.Second).Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, iteratorLimits{counter: counter})
+			require.NoError(t, err)
+			require.IsType(t, &streamRangeVectorIterator{}, rangeIt)
+
+			require.ErrorContains(t, drain(rangeIt), "failed to parse metric")
+			require.Equal(t, tc.wantPeak, counter.Current())
+			require.Equal(t, tc.wantPeak, counter.Peak())
+
+			require.NoError(t, rangeIt.Close())
+			require.Zero(t, counter.Current())
+		})
+	}
+}
+
 func TestStreamRangeVectorIterator_ShouldCountLabelSetsPerStep(t *testing.T) {
 	const numSeries = 4
 	var (
