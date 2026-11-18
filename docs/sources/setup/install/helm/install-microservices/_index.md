@@ -92,12 +92,12 @@ If this is the first time you have deployed the Loki Helm chart since the move t
        storage:
          type: s3
          bucketNames:
-           chunks: FIXME
-           ruler: FIXME
+           chunks: <CHUNKS-BUCKET>
+           ruler: <RULER_BUCKET>
          s3:
-           endpoint: FIXME
-           accessKeyId: FIXME
-           secretAccessKey: FIXME
+           endpoint: <S3-ENDPOINT>
+           accessKeyId: <KEY-ID>
+           secretAccessKey: <ACCESS-KEY>
 
      deploymentMode: Distributed
 
@@ -196,7 +196,7 @@ If this is the first time you have deployed the Loki Helm chart since the move t
 
 ## Object Storage Configuration
 
-We recommend configuring Loki with an object storage provider for production deployments. The following examples show how to configure Loki with different object storage providers:
+You must configure Loki with an object storage provider for production deployments. The following examples show how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).

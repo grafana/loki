@@ -147,12 +147,12 @@ loki:
   storage:
     type: s3
     bucketNames:
-      chunks: FIXME
-      ruler: FIXME
+      chunks: <CHUNKS-BUCKET>
+      ruler: <RULER_BUCKET>
     s3:
-      endpoint: FIXME
-      accessKeyId: FIXME
-      secretAccessKey: FIXME
+      endpoint: <S3-ENDPOINT>
+      accessKeyId: <KEY-ID>
+      secretAccessKey: <ACCESS-KEY>
   pattern_ingester:
     enabled: true
   limits_config:
@@ -196,7 +196,7 @@ bloomGateway:
   replicas: 0
 ```
 
-In this configuration, update `commonConfig.replication_factor` and `singleBinary.replicas` to your desired number of replicas. This configuration uses S3-compatible object storage. Replace the `FIXME` placeholders with your own S3-compatible endpoint and credentials. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
+In this configuration, update `commonConfig.replication_factor` and `singleBinary.replicas` to your desired number of replicas. This configuration uses S3-compatible object storage. Replace the placeholders with your own S3-compatible endpoint and credentials. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
 
 ## Deploying the Helm chart for development and testing
 
