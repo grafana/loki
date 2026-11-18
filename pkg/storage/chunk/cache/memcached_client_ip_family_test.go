@@ -32,6 +32,31 @@ func TestIPFamilyNetwork(t *testing.T) {
 	}
 }
 
+func TestTCPResolverForFamily(t *testing.T) {
+	for _, tc := range []struct {
+		family  string
+		address string
+		wantErr bool
+	}{
+		{family: "", address: "127.0.0.1:11211"},
+		{family: "", address: "[::1]:11211"},
+		{family: "ipv4", address: "127.0.0.1:11211"},
+		{family: "ipv4", address: "[::1]:11211", wantErr: true},
+		{family: "ipv6", address: "[::1]:11211"},
+		{family: "ipv6", address: "127.0.0.1:11211", wantErr: true},
+	} {
+		t.Run(tc.family+" "+tc.address, func(t *testing.T) {
+			addr, err := tcpResolverForFamily(tc.family)("tcp", tc.address)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.address, addr.String())
+		})
+	}
+}
+
 func TestMemcachedClientResolveServers(t *testing.T) {
 	records := map[string][]net.IP{
 		"memcached-0.memcached.svc": {net.ParseIP("10.0.0.1")},

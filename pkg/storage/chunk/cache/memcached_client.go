@@ -120,7 +120,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = jumphash.DefaultSelector("memcached")
+		selector = jumphash.NewSelector("memcached", net.ResolveUnixAddr, tcpResolverForFamily(cfg.IPFamily))
 	} else {
 		selector = &memcache.ServerList{}
 	}
@@ -299,9 +299,19 @@ func (c *memcachedClient) updateMemcacheServers() error {
 	}
 
 	if c.cfg.IPFamily != "" {
-		var err error
-		if servers, err = c.resolveServers(ctx, servers); err != nil {
+		if _, err := ipFamilyNetwork(c.cfg.IPFamily); err != nil {
 			return err
+		}
+		// The consistent hash selector sorts servers by name and resolves them
+		// with a family-specific resolver, so the names have to stay as they
+		// are. Replacing them with IPs would reorder the ring whenever a pod
+		// gets a new IP. The plain server list keeps the input order, so it's
+		// safe to resolve the names here.
+		if !c.cfg.ConsistentHash {
+			var err error
+			if servers, err = c.resolveServers(ctx, servers); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -339,6 +349,24 @@ func ipFamilyNetwork(family string) (string, error) {
 		return "ip6", nil
 	default:
 		return "", fmt.Errorf("unsupported memcached ip_family %q, supported values are ipv4 and ipv6", family)
+	}
+}
+
+// tcpResolverForFamily returns the TCP resolver the consistent hash selector
+// uses for the given IP family. "tcp4" and "tcp6" only look up A or AAAA
+// records respectively.
+func tcpResolverForFamily(family string) jumphash.TCPResolver {
+	switch family {
+	case "ipv4":
+		return func(_, address string) (*net.TCPAddr, error) {
+			return net.ResolveTCPAddr("tcp4", address)
+		}
+	case "ipv6":
+		return func(_, address string) (*net.TCPAddr, error) {
+			return net.ResolveTCPAddr("tcp6", address)
+		}
+	default:
+		return net.ResolveTCPAddr
 	}
 }
 
