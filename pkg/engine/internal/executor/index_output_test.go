@@ -51,7 +51,7 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 			require.NoError(t, out.appendPostingsRow(t.Context(), labelPostingsRow(column)))
 		}
 
-		artifact, err := out.artifact("indexes/out")
+		artifact, err := out.currentArtifact("indexes/out")
 		require.NoError(t, err)
 		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "zone", artifact.PostingKeys.Max().ColumnName)
@@ -64,7 +64,7 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		}))
 		require.NoError(t, out.appendPostingsRow(t.Context(), labelPostingsRow("app")))
 
-		artifact, err := out.artifact("indexes/out")
+		artifact, err := out.currentArtifact("indexes/out")
 		require.NoError(t, err)
 		require.Equal(t, postings.Key{Kind: postings.KindBloom, ColumnName: "trace_id"}, artifact.PostingKeys.Min())
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
@@ -77,10 +77,18 @@ func TestIndexOutput_AppendPostingsRow(t *testing.T) {
 		row.ObjectPath = "logs/b"
 		require.NoError(t, out.appendPostingsRow(t.Context(), row))
 
-		artifact, err := out.artifact("indexes/out")
+		artifact, err := out.currentArtifact("indexes/out")
 		require.NoError(t, err)
 		require.Equal(t, "app", artifact.PostingKeys.Min().ColumnName)
 		require.Equal(t, "app", artifact.PostingKeys.Max().ColumnName)
+	})
+
+	t.Run("returns an error when a postings row follows a stats row", func(t *testing.T) {
+		out, err := newTestExecutorContext(t, objstore.NewInMemBucket()).newIndexOutput("acme", splitOutputLayout)
+		require.NoError(t, err)
+		t.Cleanup(out.reset)
+		require.NoError(t, out.appendStat(stats.Stat{ObjectPath: "logs/a", SortSchema: "label:service", Labels: map[string]string{"service": "a"}}))
+		require.ErrorContains(t, out.appendPostingsRow(t.Context(), labelPostingsRow("app")), "after a stats row")
 	})
 
 	t.Run("returns an error when a row sorts before the previous row", func(t *testing.T) {
@@ -232,10 +240,10 @@ func TestIndexOutput_Finish(t *testing.T) {
 
 	t.Run("reports only the rows appended after a finish", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		out, err := newTestExecutorContext(t, bucket).newIndexOutput("acme", streams.Layout{})
+		out, err := newTestExecutorContext(t, bucket).newIndexOutput("acme", splitOutputLayout)
 		require.NoError(t, err)
 		t.Cleanup(out.reset)
-		require.NoError(t, out.appendPostingsRow(ctx, labelPostingsRow("env")))
+		appendRows(t, out, []string{"env"}, []string{"logs/a"})
 		_, _, err = out.finish(ctx)
 		require.NoError(t, err)
 
