@@ -6995,13 +6995,11 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
-    # Experimental: Maximum number of requests this index gateway client may
-    # have in flight at once. Requests arriving when the limit is reached are
-    # rejected immediately with an HTTP 503 status instead of waiting, which
-    # bounds the resources this process commits to an index gateway that is
-    # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, so the process-wide number of in-flight
-    # requests can reach this value multiplied by the number of clients. 0
+    # Experimental: Maximum number of concurrent RPCs this index gateway client
+    # can reserve across requests. Each request reserves available slots up
+    # front and reserves one slot for each part it can send in parallel. If no
+    # slots are available, the request is rejected immediately with HTTP 503.
+    # The limit applies per client, with one client per schema period. 0
     # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
