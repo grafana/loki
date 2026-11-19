@@ -76,7 +76,7 @@ func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Requ
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
-	clone.HintRanges = clipHintTimeRanges(r.HintRanges, s, e)
+	clone.HintRanges = logproto.ClipHintTimeRanges(r.HintRanges, s, e)
 	return &clone
 }
 
@@ -103,25 +103,6 @@ func (r *LokiRequest) WithDataObjOptions(options *logproto.DataObjOptions) *Loki
 	clone := *r
 	clone.DataObjOptions = options
 	return &clone
-}
-
-func clipHintTimeRanges(ranges []logproto.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
-	if len(ranges) == 0 {
-		return nil
-	}
-	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
-	for _, hint := range ranges {
-		if hint.Start.Before(start) {
-			hint.Start = start
-		}
-		if hint.End.After(end) {
-			hint.End = end
-		}
-		if hint.Start.Before(hint.End) {
-			clipped = append(clipped, hint)
-		}
-	}
-	return clipped
 }
 
 func (r *LokiRequest) LogToSpan(sp trace.Span) {
