@@ -55,6 +55,37 @@ func TestVolume(t *testing.T) {
 	}}, vol)
 }
 
+func TestGetStats(t *testing.T) {
+	hints := &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{Start: time.Unix(1, 0), End: time.Unix(2, 0)}}}
+	for _, tc := range []struct {
+		desc  string
+		hints *logproto.HintTimeRanges
+	}{
+		{desc: "without hints", hints: nil},
+		{desc: "with hints", hints: hints},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			want := &logproto.IndexStatsResponse{Streams: 1, Chunks: 2, Bytes: 3, Entries: 4}
+			indexQuerier := newIngesterQuerierMock()
+			indexQuerier.On("Stats", "test", model.Time(1000), model.Time(2000), tc.hints, mock.Anything).Return(want, nil)
+
+			gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, indexQuerier, nil, nil)
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			got, err := gateway.GetStats(ctx, &logproto.IndexStatsRequest{
+				From:       1000,
+				Through:    2000,
+				Matchers:   `{foo="bar"}`,
+				HintRanges: tc.hints,
+			})
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+			indexQuerier.AssertExpectations(t)
+		})
+	}
+}
+
 type indexQuerierMock struct {
 	IndexQuerier
 	util_test.ExtendedMock
@@ -62,6 +93,16 @@ type indexQuerierMock struct {
 
 func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
+}
+
+func (i *indexQuerierMock) Stats(_ context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*logproto.IndexStatsResponse, error) {
+	args := i.Called(userID, from, through, hints, matchers)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*logproto.IndexStatsResponse), args.Error(1)
 }
 
 func (i *indexQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, _ []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {

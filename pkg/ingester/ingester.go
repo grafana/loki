@@ -1499,7 +1499,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 			return instance.GetStats(ctx, req)
 		}),
 		f(func() (*logproto.IndexStatsResponse, error) {
-			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+			return i.store.Stats(ctx, user, req.From, req.Through, nil, matchers...)
 		}),
 	}
 	resps := make([]*logproto.IndexStatsResponse, len(jobs))

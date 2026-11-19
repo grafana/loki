@@ -116,7 +116,10 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	return a.mergeIngesterAndStoreChunks(userID, storeChunks, fetchers, ingesterChunks)
 }
 
-func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+// Stats returns the stats of the ingesters and the store. The hints only
+// filter the store's stats. The query-frontend adds the ingester window to the
+// hints, so the stats of both agree.
+func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
@@ -138,7 +141,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		}))
 	}
 	jobs = append(jobs, f(func() (*stats.Stats, error) {
-		stats, err := a.Store.Stats(ctx, userID, from, through, matchers...)
+		stats, err := a.Store.Stats(ctx, userID, from, through, hints, matchers...)
 		level.Debug(logger).Log(
 			append(
 				stats.LoggingKeyValues(),

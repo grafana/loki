@@ -30,7 +30,9 @@ type BaseReader interface {
 }
 
 type StatsReader interface {
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	// Stats returns the stats of the chunks matching matchers in [from, through].
+	// If hints is not nil, only chunks overlapping one of its ranges are counted.
+	Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 	GetShards(
 		ctx context.Context,
@@ -224,11 +226,11 @@ func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, user
 	return values, nil
 }
 
-func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	var sts *stats.Stats
 	if err := loki_instrument.TimeRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		sts, err = m.rw.Stats(ctx, userID, from, through, matchers...)
+		sts, err = m.rw.Stats(ctx, userID, from, through, hints, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

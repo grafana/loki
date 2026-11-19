@@ -188,8 +188,9 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	return resp, statResult, err
 }
 
-// IndexStatsHandler queries the index for the data statistics related to a query
-func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery) (*logproto.IndexStatsResponse, error) {
+// IndexStatsHandler queries the index for the data statistics related to a query.
+// If hints is not nil, only chunks overlapping one of its ranges are counted.
+func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery, hints *logproto.HintTimeRanges) (*logproto.IndexStatsResponse, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeStats))
 	defer timer.ObserveDuration()
 
@@ -197,7 +198,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
-	resp, err := q.querier.IndexStats(ctx, req)
+	resp, err := q.querier.IndexStats(ctx, req, hints)
 	if resp == nil {
 		// Some stores don't implement this
 		resp = &index_stats.Stats{}

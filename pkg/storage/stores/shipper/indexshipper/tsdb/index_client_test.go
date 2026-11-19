@@ -85,7 +85,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Equal(b, uint64(200), stats.Chunks)
 		require.Equal(b, uint64(200), stats.Entries)
@@ -149,9 +149,18 @@ func TestIndexClient_Stats(t *testing.T) {
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
+	hints := func(ranges ...[2]model.Time) *logproto.HintTimeRanges {
+		set := &logproto.HintTimeRanges{}
+		for _, r := range ranges {
+			set.Ranges = append(set.Ranges, logproto.HintTimeRange{Start: r[0].Time(), End: r[1].Time()})
+		}
+		return set
+	}
+
 	for _, tc := range []struct {
 		name               string
 		queryInterval      model.Interval
+		hints              *logproto.HintTimeRanges
 		expectedNumChunks  uint64
 		expectedNumEntries uint64
 		expectedNumStreams uint64
@@ -210,9 +219,52 @@ func TestIndexClient_Stats(t *testing.T) {
 				End:   indexStartToday + 3000,
 			},
 		},
+		{
+			name: "hints select one chunk of each series on both days",
+			queryInterval: model.Interval{
+				Start: indexStartYesterday,
+				End:   indexStartToday + 1000,
+			},
+			hints: hints(
+				[2]model.Time{indexStartYesterday + 5, indexStartYesterday + 6},
+				[2]model.Time{indexStartToday + 25, indexStartToday + 26},
+			),
+			expectedNumChunks:  3,
+			expectedNumEntries: 30,
+			expectedNumStreams: 2,
+			expectedNumBytes:   30 * 1024,
+		},
+		{
+			name: "hint ending where a chunk starts excludes it",
+			queryInterval: model.Interval{
+				Start: indexStartToday,
+				End:   indexStartToday + 1000,
+			},
+			hints:              hints([2]model.Time{indexStartToday + 15, indexStartToday + 20}),
+			expectedNumChunks:  1,
+			expectedNumEntries: 10,
+			expectedNumStreams: 1,
+			expectedNumBytes:   10 * 1024,
+		},
+		{
+			name: "empty hints count nothing",
+			queryInterval: model.Interval{
+				Start: indexStartYesterday,
+				End:   indexStartToday + 1000,
+			},
+			hints: hints(),
+		},
+		{
+			name: "hints outside the request count nothing",
+			queryInterval: model.Interval{
+				Start: indexStartToday,
+				End:   indexStartToday + 1000,
+			},
+			hints: hints([2]model.Time{indexStartToday + 2000, indexStartToday + 3000}),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stats, err := indexClient.Stats(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			stats, err := indexClient.Stats(context.Background(), "", tc.queryInterval.Start, tc.queryInterval.End, tc.hints, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedNumChunks, stats.Chunks)
 			require.Equal(t, tc.expectedNumEntries, stats.Entries)

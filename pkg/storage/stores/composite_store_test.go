@@ -53,7 +53,7 @@ func (m mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 

@@ -133,7 +133,9 @@ type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
-	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	// IndexStats returns the index stats of a query. If hints is not nil, only
+	// chunks overlapping one of its ranges are counted.
+	IndexStats(ctx context.Context, req *loghttp.RangeQuery, hints *logproto.HintTimeRanges) (*stats.Stats, error)
 	LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
@@ -150,7 +152,7 @@ type Store interface {
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 	GetShards(
 		ctx context.Context,
@@ -667,7 +669,7 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 	return ids, nil
 }
 
-func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery, hints *logproto.HintTimeRanges) (*stats.Stats, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -693,6 +695,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		userID,
 		model.TimeFromUnixNano(start.UnixNano()),
 		model.TimeFromUnixNano(end.UnixNano()),
+		hints,
 		matchers...,
 	)
 }

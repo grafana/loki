@@ -276,7 +276,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
 }
 
-func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*index_stats.Stats, error) {
+func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*index_stats.Stats, error) {
 	return nil, nil
 }
 
