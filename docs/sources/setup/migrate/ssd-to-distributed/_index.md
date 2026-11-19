@@ -27,6 +27,7 @@ In this guide, an AWS deployment is used as an example. However, the migration p
 Migrating from a simple scalable deployment to a distributed deployment with zero downtime is possible but requires careful planning. The following considerations should be taken into account:
 
 1. **Helm Deployment:** This guide assumes that you have deploying Loki using Helm. Other migration methods are possible but are not covered in this guide.
+1. **Loki version:** Loki 4.0 removes SSD mode. The `read`, `write`, and `backend` targets don't exist in Loki 4.x, so SSD pods can't run on a 4.x image. Run stage 1 and stage 2 on Loki 3.7 or a later 3.x release and [upgrade to Loki 4.0](#upgrade-to-loki-40) after the migration is complete. Don't set `loki.image.tag` to a 4.x version before then. If you don't set `loki.image.tag`, the Helm chart uses the Loki version of its `appVersion`. Check that this is a 3.x version.
 1. **Kubernetes Resources:** This migration method requires you to spin up distributed Loki pods before shutting down the SSD pods. This means that you need to have enough resources in your Kubernetes cluster to run both the SSD and distributed Loki pods at the same time.
 1. **Data:** No changes are required to your underlying data storage. Although data loss or corruption is unlikely, it is always recommended to back up your data before starting the migration process. If you are using a cloud provider you can take a snapshot/backup.
 1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana Logs Drilldown feature.
@@ -130,6 +131,8 @@ singleBinary:
 ## Stage 1: Deploying the Loki distributed components
 
 In this stage, we will deploy the distributed Loki components alongside the SSD components. We will also change the `deploymentMode` to `SimpleScalable<->Distributed`. The `SimpleScalable<->Distributed` migration mode allows for a zero-downtime transition between Simple Scalable and fully distributed architectures. During migration, both deployment types run simultaneously, sharing the same object storage backend.
+
+Run this stage on Loki 3.x. Don't change `loki.image.tag` to a 4.x version.
 
 The following table outlines which components take over the responsibilities of the SSD components:
 
@@ -271,7 +274,11 @@ To start the migration process:
 
 ## Stage 2: Transitioning to distributed components
 
-The final stage of the migration involves transitioning all traffic to the distributed components. This is done by scaling down the SSD components and swapping the `deploymentMode` to `Distributed`. To do this:
+The final stage of the migration involves transitioning all traffic to the distributed components. This is done by scaling down the SSD components and swapping the `deploymentMode` to `Distributed`.
+
+Run this stage on Loki 3.x as well. You upgrade to Loki 4.0 [after](#upgrade-to-loki-40) the deployment runs only distributed components.
+
+To transition all traffic to the distributed components:
 
 1. Create a copy of `values-migration.yaml` and name it `values-distributed.yaml`.
 
@@ -381,6 +388,29 @@ The final stage of the migration involves transitioning all traffic to the distr
     ```
 
 You should see all distributed components running and the SSD components have now been removed.
+
+## Upgrade to Loki 4.0
+
+After stage 2, the deployment runs only distributed components and you can upgrade to Loki 4.0. Before you upgrade, read the [upgrade notes for Loki 4.0](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#specific-considerations-before-upgrading-to-loki-40).
+
+The Helm chart renders a `storage_config.boltdb_shipper` block by default. Loki 4.0 removed BoltDB and fails to start with the error `field boltdb_shipper not found in type storage.Config`. To set the image version and remove the block:
+
+1. Create a file named `values-loki-4.yaml`.
+
+    ```yaml
+    loki:
+      image:
+        tag: "4.0.0"
+      storage_config:
+        # Removes the block that the chart renders by default
+        boltdb_shipper: null
+    ```
+
+1. Deploy the upgrade. Helm merges the two values files.
+
+    ```bash
+    helm upgrade --values values-distributed.yaml --values values-loki-4.yaml loki grafana-community/loki -n loki
+    ```
 
 ## What's next?
 
