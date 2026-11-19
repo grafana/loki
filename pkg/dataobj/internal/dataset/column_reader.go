@@ -165,6 +165,12 @@ func (cr *columnReader) readPage(ctx context.Context, alloc *memory.Allocator, c
 	if err != nil && !errors.Is(err, io.EOF) {
 		return arr, err
 	}
+
+	// An io.EOF before the last row of the page is an error. The next call
+	// would find the same page and read it again, without end.
+	if page := cr.ranges[cr.pageIndex]; err != nil && page.Contains(uint64(cr.nextRow)) {
+		return arr, fmt.Errorf("page ended at row %d of %d: %w (%v)", uint64(cr.nextRow)-page.Start, page.End-page.Start, io.ErrUnexpectedEOF, err)
+	}
 	return arr, nil
 }
 

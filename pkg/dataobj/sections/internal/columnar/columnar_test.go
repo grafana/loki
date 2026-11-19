@@ -1,14 +1,19 @@
 package columnar_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
@@ -38,7 +43,35 @@ func Test(t *testing.T) {
 		{Index: 0, Values: []dataset.Value{values[0]}},
 		{Index: 1, Values: []dataset.Value{values[1]}},
 	}
-	require.Equal(t, expectRows, readDataset(t, obj))
+	rows, err := readDataset(t, obj)
+	require.NoError(t, err)
+	require.Equal(t, expectRows, rows)
+}
+
+func TestOpen(t *testing.T) {
+	raw, section := serializeObject(t)
+	withoutMetadata := len(raw) - len(format.FileMagic) - int(section.DataSize()) - int(section.MetadataSize())
+
+	t.Run("returns an unexpected EOF error when the metadata region is missing", func(t *testing.T) {
+		_, err := readDataset(t, truncateObject(t, raw, withoutMetadata))
+
+		require.ErrorContains(t, err, "reading section metadata: read 0 of")
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		require.NotErrorIs(t, err, io.EOF)
+	})
+}
+
+func TestRowReader_Read(t *testing.T) {
+	raw, section := serializeObject(t)
+	withoutData := len(raw) - len(format.FileMagic) - int(section.DataSize())
+
+	t.Run("returns an unexpected EOF error when the data region is missing", func(t *testing.T) {
+		_, err := readDataset(t, truncateObject(t, raw, withoutData))
+
+		require.ErrorContains(t, err, fmt.Sprintf("reading column 0: read 0 of %d bytes at offset 0: unexpected EOF", section.DataSize()))
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		require.NotErrorIs(t, err, io.EOF)
+	})
 }
 
 func buildColumn(t *testing.T, tag string, opts dataset.BuilderOptions, values []dataset.Value) *dataset.MemColumn {
@@ -80,16 +113,54 @@ func buildObject(t *testing.T, columns []*dataset.MemColumn) *dataobj.Object {
 	return obj
 }
 
-func readDataset(t *testing.T, obj *dataobj.Object) []dataset.Row {
+// serializeObject returns the bytes of an object with one section, and the reader of that section.
+// The bytes are, in order: the header, the file metadata, the metadata region, the data region and
+// the magic.
+func serializeObject(t *testing.T) ([]byte, dataobj.SectionReader) {
 	t.Helper()
+
+	column := buildColumn(t, "test-column", testColumnOptions, []dataset.Value{
+		dataset.BinaryValue([]byte("Hello, world!")),
+		dataset.BinaryValue([]byte("Goodbye, world!")),
+	})
+	obj := buildObject(t, []*dataset.MemColumn{column})
+
+	rc, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	raw, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+
+	return raw, obj.Sections()[0].Reader
+}
+
+// truncateObject returns the object made of the first size bytes of raw.
+func truncateObject(t *testing.T, raw []byte, size int) *dataobj.Object {
+	t.Helper()
+
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw[:size]), int64(size))
+	require.NoError(t, err)
+	return obj
+}
+
+// readDataset reads the rows of the first section of obj. It returns the rows that it read before
+// the first error.
+func readDataset(t *testing.T, obj *dataobj.Object) ([]dataset.Row, error) {
+	t.Helper()
+
+	// The timeout makes a read that retries forever fail the test instead of hanging it.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 
 	rawSection := obj.Sections()[0]
 
 	dec, err := columnar.NewDecoder(rawSection.Reader, rawSection.Type.Version)
 	require.NoError(t, err)
 
-	sec, err := columnar.Open(t.Context(), rawSection.Tenant, dec)
-	require.NoError(t, err)
+	sec, err := columnar.Open(ctx, rawSection.Tenant, dec)
+	if err != nil {
+		return nil, err
+	}
 	require.Len(t, sec.Columns(), 1, "expected exactly one column")
 
 	// Convert our section into a dataset and read all rows.
@@ -100,21 +171,22 @@ func readDataset(t *testing.T, obj *dataobj.Object) []dataset.Row {
 		Dataset:          dset,
 		ProjectedColumns: dset.Columns(),
 	})
-	require.NoError(t, reader.Open(t.Context()))
+	if err := reader.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	var rows []dataset.Row
 	for {
 		buf := make([]dataset.Row, 128)
-		n, err := reader.Read(t.Context(), buf)
+		n, err := reader.Read(ctx, buf)
 		rows = append(rows, buf[:n]...)
 
-		if err != nil && errors.Is(err, io.EOF) {
-			break
+		if errors.Is(err, io.EOF) {
+			return rows, nil
 		} else if err != nil {
-			require.NoError(t, err)
+			return rows, err
 		}
 	}
-	return rows
 }
 
 // columnarBuilder is a [dataset.SectionBuilder] which builder a columnar
