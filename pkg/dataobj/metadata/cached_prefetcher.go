@@ -208,6 +208,14 @@ func (p *CachedPrefetcher) Stop() { p.cache.Stop() }
 //
 // It returns an error that wraps ErrNotPrefetchable when the layout is invalid, the region is too
 // large, or the cache fails and cannot answer the prefetch set.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [StatMetadataPrefetchRequestsToCache]
+//   - [StatMetadataPrefetchBytesFromCache]
+//   - [StatMetadataPrefetchRequestsToStorage]
+//   - [StatMetadataPrefetchBytesFromStorage]
+//
+// Only the caller that starts a shared load records the statistics of the load.
 func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (res PrefetchResponse, err error) {
 	var (
 		start   = time.Now()
@@ -222,7 +230,7 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 		}
 		p.successes.WithLabelValues(outcome).Inc()
 		p.duration.WithLabelValues(outcome).Observe(time.Since(start).Seconds())
-		p.responseBytes.Observe(float64(res.PrefetchedRanges.size()))
+		p.responseBytes.Observe(float64(res.PrefetchedRanges.DataBytes()))
 	}()
 
 	// A prefetch set that names too many columns reads every column.
@@ -284,6 +292,7 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 			ranges[i].Data = bytes.Clone(ranges[i].Data)
 		}
 	}
+
 	return PrefetchResponse{PrefetchedRanges: ranges}, nil
 }
 
@@ -312,6 +321,7 @@ func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, pat
 	}
 
 	found, bufs, _, fetchErr := p.cache.Fetch(ctx, keys)
+	recordPrefetchCacheLookup(ctx)
 	if fetchErr != nil && ctx.Err() == nil {
 		p.warn("data object metadata prefetcher lookup failed", path, fetchErr)
 	}
@@ -327,6 +337,7 @@ func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, pat
 			p.warn("data object metadata prefetcher group did not decode", path, err)
 		}
 	}
+	recordPrefetchCacheBytes(ctx, f.dataBytes())
 	return f, fetchErr
 }
 
@@ -502,6 +513,15 @@ func (f *fetchResult) has(id prefetchedRangesID) bool {
 // isEmpty reports whether the fetch found no group at all, and not the region.
 func (f *fetchResult) isEmpty() bool {
 	return len(f.ranges) == 0 && f.region == nil
+}
+
+// dataBytes returns the total data length of the groups and of the region that the fetch found.
+func (f *fetchResult) dataBytes() int64 {
+	n := int64(len(f.region))
+	for _, ranges := range f.ranges {
+		n += ranges.DataBytes()
+	}
+	return n
 }
 
 // addCacheItem decodes a cache item that holds the group id, and adds the group to the result. The

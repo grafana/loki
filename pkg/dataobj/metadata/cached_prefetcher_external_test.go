@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap/xcaptest"
 )
 
 // headBytes is the smallest first read of a cold open.
@@ -63,11 +64,16 @@ func TestCachedPrefetcher(t *testing.T) {
 				backend.resetCounts()
 				src := req.Source.(*testSource)
 				src.reset()
-				res, err := p.Prefetch(t.Context(), req)
+				ctx, recorded := xcaptest.NewRegion(t)
+				res, err := p.Prefetch(ctx, req)
 
 				require.NoError(t, err)
 				obj.requireMatches(t, res)
 				require.Equal(t, 1, backend.lookups())
+				require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToCache))
+				require.GreaterOrEqual(t, recorded(metadata.StatMetadataPrefetchBytesFromCache), res.PrefetchedRanges.DataBytes(), "the groups that the lookup returned hold the response")
+				require.Zero(t, recorded(metadata.StatMetadataPrefetchRequestsToStorage))
+				require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromStorage))
 				require.Zero(t, backend.sets())
 				require.Empty(t, src.calls())
 				counts := gatherPrefetcherCounts(t, reg)
@@ -234,14 +240,18 @@ func TestCachedPrefetcher(t *testing.T) {
 			backend.resetCounts()
 			src := req.Source.(*testSource)
 			src.reset()
-			res, err := p.Prefetch(t.Context(), req)
+			ctx, recorded := xcaptest.NewRegion(t)
+			res, err := p.Prefetch(ctx, req)
 
 			require.NoError(t, err)
 			obj.requireMatches(t, res)
 			calls := src.calls()
 			require.Len(t, calls, 1)
+			require.Positive(t, recorded(metadata.StatMetadataPrefetchBytesFromCache), "the lookup returned the groups that the cache still held")
 			require.Zero(t, calls[0].offset)
 			require.Positive(t, calls[0].length)
+			require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToStorage))
+			require.Equal(t, calls[0].length, recorded(metadata.StatMetadataPrefetchBytesFromStorage), "the exact read of the region")
 			require.Equal(t, 2, backend.sets(), "the load writes the group that it asked for and missed, and the region")
 			require.NotEmpty(t, backend.entry("region"), "the region was written back, so the next load can read it from the cache")
 			require.Equal(t, 1.0, gatherPrefetcherCounts(t, reg).cachePartialMisses)
@@ -260,8 +270,9 @@ func TestCachedPrefetcher(t *testing.T) {
 		backend := newFakeCache()
 		p, reg := newPrefetcherWithRegistry(t, backend, nil)
 		req := obj.request(prefetchSets["message"])
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		res, err := p.Prefetch(t.Context(), req)
+		res, err := p.Prefetch(ctx, req)
 
 		require.NoError(t, err)
 		obj.requireMatches(t, res)
@@ -269,6 +280,8 @@ func TestCachedPrefetcher(t *testing.T) {
 		require.Len(t, calls, 2)
 		require.Equal(t, readCall{offset: 0, length: headBytes}, calls[0])
 		require.Equal(t, int64(headBytes), calls[1].offset)
+		require.Equal(t, int64(len(calls)), recorded(metadata.StatMetadataPrefetchRequestsToStorage))
+		require.Equal(t, obj.metadataRegionEnd, recorded(metadata.StatMetadataPrefetchBytesFromStorage), "the head read and the tail read download the region")
 		for _, part := range []string{"fm", "core", "msg", "region", "col:"} {
 			require.NotEmpty(t, backend.entry(part), part)
 		}
@@ -319,12 +332,16 @@ func TestCachedPrefetcher(t *testing.T) {
 		backend.drop("fm")
 		req := obj.request(prefetchSets["message"])
 		req.Source.(*testSource).block = true
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, recorded := xcaptest.NewRegion(t)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		res, err := p.Prefetch(ctx, req)
 
 		require.NoError(t, err)
 		obj.requireMatches(t, res)
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataPrefetchRequestsToCache), "the lookup of the groups and the read of the region")
+		require.Greater(t, recorded(metadata.StatMetadataPrefetchBytesFromCache), obj.metadataRegionEnd, "the region, and the groups that the lookup returned")
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromStorage), "the blocked read downloads nothing")
 		require.NotEmpty(t, backend.entry("fm"), "the open wrote the file metadata group back")
 		require.Equal(t, 1.0, gatherPrefetcherCounts(t, reg).cachePartialMisses, "the other groups were in the cache")
 		require.Equal(t, 1.0, gatherRegionLoaderMetrics(t, reg).cacheSuccesses)
@@ -573,12 +590,15 @@ func TestCachedPrefetcher(t *testing.T) {
 		backend.failReads = true
 		p, reg := newPrefetcherWithRegistry(t, backend, nil)
 		req := obj.request(prefetchSets["message"])
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		_, err := p.Prefetch(t.Context(), req)
+		_, err := p.Prefetch(ctx, req)
 
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Empty(t, req.Source.(*testSource).calls(), "the open must not read the whole region")
 		require.Equal(t, map[string]float64{"cache_unavailable": 1}, gatherPrefetcherCounts(t, reg).failures)
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToCache), "a failed lookup counts")
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromCache))
 	})
 
 	t.Run("returns ErrNotPrefetchable and counts a cache timeout when the cache lookup times out", func(t *testing.T) {
@@ -612,14 +632,17 @@ func TestCachedPrefetcher(t *testing.T) {
 		warm.resetCounts()
 		p, reg := newPrefetcherWithRegistry(t, partialResultsCache{warm}, nil)
 		req := obj.request(prefetchSets["message"])
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		res, err := p.Prefetch(t.Context(), req)
+		res, err := p.Prefetch(ctx, req)
 
 		require.NoError(t, err)
 		obj.requireMatches(t, res)
 		require.Empty(t, req.Source.(*testSource).calls())
 		require.Zero(t, warm.sets())
 		require.Equal(t, 1.0, gatherPrefetcherCounts(t, reg).cacheHits)
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToCache))
+		require.Equal(t, res.PrefetchedRanges.DataBytes(), recorded(metadata.StatMetadataPrefetchBytesFromCache))
 	})
 
 	t.Run("a cache that fails to write does not fail the prefetch", func(t *testing.T) {
@@ -639,11 +662,16 @@ func TestCachedPrefetcher(t *testing.T) {
 		req := obj.request(prefetchSets["message"])
 		wantErr := errors.New("storage is down")
 		req.Source.(*testSource).err = wantErr
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		_, err := p.Prefetch(t.Context(), req)
+		_, err := p.Prefetch(ctx, req)
 
 		require.ErrorIs(t, err, wantErr)
 		require.Equal(t, map[string]float64{"storage_error": 1}, gatherPrefetcherCounts(t, reg).failures)
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataPrefetchRequestsToCache), "the lookup of the groups and the read of the region")
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromCache))
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToStorage), "a failed request counts")
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromStorage))
 	})
 
 	t.Run("reads a column that the prefetch set does not name from object storage and the other columns from memory", func(t *testing.T) {
@@ -1050,11 +1078,17 @@ type testSource struct {
 	reads []readCall
 }
 
+// ReadRange reads through an instrumented bucket, as the decoder does in production. So the reads record
+// the object-store statistics that the prefetcher takes its counts from.
 func (s *testSource) ReadRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
 	s.mu.Lock()
 	s.reads = append(s.reads, readCall{offset, length})
 	s.mu.Unlock()
 
+	return dataobj.NewInstrumentedBucketReader(sourceBucket{source: s}).GetRange(ctx, s.path, offset, length)
+}
+
+func (s *testSource) readRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
 	if s.gate != nil {
 		select {
 		case <-s.gate:
@@ -1108,6 +1142,18 @@ func (s *testSource) reset() {
 	defer s.mu.Unlock()
 	s.reads = nil
 }
+
+// sourceBucket is the bucket of a testSource. It serves only GetRange.
+type sourceBucket struct {
+	objstore.BucketReader
+	source *testSource
+}
+
+func (b sourceBucket) GetRange(ctx context.Context, _ string, offset, length int64) (io.ReadCloser, error) {
+	return b.source.readRange(ctx, offset, length)
+}
+
+func (sourceBucket) IsObjNotFoundErr(error) bool { return false }
 
 type recordingBucket struct {
 	objstore.Bucket

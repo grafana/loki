@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
@@ -393,7 +394,7 @@ func (r *LogReader) Close() error {
 //   - the counts of logs objects and of index objects opened
 //   - the downloaded bytes of logs objects and of index objects
 //
-// The metrics get the object-store requests and the downloaded bytes. Only the metrics count the
+// The metrics get the object-store requests, the downloaded bytes and the metadata reads. Only the metrics count the
 // table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
@@ -421,10 +422,10 @@ func (r *LogReader) recordStats() {
 			}
 			for _, region := range tree {
 				if region.Name() != metastore.RegionGetIndexes {
-					downloadedBytes += regionInt64(region, dataobj.StatObjectBytesDownloaded)
+					downloadedBytes += region.Int64Value(bucketstat.StatObjectBytesDownloaded)
 				}
-				compactedObjects += regionInt64(region, dataobj.StatObjectsOpenedCompacted)
-				uncompactedObjects += regionInt64(region, dataobj.StatObjectsOpenedUncompacted)
+				compactedObjects += region.Int64Value(dataobj.StatObjectsOpenedCompacted)
+				uncompactedObjects += region.Int64Value(dataobj.StatObjectsOpenedUncompacted)
 			}
 		}
 		return downloadedBytes, compactedObjects, uncompactedObjects

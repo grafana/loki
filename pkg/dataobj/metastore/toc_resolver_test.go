@@ -25,6 +25,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/xcap/xcaptest"
 )
 
 var errTOCTest = errors.New("object store failure")
@@ -124,16 +126,21 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 
 	t.Run("reads the object store for a miss and serves the next call from memory", func(t *testing.T) {
 		r, bucket, _ := newResolver(t)
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		got, err := r.ReadTOC(t.Context(), pathA)
+		got, err := r.ReadTOC(ctx, pathA)
 		require.NoError(t, err)
 		require.Equal(t, dataA, got)
 		require.Equal(t, 1, bucket.reads(pathA))
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 
-		got, err = r.ReadTOC(t.Context(), pathA)
+		got, err = r.ReadTOC(ctx, pathA)
 		require.NoError(t, err)
 		require.Equal(t, dataA, got)
 		require.Equal(t, 1, bucket.reads(pathA))
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage), "the read from memory sends no request")
+		require.Equal(t, int64(len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 	})
 
 	t.Run("reads the object store on every call and keeps nothing when the resolver is disabled", func(t *testing.T) {
@@ -142,15 +149,18 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 		cfg := testResolverConfig()
 		cfg.Enabled = false
 		r := newTestResolver(bucket, cfg, nil, "", newTestClock())
+		ctx, recorded := xcaptest.NewRegion(t)
 
 		for range 3 {
-			got, err := r.ReadTOC(t.Context(), pathA)
+			got, err := r.ReadTOC(ctx, pathA)
 			require.NoError(t, err)
 			require.Equal(t, dataA, got)
 		}
 
 		require.Equal(t, 3, bucket.reads(pathA))
 		require.Nil(t, entryOf(r, pathA))
+		require.Equal(t, int64(3), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(3*len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 	})
 
 	t.Run("returns a new ToC without storing it when it would take the size over the limit", func(t *testing.T) {
@@ -175,6 +185,7 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 	t.Run("makes one object store read for concurrent misses of one path", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			r, bucket, _ := newResolver(t)
+			ctx, recorded := xcaptest.NewRegion(t)
 
 			release := make(chan struct{})
 			bucket.setBefore(holdUntil(release))
@@ -185,7 +196,7 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 			var wg sync.WaitGroup
 			for i := range callers {
 				wg.Go(func() {
-					results[i], errs[i] = r.ReadTOC(t.Context(), pathA)
+					results[i], errs[i] = r.ReadTOC(ctx, pathA)
 				})
 			}
 
@@ -194,6 +205,8 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 			wg.Wait()
 
 			require.Equal(t, 1, bucket.reads(pathA))
+			require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage), "the callers share one request")
+			require.Equal(t, int64(len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 			for i := range callers {
 				require.NoError(t, errs[i])
 				require.Equal(t, dataA, results[i])
@@ -334,41 +347,54 @@ func TestTOCResolver_ReadTOC(t *testing.T) {
 	t.Run("returns no bytes and no error for a missing ToC and remembers it", func(t *testing.T) {
 		r, bucket, _ := newResolver(t)
 		missing := TableOfContentsPath("tenant-missing", tocTestWindow)
+		ctx, recorded := xcaptest.NewRegion(t)
 
 		for range 2 {
-			got, err := r.ReadTOC(t.Context(), missing)
+			got, err := r.ReadTOC(ctx, missing)
 			require.NoError(t, err)
 			require.Empty(t, got)
 		}
 		require.Equal(t, 1, bucket.reads(missing))
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage), "the request for a missing ToC counts")
+		require.Zero(t, recorded(metadata.StatMetadataBytesFromStorage))
 	})
 
 	t.Run("returns an error for a ToC object that has no bytes and does not remember it", func(t *testing.T) {
 		r, bucket, _ := newResolver(t)
 		empty := TableOfContentsPath("tenant-empty", tocTestWindow)
 		bucket.upload(t, empty, nil)
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		_, err := r.ReadTOC(t.Context(), empty)
+		_, err := r.ReadTOC(ctx, empty)
 		require.EqualError(t, err, "metastore object "+empty+" is empty")
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Zero(t, recorded(metadata.StatMetadataBytesFromStorage), "the empty read records no bytes")
 
 		bucket.upload(t, empty, dataA)
-		got, err := r.ReadTOC(t.Context(), empty)
+		got, err := r.ReadTOC(ctx, empty)
 		require.NoError(t, err)
 		require.Equal(t, dataA, got)
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 	})
 
 	t.Run("returns a bucket error and does not remember it", func(t *testing.T) {
 		r, bucket, _ := newResolver(t)
+		ctx, recorded := xcaptest.NewRegion(t)
 
 		bucket.setErr(errTOCTest)
-		_, err := r.ReadTOC(t.Context(), pathA)
+		_, err := r.ReadTOC(ctx, pathA)
 		require.ErrorIs(t, err, errTOCTest)
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataRequestsToStorage), "a failed request counts")
+		require.Zero(t, recorded(metadata.StatMetadataBytesFromStorage))
 
 		bucket.setErr(nil)
-		got, err := r.ReadTOC(t.Context(), pathA)
+		got, err := r.ReadTOC(ctx, pathA)
 		require.NoError(t, err)
 		require.Equal(t, dataA, got)
 		require.Equal(t, 2, bucket.reads(pathA))
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(len(dataA)), recorded(metadata.StatMetadataBytesFromStorage))
 	})
 
 	t.Run("counts a miss, a hit and a stale lookup for a first read, a repeated read and a read of a stale ToC", func(t *testing.T) {
@@ -968,16 +994,23 @@ func TestTOCResolver_refreshTOCs(t *testing.T) {
 	t.Run("counts its loads by source when it reads through a shared cache", func(t *testing.T) {
 		e := newCachedEnv(t)
 		r := newCachedResolver(e)
-		_, err := r.ReadTOC(t.Context(), paths[0])
+		ctx, recorded := xcaptest.NewRegion(t)
+		_, err := r.ReadTOC(ctx, paths[0])
 		require.NoError(t, err)
 
 		e.clock.Advance(time.Minute)
-		r.refreshTOCs(t.Context())
+		r.refreshTOCs(ctx)
 		e.clock.Advance(time.Second)
-		r.refreshTOCs(t.Context())
+		r.refreshTOCs(ctx)
 
 		require.Equal(t, 1.0, testutil.ToFloat64(r.metrics.loads.WithLabelValues(sourceBucket, triggerRefresh)))
 		require.Equal(t, 1.0, testutil.ToFloat64(r.metrics.loads.WithLabelValues(sourceCache, triggerRefresh)))
+
+		// The first read is a query read, and the first refresh loads through the shared cache. Each counts once.
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataRequestsToStorage))
+		require.Equal(t, int64(2*len(data)), recorded(metadata.StatMetadataBytesFromStorage))
+		require.Equal(t, int64(2), recorded(metadata.StatMetadataRequestsToCache), "each refresh looks up the shared cache")
+		require.Positive(t, recorded(metadata.StatMetadataBytesFromCache), "the second refresh takes the ToC from the shared cache")
 	})
 
 	t.Run("keeps the held bytes when the cached value was read earlier", func(t *testing.T) {
@@ -1593,7 +1626,8 @@ func testResolverConfig() TOCResolverConfig {
 
 // newTestResolver returns a resolver on bucket that reads the time from clock. It does not run.
 func newTestResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, c *metadata.Cache, cacheKeyPrefix string, clock *testClock) *TOCResolver {
-	r := NewTOCResolver(bucket, cfg, c, cacheKeyPrefix, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	// The metastore instruments the bucket that its resolver reads, and the resolver counts its requests from it.
+	r := NewTOCResolver(dataobj.NewInstrumentedBucketReader(bucket), cfg, c, cacheKeyPrefix, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 	r.now = clock.Now
 	return r
 }
