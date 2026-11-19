@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/dskit/flagext"
 
@@ -420,11 +420,15 @@ func TestConfig_PackStreams(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	cfg.PackStreams = false
-	require.NoError(t, yaml.UnmarshalStrict([]byte("pack_streams: true"), &cfg))
+	decoder := yaml.NewDecoder(strings.NewReader("pack_streams: true"))
+	decoder.KnownFields(true)
+	require.NoError(t, decoder.Decode(&cfg))
 	require.True(t, cfg.PackStreams)
 
-	var limits validation.Limits
-	require.ErrorContains(t, yaml.UnmarshalStrict([]byte("shard_streams:\n  pack_streams: true"), &limits), "field pack_streams not found")
+	var shardCfg shardstreams.Config
+	decoder = yaml.NewDecoder(strings.NewReader("pack_streams: true"))
+	decoder.KnownFields(true)
+	require.ErrorContains(t, decoder.Decode(&shardCfg), "field pack_streams not found")
 }
 
 func TestStreamSharder_PackingRotation(t *testing.T) {

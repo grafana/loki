@@ -2,7 +2,7 @@ package distributor
 
 import (
 	"encoding/binary"
-	"math/rand/v2"
+	"math/rand/v2" // #nosec G404 -- Shard rotation is not security-sensitive. -- nosemgrep: math-random-used
 	"sync"
 
 	"github.com/cespare/xxhash/v2"

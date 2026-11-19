@@ -4,11 +4,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
