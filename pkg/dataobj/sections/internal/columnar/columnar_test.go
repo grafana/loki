@@ -2,7 +2,9 @@ package columnar_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
@@ -39,6 +42,70 @@ func Test(t *testing.T) {
 		{Index: 1, Values: []dataset.Value{values[1]}},
 	}
 	require.Equal(t, expectRows, readDataset(t, obj))
+}
+
+func TestDecoder_ReadPages(t *testing.T) {
+	column := buildColumn(t, "test-column", testColumnOptions, []dataset.Value{dataset.BinaryValue([]byte("Hello, world!"))})
+	reader := buildObject(t, []*dataset.MemColumn{column}).Sections()[0].Reader
+	dataSize := uint64(reader.DataSize())
+
+	readPages := func(t *testing.T, reader dataobj.SectionReader, pages ...*datasetmd.PageDesc) ([]dataset.PageData, error) {
+		dec, err := columnar.NewDecoder(reader, columnar.FormatVersion)
+		require.NoError(t, err)
+
+		return result.Collect(dec.ReadPages(t.Context(), pages))
+	}
+
+	t.Run("returns the bytes of a page that ends at the end of the data region", func(t *testing.T) {
+		got, err := readPages(t, reader, &datasetmd.PageDesc{DataOffset: dataSize - 1, DataSize: 1})
+
+		require.NoError(t, err)
+		rc, err := reader.DataRange(t.Context(), dataobj.RelativeByteRange{Offset: int64(dataSize) - 1, Length: 1})
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, rc.Close()) })
+		want, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.Equal(t, []dataset.PageData{want}, got)
+	})
+
+	t.Run("returns an error when a page is not inside the data region", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			pages []*datasetmd.PageDesc
+			want  string
+		}{
+			{
+				name:  "starts after the region",
+				pages: []*datasetmd.PageDesc{{DataOffset: dataSize + 1, DataSize: 0}},
+				want:  fmt.Sprintf("page 0 is outside the data region: offset=%d size=0 region length=%d", dataSize+1, dataSize),
+			},
+			{
+				name:  "has an end that overflows",
+				pages: []*datasetmd.PageDesc{{DataOffset: 1, DataSize: math.MaxUint64}},
+				want:  fmt.Sprintf("page 0 is outside the data region: offset=1 size=%d region length=%d", uint64(math.MaxUint64), dataSize),
+			},
+			{
+				name:  "ends one byte after the region and follows a page that is inside it",
+				pages: []*datasetmd.PageDesc{{DataOffset: 0, DataSize: 1}, {DataOffset: dataSize - 1, DataSize: 2}},
+				want:  fmt.Sprintf("page 1 is outside the data region: offset=%d size=2 region length=%d", dataSize-1, dataSize),
+			},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				got, err := readPages(t, reader, tc.pages...)
+
+				require.EqualError(t, err, tc.want)
+				require.Empty(t, got)
+			})
+		}
+	})
+
+	t.Run("returns an error when the size of the data region is negative", func(t *testing.T) {
+		got, err := readPages(t, negativeDataSizeReader{reader}, &datasetmd.PageDesc{DataOffset: 0, DataSize: 1})
+
+		require.EqualError(t, err, "page 0 is outside the data region: offset=0 size=1 region length=-1")
+		require.Empty(t, got)
+	})
 }
 
 func buildColumn(t *testing.T, tag string, opts dataset.BuilderOptions, values []dataset.Value) *dataset.MemColumn {
@@ -156,3 +223,9 @@ func (b *columnarBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 func (b *columnarBuilder) Reset() {
 	// No-op
 }
+
+// negativeDataSizeReader returns a negative DataSize. A real section reader does this for a data
+// region larger than math.MaxInt64 bytes.
+type negativeDataSizeReader struct{ dataobj.SectionReader }
+
+func (negativeDataSizeReader) DataSize() int64 { return -1 }

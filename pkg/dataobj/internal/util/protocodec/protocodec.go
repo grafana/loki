@@ -56,6 +56,14 @@ func Encode(w streamio.Writer, pb proto.Message) error {
 	return nil
 }
 
+// maxDecodeSizeHint caps the buffer that [Decode] reserves for a message before it reads the
+// message.
+//
+// The size of a message comes from the input. A corrupt size would force a huge allocation or a
+// panic. A message larger than the cap still decodes, because its buffer grows while Decode reads
+// it.
+const maxDecodeSizeHint = 1 << 20
+
 // Decode decodes a message encoded with protocodec from r and stores it in pb.
 func Decode(r streamio.Reader, pb proto.Message) error {
 	size, err := binary.ReadUvarint(r)
@@ -63,9 +71,7 @@ func Decode(r streamio.Reader, pb proto.Message) error {
 		return fmt.Errorf("read proto message size: %w", err)
 	}
 
-	// We know exactly how big of a buffer we need here, so we can get a bucketed
-	// buffer from bufpool.
-	buf := bufpool.Get(int(size))
+	buf := bufpool.Get(int(min(size, maxDecodeSizeHint)))
 	defer bufpool.Put(buf)
 
 	n, err := io.Copy(buf, io.LimitReader(r, int64(size)))
