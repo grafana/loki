@@ -20,6 +20,14 @@ func TestValidateStorageClass(t *testing.T) {
 			string(s3types.StorageClassStandardIa),
 			nil,
 		},
+		"should not return error for GLACIER_IR": {
+			string(s3types.StorageClassGlacierIr),
+			nil,
+		},
+		"should not return error for INTELLIGENT_TIERING": {
+			string(s3types.StorageClassIntelligentTiering),
+			nil,
+		},
 		"should not return error for REDUCED_REDUNDANCY": {
 			string(s3types.StorageClassReducedRedundancy),
 			nil,
