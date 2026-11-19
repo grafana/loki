@@ -200,11 +200,13 @@ why it didn't:
    reads only the ingester window skips the size estimate, so it never records the
    last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
    the tenant limit or the `logline.query` settings records `size_estimate_failed`
-   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects, and
-   `absent_over_time` queries, return before these skips. They get no `Logline` stats,
-   so outcome counts leave them out. `absent_over_time` stays unhinted because a skipped
-   sub-request returns an empty matrix or vector, which drops the 1 that an empty window
-   returns.
+   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects return
+   before these skips. They get no `Logline` stats, so outcome counts leave them out.
+   `SupportedMetricQuery` rejects an `absent_over_time` wrapped in a vector
+   aggregation, because a skipped sub-request would need the wrapper applied to its
+   answer. A bare `absent_over_time` is hinted: a skipped sub-request answers 1 on
+   every step, labeled by `logql.AbsentLabels`, so it merges with the narrowed
+   sub-requests into one series.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a

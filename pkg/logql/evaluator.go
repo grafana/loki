@@ -900,7 +900,7 @@ func newTimestampFirstRangeAggEvaluator(
 			return nil, err
 		}
 
-		absentLabels, err := absentLabels(expr)
+		absentLabels, err := AbsentLabels(expr)
 		if err != nil {
 			return nil, err
 		}
@@ -1662,8 +1662,9 @@ func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
-// This is to replace missing timeseries during absent_over_time aggregation.
-func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
+// AbsentLabels returns the labels of the series that replaces missing timeseries during
+// absent_over_time aggregation.
+func AbsentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	m := labels.Labels{}
 
 	selector, err := expr.Selector()

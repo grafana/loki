@@ -3723,7 +3723,7 @@ func TestDryRun_MetricRange_AbsentOverTimeSkipsOverlap(t *testing.T) {
 
 	var logs bytes.Buffer
 	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
-	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(absent_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`absent_over_time({app="api"} |= "timeout" [5m])`, reqStart, now))
 	require.NoError(t, err)
 
 	require.Same(t, userResp, resp)
@@ -3907,7 +3907,7 @@ func TestLive_MetricRange_AttachesLoglineStats(t *testing.T) {
 	})
 }
 
-func TestLive_MetricRange_AbsentOverTimeSkipsHintLookup(t *testing.T) {
+func TestLive_MetricRange_WrappedAbsentOverTimeSkipsHintLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
@@ -3970,6 +3970,57 @@ func TestLive_MetricInstant_LooksUpHints(t *testing.T) {
 	t.Run("offset", func(t *testing.T) {
 		qb := lookup(t, `sum(count_over_time({app="api"} |= "timeout" [5m] offset 10m))`)
 		require.True(t, qb.ReadEnd.Before(ts))
+	})
+}
+
+func TestLive_AbsentOverTime_SkipAnswersOnEveryStep(t *testing.T) {
+	start := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: start.Add(-3 * time.Hour), End: start.Add(-2 * time.Hour)},
+			},
+		},
+	}
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		t.Fatal("a skipped sub-request must not reach the querier")
+		return nil, nil
+	})
+	handler := buildStack(hp, Config{NgramLength: 6}, newTestMetrics(), next)
+	// The engine labels the series with the selector's equality matchers.
+	query := `absent_over_time({app="api", env=~"prod.*"} |= "timeout" [5m])`
+	wantLabels := []logproto.LabelAdapter{{Name: "app", Value: "api"}}
+
+	t.Run("range", func(t *testing.T) {
+		req := newTestLokiRequest(query, start, start.Add(2*time.Minute))
+		req.Step = time.Minute.Milliseconds()
+
+		resp, err := handler.Do(testTenantContextWithLive(), req)
+		require.NoError(t, err)
+
+		prom := resp.(*queryrange.LokiPromResponse)
+		require.Equal(t, loghttp.ResultTypeMatrix, prom.Response.Data.ResultType)
+		require.Equal(t, []queryrangebase.SampleStream{{
+			Labels: wantLabels,
+			Samples: []logproto.LegacySample{
+				{Value: 1, TimestampMs: start.UnixMilli()},
+				{Value: 1, TimestampMs: start.Add(time.Minute).UnixMilli()},
+				{Value: 1, TimestampMs: start.Add(2 * time.Minute).UnixMilli()},
+			},
+		}}, prom.Response.Data.Result)
+		require.Equal(t, int64(1), prom.Statistics.Logline.SkippedRequests)
+	})
+
+	t.Run("instant", func(t *testing.T) {
+		resp, err := handler.Do(testTenantContextWithLive(), newTestLokiInstantRequest(query, start))
+		require.NoError(t, err)
+
+		prom := resp.(*queryrange.LokiPromResponse)
+		require.Equal(t, loghttp.ResultTypeVector, prom.Response.Data.ResultType)
+		require.Equal(t, []queryrangebase.SampleStream{{
+			Labels:  wantLabels,
+			Samples: []logproto.LegacySample{{Value: 1, TimestampMs: start.UnixMilli()}},
+		}}, prom.Response.Data.Result)
 	})
 }
 
@@ -4925,7 +4976,7 @@ func TestDryRun_MetricInstant_AbsentOverTimeSkipsOverlap(t *testing.T) {
 
 	var logs bytes.Buffer
 	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
-	resp, err := handler.Do(testTenantContext(), newTestLokiInstantRequest(`sum(absent_over_time({app="api"} |= "timeout" [5m]))`, now))
+	resp, err := handler.Do(testTenantContext(), newTestLokiInstantRequest(`absent_over_time({app="api"} |= "timeout" [5m])`, now))
 	require.NoError(t, err)
 	require.Same(t, userResp, resp)
 	require.Equal(t, 1, nextCalled)

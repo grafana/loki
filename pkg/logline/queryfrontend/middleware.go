@@ -969,11 +969,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			if _, isDetectedFields := req.(*queryrange.DetectedFieldsRequest); isDetectedFields {
 				return h.next.Do(ctx, req)
 			}
-			// Left unhinted until a later PR. An empty result would drop the 1
-			// an empty window returns.
-			if isAbsentOverTimeAgg(expr) {
-				return h.next.Do(ctx, req)
-			}
 		}
 	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		// A log selector on the instant endpoint is rejected by the querier.
@@ -1336,8 +1331,14 @@ func (h *loglineFilterHandler) skip(ctx context.Context, req queryrangebase.Requ
 		h.metrics.passthroughSubRequests.WithLabelValues("sketch_shard").Inc()
 		return h.passthrough(ctx, req)
 	}
+	resp := skippedResponse(req, expr)
+	if isAbsentOverTimeAgg(expr) {
+		if err := setAbsentSeries(resp.(*queryrange.LokiPromResponse), req, expr); err != nil {
+			return nil, err
+		}
+	}
 	h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-	return skippedResponse(req, expr), nil
+	return resp, nil
 }
 
 // requestExpr returns the planned expression. A shard request puts an internal
@@ -1421,6 +1422,37 @@ func skippedResponse(req queryrangebase.Request, expr syntax.Expr) queryrangebas
 	default:
 		return nil
 	}
+}
+
+// setAbsentSeries sets the result to what the querier would return for an empty
+// window: one series with a 1 on every step. It uses AbsentLabels, like the
+// querier, so skipped and evaluated splits merge into one series.
+func setAbsentSeries(resp *queryrange.LokiPromResponse, req queryrangebase.Request, expr syntax.Expr) error {
+	lbs, err := logql.AbsentLabels(expr.(syntax.SampleExpr))
+	if err != nil {
+		return err
+	}
+	resp.Response.Data.Result = []queryrangebase.SampleStream{{
+		Labels:  logproto.FromLabelsToLabelAdapters(lbs),
+		Samples: absentSamples(req),
+	}}
+	return nil
+}
+
+// absentSamples returns a 1 for each step the engine evaluates, from the start
+// of req up to and including its end. It steps in nanoseconds, like the engine,
+// so a start or end with sub-millisecond precision gets the same steps.
+func absentSamples(req queryrangebase.Request) []logproto.LegacySample {
+	ms := int64(time.Millisecond)
+	// An instant request has a step of 0, so force at least 1 to advance the loop.
+	step := max(req.GetStep()*ms, 1)
+	start, end := req.GetStart().UnixNano(), req.GetEnd().UnixNano()
+
+	var samples []logproto.LegacySample
+	for ts := start; ts <= end; ts += step {
+		samples = append(samples, logproto.LegacySample{Value: 1, TimestampMs: ts / ms})
+	}
+	return samples
 }
 
 func skippedInstantResponse() *queryrange.LokiPromResponse {
