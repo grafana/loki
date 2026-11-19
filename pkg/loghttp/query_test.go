@@ -1,13 +1,13 @@
 package loghttp
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"reflect"
 	"testing"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -265,7 +265,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			b, err := jsoniter.Marshal(tt)
+			b, err := json.Marshal(tt)
 			require.Nil(t, err)
 			var actual QueryResponse
 			err = actual.UnmarshalJSON(b)
@@ -391,4 +391,21 @@ func Test_ParseVolumeRangeQuery(t *testing.T) {
 			require.EqualError(t, err, "invalid aggregation option")
 		})
 	})
+}
+
+func TestStreamsMarshalEscapesHTML(t *testing.T) {
+	streams := Streams{{
+		Labels:  LabelSet{"app": "web"},
+		Entries: []Entry{{Timestamp: time.Unix(0, 1), Line: "<b>&</b>"}},
+	}}
+
+	// Marshal the way the HTTP handlers do (see pkg/util/marshal).
+	data, err := json.Marshal(streams)
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"stream":{"app":"web"},"values":[["1","\u003cb\u003e\u0026\u003c/b\u003e"]]}]`, string(data))
+	require.Contains(t, string(data), `\u003cb\u003e\u0026\u003c/b\u003e`) // JSONEq ignores the escaping
+
+	var decoded Streams
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, "<b>&</b>", decoded[0].Entries[0].Line)
 }
