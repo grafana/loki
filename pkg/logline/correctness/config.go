@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/grafana/dskit/flagext"
 )
 
 const (
@@ -36,7 +38,7 @@ type Config struct {
 	ErrorBackoffMax      time.Duration `yaml:"error_backoff_max"`
 	LogQueryLimit        int           `yaml:"log_query_limit"`
 	NgramLength          int           `yaml:"-"`
-	StartedAt            time.Time     `yaml:"started_at"`
+	StartedAt            flagext.Time  `yaml:"started_at"`
 }
 
 // RegisterFlagsWithPrefix registers configuration flags with the given FlagSet under prefix.
@@ -67,7 +69,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Maximum backoff delay after cycle failures")
 	f.IntVar(&c.LogQueryLimit, prefix+".log-query-limit", DefaultLogQueryLimit,
 		"Maximum log lines requested from Loki when selecting a test needle")
-	f.Var((*rfc3339Time)(&c.StartedAt), prefix+".started-at",
+	f.Var(&c.StartedAt, prefix+".started-at",
 		"Override the service start time (RFC3339). When set, query ranges may begin at this time instead of now.")
 }
 
@@ -227,24 +229,5 @@ func (c *csvString) String() string {
 
 func (c *csvString) Set(value string) error {
 	*c = ParseEndpointCSV(value)
-	return nil
-}
-
-// rfc3339Time implements flag.Value for RFC3339 timestamps.
-type rfc3339Time time.Time
-
-func (t *rfc3339Time) String() string {
-	if t == nil || (*time.Time)(t).IsZero() {
-		return ""
-	}
-	return (*time.Time)(t).Format(time.RFC3339)
-}
-
-func (t *rfc3339Time) Set(value string) error {
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return fmt.Errorf("invalid RFC3339 time %q: %w", value, err)
-	}
-	*t = rfc3339Time(parsed.UTC())
 	return nil
 }

@@ -1983,6 +1983,58 @@ limits_config:
 	})
 }
 
+func TestLoglineConfig(t *testing.T) {
+	const yamlContent = `logline:
+  index:
+    ngram_length: 7
+  query:
+    enabled: true`
+
+	for _, tc := range []struct {
+		name        string
+		yaml        string
+		args        []string
+		ngramLength int
+		enabled     bool
+	}{
+		{
+			name:        "loads YAML config",
+			yaml:        yamlContent,
+			ngramLength: 7,
+			enabled:     true,
+		},
+		{
+			name:        "preserves flags-only config",
+			yaml:        minimalConfig,
+			args:        []string{"-logline-index.ngram-length=8", "-logline-query.enabled=true"},
+			ngramLength: 8,
+			enabled:     true,
+		},
+		{
+			name:        "flags override YAML config",
+			yaml:        yamlContent,
+			args:        []string{"-logline-index.ngram-length=8", "-logline-query.enabled=false"},
+			ngramLength: 8,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config, _, err := configWrapperFromYAML(t, tc.yaml, tc.args)
+			require.NoError(t, err)
+			require.Equal(t, tc.ngramLength, config.Logline.Index.NgramLength)
+			require.Equal(t, tc.enabled, config.Logline.Query.Enabled)
+			require.Equal(t, config.Logline.Index, config.Logline.Builder.Index)
+		})
+	}
+}
+
+func TestLoglineConfigRejectsIngesterWindowOverride(t *testing.T) {
+	const yamlContent = `logline:
+  query:
+    query_ingesters_within: 1h`
+	_, _, err := configWrapperFromYAML(t, yamlContent, nil)
+	require.ErrorContains(t, err, "field query_ingesters_within not found")
+}
+
 func Test_applyQuerierDataObjConfig(t *testing.T) {
 	t.Run("copies the data-object settings into the querier config", func(t *testing.T) {
 		yamlContent := `dataobj:
