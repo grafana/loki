@@ -24,11 +24,12 @@ In this guide, an AWS deployment is used as an example. However, the migration p
 
 ## Considerations
 
-Migrating from a simple scalable deployment to a distributed deployment with zero downtime is possible but requires careful planning. The following considerations should be taken into account:
+Migrating from a simple scalable deployment to a distributed deployment requires careful planning. Each `helm upgrade` in this guide restarts pods, so requests can fail for a short time. The following considerations should be taken into account:
 
 1. **Helm Deployment:** This guide assumes that you have deploying Loki using Helm. Other migration methods are possible but are not covered in this guide.
 1. **Loki version:** Loki 4.0 removes SSD mode. The `read`, `write`, and `backend` targets don't exist in Loki 4.x, so SSD pods can't run on a 4.x image. Run stage 1 and stage 2 on Loki 3.7 or a later 3.x release and [upgrade to Loki 4.0](#upgrade-to-loki-40) after the migration is complete. Don't set `loki.image.tag` to a 4.x version before then. If you don't set `loki.image.tag`, the Helm chart uses the Loki version of its `appVersion`. Check that this is a 3.x version.
 1. **Kubernetes Resources:** This migration method requires you to spin up distributed Loki pods before shutting down the SSD pods. This means that you need to have enough resources in your Kubernetes cluster to run both the SSD and distributed Loki pods at the same time.
+1. **Short interruptions:** Both stages restart pods, and stage 2 also switches the gateway routes. Pushes and queries through the gateway can fail with `502` responses or time out during each `helm upgrade`. In a test with a small cluster, requests failed for up to about 30 seconds in stage 1 and up to about 40 seconds in stage 2. The duration depends on your cluster. Make sure that the clients that push logs retry failed requests, and run the migration when traffic is low.
 1. **Data:** No changes are required to your underlying data storage. Although data loss or corruption is unlikely, it is always recommended to back up your data before starting the migration process. If you are using a cloud provider you can take a snapshot/backup.
 1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana Logs Drilldown feature.
 1. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note, not all parameters are equivalent between Mimir and Loki.
@@ -126,7 +127,7 @@ The chart builds the ruler storage configuration from `loki.storage`. Set all ot
 
 ## Stage 1: Deploying the Loki distributed components
 
-In this stage, we will deploy the distributed Loki components alongside the SSD components. We will also change the `deploymentMode` to `SimpleScalable<->Distributed`. The `SimpleScalable<->Distributed` migration mode allows for a zero-downtime transition between Simple Scalable and fully distributed architectures. During migration, both deployment types run simultaneously, sharing the same object storage backend.
+In this stage, we will deploy the distributed Loki components alongside the SSD components. We will also change the `deploymentMode` to `SimpleScalable<->Distributed`. The `SimpleScalable<->Distributed` migration mode allows both deployment types to run at the same time. They share the same object storage backend and the same rings.
 
 Run this stage on Loki 3.x. Don't change `loki.image.tag` to a 4.x version.
 
@@ -143,11 +144,12 @@ How Loki handles request routing during the migration:
 The Gateway (nginx) handles request routing based on endpoint type:
 
 1. Write Path (`loki/api/v1/push`):
-   * Initially routes to Simple Scalable write component
-   * Gradually shifted to the Distributor
+   * In stage 1, routes to the Simple Scalable write component
+   * In stage 2, routes to the Distributor. The gateway switches all requests at once, when it restarts with the configuration of stage 2.
    * Both write paths share the same object storage, ensuring data consistency
 2. Read Path (`/loki/api/v1/query`):
-   * Routes to either Simple Scalable read or distributed Query Frontend
+   * In stage 1, routes to the Simple Scalable read component
+   * In stage 2, routes to the distributed Query Frontend
    * Query results are consistent since both architectures read from same storage
 3. Admin/Background Operations:
    * Compaction, retention, and rule evaluation handled by either backend or respective distributed components
@@ -370,6 +372,10 @@ To transition all traffic to the distributed components:
     ```bash
     helm upgrade --values values-distributed.yaml loki grafana-community/loki -n loki 
     ```
+
+   {{< admonition type="caution" >}}
+   This upgrade removes the SSD components and switches the gateway routes to the distributed components in one step. The previous gateway keeps sending requests to the removed SSD services until the replacement gateway is ready. Pushes and queries fail during this time. Make sure that clients retry failed requests.
+   {{< /admonition >}}
 
 1. Once the deployment is complete, you can verify that all components are running using the following command:
 
