@@ -44,14 +44,26 @@ type RowReader struct {
 // all subsequent I/O (Open and Read). A RowReader of an empty section reads no
 // rows.
 func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+	return newRowReader(ctx, sec, false)
+}
+
+// NewStreamingRowReader is [NewRowReader] with [ReaderOptions.StreamPages]
+// set. It holds a bounded amount of downloaded pages at a time, instead of
+// every page of the section.
+func NewStreamingRowReader(ctx context.Context, sec *Section) *RowReader {
+	return newRowReader(ctx, sec, true)
+}
+
+func newRowReader(ctx context.Context, sec *Section, streamPages bool) *RowReader {
 	if sec.Empty() {
 		return &RowReader{ctx: ctx, exhausted: true}
 	}
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
+			Columns:     sec.Columns(),
+			Allocator:   memory.DefaultAllocator,
+			StreamPages: streamPages,
 		}),
 	}
 }

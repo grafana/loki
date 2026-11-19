@@ -143,6 +143,13 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// StreamPages makes the Reader download pages while it reads rows, and
+	// hold a bounded amount of downloaded pages at a time. Without it, the
+	// Reader downloads every page of the section when it opens, and holds
+	// them until it closes. Set it when many readers are open at once, for
+	// example in a K-way merge over many sections.
+	StreamPages bool
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
@@ -273,7 +280,7 @@ func (r *Reader) init(ctx context.Context) error {
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
-		PrefetchAllOnOpen: true,
+		PrefetchAllOnOpen: !r.opts.StreamPages,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)

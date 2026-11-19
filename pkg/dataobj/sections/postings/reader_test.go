@@ -1,9 +1,12 @@
 package postings_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"math/rand/v2"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -95,4 +99,104 @@ func readTable(ctx context.Context, r *postings.Reader) (arrow.Table, error) {
 		return nil, io.EOF
 	}
 	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
+}
+
+// countingBucket counts the bytes that range reads return.
+type countingBucket struct {
+	*objstore.InMemBucket
+	bytesRead atomic.Int64
+}
+
+func (b *countingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	rc, err := b.InMemBucket.GetRange(ctx, name, off, length)
+	if err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(rc)
+	if closeErr := rc.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, err
+	}
+	b.bytesRead.Add(int64(len(data)))
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func TestReader_StreamPages(t *testing.T) {
+	const (
+		blooms    = 4096
+		bloomSize = 16 << 10
+	)
+	ctx := context.Background()
+
+	// The bloom filter column is not compressed, so the section holds about
+	// blooms*bloomSize bytes. A row reader reads 1024 rows at a time, so the
+	// first batch needs a quarter of the section.
+	builder := postings.NewMergeBuilder(nil, 128<<10, 0, 1<<30)
+	builder.SetTenant("acme")
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := range blooms {
+		bloom := make([]byte, bloomSize)
+		for j := range bloom {
+			bloom[j] = byte(rng.Uint32())
+		}
+		require.NoError(t, builder.AppendBloomEntry(postings.BloomEntry{
+			ObjectPath: "logs/a", SectionIndex: int64(i), ColumnName: "trace_id",
+			BloomFilter: bloom, StreamIDBitmap: []byte{1},
+		}))
+	}
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(builder))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, closer.Close()) }()
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	data, err := io.ReadAll(reader)
+	require.NoError(t, reader.Close())
+	require.NoError(t, err)
+
+	// readFirstRow opens the postings section of the object through a counting
+	// bucket and reads its first row. It returns the bytes that the bucket
+	// returned for the row, and the number of rows of the section.
+	readFirstRow := func(t *testing.T, streamPages bool) (bytesForFirstRow int64, rows int) {
+		t.Helper()
+		bucket := &countingBucket{InMemBucket: objstore.NewInMemBucket()}
+		require.NoError(t, bucket.Upload(ctx, "index", bytes.NewReader(data)))
+		opened, err := dataobj.FromBucket(ctx, bucket, "index", 0)
+		require.NoError(t, err)
+		var section *postings.Section
+		for _, sec := range opened.Sections() {
+			if postings.CheckSection(sec) {
+				section, err = postings.Open(ctx, sec)
+				require.NoError(t, err)
+			}
+		}
+		require.NotNil(t, section)
+
+		before := bucket.bytesRead.Load()
+		r := postings.NewReader(postings.ReaderOptions{Columns: section.Columns(), StreamPages: streamPages})
+		require.NoError(t, r.Open(ctx))
+		rowReader := postings.NewRowReader(ctx, r)
+		defer func() { require.NoError(t, rowReader.Close()) }()
+		require.True(t, rowReader.Next())
+		bytesForFirstRow = bucket.bytesRead.Load() - before
+		for rows = 1; rowReader.Next(); rows++ {
+		}
+		require.NoError(t, rowReader.Err())
+		return bytesForFirstRow, rows
+	}
+
+	t.Run("downloads the whole section before the first row without streaming pages", func(t *testing.T) {
+		downloaded, rows := readFirstRow(t, false)
+		require.Equal(t, blooms, rows)
+		require.Greater(t, downloaded, int64(blooms*bloomSize*9/10))
+	})
+
+	t.Run("downloads a bounded part of the section before the first row and reads every row when it streams pages", func(t *testing.T) {
+		downloaded, rows := readFirstRow(t, true)
+		require.Equal(t, blooms, rows)
+		require.Less(t, downloaded, int64(blooms*bloomSize/2))
+	})
 }
