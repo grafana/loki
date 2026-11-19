@@ -1085,6 +1085,11 @@ dataobj:
     # CLI flag: -dataobj.builder.flush-concurrency
     [flush_concurrency: <int> | default = 1]
 
+    # The maximum number of goroutines that sort the logs of one tenant on
+    # flush.
+    # CLI flag: -dataobj.builder.sort-parallelism
+    [sort_parallelism: <int> | default = 2]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
