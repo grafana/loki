@@ -31,6 +31,18 @@ var (
 	errStorageTimeout = errors.New("the object storage read timed out")
 )
 
+// regionTooLargeError means the metadata region of an object is larger than the limit. It matches
+// ErrNotPrefetchable and errRegionTooLarge.
+type regionTooLargeError struct {
+	size, limit int64
+}
+
+func (e regionTooLargeError) Error() string {
+	return fmt.Sprintf("%v: %v: it has %d bytes, and the limit is %d", ErrNotPrefetchable, errRegionTooLarge, e.size, e.limit)
+}
+
+func (e regionTooLargeError) Unwrap() []error { return []error{ErrNotPrefetchable, errRegionTooLarge} }
+
 // regionLoadFailureReasons lists the values of the reason label of the load failures counter. A load
 // never fails because of the cache, and it does not read sections, so it has no cache reason and no
 // unsupported reason.
@@ -67,11 +79,12 @@ func newLoadOptions(opts []LoadOption) loadOptions {
 	return o
 }
 
-// WithRegionSizeHint tells the loader the size of the region, as the file metadata of the object
-// implies it. The region starts at offset 0, so the size is the whole range.
+// WithRegionSizeHint tells the loader the exact size of the region. The region starts at offset 0, so
+// the size is the whole range.
 //
-// With the size, the loader reads the region from object storage in one read, and not in two. The
-// loader ignores a size that is not positive, and then works as it does without a hint.
+// With the size, the loader reads the region from object storage in one read. Without it, the loader
+// reads the head first, and then a second read when the region is larger than the head. The loader
+// ignores a size that is not positive, and then works as it does without a hint.
 func WithRegionSizeHint(size int64) LoadOption {
 	return func(o *loadOptions) {
 		if size > 0 {
@@ -246,7 +259,7 @@ func (l *CachedRegionLoader) storeRegion(ctx context.Context, path string, regio
 // time. It returns the first read that succeeds, or the object storage error when both fail.
 // fromCache is true when the cache answered.
 //
-// size is the size of the region when the caller knows it from the file metadata, and nil otherwise.
+// size is the size of the region when the caller knows it, and nil otherwise.
 func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req PrefetchRequest, size *int64) (region []byte, fromCache bool, err error) {
 	// A miss in the cache is not an answer, so the object storage read decides the result then.
 	// Both reads stop when this function returns.
@@ -359,11 +372,11 @@ func (l *CachedRegionLoader) loadFromStorage(ctx context.Context, req PrefetchRe
 	return region, nil
 }
 
-// checkRegionSize returns an error that wraps ErrNotPrefetchable when a region of at least size
-// bytes is larger than the limit of the loader.
+// checkRegionSize returns a regionTooLargeError when a region of size bytes is larger than the limit
+// of the loader.
 func (l *CachedRegionLoader) checkRegionSize(size int64) error {
 	if size > l.maxRegionBytes {
-		return fmt.Errorf("%w: %w: it has at least %d bytes, and the limit is %d", ErrNotPrefetchable, errRegionTooLarge, size, l.maxRegionBytes)
+		return regionTooLargeError{size: size, limit: l.maxRegionBytes}
 	}
 	return nil
 }

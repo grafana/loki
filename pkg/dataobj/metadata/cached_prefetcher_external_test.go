@@ -194,6 +194,94 @@ func TestCachedPrefetcher(t *testing.T) {
 		require.Equal(t, map[string]float64{"head_too_small": 1}, gatherPrefetcherCounts(t, reg).failures)
 	})
 
+	t.Run("an object above the region limit is skipped without a lookup or a read once its size is known", func(t *testing.T) {
+		backend := newFakeCache()
+		p, reg := newPrefetcherWithRegistry(t, backend, func(cfg *metadata.PrefetcherConfig) {
+			cfg.MaxRegionBytes = int(obj.metadataRegionEnd) - 1
+			cfg.MaxRegionSizeCacheBytes = 1 << 20
+		})
+		req := obj.request(prefetchSets["message"])
+		_, err := p.Prefetch(t.Context(), req)
+		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
+
+		backend.resetCounts()
+		src := req.Source.(*testSource)
+		src.reset()
+		_, err = p.Prefetch(t.Context(), req)
+
+		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
+		require.Zero(t, backend.lookups())
+		require.Empty(t, src.calls())
+		require.Equal(t, map[string]float64{"too_large": 2}, gatherPrefetcherCounts(t, reg).failures)
+	})
+
+	t.Run("an object above the region limit that another querier cached keeps serving cache hits, also after a partial miss", func(t *testing.T) {
+		backend := newFakeCache()
+		req := obj.request(prefetchSets["message"])
+		_, err := newPrefetcher(t, backend, nil).Prefetch(t.Context(), req)
+		require.NoError(t, err)
+		p := newPrefetcher(t, backend, func(cfg *metadata.PrefetcherConfig) {
+			cfg.MaxRegionBytes = int(obj.metadataRegionEnd) - 1
+			cfg.MaxRegionSizeCacheBytes = 1 << 20
+		})
+
+		for range 2 {
+			res, err := p.Prefetch(t.Context(), req)
+
+			require.NoError(t, err)
+			obj.requireMatches(t, res)
+		}
+
+		backend.drop("msg")
+		_, err = p.Prefetch(t.Context(), req)
+		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
+		res, err := p.Prefetch(t.Context(), obj.request(prefetchSets["stream ID and timestamp"]))
+
+		require.NoError(t, err)
+		obj.requireMatches(t, res)
+	})
+
+	t.Run("a failed read does not make the next open skip the object", func(t *testing.T) {
+		p := newPrefetcher(t, newFakeCache(), withRegionSizeCache)
+		req := obj.request(prefetchSets["message"])
+		src := req.Source.(*testSource)
+		src.err = errors.New("object storage is down")
+		_, err := p.Prefetch(t.Context(), req)
+		require.ErrorIs(t, err, src.err)
+
+		src.err = nil
+		res, err := p.Prefetch(t.Context(), req)
+
+		require.NoError(t, err)
+		obj.requireMatches(t, res)
+	})
+
+	for name, filledByAnotherQuerier := range map[string]bool{
+		"learned from its own load":                              false,
+		"learned from the file metadata item of another querier": true,
+	} {
+		t.Run("a known size lets a cold open read the region with one exact read, "+name, func(t *testing.T) {
+			backend := newFakeCache()
+			req := obj.request(prefetchSets["message"])
+			if filledByAnotherQuerier {
+				_, err := newPrefetcher(t, backend, nil).Prefetch(t.Context(), req)
+				require.NoError(t, err)
+			}
+			p := newPrefetcher(t, backend, withRegionSizeCache)
+			_, err := p.Prefetch(t.Context(), req)
+			require.NoError(t, err)
+
+			backend.clear()
+			src := req.Source.(*testSource)
+			src.reset()
+			res, err := p.Prefetch(t.Context(), req)
+
+			require.NoError(t, err)
+			obj.requireMatches(t, res)
+			require.Equal(t, []readCall{{offset: 0, length: obj.metadataRegionEnd}}, src.calls())
+		})
+	}
+
 	t.Run("a prefetch set that names more than 64 columns reads the whole region with one lookup", func(t *testing.T) {
 		names := make([]string, 65)
 		for i := range names {
@@ -808,6 +896,8 @@ func newPrefetcherWithRegistry(t *testing.T, backend cache.Cache, mutate func(*m
 	return p, reg
 }
 
+func withRegionSizeCache(cfg *metadata.PrefetcherConfig) { cfg.MaxRegionSizeCacheBytes = 1 << 20 }
+
 func newPrefetcherWithMaxRegionBytes(t *testing.T, backend cache.Cache, maxRegionBytes int) *metadata.CachedPrefetcher {
 	t.Helper()
 	return newPrefetcher(t, backend, func(cfg *metadata.PrefetcherConfig) { cfg.MaxRegionBytes = maxRegionBytes })
@@ -975,6 +1065,12 @@ func (s *fakeCache) drop(part string) {
 			delete(s.values, name)
 		}
 	}
+}
+
+func (s *fakeCache) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clear(s.values)
 }
 
 // corrupt changes the last byte of an entry whose cache item holds an unhashed key with part after
