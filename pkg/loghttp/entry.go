@@ -89,8 +89,10 @@ func (e *Entry) readMetadata(d *json.Decoder) error {
 	structuredMetadataBuilder := labels.NewScratchBuilder(0)
 	var parsed labels.Labels
 	err := d.EachField(func(key []byte) error {
+		// Copy the key first: key is only valid until the next call on the decoder, and PeekKind is one.
+		name := string(key)
 		if d.PeekKind() == jsontext.KindBeginObject {
-			switch string(key) {
+			switch name {
 			case "structuredMetadata":
 				structuredMetadataBuilder.Reset()
 				return readLabelsInto(d, &structuredMetadataBuilder)
@@ -107,7 +109,6 @@ func (e *Entry) readMetadata(d *json.Decoder) error {
 			}
 		}
 		// Deliberately lenient: any non-object value is kept as its raw text.
-		name := string(key) // copy: reading the value reuses the buffer
 		val, err := d.ReadScalar()
 		if err != nil {
 			return fmt.Errorf("could not parse structured metadata or parsed fields: %w", err)
