@@ -24,7 +24,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-const prefetchBytes = 2 * 1024 * 1024
+// prefetchBytes is the head window that each opened object reads and keeps.
+// Every open object holds a buffer of this full size, even when the object is
+// smaller, so phases that hold many objects open scale with it.
+const prefetchBytes = 1 * 1024 * 1024
 
 // errCorruptIndex reports an index or index run whose sections of one tenant
 // do not share one stream layout, or whose layout cannot be read. No retry can
@@ -100,51 +103,53 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	return out, nil
 }
 
-const indexSectionReadConcurrency = 16
+// indexReadConcurrency is the number of index objects or index runs that one
+// planning step reads from the bucket at once.
+const indexReadConcurrency = 16
 
+// indexSectionRefsFor returns one bounded reference per postings section of
+// tenant in entries, in entry order and then section order.
+//
+// Each open index object holds a prefetch buffer of prefetchBytes. A window can
+// hold tens of thousands of indexes, so the function releases each object after
+// it reads its bounds. At most indexReadConcurrency objects stay open at
+// once.
 func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexpointers.IndexPointer) ([]v2.Section[indexSortKey], error) {
-	type sectionRead struct {
-		objectPath   string
-		sectionIndex int64
-		section      *dataobj.Section
-	}
-
-	var reads []sectionRead
-	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
-		if err != nil {
-			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
-		}
-		for sectionIndex, section := range obj.Sections() {
-			if postings.CheckSection(section) && section.Tenant == tenant {
-				reads = append(reads, sectionRead{
-					objectPath:   entry.Path,
-					sectionIndex: int64(sectionIndex),
-					section:      section,
-				})
-			}
-		}
-	}
-
-	results := make([]*v2.Section[indexSortKey], len(reads))
+	refsByEntry := make([][]v2.Section[indexSortKey], len(entries))
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(indexSectionReadConcurrency)
-	for i, read := range reads {
+	group.SetLimit(indexReadConcurrency)
+	for i, entry := range entries {
 		group.Go(func() error {
-			ref, err := indexSectionRef(groupCtx, read.objectPath, read.sectionIndex, read.section)
+			refs, err := indexObjectSectionRefs(groupCtx, bucket, tenant, entry.Path)
 			if err != nil {
-				return fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, read.objectPath, read.sectionIndex, err)
+				return err
 			}
-			results[i] = ref
+			refsByEntry[i] = refs
 			return nil
 		})
 	}
 	if err := group.Wait(); err != nil {
 		return nil, err
 	}
+	return slices.Concat(refsByEntry...), nil
+}
 
-	refs := make([]v2.Section[indexSortKey], 0, len(results))
-	for _, ref := range results {
+// indexObjectSectionRefs opens the index object at path and returns one
+// bounded reference per postings section of tenant that has rows.
+func indexObjectSectionRefs(ctx context.Context, bucket objstore.Bucket, tenant, path string) ([]v2.Section[indexSortKey], error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, path, prefetchBytes)
+	if err != nil {
+		return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, path, err)
+	}
+	var refs []v2.Section[indexSortKey]
+	for sectionIndex, section := range obj.Sections() {
+		if !postings.CheckSection(section) || section.Tenant != tenant {
+			continue
+		}
+		ref, err := indexSectionRef(ctx, path, int64(sectionIndex), section)
+		if err != nil {
+			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, path, sectionIndex, err)
+		}
 		if ref != nil {
 			refs = append(refs, *ref)
 		}
@@ -253,7 +258,7 @@ type openedIndex struct {
 // returns an error that wraps errCorruptIndex if an index object of run
 // records a run length other than the number of index objects of run.
 //
-// Each returned object keeps its prefetch buffer of up to prefetchBytes, so
+// Each returned object keeps its prefetch buffer of prefetchBytes, so
 // the memory grows with the number of index objects in run.
 func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
 	if err := run.checkLength(); err != nil {

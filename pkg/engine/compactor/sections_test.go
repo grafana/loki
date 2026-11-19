@@ -412,65 +412,86 @@ func TestCompareIndexSortKey(t *testing.T) {
 	require.Zero(t, compareIndexSortKey(base, base))
 }
 
-func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	path := "indexes/aa/idx-0"
-	buildIndexWithPostings(ctx, t, bucket, "acme", path, 1<<20, []postings.Row{
-		{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 30, MaxTimestamp: 40},
-		{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 10, MaxTimestamp: 20},
-		{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
+func TestIndexSectionRefsFor(t *testing.T) {
+	t.Run("bounds a section by its first and last postings rows", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/aa/idx-0"
+		buildIndexWithPostings(ctx, t, bucket, "acme", path, 1<<20, []postings.Row{
+			{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 30, MaxTimestamp: 40},
+			{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 10, MaxTimestamp: 20},
+			{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
+		})
+
+		refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
+		require.NoError(t, err)
+		require.Equal(t, []v2.Section[indexSortKey]{
+			{
+				Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
+				PlanningUnit: path,
+				Min:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+				Max:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+			},
+		}, refs)
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
-	require.NoError(t, err)
-	require.Equal(t, []v2.Section[indexSortKey]{
-		{
-			Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
-			PlanningUnit: path,
-			Min:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
-			Max:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
-		},
-	}, refs)
-}
+	t.Run("uses the absolute index of each postings section in the object", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/aa/idx-0"
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:       "acme",
+			path:         path,
+			sectionSize:  1,
+			shardBuckets: streams.DefaultShardBuckets,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/a", SortSchema: "label:service_name",
+				Labels: map[string]string{"service_name": "api"}, MinTimestamp: 1, MaxTimestamp: 2,
+			}},
+			postings: []postings.Row{
+				{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "a", LabelValue: "1", MinTimestamp: 1, MaxTimestamp: 2},
+				{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "b", LabelValue: "2", MinTimestamp: 3, MaxTimestamp: 4},
+			},
+		})
 
-func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	path := "indexes/aa/idx-0"
-	buildIndex(ctx, t, bucket, testIndexObject{
-		tenant:       "acme",
-		path:         path,
-		sectionSize:  1,
-		shardBuckets: streams.DefaultShardBuckets,
-		stats: []stats.Stat{{
-			ObjectPath: "logs/a", SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 1, MaxTimestamp: 2,
-		}},
-		postings: []postings.Row{
-			{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "a", LabelValue: "1", MinTimestamp: 1, MaxTimestamp: 2},
-			{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "b", LabelValue: "2", MinTimestamp: 3, MaxTimestamp: 4},
-		},
+		refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
+		require.NoError(t, err)
+		require.Len(t, refs, 2)
+		require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
+		require.Equal(t, int64(2), refs[1].Ref.SectionIndex)
 	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: path}})
-	require.NoError(t, err)
-	require.Len(t, refs, 2)
-	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
-	require.Equal(t, int64(2), refs[1].Ref.SectionIndex)
-}
+	t.Run("returns refs in entry order when there are more entries than concurrent reads", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		entries := make([]indexpointers.IndexPointer, 3*indexReadConcurrency)
+		for i := range entries {
+			entries[i].Path = fmt.Sprintf("indexes/aa/idx-%03d", i)
+			buildIndexWithPostings(ctx, t, bucket, "acme", entries[i].Path, 1<<20, []postings.Row{{
+				Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
+			}})
+		}
 
-func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	goodPath := "indexes/aa/good"
-	buildIndexWithPostings(ctx, t, bucket, "acme", goodPath, 1<<20, []postings.Row{{
-		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
-	}})
+		refs, err := indexSectionRefsFor(ctx, bucket, "acme", entries)
+		require.NoError(t, err)
+		require.Len(t, refs, len(entries))
+		for i, ref := range refs {
+			require.Equal(t, entries[i].Path, ref.Ref.ObjectPath)
+		}
+	})
 
-	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: goodPath}, {Path: "indexes/aa/missing"}})
-	require.Error(t, err)
-	require.Nil(t, refs)
+	t.Run("returns an error and no refs when an object cannot be read", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		goodPath := "indexes/aa/good"
+		buildIndexWithPostings(ctx, t, bucket, "acme", goodPath, 1<<20, []postings.Row{{
+			Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
+		}})
+
+		refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexpointers.IndexPointer{{Path: goodPath}, {Path: "indexes/aa/missing"}})
+		require.Error(t, err)
+		require.Nil(t, refs)
+	})
 }
 
 func TestCompareLogSortPrefix(t *testing.T) {

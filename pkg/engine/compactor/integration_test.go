@@ -79,7 +79,7 @@ func newCompactionScenario(ctx context.Context, t *testing.T, input scenarioInpu
 func (s *compactionScenario) compactUntilIdle(tenant string) {
 	s.t.Helper()
 	for cycle := range 10 {
-		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window)
+		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window, 0)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
 		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)

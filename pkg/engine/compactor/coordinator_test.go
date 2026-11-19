@@ -1830,7 +1830,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window, 0))
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
 }
 
@@ -1856,7 +1856,7 @@ func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsIsNoWork(t *testin
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(3*time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window, 0))
 	require.Empty(t, replacer.snapshot(), "sections from one physical object are already converged")
 	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
 	require.Zero(t, testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
@@ -1941,7 +1941,7 @@ func TestRunIndexMergePhase_MissingToCIsNoWork(t *testing.T) {
 	bucket := objstore.NewInMemBucket() // no ToC written
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window, 0))
 }
 
 func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
@@ -1961,7 +1961,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window, 0))
 	require.Len(t, replacer.snapshot(), 1)
 }
 
@@ -1979,7 +1979,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 		c.indexDispatcher.maxRetries = 1
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Len(t, runner.snapshot(), 1)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
 	})
@@ -2000,7 +2000,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		}}
 		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
 	})
 
@@ -2012,7 +2012,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, &fakeRunner{failOnCall: 1}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Len(t, replacer.snapshot(), 1)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
@@ -2036,7 +2036,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		writer := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 		c.publisher = &tocPublisher{writer: &concurrentRemovalReplacer{t: t, writer: writer, removed: "indexes/a"}, timeout: 30 * time.Second}
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Len(t, runner.snapshot(), 1)
 		entries, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
@@ -2068,7 +2068,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Len(t, replacer.snapshot(), 1)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
 	})
@@ -2095,7 +2095,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Len(t, runner.snapshot(), 1)
 		require.Len(t, replacer.snapshot(), 1)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
@@ -2113,7 +2113,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		}
 		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{err: errors.New("swap failed")}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
 	})
 
@@ -2129,7 +2129,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Empty(t, replacer.snapshot())
 		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantCyclesTotal))
 	})
@@ -2138,7 +2138,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		window := imWindow()
 		c := newTestCoordinator(t, errBucket{objstore.NewInMemBucket()}, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(t.Context(), "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(t.Context(), "acme", window, 0))
 	})
 
 	t.Run("returns interrupted and records no cycle when the ToC read fails after a cancel", func(t *testing.T) {
@@ -2148,7 +2148,7 @@ func TestRunIndexMergePhase(t *testing.T) {
 		runner := &fakeRunner{}
 		c := newTestCoordinator(t, errBucket{objstore.NewInMemBucket()}, runner, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeInterrupted, c.runIndexMergePhase(ctx, "acme", window, 0))
 		require.Empty(t, runner.snapshot())
 		require.Zero(t, testutil.CollectAndCount(c.metrics.tenantCyclesTotal))
 	})
@@ -2609,6 +2609,19 @@ func TestRunPhase(t *testing.T) {
 
 		c.runPhase(t.Context(), "acme", phaseIndexMerge)
 		require.Equal(t, 2.0, totalCycles(c))
+	})
+
+	t.Run("reports the index count of each window under its own window lookback", func(t *testing.T) {
+		current := imWindow()
+		bucket := objstore.NewInMemBucket()
+		seedLogMergeIndexesAt(t.Context(), t, bucket, current, "acme", []string{"indexes/current/a"}, time.Unix(0, 10))
+		seedLogMergeIndexesAt(t.Context(), t, bucket, current.Add(-metastore.MetastoreWindowSize), "acme", []string{"indexes/previous/a", "indexes/previous/b"}, time.Unix(0, 10))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(current.Add(time.Hour)), newFakeLimits("acme"))
+		c.cfg.WindowLookback = 1
+
+		c.runPhase(t.Context(), "acme", phaseIndexMerge)
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexesPerTenantWindow.WithLabelValues("acme", "0")))
+		require.Equal(t, 2.0, testutil.ToFloat64(c.metrics.indexesPerTenantWindow.WithLabelValues("acme", "1")))
 	})
 
 	t.Run("records no cycle for a LogMerge phase that shutdown interrupts", func(t *testing.T) {
@@ -3538,6 +3551,53 @@ func buildMixedLayoutIndex(ctx context.Context, t *testing.T, bucket objstore.Bu
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 	uploadObject(ctx, t, bucket, path, obj)
+}
+
+func TestRunLayouts(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+
+	t.Run("returns the result of each run at its index when there are more runs than concurrent reads", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		schemas := []string{"label:service_name", "label:namespace"}
+		entries := make([]indexpointers.IndexPointer, 3*indexReadConcurrency)
+		for i := range entries {
+			entries[i].Path = fmt.Sprintf("indexes/idx-%03d", i)
+			if i%3 == 2 {
+				buildMixedLayoutIndex(ctx, t, bucket, "acme", entries[i].Path)
+				continue
+			}
+			buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: entries[i].Path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
+				stats:    []stats.Stat{{ObjectPath: "logs/a", SortSchema: schemas[i%3]}},
+				postings: []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api"}}})
+		}
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		results, err := c.runLayouts(ctx, "acme", groupIndexRuns(entries))
+		require.NoError(t, err)
+		require.Len(t, results, len(entries))
+		for i, result := range results {
+			if i%3 == 2 {
+				require.ErrorIs(t, result.corruptErr, errCorruptIndex, "run %d", i)
+				continue
+			}
+			require.NoError(t, result.corruptErr, "run %d", i)
+			require.True(t, result.hasLayout, "run %d", i)
+			want := layoutOfStats(streams.DefaultShardBuckets, []stats.Stat{{SortSchema: schemas[i%3]}})
+			require.True(t, want.Equal(result.layout), "run %d has layout %v, want %v", i, result.layout, want)
+		}
+	})
+
+	t.Run("returns an error and no results when a run cannot be read", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/good")
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+		results, err := c.runLayouts(ctx, "acme", groupIndexRuns([]indexpointers.IndexPointer{{Path: "indexes/good"}, {Path: "indexes/missing"}}))
+		require.Error(t, err)
+		require.NotErrorIs(t, err, errCorruptIndex)
+		require.Nil(t, results)
+	})
 }
 
 func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {

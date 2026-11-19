@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -533,25 +534,28 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 // When ctx is done, no new group starts. The error is the shutdown error only
 // if no group failed, so a shutdown does not hide a real failure.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexpointers.IndexPointer) (compactionStats, error) {
+	runs := groupIndexRuns(entries)
+	layouts, err := c.runLayouts(ctx, tenant, runs)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("group indexes by layout: %w", err)
+	}
+
 	groups := make(map[layoutKey]*layoutGroup)
-	for _, run := range groupIndexRuns(entries) {
-		layout, hasLayout, err := c.runLayout(ctx, tenant, run)
-		if errors.Is(err, errCorruptIndex) {
-			c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge, err)
+	for i, run := range runs {
+		layout := layouts[i]
+		if layout.corruptErr != nil {
+			c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge, layout.corruptErr)
 			continue
-		}
-		if err != nil {
-			return compactionStats{}, fmt.Errorf("group indexes by layout: %w", err)
 		}
 		// An index run without stats sections for tenant has no layout. Such
 		// runs share the zero key, so they merge only with each other.
 		var key layoutKey
-		if hasLayout {
-			key = newLayoutKey(layout)
+		if layout.hasLayout {
+			key = newLayoutKey(layout.layout)
 		}
 		group, found := groups[key]
 		if !found {
-			group = newLayoutGroup(layout, hasLayout)
+			group = newLayoutGroup(layout.layout, layout.hasLayout)
 			groups[key] = group
 		}
 		group.add(run)
@@ -590,6 +594,47 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		total = total.Merge(stats)
 	}
 	return total, errors.Join(errs...)
+}
+
+// runLayoutResult is the stream layout of one index run, or the reason the run
+// is corrupt.
+type runLayoutResult struct {
+	layout    streams.Layout
+	hasLayout bool
+
+	// corruptErr wraps errCorruptIndex when the run is corrupt. The other
+	// fields are then unset.
+	corruptErr error
+}
+
+// runLayouts returns the layout of each run in runs, at the same index. It
+// reads up to indexReadConcurrency runs at once, because a window can hold
+// tens of thousands of runs and each read is a round trip to the bucket.
+//
+// A corrupt run does not fail the call. Its result holds the corrupt error.
+// Any other error stops every read and returns the error.
+func (c *coordinator) runLayouts(ctx context.Context, tenant string, runs []indexRun) ([]runLayoutResult, error) {
+	results := make([]runLayoutResult, len(runs))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(indexReadConcurrency)
+	for i, run := range runs {
+		group.Go(func() error {
+			layout, hasLayout, err := c.runLayout(groupCtx, tenant, run)
+			if errors.Is(err, errCorruptIndex) {
+				results[i] = runLayoutResult{corruptErr: err}
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			results[i] = runLayoutResult{layout: layout, hasLayout: hasLayout}
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // runLayout opens the index objects of run and returns the stream layout that
@@ -929,9 +974,10 @@ const (
 	phaseOutcomeInterrupted
 )
 
-// runIndexMergePhase runs IndexMerge for the tenant's current window and swaps
-// the ToC.
-func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, window time.Time) phaseOutcome {
+// runIndexMergePhase runs IndexMerge for one window of the tenant and swaps
+// the ToC. lookback is the position of window in c.windows(), where 0 is the
+// current window.
+func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, window time.Time, lookback int) phaseOutcome {
 	start := c.clock()
 	entries, ok := c.tenantEntries(ctx, tenant, window)
 	if !ok {
@@ -941,7 +987,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		return phaseOutcomeError
 	}
 
-	c.metrics.indexesPerTenantWindow.WithLabelValues(tenant).Set(float64(len(groupIndexRuns(entries))))
+	c.metrics.indexesPerTenantWindow.WithLabelValues(tenant, strconv.Itoa(lookback)).Set(float64(len(groupIndexRuns(entries))))
 
 	stats, err := c.compactTenantIndexes(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
@@ -1248,12 +1294,12 @@ func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phas
 		return outcome
 	case phaseIndexMerge:
 		worst := phaseOutcomeNoWork
-		for _, window := range c.windows() {
+		for lookback, window := range c.windows() {
 			if ctx.Err() != nil {
 				return worst
 			}
 			start := c.clock()
-			outcome := c.runIndexMergePhase(ctx, tenant, window)
+			outcome := c.runIndexMergePhase(ctx, tenant, window, lookback)
 			if outcome != phaseOutcomeInterrupted {
 				c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 			}
