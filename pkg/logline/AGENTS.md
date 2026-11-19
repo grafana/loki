@@ -16,11 +16,11 @@ review.
 
 | Version | Status | On-disk format | Extractor |
 | --- | --- | --- | --- |
-| v3 | Current (`CurrentVersion`) | footer 4 | v3 |
-| v4 | Supported | v3 bytes | packed numeric terms |
+| v3 | Supported | footer 4 | v3 |
+| v4 | Current (`CurrentVersion`) | v3 bytes | packed numeric terms |
 | v5 | In development. Do not set `-logline-index.version=v5` | v3 bytes, for now | v4's extractor, forked into `internal/v5` |
 
-v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v4"` so a binary upgrade does not write it.
 
 ## Extraction is coupled to index version
 
