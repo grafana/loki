@@ -123,21 +123,61 @@ They cut a new index object when the current one reaches the target object size 
 builder and the posting key changes.
 So no posting key spans two index objects, and every index object holds postings.
 
-The stats rows come after the postings in the merge.
-All of them go into the last index object of the run, which is still open when the postings end.
-The earlier index objects get an empty stats section, which records only the layout.
+The stats rows come after the postings in each task.
+All stats rows of a task go into its last index object, which is still open when the postings end.
+The earlier index objects of the task get an empty stats section, which records only the layout.
 The last index object can exceed the target size by the size of the stats, which is small next to
 the postings.
 
-Each index object is uploaded when it is cut, so the merge holds only one index object open.
+Each index object is uploaded when it is cut, so the task holds only one index object open.
 The task reports one artifact for each index object.
+
+## How a large index merge splits into tasks
+
+One index merge of a large window can take too long for one task.
+If `max_task_size` is set, the planner splits a merge into tasks by posting key span.
+The tasks run in parallel and together write one run.
+This follows the split of a log merge by sort prefix.
+
+Planning samples one posting key in every 4096 postings rows, while it reads the postings bounds of
+each section.
+Each sample stands for the rows up to the next sample, with their share of the uncompressed section
+size.
+The planner pools the samples of every input run and cuts them into spans of about `max_task_size`
+each.
+A span is half open and starts at a sampled key, so no posting key spans two tasks.
+The first span has no start and the last has no end, so the spans together hold every key.
+
+Each task reads only the input sections whose key bounds overlap its span.
+A section that crosses a cut is read by every task that it overlaps.
+The key span predicate of a task skips the pages outside its span, and keeps exactly the rows in it.
+So each task writes the rows of its span, and every task writes postings.
+
+A stats row has no posting key, so it cannot follow the spans.
+Instead the planner gives the stats rows of each input index object to one task that reads that
+object.
+It takes the largest objects first, and gives each to the reading task with the fewest assigned
+bytes.
+So the stats work spreads over the tasks, and the run holds each stats row once.
+A task removes duplicate stats rows only among its own inputs.
+
+The tasks of a merge are in key order.
+The coordinator appends their artifacts in that order, so the index objects of the run stay in key
+order.
+Every entry of the run gets the time range and the shard layout of the whole merge.
+
+A split task sends its runs in a separate field of the plan.
+A worker that does not know key spans finds no runs and fails the task.
+It does not merge every key, which would repeat the rows of the other tasks.
+The coordinator also rejects an artifact whose posting keys fall outside the span of its task.
 
 ## How compaction handles a run
 
 Planning reads the entries of a ToC and groups them into runs.
 See `groupIndexRuns` in `pkg/engine/compactor/index_run.go`.
 
-- **Index merge** plans each run as one planning unit, so one task merges the whole run.
+- **Index merge** plans each run as one planning unit, so one merge takes the whole run.
+  A large merge can split into tasks by posting key span, as the previous section describes.
 - **Log merge** plans one source run at a time.
   It folds the stats rows of every index object of the run into one reference for each log section.
   Before it dispatches the tasks, it checks that the ToC still lists every index object of the run.
@@ -149,8 +189,8 @@ A task reports the index objects that it wrote: the path and the posting key bou
 These are the only facts that the task decides while it runs.
 Planning already knows the time range of the task, which is the time range of its inputs.
 It also knows the shard layout, which is the layout of its inputs.
-The coordinator gives every entry of the run of the task those values.
-It replaces the source runs with one new run for each task in one conditional write.
+The coordinator gives every entry of the run of the merge those values.
+It replaces the source runs with one new run for each merge in one conditional write.
 See `plannedRun` in `pkg/engine/compactor/coordinator.go` and `DecodeResultArtifacts` in
 `pkg/dataobj/compaction/v2/result_record.go`.
 
@@ -162,7 +202,8 @@ Only the compactor and the deletion sweep read stats rows.
 Each of them combines the rows of the whole run:
 
 - Log merge planning folds the rows by log section.
-- The index merge and the index filter merge the rows of all index objects with a K-way merge.
+- The index filter merges the rows of all index objects with a K-way merge.
+  An index merge task does the same for the index objects that planning gives it.
 - The deletion sweep takes the union of the log object paths in all rows.
 
 Within one index object, the stats sections still form one sorted stream.
@@ -185,3 +226,7 @@ See `stats.LayoutSectionBuilder`, `Section.Empty` and `Section.ObjectPathColumn`
 - What target size to choose.
   A query pays for each index object that it opens, so many small index objects can cost more than
   one large one.
+- What to do when a task of a split merge writes a copy of an input index object.
+  This happens when its span holds rows of only that object.
+  The copy has the same content-hash path, so the ToC swap rejects the new run under rule 3.
+  The coordinator logs this case.
