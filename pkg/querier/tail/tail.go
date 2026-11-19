@@ -270,8 +270,8 @@ func (t *Tailer) close() error {
 	defer t.streamMtx.Unlock()
 
 	// close() can be called from multiple paths (loop() on tailMaxDuration,
-	// readTailClient() on disconnect, TailHandler() on HTTP completion), so
-	// guard against double-decrementing the active-tail metrics.
+	// loop() when all ingesters disconnect, TailHandler() on HTTP completion),
+	// so guard against double-decrementing the active-tail metrics.
 	if !t.stopped.CompareAndSwap(false, true) {
 		return nil
 	}
