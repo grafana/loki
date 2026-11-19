@@ -70,6 +70,10 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### Logline index defaults to v4
+
+The default logline index version changes from `v3` to `v4`, which uses packed numeric terms to improve filtering for numeric queries. This affects newly written indexes when `logline.index.version` is unset. Existing indexes are still queried using the version recorded in their metadata. To keep writing v3 indexes, set `logline.index.version: v3` or `-logline-index.version=v3`.
+
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
