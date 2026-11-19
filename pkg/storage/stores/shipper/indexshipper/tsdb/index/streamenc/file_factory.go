@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"os"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -20,12 +21,25 @@ import (
 // FilePoolDecbufFactory creates new file-backed Decbuf instances
 // for a specific index-header file on local disk.
 type FilePoolDecbufFactory struct {
-	files *filepool.FilePool
+	files fileHandles
+	close func() error
 	// fileSize is the size of the file at path in bytes, cached here
 	// to avoid repeated stat calls.
 	// Index files are immutable once written, so this cannot go stale.
 	fileSize int64
 }
+
+type fileHandles interface {
+	filepool.FilePoolCloser
+	Get() (*os.File, error)
+}
+
+type pinnedFile struct {
+	filepool.SingleFilePoolNoopCloser
+	file *os.File
+}
+
+func (f pinnedFile) Get() (*os.File, error) { return f.file, nil }
 
 func NewFilePoolDecbufFactory(
 	path string,
@@ -37,13 +51,29 @@ func NewFilePoolDecbufFactory(
 		return nil, errors.Wrap(err, "stat file for decbuf factory")
 	}
 
+	files := filepool.NewFilePool(path, maxIdleFileHandles, metrics)
 	return &FilePoolDecbufFactory{
-		files: filepool.NewFilePool(
-			path,
-			maxIdleFileHandles,
-			metrics,
-		),
+		files: files,
+		close: func() error {
+			files.Stop()
+			return nil
+		},
 		fileSize: fileInfo.Size(),
+	}, nil
+}
+
+// Pin borrows a file handle for a scan that must remain readable if the
+// file is unlinked. All decbufs from the returned factory share the handle
+// via positioned reads and must be closed before closing the factory.
+func (df *FilePoolDecbufFactory) Pin() (DecbufFactory, error) {
+	file, err := df.files.Get()
+	if err != nil {
+		return nil, err
+	}
+	return &FilePoolDecbufFactory{
+		files:    pinnedFile{file: file},
+		close:    sync.OnceValue(func() error { return df.files.Put(file) }),
+		fileSize: df.fileSize,
 	}, nil
 }
 
@@ -138,6 +168,5 @@ func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
 
 // Close cleans up resources associated with this DecbufFactory
 func (df *FilePoolDecbufFactory) Close() error {
-	df.files.Stop()
-	return nil
+	return df.close()
 }

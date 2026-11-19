@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type MultiIndex struct {
@@ -164,8 +165,7 @@ func shardOverlaps(idx Index, fpFilter index.FingerprintFilter) bool {
 	}
 	fileFrom, fileThrough := sharded.FingerprintBounds()
 	queryFrom, queryThrough := fpFilter.GetFromThrough()
-	// The final file range uses MaxUint64 as an unbounded endpoint.
-	return fileFrom < queryThrough && (queryFrom < fileThrough || fileThrough == math.MaxUint64)
+	return fileFrom < queryThrough && queryFrom < fileThrough
 }
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
@@ -415,4 +415,28 @@ func (i *MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter inde
 	return i.forMatchingIndices(ctx, from, through, fpFilter, func(ctx context.Context, idx Index) error {
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 	})
+}
+
+func (i *MultiIndex) openChunkCursors(ctx context.Context, userID string, from, through model.Time, filter index.FingerprintFilter, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	var mu sync.Mutex
+	var cursors []sharding.ChunkCursor
+	err := i.forMatchingIndices(ctx, from, through, filter, func(_ context.Context, idx Index) error {
+		// The iterator may cancel its worker context once all callbacks finish.
+		// The cursor reads using the request context after iteration returns.
+		opened, err := openChunkCursors(ctx, idx, userID, from, through, filter, matchers...)
+		if err != nil {
+			return err
+		}
+		mu.Lock()
+		cursors = append(cursors, opened...)
+		mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		if closeErr := sharding.CloseChunkCursors(cursors); closeErr != nil {
+			return nil, closeErr
+		}
+		return nil, err
+	}
+	return cursors, nil
 }

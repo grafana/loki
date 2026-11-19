@@ -367,26 +367,18 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 }
 
 func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
-	return sharding.ForSeriesFunc(func(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool, matchers ...*labels.Matcher) error {
-		cleaned, shard, err := cleanMatchers(matchers...)
-		if err != nil {
-			return err
-		}
-		if shard == nil {
-			return c.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, cleaned...)
-		}
-		if fpFilter == nil {
-			fpFilter = shard
-		}
-		return c.idx.ForSeries(ctx, userID, fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) bool {
-			if !shard.Match(fp) {
-				return false
-			}
-			return fn(ls, fp, chks)
-		}, cleaned...)
-	}), true
+	return c.idx, true
 }
 
 func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {
 	return true
+}
+
+// OpenChunkCursors opens ordered file cursors for the shard planner.
+func (c *IndexClient) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	cleaned, filter, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+	return openChunkCursors(ctx, c.idx, userID, from, through, filter, cleaned...)
 }

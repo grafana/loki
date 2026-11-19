@@ -3,22 +3,22 @@ package indexgateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc/metadata"
-
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
@@ -93,21 +93,13 @@ func (i *indexQuerierMock) GetShards(
 	return args.Get(0).(*logproto.ShardsResponse), args.Error(1)
 }
 
-func (i *indexQuerierMock) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
-	args := i.Called(from, through)
-	if args.Get(0) == nil {
-		return nil, args.Bool(1)
-	}
-	return args.Get(0).(sharding.ForSeries), args.Bool(1)
-}
-
 func (i *indexQuerierMock) GetChunkRefsWithSizingInfo(
 	_ context.Context,
 	userID string,
 	from, through model.Time,
-	_ chunk.Predicate,
+	predicate chunk.Predicate,
 ) ([]logproto.ChunkRefWithSizingInfo, error) {
-	args := i.Called(userID, from, through)
+	args := i.Called(userID, from, through, predicate)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -237,6 +229,109 @@ func TestRefWithSizingInfo(t *testing.T) {
 	}
 }
 
+// TODO(owen-d): more testing for specific cases
+func TestAccumulateChunksToShards(t *testing.T) {
+	// only check eq by checksum for convenience -- we're not testing the comparison function here
+	mkRef := func(fp model.Fingerprint, checksum uint32) logproto.ChunkRef {
+		return logproto.ChunkRef{
+			Fingerprint: uint64(fp),
+			Checksum:    checksum,
+		}
+	}
+
+	sized := func(ref logproto.ChunkRef, kb, entries uint32) logproto.ChunkRefWithSizingInfo {
+		return logproto.ChunkRefWithSizingInfo{
+			ChunkRef: ref,
+			KB:       kb,
+			Entries:  entries,
+		}
+
+	}
+
+	filtered := []logproto.ChunkRefWithSizingInfo{
+		// shard 0
+		sized(mkRef(1, 0), 100, 1),
+		sized(mkRef(1, 1), 100, 1),
+		sized(mkRef(1, 2), 100, 1),
+
+		// shard 1
+		sized(mkRef(2, 10), 100, 1),
+		sized(mkRef(2, 20), 100, 1),
+		sized(mkRef(2, 30), 100, 1),
+
+		// shard 2 split across multiple series
+		sized(mkRef(3, 10), 50, 1),
+		sized(mkRef(4, 10), 30, 1),
+		sized(mkRef(4, 20), 30, 1),
+
+		// last shard contains leftovers + skip a few fps in between
+		sized(mkRef(7, 10), 25, 1),
+	}
+
+	shards, err := accumulateChunksToShards(&logproto.ShardsRequest{
+		TargetBytesPerShard: 100 << 10,
+	}, filtered)
+	require.NoError(t, err)
+
+	grps := chunkGroupsForShards(shards, filtered)
+
+	expectedChks := [][]logproto.ChunkRefWithSizingInfo{
+		filtered[0:3],
+		filtered[3:6],
+		filtered[6:9],
+		filtered[9:10],
+	}
+	exp := []logproto.Shard{
+		{
+			Bounds: logproto.FPBounds{Min: 0, Max: 1},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   300 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 2, Max: 2},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   300 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 3, Max: 6},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 2,
+				Chunks:  3,
+				Entries: 3,
+				Bytes:   110 << 10,
+			},
+		},
+		{
+			Bounds: logproto.FPBounds{Min: 7, Max: math.MaxUint64},
+			Stats: &logproto.IndexStatsResponse{
+				Streams: 1,
+				Chunks:  1,
+				Entries: 1,
+				Bytes:   25 << 10,
+			},
+		},
+	}
+
+	require.NoError(t, err)
+
+	for i := range shards {
+		require.Equal(t, exp[i], shards[i], "invalid shard at index %d", i)
+		for j := range grps[i].Refs {
+			require.Equal(t, &expectedChks[i][j].ChunkRef, grps[i].Refs[j], "invalid chunk in grp %d at index %d", i, j)
+		}
+	}
+	require.Equal(t, len(exp), len(shards))
+
+}
+
 type mockGetShardsServer struct {
 	ctx  context.Context
 	sent []*logproto.ShardsResponse
@@ -344,7 +439,8 @@ func TestGetShards(t *testing.T) {
 		{Refs: []*logproto.ChunkRef{&oneStreamChunk.ChunkRef}},
 	}
 
-	// Three streams, each exactly the size of a whole shard.
+	// Three streams, each exactly the size of a whole shard, so none of them can share
+	// one. The refs must be ordered by fingerprint, as the index returns them.
 	streamAChunk1 := mkRef(fpA, 1, targetKB/2)
 	streamAChunk2 := mkRef(fpA, 2, targetKB/2)
 	streamBChunk := mkRef(fpB, 1, targetKB)
@@ -436,7 +532,7 @@ func TestGetShards(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			indexQuerier := newIngesterQuerierMock()
 			indexQuerier.On("HasChunkSizingInfo", from, through).Return(true)
-			indexQuerier.On("HasForSeries", from, through).Return(seriesFromRefs(tc.refs), true)
+			indexQuerier.On("GetChunkRefsWithSizingInfo", tenant, from, through, mock.Anything).Return(tc.refs, nil)
 
 			resp := sendShards(t, indexQuerier, tenant, tc.precomputeChunks, &logproto.ShardsRequest{
 				From:                from,
@@ -514,17 +610,65 @@ func TestGetShardsWithoutChunkSizingInfo(t *testing.T) {
 	require.Equal(t, fallbackResponse(), resp)
 
 	// The gateway must delegate instead of resolving chunk refs itself.
-	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything)
+	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	indexQuerier.AssertExpectations(t)
+}
+
+// BenchmarkBuildShardsResponse benchmarks building the shards response for a tenant
+// without TSDBPrecomputeChunks enabled, i.e. one where the per-shard chunk groups are
+// not returned.
+func BenchmarkBuildShardsResponse(b *testing.B) {
+	req := &logproto.ShardsRequest{
+		TargetBytesPerShard: 600 << 20,
+	}
+
+	for _, tc := range []struct {
+		series, chunksPerSeries int
+	}{
+		{series: 10_000, chunksPerSeries: 100},
+		{series: 100_000, chunksPerSeries: 10},
+		{series: 1_000_000, chunksPerSeries: 1},
+	} {
+		refs := buildChunkRefs(tc.series, tc.chunksPerSeries)
+
+		b.Run(fmt.Sprintf("series=%d/chunks_per_series=%d", tc.series, tc.chunksPerSeries), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := buildShardsResponse(req, refs, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func buildChunkRefs(series, chunksPerSeries int) []logproto.ChunkRefWithSizingInfo {
+	refs := make([]logproto.ChunkRefWithSizingInfo, 0, series*chunksPerSeries)
+	for i := range series {
+		// leave gaps in the fingerprint space so shard bounds don't line up exactly
+		fp := uint64(i) * 3
+		for j := range chunksPerSeries {
+			refs = append(refs, logproto.ChunkRefWithSizingInfo{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: fp,
+					UserID:      "fake",
+					From:        model.Time(j * int(time.Hour/time.Millisecond)),
+					Through:     model.Time((j + 1) * int(time.Hour/time.Millisecond)),
+					Checksum:    uint32(i*chunksPerSeries + j),
+				},
+				KB:      uint32(1024 + (i+j)%1024),
+				Entries: uint32(10_000 + (i+j)%1_000),
+			})
+		}
+	}
+	return refs
 }
 
 func TestGetShardsIndexErrorDoesNotSendPartialResponse(t *testing.T) {
 	sentinel := errors.New("index read failed")
 	q := newIngesterQuerierMock()
 	q.On("HasChunkSizingInfo", model.Time(1), model.Time(2)).Return(true)
-	q.On("HasForSeries", model.Time(1), model.Time(2)).Return(sharding.ForSeriesFunc(func(context.Context, string, tsdb_index.FingerprintFilter, model.Time, model.Time, func(labels.Labels, model.Fingerprint, []tsdb_index.ChunkMeta) bool, ...*labels.Matcher) error {
-		return sentinel
-	}), true)
+	q.On("GetChunkRefsWithSizingInfo", "fake", model.Time(1), model.Time(2), mock.Anything).Return(nil, sentinel).Once()
 	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, q, nil, nil)
 	require.NoError(t, err)
 	server := &mockGetShardsServer{ctx: user.InjectOrgID(context.Background(), "fake")}
@@ -532,4 +676,94 @@ func TestGetShardsIndexErrorDoesNotSendPartialResponse(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 	require.Empty(t, server.sent)
 	q.AssertExpectations(t)
+}
+
+// Expose the planners to external tests, which can import the TSDB package.
+var (
+	BuildShardsResponseForTest     = buildShardsResponse
+	PlanShardsFromCursorsForTest   = planShardsFromCursors
+	ErrUnorderedChunkCursorForTest = errUnorderedChunkCursor
+)
+
+// TestChunkCursor provides an in-memory cursor for the planner and gateway tests.
+type TestChunkCursor struct {
+	Refs    []logproto.ChunkRefWithSizingInfo
+	next    int
+	Closed  bool
+	ReadErr error
+}
+
+func (c *TestChunkCursor) Next() bool {
+	if c.next == len(c.Refs) {
+		return false
+	}
+	c.next++
+	return true
+}
+func (c *TestChunkCursor) At() logproto.ChunkRefWithSizingInfo { return c.Refs[c.next-1] }
+func (c *TestChunkCursor) Err() error                          { return c.ReadErr }
+func (c *TestChunkCursor) Close() error {
+	c.Closed = true
+	return nil
+}
+
+type orderedIndexQuerier struct {
+	*indexQuerierMock
+	cursor  *TestChunkCursor
+	openErr error
+}
+
+func (q *orderedIndexQuerier) OpenChunkCursors(context.Context, string, model.Time, model.Time, ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	if q.openErr != nil {
+		return nil, q.openErr
+	}
+	return []sharding.ChunkCursor{q.cursor}, nil
+}
+
+func TestGatewayOrderedShardsAndFallback(t *testing.T) {
+	req := &logproto.ShardsRequest{From: 1, Through: 100, Query: `{app="synthetic"} |= "test"`, TargetBytesPerShard: 10 << 20}
+	predicate, err := ExtractShardRequestMatchersAndAST(req.Query)
+	require.NoError(t, err)
+	one := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 10, Through: 20}, KB: 1}
+	two := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 30, Through: 40}, KB: 3}
+	legacyRefs := []logproto.ChunkRefWithSizingInfo{one, two}
+	for _, tc := range []struct {
+		name    string
+		refs    []logproto.ChunkRefWithSizingInfo
+		ordered bool
+		openErr error
+	}{
+		{name: "ordered", refs: legacyRefs, ordered: true},
+		{name: "unsupported", openErr: sharding.ErrChunkCursorsUnsupported},
+		{name: "misordered cursor", refs: []logproto.ChunkRefWithSizingInfo{two, one}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := &orderedIndexQuerier{indexQuerierMock: newIngesterQuerierMock(), cursor: &TestChunkCursor{Refs: tc.refs}, openErr: tc.openErr}
+			if !tc.ordered {
+				source.On("GetChunkRefsWithSizingInfo", "synthetic", req.From, req.Through, predicate).Return(legacyRefs, nil).Once()
+			}
+			gateway, err := NewIndexGateway(Config{}, mockLimits{precomputeChunks: true}, util_log.Logger, nil, source, nil, nil)
+			require.NoError(t, err)
+			resp, ordered, err := gateway.planShardsFromStore(t.Context(), "synthetic", req, predicate)
+			require.NoError(t, err)
+			require.Equal(t, tc.ordered, ordered)
+			require.Equal(t, []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{&one.ChunkRef, &two.ChunkRef}}}, resp.ChunkGroups)
+			require.Equal(t, tc.openErr == nil, source.cursor.Closed)
+			source.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGatewayDoesNotFallbackOnCursorErrors(t *testing.T) {
+	sentinel := errors.New("index read failed")
+	for _, source := range []*orderedIndexQuerier{
+		{indexQuerierMock: newIngesterQuerierMock(), openErr: sentinel},
+		{indexQuerierMock: newIngesterQuerierMock(), cursor: &TestChunkCursor{ReadErr: sentinel}},
+	} {
+		gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, source, nil, nil)
+		require.NoError(t, err)
+		resp, _, err := gateway.planShardsFromStore(t.Context(), "synthetic", &logproto.ShardsRequest{}, chunk.Predicate{})
+		require.ErrorIs(t, err, sentinel)
+		require.Nil(t, resp)
+	}
 }

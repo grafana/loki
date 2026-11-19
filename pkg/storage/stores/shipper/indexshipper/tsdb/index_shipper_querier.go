@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type indexShipperIterator interface {
@@ -39,7 +40,7 @@ func (i indexIterFunc) For(_ context.Context, _ int, f func(context.Context, Ind
 	return i(f)
 }
 
-func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
+func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (*MultiIndex, error) {
 	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
 		// Ensure we query both per tenant and multitenant TSDBs
 		idxBuckets := IndexBuckets(from, through, []config.TableRange{i.tableRange})
@@ -152,6 +153,14 @@ func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFi
 	}
 
 	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+}
+
+func (i *indexShipperQuerier) openChunkCursors(ctx context.Context, userID string, from, through model.Time, filter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	idx, err := i.indices(ctx, from, through, userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.openChunkCursors(ctx, userID, from, through, filter, matchers...)
 }
 
 type resultAccumulator[T any] struct {

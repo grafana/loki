@@ -318,3 +318,18 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 func (m MonitoredReaderWriter) HasChunkSizingInfo(from, through model.Time) bool {
 	return m.rw.HasChunkSizingInfo(from, through)
 }
+
+// OpenChunkCursors opens ordered chunk cursors when the underlying index supports them.
+func (m MonitoredReaderWriter) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	source, ok := m.rw.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	var cursors []sharding.ChunkCursor
+	err := loki_instrument.TimeRequest(ctx, "open_chunk_cursors", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cursors, err = source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
+		return err
+	})
+	return cursors, err
+}

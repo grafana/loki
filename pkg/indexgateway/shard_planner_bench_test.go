@@ -15,9 +15,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-func BenchmarkBoundedShardPlanning(b *testing.B) {
-	// Two mmap-backed indexes overlap in both streams and chunks. Build
-	// them once so each batch size reads the same synthetic data.
+func BenchmarkOrderedShardPlanning(b *testing.B) {
+	b.Run("mmap", func(b *testing.B) { benchmarkFileShardPlanning(b, index.MmapOptions{}) })
+	b.Run("stream", func(b *testing.B) { benchmarkFileShardPlanning(b, index.DefaultStreamOptions()) })
+}
+
+func benchmarkFileShardPlanning(b *testing.B, opts index.ReaderOptions) {
+	b.Helper()
+	// Two indexes overlap in both streams and chunks.
 	const streamsPerFile, sharedStreams = 90000, 60000
 	const chunksPerStream, sharedChunks = 24, 12
 	dir := b.TempDir()
@@ -41,16 +46,31 @@ func BenchmarkBoundedShardPlanning(b *testing.B) {
 			}, dir, dir)
 		})
 		require.NoError(b, err)
-		idx, _, err := tsdb.NewTSDBIndexFromFile(id.Path(), index.MmapOptions{})
+		idx, err := tsdb.NewShippableTSDBFile(id, opts)
 		require.NoError(b, err)
 		b.Cleanup(func() { require.NoError(b, idx.Close()) })
 		indexes = append(indexes, idx)
 	}
 	req := &logproto.ShardsRequest{From: 1, Through: 5000, TargetBytesPerShard: 600 << 20}
 	client := tsdb.NewIndexClient(tsdb.NewMultiIndex(indexes), tsdb.IndexClientOptions{}, nil)
-	series, ok := client.HasForSeries(req.From, req.Through)
-	require.True(b, ok)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "synthetic")}
 	const uniqueRefs = 2*streamsPerFile*chunksPerStream - sharedStreams*sharedChunks
-	indexgateway.MeasureShardPlanning(b, series, req, matchers, uniqueRefs)
+	cursors, err := client.OpenChunkCursors(b.Context(), "synthetic", req.From, req.Through, matchers...)
+	require.NoError(b, err)
+	_, err = indexgateway.PlanShardsFromCursorsForTest(b.Context(), req, false, cursors)
+	require.NoError(b, err)
+	b.ReportAllocs()
+	for b.Loop() {
+		cursors, err := client.OpenChunkCursors(b.Context(), "synthetic", req.From, req.Through, matchers...)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp, err := indexgateway.PlanShardsFromCursorsForTest(b.Context(), req, false, cursors)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if got := resp.Statistics.Index.TotalChunks; got != uniqueRefs {
+			b.Fatalf("resolved %d refs, want %d", got, uniqueRefs)
+		}
+	}
 }

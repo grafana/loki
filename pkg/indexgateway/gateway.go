@@ -3,8 +3,11 @@ package indexgateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/c2h5oh/datasize"
@@ -30,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -429,17 +433,14 @@ func (g *Gateway) boundedShards(
 
 	start := time.Now()
 
-	series, ok := g.indexQuerier.HasForSeries(req.From, req.Through)
-	if !ok {
-		return fmt.Errorf("index with chunk sizing information does not support ForSeries")
-	}
-	resp, err := planShards(ctx, series, instanceID, req, p.Matchers, g.limits.TSDBPrecomputeChunks(instanceID), shardPlanningBatchSize)
+	resp, ordered, err := g.planShardsFromStore(ctx, instanceID, req, p)
 	if err != nil {
 		return err
 	}
 	ct := resp.Statistics.Index.TotalChunks
 	sp.AddEvent("queried local index", trace.WithAttributes(
 		attribute.Int64("index_chunks_resolved", ct),
+		attribute.Bool("ordered_chunk_cursors", ordered),
 	))
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
@@ -461,6 +462,7 @@ func (g *Gateway) boundedShards(
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
 		"precomputed_refs", refCt,
+		"ordered_chunk_cursors", ordered,
 		"matchers", ms.String(),
 		"from", req.From.Time().String(),
 		"through", req.Through.Time().String(),
@@ -471,6 +473,74 @@ func (g *Gateway) boundedShards(
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	return server.Send(resp)
+}
+
+func (g *Gateway) planShardsFromStore(ctx context.Context, tenant string, req *logproto.ShardsRequest, predicate chunk.Predicate) (*logproto.ShardsResponse, bool, error) {
+	precompute := g.limits.TSDBPrecomputeChunks(tenant)
+	if source, ok := g.indexQuerier.(sharding.ChunkCursorSource); ok {
+		cursors, err := source.OpenChunkCursors(ctx, tenant, req.From, req.Through, predicate.Matchers...)
+		if err == nil {
+			resp, err := planShardsFromCursors(ctx, req, precompute, cursors)
+			if !errors.Is(err, errUnorderedChunkCursor) {
+				return resp, true, err
+			}
+		} else if !errors.Is(err, sharding.ErrChunkCursorsUnsupported) {
+			return nil, false, err
+		}
+	}
+	// Use the legacy chunk lookup when the store can't return refs in order.
+	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, tenant, req.From, req.Through, predicate)
+	if err != nil {
+		return nil, false, err
+	}
+	resp, err := buildShardsResponse(req, refs, precompute)
+	return resp, false, err
+}
+
+// buildShardsResponse builds the response for a shards request from the chunk refs
+// resolved from the index. precomputeChunks controls whether the per-shard chunk
+// groups are returned alongside the shards.
+func buildShardsResponse(
+	req *logproto.ShardsRequest,
+	refs []logproto.ChunkRefWithSizingInfo,
+	precomputeChunks bool,
+) (*logproto.ShardsResponse, error) {
+	resp := &logproto.ShardsResponse{}
+
+	if len(refs) == 0 {
+		// Edge case: if there are no chunks, we still need to return a single shard
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}
+	} else {
+		shards, err := accumulateChunksToShards(req, refs)
+		if err != nil {
+			return nil, err
+		}
+		resp.Shards = shards
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise avoid calculating them.
+		if precomputeChunks {
+			resp.ChunkGroups = chunkGroupsForShards(shards, refs)
+		}
+	}
+
+	// Populate index statistics for metrics logging
+	ct := len(refs)
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(ct)
+	// compute unique streams matched post-filtering
+	seen := make(map[model.Fingerprint]struct{}, 1024)
+	for _, ref := range refs {
+		seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+	}
+	resp.Statistics.Index.TotalStreams = int64(len(seen))
+
+	return resp, nil
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
@@ -502,6 +572,61 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 	return chunk.NewPredicate(matchers, &plan.QueryPlan{
 		AST: expr,
 	}), nil
+}
+
+func accumulateChunksToShards(
+	req *logproto.ShardsRequest,
+	filtered []logproto.ChunkRefWithSizingInfo,
+) ([]logproto.Shard, error) {
+	// Retain per-stream sizing totals without retaining another copy of every chunk.
+	totals := make(map[model.Fingerprint]sharding.SizedFP, 1024)
+	for _, ref := range filtered {
+		fp := model.Fingerprint(ref.Fingerprint)
+		x := totals[fp]
+		x.Fp = fp
+		x.Stats.Chunks++
+		x.Stats.Entries += uint64(ref.Entries)
+		x.Stats.Bytes += uint64(ref.KB << 10)
+		totals[fp] = x
+	}
+	series := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(totals)))
+	defer func() { sharding.SizedFPsPool.Put(series) }()
+	for _, x := range totals {
+		series = append(series, x)
+	}
+	sort.Sort(series)
+	return series.ShardsFor(req.TargetBytesPerShard), nil
+}
+
+// chunkGroupsForShards buckets the given chunk refs into one group per shard.
+// It expects chunkRefs to be ordered by fingerprint.
+func chunkGroupsForShards(
+	shards []logproto.Shard,
+	chunkRefs []logproto.ChunkRefWithSizingInfo,
+) []logproto.ChunkRefGroup {
+	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
+	for _, s := range shards {
+		from := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint >= uint64(s.Bounds.Min)
+		})
+		through := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint > uint64(s.Bounds.Max)
+		})
+		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
+			Refs: refsWithSizingInfoToRefs(chunkRefs[from:through]),
+		})
+	}
+
+	return chkGrps
+}
+
+func refsWithSizingInfoToRefs(refsWithSizingInfo []logproto.ChunkRefWithSizingInfo) []*logproto.ChunkRef {
+	refs := make([]*logproto.ChunkRef, 0, len(refsWithSizingInfo))
+	for _, refWithSizingInfo := range refsWithSizingInfo {
+		refs = append(refs, &refWithSizingInfo.ChunkRef)
+	}
+
+	return refs
 }
 
 type refWithSizingInfo struct {

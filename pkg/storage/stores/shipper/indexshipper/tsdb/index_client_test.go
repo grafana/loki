@@ -15,11 +15,11 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type mockIndexShipperIndexIterator struct {
@@ -421,7 +421,7 @@ func TestIndexClient_LabelValuesForMetricName(t *testing.T) {
 	}
 }
 
-func TestIndexClient_ForSeriesFilters(t *testing.T) {
+func TestIndexClient_OpenChunkCursorsFilters(t *testing.T) {
 	const tenant = "fake"
 	// The fingerprint of app=a is in the lower half, and app=f is in the upper half.
 	appA := labels.FromStrings("app", "a")
@@ -442,9 +442,6 @@ func TestIndexClient_ForSeriesFilters(t *testing.T) {
 		files = append(files, file)
 	}
 	client := NewIndexClient(NewMultiIndex(files), IndexClientOptions{}, &fakeLimits{})
-	series, ok := client.HasForSeries(5, 25)
-	require.True(t, ok)
-
 	wantA := []logproto.ChunkRefWithSizingInfo{
 		{ChunkRef: logproto.ChunkRef{UserID: tenant, Fingerprint: labels.StableHash(appA), From: 0, Through: 20, Checksum: 1}, KB: 3, Entries: 7},
 		{ChunkRef: logproto.ChunkRef{UserID: tenant, Fingerprint: labels.StableHash(appA), From: 10, Through: 30, Checksum: 2}, KB: 4, Entries: 9},
@@ -456,11 +453,9 @@ func TestIndexClient_ForSeriesFilters(t *testing.T) {
 	metric := labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 	shard := labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "0_of_2")
 	app := labels.MustNewMatcher(labels.MatchEqual, "app", "a")
-	upperHalf := v1.NewBounds(1<<63, math.MaxUint64)
 	for _, tc := range []struct {
 		name     string
 		matchers []*labels.Matcher
-		filter   index.FingerprintFilter
 		want     []logproto.ChunkRefWithSizingInfo
 		wantErr  bool
 	}{
@@ -468,39 +463,34 @@ func TestIndexClient_ForSeriesFilters(t *testing.T) {
 		{name: "ignore legacy metric name", matchers: []*labels.Matcher{metric}, want: wantAll},
 		{name: "label matcher", matchers: []*labels.Matcher{app}, want: wantA},
 		{name: "shard matcher", matchers: []*labels.Matcher{metric, shard}, want: wantA},
-		{name: "fingerprint filter", filter: upperHalf, want: wantF},
-		{name: "disjoint shard and fingerprint filter", matchers: []*labels.Matcher{shard}, filter: upperHalf},
+		{name: "last shard matcher", matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "1_of_2")}, want: wantF},
 		{name: "invalid shard", matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "invalid")}, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			original := slices.Clone(tc.matchers)
-			var mu sync.Mutex
-			var got []logproto.ChunkRefWithSizingInfo
-			err := series.ForSeries(context.Background(), tenant, tc.filter, 5, 25, func(_ labels.Labels, fp model.Fingerprint, chunks []index.ChunkMeta) bool {
-				mu.Lock()
-				defer mu.Unlock()
-				for _, c := range chunks {
-					got = append(got, logproto.ChunkRefWithSizingInfo{
-						ChunkRef: logproto.ChunkRef{UserID: tenant, Fingerprint: uint64(fp), From: c.From(), Through: c.Through(), Checksum: c.Checksum},
-						KB:       c.KB, Entries: c.Entries,
-					})
-				}
-				return false
-			}, tc.matchers...)
+			cursors, err := client.OpenChunkCursors(t.Context(), tenant, 5, 25, tc.matchers...)
+			t.Cleanup(func() { require.NoError(t, sharding.CloseChunkCursors(cursors)) })
 			require.Equal(t, original, tc.matchers, "the caller's matchers must not be mutated")
 			if tc.wantErr {
 				require.Error(t, err)
-				require.Empty(t, got)
+				require.Empty(t, cursors)
 				return
 			}
 			require.NoError(t, err)
-			// ForSeries visits both files. The planner removes duplicate refs.
-			require.ElementsMatch(t, slices.Concat(tc.want, tc.want), got)
+			require.Len(t, cursors, 2)
+			for _, cursor := range cursors {
+				var got []logproto.ChunkRefWithSizingInfo
+				for cursor.Next() {
+					got = append(got, cursor.At())
+				}
+				require.NoError(t, cursor.Err())
+				require.Equal(t, tc.want, got)
+			}
 		})
 	}
 }
 
-func TestIndexClient_ForSeriesMaximumFingerprint(t *testing.T) {
+func TestIndexClient_OpenChunkCursorsMaximumFingerprint(t *testing.T) {
 	b := NewBuilder(index.FormatV3)
 	b.AddSeries(labels.FromStrings("app", "max"), math.MaxUint64, index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 1}})
 	dir := t.TempDir()
@@ -512,14 +502,13 @@ func TestIndexClient_ForSeriesMaximumFingerprint(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, file.Close()) }()
 	client := NewIndexClient(NewMultiIndex(IndexSlice{file}), IndexClientOptions{}, &fakeLimits{})
-	series, ok := client.HasForSeries(0, 10)
-	require.True(t, ok)
-	var count int
-	err = series.ForSeries(context.Background(), "fake", v1.NewBounds(math.MaxUint64, math.MaxUint64), 0, 10, func(_ labels.Labels, fp model.Fingerprint, chunks []index.ChunkMeta) bool {
-		require.EqualValues(t, uint64(math.MaxUint64), fp)
-		count += len(chunks)
-		return false
-	})
+	cursors, err := client.OpenChunkCursors(t.Context(), "fake", 0, 10, labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "1_of_2"))
+	t.Cleanup(func() { require.NoError(t, sharding.CloseChunkCursors(cursors)) })
 	require.NoError(t, err)
-	require.Equal(t, 1, count)
+	require.Len(t, cursors, 1)
+	cursor := cursors[0]
+	require.True(t, cursor.Next())
+	require.EqualValues(t, uint64(math.MaxUint64), cursor.At().Fingerprint)
+	require.False(t, cursor.Next())
+	require.NoError(t, cursor.Err())
 }

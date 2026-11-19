@@ -292,23 +292,16 @@ func sumShardBytes(r *logproto.ShardsResponse) uint64 {
 }
 
 func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
-	type periodReader struct {
-		from, through model.Time
-		series        sharding.ForSeries
-	}
-	var readers []periodReader
-	hasStores := false
+	var impls []sharding.ForSeries
 	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
-		hasStores = true
 		impl, ok := store.HasForSeries(from, through)
 		if ok {
-			readers = append(readers, periodReader{from, through, impl})
+			impls = append(impls, impl)
 		}
 		return nil
 	})
 
-	// With no stores in range, the old chunk lookup returned an empty result.
-	if hasStores && len(readers) == 0 {
+	if len(impls) == 0 {
 		return nil, false
 	}
 
@@ -326,11 +319,8 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 			) (stop bool),
 			matchers ...*labels.Matcher,
 		) error {
-			for _, reader := range readers {
-				if from <= through && (through < reader.from || from > reader.through) {
-					continue
-				}
-				if err := reader.series.ForSeries(ctx, userID, fpFilter, max(from, reader.from), min(through, reader.through), fn, matchers...); err != nil {
+			for _, impl := range impls {
+				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
 					return err
 				}
 			}
@@ -351,6 +341,30 @@ func (c CompositeStore) HasChunkSizingInfo(from, through model.Time) bool {
 	})
 
 	return allStoresHaveChunkSizingInfo
+}
+
+// OpenChunkCursors opens ordered chunk cursors across all matching schema periods.
+func (c CompositeStore) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	var cursors []sharding.ChunkCursor
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
+		source, ok := store.(sharding.ChunkCursorSource)
+		if !ok {
+			return sharding.ErrChunkCursorsUnsupported
+		}
+		opened, err := source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+		cursors = append(cursors, opened...)
+		return nil
+	})
+	if err != nil {
+		if closeErr := sharding.CloseChunkCursors(cursors); closeErr != nil {
+			return nil, closeErr
+		}
+		return nil, err
+	}
+	return cursors, nil
 }
 
 func (c CompositeStore) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {

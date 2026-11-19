@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
-	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
@@ -82,59 +81,38 @@ func (m mockStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ 
 
 func (m mockStore) Stop() {}
 
-type seriesIndexReader struct {
-	index.Reader
-	series sharding.ForSeries
-}
-
-func (s seriesIndexReader) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
-	return s.series, true
-}
-
 type queryLengthLimit time.Duration
 
 func (l queryLengthLimit) MaxQueryLength(context.Context, string) time.Duration {
 	return time.Duration(l)
 }
 
-func TestCompositeStoreForSeriesTimeRanges(t *testing.T) {
-	type visit struct {
-		period        int
-		from, through model.Time
-	}
-	for _, tc := range []struct {
-		name          string
-		from, through model.Time
-		visits        []visit
-		err           string
-	}{
-		{name: "across periods", from: 55, through: 125, visits: []visit{{0, 55, 99}, {1, 100, 125}}},
-		{name: "longer than limit", from: 25, through: 90, err: "query time range exceeds the limit"},
-		{name: "reversed in one period", from: 75, through: 70, err: "invalid query, through < from"},
-		{name: "before first period", from: 0, through: 10},
-		{name: "future only", from: model.Now().Add(time.Hour), through: model.Now().Add(time.Hour + time.Millisecond)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			store := NewCompositeStore(queryLengthLimit(50 * time.Millisecond))
-			var visits []visit
-			for period, start := range []model.Time{20, 100} {
-				series := sharding.ForSeriesFunc(func(_ context.Context, _ string, _ tsdb_index.FingerprintFilter, from, through model.Time, _ func(labels.Labels, model.Fingerprint, []tsdb_index.ChunkMeta) bool, _ ...*labels.Matcher) error {
-					visits = append(visits, visit{period, from, through})
-					return nil
-				})
-				store.AddStore(start, nil, seriesIndexReader{series: series}, nil, nil)
-			}
-			series, ok := store.HasForSeries(tc.from, tc.through)
-			require.True(t, ok)
-			err := series.ForSeries(context.Background(), "synthetic", nil, tc.from, tc.through, nil)
-			if tc.err != "" {
-				require.ErrorContains(t, err, tc.err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.visits, visits)
-		})
-	}
+type cursorIndexReader struct {
+	index.Reader
+	open func(from, through model.Time)
+}
+
+func (r cursorIndexReader) OpenChunkCursors(_ context.Context, _ string, from, through model.Time, _ ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	r.open(from, through)
+	return nil, nil
+}
+
+func TestCompositeStoreOpenChunkCursorsTimeRanges(t *testing.T) {
+	store := NewCompositeStore(queryLengthLimit(50 * time.Millisecond))
+	var visited [][2]model.Time
+	reader := cursorIndexReader{open: func(from, through model.Time) {
+		visited = append(visited, [2]model.Time{from, through})
+	}}
+	store.AddStore(20, nil, reader, nil, nil)
+	store.AddStore(100, nil, reader, nil, nil)
+
+	cursors, err := store.OpenChunkCursors(t.Context(), "synthetic", 55, 125)
+	require.NoError(t, err)
+	require.Empty(t, cursors)
+	require.Equal(t, [][2]model.Time{{55, 99}, {100, 125}}, visited)
+
+	_, err = store.OpenChunkCursors(t.Context(), "synthetic", 25, 90)
+	require.ErrorContains(t, err, "query time range exceeds the limit")
 }
 
 func TestCompositeStore(t *testing.T) {

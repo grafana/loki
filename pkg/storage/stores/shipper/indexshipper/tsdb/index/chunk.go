@@ -65,7 +65,11 @@ func (c ChunkMetas) Bounds() (mint, maxt model.Time) {
 
 // Sort by (MinTime, MaxTime, Checksum)
 func (c ChunkMetas) Less(i, j int) bool {
-	a, b := c[i], c[j]
+	return c[i].Less(c[j])
+}
+
+// Less reports whether a sorts before b by (MinTime, MaxTime, Checksum).
+func (a ChunkMeta) Less(b ChunkMeta) bool {
 	if a.MinTime != b.MinTime {
 		return a.MinTime < b.MinTime
 	}
