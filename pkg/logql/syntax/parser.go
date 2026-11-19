@@ -125,7 +125,7 @@ func validateExpr(expr Expr) error {
 		// TODO: allow it once query results can carry native histograms. The
 		// shard sub-queries of a histogram query have a histogram root too, so
 		// they will need to skip this check before that.
-		if isHistogramValued(e) {
+		if IsHistogramValued(e) {
 			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
 		}
 		return validateSampleExpr(e)

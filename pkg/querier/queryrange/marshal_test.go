@@ -2,10 +2,13 @@ package queryrange
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
@@ -77,6 +80,7 @@ func TestResponseWrap(t *testing.T) {
 		{"streams", &LokiResponse{}, &QueryResponse_Streams{}},
 		{"topk", &TopKSketchesResponse{}, &QueryResponse_TopkSketches{}},
 		{"quantile", &QuantileSketchResponse{}, &QueryResponse_QuantileSketches{}},
+		{"histograms", &HistogramResponse{}, &QueryResponse_Histograms{}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			actual, err := QueryResponseWrap(tt.response)
@@ -232,4 +236,134 @@ func Benchmark_UnwrapSeries(b *testing.B) {
 		require.NotNil(b, actual)
 	}
 
+}
+
+// testHistogramMatrix is the result of a shard of a histogram query: two steps, one of which has no series.
+func testHistogramMatrix() logql.HistogramMatrix {
+	h := &histogram.FloatHistogram{
+		CounterResetHint: histogram.GaugeType,
+		Schema:           3,
+		ZeroThreshold:    2.938735877055719e-39,
+		Count:            3,
+		Sum:              6,
+		PositiveSpans:    []histogram.Span{{Offset: 0, Length: 2}},
+		PositiveBuckets:  []float64{1, 2},
+	}
+	return logql.HistogramMatrix{
+		{promql.Sample{T: 60_000, Metric: labels.FromStrings("app", "a"), H: h}},
+		{},
+	}
+}
+
+func TestResultToResponse_histogramMatrix(t *testing.T) {
+	m := testHistogramMatrix()
+	want, err := m.ToProto()
+	require.NoError(t, err)
+
+	actual, err := ResultToResponse(logqlmodel.Result{Data: m, Warnings: []string{"w"}}, nil)
+	require.NoError(t, err)
+	require.Equal(t, &HistogramResponse{Response: want, Warnings: []string{"w"}}, actual)
+}
+
+// The result of a shard goes from the querier to the query frontend as protobuf, on the same path as the
+// sketches of the other sharded queries, and arrives as the matrix that it was.
+func TestHistogramResponse_fromTheQuerierToTheFrontend(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	m := testHistogramMatrix()
+
+	response, err := ResultToResponse(logqlmodel.Result{Data: m}, nil)
+	require.NoError(t, err)
+	response = response.(*HistogramResponse).WithHeaders([]queryrangebase.PrometheusResponseHeader{{Name: "X-Test", Values: []string{"1"}}})
+
+	requireMatrix := func(t *testing.T, resp queryrangebase.Response) {
+		t.Helper()
+		result, err := ResponseToResult(resp)
+		require.NoError(t, err)
+		got, ok := result.Data.(logql.HistogramMatrix)
+		require.True(t, ok, "%T", result.Data)
+		require.Len(t, got, 2)
+		require.Len(t, got[0], 1)
+		require.Empty(t, got[1])
+		require.EqualValues(t, 60_000, got[0][0].T)
+		require.Equal(t, m[0][0].Metric, got[0][0].Metric)
+		require.True(t, m[0][0].H.Equals(got[0][0].H))
+		require.Equal(t, histogram.GaugeType, got[0][0].H.CounterResetHint)
+	}
+
+	t.Run("wrapped as a query response", func(t *testing.T) {
+		wrapped, err := QueryResponseWrap(response)
+		require.NoError(t, err)
+		b, err := wrapped.Marshal()
+		require.NoError(t, err)
+
+		var read QueryResponse
+		require.NoError(t, read.Unmarshal(b))
+		unwrapped, err := QueryResponseUnwrap(&read)
+		require.NoError(t, err)
+		requireMatrix(t, unwrapped)
+	})
+
+	t.Run("encoded and decoded by the codec", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/loki/api/v1/query_range", nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", ProtobufType)
+
+		encoded, err := DefaultCodec.EncodeResponse(ctx, req, response)
+		require.NoError(t, err)
+		require.Equal(t, ProtobufType, encoded.Header.Get("Content-Type"))
+		// The headers of the response are the headers of the HTTP response, and not a part of the protobuf.
+		encoded.Header.Set("X-Test", "1")
+
+		decoded, err := DefaultCodec.DecodeResponse(ctx, encoded, &LokiRequest{})
+		require.NoError(t, err)
+		require.IsType(t, &HistogramResponse{}, decoded)
+		requireMatrix(t, decoded)
+
+		var headers []string
+		for _, h := range decoded.GetHeaders() {
+			if h.Name == "X-Test" {
+				headers = h.Values
+			}
+		}
+		require.Equal(t, []string{"1"}, headers)
+	})
+}
+
+// A histogram is a part of a query, and it is not an answer that the API knows how to give.
+func TestHistogramResponse_isNotAResponseToAUser(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	response, err := ResultToResponse(logqlmodel.Result{Data: testHistogramMatrix()}, nil)
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/loki/api/v1/query_range", nil)
+	require.NoError(t, err)
+	_, err = DefaultCodec.EncodeResponse(ctx, req, response)
+	require.Error(t, err)
+}
+
+func TestHistogramResponse_headers(t *testing.T) {
+	r := &HistogramResponse{}
+	require.Empty(t, r.GetHeaders())
+
+	r.SetHeader("X-Test", "a")
+	require.Len(t, r.GetHeaders(), 1)
+	require.Equal(t, "X-Test", r.GetHeaders()[0].Name)
+
+	got := r.WithHeaders([]queryrangebase.PrometheusResponseHeader{{Name: "Y", Values: []string{"b"}}})
+	require.Same(t, r, got)
+	require.Equal(t, "Y", got.GetHeaders()[0].Name)
+
+	var nilResponse *HistogramResponse
+	require.Nil(t, nilResponse.GetHeaders())
+}
+
+// A matrix that does not decode is an error of the response, and it must not reach the evaluator.
+func TestHistogramResponse_refusesWhatIsNotAHistogram(t *testing.T) {
+	_, err := ResponseToResult(&HistogramResponse{Response: &logproto.HistogramMatrix{
+		Values: []*logproto.HistogramVector{{Samples: []*logproto.HistogramSample{{H: &logproto.NativeHistogram{Schema: 3, Count: 5}}}}},
+	}})
+	require.ErrorContains(t, err, "cannot decode histogram matrix")
+
+	_, err = ResponseToResult(&HistogramResponse{})
+	require.ErrorContains(t, err, "no matrix")
 }

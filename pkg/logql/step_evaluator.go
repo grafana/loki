@@ -64,7 +64,8 @@ func (e EmptyEvaluator[_]) Next() (ok bool, ts int64, r StepResult) {
 
 // SketchMatrixStepEvaluator steps through a matrix of sketch vectors, one
 // evaluation timestamp at a time. Quantile and count-distinct sketches share
-// this stepper and differ only in the vector type stored in the matrix.
+// this stepper and differ only in the vector type stored in the matrix. So
+// does the matrix of histograms, which is not a sketch but is read in the same way.
 type SketchMatrixStepEvaluator[V StepResult] struct {
 	end, ts time.Time
 	step    time.Duration

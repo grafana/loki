@@ -255,6 +255,23 @@ func (m *CountMinSketchResponse) WithHeaders(h []queryrangebase.PrometheusRespon
 }
 
 // GetHeaders returns the HTTP headers in the response.
+func (m *HistogramResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *HistogramResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *HistogramResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}
+
+// GetHeaders returns the HTTP headers in the response.
 func (m *CountDistinctSketchResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)

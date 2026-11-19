@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package logproto;
+
+import "pkg/logproto/logproto.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+
+// HistogramMatrix is the result of a query that returns histograms, with one vector for each step. The
+// result of a shard of a query is one, and the query frontend sums the ones of all the shards.
+message HistogramMatrix {
+  repeated HistogramVector values = 1;
+}
+
+message HistogramVector {
+  repeated HistogramSample samples = 1;
+}
+
+message HistogramSample {
+  NativeHistogram h = 1;
+  int64 timestamp_ms = 2;
+  repeated LabelPair metric = 3;
+}
+
+// NativeHistogram is a Prometheus native histogram. It has the fields of prompb.Histogram that Loki uses, and it
+// has only the integer form: the counts of the histograms that Loki builds are whole numbers, and the buckets are
+// the differences between the counts of one bucket and the one before it, which are small, so that they take
+// less space on the wire than the counts do.
+message NativeHistogram {
+  // schema is the resolution of the exponential buckets, or -53 for custom buckets.
+  sint32 schema = 1;
+  // counter_reset_hint is the CounterResetHint of the histogram. Merging histograms uses it.
+  uint32 counter_reset_hint = 2;
+  double zero_threshold = 3;
+  uint64 zero_count = 4;
+  uint64 count = 5;
+  double sum = 6;
+  repeated BucketSpan negative_spans = 7;
+  repeated BucketSpan positive_spans = 8;
+  // The counts of the buckets as the difference to the bucket before. The first one is the difference to zero.
+  repeated sint64 negative_deltas = 9;
+  repeated sint64 positive_deltas = 10;
+  // custom_values are the upper bounds of custom buckets, which have schema -53.
+  repeated double custom_values = 11;
+}
+
+// BucketSpan is a run of consecutive buckets. offset is the number of empty buckets between it and the span before
+// it, or the index of its first bucket if it is the first span.
+message BucketSpan {
+  sint32 offset = 1;
+  uint32 length = 2;
+}

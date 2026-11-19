@@ -251,7 +251,9 @@ var errHistogramsDisabled = fmt.Errorf("%w: histogram functions are experimental
 
 // checkNoHistograms fails when a sample of vec holds a histogram. The result of a query is a vector or
 // a matrix of floats, and a histogram that reached it would be dropped, which leaves a series with the
-// value zero. The parser does not allow a query that returns a histogram, so this is a second check.
+// value zero. The parser does not allow a query that returns a histogram, so this is a second check. A
+// histogram at the root of the expression is not an error, it is what a shard of a histogram query returns,
+// see JoinHistogramVector. This catches a histogram that is anywhere else.
 //
 // Like the other guards of the histograms, it wraps ErrParse: what is wrong is the query, and it is the same
 // on every retry, so it is a client error and not one that the query frontend retries.
@@ -508,6 +510,11 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
+			// A query is not valid when its result is a histogram, so the only histograms that reach this are the
+			// result of the part of a query that a shard runs. The query frontend reads them, see HistogramMatrix.
+			if syntax.IsHistogramValued(expr) {
+				return JoinHistogramVector(next, vec, stepEvaluator, maxSeries)
+			}
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true

@@ -435,7 +435,8 @@ func TestHistogramOverTime_onlySumAddsHistograms(t *testing.T) {
 }
 
 // A histogram is not a result. The parser does not allow a query that returns one, and the engine
-// checks it again, so that one that gets through is an error and not a series of zeros.
+// checks it again, so that one that gets through is an error and not a series of zeros. The part of a
+// query that a shard runs is the exception, and only when its root is the histogram, see HistogramMatrix.
 func TestEngine_HistogramIsNotAResult(t *testing.T) {
 	streams := []logproto.Stream{histogramStream(`{app="a"}`, histogramTimedValue{histogramSeconds(10), "0.1"})}
 	eng := NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, streams), NoLimits, log.NewNopLogger())
@@ -443,7 +444,7 @@ func TestEngine_HistogramIsNotAResult(t *testing.T) {
 
 	for name, rangeQuery := range map[string]bool{"range": true, "instant": false} {
 		t.Run(name, func(t *testing.T) {
-			expr, err := syntax.ParseExprWithoutValidation(`sum by (app) (histogram_over_time({app="a"} | logfmt | unwrap duration [1m]))`)
+			expr, err := syntax.ParseExprWithoutValidation(`label_replace(histogram_over_time({app="a"} | logfmt | unwrap duration [1m]), "x", "$1", "app", "(.*)")`)
 			require.NoError(t, err)
 
 			var params Params
