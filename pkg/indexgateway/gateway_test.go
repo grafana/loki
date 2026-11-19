@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
@@ -19,6 +21,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
@@ -32,10 +36,11 @@ type mockLimits struct {
 	precomputeChunks bool
 }
 
-func (l mockLimits) IndexGatewayShardSize(_ string) int       { return l.shardSize }
-func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64 { return l.maxCapacity }
-func (l mockLimits) TSDBMaxBytesPerShard(_ string) int        { return l.maxBytesPerShard }
-func (l mockLimits) TSDBPrecomputeChunks(_ string) bool       { return l.precomputeChunks }
+func (l mockLimits) IndexGatewayShardSize(_ string) int                   { return l.shardSize }
+func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64             { return l.maxCapacity }
+func (l mockLimits) TSDBMaxBytesPerShard(_ string) int                    { return l.maxBytesPerShard }
+func (l mockLimits) TSDBPrecomputeChunks(_ string) bool                   { return l.precomputeChunks }
+func (l mockLimits) MaxQueryLength(context.Context, string) time.Duration { return 0 }
 
 func TestVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
@@ -97,9 +102,9 @@ func (i *indexQuerierMock) GetChunkRefsWithSizingInfo(
 	_ context.Context,
 	userID string,
 	from, through model.Time,
-	predicate chunk.Predicate,
+	_ chunk.Predicate,
 ) ([]logproto.ChunkRefWithSizingInfo, error) {
-	args := i.Called(userID, from, through, predicate)
+	args := i.Called(userID, from, through)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -532,7 +537,7 @@ func TestGetShards(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			indexQuerier := newIngesterQuerierMock()
 			indexQuerier.On("HasChunkSizingInfo", from, through).Return(true)
-			indexQuerier.On("GetChunkRefsWithSizingInfo", tenant, from, through, mock.Anything).Return(tc.refs, nil)
+			indexQuerier.On("GetChunkRefsWithSizingInfo", tenant, from, through).Return(tc.refs, nil)
 
 			resp := sendShards(t, indexQuerier, tenant, tc.precomputeChunks, &logproto.ShardsRequest{
 				From:                from,
@@ -610,7 +615,7 @@ func TestGetShardsWithoutChunkSizingInfo(t *testing.T) {
 	require.Equal(t, fallbackResponse(), resp)
 
 	// The gateway must delegate instead of resolving chunk refs itself.
-	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything)
 	indexQuerier.AssertExpectations(t)
 }
 
@@ -668,7 +673,7 @@ func TestGetShardsIndexErrorDoesNotSendPartialResponse(t *testing.T) {
 	sentinel := errors.New("index read failed")
 	q := newIngesterQuerierMock()
 	q.On("HasChunkSizingInfo", model.Time(1), model.Time(2)).Return(true)
-	q.On("GetChunkRefsWithSizingInfo", "fake", model.Time(1), model.Time(2), mock.Anything).Return(nil, sentinel).Once()
+	q.On("GetChunkRefsWithSizingInfo", "fake", model.Time(1), model.Time(2)).Return(nil, sentinel).Once()
 	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, q, nil, nil)
 	require.NoError(t, err)
 	server := &mockGetShardsServer{ctx: user.InjectOrgID(context.Background(), "fake")}
@@ -691,6 +696,7 @@ type TestChunkCursor struct {
 	next    int
 	Closed  bool
 	ReadErr error
+	onClose func()
 }
 
 func (c *TestChunkCursor) Next() bool {
@@ -703,21 +709,31 @@ func (c *TestChunkCursor) Next() bool {
 func (c *TestChunkCursor) At() logproto.ChunkRefWithSizingInfo { return c.Refs[c.next-1] }
 func (c *TestChunkCursor) Err() error                          { return c.ReadErr }
 func (c *TestChunkCursor) Close() error {
+	if c.onClose != nil {
+		c.onClose()
+	}
 	c.Closed = true
 	return nil
 }
 
-type orderedIndexQuerier struct {
-	*indexQuerierMock
-	cursor  *TestChunkCursor
-	openErr error
+type orderedIndexReader struct {
+	index.ReaderWriter
+	cursor      *TestChunkCursor
+	openErr     error
+	legacyRefs  []logproto.ChunkRefWithSizingInfo
+	legacyCalls int
 }
 
-func (q *orderedIndexQuerier) OpenChunkCursors(context.Context, string, model.Time, model.Time, ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+func (q *orderedIndexReader) OpenChunkCursors(context.Context, string, model.Time, model.Time, ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
 	if q.openErr != nil {
 		return nil, q.openErr
 	}
 	return []sharding.ChunkCursor{q.cursor}, nil
+}
+
+func (q *orderedIndexReader) GetChunkRefsWithSizingInfo(context.Context, string, model.Time, model.Time, chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	q.legacyCalls++
+	return q.legacyRefs, nil
 }
 
 func TestGatewayOrderedShardsAndFallback(t *testing.T) {
@@ -727,43 +743,73 @@ func TestGatewayOrderedShardsAndFallback(t *testing.T) {
 	one := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 10, Through: 20}, KB: 1}
 	two := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 30, Through: 40}, KB: 3}
 	legacyRefs := []logproto.ChunkRefWithSizingInfo{one, two}
+	readFailure := errors.New("index read failed")
 	for _, tc := range []struct {
-		name    string
-		refs    []logproto.ChunkRefWithSizingInfo
-		ordered bool
-		openErr error
+		name           string
+		refs           []logproto.ChunkRefWithSizingInfo
+		openErr        error
+		readErr        error
+		wantErr        error
+		fallbackReason string
 	}{
-		{name: "ordered", refs: legacyRefs, ordered: true},
-		{name: "unsupported", openErr: sharding.ErrChunkCursorsUnsupported},
-		{name: "misordered cursor", refs: []logproto.ChunkRefWithSizingInfo{two, one}},
+		{name: "ordered", refs: legacyRefs},
+		{name: "unsupported", openErr: sharding.ErrChunkCursorsUnsupported, fallbackReason: "unsupported"},
+		{name: "misordered cursor", refs: []logproto.ChunkRefWithSizingInfo{two, one}, fallbackReason: "out_of_order"},
+		{name: "open error", openErr: readFailure, wantErr: readFailure},
+		{name: "read error", readErr: readFailure, wantErr: readFailure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			source := &orderedIndexQuerier{indexQuerierMock: newIngesterQuerierMock(), cursor: &TestChunkCursor{Refs: tc.refs}, openErr: tc.openErr}
-			if !tc.ordered {
-				source.On("GetChunkRefsWithSizingInfo", "synthetic", req.From, req.Through, predicate).Return(legacyRefs, nil).Once()
-			}
-			gateway, err := NewIndexGateway(Config{}, mockLimits{precomputeChunks: true}, util_log.Logger, nil, source, nil, nil)
+			reg := prometheus.NewRegistry()
+			cursor := &TestChunkCursor{Refs: tc.refs, ReadErr: tc.readErr, onClose: func() {
+				families, err := reg.Gather()
+				require.NoError(t, err)
+				require.Empty(t, families, "lookup timing must include closing the cursor")
+			}}
+			source := &orderedIndexReader{cursor: cursor, openErr: tc.openErr, legacyRefs: legacyRefs}
+			indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "synthetic"}, reg)
+			limits := mockLimits{precomputeChunks: true}
+			store := stores.NewCompositeStore(limits)
+			store.AddStore(0, nil, index.NewMonitoredReaderWriter(source, indexReg), nil, nil)
+			gateway, err := NewIndexGateway(Config{}, limits, util_log.Logger, nil, store, nil, nil)
 			require.NoError(t, err)
-			resp, ordered, err := gateway.planShardsFromStore(t.Context(), "synthetic", req, predicate)
-			require.NoError(t, err)
-			require.Equal(t, tc.ordered, ordered)
-			require.Equal(t, []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{&one.ChunkRef, &two.ChunkRef}}}, resp.ChunkGroups)
-			require.Equal(t, tc.openErr == nil, source.cursor.Closed)
-			source.AssertExpectations(t)
-		})
-	}
-}
 
-func TestGatewayDoesNotFallbackOnCursorErrors(t *testing.T) {
-	sentinel := errors.New("index read failed")
-	for _, source := range []*orderedIndexQuerier{
-		{indexQuerierMock: newIngesterQuerierMock(), openErr: sentinel},
-		{indexQuerierMock: newIngesterQuerierMock(), cursor: &TestChunkCursor{ReadErr: sentinel}},
-	} {
-		gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, source, nil, nil)
-		require.NoError(t, err)
-		resp, _, err := gateway.planShardsFromStore(t.Context(), "synthetic", &logproto.ShardsRequest{}, chunk.Predicate{})
-		require.ErrorIs(t, err, sentinel)
-		require.Nil(t, resp)
+			resp, ordered, err := gateway.planShardsFromStore(t.Context(), "synthetic", req, predicate)
+			statusCode := "200"
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				require.Nil(t, resp)
+				statusCode = "500"
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.fallbackReason == "", ordered)
+				require.Equal(t, []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{&one.ChunkRef, &two.ChunkRef}}}, resp.ChunkGroups)
+			}
+			require.Equal(t, tc.openErr == nil, cursor.Closed)
+			for _, reason := range []string{"unsupported", "out_of_order"} {
+				want := 0.0
+				if tc.fallbackReason == reason {
+					want = 1
+				}
+				require.Equal(t, want, testutil.ToFloat64(gateway.metrics.shardPlanningFallbacks.WithLabelValues(reason)))
+			}
+			if tc.fallbackReason != "" {
+				require.Equal(t, 1, source.legacyCalls)
+			} else {
+				require.Zero(t, source.legacyCalls)
+			}
+
+			families, err := reg.Gather()
+			require.NoError(t, err)
+			require.Len(t, families, 1)
+			require.Equal(t, "loki_index_request_duration_seconds", families[0].GetName())
+			require.Len(t, families[0].Metric, 1)
+			metric := families[0].Metric[0]
+			metricLabels := make(map[string]string, len(metric.Label))
+			for _, label := range metric.Label {
+				metricLabels[label.GetName()] = label.GetValue()
+			}
+			require.Equal(t, map[string]string{"component": "synthetic", "operation": "chunk_refs_with_sizing_info", "status_code": statusCode}, metricLabels)
+			require.EqualValues(t, 1, metric.GetHistogram().GetSampleCount())
+		})
 	}
 }

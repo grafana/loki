@@ -12,6 +12,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +26,49 @@ import (
 const testContentSize = 4096
 
 var table = crc32.MakeTable(crc32.Castagnoli)
+
+func TestPinnedScansShareAndCountFileHandles(t *testing.T) {
+	initialCount := PinnedFileCount()
+	dir := t.TempDir()
+	open := func(name string) *FilePoolDecbufFactory {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(path, []byte{42}, 0600))
+		factory, err := NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, factory.Close()) })
+		return factory
+	}
+	first, second := open("first"), open("second")
+	a, err := first.Pin()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
+	b, err := first.Pin()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.Close()) })
+	require.Equal(t, initialCount+1, PinnedFileCount())
+	file := first.pinned
+	require.Same(t, file, a.(*FilePoolDecbufFactory).files.(pinnedFile).file)
+	require.Same(t, file, b.(*FilePoolDecbufFactory).files.(pinnedFile).file)
+	c, err := second.Pin()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, c.Close()) })
+	require.Equal(t, initialCount+2, PinnedFileCount())
+
+	require.NoError(t, os.Remove(first.path))
+	require.NoError(t, a.Close())
+	d := b.NewRawDecbuf(t.Context())
+	require.Equal(t, byte(42), d.Byte())
+	require.NoError(t, d.Err())
+	require.NoError(t, d.Close())
+	require.Equal(t, initialCount+2, PinnedFileCount())
+	require.NoError(t, b.Close())
+	require.Equal(t, initialCount+1, PinnedFileCount())
+	_, err = file.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
+
+	require.NoError(t, c.Close())
+	require.Equal(t, initialCount, PinnedFileCount())
+}
 
 func BenchmarkDecbufFactory_NewDecbufAtUnchecked(b *testing.B) {
 	enc := createTestEncoder(testContentSize)

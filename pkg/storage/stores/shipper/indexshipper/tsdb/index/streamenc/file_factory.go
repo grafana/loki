@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
 )
@@ -27,6 +28,19 @@ type FilePoolDecbufFactory struct {
 	// to avoid repeated stat calls.
 	// Index files are immutable once written, so this cannot go stale.
 	fileSize int64
+
+	path      string
+	pinMu     sync.Mutex
+	pinned    *os.File
+	pinLeases int
+}
+
+var pinnedFiles atomic.Int64
+
+// PinnedFileCount returns the number of open file handles shared by ordered
+// streaming scans in this process.
+func PinnedFileCount() int64 {
+	return pinnedFiles.Load()
 }
 
 type fileHandles interface {
@@ -39,8 +53,10 @@ type pinnedFile struct {
 	file *os.File
 }
 
+// Get returns the handle shared by the active scans of this file.
 func (f pinnedFile) Get() (*os.File, error) { return f.file, nil }
 
+// NewFilePoolDecbufFactory opens a decoder factory for an index file.
 func NewFilePoolDecbufFactory(
 	path string,
 	maxIdleFileHandles uint,
@@ -59,22 +75,46 @@ func NewFilePoolDecbufFactory(
 			return nil
 		},
 		fileSize: fileInfo.Size(),
+		path:     path,
 	}, nil
 }
 
-// Pin borrows a file handle for a scan that must remain readable if the
-// file is unlinked. All decbufs from the returned factory share the handle
-// via positioned reads and must be closed before closing the factory.
+// Pin acquires a shared file handle for a scan that must survive unlinking.
+// Close all decbufs from the returned factory before closing that factory.
 func (df *FilePoolDecbufFactory) Pin() (DecbufFactory, error) {
-	file, err := df.files.Get()
-	if err != nil {
-		return nil, err
+	df.pinMu.Lock()
+	defer df.pinMu.Unlock()
+
+	if df.pinLeases == 0 {
+		// Close this handle when the last scan ends, even if the reader's
+		// pool would otherwise keep idle handles open.
+		file, err := os.Open(df.path)
+		if err != nil {
+			return nil, err
+		}
+		df.pinned = file
+		pinnedFiles.Add(1)
 	}
+	df.pinLeases++
 	return &FilePoolDecbufFactory{
-		files:    pinnedFile{file: file},
-		close:    sync.OnceValue(func() error { return df.files.Put(file) }),
+		files:    pinnedFile{file: df.pinned},
+		close:    sync.OnceValue(df.unpin),
 		fileSize: df.fileSize,
 	}, nil
+}
+
+func (df *FilePoolDecbufFactory) unpin() error {
+	df.pinMu.Lock()
+	defer df.pinMu.Unlock()
+
+	df.pinLeases--
+	if df.pinLeases != 0 {
+		return nil
+	}
+	err := df.pinned.Close()
+	df.pinned = nil
+	pinnedFiles.Add(-1)
+	return err
 }
 
 func (df *FilePoolDecbufFactory) FileSize() int64 {

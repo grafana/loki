@@ -477,17 +477,25 @@ func (g *Gateway) boundedShards(
 
 func (g *Gateway) planShardsFromStore(ctx context.Context, tenant string, req *logproto.ShardsRequest, predicate chunk.Predicate) (*logproto.ShardsResponse, bool, error) {
 	precompute := g.limits.TSDBPrecomputeChunks(tenant)
+	fallbackReason := fallbackUnsupported
 	if source, ok := g.indexQuerier.(sharding.ChunkCursorSource); ok {
-		cursors, err := source.OpenChunkCursors(ctx, tenant, req.From, req.Through, predicate.Matchers...)
+		lookupCtx, finish := index.TrackChunkCursorLookups(ctx)
+		cursors, err := source.OpenChunkCursors(lookupCtx, tenant, req.From, req.Through, predicate.Matchers...)
 		if err == nil {
+			g.metrics.shardPlanningFiles.Observe(float64(len(cursors)))
 			resp, err := planShardsFromCursors(ctx, req, precompute, cursors)
 			if !errors.Is(err, errUnorderedChunkCursor) {
+				finish(err)
 				return resp, true, err
 			}
+			fallbackReason = fallbackOutOfOrder
 		} else if !errors.Is(err, sharding.ErrChunkCursorsUnsupported) {
+			finish(err)
 			return nil, false, err
 		}
 	}
+	g.metrics.shardPlanningFallbacks.WithLabelValues(fallbackReason).Inc()
+	trace.SpanFromContext(ctx).AddEvent("shard planning fallback", trace.WithAttributes(attribute.String("reason", fallbackReason)))
 	// Use the legacy chunk lookup when the store can't return refs in order.
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, tenant, req.From, req.Through, predicate)
 	if err != nil {

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"math"
 	"runtime"
 	"sort"
@@ -433,10 +434,7 @@ func (i *MultiIndex) openChunkCursors(ctx context.Context, userID string, from, 
 		return nil
 	})
 	if err != nil {
-		if closeErr := sharding.CloseChunkCursors(cursors); closeErr != nil {
-			return nil, closeErr
-		}
-		return nil, err
+		return nil, errors.Join(err, sharding.CloseChunkCursors(cursors))
 	}
 	return cursors, nil
 }

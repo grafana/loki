@@ -41,7 +41,12 @@ type store struct {
 	postingsCache *postingsCache
 }
 
+// OpenChunkCursors opens cursors on the TSDB reader when it supports them.
 func (s *store) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	// Check the head before the index client can start opening shipped files.
+	if head, ok := s.indexWriter.(*HeadManager); ok && Overlap(head, newBounds(from, through)) {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
 	source, ok := s.Reader.(sharding.ChunkCursorSource)
 	if !ok {
 		return nil, sharding.ErrChunkCursorsUnsupported

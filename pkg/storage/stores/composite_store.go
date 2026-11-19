@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -359,10 +360,7 @@ func (c CompositeStore) OpenChunkCursors(ctx context.Context, tenant string, fro
 		return nil
 	})
 	if err != nil {
-		if closeErr := sharding.CloseChunkCursors(cursors); closeErr != nil {
-			return nil, closeErr
-		}
-		return nil, err
+		return nil, errors.Join(err, sharding.CloseChunkCursors(cursors))
 	}
 	return cursors, nil
 }

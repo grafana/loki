@@ -61,6 +61,25 @@ func testFileChunkCursorSurvivesIndexRemoval(t *testing.T, opts index.ReaderOpti
 	// Two files exercise the worker context canceled at the end of IndexSlice.For.
 	common := NewMultiTenantIndex(file)
 	client := NewIndexClient(NewMultiIndex(IndexSlice{common, common}), IndexClientOptions{}, nil)
+	empty, err := client.OpenChunkCursors(t.Context(), "synthetic-a", 15, 45, labels.MustNewMatcher(labels.MatchEqual, "app", "missing"))
+	require.NoError(t, err)
+	require.Empty(t, empty)
+	require.Zero(t, file.leases)
+
+	gap, err := openChunkCursors(t.Context(), common, "synthetic-a", 21, 29, nil,
+		labels.MustNewMatcher(labels.MatchEqual, "instance", "two"),
+		labels.MustNewMatcher(labels.MatchEqual, "variant", ""),
+	)
+	require.NoError(t, err)
+	require.Len(t, gap, 1)
+	t.Cleanup(func() { require.NoError(t, sharding.CloseChunkCursors(gap)) })
+	gapCursor := gap[0].(*fileChunkCursor)
+	require.Zero(t, cap(gapCursor.chunks))
+	require.False(t, gapCursor.Next())
+	require.NoError(t, gapCursor.Err())
+	require.Zero(t, cap(gapCursor.chunks))
+	require.NoError(t, gapCursor.Close())
+
 	cursors, err := client.OpenChunkCursors(t.Context(), "synthetic-a", 15, 45, labels.MustNewMatcher(labels.MatchEqual, "app", "test"))
 	require.NoError(t, err)
 	require.Len(t, cursors, 2)

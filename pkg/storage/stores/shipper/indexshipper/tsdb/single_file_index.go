@@ -189,6 +189,20 @@ func (f *TSDBFile) Close() error {
 	return f.Index.Close()
 }
 
+func (f *TSDBFile) releaseCursor() {
+	f.leaseMu.Lock()
+	f.leases--
+	closeReader := f.closed && f.leases == 0
+	f.leaseMu.Unlock()
+	if closeReader {
+		// The file owner already requested closure. Report a shutdown error
+		// here since that Close call has returned.
+		if err := f.Index.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close retired TSDB index reader", "err", err)
+		}
+	}
+}
+
 func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 	return f.getRawFileReader()
 }

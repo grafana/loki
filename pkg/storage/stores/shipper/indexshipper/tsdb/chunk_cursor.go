@@ -3,7 +3,6 @@ package tsdb
 import (
 	"container/heap"
 	"context"
-	"errors"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -27,6 +26,9 @@ func openChunkCursors(ctx context.Context, idx Index, tenant string, from, throu
 }
 
 func (f *TSDBFile) openChunkCursors(ctx context.Context, tenant string, from, through model.Time, filter index.FingerprintFilter, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	tsdb, ok := f.Index.(*TSDBIndex)
 	if !ok {
 		return nil, sharding.ErrChunkCursorsUnsupported
@@ -45,21 +47,30 @@ func (f *TSDBFile) openChunkCursors(ctx context.Context, tenant string, from, th
 	f.leases++
 	f.leaseMu.Unlock()
 
+	postings, err := tsdb.postings(ctx, filter, matchers)
+	if err != nil {
+		f.releaseCursor()
+		return nil, err
+	}
+	// Files without matching series need neither a scan nor a file handle.
+	if !postings.Next() {
+		err := postings.Err()
+		f.releaseCursor()
+		return nil, err
+	}
+
 	var scan *index.OrderedChunkScan
 	if streaming, ok := tsdb.reader.(*index.StreamReader); ok {
 		// Keep a file handle open until the cursor closes so it can keep
 		// reading if the file is removed from the cache.
 		streamScan, err := streaming.NewPinnedSeriesScan()
 		if err != nil {
-			return nil, errors.Join(err, f.releaseCursor())
+			f.releaseCursor()
+			return nil, err
 		}
 		scan = streamScan
 	} else {
 		scan = tsdb.reader.(*index.ByteSliceReader).NewOrderedChunkScan()
-	}
-	postings, err := tsdb.postings(ctx, filter, matchers)
-	if err != nil {
-		return nil, errors.Join(err, scan.Close(), f.releaseCursor())
 	}
 	var filterer chunk.Filterer
 	if requestFilter := tsdb.getChunkFilter(); requestFilter != nil {
@@ -68,19 +79,8 @@ func (f *TSDBFile) openChunkCursors(ctx context.Context, tenant string, from, th
 	return []sharding.ChunkCursor{&fileChunkCursor{
 		ctx: ctx, file: f, tenant: tenant, from: int64(from), through: int64(through),
 		postings: postings, scan: scan, fpFilter: filter,
-		filterer: filterer, chunks: ChunkMetasPool.Get()[:0],
+		filterer: filterer, firstPostingReady: true,
 	}}, nil
-}
-
-func (f *TSDBFile) releaseCursor() error {
-	f.leaseMu.Lock()
-	f.leases--
-	closeReader := f.closed && f.leases == 0
-	f.leaseMu.Unlock()
-	if closeReader {
-		return f.Index.Close()
-	}
-	return nil
 }
 
 type fileChunkCursor struct {
@@ -100,10 +100,11 @@ type fileChunkCursor struct {
 	lists   chunkListHeap
 	current index.ChunkMeta
 
-	lookaheadFP uint64
-	hasSeries   bool
-	exhausted   bool
-	err         error
+	lookaheadFP       uint64
+	firstPostingReady bool
+	hasSeries         bool
+	exhausted         bool
+	err               error
 }
 
 func (c *fileChunkCursor) Next() bool {
@@ -147,11 +148,12 @@ func (c *fileChunkCursor) advanceSeries() bool {
 		if c.err = c.ctx.Err(); c.err != nil {
 			return false
 		}
-		if !c.postings.Next() {
+		if !c.firstPostingReady && !c.postings.Next() {
 			c.err = c.postings.Err()
 			c.exhausted = true
 			return false
 		}
+		c.firstPostingReady = false
 		fp, err := c.scan.SeriesFingerprint(c.postings.At())
 		if err != nil {
 			c.err = err
@@ -224,8 +226,8 @@ func (c *fileChunkCursor) Close() error {
 	if c.file == nil {
 		return nil
 	}
-	err := errors.Join(c.scan.Close(), c.file.releaseCursor())
-	ChunkMetasPool.Put(c.chunks)
+	err := c.scan.Close()
+	c.file.releaseCursor()
 	c.file, c.scan, c.postings, c.chunks = nil, nil, nil, nil
 	c.lists = nil
 	return err

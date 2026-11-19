@@ -35,6 +35,7 @@ type compositeStoreEntry struct {
 	Store
 }
 
+// OpenChunkCursors delegates cursor creation to the store for this schema period.
 func (c compositeStoreEntry) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
 	source, ok := c.Store.(sharding.ChunkCursorSource)
 	if !ok {
@@ -212,6 +213,7 @@ func (c *storeEntry) HasChunkSizingInfo(from, through model.Time) bool {
 	return c.indexReader.HasChunkSizingInfo(from, through)
 }
 
+// OpenChunkCursors validates the query range and opens cursors on its index.
 func (c *storeEntry) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
