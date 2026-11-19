@@ -10,6 +10,7 @@ package libyaml
 import (
 	"encoding"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -54,13 +55,20 @@ type Constructor struct {
 	aliasCount     int
 	aliasDepth     int
 	aliasCheck     func(aliasCount, constructCount int) error
+	formatError    func(*LoadError) string
 
-	mergedFields map[any]bool
+	mergePlugin  MergeKeyPlugin
+	mergeConfig  MergeKeyConfig
+	mergeAliases map[*Node]*Node
 }
 
 // NewConstructor creates a new Constructor initialized with the provided
 // options.
 func NewConstructor(opts *Options) *Constructor {
+	plugin := opts.MergeKey
+	if plugin == nil {
+		plugin = DefaultMergeKey{}
+	}
 	return &Constructor{
 		stringMapType:  stringMapType,
 		generalMapType: generalMapType,
@@ -68,6 +76,9 @@ func NewConstructor(opts *Options) *Constructor {
 		UniqueKeys:     opts.UniqueKeys,
 		aliases:        make(map[*Node]bool),
 		aliasCheck:     opts.AliasCheck,
+		formatError:    opts.FormatLoadError,
+		mergePlugin:    plugin,
+		mergeConfig:    plugin.MergeKeyConfig(),
 	}
 }
 
@@ -79,15 +90,11 @@ func NewConstructor(opts *Options) *Constructor {
 // handles alias expansion, custom unmarshalers, and type resolution.
 // Returns true if the construction was successful.
 func (c *Constructor) Construct(n *Node, out reflect.Value) (good bool) {
-	c.constructCount++
-	if c.aliasDepth > 0 {
-		c.aliasCount++
+	if c.mergeAliases[n] != nil {
+		c.aliasDepth++
+		defer func() { c.aliasDepth-- }()
 	}
-	if c.aliasCheck != nil {
-		if err := c.aliasCheck(c.aliasCount, c.constructCount); err != nil {
-			Fail(formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
-		}
-	}
+	c.checkConstruction(n)
 	if out.Type() == nodeType {
 		out.Set(reflect.ValueOf(n).Elem())
 		return true
@@ -114,8 +121,7 @@ func (c *Constructor) Construct(n *Node, out reflect.Value) (good bool) {
 	// encoding/json/v2.
 	if n.Kind != ScalarNode && isTextUnmarshaler(out) {
 		err := fmt.Errorf("cannot construct %s into %s (TextUnmarshaler)", shortTag(n.Tag), out.Type())
-		c.TypeErrors = append(c.TypeErrors,
-			formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
+		c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
 		return false
 	}
 
@@ -132,12 +138,24 @@ func (c *Constructor) Construct(n *Node, out reflect.Value) (good bool) {
 		}
 		fallthrough
 	default:
-		Fail(formatConstructorError(
+		Fail(c.formatConstructorError(
 			fmt.Errorf("cannot construct node with unknown kind: '%d'", n.Kind),
 			Mark{Line: n.Line, Column: n.Column},
 		))
 	}
 	return good
+}
+
+func (c *Constructor) checkConstruction(n *Node) {
+	c.constructCount++
+	if c.aliasDepth > 0 {
+		c.aliasCount++
+	}
+	if c.aliasCheck != nil {
+		if err := c.aliasCheck(c.aliasCount, c.constructCount); err != nil {
+			Fail(c.formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
+		}
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -354,7 +372,8 @@ func (c *Constructor) constructFloat(n *Node, resolved any, out reflect.Value) b
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		// Allow float to int conversion if lossless
-		if fval, ok := resolved.(float64); ok {
+		isDuration := out.Type() == durationType
+		if fval, ok := resolved.(float64); ok && !isDuration {
 			if fval >= math.MinInt64 && fval <= math.MaxInt64 {
 				intVal := int64(fval)
 				if float64(intVal) == fval && !out.OverflowInt(intVal) {
@@ -394,6 +413,10 @@ func (c *Constructor) constructTimestamp(n *Node, resolved any, out reflect.Valu
 			out.Set(resolvedv)
 			return true
 		}
+	case reflect.String:
+		// Allow timestamp values to be constructed as string.
+		out.SetString(n.Value)
+		return true
 	case reflect.Interface:
 		out.Set(reflect.ValueOf(resolved))
 		return true
@@ -439,6 +462,7 @@ func (c *Constructor) constructMerge(n *Node, resolved any, out reflect.Value) b
 
 // document constructs a DocumentNode by processing its single content node.
 func (c *Constructor) document(n *Node, out reflect.Value) (good bool) {
+	c.mergeAliases = nil
 	if len(n.Content) == 1 {
 		c.doc = n
 		c.Construct(n.Content[0], out)
@@ -450,18 +474,21 @@ func (c *Constructor) document(n *Node, out reflect.Value) (good bool) {
 // alias constructs an AliasNode by following the alias reference and
 // tracking alias depth to detect circular references.
 func (c *Constructor) alias(n *Node, out reflect.Value) (good bool) {
-	if c.aliases[n] {
+	identity := c.originalMergeNode(n)
+	if c.aliases[identity] {
 		// TODO this could actually be allowed in some circumstances.
-		Fail(formatComposerError(
-			fmt.Sprintf("anchor '%s' value contains itself", n.Value),
-			Mark{Line: n.Line, Column: n.Column},
-		))
+		Fail(&LoadError{
+			Stage:     ComposerStage,
+			Mark:      Mark{Line: n.Line, Column: n.Column},
+			Message:   fmt.Sprintf("anchor '%s' value contains itself", n.Value),
+			formatter: c.formatError,
+		})
 	}
-	c.aliases[n] = true
+	c.aliases[identity] = true
 	c.aliasDepth++
 	good = c.Construct(n.Alias, out)
 	c.aliasDepth--
-	delete(c.aliases, n)
+	delete(c.aliases, identity)
 	return good
 }
 
@@ -469,6 +496,14 @@ func (c *Constructor) alias(n *Node, out reflect.Value) (good bool) {
 // dispatching to the appropriate tag-specific constructor or using
 // TextUnmarshaler if available.
 func (c *Constructor) scalar(n *Node, out reflect.Value) bool {
+	if c.mergeConfig.Disable && isMerge(n) {
+		if n.Style&TaggedStyle != 0 {
+			c.mergeFailure(errors.New("merge-key: merge tag is disabled"), n)
+		}
+		copyNode := *n
+		copyNode.Tag = strTag
+		n = &copyNode
+	}
 	// Resolve the tag and value
 	var tag string
 	var resolved any
@@ -476,12 +511,12 @@ func (c *Constructor) scalar(n *Node, out reflect.Value) bool {
 		tag = strTag
 		resolved = n.Value
 	} else {
-		tag, resolved = resolve(n.Tag, n.Value)
+		tag, resolved = resolve(n.Tag, n.Value, c.formatError)
 		if tag == binaryTag {
 			data, err := base64.StdEncoding.DecodeString(resolved.(string))
 			if err != nil {
-				Fail(formatConstructorError(
-					fmt.Errorf("!!binary value contains invalid base64 data"),
+				Fail(c.formatConstructorError(
+					errors.New("!!binary value contains invalid base64 data"),
 					Mark{Line: n.Line, Column: n.Column},
 				))
 			}
@@ -512,7 +547,7 @@ func (c *Constructor) scalar(n *Node, out reflect.Value) bool {
 			}
 			err := u.UnmarshalText(text)
 			if err != nil {
-				c.TypeErrors = append(c.TypeErrors, formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
+				c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
 				return false
 			}
 			return true
@@ -553,7 +588,7 @@ func (c *Constructor) sequence(n *Node, out reflect.Value) (good bool) {
 		out.Set(reflect.MakeSlice(out.Type(), l, l))
 	case reflect.Array:
 		if l != out.Len() {
-			Fail(formatConstructorError(
+			Fail(c.formatConstructorError(
 				fmt.Errorf("invalid array: want %d elements but got %d", out.Len(), l),
 				Mark{Line: n.Line, Column: n.Column},
 			))
@@ -589,33 +624,32 @@ func (c *Constructor) sequence(n *Node, out reflect.Value) (good bool) {
 // It handles key uniqueness checking, merge keys, and type-appropriate
 // map construction (string-keyed vs general).
 func (c *Constructor) mapping(n *Node, out reflect.Value) (good bool) {
-	l := len(n.Content)
-	if c.UniqueKeys {
-		nerrs := len(c.TypeErrors)
-		for i := 0; i < l; i += 2 {
-			ni := n.Content[i]
-			for j := i + 2; j < l; j += 2 {
-				nj := n.Content[j]
-				if ni.Kind == nj.Kind && ni.Value == nj.Value {
-					c.TypeErrors = append(c.TypeErrors, formatConstructorError(
-						fmt.Errorf("mapping key %#v already defined at line %d", nj.Value, ni.Line),
-						Mark{Line: nj.Line, Column: nj.Column},
-					))
-				}
-			}
-		}
-		if len(c.TypeErrors) > nerrs {
-			return false
+	stringMapping := isStringMap(n)
+	keyType := ifaceType
+	switch out.Kind() {
+	case reflect.Map:
+		keyType = out.Type().Key()
+	case reflect.Struct:
+		keyType = reflect.TypeOf("")
+	case reflect.Interface:
+		if stringMapping {
+			keyType = c.stringMapType.Key()
 		}
 	}
+	original := n
+	n = c.effectiveMapping(n, keyType)
+	if n == nil {
+		return false
+	}
+	l := len(n.Content)
 	switch out.Kind() {
 	case reflect.Struct:
-		return c.mappingStruct(n, out)
+		return c.mappingStruct(n, original, out)
 	case reflect.Map:
 		// okay
 	case reflect.Interface:
 		iface := out
-		if isStringMap(n) {
+		if stringMapping {
 			out = reflect.MakeMap(c.stringMapType)
 		} else {
 			out = reflect.MakeMap(c.generalMapType)
@@ -640,50 +674,26 @@ func (c *Constructor) mapping(n *Node, out reflect.Value) (good bool) {
 		}
 	}
 
-	mergedFields := c.mergedFields
-	c.mergedFields = nil
-
-	var mergeNode *Node
-
 	mapIsNew := false
 	if out.IsNil() {
 		out.Set(reflect.MakeMap(outt))
 		mapIsNew = true
 	}
 	for i := 0; i < l; i += 2 {
-		if isMerge(n.Content[i]) {
-			mergeNode = n.Content[i+1]
-			continue
-		}
 		k := reflect.New(kt).Elem()
 		if c.Construct(n.Content[i], k) {
-			if mergedFields != nil {
-				ki := k.Interface()
-				if c.getPossiblyUnhashableKey(mergedFields, ki, n.Content[i]) {
-					continue
-				}
-				c.setPossiblyUnhashableKey(mergedFields, ki, true, n.Content[i])
-			}
 			kkind := k.Kind()
 			if kkind == reflect.Interface {
 				kkind = k.Elem().Kind()
 			}
 			if kkind == reflect.Map || kkind == reflect.Slice {
-				Fail(formatConstructorError(
-					fmt.Errorf("cannot use '%#v' as a map key; try decoding into yaml.Node", k.Interface()),
-					Mark{Line: n.Content[i].Line, Column: n.Content[i].Column},
-				))
+				c.failUnhashableKey(k.Interface(), n.Content[i])
 			}
 			e := reflect.New(et).Elem()
 			if c.Construct(n.Content[i+1], e) || n.Content[i+1].ShortTag() == nullTag && (mapIsNew || !out.MapIndex(k).IsValid()) {
 				out.SetMapIndex(k, e)
 			}
 		}
-	}
-
-	c.mergedFields = mergedFields
-	if mergeNode != nil {
-		c.merge(n, mergeNode, out)
 	}
 
 	c.stringMapType = stringMapType
@@ -697,7 +707,7 @@ func (c *Constructor) mapping(n *Node, out reflect.Value) (good bool) {
 // mappingStruct constructs a MappingNode into a struct value.
 // It handles field matching by name, inline fields, inline maps, merge keys,
 // and enforces known fields and unique keys when configured.
-func (c *Constructor) mappingStruct(n *Node, out reflect.Value) (good bool) {
+func (c *Constructor) mappingStruct(n, original *Node, out reflect.Value) (good bool) {
 	sinfo, err := getStructInfo(out.Type())
 	if err != nil {
 		panic(err)
@@ -711,13 +721,10 @@ func (c *Constructor) mappingStruct(n *Node, out reflect.Value) (good bool) {
 	}
 
 	for _, index := range sinfo.InlineConstructors {
-		field := c.fieldByIndex(n, out, index)
-		c.prepare(n, field)
+		field := c.fieldByIndex(original, out, index)
+		c.prepare(original, field)
 	}
 
-	mergedFields := c.mergedFields
-	c.mergedFields = nil
-	var mergeNode *Node
 	var doneFields []bool
 	if c.UniqueKeys {
 		doneFields = make([]bool, len(sinfo.FieldsList))
@@ -726,24 +733,14 @@ func (c *Constructor) mappingStruct(n *Node, out reflect.Value) (good bool) {
 	l := len(n.Content)
 	for i := 0; i < l; i += 2 {
 		ni := n.Content[i]
-		if isMerge(ni) {
-			mergeNode = n.Content[i+1]
-			continue
-		}
 		if !c.Construct(ni, name) {
 			continue
 		}
 		sname := name.String()
-		if mergedFields != nil {
-			if mergedFields[sname] {
-				continue
-			}
-			mergedFields[sname] = true
-		}
 		if info, ok := sinfo.FieldsMap[sname]; ok {
 			if c.UniqueKeys {
 				if doneFields[info.Id] {
-					c.TypeErrors = append(c.TypeErrors, formatConstructorError(
+					c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
 						fmt.Errorf("field %s already set in type %s", name.String(), out.Type()),
 						Mark{Line: ni.Line, Column: ni.Column},
 					))
@@ -766,61 +763,14 @@ func (c *Constructor) mappingStruct(n *Node, out reflect.Value) (good bool) {
 			c.Construct(n.Content[i+1], value)
 			inlineMap.SetMapIndex(name, value)
 		} else if c.KnownFields {
-			c.TypeErrors = append(c.TypeErrors, formatConstructorError(
+			c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
 				fmt.Errorf("field %s not found in type %s", name.String(), out.Type()),
 				Mark{Line: ni.Line, Column: ni.Column},
 			))
 		}
 	}
 
-	c.mergedFields = mergedFields
-	if mergeNode != nil {
-		c.merge(n, mergeNode, out)
-	}
 	return true
-}
-
-// merge processes a merge key (<<) by constructing the merge value into out.
-// The merge value can be a single mapping, an alias to a mapping, or a
-// sequence of mappings.
-// Fields from the parent mapping take precedence over merged fields.
-func (c *Constructor) merge(parent *Node, merge *Node, out reflect.Value) {
-	mergedFields := c.mergedFields
-	if mergedFields == nil {
-		c.mergedFields = make(map[any]bool)
-		for i := 0; i < len(parent.Content); i += 2 {
-			k := reflect.New(ifaceType).Elem()
-			if c.Construct(parent.Content[i], k) {
-				c.setPossiblyUnhashableKey(c.mergedFields, k.Interface(), true, parent.Content[i])
-			}
-		}
-	}
-
-	switch merge.Kind {
-	case MappingNode:
-		c.Construct(merge, out)
-	case AliasNode:
-		if merge.Alias != nil && merge.Alias.Kind != MappingNode {
-			failWantMap(merge.Alias)
-		}
-		c.Construct(merge, out)
-	case SequenceNode:
-		for i := 0; i < len(merge.Content); i++ {
-			ni := merge.Content[i]
-			if ni.Kind == AliasNode {
-				if ni.Alias != nil && ni.Alias.Kind != MappingNode {
-					failWantMap(ni.Alias)
-				}
-			} else if ni.Kind != MappingNode {
-				failWantMap(ni)
-			}
-			c.Construct(ni, out)
-		}
-	default:
-		failWantMap(merge)
-	}
-
-	c.mergedFields = mergedFields
 }
 
 // isStringMap checks if a MappingNode has only string or merge keys.
@@ -840,15 +790,24 @@ func isStringMap(n *Node) bool {
 	return true
 }
 
-// isMerge checks if a node is a merge key (!!merge tag).
+// isMerge recognizes resolved merge tags and unresolved plain << keys.
 func isMerge(n *Node) bool {
-	return n.Kind == ScalarNode && shortTag(n.Tag) == mergeTag
+	return n.Kind == ScalarNode && (shortTag(n.Tag) == mergeTag ||
+		n.Tag == "" && n.Value == "<<" &&
+			n.Style&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) == 0)
 }
 
-// failWantMap panics with an error message for invalid merge key values.
-func failWantMap(n *Node) {
-	Fail(formatConstructorError(
-		fmt.Errorf("map merge requires map or sequence of maps as the value"),
+// failWantMap panics with a constructor error for invalid merge key values.
+func (c *Constructor) failWantMap(n *Node) {
+	err := errors.New("map merge requires map or sequence of maps as the value")
+	Fail(c.formatConstructorError(err, Mark{Line: n.Line, Column: n.Column}))
+}
+
+// failUnhashableKey panics with an error message for keys that cannot be used
+// as Go map keys.
+func (c *Constructor) failUnhashableKey(key any, n *Node) {
+	Fail(c.formatConstructorError(
+		fmt.Errorf("cannot use '%#v' as a map key; try decoding into yaml.Node", key),
 		Mark{Line: n.Line, Column: n.Column},
 	))
 }
@@ -878,11 +837,6 @@ func (c *Constructor) prepare(n *Node, out reflect.Value) (newout reflect.Value,
 			again = true
 		}
 		if out.CanAddr() {
-			// Try yaml.Unmarshaler (from root package) first
-			if called, good := c.tryCallYAMLConstructor(n, out); called {
-				return out, true, good
-			}
-
 			outi := out.Addr().Interface()
 			// Check for libyaml.constructor
 			if u, ok := outi.(constructor); ok {
@@ -892,6 +846,17 @@ func (c *Constructor) prepare(n *Node, out reflect.Value) (newout reflect.Value,
 			if u, ok := outi.(legacyConstructor); ok {
 				good = c.callLegacyConstructor(n, u)
 				return out, true, good
+			}
+			if nodeType := v3NodeHook(out.Addr().Type()); nodeType != nil {
+				err := fmt.Errorf(
+					"%s implements UnmarshalYAML(*%s.Node); "+
+						"v4 cannot invoke v3 Node hooks by default; "+
+						"migrate to *go.yaml.in/yaml/v4.Node or use "+
+						"UnmarshalYAML(func(any) error) error",
+					out.Addr().Type(), nodeType.Elem().PkgPath())
+				c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
+					err, Mark{Line: n.Line, Column: n.Column}))
+				return out, true, false
 			}
 		}
 	}
@@ -920,77 +885,6 @@ func (c *Constructor) fieldByIndex(n *Node, v reflect.Value, index []int) (field
 	return v
 }
 
-// tryCallYAMLConstructor checks if the value has an UnmarshalYAML method that
-// takes a *Node from an allowlisted v3 yaml package and calls it if found.
-// This handles backward compatibility with types that implement the v3
-// yaml.Unmarshaler interface instead of the native libyaml.constructor.
-func (c *Constructor) tryCallYAMLConstructor(n *Node, out reflect.Value) (called bool, good bool) {
-	if !out.CanAddr() {
-		return false, false
-	}
-
-	addr := out.Addr()
-	// Check for UnmarshalYAML method
-	method := addr.MethodByName("UnmarshalYAML")
-	if !method.IsValid() {
-		return false, false
-	}
-
-	// Check method signature: func(*yaml.Node) error
-	mtype := method.Type()
-	if mtype.NumIn() != 1 || mtype.NumOut() != 1 {
-		return false, false
-	}
-
-	// Check if parameter is a pointer to a Node-like struct
-	paramType := mtype.In(0)
-	if paramType.Kind() != reflect.Ptr {
-		return false, false
-	}
-
-	elemType := paramType.Elem()
-	if elemType.Kind() != reflect.Struct {
-		return false, false
-	}
-
-	// Only accept *Node from allowlisted v3 yaml packages whose Node type
-	// is assumed to have a compatible memory layout with libyaml.Node.
-	// The unsafe pointer cast below is only safe for these packages.
-	if elemType.Name() != "Node" || !isYAMLNodePkg(elemType.PkgPath()) {
-		return false, false
-	}
-
-	// Return type must be error
-	retType := mtype.Out(0)
-	if retType.Kind() != reflect.Interface || retType.Name() != "error" {
-		return false, false
-	}
-
-	// Call the method with a converted node.
-	// The allowlisted v3 packages define their own Node type that is
-	// assumed to have a compatible memory layout with libyaml.Node.
-	nodeValue := reflect.NewAt(elemType, reflect.ValueOf(n).UnsafePointer())
-
-	results := method.Call([]reflect.Value{nodeValue})
-	err := results[0].Interface()
-
-	if err == nil {
-		return true, true
-	}
-
-	switch e := err.(type) {
-	case *LoadErrors:
-		c.TypeErrors = append(c.TypeErrors, e.Errors...)
-		return true, false
-	default:
-		c.TypeErrors = append(c.TypeErrors, formatConstructorError(
-			err.(error),
-			Mark{Line: n.Line, Column: n.Column},
-		))
-		return true, false
-	}
-}
-
 // callConstructor invokes the UnmarshalYAML method on a value implementing
 // the constructor interface, handling errors appropriately.
 func (c *Constructor) callConstructor(n *Node, u constructor) (good bool) {
@@ -1002,7 +896,7 @@ func (c *Constructor) callConstructor(n *Node, u constructor) (good bool) {
 		c.TypeErrors = append(c.TypeErrors, e.Errors...)
 		return false
 	default:
-		c.TypeErrors = append(c.TypeErrors, formatConstructorError(
+		c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
 			err,
 			Mark{Line: n.Line, Column: n.Column},
 		))
@@ -1018,7 +912,7 @@ func (c *Constructor) callLegacyConstructor(n *Node, u legacyConstructor) (good 
 		defer handleErr(&err)
 		c.Construct(n, reflect.ValueOf(v))
 		if len(c.TypeErrors) > terrlen {
-			issues := c.TypeErrors[terrlen:]
+			issues := append([]*LoadError{}, c.TypeErrors[terrlen:]...)
 			c.TypeErrors = c.TypeErrors[:terrlen]
 			return &LoadErrors{issues}
 		}
@@ -1031,7 +925,7 @@ func (c *Constructor) callLegacyConstructor(n *Node, u legacyConstructor) (good 
 		c.TypeErrors = append(c.TypeErrors, e.Errors...)
 		return false
 	default:
-		c.TypeErrors = append(c.TypeErrors, formatConstructorError(
+		c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
 			err,
 			Mark{Line: n.Line, Column: n.Column},
 		))
@@ -1053,7 +947,7 @@ func (c *Constructor) tagError(n *Node, tag string, out reflect.Value) {
 			value = " `" + value + "`"
 		}
 	}
-	c.TypeErrors = append(c.TypeErrors, formatConstructorError(
+	c.TypeErrors = append(c.TypeErrors, c.formatConstructorError(
 		fmt.Errorf("cannot construct %s%s into %s", shortTag(tag), value, out.Type()),
 		Mark{Line: n.Line, Column: n.Column},
 	))
@@ -1100,47 +994,20 @@ func settableValueOf(i any) reflect.Value {
 	return sv
 }
 
-// setPossiblyUnhashableKey sets a map key, recovering from panics if the key
-// type is unhashable.
-func (c *Constructor) setPossiblyUnhashableKey(m map[any]bool, key any, value bool, n *Node) {
-	defer func() {
-		if err := recover(); err != nil {
-			Fail(formatConstructorError(
-				fmt.Errorf("%v", err),
-				Mark{Line: n.Line, Column: n.Column},
-			))
-		}
-	}()
-	m[key] = value
-}
-
-// getPossiblyUnhashableKey gets a map key value, recovering from panics if
-// the key type is unhashable.
-func (c *Constructor) getPossiblyUnhashableKey(m map[any]bool, key any, n *Node) bool {
-	defer func() {
-		if err := recover(); err != nil {
-			Fail(formatConstructorError(
-				fmt.Errorf("%v", err),
-				Mark{Line: n.Line, Column: n.Column},
-			))
-		}
-	}()
-	return m[key]
-}
-
 // formatConstructorError creates a LoadError for constructor-stage errors.
-func formatConstructorError(err error, mark Mark) *LoadError {
+func (c *Constructor) formatConstructorError(err error, mark Mark) *LoadError {
 	return &LoadError{
-		Stage:   ConstructorStage,
-		Mark:    mark,
-		Message: err.Error(),
-		err:     err,
+		Stage:     ConstructorStage,
+		Mark:      mark,
+		Message:   err.Error(),
+		err:       err,
+		formatter: c.formatError,
 	}
 }
 
 // formatConstructorErrorContext creates a LoadError with both context and
 // problem information for constructor-stage errors.
-func formatConstructorErrorContext(context string, contextMark Mark, err error, mark Mark) *LoadError {
+func (c *Constructor) formatConstructorErrorContext(context string, contextMark Mark, err error, mark Mark) *LoadError {
 	return &LoadError{
 		Stage:       ConstructorStage,
 		ContextMark: contextMark,
@@ -1148,5 +1015,6 @@ func formatConstructorErrorContext(context string, contextMark Mark, err error, 
 		Mark:        mark,
 		Message:     err.Error(),
 		err:         err,
+		formatter:   c.formatError,
 	}
 }

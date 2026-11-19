@@ -228,6 +228,9 @@ func parseMemInfo(r io.Reader) (*Meminfo, error) {
 	s := bufio.NewScanner(r)
 	for s.Scan() {
 		fields := strings.Fields(s.Text())
+		if len(fields) < 2 || len(fields) > 3 {
+			return nil, fmt.Errorf("%w: Malformed line %q", ErrFileParse, s.Text())
+		}
 		var val, valBytes uint64
 
 		val, err := strconv.ParseUint(fields[1], 0, 64)

@@ -16,7 +16,7 @@ simplifies the operation and significantly lowers the cost of Loki.
 Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki. This type only requires one store, the object store, for both the index and chunks.
 More detailed information about TSDB can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
-## Single Store TSDB (recommended)
+## Single Store TSDB
 
 Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There is one supported mode:
 

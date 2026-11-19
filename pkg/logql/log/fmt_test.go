@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
@@ -822,7 +822,7 @@ func Test_validate(t *testing.T) {
 	}{
 		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(logqlerr.ErrorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -934,6 +934,9 @@ func TestLineFormatter_RequiredLabelNames(t *testing.T) {
 		{`{{ if  .foo | hasSuffix "Ip" }} {{.bar}} {{end}}-{{ if  .foo | hasSuffix "pw"}}no{{end}}`, []string{"foo", "bar"}},
 		{`{{with .foo}}{{printf "%q" .}} {{end}}`, []string{"foo"}},
 		{`{{with .foo}}{{printf "%q" .}} {{else}} {{ .buzz | lower }} {{end}}`, []string{"foo", "buzz"}},
+		{`{{ $.foo }} and {{ .bar }}`, []string{"foo", "bar"}},
+		{`{{with .foo}}{{ $.bar | lower }}{{end}}`, []string{"foo", "bar"}},
+		{`{{ $x := .foo }}{{ $x }}`, []string{"foo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.fmt, func(t *testing.T) {

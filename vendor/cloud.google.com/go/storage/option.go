@@ -42,9 +42,11 @@ func init() {
 	storageinternal.WithMeterProvider = withMeterProvider
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
 	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
+	storageinternal.WithDirectPathXdsOverInterconnect = withDirectPathXdsOverInterconnect
 	storageinternal.WithOtelMetrics = withOtelMetrics
 	storageinternal.WithOtelDebugMetrics = withOtelDebugMetrics
 	storageinternal.WithBufferPool = withBufferPool
+	storageinternal.WithGRPCKeepalive = withGRPCKeepalive
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -93,6 +95,7 @@ type storageConfig struct {
 	grpcAppendableUploads  bool
 	grpcDirectPathEnforced bool
 	bufferPool             experimental.BufferPool
+	grpcKeepalive          *experimental.GRPCKeepaliveConfig
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -123,6 +126,10 @@ type withDirectPathEnforced struct {
 
 func (w *withDirectPathEnforced) ApplyStorageOpt(c *storageConfig) {
 	c.grpcDirectPathEnforced = true
+}
+
+func withDirectPathXdsOverInterconnect() option.ClientOption {
+	return internaloption.EnableDirectPathXdsOverInterconnect()
 }
 
 // WithJSONReads is an option that may be passed to [NewClient].
@@ -308,6 +315,20 @@ type withGRPCAppendableUploadsConfig struct {
 
 func (w *withGRPCAppendableUploadsConfig) ApplyStorageOpt(config *storageConfig) {
 	config.grpcAppendableUploads = true
+}
+
+// withGRPCKeepalive is the implementation of experimental.WithGRPCKeepalive.
+func withGRPCKeepalive(cfg experimental.GRPCKeepaliveConfig) option.ClientOption {
+	return &withGRPCKeepaliveConfig{cfg: cfg}
+}
+
+type withGRPCKeepaliveConfig struct {
+	internaloption.EmbeddableAdapter
+	cfg experimental.GRPCKeepaliveConfig
+}
+
+func (w *withGRPCKeepaliveConfig) ApplyStorageOpt(config *storageConfig) {
+	config.grpcKeepalive = &w.cfg
 }
 
 func withOtelMetrics() option.ClientOption {

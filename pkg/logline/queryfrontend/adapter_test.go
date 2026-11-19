@@ -64,6 +64,7 @@ func TestFrontendHintAdapter_ProvideHints(t *testing.T) {
 		require.Equal(t, expr.String(), gotReq.Expr)
 		require.Equal(t, int32(6), gotReq.NgramLength)
 		require.Equal(t, int32(32), gotReq.MaxParallel)
+		require.Equal(t, []logproto.Conjunction{{Needles: []string{"9FA81CD2EF0077AA"}}}, gotReq.Conjunctions, "the needles the frontend planned")
 		require.Equal(t, hintprovider.ToProtoIndexMetas(indexStore.Snapshot().Active()), gotReq.Indexes)
 		require.Equal(t, []hintprovider.HintTimeRange{{Start: remoteStart, End: remoteEnd}}, hints.TimeRanges)
 		require.Equal(t, int32(7), stats.Snapshot().PeakConcurrency)
@@ -215,6 +216,18 @@ func requireEqualAdapterHintBounds(t *testing.T, want, got []hintprovider.HintTi
 	}
 }
 
+// The hint cache keys on the adapter's needles, so they come from the provider's
+// n-gram length and needle set limit.
+func TestFrontendHintAdapter_Needles(t *testing.T) {
+	provider, err := hintprovider.NewLoglineHintProvider(newAdapterTestStore(t), 6, 32, 2, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	adapter := &frontendHintAdapter{inner: provider}
+
+	needles, ngramLength := adapter.Needles(mustParseAdapterExpr(t, `{job="api"} |= "timeout" or "failure"`))
+	require.Equal(t, 6, ngramLength)
+	require.Equal(t, `{"FAILURE"} or {"TIMEOUT"}`, needles.String())
+}
+
 func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
 	t.Helper()
 	expr, err := syntax.ParseExpr(query)
@@ -224,7 +237,7 @@ func mustParseAdapterExpr(t *testing.T, query string) syntax.Expr {
 
 func newAdapterTestProvider(t *testing.T, indexStore *store.Store, maxParallel int) *hintprovider.LoglineHintProvider {
 	t.Helper()
-	provider, err := hintprovider.NewLoglineHintProvider(indexStore, 6, maxParallel, nil, log.NewNopLogger(), nil)
+	provider, err := hintprovider.NewLoglineHintProvider(indexStore, 6, maxParallel, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	return provider
 }

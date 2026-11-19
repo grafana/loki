@@ -9,12 +9,25 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+
+	"github.com/grafana/loki/v3/pkg/logline/format"
 )
 
 const (
 	DefaultMaxJobSize          = 2 << 30 // 2 GiB
 	DefaultJobTimeout          = 2 * time.Hour
 	DefaultDownloadConcurrency = 4
+)
+
+// Postings encodings a compactor can write merged indexes with.
+const (
+	// PostingsEncodingDeltaVarInt writes delta+varint blocks compressed with
+	// zstd. It is the default.
+	PostingsEncodingDeltaVarInt = "delta-varint"
+	// PostingsEncodingEliasFano writes Elias-Fano blocks uncompressed, each
+	// followed by a checksum. Only readers that support it can open the
+	// merged indexes.
+	PostingsEncodingEliasFano = "elias-fano"
 )
 
 // CompactionConfig is the logline.compaction section. Compaction merges
@@ -37,6 +50,9 @@ type CompactionConfig struct {
 	CompactorID string `yaml:"compactor_id"`
 	// DownloadConcurrency is how many source indexes one job opens in parallel.
 	DownloadConcurrency int `yaml:"download_concurrency"`
+	// PostingsEncoding is how merged indexes encode postings. Sources are read
+	// in whatever encoding they were written with.
+	PostingsEncoding string `yaml:"postings_encoding"`
 }
 
 func (c *CompactionConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -53,6 +69,8 @@ func (c *CompactionConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 		"Identifier of this compactor. Defaults to the hostname.")
 	f.IntVar(&c.DownloadConcurrency, prefix+".download-concurrency", DefaultDownloadConcurrency,
 		"Number of source indexes a compaction job opens in parallel.")
+	f.StringVar(&c.PostingsEncoding, prefix+".postings-encoding", PostingsEncodingDeltaVarInt,
+		"Postings encoding of merged indexes, delta-varint or elias-fano. Every component that reads indexes must support elias-fano before it is enabled. Sources are read in whatever encoding they were written with, so the setting can be changed at any time.")
 }
 
 // ValidateScheduler checks the settings used to plan and hand out jobs. It
@@ -90,6 +108,12 @@ func (c *CompactionConfig) ValidateCompactor() error {
 	if c.DownloadConcurrency < 0 {
 		return fmt.Errorf("download_concurrency must be positive, got %d", c.DownloadConcurrency)
 	}
+	if c.PostingsEncoding == "" {
+		c.PostingsEncoding = PostingsEncodingDeltaVarInt
+	}
+	if _, err := c.WriterPostingsEncoding(); err != nil {
+		return err
+	}
 	if c.CompactorID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -98,4 +122,18 @@ func (c *CompactionConfig) ValidateCompactor() error {
 		c.CompactorID = hostname
 	}
 	return nil
+}
+
+// WriterPostingsEncoding returns the format encoding merged indexes are
+// written with.
+func (c *CompactionConfig) WriterPostingsEncoding() (format.PostingsEncoding, error) {
+	switch c.PostingsEncoding {
+	case "", PostingsEncodingDeltaVarInt:
+		return format.PostingsEncodingFastDeltaVarIntBlocked, nil
+	case PostingsEncodingEliasFano:
+		return format.PostingsEncodingFastEliasFanoBlocked, nil
+	default:
+		return 0, fmt.Errorf("postings_encoding must be %q or %q, got %q",
+			PostingsEncodingDeltaVarInt, PostingsEncodingEliasFano, c.PostingsEncoding)
+	}
 }

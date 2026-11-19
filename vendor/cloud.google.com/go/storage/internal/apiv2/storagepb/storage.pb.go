@@ -7921,16 +7921,16 @@ var File_google_storage_v2_storage_proto protoreflect.FileDescriptor
 
 const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\n" +
-	"\x1fgoogle/storage/v2/storage.proto\x12\x11google.storage.v2\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x18google/api/routing.proto\x1a\x1egoogle/iam/v1/iam_policy.proto\x1a\x1agoogle/iam/v1/policy.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\x1a\x16google/type/date.proto\"\x8d\x02\n" +
-	"\x13DeleteBucketRequest\x129\n" +
-	"\x04name\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
+	"\x1fgoogle/storage/v2/storage.proto\x12\x11google.storage.v2\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x18google/api/routing.proto\x1a\x1egoogle/iam/v1/iam_policy.proto\x1a\x1agoogle/iam/v1/policy.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\x1a\x16google/type/date.proto\"\x8e\x02\n" +
+	"\x13DeleteBucketRequest\x12:\n" +
+	"\x04name\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
 	"\x1dstorage.googleapis.com/BucketR\x04name\x12;\n" +
 	"\x17if_metageneration_match\x18\x02 \x01(\x03H\x00R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
 	"\x1bif_metageneration_not_match\x18\x03 \x01(\x03H\x01R\x18ifMetagenerationNotMatch\x88\x01\x01B\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
-	"\x1c_if_metageneration_not_match\"\xd6\x02\n" +
-	"\x10GetBucketRequest\x129\n" +
-	"\x04name\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
+	"\x1c_if_metageneration_not_match\"\xd7\x02\n" +
+	"\x10GetBucketRequest\x12:\n" +
+	"\x04name\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
 	"\x1dstorage.googleapis.com/BucketR\x04name\x12;\n" +
 	"\x17if_metageneration_match\x18\x02 \x01(\x03H\x00R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
 	"\x1bif_metageneration_not_match\x18\x03 \x01(\x03H\x01R\x18ifMetagenerationNotMatch\x88\x01\x01\x12<\n" +
@@ -7938,145 +7938,145 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x18_if_metageneration_matchB\x1e\n" +
 	"\x1c_if_metageneration_not_matchB\f\n" +
 	"\n" +
-	"_read_mask\"\xdf\x02\n" +
-	"\x13CreateBucketRequest\x12=\n" +
-	"\x06parent\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\x12\x1dstorage.googleapis.com/BucketR\x06parent\x126\n" +
-	"\x06bucket\x18\x02 \x01(\v2\x19.google.storage.v2.BucketB\x03\xe0A\x01R\x06bucket\x12 \n" +
-	"\tbucket_id\x18\x03 \x01(\tB\x03\xe0A\x02R\bbucketId\x12*\n" +
-	"\x0epredefined_acl\x18\x06 \x01(\tB\x03\xe0A\x01R\rpredefinedAcl\x12F\n" +
-	"\x1dpredefined_default_object_acl\x18\a \x01(\tB\x03\xe0A\x01R\x1apredefinedDefaultObjectAcl\x12;\n" +
-	"\x17enable_object_retention\x18\t \x01(\bB\x03\xe0A\x01R\x15enableObjectRetention\"\xbd\x02\n" +
-	"\x12ListBucketsRequest\x12=\n" +
-	"\x06parent\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\x12\x1dstorage.googleapis.com/BucketR\x06parent\x12 \n" +
-	"\tpage_size\x18\x02 \x01(\x05B\x03\xe0A\x01R\bpageSize\x12\"\n" +
+	"_read_mask\"\xe5\x02\n" +
+	"\x13CreateBucketRequest\x12>\n" +
+	"\x06parent\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\x12\x1dstorage.googleapis.com/BucketR\x06parent\x127\n" +
+	"\x06bucket\x18\x02 \x01(\v2\x19.google.storage.v2.BucketB\x04\xe2A\x01\x01R\x06bucket\x12!\n" +
+	"\tbucket_id\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\bbucketId\x12+\n" +
+	"\x0epredefined_acl\x18\x06 \x01(\tB\x04\xe2A\x01\x01R\rpredefinedAcl\x12G\n" +
+	"\x1dpredefined_default_object_acl\x18\a \x01(\tB\x04\xe2A\x01\x01R\x1apredefinedDefaultObjectAcl\x12<\n" +
+	"\x17enable_object_retention\x18\t \x01(\bB\x04\xe2A\x01\x01R\x15enableObjectRetention\"\xc2\x02\n" +
+	"\x12ListBucketsRequest\x12>\n" +
+	"\x06parent\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\x12\x1dstorage.googleapis.com/BucketR\x06parent\x12!\n" +
+	"\tpage_size\x18\x02 \x01(\x05B\x04\xe2A\x01\x01R\bpageSize\x12#\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\x03\xe0A\x01R\tpageToken\x12\x1b\n" +
-	"\x06prefix\x18\x04 \x01(\tB\x03\xe0A\x01R\x06prefix\x12<\n" +
-	"\tread_mask\x18\x05 \x01(\v2\x1a.google.protobuf.FieldMaskH\x00R\breadMask\x88\x01\x01\x129\n" +
-	"\x16return_partial_success\x18\t \x01(\bB\x03\xe0A\x01R\x14returnPartialSuccessB\f\n" +
+	"page_token\x18\x03 \x01(\tB\x04\xe2A\x01\x01R\tpageToken\x12\x1c\n" +
+	"\x06prefix\x18\x04 \x01(\tB\x04\xe2A\x01\x01R\x06prefix\x12<\n" +
+	"\tread_mask\x18\x05 \x01(\v2\x1a.google.protobuf.FieldMaskH\x00R\breadMask\x88\x01\x01\x12:\n" +
+	"\x16return_partial_success\x18\t \x01(\bB\x04\xe2A\x01\x01R\x14returnPartialSuccessB\f\n" +
 	"\n" +
 	"_read_mask\"\x94\x01\n" +
 	"\x13ListBucketsResponse\x123\n" +
 	"\abuckets\x18\x01 \x03(\v2\x19.google.storage.v2.BucketR\abuckets\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12 \n" +
-	"\vunreachable\x18\x03 \x03(\tR\vunreachable\"\x9e\x01\n" +
-	" LockBucketRetentionPolicyRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12;\n" +
-	"\x17if_metageneration_match\x18\x02 \x01(\x03B\x03\xe0A\x02R\x15ifMetagenerationMatch\"\xc0\x03\n" +
-	"\x13UpdateBucketRequest\x126\n" +
-	"\x06bucket\x18\x01 \x01(\v2\x19.google.storage.v2.BucketB\x03\xe0A\x02R\x06bucket\x12;\n" +
+	"\vunreachable\x18\x03 \x03(\tR\vunreachable\"\xa0\x01\n" +
+	" LockBucketRetentionPolicyRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12<\n" +
+	"\x17if_metageneration_match\x18\x02 \x01(\x03B\x04\xe2A\x01\x02R\x15ifMetagenerationMatch\"\xc4\x03\n" +
+	"\x13UpdateBucketRequest\x127\n" +
+	"\x06bucket\x18\x01 \x01(\v2\x19.google.storage.v2.BucketB\x04\xe2A\x01\x02R\x06bucket\x12;\n" +
 	"\x17if_metageneration_match\x18\x02 \x01(\x03H\x00R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\x03 \x01(\x03H\x01R\x18ifMetagenerationNotMatch\x88\x01\x01\x12*\n" +
-	"\x0epredefined_acl\x18\b \x01(\tB\x03\xe0A\x01R\rpredefinedAcl\x12F\n" +
-	"\x1dpredefined_default_object_acl\x18\t \x01(\tB\x03\xe0A\x01R\x1apredefinedDefaultObjectAcl\x12@\n" +
-	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskB\x03\xe0A\x02R\n" +
+	"\x1bif_metageneration_not_match\x18\x03 \x01(\x03H\x01R\x18ifMetagenerationNotMatch\x88\x01\x01\x12+\n" +
+	"\x0epredefined_acl\x18\b \x01(\tB\x04\xe2A\x01\x01R\rpredefinedAcl\x12G\n" +
+	"\x1dpredefined_default_object_acl\x18\t \x01(\tB\x04\xe2A\x01\x01R\x1apredefinedDefaultObjectAcl\x12A\n" +
+	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskB\x04\xe2A\x01\x02R\n" +
 	"updateMaskB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
-	"\x1c_if_metageneration_not_match\"\xb8\b\n" +
-	"\x14ComposeObjectRequest\x12@\n" +
-	"\vdestination\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x03\xe0A\x02R\vdestination\x12`\n" +
-	"\x0esource_objects\x18\x02 \x03(\v24.google.storage.v2.ComposeObjectRequest.SourceObjectB\x03\xe0A\x01R\rsourceObjects\x12A\n" +
-	"\x1adestination_predefined_acl\x18\t \x01(\tB\x03\xe0A\x01R\x18destinationPredefinedAcl\x123\n" +
+	"\x1c_if_metageneration_not_match\"\xc1\b\n" +
+	"\x14ComposeObjectRequest\x12A\n" +
+	"\vdestination\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x04\xe2A\x01\x02R\vdestination\x12a\n" +
+	"\x0esource_objects\x18\x02 \x03(\v24.google.storage.v2.ComposeObjectRequest.SourceObjectB\x04\xe2A\x01\x01R\rsourceObjects\x12B\n" +
+	"\x1adestination_predefined_acl\x18\t \x01(\tB\x04\xe2A\x01\x01R\x18destinationPredefinedAcl\x123\n" +
 	"\x13if_generation_match\x18\x04 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12;\n" +
-	"\x17if_metageneration_match\x18\x05 \x01(\x03H\x01R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\akms_key\x18\x06 \x01(\tB)\xe0A\x01\xfaA#\n" +
-	"!cloudkms.googleapis.com/CryptoKeyR\x06kmsKey\x12r\n" +
-	"\x1ccommon_object_request_params\x18\a \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12R\n" +
+	"\x17if_metageneration_match\x18\x05 \x01(\x03H\x01R\x15ifMetagenerationMatch\x88\x01\x01\x12C\n" +
+	"\akms_key\x18\x06 \x01(\tB*\xe2A\x01\x01\xfaA#\n" +
+	"!cloudkms.googleapis.com/CryptoKeyR\x06kmsKey\x12s\n" +
+	"\x1ccommon_object_request_params\x18\a \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12S\n" +
 	"\x10object_checksums\x18\n" +
-	" \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x01R\x0fobjectChecksums\x127\n" +
-	"\x15delete_source_objects\x18\v \x01(\bH\x02R\x13deleteSourceObjects\x88\x01\x01\x1a\xb3\x02\n" +
-	"\fSourceObject\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12#\n" +
+	" \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x01R\x0fobjectChecksums\x127\n" +
+	"\x15delete_source_objects\x18\v \x01(\bH\x02R\x13deleteSourceObjects\x88\x01\x01\x1a\xb6\x02\n" +
+	"\fSourceObject\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x04name\x12$\n" +
 	"\n" +
-	"generation\x18\x02 \x01(\x03B\x03\xe0A\x01R\n" +
-	"generation\x12\x80\x01\n" +
-	"\x14object_preconditions\x18\x03 \x01(\v2H.google.storage.v2.ComposeObjectRequest.SourceObject.ObjectPreconditionsB\x03\xe0A\x01R\x13objectPreconditions\x1ab\n" +
+	"generation\x18\x02 \x01(\x03B\x04\xe2A\x01\x01R\n" +
+	"generation\x12\x81\x01\n" +
+	"\x14object_preconditions\x18\x03 \x01(\v2H.google.storage.v2.ComposeObjectRequest.SourceObject.ObjectPreconditionsB\x04\xe2A\x01\x01R\x13objectPreconditions\x1ab\n" +
 	"\x13ObjectPreconditions\x123\n" +
 	"\x13if_generation_match\x18\x01 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01B\x16\n" +
 	"\x14_if_generation_matchB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x18\n" +
-	"\x16_delete_source_objects\"\xec\x04\n" +
-	"\x13DeleteObjectRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"\x16_delete_source_objects\"\xf0\x04\n" +
+	"\x13DeleteObjectRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x04 \x01(\x03B\x03\xe0A\x01R\n" +
+	"generation\x18\x04 \x01(\x03B\x04\xe2A\x01\x01R\n" +
 	"generation\x123\n" +
 	"\x13if_generation_match\x18\x05 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x06 \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\a \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\b \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12r\n" +
+	"\x1bif_metageneration_not_match\x18\b \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12s\n" +
 	"\x1ccommon_object_request_params\x18\n" +
-	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParamsB\x16\n" +
+	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParamsB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
-	"\x1c_if_metageneration_not_match\"\xd8\x05\n" +
-	"\x14RestoreObjectRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"\x1c_if_metageneration_not_match\"\xdd\x05\n" +
+	"\x14RestoreObjectRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x02R\n" +
-	"generation\x12(\n" +
-	"\rrestore_token\x18\v \x01(\tB\x03\xe0A\x01R\frestoreToken\x123\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x02R\n" +
+	"generation\x12)\n" +
+	"\rrestore_token\x18\v \x01(\tB\x04\xe2A\x01\x01R\frestoreToken\x123\n" +
 	"\x13if_generation_match\x18\x04 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x05 \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\x06 \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
 	"\x1bif_metageneration_not_match\x18\a \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12+\n" +
-	"\x0fcopy_source_acl\x18\t \x01(\bH\x04R\rcopySourceAcl\x88\x01\x01\x12r\n" +
-	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParamsB\x16\n" +
+	"\x0fcopy_source_acl\x18\t \x01(\bH\x04R\rcopySourceAcl\x88\x01\x01\x12s\n" +
+	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParamsB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
 	"\x1c_if_metageneration_not_matchB\x12\n" +
-	"\x10_copy_source_acl\"?\n" +
-	"\x1bCancelResumableWriteRequest\x12 \n" +
-	"\tupload_id\x18\x01 \x01(\tB\x03\xe0A\x02R\buploadId\"\x1e\n" +
-	"\x1cCancelResumableWriteResponse\"\x80\x06\n" +
-	"\x11ReadObjectRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"\x10_copy_source_acl\"@\n" +
+	"\x1bCancelResumableWriteRequest\x12!\n" +
+	"\tupload_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\buploadId\"\x1e\n" +
+	"\x1cCancelResumableWriteResponse\"\x86\x06\n" +
+	"\x11ReadObjectRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x01R\n" +
-	"generation\x12$\n" +
-	"\vread_offset\x18\x04 \x01(\x03B\x03\xe0A\x01R\n" +
-	"readOffset\x12\"\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x01R\n" +
+	"generation\x12%\n" +
+	"\vread_offset\x18\x04 \x01(\x03B\x04\xe2A\x01\x01R\n" +
+	"readOffset\x12#\n" +
 	"\n" +
-	"read_limit\x18\x05 \x01(\x03B\x03\xe0A\x01R\treadLimit\x123\n" +
+	"read_limit\x18\x05 \x01(\x03B\x04\xe2A\x01\x01R\treadLimit\x123\n" +
 	"\x13if_generation_match\x18\x06 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\a \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\b \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\t \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12r\n" +
+	"\x1bif_metageneration_not_match\x18\t \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12s\n" +
 	"\x1ccommon_object_request_params\x18\n" +
-	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12<\n" +
+	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12<\n" +
 	"\tread_mask\x18\f \x01(\v2\x1a.google.protobuf.FieldMaskH\x04R\breadMask\x88\x01\x01B\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
 	"\x1c_if_metageneration_not_matchB\f\n" +
 	"\n" +
-	"_read_mask\"\x98\x06\n" +
-	"\x10GetObjectRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"_read_mask\"\x9d\x06\n" +
+	"\x10GetObjectRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x01R\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x01R\n" +
 	"generation\x12&\n" +
 	"\fsoft_deleted\x18\v \x01(\bH\x00R\vsoftDeleted\x88\x01\x01\x123\n" +
 	"\x13if_generation_match\x18\x04 \x01(\x03H\x01R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x05 \x01(\x03H\x02R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\x06 \x01(\x03H\x03R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\a \x01(\x03H\x04R\x18ifMetagenerationNotMatch\x88\x01\x01\x12r\n" +
-	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12<\n" +
+	"\x1bif_metageneration_not_match\x18\a \x01(\x03H\x04R\x18ifMetagenerationNotMatch\x88\x01\x01\x12s\n" +
+	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12<\n" +
 	"\tread_mask\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.FieldMaskH\x05R\breadMask\x88\x01\x01\x12(\n" +
-	"\rrestore_token\x18\f \x01(\tB\x03\xe0A\x01R\frestoreTokenB\x0f\n" +
+	" \x01(\v2\x1a.google.protobuf.FieldMaskH\x05R\breadMask\x88\x01\x01\x12)\n" +
+	"\rrestore_token\x18\f \x01(\tB\x04\xe2A\x01\x01R\frestoreTokenB\x0f\n" +
 	"\r_soft_deletedB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
@@ -8088,19 +8088,19 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x10checksummed_data\x18\x01 \x01(\v2\".google.storage.v2.ChecksummedDataR\x0fchecksummedData\x12M\n" +
 	"\x10object_checksums\x18\x02 \x01(\v2\".google.storage.v2.ObjectChecksumsR\x0fobjectChecksums\x12D\n" +
 	"\rcontent_range\x18\x03 \x01(\v2\x1f.google.storage.v2.ContentRangeR\fcontentRange\x125\n" +
-	"\bmetadata\x18\x04 \x01(\v2\x19.google.storage.v2.ObjectR\bmetadata\"\xd0\x06\n" +
-	"\x12BidiReadObjectSpec\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x19.google.storage.v2.ObjectR\bmetadata\"\xd4\x06\n" +
+	"\x12BidiReadObjectSpec\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x01R\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x01R\n" +
 	"generation\x123\n" +
 	"\x13if_generation_match\x18\x04 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x05 \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\x06 \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\a \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12r\n" +
-	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12@\n" +
+	"\x1bif_metageneration_not_match\x18\a \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12s\n" +
+	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12@\n" +
 	"\tread_mask\x18\f \x01(\v2\x1a.google.protobuf.FieldMaskB\x02\x18\x01H\x04R\breadMask\x88\x01\x01\x12G\n" +
 	"\vread_handle\x18\r \x01(\v2!.google.storage.v2.BidiReadHandleH\x05R\n" +
 	"readHandle\x88\x01\x01\x12(\n" +
@@ -8112,10 +8112,10 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\n" +
 	"_read_maskB\x0e\n" +
 	"\f_read_handleB\x10\n" +
-	"\x0e_routing_token\"\xb1\x01\n" +
-	"\x15BidiReadObjectRequest\x12T\n" +
-	"\x10read_object_spec\x18\x01 \x01(\v2%.google.storage.v2.BidiReadObjectSpecB\x03\xe0A\x01R\x0ereadObjectSpec\x12B\n" +
-	"\vread_ranges\x18\b \x03(\v2\x1c.google.storage.v2.ReadRangeB\x03\xe0A\x01R\n" +
+	"\x0e_routing_token\"\xb3\x01\n" +
+	"\x15BidiReadObjectRequest\x12U\n" +
+	"\x10read_object_spec\x18\x01 \x01(\v2%.google.storage.v2.BidiReadObjectSpecB\x04\xe2A\x01\x01R\x0ereadObjectSpec\x12C\n" +
+	"\vread_ranges\x18\b \x03(\v2\x1c.google.storage.v2.ReadRangeB\x04\xe2A\x01\x01R\n" +
 	"readRanges\"\xe5\x01\n" +
 	"\x16BidiReadObjectResponse\x12P\n" +
 	"\x12object_data_ranges\x18\x06 \x03(\v2\".google.storage.v2.ObjectRangeDataR\x10objectDataRanges\x125\n" +
@@ -8140,25 +8140,25 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x11read_range_errors\x18\x01 \x03(\v2!.google.storage.v2.ReadRangeErrorR\x0freadRangeErrors\"U\n" +
 	"\x0eReadRangeError\x12\x17\n" +
 	"\aread_id\x18\x01 \x01(\x03R\x06readId\x12*\n" +
-	"\x06status\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x06status\"u\n" +
-	"\tReadRange\x12$\n" +
-	"\vread_offset\x18\x01 \x01(\x03B\x03\xe0A\x02R\n" +
-	"readOffset\x12$\n" +
-	"\vread_length\x18\x02 \x01(\x03B\x03\xe0A\x01R\n" +
-	"readLength\x12\x1c\n" +
-	"\aread_id\x18\x03 \x01(\x03B\x03\xe0A\x02R\x06readId\"\xba\x01\n" +
+	"\x06status\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x06status\"x\n" +
+	"\tReadRange\x12%\n" +
+	"\vread_offset\x18\x01 \x01(\x03B\x04\xe2A\x01\x02R\n" +
+	"readOffset\x12%\n" +
+	"\vread_length\x18\x02 \x01(\x03B\x04\xe2A\x01\x01R\n" +
+	"readLength\x12\x1d\n" +
+	"\aread_id\x18\x03 \x01(\x03B\x04\xe2A\x01\x02R\x06readId\"\xba\x01\n" +
 	"\x0fObjectRangeData\x12M\n" +
 	"\x10checksummed_data\x18\x01 \x01(\v2\".google.storage.v2.ChecksummedDataR\x0fchecksummedData\x12;\n" +
 	"\n" +
 	"read_range\x18\x02 \x01(\v2\x1c.google.storage.v2.ReadRangeR\treadRange\x12\x1b\n" +
-	"\trange_end\x18\x03 \x01(\bR\brangeEnd\"-\n" +
-	"\x0eBidiReadHandle\x12\x1b\n" +
-	"\x06handle\x18\x01 \x01(\fB\x03\xe0A\x02R\x06handle\".\n" +
-	"\x0fBidiWriteHandle\x12\x1b\n" +
-	"\x06handle\x18\x01 \x01(\fB\x03\xe0A\x02R\x06handle\"\xc5\x04\n" +
-	"\x0fWriteObjectSpec\x12:\n" +
-	"\bresource\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x03\xe0A\x02R\bresource\x12*\n" +
-	"\x0epredefined_acl\x18\a \x01(\tB\x03\xe0A\x01R\rpredefinedAcl\x123\n" +
+	"\trange_end\x18\x03 \x01(\bR\brangeEnd\".\n" +
+	"\x0eBidiReadHandle\x12\x1c\n" +
+	"\x06handle\x18\x01 \x01(\fB\x04\xe2A\x01\x02R\x06handle\"/\n" +
+	"\x0fBidiWriteHandle\x12\x1c\n" +
+	"\x06handle\x18\x01 \x01(\fB\x04\xe2A\x01\x02R\x06handle\"\xc7\x04\n" +
+	"\x0fWriteObjectSpec\x12;\n" +
+	"\bresource\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x04\xe2A\x01\x02R\bresource\x12+\n" +
+	"\x0epredefined_acl\x18\a \x01(\tB\x04\xe2A\x01\x01R\rpredefinedAcl\x123\n" +
 	"\x13if_generation_match\x18\x03 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x04 \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\x05 \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
@@ -8173,28 +8173,28 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x18_if_metageneration_matchB\x1e\n" +
 	"\x1c_if_metageneration_not_matchB\x0e\n" +
 	"\f_object_sizeB\r\n" +
-	"\v_appendable\"\x87\x04\n" +
+	"\v_appendable\"\x8b\x04\n" +
 	"\x12WriteObjectRequest\x12\x1d\n" +
 	"\tupload_id\x18\x01 \x01(\tH\x00R\buploadId\x12P\n" +
-	"\x11write_object_spec\x18\x02 \x01(\v2\".google.storage.v2.WriteObjectSpecH\x00R\x0fwriteObjectSpec\x12&\n" +
-	"\fwrite_offset\x18\x03 \x01(\x03B\x03\xe0A\x02R\vwriteOffset\x12O\n" +
-	"\x10checksummed_data\x18\x04 \x01(\v2\".google.storage.v2.ChecksummedDataH\x01R\x0fchecksummedData\x12R\n" +
-	"\x10object_checksums\x18\x06 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x01R\x0fobjectChecksums\x12&\n" +
-	"\ffinish_write\x18\a \x01(\bB\x03\xe0A\x01R\vfinishWrite\x12r\n" +
-	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParamsB\x0f\n" +
+	"\x11write_object_spec\x18\x02 \x01(\v2\".google.storage.v2.WriteObjectSpecH\x00R\x0fwriteObjectSpec\x12'\n" +
+	"\fwrite_offset\x18\x03 \x01(\x03B\x04\xe2A\x01\x02R\vwriteOffset\x12O\n" +
+	"\x10checksummed_data\x18\x04 \x01(\v2\".google.storage.v2.ChecksummedDataH\x01R\x0fchecksummedData\x12S\n" +
+	"\x10object_checksums\x18\x06 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x01R\x0fobjectChecksums\x12'\n" +
+	"\ffinish_write\x18\a \x01(\bB\x04\xe2A\x01\x01R\vfinishWrite\x12s\n" +
+	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParamsB\x0f\n" +
 	"\rfirst_messageB\x06\n" +
 	"\x04data\"\xe5\x01\n" +
 	"\x13WriteObjectResponse\x12'\n" +
 	"\x0epersisted_size\x18\x01 \x01(\x03H\x00R\rpersistedSize\x127\n" +
 	"\bresource\x18\x02 \x01(\v2\x19.google.storage.v2.ObjectH\x00R\bresource\x12\\\n" +
 	"\x18persisted_data_checksums\x18\x03 \x01(\v2\".google.storage.v2.ObjectChecksumsR\x16persistedDataChecksumsB\x0e\n" +
-	"\fwrite_status\"\xe9\x03\n" +
-	"\x10AppendObjectSpec\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1b\n" +
-	"\x06object\x18\x02 \x01(\tB\x03\xe0A\x02R\x06object\x12#\n" +
+	"\fwrite_status\"\xec\x03\n" +
+	"\x10AppendObjectSpec\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x1c\n" +
+	"\x06object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06object\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x02R\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x02R\n" +
 	"generation\x12;\n" +
 	"\x17if_metageneration_match\x18\x04 \x01(\x03H\x00R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
 	"\x1bif_metageneration_not_match\x18\x05 \x01(\x03H\x01R\x18ifMetagenerationNotMatch\x88\x01\x01\x12(\n" +
@@ -8203,19 +8203,19 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x18_if_metageneration_matchB\x1e\n" +
 	"\x1c_if_metageneration_not_matchB\x10\n" +
 	"\x0e_routing_tokenB\x0f\n" +
-	"\r_write_handle\"\xa3\x05\n" +
+	"\r_write_handle\"\xa9\x05\n" +
 	"\x16BidiWriteObjectRequest\x12\x1d\n" +
 	"\tupload_id\x18\x01 \x01(\tH\x00R\buploadId\x12P\n" +
 	"\x11write_object_spec\x18\x02 \x01(\v2\".google.storage.v2.WriteObjectSpecH\x00R\x0fwriteObjectSpec\x12S\n" +
-	"\x12append_object_spec\x18\v \x01(\v2#.google.storage.v2.AppendObjectSpecH\x00R\x10appendObjectSpec\x12&\n" +
-	"\fwrite_offset\x18\x03 \x01(\x03B\x03\xe0A\x02R\vwriteOffset\x12O\n" +
-	"\x10checksummed_data\x18\x04 \x01(\v2\".google.storage.v2.ChecksummedDataH\x01R\x0fchecksummedData\x12R\n" +
-	"\x10object_checksums\x18\x06 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x01R\x0fobjectChecksums\x12&\n" +
-	"\fstate_lookup\x18\a \x01(\bB\x03\xe0A\x01R\vstateLookup\x12\x19\n" +
-	"\x05flush\x18\b \x01(\bB\x03\xe0A\x01R\x05flush\x12&\n" +
-	"\ffinish_write\x18\t \x01(\bB\x03\xe0A\x01R\vfinishWrite\x12r\n" +
+	"\x12append_object_spec\x18\v \x01(\v2#.google.storage.v2.AppendObjectSpecH\x00R\x10appendObjectSpec\x12'\n" +
+	"\fwrite_offset\x18\x03 \x01(\x03B\x04\xe2A\x01\x02R\vwriteOffset\x12O\n" +
+	"\x10checksummed_data\x18\x04 \x01(\v2\".google.storage.v2.ChecksummedDataH\x01R\x0fchecksummedData\x12S\n" +
+	"\x10object_checksums\x18\x06 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x01R\x0fobjectChecksums\x12'\n" +
+	"\fstate_lookup\x18\a \x01(\bB\x04\xe2A\x01\x01R\vstateLookup\x12\x1a\n" +
+	"\x05flush\x18\b \x01(\bB\x04\xe2A\x01\x01R\x05flush\x12'\n" +
+	"\ffinish_write\x18\t \x01(\bB\x04\xe2A\x01\x01R\vfinishWrite\x12s\n" +
 	"\x1ccommon_object_request_params\x18\n" +
-	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParamsB\x0f\n" +
+	" \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParamsB\x0f\n" +
 	"\rfirst_messageB\x06\n" +
 	"\x04data\"\xc6\x02\n" +
 	"\x17BidiWriteObjectResponse\x12'\n" +
@@ -8224,49 +8224,49 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x18persisted_data_checksums\x18\x04 \x01(\v2\".google.storage.v2.ObjectChecksumsR\x16persistedDataChecksums\x12J\n" +
 	"\fwrite_handle\x18\x03 \x01(\v2\".google.storage.v2.BidiWriteHandleH\x01R\vwriteHandle\x88\x01\x01B\x0e\n" +
 	"\fwrite_statusB\x0f\n" +
-	"\r_write_handle\"\x9e\x05\n" +
-	"\x12ListObjectsRequest\x12=\n" +
-	"\x06parent\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06parent\x12 \n" +
-	"\tpage_size\x18\x02 \x01(\x05B\x03\xe0A\x01R\bpageSize\x12\"\n" +
+	"\r_write_handle\"\xab\x05\n" +
+	"\x12ListObjectsRequest\x12>\n" +
+	"\x06parent\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06parent\x12!\n" +
+	"\tpage_size\x18\x02 \x01(\x05B\x04\xe2A\x01\x01R\bpageSize\x12#\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\x03\xe0A\x01R\tpageToken\x12!\n" +
-	"\tdelimiter\x18\x04 \x01(\tB\x03\xe0A\x01R\tdelimiter\x12A\n" +
-	"\x1ainclude_trailing_delimiter\x18\x05 \x01(\bB\x03\xe0A\x01R\x18includeTrailingDelimiter\x12\x1b\n" +
-	"\x06prefix\x18\x06 \x01(\tB\x03\xe0A\x01R\x06prefix\x12\x1f\n" +
-	"\bversions\x18\a \x01(\bB\x03\xe0A\x01R\bversions\x12<\n" +
-	"\tread_mask\x18\b \x01(\v2\x1a.google.protobuf.FieldMaskH\x00R\breadMask\x88\x01\x01\x124\n" +
+	"page_token\x18\x03 \x01(\tB\x04\xe2A\x01\x01R\tpageToken\x12\"\n" +
+	"\tdelimiter\x18\x04 \x01(\tB\x04\xe2A\x01\x01R\tdelimiter\x12B\n" +
+	"\x1ainclude_trailing_delimiter\x18\x05 \x01(\bB\x04\xe2A\x01\x01R\x18includeTrailingDelimiter\x12\x1c\n" +
+	"\x06prefix\x18\x06 \x01(\tB\x04\xe2A\x01\x01R\x06prefix\x12 \n" +
+	"\bversions\x18\a \x01(\bB\x04\xe2A\x01\x01R\bversions\x12<\n" +
+	"\tread_mask\x18\b \x01(\v2\x1a.google.protobuf.FieldMaskH\x00R\breadMask\x88\x01\x01\x125\n" +
 	"\x13lexicographic_start\x18\n" +
-	" \x01(\tB\x03\xe0A\x01R\x12lexicographicStart\x120\n" +
-	"\x11lexicographic_end\x18\v \x01(\tB\x03\xe0A\x01R\x10lexicographicEnd\x12&\n" +
-	"\fsoft_deleted\x18\f \x01(\bB\x03\xe0A\x01R\vsoftDeleted\x12B\n" +
-	"\x1binclude_folders_as_prefixes\x18\r \x01(\bB\x03\xe0A\x01R\x18includeFoldersAsPrefixes\x12\"\n" +
+	" \x01(\tB\x04\xe2A\x01\x01R\x12lexicographicStart\x121\n" +
+	"\x11lexicographic_end\x18\v \x01(\tB\x04\xe2A\x01\x01R\x10lexicographicEnd\x12'\n" +
+	"\fsoft_deleted\x18\f \x01(\bB\x04\xe2A\x01\x01R\vsoftDeleted\x12C\n" +
+	"\x1binclude_folders_as_prefixes\x18\r \x01(\bB\x04\xe2A\x01\x01R\x18includeFoldersAsPrefixes\x12#\n" +
 	"\n" +
-	"match_glob\x18\x0e \x01(\tB\x03\xe0A\x01R\tmatchGlob\x12\x1b\n" +
-	"\x06filter\x18\x0f \x01(\tB\x03\xe0A\x01R\x06filterB\f\n" +
+	"match_glob\x18\x0e \x01(\tB\x04\xe2A\x01\x01R\tmatchGlob\x12\x1c\n" +
+	"\x06filter\x18\x0f \x01(\tB\x04\xe2A\x01\x01R\x06filterB\f\n" +
 	"\n" +
-	"_read_mask\"\xaf\x01\n" +
-	"\x17QueryWriteStatusRequest\x12 \n" +
-	"\tupload_id\x18\x01 \x01(\tB\x03\xe0A\x02R\buploadId\x12r\n" +
-	"\x1ccommon_object_request_params\x18\x02 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\"\xea\x01\n" +
+	"_read_mask\"\xb1\x01\n" +
+	"\x17QueryWriteStatusRequest\x12!\n" +
+	"\tupload_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\buploadId\x12s\n" +
+	"\x1ccommon_object_request_params\x18\x02 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\"\xea\x01\n" +
 	"\x18QueryWriteStatusResponse\x12'\n" +
 	"\x0epersisted_size\x18\x01 \x01(\x03H\x00R\rpersistedSize\x127\n" +
 	"\bresource\x18\x02 \x01(\v2\x19.google.storage.v2.ObjectH\x00R\bresource\x12\\\n" +
 	"\x18persisted_data_checksums\x18\x03 \x01(\v2\".google.storage.v2.ObjectChecksumsR\x16persistedDataChecksumsB\x0e\n" +
-	"\fwrite_status\"\xea\x0e\n" +
-	"\x14RewriteObjectRequest\x121\n" +
-	"\x10destination_name\x18\x18 \x01(\tB\x06\xe0A\x02\xe0A\x05R\x0fdestinationName\x12W\n" +
-	"\x12destination_bucket\x18\x19 \x01(\tB(\xe0A\x02\xe0A\x05\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x11destinationBucket\x12Y\n" +
-	"\x13destination_kms_key\x18\x1b \x01(\tB)\xe0A\x01\xfaA#\n" +
-	"!cloudkms.googleapis.com/CryptoKeyR\x11destinationKmsKey\x12@\n" +
-	"\vdestination\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x03\xe0A\x01R\vdestination\x12J\n" +
-	"\rsource_bucket\x18\x02 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\fsourceBucket\x12(\n" +
-	"\rsource_object\x18\x03 \x01(\tB\x03\xe0A\x02R\fsourceObject\x120\n" +
-	"\x11source_generation\x18\x04 \x01(\x03B\x03\xe0A\x01R\x10sourceGeneration\x12(\n" +
-	"\rrewrite_token\x18\x05 \x01(\tB\x03\xe0A\x01R\frewriteToken\x12A\n" +
-	"\x1adestination_predefined_acl\x18\x1c \x01(\tB\x03\xe0A\x01R\x18destinationPredefinedAcl\x123\n" +
+	"\fwrite_status\"\xf5\x0e\n" +
+	"\x14RewriteObjectRequest\x120\n" +
+	"\x10destination_name\x18\x18 \x01(\tB\x05\xe2A\x02\x02\x05R\x0fdestinationName\x12V\n" +
+	"\x12destination_bucket\x18\x19 \x01(\tB'\xe2A\x02\x02\x05\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x11destinationBucket\x12Z\n" +
+	"\x13destination_kms_key\x18\x1b \x01(\tB*\xe2A\x01\x01\xfaA#\n" +
+	"!cloudkms.googleapis.com/CryptoKeyR\x11destinationKmsKey\x12A\n" +
+	"\vdestination\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x04\xe2A\x01\x01R\vdestination\x12K\n" +
+	"\rsource_bucket\x18\x02 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\fsourceBucket\x12)\n" +
+	"\rsource_object\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\fsourceObject\x121\n" +
+	"\x11source_generation\x18\x04 \x01(\x03B\x04\xe2A\x01\x01R\x10sourceGeneration\x12)\n" +
+	"\rrewrite_token\x18\x05 \x01(\tB\x04\xe2A\x01\x01R\frewriteToken\x12B\n" +
+	"\x1adestination_predefined_acl\x18\x1c \x01(\tB\x04\xe2A\x01\x01R\x18destinationPredefinedAcl\x123\n" +
 	"\x13if_generation_match\x18\a \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\b \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\t \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
@@ -8275,13 +8275,13 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x1aif_source_generation_match\x18\v \x01(\x03H\x04R\x17ifSourceGenerationMatch\x88\x01\x01\x12G\n" +
 	"\x1eif_source_generation_not_match\x18\f \x01(\x03H\x05R\x1aifSourceGenerationNotMatch\x88\x01\x01\x12H\n" +
 	"\x1eif_source_metageneration_match\x18\r \x01(\x03H\x06R\x1bifSourceMetagenerationMatch\x88\x01\x01\x12O\n" +
-	"\"if_source_metageneration_not_match\x18\x0e \x01(\x03H\aR\x1eifSourceMetagenerationNotMatch\x88\x01\x01\x12C\n" +
-	"\x1cmax_bytes_rewritten_per_call\x18\x0f \x01(\x03B\x03\xe0A\x01R\x18maxBytesRewrittenPerCall\x12L\n" +
-	" copy_source_encryption_algorithm\x18\x10 \x01(\tB\x03\xe0A\x01R\x1dcopySourceEncryptionAlgorithm\x12K\n" +
-	" copy_source_encryption_key_bytes\x18\x15 \x01(\fB\x03\xe0A\x01R\x1ccopySourceEncryptionKeyBytes\x12X\n" +
-	"'copy_source_encryption_key_sha256_bytes\x18\x16 \x01(\fB\x03\xe0A\x01R\"copySourceEncryptionKeySha256Bytes\x12r\n" +
-	"\x1ccommon_object_request_params\x18\x13 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12R\n" +
-	"\x10object_checksums\x18\x1d \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x01R\x0fobjectChecksumsB\x16\n" +
+	"\"if_source_metageneration_not_match\x18\x0e \x01(\x03H\aR\x1eifSourceMetagenerationNotMatch\x88\x01\x01\x12D\n" +
+	"\x1cmax_bytes_rewritten_per_call\x18\x0f \x01(\x03B\x04\xe2A\x01\x01R\x18maxBytesRewrittenPerCall\x12M\n" +
+	" copy_source_encryption_algorithm\x18\x10 \x01(\tB\x04\xe2A\x01\x01R\x1dcopySourceEncryptionAlgorithm\x12L\n" +
+	" copy_source_encryption_key_bytes\x18\x15 \x01(\fB\x04\xe2A\x01\x01R\x1ccopySourceEncryptionKeyBytes\x12Y\n" +
+	"'copy_source_encryption_key_sha256_bytes\x18\x16 \x01(\fB\x04\xe2A\x01\x01R\"copySourceEncryptionKeySha256Bytes\x12s\n" +
+	"\x1ccommon_object_request_params\x18\x13 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12S\n" +
+	"\x10object_checksums\x18\x1d \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x01R\x0fobjectChecksumsB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
@@ -8296,21 +8296,21 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"objectSize\x12\x12\n" +
 	"\x04done\x18\x03 \x01(\bR\x04done\x12#\n" +
 	"\rrewrite_token\x18\x04 \x01(\tR\frewriteToken\x125\n" +
-	"\bresource\x18\x05 \x01(\v2\x19.google.storage.v2.ObjectR\bresource\"\xec\a\n" +
-	"\x11MoveObjectRequest\x12=\n" +
-	"\x06bucket\x18\x01 \x01(\tB%\xe0A\x02\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12(\n" +
-	"\rsource_object\x18\x02 \x01(\tB\x03\xe0A\x02R\fsourceObject\x122\n" +
-	"\x12destination_object\x18\x03 \x01(\tB\x03\xe0A\x02R\x11destinationObject\x12E\n" +
-	"\x1aif_source_generation_match\x18\x04 \x01(\x03B\x03\xe0A\x01H\x00R\x17ifSourceGenerationMatch\x88\x01\x01\x12L\n" +
-	"\x1eif_source_generation_not_match\x18\x05 \x01(\x03B\x03\xe0A\x01H\x01R\x1aifSourceGenerationNotMatch\x88\x01\x01\x12M\n" +
-	"\x1eif_source_metageneration_match\x18\x06 \x01(\x03B\x03\xe0A\x01H\x02R\x1bifSourceMetagenerationMatch\x88\x01\x01\x12T\n" +
-	"\"if_source_metageneration_not_match\x18\a \x01(\x03B\x03\xe0A\x01H\x03R\x1eifSourceMetagenerationNotMatch\x88\x01\x01\x128\n" +
-	"\x13if_generation_match\x18\b \x01(\x03B\x03\xe0A\x01H\x04R\x11ifGenerationMatch\x88\x01\x01\x12?\n" +
-	"\x17if_generation_not_match\x18\t \x01(\x03B\x03\xe0A\x01H\x05R\x14ifGenerationNotMatch\x88\x01\x01\x12@\n" +
+	"\bresource\x18\x05 \x01(\v2\x19.google.storage.v2.ObjectR\bresource\"\xf7\a\n" +
+	"\x11MoveObjectRequest\x12>\n" +
+	"\x06bucket\x18\x01 \x01(\tB&\xe2A\x01\x02\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12)\n" +
+	"\rsource_object\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\fsourceObject\x123\n" +
+	"\x12destination_object\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x11destinationObject\x12F\n" +
+	"\x1aif_source_generation_match\x18\x04 \x01(\x03B\x04\xe2A\x01\x01H\x00R\x17ifSourceGenerationMatch\x88\x01\x01\x12M\n" +
+	"\x1eif_source_generation_not_match\x18\x05 \x01(\x03B\x04\xe2A\x01\x01H\x01R\x1aifSourceGenerationNotMatch\x88\x01\x01\x12N\n" +
+	"\x1eif_source_metageneration_match\x18\x06 \x01(\x03B\x04\xe2A\x01\x01H\x02R\x1bifSourceMetagenerationMatch\x88\x01\x01\x12U\n" +
+	"\"if_source_metageneration_not_match\x18\a \x01(\x03B\x04\xe2A\x01\x01H\x03R\x1eifSourceMetagenerationNotMatch\x88\x01\x01\x129\n" +
+	"\x13if_generation_match\x18\b \x01(\x03B\x04\xe2A\x01\x01H\x04R\x11ifGenerationMatch\x88\x01\x01\x12@\n" +
+	"\x17if_generation_not_match\x18\t \x01(\x03B\x04\xe2A\x01\x01H\x05R\x14ifGenerationNotMatch\x88\x01\x01\x12A\n" +
 	"\x17if_metageneration_match\x18\n" +
-	" \x01(\x03B\x03\xe0A\x01H\x06R\x15ifMetagenerationMatch\x88\x01\x01\x12G\n" +
-	"\x1bif_metageneration_not_match\x18\v \x01(\x03B\x03\xe0A\x01H\aR\x18ifMetagenerationNotMatch\x88\x01\x01B\x1d\n" +
+	" \x01(\x03B\x04\xe2A\x01\x01H\x06R\x15ifMetagenerationMatch\x88\x01\x01\x12H\n" +
+	"\x1bif_metageneration_not_match\x18\v \x01(\x03B\x04\xe2A\x01\x01H\aR\x18ifMetagenerationNotMatch\x88\x01\x01B\x1d\n" +
 	"\x1b_if_source_generation_matchB!\n" +
 	"\x1f_if_source_generation_not_matchB!\n" +
 	"\x1f_if_source_metageneration_matchB%\n" +
@@ -8318,33 +8318,33 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
-	"\x1c_if_metageneration_not_match\"\xb9\x02\n" +
-	"\x1aStartResumableWriteRequest\x12S\n" +
-	"\x11write_object_spec\x18\x01 \x01(\v2\".google.storage.v2.WriteObjectSpecB\x03\xe0A\x02R\x0fwriteObjectSpec\x12r\n" +
-	"\x1ccommon_object_request_params\x18\x03 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12R\n" +
-	"\x10object_checksums\x18\x05 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x01R\x0fobjectChecksums\":\n" +
+	"\x1c_if_metageneration_not_match\"\xbc\x02\n" +
+	"\x1aStartResumableWriteRequest\x12T\n" +
+	"\x11write_object_spec\x18\x01 \x01(\v2\".google.storage.v2.WriteObjectSpecB\x04\xe2A\x01\x02R\x0fwriteObjectSpec\x12s\n" +
+	"\x1ccommon_object_request_params\x18\x03 \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12S\n" +
+	"\x10object_checksums\x18\x05 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x01R\x0fobjectChecksums\":\n" +
 	"\x1bStartResumableWriteResponse\x12\x1b\n" +
-	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\xd6\x05\n" +
-	"\x13UpdateObjectRequest\x126\n" +
-	"\x06object\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x03\xe0A\x02R\x06object\x123\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\xdb\x05\n" +
+	"\x13UpdateObjectRequest\x127\n" +
+	"\x06object\x18\x01 \x01(\v2\x19.google.storage.v2.ObjectB\x04\xe2A\x01\x02R\x06object\x123\n" +
 	"\x13if_generation_match\x18\x02 \x01(\x03H\x00R\x11ifGenerationMatch\x88\x01\x01\x12:\n" +
 	"\x17if_generation_not_match\x18\x03 \x01(\x03H\x01R\x14ifGenerationNotMatch\x88\x01\x01\x12;\n" +
 	"\x17if_metageneration_match\x18\x04 \x01(\x03H\x02R\x15ifMetagenerationMatch\x88\x01\x01\x12B\n" +
-	"\x1bif_metageneration_not_match\x18\x05 \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12*\n" +
+	"\x1bif_metageneration_not_match\x18\x05 \x01(\x03H\x03R\x18ifMetagenerationNotMatch\x88\x01\x01\x12+\n" +
 	"\x0epredefined_acl\x18\n" +
-	" \x01(\tB\x03\xe0A\x01R\rpredefinedAcl\x12@\n" +
-	"\vupdate_mask\x18\a \x01(\v2\x1a.google.protobuf.FieldMaskB\x03\xe0A\x02R\n" +
-	"updateMask\x12r\n" +
-	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x03\xe0A\x01R\x19commonObjectRequestParams\x12C\n" +
-	"\x1boverride_unlocked_retention\x18\v \x01(\bB\x03\xe0A\x01R\x19overrideUnlockedRetentionB\x16\n" +
+	" \x01(\tB\x04\xe2A\x01\x01R\rpredefinedAcl\x12A\n" +
+	"\vupdate_mask\x18\a \x01(\v2\x1a.google.protobuf.FieldMaskB\x04\xe2A\x01\x02R\n" +
+	"updateMask\x12s\n" +
+	"\x1ccommon_object_request_params\x18\b \x01(\v2,.google.storage.v2.CommonObjectRequestParamsB\x04\xe2A\x01\x01R\x19commonObjectRequestParams\x12D\n" +
+	"\x1boverride_unlocked_retention\x18\v \x01(\bB\x04\xe2A\x01\x01R\x19overrideUnlockedRetentionB\x16\n" +
 	"\x14_if_generation_matchB\x1a\n" +
 	"\x18_if_generation_not_matchB\x1a\n" +
 	"\x18_if_metageneration_matchB\x1e\n" +
-	"\x1c_if_metageneration_not_match\"\xce\x01\n" +
-	"\x19CommonObjectRequestParams\x126\n" +
-	"\x14encryption_algorithm\x18\x01 \x01(\tB\x03\xe0A\x01R\x13encryptionAlgorithm\x125\n" +
-	"\x14encryption_key_bytes\x18\x04 \x01(\fB\x03\xe0A\x01R\x12encryptionKeyBytes\x12B\n" +
-	"\x1bencryption_key_sha256_bytes\x18\x05 \x01(\fB\x03\xe0A\x01R\x18encryptionKeySha256Bytes\"\xca\x05\n" +
+	"\x1c_if_metageneration_not_match\"\xd1\x01\n" +
+	"\x19CommonObjectRequestParams\x127\n" +
+	"\x14encryption_algorithm\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x13encryptionAlgorithm\x126\n" +
+	"\x14encryption_key_bytes\x18\x04 \x01(\fB\x04\xe2A\x01\x01R\x12encryptionKeyBytes\x12C\n" +
+	"\x1bencryption_key_sha256_bytes\x18\x05 \x01(\fB\x04\xe2A\x01\x01R\x18encryptionKeySha256Bytes\"\xca\x05\n" +
 	"\x10ServiceConstants\"\xb5\x05\n" +
 	"\x06Values\x12\x16\n" +
 	"\x12VALUES_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -8364,63 +8364,63 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x1bMAX_LABELS_KEY_VALUE_LENGTH\x10?\x12\x1f\n" +
 	"\x1aMAX_LABELS_KEY_VALUE_BYTES\x10\x80\x01\x12.\n" +
 	")MAX_OBJECT_IDS_PER_DELETE_OBJECTS_REQUEST\x10\xe8\a\x12\x1e\n" +
-	"\x1aSPLIT_TOKEN_MAX_VALID_DAYS\x10\x0e\x1a\x02\x10\x01\"\xb57\n" +
-	"\x06Bucket\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12 \n" +
-	"\tbucket_id\x18\x02 \x01(\tB\x03\xe0A\x03R\bbucketId\x12\x12\n" +
-	"\x04etag\x18\x1d \x01(\tR\x04etag\x12M\n" +
-	"\aproject\x18\x03 \x01(\tB3\xe0A\x05\xfaA-\n" +
-	"+cloudresourcemanager.googleapis.com/ProjectR\aproject\x12+\n" +
-	"\x0emetageneration\x18\x04 \x01(\x03B\x03\xe0A\x03R\x0emetageneration\x12\x1f\n" +
-	"\blocation\x18\x05 \x01(\tB\x03\xe0A\x05R\blocation\x12(\n" +
-	"\rlocation_type\x18\x06 \x01(\tB\x03\xe0A\x03R\flocationType\x12(\n" +
-	"\rstorage_class\x18\a \x01(\tB\x03\xe0A\x01R\fstorageClass\x12\x15\n" +
-	"\x03rpo\x18\x1b \x01(\tB\x03\xe0A\x01R\x03rpo\x12=\n" +
-	"\x03acl\x18\b \x03(\v2&.google.storage.v2.BucketAccessControlB\x03\xe0A\x01R\x03acl\x12Y\n" +
-	"\x12default_object_acl\x18\t \x03(\v2&.google.storage.v2.ObjectAccessControlB\x03\xe0A\x01R\x10defaultObjectAcl\x12F\n" +
+	"\x1aSPLIT_TOKEN_MAX_VALID_DAYS\x10\x0e\x1a\x02\x10\x01\"\xfc7\n" +
+	"\x06Bucket\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12!\n" +
+	"\tbucket_id\x18\x02 \x01(\tB\x04\xe2A\x01\x03R\bbucketId\x12\x12\n" +
+	"\x04etag\x18\x1d \x01(\tR\x04etag\x12N\n" +
+	"\aproject\x18\x03 \x01(\tB4\xe2A\x01\x05\xfaA-\n" +
+	"+cloudresourcemanager.googleapis.com/ProjectR\aproject\x12,\n" +
+	"\x0emetageneration\x18\x04 \x01(\x03B\x04\xe2A\x01\x03R\x0emetageneration\x12 \n" +
+	"\blocation\x18\x05 \x01(\tB\x04\xe2A\x01\x05R\blocation\x12)\n" +
+	"\rlocation_type\x18\x06 \x01(\tB\x04\xe2A\x01\x03R\flocationType\x12)\n" +
+	"\rstorage_class\x18\a \x01(\tB\x04\xe2A\x01\x01R\fstorageClass\x12\x16\n" +
+	"\x03rpo\x18\x1b \x01(\tB\x04\xe2A\x01\x01R\x03rpo\x12>\n" +
+	"\x03acl\x18\b \x03(\v2&.google.storage.v2.BucketAccessControlB\x04\xe2A\x01\x01R\x03acl\x12Z\n" +
+	"\x12default_object_acl\x18\t \x03(\v2&.google.storage.v2.ObjectAccessControlB\x04\xe2A\x01\x01R\x10defaultObjectAcl\x12G\n" +
 	"\tlifecycle\x18\n" +
-	" \x01(\v2#.google.storage.v2.Bucket.LifecycleB\x03\xe0A\x01R\tlifecycle\x12@\n" +
-	"\vcreate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"createTime\x127\n" +
-	"\x04cors\x18\f \x03(\v2\x1e.google.storage.v2.Bucket.CorsB\x03\xe0A\x01R\x04cors\x12@\n" +
-	"\vupdate_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"updateTime\x12<\n" +
-	"\x18default_event_based_hold\x18\x0e \x01(\bB\x03\xe0A\x01R\x15defaultEventBasedHold\x12B\n" +
-	"\x06labels\x18\x0f \x03(\v2%.google.storage.v2.Bucket.LabelsEntryB\x03\xe0A\x01R\x06labels\x12@\n" +
-	"\awebsite\x18\x10 \x01(\v2!.google.storage.v2.Bucket.WebsiteB\x03\xe0A\x01R\awebsite\x12I\n" +
+	" \x01(\v2#.google.storage.v2.Bucket.LifecycleB\x04\xe2A\x01\x01R\tlifecycle\x12A\n" +
+	"\vcreate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"createTime\x128\n" +
+	"\x04cors\x18\f \x03(\v2\x1e.google.storage.v2.Bucket.CorsB\x04\xe2A\x01\x01R\x04cors\x12A\n" +
+	"\vupdate_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"updateTime\x12=\n" +
+	"\x18default_event_based_hold\x18\x0e \x01(\bB\x04\xe2A\x01\x01R\x15defaultEventBasedHold\x12C\n" +
+	"\x06labels\x18\x0f \x03(\v2%.google.storage.v2.Bucket.LabelsEntryB\x04\xe2A\x01\x01R\x06labels\x12A\n" +
+	"\awebsite\x18\x10 \x01(\v2!.google.storage.v2.Bucket.WebsiteB\x04\xe2A\x01\x01R\awebsite\x12J\n" +
 	"\n" +
-	"versioning\x18\x11 \x01(\v2$.google.storage.v2.Bucket.VersioningB\x03\xe0A\x01R\n" +
-	"versioning\x12@\n" +
-	"\alogging\x18\x12 \x01(\v2!.google.storage.v2.Bucket.LoggingB\x03\xe0A\x01R\alogging\x123\n" +
-	"\x05owner\x18\x13 \x01(\v2\x18.google.storage.v2.OwnerB\x03\xe0A\x03R\x05owner\x12I\n" +
+	"versioning\x18\x11 \x01(\v2$.google.storage.v2.Bucket.VersioningB\x04\xe2A\x01\x01R\n" +
+	"versioning\x12A\n" +
+	"\alogging\x18\x12 \x01(\v2!.google.storage.v2.Bucket.LoggingB\x04\xe2A\x01\x01R\alogging\x124\n" +
+	"\x05owner\x18\x13 \x01(\v2\x18.google.storage.v2.OwnerB\x04\xe2A\x01\x03R\x05owner\x12J\n" +
 	"\n" +
-	"encryption\x18\x14 \x01(\v2$.google.storage.v2.Bucket.EncryptionB\x03\xe0A\x01R\n" +
-	"encryption\x12@\n" +
-	"\abilling\x18\x15 \x01(\v2!.google.storage.v2.Bucket.BillingB\x03\xe0A\x01R\abilling\x12Y\n" +
-	"\x10retention_policy\x18\x16 \x01(\v2).google.storage.v2.Bucket.RetentionPolicyB\x03\xe0A\x01R\x0fretentionPolicy\x12G\n" +
+	"encryption\x18\x14 \x01(\v2$.google.storage.v2.Bucket.EncryptionB\x04\xe2A\x01\x01R\n" +
+	"encryption\x12A\n" +
+	"\abilling\x18\x15 \x01(\v2!.google.storage.v2.Bucket.BillingB\x04\xe2A\x01\x01R\abilling\x12Z\n" +
+	"\x10retention_policy\x18\x16 \x01(\v2).google.storage.v2.Bucket.RetentionPolicyB\x04\xe2A\x01\x01R\x0fretentionPolicy\x12H\n" +
 	"\n" +
-	"iam_config\x18\x17 \x01(\v2#.google.storage.v2.Bucket.IamConfigB\x03\xe0A\x01R\tiamConfig\x12(\n" +
-	"\rsatisfies_pzs\x18\x19 \x01(\bB\x03\xe0A\x01R\fsatisfiesPzs\x12l\n" +
-	"\x17custom_placement_config\x18\x1a \x01(\v2/.google.storage.v2.Bucket.CustomPlacementConfigB\x03\xe0A\x01R\x15customPlacementConfig\x12F\n" +
-	"\tautoclass\x18\x1c \x01(\v2#.google.storage.v2.Bucket.AutoclassB\x03\xe0A\x01R\tautoclass\x12k\n" +
-	"\x16hierarchical_namespace\x18  \x01(\v2/.google.storage.v2.Bucket.HierarchicalNamespaceB\x03\xe0A\x01R\x15hierarchicalNamespace\x12]\n" +
-	"\x12soft_delete_policy\x18\x1f \x01(\v2*.google.storage.v2.Bucket.SoftDeletePolicyB\x03\xe0A\x01R\x10softDeletePolicy\x12Y\n" +
-	"\x10object_retention\x18! \x01(\v2).google.storage.v2.Bucket.ObjectRetentionB\x03\xe0A\x01R\x0fobjectRetention\x12I\n" +
-	"\tip_filter\x18& \x01(\v2\".google.storage.v2.Bucket.IpFilterB\x03\xe0A\x01H\x00R\bipFilter\x88\x01\x01\x1a5\n" +
-	"\aBilling\x12*\n" +
-	"\x0erequester_pays\x18\x01 \x01(\bB\x03\xe0A\x01R\rrequesterPays\x1a\x9b\x01\n" +
-	"\x04Cors\x12\x1b\n" +
-	"\x06origin\x18\x01 \x03(\tB\x03\xe0A\x01R\x06origin\x12\x1b\n" +
-	"\x06method\x18\x02 \x03(\tB\x03\xe0A\x01R\x06method\x12,\n" +
-	"\x0fresponse_header\x18\x03 \x03(\tB\x03\xe0A\x01R\x0eresponseHeader\x12+\n" +
-	"\x0fmax_age_seconds\x18\x04 \x01(\x05B\x03\xe0A\x01R\rmaxAgeSeconds\x1a\xa0\v\n" +
+	"iam_config\x18\x17 \x01(\v2#.google.storage.v2.Bucket.IamConfigB\x04\xe2A\x01\x01R\tiamConfig\x12)\n" +
+	"\rsatisfies_pzs\x18\x19 \x01(\bB\x04\xe2A\x01\x01R\fsatisfiesPzs\x12m\n" +
+	"\x17custom_placement_config\x18\x1a \x01(\v2/.google.storage.v2.Bucket.CustomPlacementConfigB\x04\xe2A\x01\x01R\x15customPlacementConfig\x12G\n" +
+	"\tautoclass\x18\x1c \x01(\v2#.google.storage.v2.Bucket.AutoclassB\x04\xe2A\x01\x01R\tautoclass\x12l\n" +
+	"\x16hierarchical_namespace\x18  \x01(\v2/.google.storage.v2.Bucket.HierarchicalNamespaceB\x04\xe2A\x01\x01R\x15hierarchicalNamespace\x12^\n" +
+	"\x12soft_delete_policy\x18\x1f \x01(\v2*.google.storage.v2.Bucket.SoftDeletePolicyB\x04\xe2A\x01\x01R\x10softDeletePolicy\x12Z\n" +
+	"\x10object_retention\x18! \x01(\v2).google.storage.v2.Bucket.ObjectRetentionB\x04\xe2A\x01\x01R\x0fobjectRetention\x12J\n" +
+	"\tip_filter\x18& \x01(\v2\".google.storage.v2.Bucket.IpFilterB\x04\xe2A\x01\x01H\x00R\bipFilter\x88\x01\x01\x1a6\n" +
+	"\aBilling\x12+\n" +
+	"\x0erequester_pays\x18\x01 \x01(\bB\x04\xe2A\x01\x01R\rrequesterPays\x1a\x9f\x01\n" +
+	"\x04Cors\x12\x1c\n" +
+	"\x06origin\x18\x01 \x03(\tB\x04\xe2A\x01\x01R\x06origin\x12\x1c\n" +
+	"\x06method\x18\x02 \x03(\tB\x04\xe2A\x01\x01R\x06method\x12-\n" +
+	"\x0fresponse_header\x18\x03 \x03(\tB\x04\xe2A\x01\x01R\x0eresponseHeader\x12,\n" +
+	"\x0fmax_age_seconds\x18\x04 \x01(\x05B\x04\xe2A\x01\x01R\rmaxAgeSeconds\x1a\xa4\v\n" +
 	"\n" +
-	"Encryption\x12Q\n" +
-	"\x0fdefault_kms_key\x18\x01 \x01(\tB)\xe0A\x01\xfaA#\n" +
-	"!cloudkms.googleapis.com/CryptoKeyR\rdefaultKmsKey\x12\xb7\x01\n" +
-	",google_managed_encryption_enforcement_config\x18\x02 \x01(\v2M.google.storage.v2.Bucket.Encryption.GoogleManagedEncryptionEnforcementConfigB\x03\xe0A\x01H\x00R(googleManagedEncryptionEnforcementConfig\x88\x01\x01\x12\xbd\x01\n" +
-	".customer_managed_encryption_enforcement_config\x18\x03 \x01(\v2O.google.storage.v2.Bucket.Encryption.CustomerManagedEncryptionEnforcementConfigB\x03\xe0A\x01H\x01R*customerManagedEncryptionEnforcementConfig\x88\x01\x01\x12\xc0\x01\n" +
-	"/customer_supplied_encryption_enforcement_config\x18\x04 \x01(\v2P.google.storage.v2.Bucket.Encryption.CustomerSuppliedEncryptionEnforcementConfigB\x03\xe0A\x01H\x02R+customerSuppliedEncryptionEnforcementConfig\x88\x01\x01\x1a\xca\x01\n" +
+	"Encryption\x12R\n" +
+	"\x0fdefault_kms_key\x18\x01 \x01(\tB*\xe2A\x01\x01\xfaA#\n" +
+	"!cloudkms.googleapis.com/CryptoKeyR\rdefaultKmsKey\x12\xb8\x01\n" +
+	",google_managed_encryption_enforcement_config\x18\x02 \x01(\v2M.google.storage.v2.Bucket.Encryption.GoogleManagedEncryptionEnforcementConfigB\x04\xe2A\x01\x01H\x00R(googleManagedEncryptionEnforcementConfig\x88\x01\x01\x12\xbe\x01\n" +
+	".customer_managed_encryption_enforcement_config\x18\x03 \x01(\v2O.google.storage.v2.Bucket.Encryption.CustomerManagedEncryptionEnforcementConfigB\x04\xe2A\x01\x01H\x01R*customerManagedEncryptionEnforcementConfig\x88\x01\x01\x12\xc1\x01\n" +
+	"/customer_supplied_encryption_enforcement_config\x18\x04 \x01(\v2P.google.storage.v2.Bucket.Encryption.CustomerSuppliedEncryptionEnforcementConfigB\x04\xe2A\x01\x01H\x02R+customerSuppliedEncryptionEnforcementConfig\x88\x01\x01\x1a\xca\x01\n" +
 	"(GoogleManagedEncryptionEnforcementConfig\x12.\n" +
 	"\x10restriction_mode\x18\x03 \x01(\tH\x00R\x0frestrictionMode\x88\x01\x01\x12F\n" +
 	"\x0eeffective_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampH\x01R\reffectiveTime\x88\x01\x01B\x13\n" +
@@ -8438,174 +8438,174 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x0f_effective_timeB/\n" +
 	"-_google_managed_encryption_enforcement_configB1\n" +
 	"/_customer_managed_encryption_enforcement_configB2\n" +
-	"0_customer_supplied_encryption_enforcement_config\x1a\xc6\x02\n" +
-	"\tIamConfig\x12\x80\x01\n" +
-	"\x1buniform_bucket_level_access\x18\x01 \x01(\v2<.google.storage.v2.Bucket.IamConfig.UniformBucketLevelAccessB\x03\xe0A\x01R\x18uniformBucketLevelAccess\x12=\n" +
-	"\x18public_access_prevention\x18\x03 \x01(\tB\x03\xe0A\x01R\x16publicAccessPrevention\x1aw\n" +
-	"\x18UniformBucketLevelAccess\x12\x1d\n" +
-	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x01R\aenabled\x12<\n" +
-	"\tlock_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x01R\blockTime\x1a\x92\b\n" +
-	"\tLifecycle\x12A\n" +
-	"\x04rule\x18\x01 \x03(\v2(.google.storage.v2.Bucket.Lifecycle.RuleB\x03\xe0A\x01R\x04rule\x1a\xc1\a\n" +
-	"\x04Rule\x12L\n" +
-	"\x06action\x18\x01 \x01(\v2/.google.storage.v2.Bucket.Lifecycle.Rule.ActionB\x03\xe0A\x01R\x06action\x12U\n" +
-	"\tcondition\x18\x02 \x01(\v22.google.storage.v2.Bucket.Lifecycle.Rule.ConditionB\x03\xe0A\x01R\tcondition\x1aK\n" +
-	"\x06Action\x12\x17\n" +
-	"\x04type\x18\x01 \x01(\tB\x03\xe0A\x01R\x04type\x12(\n" +
-	"\rstorage_class\x18\x02 \x01(\tB\x03\xe0A\x01R\fstorageClass\x1a\xc6\x05\n" +
+	"0_customer_supplied_encryption_enforcement_config\x1a\xca\x02\n" +
+	"\tIamConfig\x12\x81\x01\n" +
+	"\x1buniform_bucket_level_access\x18\x01 \x01(\v2<.google.storage.v2.Bucket.IamConfig.UniformBucketLevelAccessB\x04\xe2A\x01\x01R\x18uniformBucketLevelAccess\x12>\n" +
+	"\x18public_access_prevention\x18\x03 \x01(\tB\x04\xe2A\x01\x01R\x16publicAccessPrevention\x1ay\n" +
+	"\x18UniformBucketLevelAccess\x12\x1e\n" +
+	"\aenabled\x18\x01 \x01(\bB\x04\xe2A\x01\x01R\aenabled\x12=\n" +
+	"\tlock_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x01R\blockTime\x1a\x9d\b\n" +
+	"\tLifecycle\x12B\n" +
+	"\x04rule\x18\x01 \x03(\v2(.google.storage.v2.Bucket.Lifecycle.RuleB\x04\xe2A\x01\x01R\x04rule\x1a\xcb\a\n" +
+	"\x04Rule\x12M\n" +
+	"\x06action\x18\x01 \x01(\v2/.google.storage.v2.Bucket.Lifecycle.Rule.ActionB\x04\xe2A\x01\x01R\x06action\x12V\n" +
+	"\tcondition\x18\x02 \x01(\v22.google.storage.v2.Bucket.Lifecycle.Rule.ConditionB\x04\xe2A\x01\x01R\tcondition\x1aM\n" +
+	"\x06Action\x12\x18\n" +
+	"\x04type\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x04type\x12)\n" +
+	"\rstorage_class\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\fstorageClass\x1a\xcc\x05\n" +
 	"\tCondition\x12\x1e\n" +
-	"\bage_days\x18\x01 \x01(\x05H\x00R\aageDays\x88\x01\x01\x12=\n" +
-	"\x0ecreated_before\x18\x02 \x01(\v2\x11.google.type.DateB\x03\xe0A\x01R\rcreatedBefore\x12\x1c\n" +
+	"\bage_days\x18\x01 \x01(\x05H\x00R\aageDays\x88\x01\x01\x12>\n" +
+	"\x0ecreated_before\x18\x02 \x01(\v2\x11.google.type.DateB\x04\xe2A\x01\x01R\rcreatedBefore\x12\x1c\n" +
 	"\ais_live\x18\x03 \x01(\bH\x01R\x06isLive\x88\x01\x01\x121\n" +
-	"\x12num_newer_versions\x18\x04 \x01(\x05H\x02R\x10numNewerVersions\x88\x01\x01\x127\n" +
-	"\x15matches_storage_class\x18\x05 \x03(\tB\x03\xe0A\x01R\x13matchesStorageClass\x128\n" +
-	"\x16days_since_custom_time\x18\a \x01(\x05H\x03R\x13daysSinceCustomTime\x88\x01\x01\x12D\n" +
-	"\x12custom_time_before\x18\b \x01(\v2\x11.google.type.DateB\x03\xe0A\x01R\x10customTimeBefore\x12@\n" +
-	"\x1adays_since_noncurrent_time\x18\t \x01(\x05H\x04R\x17daysSinceNoncurrentTime\x88\x01\x01\x12L\n" +
+	"\x12num_newer_versions\x18\x04 \x01(\x05H\x02R\x10numNewerVersions\x88\x01\x01\x128\n" +
+	"\x15matches_storage_class\x18\x05 \x03(\tB\x04\xe2A\x01\x01R\x13matchesStorageClass\x128\n" +
+	"\x16days_since_custom_time\x18\a \x01(\x05H\x03R\x13daysSinceCustomTime\x88\x01\x01\x12E\n" +
+	"\x12custom_time_before\x18\b \x01(\v2\x11.google.type.DateB\x04\xe2A\x01\x01R\x10customTimeBefore\x12@\n" +
+	"\x1adays_since_noncurrent_time\x18\t \x01(\x05H\x04R\x17daysSinceNoncurrentTime\x88\x01\x01\x12M\n" +
 	"\x16noncurrent_time_before\x18\n" +
-	" \x01(\v2\x11.google.type.DateB\x03\xe0A\x01R\x14noncurrentTimeBefore\x12*\n" +
-	"\x0ematches_prefix\x18\v \x03(\tB\x03\xe0A\x01R\rmatchesPrefix\x12*\n" +
-	"\x0ematches_suffix\x18\f \x03(\tB\x03\xe0A\x01R\rmatchesSuffixB\v\n" +
+	" \x01(\v2\x11.google.type.DateB\x04\xe2A\x01\x01R\x14noncurrentTimeBefore\x12+\n" +
+	"\x0ematches_prefix\x18\v \x03(\tB\x04\xe2A\x01\x01R\rmatchesPrefix\x12+\n" +
+	"\x0ematches_suffix\x18\f \x03(\tB\x04\xe2A\x01\x01R\rmatchesSuffixB\v\n" +
 	"\t_age_daysB\n" +
 	"\n" +
 	"\b_is_liveB\x15\n" +
 	"\x13_num_newer_versionsB\x19\n" +
 	"\x17_days_since_custom_timeB\x1d\n" +
-	"\x1b_days_since_noncurrent_time\x1a^\n" +
-	"\aLogging\x12\"\n" +
+	"\x1b_days_since_noncurrent_time\x1a`\n" +
+	"\aLogging\x12#\n" +
 	"\n" +
-	"log_bucket\x18\x01 \x01(\tB\x03\xe0A\x01R\tlogBucket\x12/\n" +
-	"\x11log_object_prefix\x18\x02 \x01(\tB\x03\xe0A\x01R\x0flogObjectPrefix\x1a3\n" +
-	"\x0fObjectRetention\x12 \n" +
-	"\aenabled\x18\x01 \x01(\bB\x06\xe0A\x01\xe0A\x03R\aenabled\x1a\xca\x01\n" +
-	"\x0fRetentionPolicy\x12F\n" +
-	"\x0eeffective_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x01R\reffectiveTime\x12 \n" +
-	"\tis_locked\x18\x02 \x01(\bB\x03\xe0A\x01R\bisLocked\x12M\n" +
-	"\x12retention_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationB\x03\xe0A\x01R\x11retentionDuration\x1a\xd3\x01\n" +
+	"log_bucket\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\tlogBucket\x120\n" +
+	"\x11log_object_prefix\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\x0flogObjectPrefix\x1a2\n" +
+	"\x0fObjectRetention\x12\x1f\n" +
+	"\aenabled\x18\x01 \x01(\bB\x05\xe2A\x02\x01\x03R\aenabled\x1a\xcd\x01\n" +
+	"\x0fRetentionPolicy\x12G\n" +
+	"\x0eeffective_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x01R\reffectiveTime\x12!\n" +
+	"\tis_locked\x18\x02 \x01(\bB\x04\xe2A\x01\x01R\bisLocked\x12N\n" +
+	"\x12retention_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationB\x04\xe2A\x01\x01R\x11retentionDuration\x1a\xd3\x01\n" +
 	"\x10SoftDeletePolicy\x12M\n" +
 	"\x12retention_duration\x18\x01 \x01(\v2\x19.google.protobuf.DurationH\x00R\x11retentionDuration\x88\x01\x01\x12F\n" +
 	"\x0eeffective_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampH\x01R\reffectiveTime\x88\x01\x01B\x15\n" +
 	"\x13_retention_durationB\x11\n" +
-	"\x0f_effective_time\x1a+\n" +
+	"\x0f_effective_time\x1a,\n" +
 	"\n" +
-	"Versioning\x12\x1d\n" +
-	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x01R\aenabled\x1ac\n" +
-	"\aWebsite\x12-\n" +
-	"\x10main_page_suffix\x18\x01 \x01(\tB\x03\xe0A\x01R\x0emainPageSuffix\x12)\n" +
-	"\x0enot_found_page\x18\x02 \x01(\tB\x03\xe0A\x01R\fnotFoundPage\x1aC\n" +
-	"\x15CustomPlacementConfig\x12*\n" +
-	"\x0edata_locations\x18\x01 \x03(\tB\x03\xe0A\x01R\rdataLocations\x1a\xdb\x02\n" +
-	"\tAutoclass\x12\x1d\n" +
-	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x01R\aenabled\x12@\n" +
-	"\vtoggle_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"Versioning\x12\x1e\n" +
+	"\aenabled\x18\x01 \x01(\bB\x04\xe2A\x01\x01R\aenabled\x1ae\n" +
+	"\aWebsite\x12.\n" +
+	"\x10main_page_suffix\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x0emainPageSuffix\x12*\n" +
+	"\x0enot_found_page\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\fnotFoundPage\x1aD\n" +
+	"\x15CustomPlacementConfig\x12+\n" +
+	"\x0edata_locations\x18\x01 \x03(\tB\x04\xe2A\x01\x01R\rdataLocations\x1a\xde\x02\n" +
+	"\tAutoclass\x12\x1e\n" +
+	"\aenabled\x18\x01 \x01(\bB\x04\xe2A\x01\x01R\aenabled\x12A\n" +
+	"\vtoggle_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
 	"toggleTime\x129\n" +
-	"\x16terminal_storage_class\x18\x03 \x01(\tH\x00R\x14terminalStorageClass\x88\x01\x01\x12p\n" +
-	"\"terminal_storage_class_update_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03H\x01R\x1eterminalStorageClassUpdateTime\x88\x01\x01B\x19\n" +
+	"\x16terminal_storage_class\x18\x03 \x01(\tH\x00R\x14terminalStorageClass\x88\x01\x01\x12q\n" +
+	"\"terminal_storage_class_update_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03H\x01R\x1eterminalStorageClassUpdateTime\x88\x01\x01B\x19\n" +
 	"\x17_terminal_storage_classB%\n" +
-	"#_terminal_storage_class_update_time\x1a\x8d\x05\n" +
+	"#_terminal_storage_class_update_time\x1a\x91\x05\n" +
 	"\bIpFilter\x12\x17\n" +
 	"\x04mode\x18\x01 \x01(\tH\x00R\x04mode\x88\x01\x01\x12o\n" +
-	"\x15public_network_source\x18\x02 \x01(\v26.google.storage.v2.Bucket.IpFilter.PublicNetworkSourceH\x01R\x13publicNetworkSource\x88\x01\x01\x12h\n" +
-	"\x13vpc_network_sources\x18\x03 \x03(\v23.google.storage.v2.Bucket.IpFilter.VpcNetworkSourceB\x03\xe0A\x01R\x11vpcNetworkSources\x124\n" +
-	"\x14allow_cross_org_vpcs\x18\x04 \x01(\bB\x03\xe0A\x01R\x11allowCrossOrgVpcs\x12G\n" +
-	"\x1eallow_all_service_agent_access\x18\x05 \x01(\bH\x02R\x1aallowAllServiceAgentAccess\x88\x01\x01\x1aO\n" +
-	"\x13PublicNetworkSource\x128\n" +
-	"\x16allowed_ip_cidr_ranges\x18\x01 \x03(\tB\x03\xe0A\x01R\x13allowedIpCidrRanges\x1aw\n" +
+	"\x15public_network_source\x18\x02 \x01(\v26.google.storage.v2.Bucket.IpFilter.PublicNetworkSourceH\x01R\x13publicNetworkSource\x88\x01\x01\x12i\n" +
+	"\x13vpc_network_sources\x18\x03 \x03(\v23.google.storage.v2.Bucket.IpFilter.VpcNetworkSourceB\x04\xe2A\x01\x01R\x11vpcNetworkSources\x125\n" +
+	"\x14allow_cross_org_vpcs\x18\x04 \x01(\bB\x04\xe2A\x01\x01R\x11allowCrossOrgVpcs\x12G\n" +
+	"\x1eallow_all_service_agent_access\x18\x05 \x01(\bH\x02R\x1aallowAllServiceAgentAccess\x88\x01\x01\x1aP\n" +
+	"\x13PublicNetworkSource\x129\n" +
+	"\x16allowed_ip_cidr_ranges\x18\x01 \x03(\tB\x04\xe2A\x01\x01R\x13allowedIpCidrRanges\x1ax\n" +
 	"\x10VpcNetworkSource\x12\x1d\n" +
-	"\anetwork\x18\x01 \x01(\tH\x00R\anetwork\x88\x01\x01\x128\n" +
-	"\x16allowed_ip_cidr_ranges\x18\x02 \x03(\tB\x03\xe0A\x01R\x13allowedIpCidrRangesB\n" +
+	"\anetwork\x18\x01 \x01(\tH\x00R\anetwork\x88\x01\x01\x129\n" +
+	"\x16allowed_ip_cidr_ranges\x18\x02 \x03(\tB\x04\xe2A\x01\x01R\x13allowedIpCidrRangesB\n" +
 	"\n" +
 	"\b_networkB\a\n" +
 	"\x05_modeB\x18\n" +
 	"\x16_public_network_sourceB!\n" +
-	"\x1f_allow_all_service_agent_access\x1a6\n" +
-	"\x15HierarchicalNamespace\x12\x1d\n" +
-	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x01R\aenabled\x1a9\n" +
+	"\x1f_allow_all_service_agent_access\x1a7\n" +
+	"\x15HierarchicalNamespace\x12\x1e\n" +
+	"\aenabled\x18\x01 \x01(\bB\x04\xe2A\x01\x01R\aenabled\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:X\xeaAU\n" +
 	"\x1dstorage.googleapis.com/Bucket\x12#projects/{project}/buckets/{bucket}*\abuckets2\x06bucketB\f\n" +
 	"\n" +
-	"_ip_filter\"\xbf\x02\n" +
-	"\x13BucketAccessControl\x12\x17\n" +
-	"\x04role\x18\x01 \x01(\tB\x03\xe0A\x01R\x04role\x12\x13\n" +
-	"\x02id\x18\x02 \x01(\tB\x03\xe0A\x01R\x02id\x12\x1b\n" +
-	"\x06entity\x18\x03 \x01(\tB\x03\xe0A\x01R\x06entity\x12\"\n" +
+	"_ip_filter\"\xc8\x02\n" +
+	"\x13BucketAccessControl\x12\x18\n" +
+	"\x04role\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x04role\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\x02id\x12\x1c\n" +
+	"\x06entity\x18\x03 \x01(\tB\x04\xe2A\x01\x01R\x06entity\x12#\n" +
 	"\n" +
-	"entity_alt\x18\t \x01(\tB\x03\xe0A\x03R\tentityAlt\x12 \n" +
-	"\tentity_id\x18\x04 \x01(\tB\x03\xe0A\x01R\bentityId\x12\x17\n" +
-	"\x04etag\x18\b \x01(\tB\x03\xe0A\x01R\x04etag\x12\x19\n" +
-	"\x05email\x18\x05 \x01(\tB\x03\xe0A\x01R\x05email\x12\x1b\n" +
-	"\x06domain\x18\x06 \x01(\tB\x03\xe0A\x01R\x06domain\x12F\n" +
-	"\fproject_team\x18\a \x01(\v2\x1e.google.storage.v2.ProjectTeamB\x03\xe0A\x01R\vprojectTeam\"Z\n" +
-	"\x0fChecksummedData\x12\x1f\n" +
-	"\acontent\x18\x01 \x01(\fB\x05\xe0A\x01\b\x01R\acontent\x12\x1b\n" +
+	"entity_alt\x18\t \x01(\tB\x04\xe2A\x01\x03R\tentityAlt\x12!\n" +
+	"\tentity_id\x18\x04 \x01(\tB\x04\xe2A\x01\x01R\bentityId\x12\x18\n" +
+	"\x04etag\x18\b \x01(\tB\x04\xe2A\x01\x01R\x04etag\x12\x1a\n" +
+	"\x05email\x18\x05 \x01(\tB\x04\xe2A\x01\x01R\x05email\x12\x1c\n" +
+	"\x06domain\x18\x06 \x01(\tB\x04\xe2A\x01\x01R\x06domain\x12G\n" +
+	"\fproject_team\x18\a \x01(\v2\x1e.google.storage.v2.ProjectTeamB\x04\xe2A\x01\x01R\vprojectTeam\"[\n" +
+	"\x0fChecksummedData\x12 \n" +
+	"\acontent\x18\x01 \x01(\fB\x06\xe2A\x01\x01\b\x01R\acontent\x12\x1b\n" +
 	"\x06crc32c\x18\x02 \x01(\aH\x00R\x06crc32c\x88\x01\x01B\t\n" +
-	"\a_crc32c\"Y\n" +
+	"\a_crc32c\"Z\n" +
 	"\x0fObjectChecksums\x12\x1b\n" +
-	"\x06crc32c\x18\x01 \x01(\aH\x00R\x06crc32c\x88\x01\x01\x12\x1e\n" +
-	"\bmd5_hash\x18\x02 \x01(\fB\x03\xe0A\x01R\amd5HashB\t\n" +
-	"\a_crc32c\"\xbb\x01\n" +
-	"\x1aObjectCustomContextPayload\x12\x19\n" +
-	"\x05value\x18\x01 \x01(\tB\x03\xe0A\x02R\x05value\x12@\n" +
-	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"createTime\x12@\n" +
-	"\vupdate_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"updateTime\"\xc6\x01\n" +
-	"\x0eObjectContexts\x12J\n" +
-	"\x06custom\x18\x01 \x03(\v2-.google.storage.v2.ObjectContexts.CustomEntryB\x03\xe0A\x01R\x06custom\x1ah\n" +
+	"\x06crc32c\x18\x01 \x01(\aH\x00R\x06crc32c\x88\x01\x01\x12\x1f\n" +
+	"\bmd5_hash\x18\x02 \x01(\fB\x04\xe2A\x01\x01R\amd5HashB\t\n" +
+	"\a_crc32c\"\xbe\x01\n" +
+	"\x1aObjectCustomContextPayload\x12\x1a\n" +
+	"\x05value\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05value\x12A\n" +
+	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"createTime\x12A\n" +
+	"\vupdate_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"updateTime\"\xc7\x01\n" +
+	"\x0eObjectContexts\x12K\n" +
+	"\x06custom\x18\x01 \x03(\v2-.google.storage.v2.ObjectContexts.CustomEntryB\x04\xe2A\x01\x01R\x06custom\x1ah\n" +
 	"\vCustomEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12C\n" +
-	"\x05value\x18\x02 \x01(\v2-.google.storage.v2.ObjectCustomContextPayloadR\x05value:\x028\x01\"{\n" +
-	"\x12CustomerEncryption\x126\n" +
-	"\x14encryption_algorithm\x18\x01 \x01(\tB\x03\xe0A\x01R\x13encryptionAlgorithm\x12-\n" +
-	"\x10key_sha256_bytes\x18\x03 \x01(\fB\x03\xe0A\x01R\x0ekeySha256Bytes\"\xe3\x11\n" +
-	"\x06Object\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x05R\x04name\x12=\n" +
-	"\x06bucket\x18\x02 \x01(\tB%\xe0A\x05\xfaA\x1f\n" +
-	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x17\n" +
-	"\x04etag\x18\x1b \x01(\tB\x03\xe0A\x01R\x04etag\x12#\n" +
+	"\x05value\x18\x02 \x01(\v2-.google.storage.v2.ObjectCustomContextPayloadR\x05value:\x028\x01\"}\n" +
+	"\x12CustomerEncryption\x127\n" +
+	"\x14encryption_algorithm\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x13encryptionAlgorithm\x12.\n" +
+	"\x10key_sha256_bytes\x18\x03 \x01(\fB\x04\xe2A\x01\x01R\x0ekeySha256Bytes\"\x85\x12\n" +
+	"\x06Object\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\x05R\x04name\x12>\n" +
+	"\x06bucket\x18\x02 \x01(\tB&\xe2A\x01\x05\xfaA\x1f\n" +
+	"\x1dstorage.googleapis.com/BucketR\x06bucket\x12\x18\n" +
+	"\x04etag\x18\x1b \x01(\tB\x04\xe2A\x01\x01R\x04etag\x12$\n" +
 	"\n" +
-	"generation\x18\x03 \x01(\x03B\x03\xe0A\x05R\n" +
-	"generation\x12-\n" +
-	"\rrestore_token\x18# \x01(\tB\x03\xe0A\x03H\x00R\frestoreToken\x88\x01\x01\x12+\n" +
-	"\x0emetageneration\x18\x04 \x01(\x03B\x03\xe0A\x03R\x0emetageneration\x12(\n" +
-	"\rstorage_class\x18\x05 \x01(\tB\x03\xe0A\x01R\fstorageClass\x12\x17\n" +
-	"\x04size\x18\x06 \x01(\x03B\x03\xe0A\x03R\x04size\x12.\n" +
-	"\x10content_encoding\x18\a \x01(\tB\x03\xe0A\x01R\x0fcontentEncoding\x124\n" +
-	"\x13content_disposition\x18\b \x01(\tB\x03\xe0A\x01R\x12contentDisposition\x12(\n" +
-	"\rcache_control\x18\t \x01(\tB\x03\xe0A\x01R\fcacheControl\x12=\n" +
+	"generation\x18\x03 \x01(\x03B\x04\xe2A\x01\x05R\n" +
+	"generation\x12.\n" +
+	"\rrestore_token\x18# \x01(\tB\x04\xe2A\x01\x03H\x00R\frestoreToken\x88\x01\x01\x12,\n" +
+	"\x0emetageneration\x18\x04 \x01(\x03B\x04\xe2A\x01\x03R\x0emetageneration\x12)\n" +
+	"\rstorage_class\x18\x05 \x01(\tB\x04\xe2A\x01\x01R\fstorageClass\x12\x18\n" +
+	"\x04size\x18\x06 \x01(\x03B\x04\xe2A\x01\x03R\x04size\x12/\n" +
+	"\x10content_encoding\x18\a \x01(\tB\x04\xe2A\x01\x01R\x0fcontentEncoding\x125\n" +
+	"\x13content_disposition\x18\b \x01(\tB\x04\xe2A\x01\x01R\x12contentDisposition\x12)\n" +
+	"\rcache_control\x18\t \x01(\tB\x04\xe2A\x01\x01R\fcacheControl\x12>\n" +
 	"\x03acl\x18\n" +
-	" \x03(\v2&.google.storage.v2.ObjectAccessControlB\x03\xe0A\x01R\x03acl\x12.\n" +
-	"\x10content_language\x18\v \x01(\tB\x03\xe0A\x01R\x0fcontentLanguage\x12@\n" +
-	"\vdelete_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"deleteTime\x12D\n" +
-	"\rfinalize_time\x18$ \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\ffinalizeTime\x12&\n" +
-	"\fcontent_type\x18\r \x01(\tB\x03\xe0A\x01R\vcontentType\x12@\n" +
-	"\vcreate_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"createTime\x12,\n" +
-	"\x0fcomponent_count\x18\x0f \x01(\x05B\x03\xe0A\x03R\x0ecomponentCount\x12E\n" +
-	"\tchecksums\x18\x10 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x03\xe0A\x03R\tchecksums\x12@\n" +
-	"\vupdate_time\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"updateTime\x12B\n" +
-	"\akms_key\x18\x12 \x01(\tB)\xe0A\x01\xfaA#\n" +
-	"!cloudkms.googleapis.com/CryptoKeyR\x06kmsKey\x12Z\n" +
-	"\x19update_storage_class_time\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\x16updateStorageClassTime\x12*\n" +
-	"\x0etemporary_hold\x18\x14 \x01(\bB\x03\xe0A\x01R\rtemporaryHold\x12S\n" +
-	"\x15retention_expire_time\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x01R\x13retentionExpireTime\x12H\n" +
-	"\bmetadata\x18\x16 \x03(\v2'.google.storage.v2.Object.MetadataEntryB\x03\xe0A\x01R\bmetadata\x12B\n" +
-	"\bcontexts\x18& \x01(\v2!.google.storage.v2.ObjectContextsB\x03\xe0A\x01R\bcontexts\x12-\n" +
-	"\x10event_based_hold\x18\x17 \x01(\bH\x01R\x0eeventBasedHold\x88\x01\x01\x123\n" +
-	"\x05owner\x18\x18 \x01(\v2\x18.google.storage.v2.OwnerB\x03\xe0A\x03R\x05owner\x12[\n" +
-	"\x13customer_encryption\x18\x19 \x01(\v2%.google.storage.v2.CustomerEncryptionB\x03\xe0A\x01R\x12customerEncryption\x12@\n" +
-	"\vcustom_time\x18\x1a \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x01R\n" +
-	"customTime\x12N\n" +
-	"\x10soft_delete_time\x18\x1c \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03H\x02R\x0esoftDeleteTime\x88\x01\x01\x12N\n" +
-	"\x10hard_delete_time\x18\x1d \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03H\x03R\x0ehardDeleteTime\x88\x01\x01\x12F\n" +
-	"\tretention\x18\x1e \x01(\v2#.google.storage.v2.Object.RetentionB\x03\xe0A\x01R\tretention\x1a\xd3\x01\n" +
-	"\tRetention\x12A\n" +
-	"\x04mode\x18\x01 \x01(\x0e2(.google.storage.v2.Object.Retention.ModeB\x03\xe0A\x01R\x04mode\x12K\n" +
-	"\x11retain_until_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x01R\x0fretainUntilTime\"6\n" +
+	" \x03(\v2&.google.storage.v2.ObjectAccessControlB\x04\xe2A\x01\x01R\x03acl\x12/\n" +
+	"\x10content_language\x18\v \x01(\tB\x04\xe2A\x01\x01R\x0fcontentLanguage\x12A\n" +
+	"\vdelete_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"deleteTime\x12E\n" +
+	"\rfinalize_time\x18$ \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\ffinalizeTime\x12'\n" +
+	"\fcontent_type\x18\r \x01(\tB\x04\xe2A\x01\x01R\vcontentType\x12A\n" +
+	"\vcreate_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"createTime\x12-\n" +
+	"\x0fcomponent_count\x18\x0f \x01(\x05B\x04\xe2A\x01\x03R\x0ecomponentCount\x12F\n" +
+	"\tchecksums\x18\x10 \x01(\v2\".google.storage.v2.ObjectChecksumsB\x04\xe2A\x01\x03R\tchecksums\x12A\n" +
+	"\vupdate_time\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\n" +
+	"updateTime\x12C\n" +
+	"\akms_key\x18\x12 \x01(\tB*\xe2A\x01\x01\xfaA#\n" +
+	"!cloudkms.googleapis.com/CryptoKeyR\x06kmsKey\x12[\n" +
+	"\x19update_storage_class_time\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03R\x16updateStorageClassTime\x12+\n" +
+	"\x0etemporary_hold\x18\x14 \x01(\bB\x04\xe2A\x01\x01R\rtemporaryHold\x12T\n" +
+	"\x15retention_expire_time\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x01R\x13retentionExpireTime\x12I\n" +
+	"\bmetadata\x18\x16 \x03(\v2'.google.storage.v2.Object.MetadataEntryB\x04\xe2A\x01\x01R\bmetadata\x12C\n" +
+	"\bcontexts\x18& \x01(\v2!.google.storage.v2.ObjectContextsB\x04\xe2A\x01\x01R\bcontexts\x12-\n" +
+	"\x10event_based_hold\x18\x17 \x01(\bH\x01R\x0eeventBasedHold\x88\x01\x01\x124\n" +
+	"\x05owner\x18\x18 \x01(\v2\x18.google.storage.v2.OwnerB\x04\xe2A\x01\x03R\x05owner\x12\\\n" +
+	"\x13customer_encryption\x18\x19 \x01(\v2%.google.storage.v2.CustomerEncryptionB\x04\xe2A\x01\x01R\x12customerEncryption\x12A\n" +
+	"\vcustom_time\x18\x1a \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x01R\n" +
+	"customTime\x12O\n" +
+	"\x10soft_delete_time\x18\x1c \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03H\x02R\x0esoftDeleteTime\x88\x01\x01\x12O\n" +
+	"\x10hard_delete_time\x18\x1d \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x03H\x03R\x0ehardDeleteTime\x88\x01\x01\x12G\n" +
+	"\tretention\x18\x1e \x01(\v2#.google.storage.v2.Object.RetentionB\x04\xe2A\x01\x01R\tretention\x1a\xd5\x01\n" +
+	"\tRetention\x12B\n" +
+	"\x04mode\x18\x01 \x01(\x0e2(.google.storage.v2.Object.Retention.ModeB\x04\xe2A\x01\x01R\x04mode\x12L\n" +
+	"\x11retain_until_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x01R\x0fretainUntilTime\"6\n" +
 	"\x04Mode\x12\x14\n" +
 	"\x10MODE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bUNLOCKED\x10\x01\x12\n" +
@@ -8617,28 +8617,28 @@ const file_google_storage_v2_storage_proto_rawDesc = "" +
 	"\x0e_restore_tokenB\x13\n" +
 	"\x11_event_based_holdB\x13\n" +
 	"\x11_soft_delete_timeB\x13\n" +
-	"\x11_hard_delete_time\"\xbf\x02\n" +
-	"\x13ObjectAccessControl\x12\x17\n" +
-	"\x04role\x18\x01 \x01(\tB\x03\xe0A\x01R\x04role\x12\x13\n" +
-	"\x02id\x18\x02 \x01(\tB\x03\xe0A\x01R\x02id\x12\x1b\n" +
-	"\x06entity\x18\x03 \x01(\tB\x03\xe0A\x01R\x06entity\x12\"\n" +
+	"\x11_hard_delete_time\"\xc8\x02\n" +
+	"\x13ObjectAccessControl\x12\x18\n" +
+	"\x04role\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x04role\x12\x14\n" +
+	"\x02id\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\x02id\x12\x1c\n" +
+	"\x06entity\x18\x03 \x01(\tB\x04\xe2A\x01\x01R\x06entity\x12#\n" +
 	"\n" +
-	"entity_alt\x18\t \x01(\tB\x03\xe0A\x03R\tentityAlt\x12 \n" +
-	"\tentity_id\x18\x04 \x01(\tB\x03\xe0A\x01R\bentityId\x12\x17\n" +
-	"\x04etag\x18\b \x01(\tB\x03\xe0A\x01R\x04etag\x12\x19\n" +
-	"\x05email\x18\x05 \x01(\tB\x03\xe0A\x01R\x05email\x12\x1b\n" +
-	"\x06domain\x18\x06 \x01(\tB\x03\xe0A\x01R\x06domain\x12F\n" +
-	"\fproject_team\x18\a \x01(\v2\x1e.google.storage.v2.ProjectTeamB\x03\xe0A\x01R\vprojectTeam\"\x8e\x01\n" +
+	"entity_alt\x18\t \x01(\tB\x04\xe2A\x01\x03R\tentityAlt\x12!\n" +
+	"\tentity_id\x18\x04 \x01(\tB\x04\xe2A\x01\x01R\bentityId\x12\x18\n" +
+	"\x04etag\x18\b \x01(\tB\x04\xe2A\x01\x01R\x04etag\x12\x1a\n" +
+	"\x05email\x18\x05 \x01(\tB\x04\xe2A\x01\x01R\x05email\x12\x1c\n" +
+	"\x06domain\x18\x06 \x01(\tB\x04\xe2A\x01\x01R\x06domain\x12G\n" +
+	"\fproject_team\x18\a \x01(\v2\x1e.google.storage.v2.ProjectTeamB\x04\xe2A\x01\x01R\vprojectTeam\"\x8e\x01\n" +
 	"\x13ListObjectsResponse\x123\n" +
 	"\aobjects\x18\x01 \x03(\v2\x19.google.storage.v2.ObjectR\aobjects\x12\x1a\n" +
 	"\bprefixes\x18\x02 \x03(\tR\bprefixes\x12&\n" +
-	"\x0fnext_page_token\x18\x03 \x01(\tR\rnextPageToken\"R\n" +
-	"\vProjectTeam\x12*\n" +
-	"\x0eproject_number\x18\x01 \x01(\tB\x03\xe0A\x01R\rprojectNumber\x12\x17\n" +
-	"\x04team\x18\x02 \x01(\tB\x03\xe0A\x01R\x04team\"F\n" +
-	"\x05Owner\x12\x1b\n" +
-	"\x06entity\x18\x01 \x01(\tB\x03\xe0A\x01R\x06entity\x12 \n" +
-	"\tentity_id\x18\x02 \x01(\tB\x03\xe0A\x01R\bentityId\"_\n" +
+	"\x0fnext_page_token\x18\x03 \x01(\tR\rnextPageToken\"T\n" +
+	"\vProjectTeam\x12+\n" +
+	"\x0eproject_number\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\rprojectNumber\x12\x18\n" +
+	"\x04team\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\x04team\"H\n" +
+	"\x05Owner\x12\x1c\n" +
+	"\x06entity\x18\x01 \x01(\tB\x04\xe2A\x01\x01R\x06entity\x12!\n" +
+	"\tentity_id\x18\x02 \x01(\tB\x04\xe2A\x01\x01R\bentityId\"_\n" +
 	"\fContentRange\x12\x14\n" +
 	"\x05start\x18\x01 \x01(\x03R\x05start\x12\x10\n" +
 	"\x03end\x18\x02 \x01(\x03R\x03end\x12'\n" +

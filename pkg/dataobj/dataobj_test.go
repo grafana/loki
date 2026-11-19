@@ -13,7 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
@@ -25,6 +25,10 @@ var (
 )
 
 func TestFromBucket_MetadataCache(t *testing.T) {
+	// dataBeyondPrefetchWindow exceeds the minimum prefetch window, so an object with this much data is
+	// not tiny.
+	const dataBeyondPrefetchWindow = 32 * 1024
+
 	t.Run("a cold open populates the cache and a warm open serves entirely from it", func(t *testing.T) {
 		ctx := context.Background()
 		raw := buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
@@ -32,7 +36,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -45,7 +49,85 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load(), "the warm open is served entirely from the cache")
 
 		sec := obj.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		gotMeta := readMetadata(ctx, t, sec.Reader)
+		require.Equal(t, []byte("streams-meta"), gotMeta)
+	})
+
+	t.Run("an object that fits in the prefetch window is cached whole, so a warm open reads no data from object storage", func(t *testing.T) {
+		ctx := t.Context()
+		raw := buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
+
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+		cb := &countingBucket{Bucket: inmem}
+		memoryCache := cache.NewMockCache()
+		metadataCache := newMetadataCache(memoryCache, 0)
+		t.Cleanup(metadataCache.Stop)
+
+		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+		require.Equal(t, raw, onlyCachedBlob(t, memoryCache))
+
+		cb.reset()
+		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+		sec := obj.Sections()[0]
+		gotData := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
+		require.Zero(t, cb.getRanges.Load())
+		require.Equal(t, []byte("streams-data"), gotData)
+	})
+
+	t.Run("an object larger than the prefetch window keeps section data out of the cache", func(t *testing.T) {
+		ctx := t.Context()
+		data := bytes.Repeat([]byte("d"), dataBeyondPrefetchWindow)
+		raw := buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: data})
+
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+		cb := &countingBucket{Bucket: inmem}
+		memoryCache := cache.NewMockCache()
+		metadataCache := newMetadataCache(memoryCache, 0)
+		t.Cleanup(metadataCache.Stop)
+
+		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+		require.Less(t, len(onlyCachedBlob(t, memoryCache)), len(raw))
+
+		cb.reset()
+		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+		sec := obj.Sections()[0]
+		gotData := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
+		require.Positive(t, cb.getRanges.Load())
+		require.Equal(t, data, gotData)
+	})
+
+	t.Run("a first read cut short before the end of the object is not cached as the whole object", func(t *testing.T) {
+		ctx := t.Context()
+		raw := buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
+
+		inmem := objstore.NewInMemBucket()
+		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+		memoryCache := cache.NewMockCache()
+		metadataCache := newMetadataCache(memoryCache, 0)
+		t.Cleanup(metadataCache.Stop)
+
+		_, err := dataobj.FromBucket(ctx, &truncatedHeadBucket{Bucket: inmem, limit: 12}, "obj", 0, dataobj.WithMetadataCache(metadataCache))
+		require.NoError(t, err)
+
+		cb := &countingBucket{Bucket: inmem}
+		logger := &test.CapturingLogger{}
+		obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache), dataobj.WithLogger(logger))
+		require.NoError(t, err)
+		require.Empty(t, logger.Entries(), "the cached region decodes, so the open does not fall back to a direct read")
+
+		sec := obj.Sections()[0]
+		gotMeta := readMetadata(ctx, t, sec.Reader)
+		require.Zero(t, cb.getRanges.Load(), "the warm open serves the section metadata from the cache")
 		require.Equal(t, []byte("streams-meta"), gotMeta)
 	})
 
@@ -62,7 +144,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		direct, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
 		require.NoError(t, err)
 
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err = dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -77,10 +159,10 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 			require.Equal(t, direct.Sections()[i].Tenant, cached.Sections()[i].Tenant)
 
 			wantData := readAll(t, func() (io.ReadCloser, error) {
-				return direct.Sections()[i].Reader.DataRange(ctx, 0, direct.Sections()[i].Reader.DataSize())
+				return direct.Sections()[i].Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: direct.Sections()[i].Reader.DataSize()})
 			})
 			gotData := readAll(t, func() (io.ReadCloser, error) {
-				return cached.Sections()[i].Reader.DataRange(ctx, 0, cached.Sections()[i].Reader.DataSize())
+				return cached.Sections()[i].Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: cached.Sections()[i].Reader.DataSize()})
 			})
 			require.Equal(t, wantData, gotData)
 		}
@@ -98,7 +180,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -114,15 +196,11 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		streamsSec := sectionByKind(t, obj.Sections(), "streams")
 		logsSec := sectionByKind(t, obj.Sections(), "logs")
 
-		streamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
-		})
+		streamsMeta := readMetadata(ctx, t, streamsSec.Reader)
 		require.Zero(t, cb.getRanges.Load(), "streams metadata is served from the cached region")
 		require.Equal(t, []byte("streams-meta"), streamsMeta)
 
-		logsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return logsSec.Reader.MetadataRange(ctx, 0, logsSec.Reader.MetadataSize())
-		})
+		logsMeta := readMetadata(ctx, t, logsSec.Reader)
 		require.Positive(t, cb.getRanges.Load(), "logs metadata is outside the cached region and falls through to storage")
 		require.Equal(t, bigLogsMeta, logsMeta)
 	})
@@ -140,7 +218,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -153,16 +231,12 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load())
 
 		logsSec := sectionByKind(t, obj.Sections(), "logs")
-		gotLogsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return logsSec.Reader.MetadataRange(ctx, 0, logsSec.Reader.MetadataSize())
-		})
+		gotLogsMeta := readMetadata(ctx, t, logsSec.Reader)
 		require.Zero(t, cb.getRanges.Load(), "the logs metadata is served from the cached region too, since the region has to span past it anyway")
 		require.Equal(t, logsMeta, gotLogsMeta)
 
 		streamsSec := sectionByKind(t, obj.Sections(), "streams")
-		gotStreamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
-		})
+		gotStreamsMeta := readMetadata(ctx, t, streamsSec.Reader)
 		require.Zero(t, cb.getRanges.Load(), "the streams metadata is served from the cached region even though it is appended after the logs section")
 		require.Equal(t, streamsMeta, gotStreamsMeta)
 	})
@@ -170,13 +244,13 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 	t.Run("an object with only a logs section caches just the file metadata", func(t *testing.T) {
 		ctx := context.Background()
 		logsMeta := []byte("logs-meta")
-		raw := buildObject(t, sectionSpec{typ: logsSectionType, meta: logsMeta, data: []byte("logs-data")})
+		raw := buildObject(t, sectionSpec{typ: logsSectionType, meta: logsMeta, data: bytes.Repeat([]byte("d"), dataBeyondPrefetchWindow)})
 
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -189,9 +263,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load())
 
 		sec := obj.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) {
-			return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize())
-		})
+		gotMeta := readMetadata(ctx, t, sec.Reader)
 		require.Positive(t, cb.getRanges.Load(), "the only section is a logs section, so its metadata always falls through")
 		require.Equal(t, logsMeta, gotMeta)
 	})
@@ -210,7 +282,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -224,9 +296,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load())
 
 		streamsSec := sectionByKind(t, obj.Sections(), "streams")
-		gotStreamsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
-		})
+		gotStreamsMeta := readMetadata(ctx, t, streamsSec.Reader)
 		require.Zero(t, cb.getRanges.Load(), "the streams metadata is served from the cached region despite sitting between two logs sections")
 		require.Equal(t, streamsMeta, gotStreamsMeta)
 
@@ -234,9 +304,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		// last one specifically: a bug that special-cases only the first logs section it sees would
 		// wrongly include this one's metadata in the cached region too.
 		lastLogsSec := obj.Sections()[2]
-		gotLastLogsMeta := readAll(t, func() (io.ReadCloser, error) {
-			return lastLogsSec.Reader.MetadataRange(ctx, 0, lastLogsSec.Reader.MetadataSize())
-		})
+		gotLastLogsMeta := readMetadata(ctx, t, lastLogsSec.Reader)
 		require.Positive(t, cb.getRanges.Load(), "the last logs section's metadata is outside the cached region and falls through to storage")
 		require.Equal(t, lastLogsMeta, gotLastLogsMeta)
 	})
@@ -253,7 +321,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -271,15 +339,13 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load(), "a cache hit still reads nothing from object storage")
 
 		pointersSec := sectionByKind(t, obj.Sections(), "pointers")
-		gotMeta := readAll(t, func() (io.ReadCloser, error) {
-			return pointersSec.Reader.MetadataRange(ctx, 0, pointersSec.Reader.MetadataSize())
-		})
+		gotMeta := readMetadata(ctx, t, pointersSec.Reader)
 		require.Zero(t, cb.getRanges.Load())
 		require.Equal(t, bigMeta, gotMeta)
 	})
 
-	// maxItemBytes is a custom limit, not metadatacache.Cache's default, so this also proves MaxItemBytes
-	// is genuinely plumbed through fetchExtendedMetadataRegion, not just the built-in default.
+	// maxItemBytes is a custom limit, not the unlimited value of a zero, so this also proves MaxItemBytes
+	// is genuinely plumbed through fetchExtendedMetadataRegion.
 	t.Run("a metadata region above the cache size cap still caches the file metadata but not the oversized section's metadata", func(t *testing.T) {
 		ctx := context.Background()
 		const maxItemBytes = 4096
@@ -290,7 +356,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, maxItemBytes, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, maxItemBytes)
 		t.Cleanup(metadataCache.Stop)
 		logger := &test.CapturingLogger{}
 
@@ -307,7 +373,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Zero(t, cb.getRanges.Load(), "the second open is served entirely from the cached file metadata")
 
 		sec := reopened.Sections()[0]
-		gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize()) })
+		gotMeta := readMetadata(ctx, t, sec.Reader)
 		require.Positive(t, cb.getRanges.Load(), "the section's own metadata is outside the cached region and falls through to storage")
 		require.Equal(t, oversizedMeta, gotMeta, "section metadata round-trips through the direct read")
 	})
@@ -339,7 +405,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(corrupted)))
 		cb := &countingBucket{Bucket: inmem}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		// The item limit stops the open from reading the region that the header claims. Without a limit,
+		// the open tries to read 128 MiB and fails, and it does not fall back to a direct read.
+		metadataCache := newMetadataCache(memoryCache, 8<<20)
 		t.Cleanup(metadataCache.Stop)
 		logger := &test.CapturingLogger{}
 
@@ -365,7 +433,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(truncated)))
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
@@ -381,7 +449,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		wantErr := errors.New("object storage unavailable")
 		bucket := &failingBucket{err: wantErr}
 		memoryCache := cache.NewMockCache()
-		metadataCache := metadatacache.New(memoryCache, 0, nil, nil)
+		metadataCache := newMetadataCache(memoryCache, 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, bucket, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -399,7 +467,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		wantErr := errors.New("read failure")
 		bucket := &flakyBucket{Bucket: inmem, err: wantErr}
 		bucket.remaining.Store(1) // only the cache-triggered load's own read fails; a retry would succeed
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 
 		_, err := dataobj.FromBucket(ctx, bucket, "obj", 0, dataobj.WithMetadataCache(metadataCache))
@@ -417,7 +485,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 		// A corrupt cached entry for the object (not a valid data-object header).
 		seedCache(ctx, t, metadataCache, "obj", []byte("garbage-not-a-dataobj-header"))
@@ -432,7 +500,9 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Contains(t, logger.Entries()[0], "obj", "the log identifies which key was affected")
 
 		sec := obj.Sections()[0]
-		got := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+		got := readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		})
 		require.Equal(t, []byte("data-0"), got)
 	})
 
@@ -443,7 +513,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 		// Real magic and a real, correctly encoded metadataSize field, but the blob stops well short of
 		// that declared length.
@@ -466,7 +536,7 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		inmem := objstore.NewInMemBucket()
 		require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 		cb := &countingBucket{Bucket: inmem}
-		metadataCache := metadatacache.New(cache.NewMockCache(), 0, nil, nil)
+		metadataCache := newMetadataCache(cache.NewMockCache(), 0)
 		t.Cleanup(metadataCache.Stop)
 		// Real magic, a header claiming a 4-byte file metadata that the blob's length does satisfy, but
 		// those 4 bytes (all varint continuation bits set, no terminator) are not a valid encoded message.
@@ -499,8 +569,12 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		require.Equal(t, len(noOption.Sections()), len(nilCache.Sections()))
 		sec := noOption.Sections()[0]
 		nilSec := nilCache.Sections()[0]
-		require.Equal(t, readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) }),
-			readAll(t, func() (io.ReadCloser, error) { return nilSec.Reader.DataRange(ctx, 0, nilSec.Reader.DataSize()) }))
+		require.Equal(t, readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		}),
+			readAll(t, func() (io.ReadCloser, error) {
+				return nilSec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: nilSec.Reader.DataSize()})
+			}))
 	})
 
 	t.Run("passing a typed nil concrete cache behaves the same as omitting the option", func(t *testing.T) {
@@ -513,21 +587,137 @@ func TestFromBucket_MetadataCache(t *testing.T) {
 		noOption, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
 		require.NoError(t, err)
 
-		// typedNil is *metadatacache.Cache, the real concrete type callers pass, not a test-only
+		// typedNil is *metadata.Cache, the real concrete type callers pass, not a test-only
 		// stand-in: this proves WithMetadataCache's typed-nil normalization covers it specifically,
 		// rather than panicking on first use the way a direct method call on it would.
-		var typedNil *metadatacache.Cache
+		var typedNil *metadata.Cache
 		typedNilCache, err := dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(typedNil))
 		require.NoError(t, err)
 
 		require.Equal(t, len(noOption.Sections()), len(typedNilCache.Sections()))
 		sec := noOption.Sections()[0]
 		typedNilSec := typedNilCache.Sections()[0]
-		require.Equal(t, readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) }),
+		require.Equal(t, readAll(t, func() (io.ReadCloser, error) {
+			return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+		}),
 			readAll(t, func() (io.ReadCloser, error) {
-				return typedNilSec.Reader.DataRange(ctx, 0, typedNilSec.Reader.DataSize())
+				return typedNilSec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: typedNilSec.Reader.DataSize()})
 			}))
 	})
+}
+
+func TestFromBucket_MetadataPrefetcher(t *testing.T) {
+	var (
+		ctx   = t.Context()
+		raw   = buildObject(t, sectionSpec{typ: streamsSectionType, meta: []byte("streams-meta"), data: []byte("streams-data")})
+		inmem = objstore.NewInMemBucket()
+	)
+
+	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+
+	// openThrough opens the object through a prefetcher that returns res and err, and returns the
+	// metadata of its section and the number of reads it made to the object storage.
+	openThrough := func(t *testing.T, res metadata.PrefetchResponse, err error) (meta []byte, reads int64, openErr error) {
+		t.Helper()
+
+		cb := &countingBucket{Bucket: inmem}
+		obj, openErr := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			return res, err
+		}), metadata.PrefetchSet{}))
+		if openErr != nil {
+			return nil, cb.getRanges.Load(), openErr
+		}
+
+		sec := obj.Sections()[0]
+		meta = readMetadata(ctx, t, sec.Reader)
+		return meta, cb.getRanges.Load(), nil
+	}
+
+	t.Run("reads the metadata directly when the prefetcher cannot prefetch the object", func(t *testing.T) {
+		meta, reads, err := openThrough(t, metadata.PrefetchResponse{}, metadata.ErrNotPrefetchable)
+
+		require.NoError(t, err)
+		require.Positive(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("reads the metadata directly when the prefetched ranges do not decode", func(t *testing.T) {
+		garbage := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: []byte("not a data object")}}}
+
+		meta, reads, err := openThrough(t, garbage, nil)
+
+		require.NoError(t, err)
+		require.Positive(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("serves the metadata from the prefetched ranges without a read", func(t *testing.T) {
+		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
+
+		meta, reads, err := openThrough(t, whole, nil)
+
+		require.NoError(t, err)
+		require.Zero(t, reads)
+		require.Equal(t, []byte("streams-meta"), meta)
+	})
+
+	t.Run("asks the prefetcher for the object path and the prefetch set, with a reader of the object", func(t *testing.T) {
+		var got metadata.PrefetchRequest
+		wantSet := metadata.PrefetchSet{Message: true, MetadataNames: []string{"trace_id"}}
+		prefetcher := prefetcherFunc(func(_ context.Context, req metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+			got = req
+			return metadata.PrefetchResponse{}, metadata.ErrNotPrefetchable
+		})
+
+		_, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0, dataobj.WithMetadataPrefetcher(prefetcher, wantSet))
+
+		require.NoError(t, err)
+		require.Equal(t, "obj", got.Path)
+		require.Equal(t, wantSet, got.PrefetchSet)
+		rc, err := got.Source.ReadRange(ctx, 0, 4)
+		require.NoError(t, err)
+		magic, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+		require.Equal(t, "DOBJ", string(magic))
+	})
+
+	t.Run("takes precedence over the metadata cache", func(t *testing.T) {
+		whole := metadata.PrefetchResponse{PrefetchedRanges: metadata.PrefetchedRanges{{Offset: 0, Data: raw}}}
+		prefetcher := prefetcherFunc(func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error) { return whole, nil })
+
+		_, err := dataobj.FromBucket(ctx, &countingBucket{Bucket: inmem}, "obj", 0,
+			dataobj.WithMetadataCache(failingMetadataCache{t}),
+			dataobj.WithMetadataPrefetcher(prefetcher, metadata.PrefetchSet{}),
+		)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("fails when the prefetcher fails for another reason", func(t *testing.T) {
+		wantErr := errors.New("prefetcher is down")
+
+		_, _, err := openThrough(t, metadata.PrefetchResponse{}, wantErr)
+
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+// failingMetadataCache is a metadata cache that fails the test when an open uses it.
+type failingMetadataCache struct{ t *testing.T }
+
+func (c failingMetadataCache) GetOrLoadMetadataRegion(context.Context, string, func(context.Context) ([]byte, error)) ([]byte, error) {
+	c.t.Error("unexpected call to the metadata cache")
+	return nil, errors.New("unexpected call to the metadata cache")
+}
+
+func (c failingMetadataCache) MaxItemBytes() int64 { return 1 }
+
+// prefetcherFunc is a [metadata.Prefetcher] that calls a function.
+type prefetcherFunc func(context.Context, metadata.PrefetchRequest) (metadata.PrefetchResponse, error)
+
+func (f prefetcherFunc) Prefetch(ctx context.Context, req metadata.PrefetchRequest) (metadata.PrefetchResponse, error) {
+	return f(ctx, req)
 }
 
 // countingBucket counts GetRange calls and the bytes they request, to prove which reads hit storage.
@@ -546,7 +736,7 @@ func (b *countingBucket) GetRange(ctx context.Context, name string, off, length 
 func (b *countingBucket) reset() { b.getRanges.Store(0); b.rangeBytes.Store(0) }
 
 // onlyCachedBlob returns the single blob stored in memoryCache, failing the test if there isn't exactly one.
-// metadatacache.Cache prefixes and versions its keys internally, so tests read the cache back this
+// metadata.Cache prefixes and versions its keys internally, so tests read the cache back this
 // way instead of assuming a literal key.
 func onlyCachedBlob(t *testing.T, memoryCache cache.MockCache) []byte {
 	t.Helper()
@@ -646,4 +836,34 @@ func readAll(t *testing.T, open func() (io.ReadCloser, error)) []byte {
 	b, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	return b
+}
+
+// readMetadata returns the whole metadata region of the section.
+func readMetadata(ctx context.Context, t *testing.T, reader dataobj.SectionReader) []byte {
+	t.Helper()
+	metadata, err := reader.MetadataRanges(ctx, []dataobj.RelativeByteRange{{Offset: 0, Length: reader.MetadataSize()}})
+	require.NoError(t, err)
+	return metadata[0]
+}
+
+// truncatedHeadBucket cuts the body of every GetRange that starts at offset 0 to limit bytes. This
+// mimics a connection that drops mid-body.
+type truncatedHeadBucket struct {
+	objstore.Bucket
+	limit int64
+}
+
+func (b *truncatedHeadBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	rc, err := b.Bucket.GetRange(ctx, name, off, length)
+	if err != nil || off != 0 {
+		return rc, err
+	}
+	return struct {
+		io.Reader
+		io.Closer
+	}{io.LimitReader(rc, b.limit), rc}, nil
+}
+
+func newMetadataCache(backend cache.Cache, maxItemBytes int64) *metadata.Cache {
+	return metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, metadata.NewCacheMetrics(nil), nil)
 }

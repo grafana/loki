@@ -172,7 +172,6 @@ type fastStreamingSession struct {
 	blockOffsets   []uint32
 	blockTermCount int
 	nextTermID     uint32
-	documentCount  uint32
 	payloadBuf     []byte
 }
 
@@ -207,9 +206,8 @@ func (e *FastPostingsEncoder) CompressionType() uint32 {
 }
 
 // beginStream initialises a streaming session writing postings to w.
-// documentCount is stored for encodings that need it (bitset, hybrid-bitset).
 // Returns an error if a session is already open.
-func (e *FastPostingsEncoder) beginStream(w io.Writer, documentCount uint32) error {
+func (e *FastPostingsEncoder) beginStream(w io.Writer) error {
 	if e.session != nil {
 		return fmt.Errorf("streaming session already open")
 	}
@@ -222,10 +220,9 @@ func (e *FastPostingsEncoder) beginStream(w io.Writer, documentCount uint32) err
 		}
 	}
 	e.session = &fastStreamingSession{
-		encoder:       enc,
-		w:             w,
-		blockOffsets:  make([]uint32, 1, 4096),
-		documentCount: documentCount,
+		encoder:      enc,
+		w:            w,
+		blockOffsets: make([]uint32, 1, 4096),
 	}
 	e.session.blockOffsets[0] = 0
 	return nil
@@ -378,9 +375,9 @@ func writeFull(w io.Writer, bytesWritten *int64, p []byte) error {
 func (e *FastPostingsEncoder) streamPostingsData(
 	w io.Writer,
 	postings []format.TermBitmapPostings,
-	documentCount uint32,
+	_ uint32, // documentCount, unused
 ) (int64, []postingsBlockDirEntry, error) {
-	if err := e.beginStream(w, documentCount); err != nil {
+	if err := e.beginStream(w); err != nil {
 		return 0, nil, err
 	}
 	for _, posting := range postings {

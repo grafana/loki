@@ -2041,16 +2041,16 @@ const file_google_monitoring_v3_uptime_proto_rawDesc = "" +
 	"\x05State\x12\x0f\n" +
 	"\vUNSPECIFIED\x10\x00\x12\f\n" +
 	"\bCREATING\x10\x01\x12\v\n" +
-	"\aRUNNING\x10\x02:\x02\x18\x01\"\xc4\x02\n" +
+	"\aRUNNING\x10\x02:\x02\x18\x01\"\xc6\x02\n" +
 	"\x16SyntheticMonitorTarget\x12p\n" +
-	"\x11cloud_function_v2\x18\x01 \x01(\v2B.google.monitoring.v3.SyntheticMonitorTarget.CloudFunctionV2TargetH\x00R\x0fcloudFunctionV2\x1a\xad\x01\n" +
-	"\x15CloudFunctionV2Target\x12B\n" +
-	"\x04name\x18\x01 \x01(\tB.\xe0A\x02\xfaA(\n" +
-	"&cloudfunctions.googleapis.com/FunctionR\x04name\x12P\n" +
-	"\x12cloud_run_revision\x18\x02 \x01(\v2\x1d.google.api.MonitoredResourceB\x03\xe0A\x03R\x10cloudRunRevisionB\b\n" +
-	"\x06target\"\x94#\n" +
-	"\x11UptimeCheckConfig\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12!\n" +
+	"\x11cloud_function_v2\x18\x01 \x01(\v2B.google.monitoring.v3.SyntheticMonitorTarget.CloudFunctionV2TargetH\x00R\x0fcloudFunctionV2\x1a\xaf\x01\n" +
+	"\x15CloudFunctionV2Target\x12C\n" +
+	"\x04name\x18\x01 \x01(\tB/\xe2A\x01\x02\xfaA(\n" +
+	"&cloudfunctions.googleapis.com/FunctionR\x04name\x12Q\n" +
+	"\x12cloud_run_revision\x18\x02 \x01(\v2\x1d.google.api.MonitoredResourceB\x04\xe2A\x01\x03R\x10cloudRunRevisionB\b\n" +
+	"\x06target\"\x95#\n" +
+	"\x11UptimeCheckConfig\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12N\n" +
 	"\x12monitored_resource\x18\x03 \x01(\v2\x1d.google.api.MonitoredResourceH\x00R\x11monitoredResource\x12^\n" +
 	"\x0eresource_group\x18\x04 \x01(\v25.google.monitoring.v3.UptimeCheckConfig.ResourceGroupH\x00R\rresourceGroup\x12[\n" +

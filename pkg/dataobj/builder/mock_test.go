@@ -5,15 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -45,9 +49,9 @@ type mockBuilder struct {
 	// full, when true, forces IsFull to report the builder as full regardless
 	// of the underlying builder's estimated size.
 	full bool
-	// flushCloser, when set, is returned by Flush in place of the underlying
-	// builder's closer, letting tests observe and fail the release of the
-	// unsorted object.
+	// flushCloser, when set, is returned by FlushAndSort in place of the
+	// underlying builder's closer, letting tests observe and fail the release
+	// of the flushed object.
 	flushCloser *countingCloser
 }
 
@@ -58,6 +62,8 @@ func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time
 	}
 	return m.builder.Append(tenant, stream, recTime)
 }
+
+func (m *mockBuilder) InitialWatermark() *int64 { return nil }
 
 func (m *mockBuilder) GetEarliestRecordTime() time.Time {
 	return m.builder.GetEarliestRecordTime()
@@ -71,16 +77,12 @@ func (m *mockBuilder) IsFull() bool {
 	return m.full || m.builder.IsFull()
 }
 
-func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(ctx, obj)
-}
-
-func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
+func (m *mockBuilder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return nil, nil, err
 	}
-	obj, closer, err := m.builder.Flush()
+	obj, closer, err := m.builder.FlushAndSort(ctx)
 	if err != nil || m.flushCloser == nil {
 		return obj, closer, err
 	}
@@ -125,11 +127,14 @@ type mockFlusher struct {
 	// onFlush, if set, runs before each flush returns. It runs without the
 	// lock, so it must be safe for concurrent use.
 	onFlush func()
+	// builders holds the builder of each Flush call, in call order.
+	builders []builder
 }
 
-func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (m *mockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.mtx.Lock()
 	m.flushes++
+	m.builders = append(m.builders, b)
 	path := fmt.Sprintf("object_%03d", m.flushes)
 	m.open++
 	m.maxOpen = max(m.maxOpen, m.open)
@@ -166,6 +171,8 @@ type mockIndexer struct {
 	// delay is how long each call sleeps before it indexes. In a synctest
 	// bubble, the sleep advances the fake clock.
 	delay time.Duration
+	// shardBuckets is the shard layout of every successful result.
+	shardBuckets indexpointers.ShardBuckets
 }
 
 func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
@@ -180,17 +187,22 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 		return index.Result{}, err
 	}
 	return index.Result{
-		Path:      "index/" + objPath,
-		TimeRange: dataobj.TimeRange{Tenant: "test"},
+		Path:         "index/" + objPath,
+		TimeRange:    dataobj.TimeRange{Tenant: "test"},
+		ShardBuckets: m.shardBuckets,
 	}, nil
 }
 
 // mockTOCWriter implements the tocWriter interface, recording the entries it
 // was asked to write. It is safe for concurrent use.
 type mockTOCWriter struct {
-	mtx     sync.Mutex
-	paths   []string
-	tenants []string
+	mtx          sync.Mutex
+	paths        []string
+	tenants      []string
+	shardBuckets []indexpointers.ShardBuckets
+	// updates holds the watermark updates of the successful
+	// WriteEntryWithWatermark calls.
+	updates []metastore.WatermarkUpdate
 	err     error
 	// afterWrite, if set, runs after an entry is recorded, letting tests act
 	// between updating the ToC and committing the offset.
@@ -208,6 +220,18 @@ func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metas
 	}
 	m.paths = append(m.paths, entry.Path)
 	m.tenants = append(m.tenants, tenant)
+	m.shardBuckets = append(m.shardBuckets, entry.ShardBuckets)
+	return nil
+}
+
+// WriteEntryWithWatermark records the entry like WriteEntry, and the update.
+func (m *mockTOCWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
+	if err := m.WriteEntry(ctx, tenant, entry); err != nil {
+		return err
+	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.updates = append(m.updates, update)
 	return nil
 }
 
@@ -227,6 +251,78 @@ func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason
 	m.lastReason = reason
 	m.lastOffset = offset
 	return nil
+}
+
+// gatedFlushCommitter blocks each Flush until the test sends its result on
+// results, or until the context is canceled. It records the offset, reason
+// and builders of each Flush when the Flush starts, and the largest number of
+// flushes that ran at the same time. It does not use the builders. It is safe
+// for concurrent use.
+type gatedFlushCommitter struct {
+	results chan error
+
+	mtx        sync.Mutex
+	offsets    []int64
+	reasons    []string
+	builders   [][]builder
+	running    int
+	maxRunning int
+}
+
+func newGatedFlushCommitter() *gatedFlushCommitter {
+	return &gatedFlushCommitter{results: make(chan error)}
+}
+
+func (m *gatedFlushCommitter) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+	m.mtx.Lock()
+	m.offsets = append(m.offsets, offset)
+	m.reasons = append(m.reasons, reason)
+	m.builders = append(m.builders, builders)
+	m.running++
+	m.maxRunning = max(m.maxRunning, m.running)
+	m.mtx.Unlock()
+
+	defer func() {
+		m.mtx.Lock()
+		m.running--
+		m.mtx.Unlock()
+	}()
+
+	select {
+	case err := <-m.results:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// startedOffsets returns the offsets of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedOffsets() []int64 {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.offsets)
+}
+
+// startedReasons returns the reasons of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedReasons() []string {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.reasons)
+}
+
+// startedBuilders returns the builders of the flushes that started, in order.
+func (m *gatedFlushCommitter) startedBuilders() [][]builder {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return slices.Clone(m.builders)
+}
+
+// maxConcurrentFlushes returns the largest number of flushes that ran at the
+// same time.
+func (m *gatedFlushCommitter) maxConcurrentFlushes() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.maxRunning
 }
 
 // testBuilderFactory creates real [logsobj.Builder] instances backed by an
@@ -252,7 +348,7 @@ func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
 		return nil, errors.New("boom")
 	}
 	f.created++
-	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
+	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), logsobj.NoTenantOverrides{})
 }
 
 // mockMultiBuilder wraps the production [MultiObjectBuilder] so processor
@@ -269,25 +365,37 @@ func (m *mockMultiBuilder) IsFull() bool {
 	return m.forceFull || m.MultiObjectBuilder.IsFull()
 }
 
+// fixedCountMultiBuilder wraps the production [MultiObjectBuilder] and reports
+// itself full after fullAfter appends since the last Reset. Its flushes then
+// depend only on the order of the records, not on their size.
+type fixedCountMultiBuilder struct {
+	*MultiObjectBuilder
+	fullAfter int
+	appends   int
+}
+
+var _ multiBuilder = (*fixedCountMultiBuilder)(nil)
+
+func (m *fixedCountMultiBuilder) Append(ctx context.Context, tenant string, stream logproto.Stream, recTime time.Time, offset int64) (AppendResult, error) {
+	m.appends++
+	return m.MultiObjectBuilder.Append(ctx, tenant, stream, recTime, offset)
+}
+
+func (m *fixedCountMultiBuilder) IsFull() bool {
+	return m.appends >= m.fullAfter
+}
+
+func (m *fixedCountMultiBuilder) Reset(flushOffset int64) {
+	m.appends = 0
+	m.MultiObjectBuilder.Reset(flushOffset)
+}
+
 // newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
-		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newTestWatermarks()),
 	}
-}
-
-// mockSorter returns the object it is given, so the flusher can be driven
-// without performing a real sort.
-type mockSorter struct {
-	// closer is handed to the flusher on every sort, letting tests assert
-	// whether ownership of the sorted object was transferred to the caller or
-	// released by the flusher.
-	closer countingCloser
-}
-
-func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return obj, &m.closer, nil
 }
 
 type mockUploader struct {
@@ -307,4 +415,10 @@ type failureUploader struct{}
 
 func (f *failureUploader) Upload(_ context.Context, _ *dataobj.Object) (string, error) {
 	return "", errors.New("mock error")
+}
+
+// newTestWatermarks returns a watermarkCache that reads ToCs from an empty
+// in-memory bucket, so no ToC holds a watermark.
+func newTestWatermarks() *watermarkCache {
+	return newWatermarkCache("test-topic", 0, objstore.NewInMemBucket(), NewWatermarkMetrics(prometheus.NewRegistry()))
 }

@@ -16,11 +16,14 @@ import (
 // postingsBuffer buffers (ngram, docID) pairs in one flat SoA buffer, and on
 // fill radix-sorts + dedupes them and spills a sorted run to scratch disk.
 //
-// Time units used throughout this type and the merge:
+// Units used throughout this type and the merge:
 //   - Absolute bucket: wall-clock document bucket counted from Unix epoch
-//     (1970). Used for day/date math.
-//   - Tick (docID): absolute bucket minus baseBucket, packed into uint32 for
-//     storage. baseBucket is the fixed docIDEpoch (2026-01-01); see
+//     (1970).
+//   - Absolute cell: absolute bucket << documentShardBits | the stream's
+//     document shard. Used for day/date math. With 0 shard bits a cell is a
+//     bucket.
+//   - Tick (docID): absolute cell minus baseCell, packed into uint32 for
+//     storage. baseCell is the fixed docIDEpoch (2026-01-01); see
 //     docid_window.go.
 //
 // A pair's date and shard are both recoverable at merge time without any
@@ -46,11 +49,14 @@ type postingsBuffer struct {
 	bufferPairs    int
 	spillWatermark float64
 	intervalNanos  int64
-	ticksPerDay    uint64
-	// baseBucket is the absolute bucket of docIDEpoch. Stored ticks are
-	// relative: tick = absBucket - baseBucket (fits uint32). Day/date math
-	// converts back with abs = baseBucket + tick.
-	baseBucket uint64
+	// documentShardBits is log2 of the number of cells per document interval.
+	// Distinct from shardCount, which splits files by n-gram.
+	documentShardBits uint
+	cellsPerDay       uint64
+	// baseCell is the absolute cell of docIDEpoch. Stored ticks are relative:
+	// tick = absCell - baseCell (fits uint32). Day/date math converts back
+	// with abs = baseCell + tick.
+	baseCell   uint64
 	shardCount int
 	shardFn    shard.Func
 	scratchDir string
@@ -73,11 +79,14 @@ type postingsBuffer struct {
 	shardScratch []uint8
 	sortedHead   int // len of the sorted+deduped ngram-ordered prefix of keys/docs
 
-	// Referenced tick-of-day bitset per (shard, dayIndex), populated at spill.
-	// Each (date, shard) .lidx has a documents table: the set of time buckets
-	// that appear in that file. recordDocumentTick records those buckets as we
-	// spill so merge can build the table (and dense-rank postings into it).
-	refTicks map[refKey][]uint64
+	// Referenced cell-of-day bitset per (shard, dayIndex), populated at spill
+	// when trackDocumentTicks is set. A (date, shard) .lidx of a version with a
+	// document table (v3, v4) lists the document cells that appear in that
+	// file. recordDocumentTick records those cells as we spill so merge can
+	// build the table (and dense-rank postings into it). v5 files have no
+	// table, so v5 buffers leave refTicks empty.
+	trackDocumentTicks bool
+	refTicks           map[refKey][]uint64
 	// refTicksBytes is the running total of bitset bytes allocated in refTicks,
 	// maintained on the allocation path of recordDocumentTick (once per
 	// (shard, day), never per pair) so residentBytes doesn't have to walk the
@@ -123,16 +132,20 @@ type refKey struct {
 // postingsBufferConfig holds the resolved, global parameters for one
 // accumulation cycle.
 type postingsBufferConfig struct {
-	bufferPairs    int
-	spillWatermark float64
-	intervalNanos  int64
-	ticksPerDay    uint64
-	baseBucket     uint64
-	shardCount     int
-	shardFn        shard.Func
-	scratchDir     string
-	runPrefix      string
-	mergeThreads   int
+	bufferPairs       int
+	spillWatermark    float64
+	intervalNanos     int64
+	documentShardBits uint
+	cellsPerDay       uint64
+	baseCell          uint64
+	shardCount        int
+	shardFn           shard.Func
+	scratchDir        string
+	runPrefix         string
+	mergeThreads      int
+	// trackDocumentTicks records refTicks for versions whose files have a
+	// document table (logline.VersionHasDocumentTable).
+	trackDocumentTicks bool
 }
 
 func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
@@ -141,35 +154,43 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		prefix = "run_"
 	}
 	return &postingsBuffer{
-		bufferPairs:    cfg.bufferPairs,
-		spillWatermark: cfg.spillWatermark,
-		intervalNanos:  cfg.intervalNanos,
-		ticksPerDay:    cfg.ticksPerDay,
-		baseBucket:     cfg.baseBucket,
-		shardCount:     cfg.shardCount,
-		shardFn:        cfg.shardFn,
-		scratchDir:     cfg.scratchDir,
-		runPrefix:      prefix,
-		mergeThreads:   cfg.mergeThreads,
-		keys:           make([][8]byte, 0, cfg.bufferPairs),
-		docs:           make([]uint32, 0, cfg.bufferPairs),
-		keyBuf:         make([][8]byte, cfg.bufferPairs),
-		docBuf:         make([]uint32, cfg.bufferPairs),
-		sortBufBytes:   sortBufferFloorBytes(cfg.bufferPairs),
-		refTicks:       make(map[refKey][]uint64),
+		bufferPairs:        cfg.bufferPairs,
+		spillWatermark:     cfg.spillWatermark,
+		intervalNanos:      cfg.intervalNanos,
+		documentShardBits:  cfg.documentShardBits,
+		cellsPerDay:        cfg.cellsPerDay,
+		baseCell:           cfg.baseCell,
+		shardCount:         cfg.shardCount,
+		shardFn:            cfg.shardFn,
+		scratchDir:         cfg.scratchDir,
+		runPrefix:          prefix,
+		mergeThreads:       cfg.mergeThreads,
+		keys:               make([][8]byte, 0, cfg.bufferPairs),
+		docs:               make([]uint32, 0, cfg.bufferPairs),
+		keyBuf:             make([][8]byte, cfg.bufferPairs),
+		docBuf:             make([]uint32, cfg.bufferPairs),
+		sortBufBytes:       sortBufferFloorBytes(cfg.bufferPairs),
+		trackDocumentTicks: cfg.trackDocumentTicks,
+		refTicks:           make(map[refKey][]uint64),
 	}
 }
 
-// tick converts an absolute document bucket (from 1970) into a packed tick
-// relative to baseBucket, reporting whether it fits in the uint32 window.
-// Out-of-window entries (before the fixed docIDEpoch, or beyond 2^32 ticks
+// absCell returns the absolute document cell (from 1970) of a timestamp in
+// the given document shard.
+func (b *postingsBuffer) absCell(unixNano int64, documentShard uint32) uint64 {
+	return uint64(unixNano)/uint64(b.intervalNanos)<<b.documentShardBits | uint64(documentShard)
+}
+
+// tick converts an absolute document cell (from 1970) into a packed tick
+// relative to baseCell, reporting whether it fits in the uint32 window.
+// Out-of-window entries (before the fixed docIDEpoch, or beyond 2^32 cells
 // past it) must never be silently wrapped into a wrong — possibly recent —
 // date's index; the caller panics on them (panicOutOfWindow).
-func (b *postingsBuffer) tick(absBucket uint64) (uint32, bool) {
-	if absBucket < b.baseBucket {
+func (b *postingsBuffer) tick(absCell uint64) (uint32, bool) {
+	if absCell < b.baseCell {
 		return 0, false
 	}
-	rel := absBucket - b.baseBucket
+	rel := absCell - b.baseCell
 	if rel > math.MaxUint32 {
 		return 0, false
 	}
@@ -177,7 +198,7 @@ func (b *postingsBuffer) tick(absBucket uint64) (uint32, bool) {
 }
 
 // appendPair is the hot-path append: a bare two-slice append, small enough to
-// inline into processStream's ngram loop. Spilling/integration is the caller's
+// inline into ProcessStream's ngram loop. Spilling/integration is the caller's
 // job (bufferFull + onFull) so this never grows the slices past capacity.
 func (b *postingsBuffer) appendPair(ngram [8]byte, docID uint32) {
 	b.keys = append(b.keys, ngram)
@@ -274,16 +295,19 @@ func (b *postingsBuffer) spillSorted() error {
 }
 
 // shardSortAndTrack reorders the ngram-sorted head [0:n] into shard-contiguous
-// order (stable within a shard, so ngram order is preserved) and records every
-// pair's document tick for that shard's documents table. Scatters into
-// keyBuf/docBuf (free at spill time) and returns them plus the per-shard
-// record counts (used to write the run's shard directory). When sharding is
-// disabled the reorder is skipped and ticks are recorded against shard 0.
+// order (stable within a shard, so ngram order is preserved) and, when
+// trackDocumentTicks is set, records every pair's document tick for that
+// shard's documents table. Scatters into keyBuf/docBuf (free at spill time)
+// and returns them plus the per-shard record counts (used to write the run's
+// shard directory). When sharding is disabled the reorder is skipped and
+// ticks are recorded against shard 0.
 func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32) {
 	src, srcD := b.keys[:n], b.docs[:n]
 	if b.shardCount <= 1 {
-		for i := range n {
-			b.recordDocumentTick(0, srcD[i])
+		if b.trackDocumentTicks {
+			for i := range n {
+				b.recordDocumentTick(0, srcD[i])
+			}
 		}
 		return src, srcD, []int32{int32(n)}
 	}
@@ -298,7 +322,9 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 		s := uint8(b.shardFn(src[i], b.shardCount))
 		shards[i] = s
 		cnt[s]++
-		b.recordDocumentTick(int(s), srcD[i])
+		if b.trackDocumentTicks {
+			b.recordDocumentTick(int(s), srcD[i])
+		}
 	}
 	pos := make([]int32, b.shardCount)
 	for i := 1; i < b.shardCount; i++ {
@@ -315,17 +341,17 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 }
 
 // recordDocumentTick notes that shardVal's .lidx for tick's calendar day must
-// include this document bucket. Converts the packed tick back to an absolute
-// bucket (baseBucket + tick) so day / tick-of-day land on real calendar
+// include this document cell. Converts the packed tick back to an absolute
+// cell (baseCell + tick) so day / cell-of-day land on real calendar
 // boundaries, then sets the bit in that (shard, day)'s bitset.
 func (b *postingsBuffer) recordDocumentTick(shardVal int, tick uint32) {
-	abs := b.baseBucket + uint64(tick)
-	day := abs / b.ticksPerDay
-	tod := abs % b.ticksPerDay
+	abs := b.baseCell + uint64(tick)
+	day := abs / b.cellsPerDay
+	tod := abs % b.cellsPerDay
 	k := refKey{shard: shardVal, day: day}
 	bs := b.refTicks[k]
 	if bs == nil {
-		bs = make([]uint64, (b.ticksPerDay+63)/64)
+		bs = make([]uint64, (b.cellsPerDay+63)/64)
 		b.refTicks[k] = bs
 		b.refTicksBytes.Add(uint64(len(bs)) * 8)
 	}
@@ -334,7 +360,8 @@ func (b *postingsBuffer) recordDocumentTick(shardVal int, tick uint32) {
 
 // releaseSortBuffers frees the large ingest sort buffers once ingest is
 // complete; the merge streams runs from disk and does not need them. refTicks
-// is retained — the merge needs it for doc-metadata synthesis.
+// is retained — the merge needs it for doc-metadata synthesis (document-table
+// versions only).
 func (b *postingsBuffer) releaseSortBuffers() {
 	b.keys = nil
 	b.docs = nil

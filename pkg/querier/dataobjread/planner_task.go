@@ -28,12 +28,15 @@ type objectStream struct {
 	streamHash uint64
 }
 
-// objectStreams is the decoded identity of the streams one object holds for a query.
+// objectStreams is the decoded identity of the streams that one planObject call reads from a
+// data object.
 //
-// One instance is shared by every task planned for that object. newObjectStreams fills it and
-// nothing writes to it afterwards, so the concurrent scans need no lock and the planner does
-// not copy a label map per section. It does pin one label set per admitted stream until the
-// query releases its objects.
+// The tasks of that call share one instance. newObjectStreams fills it and nothing writes to it
+// afterwards, so the concurrent scans need no lock and the planner does not copy a label map per
+// section. It does pin one label set per admitted stream while a task of that call is alive.
+//
+// Two index objects can list sections of one data object. planObject then runs once for each of
+// them, and a stream that both list has two copies of its labels.
 //
 // A dropped stream keeps its ID and loses its labels, which is what bounds that cost for a
 // query whose access-control policy denies most of its streams. Its ID is still needed, because
@@ -96,7 +99,7 @@ type ReadTask struct {
 	// streamIDs are the streams to read, after filtering.
 	streamIDs []int64
 
-	// streams is the identity of every stream of this object, shared with its other tasks.
+	// streams is shared with the other tasks of the same planObject call.
 	streams *objectStreams
 
 	columns       []logs.ColumnType
@@ -126,14 +129,33 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// records turns one section read's rows into forwardable records, attaching each stream's
-// identity and copying each line when the task needs it.
+// forwardedLineBytes returns the number of line bytes that appendRecords copies for rows.
+func (t ReadTask) forwardedLineBytes(rows []logs.Record) int {
+	if !t.needReturningLine {
+		return 0
+	}
+
+	var size int
+	for i := range rows {
+		size += len(rows[i].Line)
+	}
+	return size
+}
+
+// appendRecords appends one forwardable record per row to dst, attaching each stream's identity.
+// It returns the extended slice.
+//
+// A record's line is a copy of row.Line in the spare capacity of lineBuf, so it stays valid when
+// the rows are decoded into again. The line is nil when the task does not need it, or when the
+// row's line is empty.
+//
+// lineBuf must have room for [ReadTask.forwardedLineBytes] bytes. appendRecords fails when it
+// has less, so a line never moves to memory that the caller does not own.
 //
 // It fails on a row whose stream the task did not plan to read. The read matches only the
 // task's streams, so an unexpected ID means that broke, and dropping the row would under-count
 // the query without saying so.
-func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
-	out := make([]LogRecord, 0, len(rows))
+func (t ReadTask) appendRecords(dst []LogRecord, lineBuf []byte, rows []logs.Record) ([]LogRecord, error) {
 	for i := range rows {
 		row := &rows[i]
 		stream, ok := t.streams.admittedByID[row.StreamID]
@@ -142,12 +164,16 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 		}
 
 		var line []byte
-		if t.needReturningLine {
-			// Copy the line, because DecodeRow reuses one buffer for it across reads.
-			line = append(line, row.Line...)
+		if t.needReturningLine && len(row.Line) > 0 {
+			if free := cap(lineBuf) - len(lineBuf); free < len(row.Line) {
+				return nil, fmt.Errorf("line buffer has %d free bytes, but the line of row %d needs %d", free, i, len(row.Line))
+			}
+			start := len(lineBuf)
+			lineBuf = append(lineBuf, row.Line...)
+			line = lineBuf[start:len(lineBuf):len(lineBuf)]
 		}
 
-		out = append(out, LogRecord{
+		dst = append(dst, LogRecord{
 			streamHash:   stream.streamHash,
 			streamLabels: stream.streamLabels,
 			timestamp:    row.Timestamp.UnixNano(),
@@ -158,13 +184,13 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 			metadata: row.Metadata,
 		})
 	}
-	return out, nil
+	return dst, nil
 }
 
-// TaskIterator streams read tasks from the planner to the reader. The planner fills it
-// from a background goroutine as it resolves objects, and the reader consumes tasks as they
-// arrive. Err returns any resolution error once Next has returned false, so a planning failure
-// reaches the reader the same way a scan failure does.
+// TaskIterator streams read tasks from the planner to the reader. The planner fills it from a
+// background goroutine as the metastore yields sections, and the reader consumes tasks as they
+// arrive. Err returns any metastore or planning error once Next has returned false. The reader
+// sees it the same way as a scan failure.
 //
 // Next, At and Waited are for the single consumer goroutine only. Err, setErr and Abort are
 // safe for concurrent use: the reader may Abort while the planner still runs.
@@ -200,7 +226,7 @@ func newTaskIterator(tasks <-chan ReadTask, cancel context.CancelFunc) *TaskIter
 }
 
 func (it *TaskIterator) Next() bool {
-	// A resolution error is terminal.
+	// An error from the metastore or from planning is terminal.
 	if it.Err() != nil {
 		return false
 	}

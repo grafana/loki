@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"math/bits"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -73,9 +72,18 @@ type (
 )
 
 func MaxPrecision[T DecimalTypes]() int {
-	// max precision is computed by Floor(log10(2^(nbytes * 8 - 1) - 1))
+	// Floor(log10(2^(8*Sizeof(T)-1) - 1)), as literals so the call inlines.
 	var z T
-	return int(math.Floor(math.Log10(math.Pow(2, float64(unsafe.Sizeof(z))*8-1) - 1)))
+	switch unsafe.Sizeof(z) {
+	case 4:
+		return 9
+	case 8:
+		return 18
+	case 16:
+		return 38
+	default:
+		return 76
+	}
 }
 
 func (d Decimal32) Negate() Decimal32 { return -d }
@@ -182,20 +190,43 @@ func decimalFromString[T interface {
 
 	var out *big.Float
 	out, _, err = big.ParseFloat(v, 10, nbits, big.ToNearestEven)
+	if err != nil {
+		return
+	}
+	if out.IsInf() {
+		return n, fmt.Errorf("cannot convert %s to decimal%d", v, nbits)
+	}
 
 	if scale < 0 {
-		var tmp big.Int
-		val, _ := out.Int(&tmp)
-		if val.BitLen() > int(nbits) {
+		// Check the magnitude before converting, which would allocate as many
+		// bits as the value has.
+		if out.MantExp(nil) > int(nbits) {
 			return n, fmt.Errorf("bitlen too large for decimal%d", nbits)
 		}
+		var tmp big.Int
+		val, _ := out.Int(&tmp)
 
-		n = T(val.Int64() / int64(math.Pow10(int(-scale))))
+		// |val| < 2^64 < 10^20, so a larger divisor gives the same quotient.
+		div := new(big.Int).Exp(big.NewInt(10), big.NewInt(min(-int64(scale), 20)), nil)
+		n = T(val.Quo(val, div).Int64())
 	} else {
-		var precInBits = uint(math.Round(float64(prec+scale+1)/math.Log10(2))) + 1
+		// Clamp before converting, since converting an out of range float to
+		// uint is implementation specific. SetPrec caps at big.MaxPrec anyway.
+		bitsNeeded := math.Round(float64(int64(prec)+int64(scale)+1) / math.Log10(2))
+		var precInBits = uint(min(max(bitsNeeded, 0), big.MaxPrec-1)) + 1
 
-		p := (&big.Float{}).SetInt(big.NewInt(int64(math.Pow10(int(scale)))))
-		out.SetPrec(precInBits).Mul(out, p)
+		mulPow10(out.SetPrec(precInBits), int64(scale))
+		// Reject before rounding and converting, which would allocate as many
+		// bits as the value has.
+		if out.IsInf() || out.MantExp(nil) > int(nbits) {
+			return n, fmt.Errorf("bitlen too large for decimal%d", nbits)
+		}
+		// A magnitude below 1/4 rounds to zero. Clearing it skips the
+		// rounding below, which allocates in proportion to the gap between
+		// the value's exponent and 0.5's.
+		if out.MantExp(nil) < -1 {
+			out.SetInt64(0)
+		}
 		if out.Signbit() {
 			out.Sub(out, pt5)
 		} else {
@@ -204,7 +235,9 @@ func decimalFromString[T interface {
 
 		var tmp big.Int
 		val, _ := out.Int(&tmp)
-		if val.BitLen() > int(nbits) {
+		// This also rejects the signed minimum, which fits the storage but has
+		// more digits than the maximum precision allows.
+		if val.BitLen() >= int(nbits) {
 			return n, fmt.Errorf("bitlen too large for decimal%d", nbits)
 		}
 		n = T(val.Int64())
@@ -307,23 +340,42 @@ func (n Decimal64) ToFloat64(scale int32) float64 {
 }
 
 func (n Decimal32) ToBigFloat(scale int32) *big.Float {
-	f := (&big.Float{}).SetInt64(int64(n))
-	if scale < 0 {
-		f.SetPrec(32).Mul(f, (&big.Float{}).SetInt64(intPow(10, -int64(scale))))
-	} else {
-		f.SetPrec(32).Quo(f, (&big.Float{}).SetInt64(intPow(10, int64(scale))))
-	}
-	return f
+	return mulPow10(new(big.Float).SetInt64(int64(n)).SetPrec(32), -int64(scale))
 }
 
 func (n Decimal64) ToBigFloat(scale int32) *big.Float {
-	f := (&big.Float{}).SetInt64(int64(n))
-	if scale < 0 {
-		f.SetPrec(64).Mul(f, (&big.Float{}).SetInt64(intPow(10, -int64(scale))))
-	} else {
-		f.SetPrec(64).Quo(f, (&big.Float{}).SetInt64(intPow(10, int64(scale))))
+	return mulPow10(new(big.Float).SetInt64(int64(n)).SetPrec(64), -int64(scale))
+}
+
+// mulPow10 sets f to f * 10^exp, rounded to f's precision, and returns f. For
+// precisions up to 64 bits the result is within one unit in the last place.
+// 10^exp is applied as an exact 2^exp and then 5^|exp|, computed at 128 bits
+// by repeated squaring so the work stays bounded. Splitting the power keeps it
+// from overflowing before the result does. A result outside big.Float's
+// exponent range becomes ±Inf or 0.
+func mulPow10(f *big.Float, exp int64) *big.Float {
+	if f.Sign() == 0 {
+		// 5^|exp| may overflow to infinity, and 0 * Inf panics.
+		return f
 	}
-	return f
+
+	k := exp
+	if k < 0 {
+		k = -k
+	}
+	pow := new(big.Float).SetPrec(128).SetInt64(1)
+	for base := new(big.Float).SetPrec(128).SetInt64(5); k > 0; k >>= 1 {
+		if k&1 == 1 {
+			pow.Mul(pow, base)
+		}
+		base.Mul(base, base)
+	}
+
+	f.SetMantExp(f, int(exp))
+	if exp < 0 {
+		return f.Quo(f, pow)
+	}
+	return f.Mul(f, pow)
 }
 
 func cmpDec[T Decimal32 | Decimal64](lhs, rhs T) int {
@@ -366,7 +418,7 @@ func reduceScale[T interface {
 		return n
 	}
 
-	divisor := T(intPow(10, reduce))
+	divisor := T(intPow(10, int64(reduce)))
 	if !round {
 		return n / divisor
 	}
@@ -398,65 +450,34 @@ func (n Decimal64) ReduceScaleBy(reduce int32, round bool) Decimal64 {
 	return reduceScale(n, reduce, round)
 }
 
-//lint:ignore U1000 function is being used, staticcheck seems to not follow generics
-func (n Decimal32) rescaleWouldCauseDataLoss(deltaScale int32, multiplier Decimal32) (out Decimal32, loss bool) {
-	if deltaScale < 0 {
-		debug.Assert(multiplier != 0, "multiplier must not be zero")
-		quo, remainder := bits.Div32(0, uint32(n), uint32(multiplier))
-		return Decimal32(quo), remainder != 0
-	}
-
-	overflow, result := bits.Mul32(uint32(n), uint32(multiplier))
-	if overflow != 0 {
-		return Decimal32(result), true
-	}
-
-	out = Decimal32(result)
-	return out, out < n
-}
-
-//lint:ignore U1000 function is being used, staticcheck seems to not follow generics
-func (n Decimal64) rescaleWouldCauseDataLoss(deltaScale int32, multiplier Decimal64) (out Decimal64, loss bool) {
-	if deltaScale < 0 {
-		debug.Assert(multiplier != 0, "multiplier must not be zero")
-		quo, remainder := bits.Div32(0, uint32(n), uint32(multiplier))
-		return Decimal64(quo), remainder != 0
-	}
-
-	overflow, result := bits.Mul32(uint32(n), uint32(multiplier))
-	if overflow != 0 {
-		return Decimal64(result), true
-	}
-
-	out = Decimal64(result)
-	return out, out < n
-}
-
-func rescale[T interface {
-	Decimal32 | Decimal64
-	rescaleWouldCauseDataLoss(int32, T) (T, bool)
-	Sign() int
-}](n T, originalScale, newScale int32) (out T, err error) {
-	if originalScale == newScale {
+func rescale[T Decimal32 | Decimal64](n T, originalScale, newScale int32) (T, error) {
+	if originalScale == newScale || n == 0 {
 		return n, nil
 	}
 
-	deltaScale := newScale - originalScale
-	absDeltaScale := int32(math.Abs(float64(deltaScale)))
-
-	sign := n.Sign()
-	if n < 0 {
-		n = -n
+	deltaScale := int64(newScale) - int64(originalScale)
+	absDeltaScale := deltaScale
+	if absDeltaScale < 0 {
+		absDeltaScale = -absDeltaScale
+	}
+	// Scaling any nonzero value by 10^(MaxPrecision+1) or more overflows or drops every digit.
+	if absDeltaScale > int64(MaxPrecision[T]()) {
+		return 0, errors.New("rescale data loss")
 	}
 
 	multiplier := T(intPow(10, absDeltaScale))
-	var wouldHaveLoss bool
-	out, wouldHaveLoss = n.rescaleWouldCauseDataLoss(deltaScale, multiplier)
-	if wouldHaveLoss {
-		err = errors.New("rescale data loss")
+	if deltaScale < 0 {
+		if n%multiplier != 0 {
+			return 0, errors.New("rescale data loss")
+		}
+		return n / multiplier, nil
 	}
-	out *= T(sign)
-	return
+
+	maxValue := T(int64(math.MaxInt64) >> (64 - 8*unsafe.Sizeof(n)))
+	if n > maxValue/multiplier || n < (-maxValue-1)/multiplier {
+		return 0, errors.New("rescale data loss")
+	}
+	return n * multiplier, nil
 }
 
 func (n Decimal32) Rescale(originalScale, newScale int32) (out Decimal32, err error) {

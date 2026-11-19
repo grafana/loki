@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
@@ -73,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			}
 
 			for _, row := range rows[:n] {
-				err := DecodeRow(section.Columns(), row, &record, nil)
+				err := DecodeRow(section.Columns(), row, &record)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -108,14 +107,18 @@ func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
 //
 // DecodeRow resets record first, so a field whose column is absent from columns comes back
 // as its zero value rather than keeping what a previous row left there.
-//
-// The sym argument is used for reusing metadata strings between calls to
-// DecodeRow. If sym is nil, metadata strings are always allocated.
-func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
+func DecodeRow(columns []*Column, row dataset.Row, record *Record) error {
 	record.Reset()
 
 	labelBuilder := labelpool.Get()
 	defer labelpool.Put(labelBuilder)
+
+	// Sections store metadata columns sorted by name, so labels usually
+	// arrive sorted. Track the order to skip the sort in that case.
+	var (
+		labelsSorted = true
+		lastLabel    string
+	)
 
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
@@ -147,11 +150,11 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 
 			// An empty value is kept as a label. The key is present on the line, it just
 			// holds no value, and the chunk path surfaces that as a distinct label too.
-			if sym != nil {
-				labelBuilder.Add(column.Name, sym.Get(unsafeString(columnValue.Binary())))
-			} else {
-				labelBuilder.Add(column.Name, string(columnValue.Binary()))
+			if column.Name < lastLabel {
+				labelsSorted = false
 			}
+			lastLabel = column.Name
+			labelBuilder.Add(column.Name, metadataValue(columnValue.Binary()))
 
 		case ColumnTypeMessage:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
@@ -166,7 +169,9 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 	}
 
 	// Commit the final metadata to the record.
-	labelBuilder.Sort()
+	if !labelsSorted {
+		labelBuilder.Sort()
+	}
 	record.Metadata = labelBuilder.Labels()
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,21 @@ func TestReadTask_RowPredicates(t *testing.T) {
 	})
 }
 
-func TestReadTask_Records(t *testing.T) {
+func TestReadTask_ForwardedLineBytes(t *testing.T) {
+	rows := []logs.Record{{Line: []byte("one")}, {Line: []byte{}}, {Line: []byte("three")}}
+
+	t.Run("it sums the line lengths when the task needs the line", func(t *testing.T) {
+		task := ReadTask{needReturningLine: true}
+		require.Equal(t, len("onethree"), task.forwardedLineBytes(rows))
+	})
+
+	t.Run("it returns zero when the task does not need the line", func(t *testing.T) {
+		task := ReadTask{}
+		require.Zero(t, task.forwardedLineBytes(rows))
+	})
+}
+
+func TestReadTask_AppendRecords(t *testing.T) {
 	// oneStreamTask returns a task for a single admitted stream, and that stream's ID.
 	oneStreamTask := func(t *testing.T, streamLabels string) (ReadTask, int64) {
 		t.Helper()
@@ -62,7 +77,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records([]logs.Record{
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), []logs.Record{
 			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
 			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
 		})
@@ -86,24 +101,71 @@ func TestReadTask_Records(t *testing.T) {
 		}, records)
 	})
 
-	t.Run("it copies the line, because the row reader reuses that buffer", func(t *testing.T) {
+	t.Run("a needed line is copied into lineBuf, so a later decode does not change it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		// One buffer, rewritten between reads, is what the row reader does. The replacement is
-		// the same length as the original, so it overwrites every byte.
 		buffer := []byte("first")
-		first, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
+		lineBuf := make([]byte, 0, len(buffer))
+		records, err := task.appendRecords(nil, lineBuf, []logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
 		require.NoError(t, err)
 
 		copy(buffer, []byte("third"))
-		require.Equal(t, "first", string(first[0].line), "the record must not alias the read buffer")
+		require.Len(t, records, 1)
+		require.Equal(t, "first", string(records[0].line))
+		require.Same(t, &lineBuf[:1][0], &records[0].line[0])
+	})
+
+	t.Run("the lines of one call share lineBuf, each capped at its own length", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		lineBuf := make([]byte, 0, len("onetwo"))
+		records, err := task.appendRecords(nil, lineBuf, []logs.Record{
+			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
+			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
+		})
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+
+		first, second := records[0].line, records[1].line
+		require.Equal(t, "one", string(first))
+		require.Equal(t, "two", string(second))
+		require.Equal(t, len(first), cap(first))
+		require.Same(t, &lineBuf[:1][0], &first[0])
+		require.Equal(t, unsafe.Add(unsafe.Pointer(&first[0]), len(first)), unsafe.Pointer(&second[0]))
+	})
+
+	t.Run("an empty line is forwarded as nil and needs no room in lineBuf", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		records, err := task.appendRecords(nil, nil, []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte{}}})
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Nil(t, records[0].line)
+	})
+
+	t.Run("a lineBuf without room for every needed line fails", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		_, err := task.appendRecords(nil, make([]byte, 0, 2), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		require.ErrorContains(t, err, "line buffer has 2 free bytes, but the line of row 0 needs 3")
+	})
+
+	t.Run("it appends after the records already in dst", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		existing := LogRecord{timestamp: at(9).UnixNano()}
+		records, err := task.appendRecords([]LogRecord{existing}, make([]byte, 0, 64), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+		require.Equal(t, existing, records[0])
+		require.Equal(t, "one", string(records[1].line))
 	})
 
 	t.Run("it forwards no line when the task does not need it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 		task.needReturningLine = false
 
-		records, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].line)
@@ -112,7 +174,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("a row from a stream the task did not plan fails rather than get silently skipped", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		_, err := task.records([]logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
+		_, err := task.appendRecords(nil, make([]byte, 0, 64), []logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 9999")
 	})
 
@@ -127,14 +189,14 @@ func TestReadTask_Records(t *testing.T) {
 		)
 		task := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
-		_, err = task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		_, err = task.appendRecords(nil, make([]byte, 0, 64), []logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
 		require.ErrorContains(t, err, "unexpected stream ID 7")
 	})
 
 	t.Run("no rows yields no records", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records(nil)
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), nil)
 		require.NoError(t, err)
 		require.Empty(t, records)
 	})

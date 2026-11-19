@@ -719,7 +719,7 @@ func verifyLintFile(t *testing.T, bucket objstore.Bucket, objectKey string, expe
 
 	// Verify header
 	header := reader.ReadHeader()
-	require.Equal(t, logline.CurrentVersion, version, "invalid version")
+	require.Equal(t, "v3", version, "v3 and v4 share the same on-disk format")
 	require.Greater(t, header.DocumentCount, uint32(0), "no documents")
 	require.Greater(t, header.TermCount, uint64(0), "no terms")
 	// Verify document metadata

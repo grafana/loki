@@ -1,5 +1,5 @@
 ---
-title: Manage bloom filter building and querying (Experimental)
+title: Manage bloom filter building and querying (Deprecated)
 menuTitle: Bloom filters
 description: Describes how to enable and configure query acceleration with bloom filters.
 weight:
@@ -9,12 +9,10 @@ keywords:
 aliases:
   - ./query-acceleration-blooms
 ---
-# Manage bloom filter building and querying (Experimental)
+# Manage bloom filter building and querying (Deprecated)
 
 {{< admonition type="warning" >}}
-In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
-
-In Grafana Cloud, Query acceleration using bloom filters is enabled as a [public preview](https://grafana.com/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
+In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is deprecated and will be removed in a future release. Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
 {{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
@@ -70,7 +68,7 @@ limits_config:
 ```
 
 For more configuration options refer to the [Bloom Gateway](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway), [Bloom Build](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build) and [per tenant-limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) configuration docs.
-We strongly recommend reading the whole documentation for this experimental feature before using it.
+We strongly recommend reading the whole documentation for this deprecated feature before using it.
 
 ## Bloom Planner and Builder
 

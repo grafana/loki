@@ -123,6 +123,39 @@ func (md Metadata) clone() Metadata {
 	return o
 }
 
+const smallMetadataLimit = 12
+
+func sortSmallMetadataIndices(keys []string, idxes []int) {
+	for i := range idxes {
+		idxes[i] = i
+	}
+	for i := 1; i < len(idxes); i++ {
+		for j := i; j > 0 && keys[idxes[j]] < keys[idxes[j-1]]; j-- {
+			idxes[j], idxes[j-1] = idxes[j-1], idxes[j]
+		}
+	}
+}
+
+// Keep the small-sort arrays out of Equal's general frame.
+//
+//go:noinline
+func smallMetadataEqual(left, right Metadata) bool {
+	var leftStorage, rightStorage [smallMetadataLimit]int
+	leftIdxes := leftStorage[:len(left.keys)]
+	rightIdxes := rightStorage[:len(right.keys)]
+	sortSmallMetadataIndices(left.keys, leftIdxes)
+	sortSmallMetadataIndices(right.keys, rightIdxes)
+
+	for i := range leftIdxes {
+		j := leftIdxes[i]
+		k := rightIdxes[i]
+		if left.keys[j] != right.keys[k] || left.values[j] != right.values[k] {
+			return false
+		}
+	}
+	return true
+}
+
 func (md Metadata) sortedIndices() []int {
 	idxes := make([]int, len(md.keys))
 	for i := range idxes {
@@ -138,6 +171,9 @@ func (md Metadata) sortedIndices() []int {
 func (md Metadata) Equal(rhs Metadata) bool {
 	if md.Len() != rhs.Len() {
 		return false
+	}
+	if md.Len() <= smallMetadataLimit {
+		return smallMetadataEqual(md, rhs)
 	}
 
 	idxes := md.sortedIndices()
@@ -220,7 +256,7 @@ func (sc *Schema) FieldsByName(n string) ([]Field, bool) {
 		return nil, ok
 	}
 	if len(indices) == 1 {
-		return sc.fields[indices[0] : indices[0]+1], ok
+		return []Field{sc.fields[indices[0]]}, ok
 	} else if len(indices) > 1 {
 		fields := make([]Field, 0, len(indices))
 		for _, v := range indices {
@@ -232,12 +268,12 @@ func (sc *Schema) FieldsByName(n string) ([]Field, bool) {
 	return nil, false
 }
 
-// FieldIndices returns the indices of the named field or nil.
+// FieldIndices returns a copy of the indices of the named field or nil.
 func (sc *Schema) FieldIndices(n string) []int {
-	return sc.index[n]
+	return slices.Clone(sc.index[n])
 }
 
-func (sc *Schema) HasField(n string) bool { return len(sc.FieldIndices(n)) > 0 }
+func (sc *Schema) HasField(n string) bool { return len(sc.index[n]) > 0 }
 func (sc *Schema) HasMetadata() bool      { return len(sc.meta.keys) > 0 }
 
 // Equal returns whether two schema are equal.
@@ -268,15 +304,10 @@ func (s *Schema) AddField(i int, field Field) (*Schema, error) {
 		return nil, fmt.Errorf("arrow: invalid field index %d", i)
 	}
 
-	var fields []Field
-	if i == len(s.fields) {
-		fields = append(s.fields, field)
-	} else {
-		fields = make([]Field, len(s.fields)+1)
-		copy(fields[:i], s.fields[:i])
-		fields[i] = field
-		copy(fields[i+1:], s.fields[i:])
-	}
+	fields := make([]Field, len(s.fields)+1)
+	copy(fields[:i], s.fields[:i])
+	fields[i] = field
+	copy(fields[i+1:], s.fields[i:])
 
 	return newSchema(fields, &s.meta, s.endianness), nil
 }

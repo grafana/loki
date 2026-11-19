@@ -80,7 +80,7 @@ func getEnv(key, fallback string) string {
 func testResultPrometheus(t *testing.T, ctx context.Context, query string, test func(model.SampleValue) bool, msg string) error {
 	// TODO (ewelch): if we did a lot of these, we'd want to reuse the client but right now we only run a couple tests
 	client := newClient(t)
-	result, _, err := client.Query(ctx, query, time.Now())
+	result, _, _, err := client.Query(ctx, query, time.Now())
 	if err != nil {
 		return err
 	}

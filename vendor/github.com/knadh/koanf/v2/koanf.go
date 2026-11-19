@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/maps"
@@ -269,6 +272,7 @@ func (ko *Koanf) UnmarshalWithConf(path string, o any, c UnmarshalConf) error {
 	} else {
 		dc = mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				transformDurationStrHook,
 				mapstructure.StringToTimeDurationHookFunc(),
 				textUnmarshalerHookFunc()),
 			WeaklyTypedInput: true,
@@ -673,4 +677,44 @@ func (ko *Koanf) appendMap(mp map[string]any, out []*Koanf) []*Koanf {
 	k := NewWithConf(ko.conf)
 	_ = k.merge(mp, new(options))
 	return append(out, k)
+}
+
+var dayDuration = regexp.MustCompile(`(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)d`)
+
+// parseDuration extends time.ParseDuration with fixed 24-hour days for "d" suffix.
+// It expands "d" into equivalent "h" before passing to Go's time.ParseDuration.
+func parseDuration(s string) (time.Duration, error) {
+	return time.ParseDuration(expandDurationDays(s))
+}
+
+func expandDurationDays(s string) string {
+	if strings.Contains(s, "d") {
+		s = dayDuration.ReplaceAllStringFunc(s, func(day string) string {
+			// Multiply the decimal by 24 without rounding or truncating nanoseconds
+			// before parsing the actual duration.
+			hours := []byte("00" + day[:len(day)-1])
+			carry := 0
+			for i := len(hours) - 1; i >= 0; i-- {
+				if hours[i] == '.' {
+					continue
+				}
+
+				n := int(hours[i]-'0')*24 + carry
+				hours[i] = byte(n%10) + '0'
+				carry = n / 10
+			}
+
+			return string(hours) + "h"
+		})
+	}
+
+	return s
+}
+
+func transformDurationStrHook(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to != reflect.TypeOf(time.Duration(0)) {
+		return data, nil
+	}
+
+	return expandDurationDays(reflect.ValueOf(data).String()), nil
 }

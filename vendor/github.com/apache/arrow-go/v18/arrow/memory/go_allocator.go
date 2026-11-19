@@ -16,8 +16,13 @@
 
 package memory
 
+// GoAllocator is an Allocator backed by the Go heap. Buffers it returns start
+// at a 64-byte boundary; Free is a no-op because the garbage collector reclaims
+// the memory. Its buffers must not be retained by C code beyond a single cgo
+// call; see the package documentation for allocators that return C memory.
 type GoAllocator struct{}
 
+// NewGoAllocator returns a GoAllocator.
 func NewGoAllocator() *GoAllocator { return &GoAllocator{} }
 
 func (a *GoAllocator) Allocate(size int) []byte {

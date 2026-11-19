@@ -6,7 +6,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+)
+
+// These are process-wide usage-stats counters (reported regardless of the Prometheus registerer),
+// so they stay as package-level vars rather than fields on metrics.
+var (
+	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
+	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
+	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 type metrics struct {
@@ -19,6 +28,12 @@ type metrics struct {
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 	rejectedPartialWrites                 *prometheus.CounterVec
+	bytesIngested                         *prometheus.CounterVec
+	expandedBytesIngested                 *prometheus.CounterVec
+	structuredMetadataBytesIngested       *prometheus.CounterVec
+	linesIngested                         *prometheus.CounterVec
+	distributorLagByUserAgent             *prometheus.CounterVec
+	streamsPerPushRequest                 *prometheus.HistogramVec
 
 	// metrics for limits service sharding, so rateStore sharding and
 	// limits-service sharding can be compared. They keep the shadow name they
@@ -91,6 +106,37 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "distributor_push_rejected_partial_writes_total",
 			Help:      "The total number of push requests rejected as a whole with a 429 instead of being partially written, because they contained streams of a policy with reject_partial_writes enabled.",
 		}, []string{"tenant", "policy"}),
+		bytesIngested: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_bytes_received_total",
+			Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, resource and scope attributes are considered only once per request.",
+		}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"}), // TODO rename is_internal_stream to has_internal_streams
+		expandedBytesIngested: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_expanded_bytes_received_total",
+			Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, all attributes added as structured metadata are considered.",
+		}, []string{"tenant", "format"}),
+		structuredMetadataBytesIngested: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_structured_metadata_bytes_received_total",
+			Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
+		}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"}),
+		linesIngested: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_lines_received_total",
+			Help:      "The total number of lines received per tenant",
+		}, []string{"tenant", "is_internal_stream", "policy", "format"}),
+		distributorLagByUserAgent: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_lag_ms_total",
+			Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
+		}, []string{"tenant", "userAgent", "format"}),
+		streamsPerPushRequest: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_streams_per_push_request",
+			Help:      "The number of streams in a single push request.",
+			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64, 128, 512, 2048},
+		}, []string{"format"}),
 
 		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -123,13 +169,13 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_failed_total",
-			Help:      "The total number of streams the ingest-limits service returned no usable shard count for, because it did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition. In live mode these streams are sharded with the local rate store's count instead.",
+			Help:      "The total number of streams the ingest-limits service returned no usable shard count for, because it did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition. In live mode these streams are written unsharded.",
 		}, []string{"tenant", "mode", "reason"}),
 
 		limitsServiceShardShadowRejected: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_rejected_total",
-			Help:      "The total number of streams the ingest-limits service rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count. In live mode these streams are not sharded; whether they are written is decided by the ExceedsLimits check.",
+			Help:      "The total number of streams the ingest-limits service rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count. In live mode these streams are dropped, unless the ingest limits run in dry-run mode, which writes them unsharded.",
 		}, []string{"tenant", "mode", "reason"}),
 
 		limitsServiceShardShadowCompared: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

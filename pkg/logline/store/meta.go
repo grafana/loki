@@ -56,6 +56,11 @@ type Meta struct {
 	// legacy (pre-interval) index.
 	DocumentInterval time.Duration `json:"document_interval,omitempty"`
 
+	// DocumentShardBits is log2 of the number of stream shards per document
+	// interval (v5 only). Indexes with different document shard bits must not
+	// be compacted together. Zero means one document per interval.
+	DocumentShardBits int `json:"document_shard_bits,omitempty"`
+
 	// Size of the index data file in bytes. Written to meta.json by callers
 	// that know the size at upload time. Legacy indexes omit this field;
 	// loadMeta falls back to bucket Attributes when SizeBytes is zero.

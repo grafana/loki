@@ -15,11 +15,11 @@ type Terrno_t = int32
 type Tmode_t = uint16
 
 var _azTypes = [5]uintptr{
-	0: __ccgo_ts + 1172,
-	1: __ccgo_ts + 1184,
-	2: __ccgo_ts + 1189,
-	3: __ccgo_ts + 1167,
-	4: __ccgo_ts + 1703,
+	0: __ccgo_ts + 1192,
+	1: __ccgo_ts + 1204,
+	2: __ccgo_ts + 1209,
+	3: __ccgo_ts + 1187,
+	4: __ccgo_ts + 1744,
 }
 
 // C documentation
@@ -29,7 +29,7 @@ var _azTypes = [5]uintptr{
 //	** concatentation of all non-null arguments.
 //	*/
 func _concatFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	_concatFuncCore(tls, context, argc, argv, 0, __ccgo_ts+1702)
+	_concatFuncCore(tls, context, argc, argv, 0, __ccgo_ts+1730)
 }
 
 // C documentation
@@ -46,7 +46,7 @@ func _fts5ValueToText(tls *libc.TLS, pVal uintptr) (r uintptr) {
 	if zRet != 0 {
 		v1 = zRet
 	} else {
-		v1 = __ccgo_ts + 1702
+		v1 = __ccgo_ts + 1730
 	}
 	return v1
 }
@@ -76,7 +76,7 @@ func _fts5WriteFlushBtree(tls *libc.TLS, p uintptr, pWriter uintptr) {
 		if (*TFts5SegWriter)(unsafe.Pointer(pWriter)).Fbtterm.Fn > 0 {
 			v1 = (*TFts5SegWriter)(unsafe.Pointer(pWriter)).Fbtterm.Fp
 		} else {
-			v1 = __ccgo_ts + 1702
+			v1 = __ccgo_ts + 1730
 		}
 		z = v1
 		/* The following was already done in fts5WriteInit(): */
@@ -100,7 +100,7 @@ func _fts5WriteFlushBtree(tls *libc.TLS, p uintptr, pWriter uintptr) {
 func _logBadConnection(tls *libc.TLS, zType uintptr) {
 	bp := tls.Alloc(16)
 	defer tls.Free(16)
-	Xsqlite3_log(tls, int32(SQLITE_MISUSE), __ccgo_ts+1850, libc.VaList(bp+8, zType))
+	Xsqlite3_log(tls, int32(SQLITE_MISUSE), __ccgo_ts+1874, libc.VaList(bp+8, zType))
 }
 
 // C documentation
@@ -131,14 +131,14 @@ func _parseDateOrTime(tls *libc.TLS, context uintptr, zDate uintptr, p uintptr) 
 		if _parseHhMmSs(tls, zDate, p) == 0 {
 			return 0
 		} else {
-			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1226) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
+			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1246) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
 				return _setDateTimeToCurrent(tls, context, p)
 			} else {
 				if _sqlite3AtoF(tls, zDate, bp) > 0 {
 					_setRawDateNumber(tls, p, **(**float64)(__ccgo_up(bp)))
 					return 0
 				} else {
-					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1230) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1237) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
+					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1250) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1257) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
 						libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 2, 0x4)
 						return _setDateTimeToCurrent(tls, context, p)
 					}
@@ -158,12 +158,12 @@ func _parseDateOrTime(tls *libc.TLS, context uintptr, zDate uintptr, p uintptr) 
  */
 
 var _sqlite3StdType = [6]uintptr{
-	0: __ccgo_ts + 1163,
-	1: __ccgo_ts + 1167,
-	2: __ccgo_ts + 1172,
-	3: __ccgo_ts + 1176,
-	4: __ccgo_ts + 1184,
-	5: __ccgo_ts + 1189,
+	0: __ccgo_ts + 1183,
+	1: __ccgo_ts + 1187,
+	2: __ccgo_ts + 1192,
+	3: __ccgo_ts + 1196,
+	4: __ccgo_ts + 1204,
+	5: __ccgo_ts + 1209,
 }
 
 /************** End of global.c **********************************************/
@@ -224,7 +224,7 @@ var _sqlite3StdType = [6]uintptr{
 //	** only a handful of compile-time options, so most times this array is usually
 //	** rather short and uses little memory space.
 //	*/
-var _sqlite3azCompileOpt = [56]uintptr{
+var _sqlite3azCompileOpt = [57]uintptr{
 	0:  __ccgo_ts,
 	1:  __ccgo_ts + 20,
 	2:  __ccgo_ts + 42,
@@ -272,15 +272,16 @@ var _sqlite3azCompileOpt = [56]uintptr{
 	44: __ccgo_ts + 940,
 	45: __ccgo_ts + 966,
 	46: __ccgo_ts + 986,
-	47: __ccgo_ts + 1012,
-	48: __ccgo_ts + 1035,
-	49: __ccgo_ts + 1061,
-	50: __ccgo_ts + 1083,
-	51: __ccgo_ts + 1104,
-	52: __ccgo_ts + 1115,
-	53: __ccgo_ts + 1123,
-	54: __ccgo_ts + 1137,
-	55: __ccgo_ts + 1150,
+	47: __ccgo_ts + 1006,
+	48: __ccgo_ts + 1032,
+	49: __ccgo_ts + 1055,
+	50: __ccgo_ts + 1081,
+	51: __ccgo_ts + 1103,
+	52: __ccgo_ts + 1124,
+	53: __ccgo_ts + 1135,
+	54: __ccgo_ts + 1143,
+	55: __ccgo_ts + 1157,
+	56: __ccgo_ts + 1170,
 }
 
 type errno_t = Terrno_t

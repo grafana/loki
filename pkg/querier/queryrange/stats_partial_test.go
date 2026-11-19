@@ -19,8 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -34,10 +34,11 @@ func wrapErr(sentinel, err error) error {
 	return fmt.Errorf("%w: %w", sentinel, err)
 }
 
-// failedQueryUsageFields is the complete field set of the failed-query usage
-// line; the regular stats line's fields must stay off it.
+// failedQueryUsageFields lists the fixed fields of the failed-query usage line.
+// Request-specific query tags may add attribution fields.
 var failedQueryUsageFields = []string{
-	"msg", "query", "query_hash", "query_type", "range_type", "length",
+	"msg", "user_agent", "query", "query_hash", "query_type", "range_type", "length",
+	"start_delta", "end_delta", "step", "limit",
 	"status", "duration", "total_bytes", "failure_category", "failure_reason",
 }
 
@@ -90,7 +91,7 @@ func captureFailedQueryUsage(t *testing.T) *failedQueryUsageCapture {
 
 // requireFailedQueryUsageShape asserts the line carries exactly the agreed
 // fields: nothing leaked in and nothing went missing.
-func requireFailedQueryUsageShape(t *testing.T, line map[string]string) {
+func requireFailedQueryUsageShape(t *testing.T, line map[string]string, queryTagFields ...string) {
 	t.Helper()
 
 	fields := make([]string, 0, len(line))
@@ -101,7 +102,8 @@ func requireFailedQueryUsageShape(t *testing.T, line map[string]string) {
 		}
 		fields = append(fields, k)
 	}
-	require.ElementsMatch(t, failedQueryUsageFields, fields)
+	expectedFields := append(append([]string(nil), failedQueryUsageFields...), queryTagFields...)
+	require.ElementsMatch(t, expectedFields, fields)
 
 	// Spelled out as well: these were deliberately left off the line.
 	for _, absent := range []string{
@@ -127,32 +129,32 @@ func failedQueryUsageCount(t *testing.T, category string) float64 {
 // original error.
 func TestStatsCollectorMiddleware_LogsFailedQueryUsage(t *testing.T) {
 	// A byte-limit failure sentinel-wrapped like queryrange/limits.go builds it.
-	limitErr := wrapErr(logqlmodel.ErrMaxQueryBytesRead,
+	limitErr := wrapErr(logqlerr.ErrMaxQueryBytesRead,
 		httpgrpc.Errorf(http.StatusBadRequest, "the query would read too many bytes (query: 5GB, limit: 1GB)"))
 
 	for _, tc := range []struct {
-		name          string
-		query         string
-		partialBytes  int64
-		err           error
-		wantQueryType string
-		wantStatus    string
-		wantBytes     string
-		wantCategory  string
-		wantReason    string
+		name           string
+		query          string
+		discardedBytes int64
+		err            error
+		wantQueryType  string
+		wantStatus     string
+		wantBytes      string
+		wantCategory   string
+		wantReason     string
 	}{
 		{
 			name:  "log query rejected by a byte limit",
 			query: `{app="foo"} |= "bar"`,
 			// The usage of the sub-query that completed before the failure is
 			// what the line exists to report.
-			partialBytes:  4096,
-			err:           limitErr,
-			wantQueryType: logql.QueryTypeFilter,
-			wantStatus:    "400",
-			wantBytes:     "4.1kB",
-			wantCategory:  server.FailureLimit,
-			wantReason:    "max_query_bytes_read",
+			discardedBytes: 4096,
+			err:            limitErr,
+			wantQueryType:  logql.QueryTypeFilter,
+			wantStatus:     "400",
+			wantBytes:      "4.1kB",
+			wantCategory:   server.FailureLimit,
+			wantReason:     "max_query_bytes_read",
 		},
 		{
 			// The query type is derived from the request expression, there being
@@ -177,13 +179,13 @@ func TestStatsCollectorMiddleware_LogsFailedQueryUsage(t *testing.T) {
 			countBefore := failedQueryUsageCount(t, tc.wantCategory)
 
 			_, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-				if tc.partialBytes > 0 {
+				if tc.discardedBytes > 0 {
 					// Simulate a shard/interval sub-query that succeeded before
 					// the failure.
-					stats.JoinPartial(ctx, stats.Result{
+					stats.JoinDiscardedWork(ctx, stats.Result{
 						Querier: stats.Querier{
 							Store: stats.Store{
-								Chunk: stats.Chunk{DecompressedBytes: tc.partialBytes, DecompressedLines: 20},
+								Chunk: stats.Chunk{DecompressedBytes: tc.discardedBytes, DecompressedLines: 20},
 							},
 						},
 					})
@@ -248,12 +250,12 @@ func TestStatsCollectorMiddleware_SuccessEmitsNoFailedQueryLine(t *testing.T) {
 	require.Equal(t, int64(4096), data.statistics.Summary.TotalBytesProcessed)
 }
 
-// TestSplitByInterval_PartialStatsOnError drives the real split middleware with
+// TestSplitByInterval_DiscardedWorkStatsOnError drives the real split middleware with
 // one interval failing after an earlier one succeeded, and asserts the
-// successful interval's usage reaches the partial-stats collector.
-func TestSplitByInterval_PartialStatsOnError(t *testing.T) {
+// successful interval's usage reaches the discarded-work context.
+func TestSplitByInterval_DiscardedWorkStatsOnError(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	partial, ctx := stats.NewPartialContext(ctx)
+	discardedWork, ctx := stats.NewDiscardedWorkContext(ctx)
 
 	var calls atomic.Int64
 	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -288,14 +290,14 @@ func TestSplitByInterval_PartialStatsOnError(t *testing.T) {
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	// The interval that completed before the failure contributed its usage.
-	require.Equal(t, int64(1000), partial.Result().Querier.Store.Chunk.DecompressedBytes)
+	require.Equal(t, int64(1000), discardedWork.Result().Querier.Store.Chunk.DecompressedBytes)
 }
 
-func TestSplitByInterval_PartialStatsOnCancellation(t *testing.T) {
+func TestSplitByInterval_DiscardedWorkStatsOnCancellation(t *testing.T) {
 	cause := fmt.Errorf("query rejected by an outer layer")
 	parent, cancel := context.WithCancelCause(user.InjectOrgID(context.Background(), "1"))
 	t.Cleanup(func() { cancel(nil) })
-	partial, ctx := stats.NewPartialContext(parent)
+	discardedWork, ctx := stats.NewDiscardedWorkContext(parent)
 
 	// Holds the second interval open so Process can only exit through ctx.Done().
 	release := make(chan struct{})
@@ -338,36 +340,37 @@ func TestSplitByInterval_PartialStatsOnCancellation(t *testing.T) {
 	// The cancellation cause is reported, and the interval that completed
 	// before the cancellation still contributed its usage.
 	require.ErrorIs(t, err, cause)
-	require.Equal(t, int64(1000), partial.Result().Querier.Store.Chunk.DecompressedBytes)
+	require.Equal(t, int64(1000), discardedWork.Result().Querier.Store.Chunk.DecompressedBytes)
 }
 
 func TestStatisticsFromResponse(t *testing.T) {
 	s := stats.Result{Ingester: stats.Ingester{TotalReached: 7}}
 
 	for _, tc := range []struct {
-		name   string
-		resp   queryrangebase.Response
-		wantOK bool
+		name      string
+		resp      queryrangebase.Response
+		wantOK    bool
+		wantStats stats.Result
 	}{
-		{"log", &LokiResponse{Statistics: s}, true},
-		{"metric", &LokiPromResponse{Statistics: s}, true},
-		{"index_stats", &IndexStatsResponse{}, false},
+		{"log", &LokiResponse{Statistics: s}, true, s},
+		{"metric", &LokiPromResponse{Statistics: s}, true, s},
+		{"detected fields", &DetectedFieldsResponse{Statistics: s}, true, s},
+		{"detected fields with zero usage", &DetectedFieldsResponse{}, true, stats.Result{}},
+		{"index_stats", &IndexStatsResponse{}, false, stats.Result{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := statisticsFromResponse(tc.resp)
 			require.Equal(t, tc.wantOK, ok)
-			if tc.wantOK {
-				require.Equal(t, int32(7), got.Ingester.TotalReached)
-			}
+			require.Equal(t, tc.wantStats, got)
 		})
 	}
 }
 
-// TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats fails one interval
+// TestStatsCollectorMiddleware_ConcurrentFanOutDiscardedWorkStats fails one interval
 // while its siblings are still executing and writing into the stats context.
 // Emitting the line must report the completed intervals' usage without racing
 // with the siblings still in flight (run this with -race).
-func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
+func TestStatsCollectorMiddleware_ConcurrentFanOutDiscardedWorkStats(t *testing.T) {
 	const (
 		intervals       = 8
 		parallelism     = 4
@@ -384,7 +387,7 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
 	lines := captureFailedQueryUsage(t)
 	countBefore := failedQueryUsageCount(t, server.FailureLimit)
 
-	limitErr := wrapErr(logqlmodel.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
+	limitErr := wrapErr(logqlerr.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
 
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		interval := int(r.GetStart().Sub(time.Unix(0, 0)) / time.Hour)
@@ -400,6 +403,14 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
 			stats.JoinResults(ctx, stats.Result{
 				Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{HeadChunkBytes: 1}}},
 			})
+		}
+
+		// Keep later intervals genuinely in flight until the failure cancels them.
+		// Otherwise they can finish before the failure is observed and legitimately
+		// contribute additional completed usage.
+		if interval > failAfterInterval {
+			<-ctx.Done()
+			return nil, ctx.Err()
 		}
 
 		return &LokiResponse{
@@ -430,7 +441,7 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
 		Path:      "/loki/api/v1/query_range",
 	})
 
-	require.ErrorIs(t, err, logqlmodel.ErrQuerierTooManyBytes)
+	require.ErrorIs(t, err, logqlerr.ErrQuerierTooManyBytes)
 
 	line := lines.only(t)
 	requireFailedQueryUsageShape(t, line)
@@ -504,7 +515,7 @@ func TestLoggedQueryType(t *testing.T) {
 
 // TestStatsCollectorMiddleware_SkipsQueryTypesWithoutUsageBytes makes sure a
 // failed query whose type carries no usage bytes gets no failed-query usage
-// line, even if usage somehow reached the partial collector.
+// line, even if usage somehow reached the discarded-work context.
 func TestStatsCollectorMiddleware_SkipsQueryTypesWithoutUsageBytes(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -548,7 +559,7 @@ func TestStatsCollectorMiddleware_SkipsQueryTypesWithoutUsageBytes(t *testing.T)
 			countBefore := failedQueryUsageCount(t, server.FailureTimeout)
 
 			_, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-				stats.JoinPartial(ctx, stats.Result{
+				stats.JoinDiscardedWork(ctx, stats.Result{
 					Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: 2048}}},
 				})
 				return nil, context.DeadlineExceeded

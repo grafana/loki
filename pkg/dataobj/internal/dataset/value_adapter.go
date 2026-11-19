@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
@@ -54,6 +55,22 @@ func copyUTF8Array(dst []Row, columnIndex int, src *columnar.UTF8) int {
 	return src.Len()
 }
 
+// copyUTF8Value copies element i of src into dst and reuses the buffer of dst, so dst does not
+// alias src. A null element zeroes dst.
+func copyUTF8Value(dst *Value, src *columnar.UTF8, i int) {
+	if src.IsNull(i) {
+		dst.Zero()
+		return
+	}
+
+	srcBuf := src.Get(i)
+	dstBuf := slicegrow.GrowToCap(dst.Buffer(), len(srcBuf))
+	dstBuf = dstBuf[:len(srcBuf)]
+	copy(dstBuf, srcBuf)
+
+	*dst = BinaryValue(dstBuf)
+}
+
 // copyInt64Array copies values from src into dst. Returns the amount of copied
 // rows.
 //
@@ -79,4 +96,51 @@ func copyNullArray(dst []Row, columnIndex int, src *columnar.Null) int {
 		dst[i].Values[columnIndex].Zero()
 	}
 	return src.Len()
+}
+
+// scalarOf returns value as a scalar for the compute kernels, or nil if value
+// is null.
+//
+// scalarOf panics on a physical type that it does not know.
+func scalarOf(value Value) columnar.Datum {
+	switch value.Type() {
+	case datasetmd.PHYSICAL_TYPE_INT64:
+		return &columnar.NumberScalar[int64]{Value: value.Int64()}
+	case datasetmd.PHYSICAL_TYPE_UINT64:
+		return &columnar.NumberScalar[uint64]{Value: value.Uint64()}
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		return &columnar.UTF8Scalar{Value: value.Binary()}
+	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+		return nil
+	default:
+		panic(fmt.Sprintf("dataset.scalarOf: unsupported physical type %s", value.Type()))
+	}
+}
+
+// valueAt returns the value at index i of arr. A null element gives the nil
+// Value. The returned value shares memory with arr.
+//
+// valueAt panics on an array type that a page reader never returns.
+func valueAt(arr columnar.Array, i int) Value {
+	switch arr := arr.(type) {
+	case *columnar.Number[int64]:
+		if arr.IsNull(i) {
+			return Value{}
+		}
+		return Int64Value(arr.Get(i))
+	case *columnar.Number[uint64]:
+		if arr.IsNull(i) {
+			return Value{}
+		}
+		return Uint64Value(arr.Get(i))
+	case *columnar.UTF8:
+		if arr.IsNull(i) {
+			return Value{}
+		}
+		return BinaryValue(arr.Get(i))
+	case *columnar.Null:
+		return Value{}
+	default:
+		panic(fmt.Sprintf("dataset.valueAt: unsupported array type %T", arr))
+	}
 }

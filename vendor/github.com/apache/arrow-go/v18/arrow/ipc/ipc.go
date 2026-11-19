@@ -29,6 +29,7 @@ const (
 	errNotArrowFile             = errString("arrow/ipc: not an Arrow file")
 	errInconsistentFileMetadata = errString("arrow/ipc: file is smaller than indicated metadata size")
 	errInconsistentSchema       = errString("arrow/ipc: tried to write record batch with different schema")
+	errFileWriterClosed         = errString("arrow/ipc: file writer is already closed")
 	errMaxRecursion             = errString("arrow/ipc: max recursion depth reached")
 	errBigArray                 = errString("arrow/ipc: array larger than 2^31-1 in length")
 
@@ -67,6 +68,7 @@ type config struct {
 		offset int64
 	}
 	codec              flatbuf.CompressionType
+	zstdLevel          int
 	compressNP         int
 	ensureNativeEndian bool
 	noAutoSchema       bool
@@ -74,6 +76,7 @@ type config struct {
 	minSpaceSavings    float64
 	maxMetadataSize    int64
 	maxBodySize        int64
+	compressors        []compressor
 }
 
 const (
@@ -84,6 +87,12 @@ const (
 // Option is a functional option to configure opening or creating Arrow files
 // and streams.
 type Option func(*config)
+
+func withCompressors(compressors ...compressor) Option {
+	return func(cfg *config) {
+		cfg.compressors = compressors
+	}
+}
 
 func newConfig(opts ...Option) *config {
 	cfg := &config{
@@ -154,6 +163,28 @@ func WithLZ4() Option {
 func WithZstd() Option {
 	return func(cfg *config) {
 		cfg.codec = flatbuf.CompressionTypeZSTD
+	}
+}
+
+// WithZstdLevel tells the writer to use ZSTD compression with a given
+// compression level and implicitly enables ZSTD compression (equivalent to
+// calling WithZstd). The specified value is passed to the underlying
+// klauspost/compress/zstd encoder via EncoderLevelFromZstd, which collapses
+// the full Zstandard level range (1-22) into four encoder speed presets:
+//
+//	level <= 0     -> default (same as WithZstd alone)
+//	1-2            -> SpeedFastest
+//	3-5            -> SpeedDefault
+//	6-9            -> SpeedBetterCompression
+//	>=10           -> SpeedBestCompression
+//
+// Because the underlying encoder exposes only four discrete speed presets,
+// setting any level within the same range above produces identical
+// compression behaviour.
+func WithZstdLevel(level int) Option {
+	return func(cfg *config) {
+		cfg.codec = flatbuf.CompressionTypeZSTD
+		cfg.zstdLevel = level
 	}
 }
 

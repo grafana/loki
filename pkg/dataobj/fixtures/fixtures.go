@@ -29,9 +29,6 @@ var defaultLogSectionConfig = logSectionConfig{
 		AppendStrategy:            logs.AppendOrdered,
 		EstimatedCompressionRatio: 10,
 		SortOrder:                 logs.SortStreamASC,
-		SchemaLabels:              []string{"label:service_name"},
-		StreamOrder:               logs.StreamOrderStableHashV1,
-		ShardCount:                streams.DefaultShardLayout().Buckets(),
 		DropDuplicates:            false, // never modify the requested input
 	},
 }
@@ -57,6 +54,16 @@ func WithSchemaLabels(schemaLabels ...string) LogFixtureOpt {
 	}
 }
 
+// WithLayout computes the schema sort key and the shard bucket of each record
+// with layout. Without this option, the shard bucket comes from the default
+// shard layout.
+func WithLayout(layout streams.Layout) LogFixtureOpt {
+	return func(b *LogFixtureBuilder) {
+		b.schemaLabels = slices.Clone(layout.SchemaLabels())
+		b.shardLayout = layout.ShardLayout()
+	}
+}
+
 // LogFixtureOpt customizes a LogFixtureBuilder.
 type LogFixtureOpt func(*LogFixtureBuilder)
 
@@ -66,6 +73,7 @@ type LogFixtureOpt func(*LogFixtureBuilder)
 type LogFixtureBuilder struct {
 	t             *testing.T
 	schemaLabels  []string
+	shardLayout   streams.ShardLayout
 	streamIndexes map[string]int
 	streams       []streams.Stream
 	logs          []logs.Record
@@ -76,10 +84,12 @@ type LogFixtureBuilder struct {
 //
 // Callers may use either the ForStream(labelString).Entry(ts, md, msg) syntax or the more verbose Entry(stream, ts, md, msg) syntax.
 // Use WithSchemaLabels to choose the schema key used while building records.
-// The physical shard bucket always comes from the stable hash of stream labels.
+// The shard bucket comes from the stable hash of the stream labels; see
+// [WithLayout].
 func NewLogsFixtureBuilder(t *testing.T, opts ...LogFixtureOpt) *LogFixtureBuilder {
 	b := &LogFixtureBuilder{
-		t: t,
+		t:           t,
+		shardLayout: streams.DefaultShardLayout(),
 	}
 	for _, opt := range opts {
 		opt(b)
@@ -123,7 +133,7 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 		b.streamIndexes[key] = index
 		b.streams = append(b.streams, streams.Stream{
 			ID: int64(index + 1), Labels: stream,
-			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.DefaultShardLayout().BucketFromHash(streamHash)),
+			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(b.shardLayout.BucketFromHash(streamHash)),
 		})
 	}
 	s := &b.streams[index]
@@ -183,18 +193,52 @@ func LogsSection(t *testing.T, tenant string, rows []logs.Record, opts ...LogSec
 type streamSectionConfig struct {
 	pageSize     int
 	pageRowCount int
+	// layout is the layout that the section records, or nil to record none.
+	// A section without a layout uses the default shard layout.
+	layout *streams.Layout
 }
 
 var defaultStreamSectionConfig = streamSectionConfig{
 	pageSize:     1024 * 1024, // 1MB
 	pageRowCount: 10000,
+	layout:       new(streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"})),
 }
 
-// StreamsSection returns a streams.Builder populated with the given streams and assigned the specified tenant.
-func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream) dataobj.SectionBuilder {
-	t.Helper()
+// StreamsSectionOpt customizes the streams section that [StreamsSection]
+// builds.
+type StreamsSectionOpt func(*streamSectionConfig)
 
-	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), defaultStreamSectionConfig.pageSize, defaultStreamSectionConfig.pageRowCount, streams.DefaultShardLayout())
+// WithStreamsLayout makes the streams section record layout instead of the
+// default layout, which has the default shard layout and the schema label
+// service_name.
+func WithStreamsLayout(layout streams.Layout) StreamsSectionOpt {
+	return func(cfg *streamSectionConfig) { cfg.layout = &layout }
+}
+
+// WithoutStreamsLayout makes the streams section record no layout. The
+// section uses the default shard layout.
+func WithoutStreamsLayout() StreamsSectionOpt {
+	return func(cfg *streamSectionConfig) { cfg.layout = nil }
+}
+
+// StreamsSection returns a streams builder for tenant that holds labelSets.
+// The section records a layout; see [WithStreamsLayout] and
+// [WithoutStreamsLayout].
+func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream, opts ...StreamsSectionOpt) dataobj.SectionBuilder {
+	t.Helper()
+	config := defaultStreamSectionConfig
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	shardLayout := streams.DefaultShardLayout()
+	if config.layout != nil {
+		shardLayout = config.layout.ShardLayout()
+	}
+	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), config.pageSize, config.pageRowCount, shardLayout)
+	if config.layout != nil {
+		sectionBuilder.SetLayout(*config.layout)
+	}
 	sectionBuilder.SetTenant(tenant)
 
 	for _, stream := range labelSets {

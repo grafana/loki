@@ -63,7 +63,6 @@ Loki is developed in the open on GitHub at [grafana/loki](https://github.com/gra
 - **Report a bug.** Open an [issue](https://github.com/grafana/loki/issues/new/choose) on GitHub. Include your Loki version, deployment mode, relevant configuration, and steps to reproduce the problem.
 - **Suggest a feature.** Feature requests are also tracked as GitHub issues. Describe the use case and the behavior you would like to see.
 - **Submit a pull request.** The full contribution guide is in [CONTRIBUTING.md](https://github.com/grafana/loki/blob/main/CONTRIBUTING.md). It covers building from source, running tests, code style, and the review process. The [Contributing to Loki](https://grafana.com/docs/loki/latest/community/contributing/) docs page provides a quick-start summary.
-- **Propose a larger change.** For significant changes to Loki's architecture or behavior, write a [Loki Improvement Document (LID)](https://grafana.com/docs/loki/latest/community/lids/) and open it as a pull request for community discussion before starting implementation.
 
 {{< admonition type="note" >}}
 First-time contributors should look for issues labeled [`good first issue`](https://github.com/grafana/loki/labels/good%20first%20issue) for approachable starting points.

@@ -1,26 +1,33 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"math/rand"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+// nilValueText is how the test helpers print a nil value.
+const nilValueText = "<nil>"
 
 func Test_RowReader_Open_Prefetch(t *testing.T) {
 	dset, columns := buildTestDataset(t)
@@ -181,42 +188,46 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := NewRowReader(RowReaderOptions{
-		Dataset:          dset,
-		ProjectedColumns: cols,
+	empty := BinaryValue([]byte(""))
+	for name, predicate := range map[string]Predicate{
+		// Imitate predicate from logql: {last_name=""}
+		"an equality with an empty value":                          EqualPredicate{Column: cols[1], Value: empty},
+		"a less than or equal with an empty value":                 LessThanOrEqualPredicate{Column: cols[1], Value: empty},
+		"a not on a greater than with an empty value":              NotPredicate{Inner: GreaterThanPredicate{Column: cols[1], Value: empty}},
+		"an or of an equality and a less than with an empty value": OrPredicate{Left: EqualPredicate{Column: cols[1], Value: empty}, Right: LessThanPredicate{Column: cols[1], Value: empty}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := NewRowReader(RowReaderOptions{
+				Dataset:          dset,
+				ProjectedColumns: cols,
+				Predicates:       []Predicate{predicate},
+			})
+			t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		Predicates: []Predicate{
-			// Imitate predicate from logql: {last_name=""}
-			EqualPredicate{
-				Column: cols[1], // last_name column
-				Value:  BinaryValue([]byte("")),
-			},
-		},
-	})
-	defer r.Close()
+			actualRows, err := readDataset(t.Context(), r, 3)
+			require.NoError(t, err)
 
-	actualRows, err := readDataset(t.Context(), r, 3)
-	require.NoError(t, err)
+			actualFirstNames := make([]string, 0, len(actualRows))
+			actualLastNames := make([]string, 0, len(actualRows))
+			for _, row := range actualRows {
+				if row.Values[0].IsNil() && row.Values[1].IsNil() {
+					continue
+				}
+				actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
+				if !row.Values[1].IsNil() {
+					actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
+				} else {
+					actualLastNames = append(actualLastNames, "[nil]")
+				}
+			}
 
-	actualFirstNames := make([]string, 0, len(actualRows))
-	actualLastNames := make([]string, 0, len(actualRows))
-	for _, row := range actualRows {
-		if row.Values[0].IsNil() && row.Values[1].IsNil() {
-			continue
-		}
-		actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
-		if !row.Values[1].IsNil() {
-			actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
-		} else {
-			actualLastNames = append(actualLastNames, "[nil]")
-		}
+			// Filter expected data manually to verify
+			expectedFirstNames := []string{"Jim"}
+			expectedLastNames := []string{"[nil]"}
+			require.Equal(t, expectedFirstNames, actualFirstNames)
+			require.Equal(t, expectedLastNames, actualLastNames)
+		})
 	}
-
-	// Filter expected data manually to verify
-	expectedFirstNames := []string{"Jim"}
-	expectedLastNames := []string{"[nil]"}
-	require.Equal(t, expectedFirstNames, actualFirstNames)
-	require.Equal(t, expectedLastNames, actualLastNames)
 }
 
 func Test_RowReader_ReadWithPredicate_NoSecondary(t *testing.T) {
@@ -254,6 +265,12 @@ func Test_RowReader_ReadWithPredicate_NoSecondary(t *testing.T) {
 }
 
 func Test_RowReader_ReadWithPredicate(t *testing.T) {
+	var (
+		keepSome = func(line []byte) bool { return len(line) < 12 }
+		keepNone = func([]byte) bool { return false }
+		keepAll  = func([]byte) bool { return true }
+	)
+
 	t.Run("greater than keeps a row larger than the value", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 
@@ -450,6 +467,62 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		}
 		require.NotEmpty(t, expected)
 		require.Equal(t, expected, convertToTestPersons(actualRows))
+	})
+
+	t.Run("returns the same rows for an inclusive comparison, its or form and the not of the opposite comparison", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		first, year := columns[0], columns[3]
+
+		readRows := func(t *testing.T, p Predicate) []testPerson {
+			r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{p}})
+			t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+			rows, err := readDataset(t.Context(), r, 3)
+			require.NoError(t, err)
+			return convertToTestPersons(rows)
+		}
+
+		for name, tc := range map[string]struct {
+			column Column
+			values []Value
+		}{
+			"an int64 column keeps the same rows for every equivalent form":                            {year, []Value{Int64Value(1974), Int64Value(1975), Int64Value(1982), Int64Value(1983), Int64Value(1990), Int64Value(1991)}},
+			"a string column, including an empty value, keeps the same rows for every equivalent form": {first, []Value{BinaryValue(nil), BinaryValue([]byte("Aaron")), BinaryValue([]byte("Alice")), BinaryValue([]byte("Carl")), BinaryValue([]byte("Henry")), BinaryValue([]byte("Zed"))}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				for _, v := range tc.values {
+					var (
+						equal = EqualPredicate{Column: tc.column, Value: v}
+
+						greaterOrEqual = readRows(t, GreaterThanOrEqualPredicate{Column: tc.column, Value: v})
+						lessOrEqual    = readRows(t, LessThanOrEqualPredicate{Column: tc.column, Value: v})
+					)
+					require.Equal(t, readRows(t, OrPredicate{Left: GreaterThanPredicate{Column: tc.column, Value: v}, Right: equal}), greaterOrEqual, "greater than or equal to %v", v)
+					require.Equal(t, readRows(t, OrPredicate{Left: equal, Right: LessThanPredicate{Column: tc.column, Value: v}}), lessOrEqual, "less than or equal to %v", v)
+
+					require.Equal(t, readRows(t, NotPredicate{Inner: GreaterThanPredicate{Column: tc.column, Value: v}}), lessOrEqual, "not greater than %v", v)
+					require.Equal(t, readRows(t, NotPredicate{Inner: LessThanPredicate{Column: tc.column, Value: v}}), greaterOrEqual, "not less than %v", v)
+
+					require.Equal(t, readRows(t, LessThanPredicate{Column: tc.column, Value: v}), readRows(t, NotPredicate{Inner: GreaterThanOrEqualPredicate{Column: tc.column, Value: v}}), "not greater than or equal to %v", v)
+					require.Equal(t, readRows(t, GreaterThanPredicate{Column: tc.column, Value: v}), readRows(t, NotPredicate{Inner: LessThanOrEqualPredicate{Column: tc.column, Value: v}}), "not less than or equal to %v", v)
+
+					// A range as the logs time range builds it, including ranges of one value and empty ranges.
+					for _, w := range tc.values {
+						var (
+							orForm = AndPredicate{
+								Left:  OrPredicate{Left: GreaterThanPredicate{Column: tc.column, Value: v}, Right: equal},
+								Right: OrPredicate{Left: EqualPredicate{Column: tc.column, Value: w}, Right: LessThanPredicate{Column: tc.column, Value: w}},
+							}
+							inclusiveForm = AndPredicate{
+								Left:  GreaterThanOrEqualPredicate{Column: tc.column, Value: v},
+								Right: LessThanOrEqualPredicate{Column: tc.column, Value: w},
+							}
+						)
+						require.Equal(t, readRows(t, orForm), readRows(t, inclusiveForm), "range from %v to %v", v, w)
+					}
+				}
+			})
+		}
 	})
 
 	t.Run("keeps a row a not predicate over a real leaf admits", func(t *testing.T) {
@@ -974,6 +1047,244 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		require.Positive(t, stats[dataobj.StatDatasetPagesPruned.Name()])
 		require.Less(t, stats[dataobj.StatDatasetRowsAfterPruning.Name()], stats[dataobj.StatDatasetMaxRows.Name()])
 	})
+
+	t.Run("batch func returns the rows of the row func for every batch size", func(t *testing.T) {
+		firsts := map[string]func(id Column) Predicate{
+			"dense": func(id Column) Predicate {
+				return GreaterThanPredicate{Column: id, Value: Int64Value(-1)}
+			},
+			"gappy": func(id Column) Predicate {
+				return FuncPredicate{Column: id, Keep: func(_ Column, v Value) bool { return v.Int64()%3 != 1 }}
+			},
+		}
+		keeps := map[string]func([]byte) bool{"some": keepSome, "none": keepNone, "all": keepAll}
+
+		for firstName, first := range firsts {
+			for keepName, keep := range keeps {
+				t.Run("returns the rows of the row func with "+firstName+" earlier rows when the batch func keeps "+keepName+" lines", func(t *testing.T) {
+					dset, columns := buildBatchTestDataset(t)
+					rowOpts := RowReaderOptions{
+						Dataset:          dset,
+						ProjectedColumns: columns,
+						Predicates:       []Predicate{first(columns[0]), testFuncPredicate(columns[1], keep, false)},
+					}
+					batchOpts := rowOpts
+					batchOpts.Predicates = []Predicate{first(columns[0]), testFuncPredicate(columns[1], keep, true)}
+
+					for _, size := range []int{1, 2, 3, 7, 100} {
+						expected := readBatchTestRows(t, rowOpts, size)
+						if keepName != "none" {
+							require.NotEmpty(t, expected)
+						}
+						require.Equal(t, expected, readBatchTestRows(t, batchOpts, size), "batch size %d", size)
+					}
+				})
+			}
+		}
+	})
+
+	t.Run("column that only predicates read is not returned", func(t *testing.T) {
+		withoutMessage := func(rows []batchTestRow) []batchTestRow {
+			for i := range rows {
+				rows[i].message = ""
+			}
+			return rows
+		}
+
+		for name, withKeepBatch := range map[string]bool{"batch func": true, "row func": false} {
+			t.Run("returns only the projected columns when a "+name+" reads the column", func(t *testing.T) {
+				dset, columns := buildBatchTestDataset(t)
+				opts := RowReaderOptions{
+					Dataset:          dset,
+					ProjectedColumns: columns,
+					Predicates: []Predicate{
+						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+						testFuncPredicate(columns[1], keepSome, withKeepBatch),
+					},
+				}
+				expected := withoutMessage(readBatchTestRows(t, opts, 3))
+				require.NotEmpty(t, expected)
+
+				opts.ProjectedColumns = []Column{columns[0], columns[2]}
+				for _, size := range []int{1, 3, 100} {
+					require.Equal(t, expected, readBatchTestRows(t, opts, size), "batch size %d", size)
+				}
+			})
+		}
+
+		t.Run("returns only the projected columns when the func is the first predicate", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+			opts := RowReaderOptions{
+				Dataset:          dset,
+				ProjectedColumns: columns,
+				Predicates:       []Predicate{testFuncPredicate(columns[1], keepSome, true)},
+			}
+			expected := withoutMessage(readBatchTestRows(t, opts, 3))
+			require.NotEmpty(t, expected)
+
+			opts.ProjectedColumns = []Column{columns[0], columns[2]}
+			require.Equal(t, expected, readBatchTestRows(t, opts, 3))
+		})
+
+		t.Run("returns only the projected columns when an equal predicate reads the column", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+			opts := RowReaderOptions{
+				Dataset:          dset,
+				ProjectedColumns: columns,
+				Predicates:       []Predicate{EqualPredicate{Column: columns[1], Value: BinaryValue([]byte("line 1 x"))}},
+			}
+			expected := withoutMessage(readBatchTestRows(t, opts, 3))
+			require.Len(t, expected, 1)
+
+			opts.ProjectedColumns = []Column{columns[0], columns[2]}
+			require.Equal(t, expected, readBatchTestRows(t, opts, 3))
+		})
+
+		t.Run("copies the values of the column only when a row func reads it", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+
+			copiedValues := func(withKeepBatch bool) int {
+				r := NewRowReader(RowReaderOptions{
+					Dataset:          dset,
+					ProjectedColumns: []Column{columns[0], columns[2]},
+					Predicates: []Predicate{
+						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+						testFuncPredicate(columns[1], keepSome, withKeepBatch),
+					},
+				})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+				require.NoError(t, r.Open(t.Context()))
+
+				buf := make([]Row, 100)
+				n, err := r.Read(t.Context(), buf)
+				require.NoError(t, err)
+				require.NotZero(t, n)
+
+				// The value of a column that only predicates read sits after the projected values,
+				// in the capacity of Row.Values.
+				var copied int
+				for _, row := range buf[:n] {
+					if !row.Values[:3][2].IsNil() {
+						copied++
+					}
+				}
+				return copied
+			}
+
+			require.NotZero(t, copiedValues(false))
+			require.Zero(t, copiedValues(true))
+		})
+	})
+
+	t.Run("batch func does not run for the first predicate", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicate := testFuncPredicate(columns[1], keepSome, false)
+		predicate.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for the first predicate")
+			return nil
+		}
+
+		opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{predicate}}
+		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
+	})
+
+	t.Run("batch func does not run for a column that two predicates read", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		withKeepBatch := testFuncPredicate(columns[1], keepSome, false)
+		withKeepBatch.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for a column that another predicate reads")
+			return nil
+		}
+
+		opts := RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				withKeepBatch,
+				testFuncPredicate(columns[1], keepAll, false),
+			},
+		}
+		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
+	})
+
+	t.Run("batch func does not run for a column that is not binary", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		keepEvenIDs := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(_ Column, v Value) bool { return v.Int64()%2 == 0 },
+		}
+		withKeepBatch := keepEvenIDs
+		withKeepBatch.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for a column that is not binary")
+			return nil
+		}
+		first := testFuncPredicate(columns[1], keepAll, false)
+
+		rowOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{first, keepEvenIDs}}
+		batchOpts := rowOpts
+		batchOpts.Predicates = []Predicate{first, withKeepBatch}
+
+		want := readBatchTestRows(t, rowOpts, 3)
+		require.NotEmpty(t, want)
+		require.Equal(t, want, readBatchTestRows(t, batchOpts, 3))
+	})
+
+	t.Run("batch func that keeps an invalid index returns an error", func(t *testing.T) {
+		badIndexes := map[string]func(n int) []int32{
+			"a repeated index": func(int) []int32 { return []int32{0, 0} },
+			"a descending pair": func(n int) []int32 {
+				return []int32{int32(n - 1), 0}
+			},
+			"a negative index":      func(int) []int32 { return []int32{-1} },
+			"an index out of range": func(n int) []int32 { return []int32{int32(n)} },
+		}
+
+		for name, bad := range badIndexes {
+			t.Run(name, func(t *testing.T) {
+				dset, columns := buildBatchTestDataset(t)
+
+				var calls int
+				predicate := testFuncPredicate(columns[1], keepSome, false)
+				predicate.KeepBatch = func(_ Column, values *columnar.UTF8, dstIndexes []int32) []int32 {
+					calls++
+					if calls == 1 {
+						return dstIndexes
+					}
+					return append(dstIndexes, bad(values.Len())...)
+				}
+
+				r := NewRowReader(RowReaderOptions{
+					Dataset:          dset,
+					ProjectedColumns: columns,
+					Predicates: []Predicate{
+						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+						predicate,
+					},
+				})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+				_, err := readDataset(t.Context(), r, 100)
+				require.ErrorContains(t, err, "want ascending indexes in range")
+			})
+		}
+	})
+
+	t.Run("batch func reports the same stats as the row func", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicates := func(withKeepBatch bool) []Predicate {
+			return []Predicate{
+				FuncPredicate{Column: columns[0], Keep: func(_ Column, v Value) bool { return v.Int64()%3 != 1 }},
+				testFuncPredicate(columns[1], keepSome, withKeepBatch),
+			}
+		}
+
+		rowStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates(false)})
+		batchStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates(true)})
+
+		require.NotZero(t, rowStats[dataobj.StatDatasetPrimaryRowBytes.Name()])
+		require.Equal(t, rowStats, batchStats)
+	})
 }
 
 func Test_RowReader_Reset(t *testing.T) {
@@ -1077,6 +1388,68 @@ func Test_RowReader_Reset(t *testing.T) {
 		for _, row := range rows {
 			require.Len(t, row.Values, 2)
 		}
+	})
+
+	t.Run("returns the columns of the new projection after a reset with a batch func", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicates := []Predicate{
+			GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+			testFuncPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
+		}
+		allOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates}
+		expectedAll := readBatchTestRows(t, allOpts, 3)
+		require.NotEmpty(t, expectedAll)
+
+		withoutMessageOpts := allOpts
+		withoutMessageOpts.ProjectedColumns = []Column{columns[0], columns[2]}
+		r := NewRowReader(withoutMessageOpts)
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		withoutMessage := readBatchTestRowsWith(t, r, 3)
+		require.Len(t, withoutMessage, len(expectedAll))
+		for _, row := range withoutMessage {
+			require.Empty(t, row.message)
+		}
+
+		r.Reset(allOpts)
+		require.Equal(t, expectedAll, readBatchTestRowsWith(t, r, 3))
+
+		r.Reset(withoutMessageOpts)
+		require.Equal(t, withoutMessage, readBatchTestRowsWith(t, r, 3))
+	})
+
+	t.Run("forgets the batch predicates after a reset with a different predicate set", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		batchOpts := RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				testFuncPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
+			},
+		}
+		plainOpts := RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(10)},
+			},
+		}
+		expectedPlain := readBatchTestRows(t, plainOpts, 3)
+		require.NotEmpty(t, expectedPlain)
+
+		r := NewRowReader(batchOpts)
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		first := readBatchTestRowsWith(t, r, 3)
+		require.NotEmpty(t, first)
+
+		r.Reset(plainOpts)
+		require.Equal(t, expectedPlain, readBatchTestRowsWith(t, r, 3))
+
+		r.Reset(batchOpts)
+		require.Equal(t, first, readBatchTestRowsWith(t, r, 3))
 	})
 }
 
@@ -1220,6 +1593,66 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			want:      rangeset.From(rangeset.Range{Start: 0, End: 750}), // Pages 1 and 2 of Timestamp column
 		},
 		{
+			name:      "greater than or equal predicate includes a page whose maximum equals the value",
+			predicate: GreaterThanOrEqualPredicate{Column: cols[1], Value: Int64Value(500)},
+			want:      rangeset.From(rangeset.Range{Start: 250, End: 1000}), // Pages 2 and 3 of Timestamp column
+		},
+		{
+			name:      "greater than predicate excludes a page whose maximum equals the value",
+			predicate: GreaterThanPredicate{Column: cols[1], Value: Int64Value(500)},
+			want:      rangeset.From(rangeset.Range{Start: 750, End: 1000}), // Page 3 of Timestamp column
+		},
+		{
+			name:      "equal to zero prunes the pages whose minimum is above zero",
+			predicate: EqualPredicate{Column: cols[0], Value: Int64Value(0)},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "less than or equal to zero prunes the pages whose minimum is above zero",
+			predicate: LessThanOrEqualPredicate{Column: cols[0], Value: Int64Value(0)},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "greater than or equal predicate above every page matches no row",
+			predicate: GreaterThanOrEqualPredicate{Column: cols[1], Value: Int64Value(1001)},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "less than or equal predicate includes a page whose minimum equals the value",
+			predicate: LessThanOrEqualPredicate{Column: cols[1], Value: Int64Value(200)},
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 750}), // Pages 1 and 2 of Timestamp column
+		},
+		{
+			name:      "less than predicate excludes a page whose minimum equals the value",
+			predicate: LessThanPredicate{Column: cols[1], Value: Int64Value(200)},
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 250}), // Page 1 of Timestamp column
+		},
+		{
+			name:      "less than or equal predicate below every page matches no row",
+			predicate: LessThanOrEqualPredicate{Column: cols[1], Value: Int64Value(-1)},
+			want:      rangeset.Set{},
+		},
+		{
+			name:      "not of a greater than predicate keeps a page whose minimum equals the value",
+			predicate: NotPredicate{Inner: GreaterThanPredicate{Column: cols[1], Value: Int64Value(200)}},
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 750}), // Pages 1 and 2 of Timestamp column
+		},
+		{
+			name:      "not of a less than predicate keeps a page whose maximum equals the value",
+			predicate: NotPredicate{Inner: LessThanPredicate{Column: cols[1], Value: Int64Value(500)}},
+			want:      rangeset.From(rangeset.Range{Start: 250, End: 1000}), // Pages 2 and 3 of Timestamp column
+		},
+		{
+			name:      "not of a greater than or equal predicate drops a page whose minimum equals the value",
+			predicate: NotPredicate{Inner: GreaterThanOrEqualPredicate{Column: cols[1], Value: Int64Value(200)}},
+			want:      rangeset.From(rangeset.Range{Start: 0, End: 250}), // Page 1 of Timestamp column
+		},
+		{
+			name:      "not of a less than or equal predicate drops a page whose maximum equals the value",
+			predicate: NotPredicate{Inner: LessThanOrEqualPredicate{Column: cols[1], Value: Int64Value(500)}},
+			want:      rangeset.From(rangeset.Range{Start: 750, End: 1000}), // Page 3 of Timestamp column
+		},
+		{
 			name: "and predicate",
 			predicate: AndPredicate{
 				Left:  EqualPredicate{Column: cols[0], Value: Int64Value(1)},      // Rows 0 - 299 of stream column
@@ -1289,6 +1722,46 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			require.Equal(t, tc.want, got, "row ranges should match expected ranges")
 		})
 	}
+
+	t.Run("keeps a page for an empty value, prunes a page with statistics outside them and keeps a page without statistics", func(t *testing.T) {
+		minValue, err := BinaryValue([]byte("b")).MarshalBinary()
+		require.NoError(t, err)
+		maxValue, err := BinaryValue([]byte("d")).MarshalBinary()
+		require.NoError(t, err)
+
+		dset := FromMemory([]*MemColumn{{
+			Desc: ColumnDesc{Tag: "message", Type: ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"}, RowsCount: 15},
+			Pages: []*MemPage{
+				{Desc: PageDesc{RowCount: 10, ValuesCount: 10, Stats: &datasetmd.Statistics{MinValue: minValue, MaxValue: maxValue}}},
+				{Desc: PageDesc{RowCount: 5, ValuesCount: 5}},
+			},
+		}})
+		columns, err := result.Collect(dset.ListColumns(t.Context()))
+		require.NoError(t, err)
+
+		for _, tc := range []struct {
+			name      string
+			predicate Predicate
+			want      rangeset.Set
+		}{
+			{"equal to an empty value keeps every page", EqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"equal to a value above the page prunes the page with statistics", EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
+			{"greater than or equal to an empty value keeps every page", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"less than or equal to an empty value keeps every page", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue(nil)}, rangeset.From(rangeset.Range{Start: 0, End: 15})},
+			{"greater than or equal to a value above the page prunes the page with statistics", GreaterThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("e"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
+			{"less than or equal to a value below the page prunes the page with statistics", LessThanOrEqualPredicate{Column: columns[0], Value: BinaryValue([]byte("a"))}, rangeset.From(rangeset.Range{Start: 10, End: 15})},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+				require.NoError(t, r.Open(t.Context()))
+
+				got, err := r.buildPredicateRanges(t.Context(), tc.predicate)
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+			})
+		}
+	})
 }
 
 // buildMemDatasetWithStats creates a test dataset with only column and page stats.
@@ -1376,7 +1849,146 @@ func encodeInt64Value(t *testing.T, v int64) []byte {
 	return data
 }
 
-func BenchmarkReader(b *testing.B) {
+// batchTestRow is a row of the dataset of [buildBatchTestDataset]. The message of a row with a
+// nil message is [nilValueText].
+type batchTestRow struct {
+	id      int64
+	message string
+	extra   string
+}
+
+// buildBatchTestDataset returns a dataset with an id column, a message column and an extra
+// column, in this order. Every column has more than one page. The message column has null
+// values, empty values and values of different lengths.
+func buildBatchTestDataset(t *testing.T) (Dataset, []Column) {
+	t.Helper()
+
+	var (
+		ids      = buildInt64Column(t, "id")
+		messages = buildStringColumn(t, "message")
+		extras   = buildStringColumn(t, "extra")
+	)
+	for i := range 40 {
+		message := BinaryValue([]byte(fmt.Sprintf("line %d %s", i, strings.Repeat("x", i%9))))
+		switch {
+		case i%7 == 3:
+			message = Value{}
+		case i%5 == 0:
+			message = BinaryValue(nil)
+		}
+
+		require.NoError(t, ids.Append(i, Int64Value(int64(i))))
+		require.NoError(t, messages.Append(i, message))
+		require.NoError(t, extras.Append(i, BinaryValue([]byte(fmt.Sprintf("extra-%d", i)))))
+	}
+
+	var memColumns []*MemColumn
+	for _, b := range []*ColumnBuilder{ids, messages, extras} {
+		col, err := b.Flush()
+		require.NoError(t, err)
+		require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
+		memColumns = append(memColumns, col)
+	}
+
+	dset := FromMemory(memColumns)
+	columns, err := result.Collect(dset.ListColumns(t.Context()))
+	require.NoError(t, err)
+	return dset, columns
+}
+
+// testFuncPredicate returns a predicate on column that keeps the lines for which keep returns
+// true. A null value reads as an empty line. It sets KeepBatch only when withKeepBatch is true.
+func testFuncPredicate(column Column, keep func(line []byte) bool, withKeepBatch bool) FuncPredicate {
+	p := FuncPredicate{
+		Column: column,
+		Keep: func(_ Column, value Value) bool {
+			if value.IsNil() {
+				return keep(nil)
+			}
+			return keep(value.Binary())
+		},
+	}
+	if withKeepBatch {
+		p.KeepBatch = func(_ Column, values *columnar.UTF8, dstIndexes []int32) []int32 {
+			for i := range values.Len() {
+				if keep(values.Get(i)) {
+					dstIndexes = append(dstIndexes, int32(i))
+				}
+			}
+			return dstIndexes
+		}
+	}
+	return p
+}
+
+func readBatchTestRows(t *testing.T, opts RowReaderOptions, batchSize int) []batchTestRow {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	return readBatchTestRowsWith(t, r, batchSize)
+}
+
+// readBatchTestRowsWith reads every row of r into one buffer that it reuses, so a value that a
+// read leaves in a row can reach the next read.
+//
+// A row of two values holds the id and extra columns, which is what a reader that does not
+// project the message returns. The message of such a row is empty.
+func readBatchTestRowsWith(t *testing.T, r *RowReader, batchSize int) []batchTestRow {
+	t.Helper()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	var (
+		out []batchTestRow
+		buf = make([]Row, batchSize)
+	)
+	for {
+		n, err := r.Read(t.Context(), buf)
+		for _, row := range buf[:n] {
+			if len(row.Values) == 2 {
+				out = append(out, batchTestRow{id: row.Values[0].Int64(), extra: string(row.Values[1].Binary())})
+				continue
+			}
+
+			message := nilValueText
+			if !row.Values[1].IsNil() {
+				message = string(row.Values[1].Binary())
+			}
+			out = append(out, batchTestRow{
+				id:      row.Values[0].Int64(),
+				message: message,
+				extra:   string(row.Values[2].Binary()),
+			})
+		}
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		require.NoError(t, err)
+	}
+}
+
+func readBatchTestStats(t *testing.T, opts RowReaderOptions) map[string]int64 {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+	ctx, _ := xcap.NewCapture(t.Context(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
+	_, err := readDataset(ctx, r, 7)
+	require.NoError(t, err)
+
+	stats := make(map[string]int64)
+	for _, obs := range region.Observations() {
+		stats[obs.Statistic.Name()] = obs.Value.(int64)
+	}
+	return stats
+}
+
+func BenchmarkRowReader(b *testing.B) {
 	generator := DatasetGenerator{
 		RowCount:     1_000_000,
 		PageSizeHint: 2 * 1024 * 1024, // 2MB
@@ -1403,6 +2015,21 @@ func BenchmarkReader(b *testing.B) {
 				AvgSize:           1024,
 				CardinalityTarget: 100_000,
 			},
+			// Low-cardinality columns for the sparse projection cases below.
+			{
+				Tag:               "cardinality-2",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 2,
+			},
+			{
+				Tag:               "cardinality-10",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 10,
+			},
 		},
 	}
 
@@ -1424,35 +2051,118 @@ func BenchmarkReader(b *testing.B) {
 	ds, cols := generator.Build(b, rand.Int63())
 	opts := RowReaderOptions{
 		Dataset:          ds,
-		ProjectedColumns: cols,
+		ProjectedColumns: cols[:3],
+	}
+
+	readAll := func(b *testing.B, opts RowReaderOptions, batchSize int) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		batch := make([]Row, batchSize)
+		for b.Loop() {
+			reader := NewRowReader(opts)
+			require.NoError(b, reader.Open(b.Context()))
+
+			var rowsRead int
+			for {
+				n, err := reader.Read(b.Context(), batch)
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
+				rowsRead += n
+			}
+			reader.Close()
+
+			b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
+		}
 	}
 
 	for _, rp := range readPatterns {
 		b.Run(rp.name, func(b *testing.B) {
-			b.ResetTimer()
-			b.ReportAllocs()
-
-			batch := make([]Row, rp.batchSize)
-			for b.Loop() {
-				reader := NewRowReader(opts)
-				require.NoError(b, reader.Open(context.Background()))
-
-				var rowsRead int
-				for {
-					n, err := reader.Read(context.Background(), batch)
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						b.Fatal(err)
-					}
-					rowsRead += n
-				}
-				reader.Close()
-
-				b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
-			}
+			readAll(b, opts, rp.batchSize)
 		})
+	}
+
+	// Each line is a random one of 100000 values. A value holds its number followed by x bytes.
+	// The needle "123x" is in the values whose number ends in 123, which is about 0.1% of the
+	// lines, and "x" is in every line.
+	filters := []struct {
+		name   string
+		needle []byte
+	}{
+		{name: "keeps-0.1-percent", needle: []byte("123x")},
+		{name: "keeps-all", needle: []byte("x")},
+	}
+	forms := []struct {
+		name         string
+		batch        bool
+		notProjected bool
+	}{
+		{name: "row"},
+		{name: "batch", batch: true},
+		{name: "batch-not-projected", batch: true, notProjected: true},
+	}
+
+	for _, rp := range readPatterns {
+		for _, filter := range filters {
+			for _, form := range forms {
+				b.Run(rp.name+"/"+filter.name+"/"+form.name, func(b *testing.B) {
+					message := FuncPredicate{
+						Column: cols[2],
+						Keep: func(_ Column, value Value) bool {
+							return bytes.Contains(value.Binary(), filter.needle)
+						},
+					}
+					if form.batch {
+						message.KeepBatch = func(_ Column, values *columnar.UTF8, dstIndexes []int32) []int32 {
+							for i := range values.Len() {
+								if bytes.Contains(values.Get(i), filter.needle) {
+									dstIndexes = append(dstIndexes, int32(i))
+								}
+							}
+							return dstIndexes
+						}
+					}
+
+					filterOpts := opts
+					filterOpts.Predicates = []Predicate{
+						LessThanPredicate{Column: cols[1], Value: Int64Value(math.MaxInt64)},
+						message,
+					}
+					if form.notProjected {
+						filterOpts.ProjectedColumns = cols[:2]
+					}
+					readAll(b, filterOpts, rp.batchSize)
+				})
+			}
+		}
+	}
+
+	// An equality predicate on a column with cardinality n keeps about 1 row in n.
+	// The reader skips the other rows in the projected timestamp and log columns.
+	sparseProjections := []struct {
+		name   string
+		column Column
+	}{
+		{name: "keeps-1-in-2", column: cols[3]},
+		{name: "keeps-1-in-10", column: cols[4]},
+		{name: "keeps-1-in-1000", column: cols[0]},
+	}
+
+	for _, rp := range readPatterns {
+		for _, sparse := range sparseProjections {
+			b.Run(rp.name+"/sparse-projection/"+sparse.name, func(b *testing.B) {
+				sparseOpts := opts
+				sparseOpts.ProjectedColumns = cols[1:3]
+				sparseOpts.Predicates = []Predicate{
+					EqualPredicate{Column: sparse.column, Value: Int64Value(0)},
+				}
+				readAll(b, sparseOpts, rp.batchSize)
+			})
+		}
 	}
 }
 
@@ -1610,6 +2320,38 @@ func BenchmarkPredicateExecution(b *testing.B) {
 		}
 	}
 
+	// These patterns filter the more_selective column with an inclusive range, as the time
+	// range of a logs section does. The first writes each bound as an or of a comparison and
+	// an equality. The second writes each bound as one predicate.
+	const (
+		lowerBound = 100_000
+		upperBound = 300_000
+	)
+	predicatePatterns = append(predicatePatterns,
+		predicatePattern{
+			name:             "range=or-of-comparisons",
+			projectedColumns: cols[:2],
+			predicates: []Predicate{AndPredicate{
+				Left: OrPredicate{
+					Left:  GreaterThanPredicate{Column: cols[0], Value: Int64Value(lowerBound)},
+					Right: EqualPredicate{Column: cols[0], Value: Int64Value(lowerBound)},
+				},
+				Right: OrPredicate{
+					Left:  LessThanPredicate{Column: cols[0], Value: Int64Value(upperBound)},
+					Right: EqualPredicate{Column: cols[0], Value: Int64Value(upperBound)},
+				},
+			}},
+		},
+		predicatePattern{
+			name:             "range=inclusive-predicates",
+			projectedColumns: cols[:2],
+			predicates: []Predicate{AndPredicate{
+				Left:  GreaterThanOrEqualPredicate{Column: cols[0], Value: Int64Value(lowerBound)},
+				Right: LessThanOrEqualPredicate{Column: cols[0], Value: Int64Value(upperBound)},
+			}},
+		},
+	)
+
 	for _, pp := range predicatePatterns {
 		b.Run(pp.name, func(b *testing.B) {
 			b.ResetTimer()
@@ -1760,6 +2502,10 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 			require.True(t, ok, "generator should yield values")
 			require.NoError(t, builder.Append(i, val))
 		}
+
+		// Backfill the trailing rows of a sparse column, as the logs, streams and indexpointers
+		// section builders do. Then every column holds RowCount rows.
+		builder.Backfill(g.RowCount)
 
 		col, err := builder.Flush()
 		require.NoError(t, err)
@@ -2155,7 +2901,7 @@ func readValuesAndIndexes(ctx context.Context, t *testing.T, r *RowReader, batch
 			for _, v := range row.Values {
 				switch {
 				case v.IsNil():
-					strs = append(strs, "NULL")
+					strs = append(strs, nilValueText)
 				case v.Type() == datasetmd.PHYSICAL_TYPE_INT64:
 					strs = append(strs, strconv.FormatInt(v.Int64(), 10))
 				default:

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"unsafe"
+
+	"github.com/goccy/go-json/internal/jsonnum"
 )
 
 type uintDecoder struct {
@@ -17,11 +19,25 @@ type uintDecoder struct {
 func newUintDecoder(typ reflect.Type, structName, fieldName string, op func(unsafe.Pointer, uint64)) *uintDecoder {
 	return &uintDecoder{
 		typ:        typ,
-		kind:       typ.Kind(),
+		kind:       uintKindOf(typ),
 		op:         op,
 		structName: structName,
 		fieldName:  fieldName,
 	}
+}
+
+// uintKindOf returns the kind of the unsigned integers of the size of typ, whose range the decoder checks: a uint
+// and a uintptr are a uint32 on a 32-bit platform.
+func uintKindOf(typ reflect.Type) reflect.Kind {
+	switch typ.Size() {
+	case 1:
+		return reflect.Uint8
+	case 2:
+		return reflect.Uint16
+	case 4:
+		return reflect.Uint32
+	}
+	return reflect.Uint64
 }
 
 func (d *uintDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
@@ -30,6 +46,10 @@ func (d *uintDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.
 	if buf[cursor] == 'n' {
 		if err := validateNull(buf, cursor); err != nil {
 			return 0, err
+		}
+		if ctx.Option.V2&(V2Semantics|V2MergeWithLegacySemantics) == V2Semantics {
+			// the semantics of encoding/json/v2 decode null as the zero value, but with MergeWithLegacySemantics
+			d.op(p, 0)
 		}
 		return cursor + 4, nil
 	}
@@ -42,16 +62,10 @@ func (d *uintDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.
 		return d.decodeSlow(ctx, start, depth, p)
 	}
 	if digits == maxUint64Digits+1 {
-		// 20 digits: the value of the first 19 is exact, and the last one fits if the whole is less than 1<<64.
-		var hi uint64
-		for i := int64(0); i < maxUint64Digits; i++ {
-			hi = hi*10 + uint64(buf[start+i]-'0')
-		}
-		lo := uint64(buf[start+maxUint64Digits] - '0')
-		if hi > (1<<64-1)/10 || (hi == (1<<64-1)/10 && lo > (1<<64-1)%10) {
+		var ok bool
+		if u, ok = jsonnum.TwentyDigits(buf, start); !ok {
 			return d.decodeSlow(ctx, start, depth, p)
 		}
-		u = hi*10 + lo
 	}
 	switch d.kind {
 	case reflect.Uint8:
@@ -91,8 +105,7 @@ func (d *uintDecoder) decodeSlow(ctx *RuntimeContext, cursor, depth int64, p uns
 		if err != nil {
 			return 0, err
 		}
-		ctx.numberTypeError(cursor, end, d.typ)
-		return end, nil
+		return ctx.numberError(cursor, end, d.typ)
 	case c-'0' > 9:
 		// a value of another kind
 		return ctx.skipTypeError(cursor, depth, d.typ)
@@ -105,37 +118,26 @@ func (d *uintDecoder) decodeSlow(ctx *RuntimeContext, cursor, depth int64, p uns
 		if err != nil {
 			return 0, err
 		}
-		ctx.numberTypeError(start, end, d.typ)
-		return end, nil
+		return ctx.numberError(start, end, d.typ)
 	}
 	if digits == maxUint64Digits+1 {
-		// 20 digits: the value of the first 19 is exact, and the last one fits if the whole is less than 1<<64.
-		var hi uint64
-		for i := int64(0); i < maxUint64Digits; i++ {
-			hi = hi*10 + uint64(buf[start+i]-'0')
+		var ok bool
+		if u, ok = jsonnum.TwentyDigits(buf, start); !ok {
+			return ctx.numberError(start, next, d.typ)
 		}
-		lo := uint64(buf[start+maxUint64Digits] - '0')
-		if hi > (1<<64-1)/10 || (hi == (1<<64-1)/10 && lo > (1<<64-1)%10) {
-			ctx.numberTypeError(start, next, d.typ)
-			return next, nil
-		}
-		u = hi*10 + lo
 	}
 	switch d.kind {
 	case reflect.Uint8:
 		if (1 << 8) <= u {
-			ctx.numberTypeError(start, next, d.typ)
-			return next, nil
+			return ctx.numberError(start, next, d.typ)
 		}
 	case reflect.Uint16:
 		if (1 << 16) <= u {
-			ctx.numberTypeError(start, next, d.typ)
-			return next, nil
+			return ctx.numberError(start, next, d.typ)
 		}
 	case reflect.Uint32:
 		if (1 << 32) <= u {
-			ctx.numberTypeError(start, next, d.typ)
-			return next, nil
+			return ctx.numberError(start, next, d.typ)
 		}
 	}
 	d.op(p, u)

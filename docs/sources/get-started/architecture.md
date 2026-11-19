@@ -45,7 +45,7 @@ The diagram above shows the high-level overview of the data that is stored in th
 
 There is one index format that is currently supported as single store with index shipper:
 
-- [TSDB](../../operations/storage/tsdb/) (recommended)
+- [TSDB](../../operations/storage/tsdb/)
 
   Time Series Database (or short TSDB) is an [index format](https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/index.md) originally developed by the maintainers of [Prometheus](https://github.com/prometheus/prometheus) for time series (metric) data.
 
