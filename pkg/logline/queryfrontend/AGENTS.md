@@ -59,9 +59,11 @@ the querier rejects it.
   the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **`max_conjunctions`** (default 1) bounds the needle sets a query is planned
-  into. The frontend uses it for the eligibility check and sends it to the
-  querier in `LoglineIndexRequest.max_conjunctions`, like `ngram_length`. Set it
-  above 1 explicitly to enable multiple conjunctions on a cell.
+  into. The frontend uses it for the eligibility check, the hint cache key and
+  the plan, and sends the planned needles to the querier in
+  `LoglineIndexRequest.conjunctions`. The querier does not plan, so it has no
+  setting for this. Set it above 1 explicitly to enable multiple conjunctions
+  on a cell.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
   sub-interval responses. It inherits `Direction`, `Limit`, and `Version` from

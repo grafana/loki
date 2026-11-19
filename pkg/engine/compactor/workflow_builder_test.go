@@ -22,9 +22,12 @@ func TestReadCompactionResult(t *testing.T) {
 	readErr := errors.New("worker failed after upload")
 	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
-	want := v2.ResultArtifact{Path: "indexes/result"}
+	want := []v2.ResultArtifact{
+		{Path: "indexes/result-a"},
+		{Path: "indexes/result-b"},
+	}
 	resultRecord := func() arrow.RecordBatch {
-		rec, err := want.ToRecordBatch(mem)
+		rec, err := v2.EncodeResultArtifacts(mem, want)
 		require.NoError(t, err)
 		return rec
 	}
@@ -43,7 +46,7 @@ func TestReadCompactionResult(t *testing.T) {
 		{name: "success", records: []arrow.RecordBatch{resultRecord()}},
 		{name: "missing", wantErr: "produced no result record"},
 		{name: "nil record", records: []arrow.RecordBatch{nil}, wantErr: "missing record"},
-		{name: "empty batch", records: []arrow.RecordBatch{emptyRecord()}, wantErr: "got 0 rows, want 1"},
+		{name: "empty batch", records: []arrow.RecordBatch{emptyRecord()}, wantErr: "no rows"},
 		{name: "multiple records", records: []arrow.RecordBatch{resultRecord(), resultRecord()}, wantErr: "more than one result record"},
 		{name: "open failure", openErr: readErr, wantErr: "pipeline.Open"},
 		{name: "read failure", readErr: readErr, wantErr: "pipeline.Read"},
@@ -63,7 +66,7 @@ func TestReadCompactionResult(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, &want, got)
+			require.Equal(t, want, got)
 			require.Equal(t, 2, pipeline.reads, "a result alone is not successful completion")
 		})
 	}

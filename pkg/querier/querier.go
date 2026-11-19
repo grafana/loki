@@ -200,8 +200,8 @@ func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *Inge
 			loglineStore,
 			ngramLength,
 			maxHintParallel,
-			// The query-frontend sends max_conjunctions with every request. 0
-			// only applies to requests from an older frontend.
+			// The query-frontend sends the needles it planned, so the querier
+			// does not plan with a cap of its own.
 			0,
 			observeQueryMultipleTermBatches,
 			logger,

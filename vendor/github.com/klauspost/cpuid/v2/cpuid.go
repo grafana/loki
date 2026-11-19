@@ -1439,8 +1439,8 @@ func support() flagSet {
 	if vend == AMD && (d&(1<<28)) != 0 && mfi >= 4 {
 		fs.setIf(threadsPerCore() > 1, HTT)
 	}
-	fs.setIf(c&1<<26 != 0, XSAVE)
-	fs.setIf(c&1<<27 != 0, OSXSAVE)
+	fs.setIf(c&(1<<26) != 0, XSAVE)
+	fs.setIf(c&(1<<27) != 0, OSXSAVE)
 	// Check XGETBV/XSAVE (26), OXSAVE (27) and AVX (28) bits
 	const avxCheck = 1<<26 | 1<<27 | 1<<28
 	if c&avxCheck == avxCheck {

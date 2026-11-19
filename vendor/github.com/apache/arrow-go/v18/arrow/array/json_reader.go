@@ -229,4 +229,8 @@ func (r *JSONReader) nextn() bool {
 	return n > 0
 }
 
+func (r *JSONReader) InputOffset() int64 {
+	return r.r.InputOffset()
+}
+
 var _ RecordReader = (*JSONReader)(nil)

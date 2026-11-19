@@ -36,35 +36,48 @@ func TestStorage_InvalidSeries(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 
 	// Samples
-	_, err = app.Append(0, labels.Labels{}, 0, 0)
+	_, err = app.Append(0, labels.Labels{}, 0, 0, 0, nil, nil, storage.AppendV2Options{})
 	require.Error(t, err, "should reject empty labels")
 
-	_, err = app.Append(0, labels.FromStrings("a", "1", "a", "2"), 0, 0)
+	_, err = app.Append(0, labels.FromStrings("a", "1", "a", "2"), 0, 0, 0, nil, nil, storage.AppendV2Options{})
 	require.Error(t, err, "should reject duplicate labels")
 
 	// Sanity check: valid series
-	sRef, err := app.Append(0, labels.FromStrings("a", "1"), 0, 0)
+	sRef, err := app.Append(0, labels.FromStrings("a", "1"), 0, 0, 0, nil, nil, storage.AppendV2Options{})
 	require.NoError(t, err, "should not reject valid series")
 
 	// Exemplars
-	_, err = app.AppendExemplar(0, labels.EmptyLabels(), exemplar.Exemplar{})
-	require.Error(t, err, "should reject unknown series ref")
-
 	e := exemplar.Exemplar{Labels: labels.FromStrings("a", "1", "a", "2")}
-	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
-	require.ErrorIs(t, err, tsdb.ErrInvalidExemplar, "should reject duplicate labels")
+	_, err = app.Append(sRef, labels.FromStrings("a", "1"), 0, 1, 1, nil, nil, storage.AppendV2Options{Exemplars: []exemplar.Exemplar{e}})
+	requireExemplarError(t, err, tsdb.ErrInvalidExemplar, "should reject duplicate labels")
 
 	e = exemplar.Exemplar{Labels: labels.FromStrings("a_somewhat_long_trace_id", "nYJSNtFrFTY37VR7mHzEE/LIDt7cdAQcuOzFajgmLDAdBSRHYPDzrxhMA4zz7el8naI/AoXFv9/e/G0vcETcIoNUi3OieeLfaIRQci2oa")}
-	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
-	require.ErrorIs(t, err, storage.ErrExemplarLabelLength, "should reject too long label length")
+	_, err = app.Append(sRef, labels.FromStrings("a", "1"), 0, 2, 1, nil, nil, storage.AppendV2Options{Exemplars: []exemplar.Exemplar{e}})
+	requireExemplarError(t, err, storage.ErrExemplarLabelLength, "should reject too long label length")
 
 	// Sanity check: valid exemplars
-	e = exemplar.Exemplar{Labels: labels.FromStrings("a", "1"), Value: 20, Ts: 10, HasTs: true}
-	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
+	good := exemplar.Exemplar{Labels: labels.FromStrings("a", "1"), Value: 20, Ts: 10, HasTs: true}
+	_, err = app.Append(sRef, labels.FromStrings("a", "1"), 0, 3, 1, nil, nil, storage.AppendV2Options{Exemplars: []exemplar.Exemplar{good}})
 	require.NoError(t, err, "should not reject valid exemplars")
+
+	// Only the failing exemplar is reported in a mixed batch.
+	_, err = app.Append(sRef, labels.FromStrings("a", "1"), 0, 4, 1, nil, nil, storage.AppendV2Options{Exemplars: []exemplar.Exemplar{good, e}})
+	var pErr *storage.AppendPartialError
+	require.ErrorAs(t, err, &pErr)
+	require.Len(t, pErr.ExemplarErrors, 1)
+	require.Equal(t, 1, pErr.ExemplarErrors[0].Index)
+}
+
+// requireExemplarError checks err is an AppendPartialError containing target.
+func requireExemplarError(t *testing.T, err, target error, msg string) {
+	t.Helper()
+	var pErr *storage.AppendPartialError
+	require.ErrorAs(t, err, &pErr, msg)
+	require.Len(t, pErr.ExemplarErrors, 1, msg)
+	require.ErrorIs(t, pErr.ExemplarErrors[0], target, msg)
 }
 
 func TestStorage(t *testing.T) {
@@ -76,7 +89,7 @@ func TestStorage(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 
 	// Write some samples
 	payload := buildSeries([]string{"foo", "bar", "baz"})
@@ -113,7 +126,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 	payload := buildSeries([]string{"foo", "bar", "baz", "blerg"})
 
 	// Write half of the samples.
@@ -135,7 +148,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	app = s.Appender(context.Background())
+	app = s.AppenderV2(context.Background())
 
 	for _, metric := range payload[len(payload)/2:] {
 		metric.Write(t, app)
@@ -170,7 +183,7 @@ func TestStorage_ExistingWAL_NoReplay(t *testing.T) {
 	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 	payload := buildSeries([]string{"foo", "bar", "baz", "blerg"})
 
 	// Write all the samples
@@ -211,7 +224,7 @@ func TestStorage_Truncate(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 
 	payload := buildSeries([]string{"foo", "bar", "baz", "blerg"})
 
@@ -271,7 +284,7 @@ func TestStorage_WriteStalenessMarkers(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	app := s.Appender(context.Background())
+	app := s.AppenderV2(context.Background())
 
 	// Write some samples
 	payload := seriesList{
@@ -337,31 +350,32 @@ type series struct {
 	ref *storage.SeriesRef
 }
 
-func (s *series) Write(t *testing.T, app storage.Appender) {
+func (s *series) Write(t *testing.T, app storage.AppenderV2) {
 	t.Helper()
 
 	lbls := labels.FromStrings("__name__", s.name)
 
+	// Exemplars are attached to the last sample written.
+	optsFor := func(i int) storage.AppendV2Options {
+		if i == len(s.samples)-1 {
+			return storage.AppendV2Options{Exemplars: s.exemplars}
+		}
+		return storage.AppendV2Options{}
+	}
+
 	offset := 0
 	if s.ref == nil {
 		// Write first sample to get ref ID
-		ref, err := app.Append(0, lbls, s.samples[0].ts, s.samples[0].val)
+		ref, err := app.Append(0, lbls, 0, s.samples[0].ts, s.samples[0].val, nil, nil, optsFor(0))
 		require.NoError(t, err)
 
 		s.ref = &ref
 		offset = 1
 	}
 
-	// Write other data points with AddFast
-	for _, sample := range s.samples[offset:] {
-		_, err := app.Append(*s.ref, lbls, sample.ts, sample.val)
-		require.NoError(t, err)
-	}
-
-	sRef := *s.ref
-	for _, exemplar := range s.exemplars {
-		var err error
-		sRef, err = app.AppendExemplar(sRef, labels.EmptyLabels(), exemplar)
+	// Write other data points with the known ref
+	for i := offset; i < len(s.samples); i++ {
+		_, err := app.Append(*s.ref, lbls, 0, s.samples[i].ts, s.samples[i].val, nil, nil, optsFor(i))
 		require.NoError(t, err)
 	}
 }

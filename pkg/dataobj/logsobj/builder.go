@@ -8,11 +8,9 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/facette/natsort"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -23,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -83,6 +80,11 @@ type BuilderBaseConfig struct {
 	// Higher values allow more data to accumulate before the builder reports
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
+
+	// SortParallelism is the maximum number of goroutines that sort the logs of
+	// one tenant in FlushAndSort. A value of 1 or less sorts the stream ranges
+	// of a tenant one at a time.
+	SortParallelism int `yaml:"-"`
 
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
@@ -570,12 +572,14 @@ func (b *Builder) flush(recordLayouts bool) (*dataobj.Object, io.Closer, error) 
 // object-wide. Calling FlushAndSort on an empty builder returns
 // [ErrBuilderEmpty].
 //
-// The object holds the streams section of each tenant first, then the logs
-// sections of each tenant. Both groups are in natural tenant order. Stream
-// IDs follow stream key order. Logs rows are ordered by stream ID, then by
-// timestamp descending.
+// A sorted object holds one tenant. FlushAndSort returns an error if the
+// builder holds more than one.
 //
-// The sort uses the layout that the builder used for each tenant, so it never
+// The object holds the streams section of the tenant first, then its logs
+// sections. Stream IDs follow stream key order. Logs rows are ordered by
+// stream ID, then by timestamp descending.
+//
+// The sort uses the layout that the builder used for the tenant, so it never
 // reads the overrides. Every section already follows that layout, so the sort
 // is a k-way merge of the sections.
 //
@@ -612,97 +616,6 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 		return nil, nil, fmt.Errorf("sorting object: %w", err)
 	}
 	return sorted, sortedCloser, nil
-}
-
-// sort writes obj sorted object-wide to b.builder and flushes it. layouts must
-// hold the layout of every tenant in obj, and every logs section of obj must
-// follow the layout of its tenant. obj must stay open until sort returns.
-//
-// sort always resets Builder.
-func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[string]streams.Layout) (*dataobj.Object, io.Closer, error) {
-	defer b.Reset()
-
-	// Sort the set of tenants so the new object has a deterministic order of sections.
-	tenants := obj.Tenants()
-	natsort.Sort(tenants)
-
-	for _, tenant := range tenants {
-		// This method is CPU intensive, so it checks for cancellation between
-		// tenants and while it copies records.
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-
-		layout, ok := layouts[tenant]
-		if !ok {
-			return nil, nil, fmt.Errorf("no layout for tenant %s", tenant)
-		}
-
-		var sections []*dataobj.Section
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
-			sections = append(sections, sec)
-		}
-		if len(sections) == 0 {
-			return nil, nil, fmt.Errorf("no logs sections found for tenant: %v", tenant)
-		}
-
-		var streamSections []*dataobj.Section
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
-			return streams.CheckSection(s) && s.Tenant == tenant
-		}) {
-			streamSections = append(streamSections, sec)
-		}
-		if len(streamSections) == 0 {
-			return nil, nil, fmt.Errorf("no streams sections found for tenant: %v", tenant)
-		} else if len(streamSections) > 1 {
-			return nil, nil, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
-		}
-
-		streamsSection, err := streams.Open(ctx, streamSections[0])
-		if err != nil {
-			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
-		}
-
-		numStreams := streamsSection.NumRows()
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, layout.SchemaLabels(), layout.ShardLayout(), numStreams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
-		}
-
-		logsIter, err := mergeAndRemapLogsIter(ctx, sections, remappedStreams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
-		}
-
-		// drainLogsIter drops duplicates itself, so lb must not drop any.
-		// Otherwise the stream totals would count records that lb drops.
-		lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
-			SortOrder:        logs.SortSchemaASC,
-			DropDuplicates:   false,
-		})
-		lb.SetTenant(tenant)
-
-		totals, err := b.drainLogsIter(ctx, logsIter, lb, tenant, numStreams)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, layout.ShardLayout())
-		sb.SetLayout(layout)
-		if err := b.buildStreamSection(ctx, tenant, streamIter, totals, sb); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	return b.builder.Flush()
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
@@ -752,179 +665,6 @@ func (b *Builder) Reset() {
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
-}
-
-// drainLogsIter consumes iter, appending each record to lb and flushing
-// completed sections to b.builder whenever the section size target is exceeded.
-// It appends the final (possibly partial) section after the iterator is exhausted.
-//
-// If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
-// yield the records of each stream and timestamp together, as
-// [logs.DuplicateTracker] requires.
-//
-// drainLogsIter returns the totals of the appended records. The stream IDs of
-// the records must be in [1, numStreams].
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, numStreams int) (streamTotals, error) {
-	var (
-		totals     = newStreamTotals(numStreams)
-		duplicates logs.DuplicateTracker
-	)
-	for rec := range iter {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		val, err := rec.Value()
-		if err != nil {
-			return nil, err
-		}
-		if b.cfg.DropDuplicates && duplicates.IsDuplicate(val) {
-			continue
-		}
-		totals.add(val)
-		lb.Append(val)
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return nil, err
-			}
-			lb.Reset()
-			lb.SetTenant(tenant)
-		}
-	}
-	return totals, b.builder.Append(lb)
-}
-
-// buildStreamSection consumes an iterator, appending each stream to the provided
-// streams.Builder, and adds it to the sections accumulator. sb must be empty.
-//
-// The rows and uncompressed size of each stream come from totals, not from
-// iter, because the sort can drop duplicates that iter still counts.
-func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], totals streamTotals, sb *streams.Builder) error {
-	sb.SetTenant(tenant)
-
-	for res := range iter {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		stream, err := res.Value()
-		if err != nil {
-			return err
-		}
-		totals.apply(&stream)
-		sb.AppendValue(stream)
-	}
-	return b.builder.Append(sb)
-}
-
-// streamTotals holds the rows and uncompressed size of the records of each
-// stream. The stream ID is the index, so index 0 is unused.
-type streamTotals []streamTotal
-
-type streamTotal struct {
-	rows int
-	size int64
-}
-
-func newStreamTotals(numStreams int) streamTotals {
-	return make(streamTotals, numStreams+1)
-}
-
-func (t streamTotals) add(rec logs.Record) {
-	t[rec.StreamID].rows++
-	t[rec.StreamID].size += rec.UncompressedSize()
-}
-
-// apply sets the rows and uncompressed size of s to the totals of its stream.
-func (t streamTotals) apply(s *streams.Stream) {
-	s.Rows = t[s.ID].rows
-	s.UncompressedSize = t[s.ID].size
-}
-
-type mappedStream struct {
-	stream  streams.Stream
-	mapping rankedSortKey
-}
-
-// sortAndRemapStreams orders the streams by the globally stable stream order
-// and reassigns stream IDs in that order. It returns an iterator over the
-// remapped streams and a mapping from old stream IDs to new stream IDs.
-//
-// Stream IDs are originally assigned in the order streams are first recorded.
-// After ordering, streams are clustered by [shard_bucket, sort-schema, hash],
-// but their original IDs may no longer be monotonic in that order.
-//
-// Reassigning IDs in stream-order makes the persisted sort metadata
-// [streamID ASC, timestamp DESC] match the physical row order and improves
-// compression and pruning at query time.
-//
-// Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, error) {
-	allStreams := make([]mappedStream, 0, numStreams)
-	lookup := make([]rankedSortKey, numStreams+1)
-
-	for res := range iter {
-		stream, err := res.Value()
-		if err != nil {
-			return nil, nil, err
-		}
-		r, err := emptyRankedSortKey(stream.Labels, schemaLabels, shardLayout)
-		if err != nil {
-			return nil, nil, err
-		}
-		allStreams = append(allStreams, mappedStream{
-			stream:  stream,
-			mapping: r,
-		})
-	}
-
-	slices.SortFunc(allStreams, func(a, b mappedStream) int {
-		return streams.CompareSortKey(a.mapping.SortKey, b.mapping.SortKey)
-	})
-
-	for i := range allStreams {
-		oldID := allStreams[i].stream.ID
-		newID := int64(i + 1)
-
-		if oldID <= 0 || oldID > int64(numStreams) {
-			return nil, nil, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
-		}
-		if prev := lookup[oldID]; prev.rank != 0 {
-			return nil, nil, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prev.rank, newID)
-		}
-
-		allStreams[i].mapping.rank = newID
-		lookup[oldID] = allStreams[i].mapping
-
-		// Remap to the new stream ID.
-		allStreams[i].stream.ID = newID
-	}
-
-	return result.Iter(func(yield func(streams.Stream) bool) error {
-		for _, entry := range allStreams {
-			if !yield(entry.stream) {
-				return nil
-			}
-		}
-		return nil
-	}), lookup, nil
-}
-
-func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
-	return result.Iter(func(yield func(streams.Stream) bool) error {
-		for res := range streams.IterSection(ctx, section) {
-			stream, err := res.Value()
-			if err != nil {
-				return err
-			}
-			if !yield(stream) {
-				return nil
-			}
-		}
-		return nil
-	})
 }
 
 // ComputeSchemaKey builds a composite sort key from stream labels using FQN entries.
