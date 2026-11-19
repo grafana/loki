@@ -32,7 +32,7 @@ func runConvert(args []string) {
 	fs := flag.NewFlagSet("convert", flag.ExitOnError)
 	threshold := fs.Float64("threshold", 0.20, "density threshold — filter terms in more than this fraction of docs (0 to disable)")
 	encoding := fs.String("encoding", "deltavarint", "output bitmap encoding: "+validEncodings())
-	outVersion := fs.String("version", logline.CurrentVersion, "output format version (currently: v3)")
+	outVersion := fs.String("version", logline.CurrentVersion, "output format version")
 	doVerify := fs.Bool("verify", false, "after conversion, verify every term matches between input and output")
 	reportOut := fs.String("report-out", "", "generate an HTML report at this path (empty = no report)")
 

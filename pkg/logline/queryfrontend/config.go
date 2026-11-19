@@ -38,7 +38,7 @@ type Config struct {
 	// ingesters (not yet flushed to object storage). The logline index cannot
 	// cover this window, so it is always passed through to the Loki pipeline.
 	// Populated from Loki's querier.query_ingesters_within at assembly time.
-	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryIngestersWithin time.Duration `yaml:"-"`
 	// HintTimeout is the maximum time to wait for the logline index hint
 	// lookup before falling back to passthrough. Defaults to 15s when zero.
 	HintTimeout time.Duration `yaml:"hint_timeout"`
