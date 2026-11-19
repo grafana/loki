@@ -516,7 +516,10 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan posti
 	if predicate != nil {
 		predicates = []postings.Predicate{predicate}
 	}
-	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates})
+	// The merge holds one reader open for each source index object. A reader
+	// that downloads its whole section holds every bloom page of it, which
+	// for many sources exceeds the memory of a worker.
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates, StreamPages: true})
 	if err := reader.Open(ctx); err != nil {
 		return nil, fmt.Errorf("opening postings reader: %w", err)
 	}
@@ -529,7 +532,7 @@ func openStatsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseItera
 	if err != nil {
 		return nil, err
 	}
-	return stats.NewRowReader(ctx, ss), nil
+	return stats.NewStreamingRowReader(ctx, ss), nil
 }
 
 // sequence[R] is one group cursor for the K-way merge. It is an

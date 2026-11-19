@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -124,4 +125,48 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	require.NoError(t, reader.Close())
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")
 	require.False(t, reader.Next(), "Next() after Close() must return false, not panic")
+}
+
+func TestNewStreamingRowReader(t *testing.T) {
+	ctx := context.Background()
+	readAll := func(t *testing.T, reader *stats.RowReader) []stats.Stat {
+		t.Helper()
+		var rows []stats.Stat
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
+		return rows
+	}
+
+	t.Run("returns the rows of a reader that downloads the whole section, across many pages and batches", func(t *testing.T) {
+		layout := testLayout("label:service_name")
+		b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 100), layout)
+		for i := range 3000 {
+			b.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("/obj%05d", i), SortSchema: "label:service_name",
+				Labels:       map[string]string{"service_name": fmt.Sprintf("svc%d", i%7)},
+				MinTimestamp: int64(i), MaxTimestamp: int64(i + 1), RowCount: 1, UncompressedSize: 10,
+			})
+		}
+		objBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, objBuilder.Append(b))
+		obj, closer, err := objBuilder.Flush()
+		require.NoError(t, err)
+		defer func() { require.NoError(t, closer.Close()) }()
+
+		var sec *stats.Section
+		for _, s := range obj.Sections() {
+			if stats.CheckSection(s) {
+				sec, err = stats.Open(ctx, s)
+				require.NoError(t, err)
+			}
+		}
+		require.NotNil(t, sec)
+
+		want := readAll(t, stats.NewRowReader(ctx, sec))
+		require.Len(t, want, 3000)
+		require.Equal(t, want, readAll(t, stats.NewStreamingRowReader(ctx, sec)))
+	})
 }

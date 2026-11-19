@@ -34,6 +34,13 @@ type ReaderOptions struct {
 
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker dataset.RowReaderStatsTracker
+
+	// StreamPages makes the Reader download pages while it reads rows, and
+	// hold a bounded amount of downloaded pages at a time. Without it, the
+	// Reader downloads every page of the section when it opens, and holds
+	// them until it closes. Set it when many readers are open at once, for
+	// example in a K-way merge over many sections.
+	StreamPages bool
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
@@ -205,7 +212,7 @@ func (r *Reader) init(ctx context.Context) error {
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
 		Predicates:        preds,
-		PrefetchAllOnOpen: true,
+		PrefetchAllOnOpen: !r.opts.StreamPages,
 		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
