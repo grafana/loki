@@ -83,7 +83,7 @@ func (bytesCodecReadObject) Name() string {
 
 // NewRangeReaderReadObject is the legacy (non-bidi) implementation of reads.
 func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
-	ctx, _ = startSpan(ctx, "grpcStorageClient.NewRangeReaderReadObject")
+	ctx, _ = startSpan(ctx, "grpcStorageClient.NewRangeReaderReadObject", rpcSystemGRPCOpt)
 	defer func() { endSpan(ctx, err) }()
 
 	s := callSettings(c.settings, opts...)
@@ -157,6 +157,7 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 				databufs: databufs,
 			}
 			err = decoder.readFullObjectResponse()
+			recordReadObjectPayload(stream, decoder, err)
 			return err
 		}
 
@@ -316,7 +317,7 @@ func (r *gRPCReadObjectReader) updateCRC(b []byte) {
 // Checks whether the CRC matches at the conclusion of a read, if CRC checking was enabled.
 func (r *gRPCReadObjectReader) runCRCCheck() error {
 	if r.checkCRC && r.gotCRC != r.wantCRC {
-		return fmt.Errorf("storage: bad CRC on read: got %d, want %d", r.gotCRC, r.wantCRC)
+		return fmt.Errorf("%w: bad CRC on read: got %d, want %d", errChecksumMismatch, r.gotCRC, r.wantCRC)
 	}
 	return nil
 }
@@ -324,7 +325,7 @@ func (r *gRPCReadObjectReader) runCRCCheck() error {
 // checkAndResetChunkCRC verifies the chunk CRC if present, and resets the chunk CRC state.
 func (r *gRPCReadObjectReader) checkAndResetChunkCRC() error {
 	if r.chunkCRCPresent && r.gotChunkCRC != r.wantChunkCRC {
-		return fmt.Errorf("storage: bad CRC on chunk read: got %d, want %d", r.gotChunkCRC, r.wantChunkCRC)
+		return fmt.Errorf("%w: bad CRC on chunk read: got %d, want %d", errChecksumMismatch, r.gotChunkCRC, r.wantChunkCRC)
 	}
 	r.gotChunkCRC = 0
 	r.chunkCRCPresent = false
@@ -504,15 +505,43 @@ func (r *gRPCReadObjectReader) WriteTo(w io.Writer) (int64, error) {
 
 }
 
-// Close cancels the read stream's context in order for it to be closed and
-// collected, and frees any currently in use buffers.
+// Close drains a completed stream (bounded by defaultStreamDrainTimeout) so
+// the RPC ends cleanly, then cancels the context and frees buffers.
 func (r *gRPCReadObjectReader) Close() error {
+	if r.stream != nil && (r.size == r.seen || r.zeroRange) {
+		drainStreamOnCompletion(r.cancel, r.stream)
+	}
 	if r.cancel != nil {
 		r.cancel()
 	}
 	r.stream = nil
 	r.currMsg = nil
 	return nil
+}
+
+// defaultStreamDrainTimeout is the maximum duration allowed to drain trailing
+// messages and trailers from a completed gRPC read stream before cancellation.
+const defaultStreamDrainTimeout = 200 * time.Millisecond
+
+// drainStreamOnCompletion receives the remainder of a completed stream so that
+// the server's trailers are consumed and the attempt is not recorded as
+// CANCELLED. If the stream has not ended within defaultStreamDrainTimeout
+// (200 ms), cancel is called.
+func drainStreamOnCompletion(cancel context.CancelFunc, stream grpc.ClientStream) {
+	// Without cancel there is no way to bound the drain, so skip it.
+	if stream == nil || cancel == nil {
+		return
+	}
+	timer := time.AfterFunc(defaultStreamDrainTimeout, cancel)
+	defer timer.Stop()
+	for {
+		var drop mem.BufferSlice
+		if err := stream.RecvMsg(&drop); err != nil {
+			break
+		}
+		// Free the raw buffers to prevent memory leaks from the parsing loop.
+		drop.Free()
+	}
 }
 
 // recv attempts to Recv the next message on the stream and extract the object
@@ -530,7 +559,7 @@ func (r *gRPCReadObjectReader) recv() error {
 	databufs := mem.BufferSlice{}
 	err := r.stream.RecvMsg(&databufs)
 
-	if err != nil && r.settings.retry.runShouldRetry(err, nil) {
+	if err != nil && r.settings != nil && r.settings.retry.runShouldRetry(err, nil) {
 		// This will "close" the existing stream and immediately attempt to
 		// reopen the stream, but will backoff if further attempts are necessary.
 		// Reopening the stream Recvs the first message, so if retrying is
@@ -543,7 +572,9 @@ func (r *gRPCReadObjectReader) recv() error {
 	}
 
 	r.currMsg = &readObjectResponseDecoder{databufs: databufs}
-	return r.currMsg.readFullObjectResponse()
+	err = r.currMsg.readFullObjectResponse()
+	recordReadObjectPayload(r.stream, r.currMsg, err)
+	return err
 }
 
 // ReadObjectResponse field and subfield numbers.

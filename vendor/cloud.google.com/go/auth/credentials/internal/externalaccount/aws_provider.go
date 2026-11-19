@@ -363,7 +363,7 @@ func (rs *awsRequestSigner) generateAuthentication(req *http.Request, timestamp 
 	serviceName := ""
 
 	if splitHost := strings.Split(requestHost(req), "."); len(splitHost) > 0 {
-		serviceName = splitHost[0]
+		serviceName = strings.TrimSuffix(splitHost[0], "-fips")
 	}
 	credentialScope := strings.Join([]string{dateStamp, rs.RegionName, serviceName, awsRequestType}, "/")
 	requestString, err := canonicalRequest(req, canonicalHeaderColumns, canonicalHeaderData)
