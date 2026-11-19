@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -417,6 +418,36 @@ func logQueryExecution(ctx context.Context, logger log.Logger, values ...interfa
 	level.Info(logger).Log(logValues...)
 }
 
+func addFullRangeVectorWarning(req base.Request, resp base.Response) base.Response {
+	r, ok := req.(*LokiRequest)
+	if !ok || r.Plan == nil {
+		return resp
+	}
+
+	if _, ok := r.Plan.AST.(syntax.SampleExpr); !ok {
+		return resp
+	}
+
+	promResp, ok := resp.(*LokiPromResponse)
+	if !ok || promResp.Response == nil {
+		return resp
+	}
+	if !logql.HasFullRangeVector(r.Plan.AST, r.EndTs.Sub(r.StartTs)) {
+		// Split queries can emit this warning for their own range rather than the original request.
+		promResp.Response.Warnings = slices.DeleteFunc(promResp.Response.Warnings, func(warning string) bool {
+			return warning == logql.FullRangeVectorWarning
+		})
+		return resp
+	}
+	for _, existing := range promResp.Response.Warnings {
+		if existing == logql.FullRangeVectorWarning {
+			return resp
+		}
+	}
+	promResp.Response.Warnings = append(promResp.Response.Warnings, logql.FullRangeVectorWarning)
+	return resp
+}
+
 func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, error) {
 	logger := logutil.WithContext(ctx, r.logger)
 
@@ -452,7 +483,11 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 			}
-			return r.metric.Do(ctx, req)
+			resp, err := r.metric.Do(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+			return addFullRangeVectorWarning(req, resp), nil
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
 				// Rejected before the middleware chain, so the line is emitted here.
