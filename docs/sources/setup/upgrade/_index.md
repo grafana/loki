@@ -70,9 +70,6 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
-### Logline index defaults to v4
-
-The default logline index version changes from `v3` to `v4`, which uses packed numeric terms to improve filtering for numeric queries. This affects newly written indexes when `logline.index.version` is unset. Existing indexes are still queried using the version recorded in their metadata. To keep writing v3 indexes, set `logline.index.version: v3` or `-logline-index.version=v3`.
 
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
