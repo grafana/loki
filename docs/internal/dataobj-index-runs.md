@@ -132,52 +132,13 @@ the postings.
 Each index object is uploaded when it is cut, so the task holds only one index object open.
 The task reports one artifact for each index object.
 
-## How a large index merge splits into tasks
-
-One index merge of a large window can take too long for one task.
-If `max_task_size` is set, the planner splits a merge into tasks by posting key span.
-The tasks run in parallel and together write one run.
-This follows the split of a log merge by sort prefix.
-
-Planning samples one posting key in every 4096 postings rows, while it reads the postings bounds of
-each section.
-Each sample stands for the rows up to the next sample, with their share of the uncompressed section
-size.
-The planner pools the samples of every input run and cuts them into spans of about `max_task_size`
-each.
-A span is half open and starts at a sampled key, so no posting key spans two tasks.
-The first span has no start and the last has no end, so the spans together hold every key.
-
-Each task reads only the input sections whose key bounds overlap its span.
-A section that crosses a cut is read by every task that it overlaps.
-The key span predicate of a task skips the pages outside its span, and keeps exactly the rows in it.
-So each task writes the rows of its span, and every task writes postings.
-
-A stats row has no posting key, so it cannot follow the spans.
-Instead the planner gives the stats rows of each input index object to one task that reads that
-object.
-It takes the largest objects first, and gives each to the reading task with the fewest assigned
-bytes.
-So the stats work spreads over the tasks, and the run holds each stats row once.
-A task removes duplicate stats rows only among its own inputs.
-
-The tasks of a merge are in key order.
-The coordinator appends their artifacts in that order, so the index objects of the run stay in key
-order.
-Every entry of the run gets the time range and the shard layout of the whole merge.
-
-A split task sends its runs in a separate field of the plan.
-A worker that does not know key spans finds no runs and fails the task.
-It does not merge every key, which would repeat the rows of the other tasks.
-The coordinator also rejects an artifact whose posting keys fall outside the span of its task.
-
 ## How compaction handles a run
 
 Planning reads the entries of a ToC and groups them into runs.
 See `groupIndexRuns` in `pkg/engine/compactor/index_run.go`.
 
 - **Index merge** plans each run as one planning unit, so one merge takes the whole run.
-  A large merge can split into tasks by posting key span, as the previous section describes.
+  A large merge can split into parallel tasks by posting key span, which together write one run.
 - **Log merge** plans one source run at a time.
   It folds the stats rows of every index object of the run into one reference for each log section.
   Before it dispatches the tasks, it checks that the ToC still lists every index object of the run.
