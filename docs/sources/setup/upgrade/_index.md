@@ -70,6 +70,12 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### Loki mixin log panels select streams on `container`
+
+The log panels in the Loki / Operational, Loki / Retention, Loki / Deletion, and Loki / Bloom Build dashboards select streams on the mixin's `per_component_label` setting, which defaults to `container`, instead of `job` or `pod`. If your log pipeline doesn't add a `container` label to Loki's own logs, set `per_component_label` to the label it uses and regenerate the dashboards.
+
+On the Loki / Operational dashboard, overriding `jobMatchers` no longer changes the log panels. Override `logMatchers` instead.
+
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
