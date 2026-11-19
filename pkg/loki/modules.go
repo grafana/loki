@@ -1138,10 +1138,12 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
-	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg := &t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+	clientCfg.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg.PerIndexOwnership = t.Cfg.IndexGateway.PerIndexOwnership.Enabled
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
-		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		clientCfg.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID

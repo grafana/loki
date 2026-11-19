@@ -34,7 +34,7 @@ type PerIndexOwnershipConfig struct {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *PerIndexOwnershipConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
-		"Experimental. Give each (tenant, table) index -replication-factor owners in the index gateway ring. An index gateway preloads only the indexes it owns, after it joins the ring and before it becomes ACTIVE. Requires -index-gateway.mode=ring.")
+		"Experimental. For schema periods with a sharded_path_prefix, give each (tenant, table) index -replication-factor owners in the index gateway ring. Gateways preload the indexes they own after joining the ring and before becoming ACTIVE. Clients route requests for those periods to the table owners. Requires -index-gateway.mode=ring.")
 	f.DurationVar(&cfg.WaitStabilityMinDuration, prefix+"wait-stability-min-duration", 0,
 		"Experimental. Minimum time the ring must be stable before the index gateway preloads its owned indexes. Set it when many index gateways join at once, such as when the ring is created or scaled up, so that each one preloads what it owns once every new instance has registered its tokens. 0 disables the wait.")
 	f.DurationVar(&cfg.WaitStabilityMaxDuration, prefix+"wait-stability-max-duration", 5*time.Minute,
