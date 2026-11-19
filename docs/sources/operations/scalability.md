@@ -1,22 +1,26 @@
 ---
 title: Manage larger production deployments
 menuTitle: Scale Loki
-description: Describes strategies how to scale a Loki deployment when log volume increases.
+description: Describes strategies for scaling a Loki deployment when log volume increases.
 weight:
 ---
 
 # Manage larger production deployments
 
-When needing to scale Loki due to increased log volume, operators should consider running several Loki processes
-partitioned by role (ingester, distributor, querier, and so on) rather than a single Loki
-process. Grafana Labs' [production setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki)
-contains `.libsonnet` files that demonstrates configuring separate components
-and scaling for resource usage.
+When log volume increases, scale Loki by running several Loki processes, each handling a single role (ingester, distributor, querier, and so on), instead of running a single Loki process that handles every role.
+
+Grafana Labs' [production setup](https://github.com/grafana/loki/tree/main/production/ksonnet/loki) contains `.libsonnet` files that demonstrate how to configure and scale each component independently.
+
+Other pages cover additional ways to scale and tune a production Loki deployment:
+
+- [Autoscaling queriers](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/autoscaling_queriers/) for KEDA-based querier autoscaling in Kubernetes.
+- [Shuffle sharding](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/shuffle-sharding/) to limit the blast radius of tenants on shared infrastructure.
+- [Query fairness](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-fairness/) to balance query load across actors within a tenant.
 
 ## Separate Query Scheduler
 
 The Query frontend has an in-memory queue that can be moved out into a separate process similar to the
-[Grafana Mimir query-scheduler](https://grafana.com/docs/mimir/latest/operators-guide/architecture/components/query-scheduler/). This allows running multiple query frontends.
+[Grafana Mimir query-scheduler](https://grafana.com/docs/mimir/latest/references/architecture/components/query-scheduler/). This allows running multiple query frontends.
 
 To run with the Query Scheduler, configure both the frontend and the querier worker with the scheduler's address.
 
@@ -72,11 +76,21 @@ If you do not configure a frontend address, a scheduler address, or a downstream
 
 Each component that takes part in the ring exposes the ring state at the `/scheduler/ring` endpoint, which you can use to check that all query schedulers registered as expected.
 
-## Memory ballast
+## Garbage collection tuning
 
-In compute-constrained environments, garbage collection can become a significant performance factor. Frequently-run garbage collection interferes with running the application by using CPU resources. The use of memory ballast can mitigate the issue. Memory ballast allocates extra, but unused virtual memory in order to inflate the quantity of live heap space. Garbage collection is triggered by the growth of heap space usage. The inflated quantity of heap space reduces the perceived growth, so garbage collection occurs less frequently.
+In compute-constrained environments, garbage collection can become a significant performance factor. Frequently-run garbage collection interferes with running the application by using CPU resources.
 
-Configure memory ballast using the ballast_bytes configuration option.
+### GOMEMLIMIT (recommended)
+
+The recommended way to tune garbage collection today is to set the `GOMEMLIMIT` environment variable to a soft memory limit slightly below the container's actual memory limit, optionally paired with a lower `GOGC` value to smooth heap growth between collections. This lets the Go runtime use most of the available memory before collecting, without risking an out-of-memory kill.
+
+If you install Loki with the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/), this is configured automatically: `defaults.goSettings.goMemLimitFactor` (default `0.85`) and `defaults.goSettings.gogc` (default `80`) derive `GOMEMLIMIT` and `GOGC` from each component's configured memory limit. Refer to the [Helm chart reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/#defaults) for details. For other deployment methods, set `GOMEMLIMIT` directly as an environment variable on the Loki process, to a value below the memory available to it.
+
+### Memory ballast
+
+Memory ballast is an alternative technique for the same underlying problem. It is useful for deployments where setting `GOMEMLIMIT` is not practical (for example, bare-metal or VM deployments without container memory limits). Memory ballast allocates extra, but unused, virtual memory in order to inflate the quantity of live heap space. Garbage collection is triggered by the growth of heap space usage, so the inflated quantity of heap space reduces the perceived growth, and garbage collection occurs less frequently.
+
+Configure memory ballast using the `ballast_bytes` configuration option. The ballast does not consume physical memory because it is never read from. However, the Go runtime counts it as live heap, which distorts memory-related metrics. If accurate heap metrics matter to your observability, prefer `GOMEMLIMIT` instead.
 
 ## Remote rule evaluation
 
