@@ -430,10 +430,6 @@ lokiCanary:
           name: canary-basic-auth
           key: username
 
-# Disable minio storage
-minio:
-  enabled: false
-
 backend:
   replicas: 0
 read:

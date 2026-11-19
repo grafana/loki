@@ -30,7 +30,6 @@ When you deploy with `deploymentMode: SimpleScalable` and object storage configu
 - Backend component (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Gateway (1 NGINX replica)
-- Minio (optional, deprecated — see warning below)
 - Chunks cache (1 replica)
 - Results cache (1 replica)
 
@@ -45,6 +44,8 @@ Simple scalable mode requires object storage (`loki.storage.type` must be `s3`, 
 - A running Kubernetes cluster (must have at least 3 nodes).
 
 ## Deploying the Helm chart for development and testing
+
+The following steps show how to deploy the Loki Helm chart in simple scalable mode. This mode requires a real S3-compatible object storage endpoint. Replace the `FIXME` placeholders in the example below with your own S3-compatible endpoint and credentials.
 
 {{< admonition type="note" >}}
 If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
@@ -64,11 +65,7 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
    helm repo update
    ```
 
-1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
-
-   {{< admonition type="warning" >}}
-   The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. The example below requires `ignoreMinioDeprecation: true` to render with chart v17+. For production, configure a dedicated external object storage backend.
-   {{< /admonition >}}
+1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in simple scalable mode using S3-compatible object storage:
 
     ```yaml
       loki:
@@ -91,6 +88,15 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
         limits_config:
           allow_structured_metadata: true
           volume_enabled: true
+        storage:
+          type: s3
+          bucketNames:
+            chunks: FIXME
+            ruler: FIXME
+          s3:
+            endpoint: FIXME
+            accessKeyId: FIXME
+            secretAccessKey: FIXME
 
       deploymentMode: SimpleScalable
 
@@ -100,11 +106,6 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
         replicas: 2
       write:
         replicas: 3 # To ensure data durability with replication
-
-      ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
-      # Enable minio for storage
-      minio:
-        enabled: true
 
       gateway:
         service:
@@ -127,10 +128,10 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
 
 ## Object Storage Configuration
 
-After testing Loki with MinIO, we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+We recommend configuring Loki with an object storage provider for production deployments. The following examples show how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
-When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
+When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
 {{< /admonition >}}
 
 {{< collapse title="S3" >}}
@@ -194,10 +195,6 @@ read:
   replicas: 3
 write:
   replicas: 3
-
-# Disable minio storage
-minio:
-  enabled: false
 ```
   
 {{< /collapse >}}
@@ -255,10 +252,6 @@ read:
   replicas: 3
 write:
   replicas: 3
-
-# Disable minio storage
-minio:
-  enabled: false
 
 ```
 
