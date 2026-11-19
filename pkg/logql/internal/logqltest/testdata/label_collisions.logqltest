@@ -5,6 +5,64 @@
 # what the query shows.
 #
 
+# The stream label, the structured metadata, and the parsed field all have the name `foo`. The
+# metadata key moves to `foo_extracted` when it enters the pipeline. The parsed `foo` would move to
+# `foo_extracted` too, but it finds the name taken, so the parsed value is dropped. A parsed value
+# never replaces a label. A `drop` before the parser frees a name, and naming the label in the
+# parser avoids the clash. A `drop` after the parser is too late.
+clear
+load
+  {app="d1", foo="l"}    `{"foo":"p","other":"x"}` @ 10s [metadata foo="m1"]           # the three-way clash
+  {app="d2", foo="l"}    `{"other":"x"}`           @ 10s [metadata foo="m"]            # the clash, and the line has no `foo`
+  {app="d3", foo="l"}    `{"foo":"p"}`             @ 10s [metadata foo_extracted="me"] # the metadata key is `foo_extracted` already
+  {app="d4"}             `{"foo":"p","other":"x"}` @ 10s [metadata foo="m"]            # no stream label
+  {app="d5", foo="l"}    `{"foo":"p"}`             @ 10s [metadata foo="m"]            # the three-way clash, for the evals on `drop`
+  {app="noise", foo="l"} `{"foo":"noise"}`         @ 10s [metadata foo="m"]
+
+# The parsed value is lost where all three sources have `foo`. The metadata value stays as
+# `foo_extracted`. It also stays when the line has no `foo`, and when its key is `foo_extracted`
+# already. Without the stream label, the metadata keeps `foo`, and the parsed `foo` moves to
+# `foo_extracted`.
+eval select from 0 to 30s forward {app=~"d[1-4]"} | json
+  {app="d1", foo="l"} `{"foo":"p","other":"x"}` @ 10s [metadata foo_extracted="m1"] [parsed other="x"]
+  {app="d2", foo="l"} `{"other":"x"}` @ 10s [metadata foo_extracted="m"] [parsed other="x"]
+  {app="d3", foo="l"} `{"foo":"p"}` @ 10s [metadata foo_extracted="me"]
+  {app="d4"} `{"foo":"p","other":"x"}` @ 10s [metadata foo="m"] [parsed foo_extracted="p" other="x"]
+# A metric query merges the categories into one label set. It loses the parsed value in the same
+# way.
+eval instant at 60s count_over_time({app=~"d[1-4]"} | json [1m])
+  {app="d1", foo="l", foo_extracted="m1", other="x"} 1
+  {app="d2", foo="l", foo_extracted="m", other="x"} 1
+  {app="d3", foo="l", foo_extracted="me"} 1
+  {app="d4", foo="m", foo_extracted="p", other="x"} 1
+# A grouping on both names gives the same labels.
+eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"d[1-4]"} | json [1m]))
+  {foo="l", foo_extracted="m1"} 1
+  {foo="l", foo_extracted="m"} 1
+  {foo="l", foo_extracted="me"} 1
+  {foo="m", foo_extracted="p"} 1
+eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"d[1-4]"} | json [1m])) # overlapping
+  {foo="l", foo_extracted="m1"} 1 1
+  {foo="l", foo_extracted="m"} 1 1
+  {foo="l", foo_extracted="me"} 1 1
+  {foo="m", foo_extracted="p"} 1 1
+# The three-way clash gives the parsed value up. The next evals show the ways around it. This one
+# has no workaround, so the parsed value is dropped.
+eval select from 0 to 30s forward {app="d5"} | json
+  {app="d5", foo="l"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"]
+# `drop foo` before the parser frees `foo`, so the parsed value keeps its name.
+eval select from 0 to 30s forward {app="d5"} | drop foo | json
+  {app="d5"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"] [parsed foo="p"]
+# `drop foo_extracted` before the parser frees `foo_extracted`, so the parsed value takes it.
+eval select from 0 to 30s forward {app="d5"} | drop foo_extracted | json
+  {app="d5", foo="l"} `{"foo":"p"}` @ 10s [parsed foo_extracted="p"]
+# Naming the label in the parser avoids the clash: the value goes to `p`.
+eval select from 0 to 30s forward {app="d5"} | json p="foo"
+  {app="d5", foo="l"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"] [parsed p="p"]
+# A `drop` after the parser is too late: the parser has already dropped the parsed value.
+eval select from 0 to 30s forward {app="d5"} | json | drop foo
+  {app="d5"} `{"foo":"p"}` @ 10s [metadata foo_extracted="m"]
+
 # A line has the key `foo` and a literal `foo_extracted` key, and the stream has the label `foo`.
 # Both keys target `foo_extracted`. The literal key wins, and the key order in the line does not
 # matter. JSON does not define a key order.
@@ -44,6 +102,45 @@ eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app
 eval select from 0 to 30s forward {app=~"f1[ab]"} | json foo, foo_extracted
   {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
   {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+
+# A stream label or a structured metadata key that is called `foo_extracted` keeps the name. A
+# parsed `foo` would move to `foo_extracted`, finds the name taken, and is dropped. A parsed
+# `foo_extracted` finds the name taken too, so it takes a second suffix.
+clear
+load
+  {app="f3", foo="l", foo_extracted="le"} `{"foo":"p"}`           @ 10s                           # stream labels `foo` and `foo_extracted`, and a parsed `foo`
+  {app="f4", foo_extracted="le"}          `{"foo_extracted":"p"}` @ 10s                           # stream label `foo_extracted`, and a parsed `foo_extracted`
+  {app="f5"}                              `{"foo_extracted":"p"}` @ 10s [metadata foo_extracted="me"] # metadata `foo_extracted`, and a parsed `foo_extracted`
+  {app="noise", foo="l"}                  `{"foo":"noise"}`       @ 10s
+
+# The parsed `foo` is dropped. The parsed `foo_extracted` becomes `foo_extracted_extracted`.
+eval select from 0 to 30s forward {app=~"f[345]"} | json
+  {app="f3", foo="l", foo_extracted="le"} `{"foo":"p"}` @ 10s
+  {app="f4", foo_extracted="le"} `{"foo_extracted":"p"}` @ 10s [parsed foo_extracted_extracted="p"]
+  {app="f5"} `{"foo_extracted":"p"}` @ 10s [metadata foo_extracted="me"] [parsed foo_extracted_extracted="p"]
+
+# The stream has `foo` and `foo_extracted`, and the line has both keys. The renamed `foo` finds
+# `foo_extracted` taken by the stream label, and is dropped. The literal key takes a second suffix.
+clear
+load
+  {app="f7", foo="l", foo_extracted="le"} `{"foo":"p","foo_extracted":"q"}` @ 10s # both stream labels, and both keys in the line
+  {app="noise", foo="l"}                  `{"foo":"noise"}`                 @ 10s
+
+# The parsed `foo` is dropped, and the literal key becomes `foo_extracted_extracted`.
+eval select from 0 to 30s forward {app="f7"} | json
+  {app="f7", foo="l", foo_extracted="le"} `{"foo":"p","foo_extracted":"q"}` @ 10s [parsed foo_extracted_extracted="q"]
+
+# The stream has `foo` and `foo_extracted`, and the metadata has `foo_extracted`. The metadata key
+# finds the name taken when it enters the pipeline, so it takes a second suffix. The parsed `foo`
+# finds `foo_extracted` taken by the stream label, and is dropped.
+clear
+load
+  {app="f8", foo="l", foo_extracted="le"} `{"foo":"p"}`     @ 10s [metadata foo_extracted="me"] # both stream labels, and the same name in the metadata
+  {app="noise", foo="l"}                  `{"foo":"noise"}` @ 10s
+
+# The metadata key becomes `foo_extracted_extracted`, and the parsed `foo` is dropped.
+eval select from 0 to 30s forward {app="f8"} | json
+  {app="f8", foo="l", foo_extracted="le"} `{"foo":"p"}` @ 10s [metadata foo_extracted_extracted="me"]
 
 # The expression form of logfmt names the keys: `logfmt foo, foo_extracted, bar`. A renamed key
 # whose final name is also a name of the expression must not stop the parser, because the key after
