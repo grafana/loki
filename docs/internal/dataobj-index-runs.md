@@ -148,7 +148,7 @@ See `groupIndexRuns` in `pkg/engine/compactor/index_run.go`.
 
 A task reports the index objects that it wrote: the path and the posting key bounds of each.
 These are the only facts that the task decides while it runs.
-Planning already knows the time range of the task, which is the time range of its inputs.
+Planning already knows the time range of the merge, which is the time range of its inputs.
 It also knows the shard layout, which is the layout of its inputs.
 The coordinator gives every entry of the run of the merge those values.
 It replaces the source runs with one new run for each merge in one conditional write.
