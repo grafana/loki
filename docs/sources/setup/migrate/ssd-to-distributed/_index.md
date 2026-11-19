@@ -226,6 +226,9 @@ To start the migration process:
      replicas: 3
      zoneAwareReplication:
        enabled: false
+     # Keep the write-ahead log on a persistent volume, like the SSD write pods
+     persistence:
+       enabled: true
    querier:
      replicas: 3
      maxUnavailable: 0
@@ -253,6 +256,7 @@ To start the migration process:
 
    Here is a breakdown of the changes:
    * `ingester.wal.flush_on_shutdown: true`: This will force the ingesters to flush before shutting down. This is important to prevent data loss.
+   * `ingester.persistence.enabled: true`: The SSD write pods keep their write-ahead log on a persistent volume. Without this setting, the distributed ingesters keep it in an `emptyDir` volume, which Kubernetes deletes when it replaces an ingester. Kubernetes doesn't allow adding volume claims to a StatefulSet after it's created, so set this in this stage.
    * `deploymentMode: SimpleScalable<->Distributed`: This will allow for the SSD and distributed components to run simultaneously.
    * Spin up all distributed components with the desired replicas.
 
@@ -346,6 +350,8 @@ To transition all traffic to the distributed components:
      replicas: 3
      zoneAwareReplication:
        enabled: false
+     persistence:
+       enabled: true
    querier:
      replicas: 3
      maxUnavailable: 0
