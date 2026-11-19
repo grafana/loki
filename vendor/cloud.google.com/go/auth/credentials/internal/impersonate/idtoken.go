@@ -22,10 +22,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/internal"
+	"cloud.google.com/go/auth/internal/jwt"
 	"github.com/googleapis/gax-go/v2/internallog"
 )
 
@@ -97,9 +97,12 @@ func (o IDTokenIAMOptions) Token(ctx context.Context) (*auth.Token, error) {
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("impersonate: unable to parse response: %w", err)
 	}
+	claimSet, err := jwt.DecodeJWS(tokenResp.Token)
+	if err != nil {
+		return nil, fmt.Errorf("impersonate: error decoding JWT token: %w", err)
+	}
 	return &auth.Token{
-		Value: tokenResp.Token,
-		// Generated ID tokens are good for one hour.
-		Expiry: time.Now().Add(1 * time.Hour),
+		Value:  tokenResp.Token,
+		Expiry: claimSet.Expiry(),
 	}, nil
 }

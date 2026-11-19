@@ -125,9 +125,6 @@ ruler:
 # Single binary Loki
 singleBinary:
   replicas: 0
-
-minio:
-  enabled: false
 ```
 
 ## Stage 1: Deploying the Loki distributed components
@@ -249,9 +246,6 @@ To start the migration process:
    # Single binary Loki
    singleBinary:
      replicas: 0
-
-   minio:
-     enabled: false
    ```
 
    Here is a breakdown of the changes:
@@ -368,9 +362,6 @@ The final stage of the migration involves transitioning all traffic to the distr
    # Single binary Loki
    singleBinary:
      replicas: 0
-
-   minio:
-     enabled: false
    ```
    
      Here is a breakdown of the changes:

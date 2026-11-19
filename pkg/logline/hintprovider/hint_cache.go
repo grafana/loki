@@ -13,13 +13,14 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 const (
 	hintCacheKeyPrefix  = "logline:"
-	hintCacheGeneration = 1
+	hintCacheGeneration = 2
 	hintCacheDayLayout  = "2006-01-02"
 )
 
@@ -74,6 +75,13 @@ type provideHintsResult struct {
 
 type minDateProvider interface {
 	MinDate() time.Time
+}
+
+// needlesProvider is an optional capability of a delegate, like minDateProvider.
+// Only the real provider has Needles, so the cache key checks for it and falls
+// back to the expression for any other delegate, such as a test stub.
+type needlesProvider interface {
+	Needles(expr syntax.Expr) (needles needle.Conjunctions, ngramLength int)
 }
 
 // CachingHintProvider wraps another QueryHintProvider with day-aligned caching.
@@ -219,7 +227,9 @@ func (p *CachingHintProvider) ProvideHints(
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
 	}
 
-	queryString := expr.String()
+	// Key on what the lookup does, so queries with the same needles share entries.
+	// The delegate is still asked about expr.
+	queryString := cacheKeyQuery(p.delegate, expr)
 	minDate := cacheKeyMinDate(p.delegate)
 	dayWindows := buildDayWindows(tenant, queryString, minDate, from.Time(), through.Time())
 
@@ -367,6 +377,18 @@ func cacheKeyMinDate(delegate QueryHintProvider) string {
 		return ""
 	}
 	return minDate.Format(hintCacheDayLayout)
+}
+
+// cacheKeyQuery returns the query part of the cache key: the delegate's needle
+// sets and n-gram length when it reports any needles, and the expression
+// otherwise.
+func cacheKeyQuery(delegate QueryHintProvider, expr syntax.Expr) string {
+	if p, ok := delegate.(needlesProvider); ok {
+		if needles, ngramLength := p.Needles(expr); len(needles) > 0 {
+			return fmt.Sprintf("n=%d f=%s", ngramLength, needles)
+		}
+	}
+	return expr.String()
 }
 
 func buildDayWindows(tenant, query, minDate string, from, through time.Time) []dayWindow {

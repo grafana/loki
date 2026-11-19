@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -27,16 +28,23 @@ type LoglineHintProvider struct {
 	store       *store.Store
 	ngramLength int
 	maxParallel int
+	// maxConjunctions is the most needle sets a query is planned into. It
+	// applies where the query-frontend plans; the querier uses the needles it
+	// is sent.
+	maxConjunctions int
 	// queryMultipleObserver is optional and receives one callback per
 	// QueryMultiple call with termination reason and term batches processed.
 	queryMultipleObserver func(reason string, termBatchesProcessed int)
 	logger                log.Logger
 	cache                 *metadataCache
+	// wrapReader, when set, wraps every reader opened for a query. Tests use
+	// it to count lookups.
+	wrapReader func(logline.Reader) logline.Reader
 }
 
 func NewLoglineHintProvider(
 	indexStore *store.Store,
-	ngramLength, maxParallel int,
+	ngramLength, maxParallel, maxConjunctions int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
 	cacheReg prometheus.Registerer,
@@ -58,6 +66,7 @@ func NewLoglineHintProvider(
 		store:                 indexStore,
 		ngramLength:           ngramLength,
 		maxParallel:           maxParallel,
+		maxConjunctions:       max(maxConjunctions, 1),
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
@@ -95,7 +104,13 @@ func (p *LoglineHintProvider) queryRanges(
 	}
 
 	ngramLength, maxParallel := p.lookupParams(req)
-	filters := SupportedQuery(expr, ngramLength)
+	// Look up the needles the query-frontend planned, so the lookup matches its
+	// cache key. A request without any is from an older frontend, whose cap
+	// defaulted to one set.
+	filters := fromProtoConjunctions(req.Conjunctions)
+	if len(filters) == 0 {
+		filters = SupportedQuery(expr, ngramLength, 1)
+	}
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
@@ -113,7 +128,7 @@ func (p *LoglineHintProvider) queryRanges(
 	if err != nil {
 		return nil, stats, err
 	}
-	return aggregateShardRanges(shardRanges), stats, nil
+	return aggregateConjunctionRanges(shardRanges), stats, nil
 }
 
 // TimeUnion merges ranges by time alone, across document shards. Ranges
@@ -154,7 +169,7 @@ func (p *LoglineHintProvider) PlanHints(
 		MaxParallel: int32(p.maxParallel),
 	}
 
-	filters := SupportedQuery(expr, p.ngramLength)
+	filters, _ := p.Needles(expr)
 	if len(filters) == 0 {
 		return plan, ErrUnsupported
 	}
@@ -200,7 +215,7 @@ func (p *LoglineHintProvider) ProvideHints(
 	if err != nil || len(plan.Indexes) == 0 {
 		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
 	}
-	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
+	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan))
 	if err != nil {
 		return nil, plan.Stats, err
 	}
@@ -208,15 +223,16 @@ func (p *LoglineHintProvider) ProvideHints(
 }
 
 func loglineIndexRequest(
-	expr syntax.Expr, from, through model.Time, plan HintPlan, ngram, parallel int,
+	expr syntax.Expr, from, through model.Time, plan HintPlan,
 ) *logproto.LoglineIndexRequest {
 	return &logproto.LoglineIndexRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     ToProtoIndexMetas(plan.Indexes),
-		NgramLength: int32(ngram),
-		MaxParallel: int32(parallel),
+		From:         from,
+		Through:      through,
+		Expr:         expr.String(),
+		Indexes:      ToProtoIndexMetas(plan.Indexes),
+		NgramLength:  plan.NgramLength,
+		MaxParallel:  plan.MaxParallel,
+		Conjunctions: ToProtoConjunctions(plan.Filters),
 	}
 }
 
@@ -227,6 +243,15 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 		return time.Time{}
 	}
 	return p.store.MinDate()
+}
+
+// Needles returns the needles a lookup for expr uses and the n-gram length. The
+// hint cache keys on them, and PlanHints plans with them, so the two agree.
+func (p *LoglineHintProvider) Needles(expr syntax.Expr) (needle.Conjunctions, int) {
+	if p == nil {
+		return nil, 0
+	}
+	return SupportedQuery(expr, p.ngramLength, p.maxConjunctions), p.ngramLength
 }
 
 func (p *LoglineHintProvider) openIndexReader(
@@ -281,6 +306,19 @@ func (p *LoglineHintProvider) startCacheInvalidationLoop() {
 			p.cache.evictStale(snap)
 		}
 	}()
+}
+
+// aggregateConjunctionRanges unions the ranges of every conjunction. Each
+// conjunction is aggregated on its own with aggregateShardRanges. Shard values
+// may only be intersected within one conjunction: with "abc" on shard 1 and
+// "def" on shard 2, intersecting the shards of "abc or def" would compute
+// "abc and def".
+func aggregateConjunctionRanges(byConj map[int]map[shardKey][]HintTimeRange) []HintTimeRange {
+	var all []HintTimeRange
+	for _, byKey := range byConj {
+		all = append(all, aggregateShardRanges(byKey)...)
+	}
+	return NormalizeRanges(all)
 }
 
 // aggregateShardRanges combines per-shard results with the correct semantics:

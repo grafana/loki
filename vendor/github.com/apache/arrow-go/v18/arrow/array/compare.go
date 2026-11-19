@@ -379,8 +379,13 @@ func canEqualDirectly(left, right arrow.Array) bool {
 	}
 
 	switch left.(type) {
-	case *Null, *Boolean, *FixedSizeBinary, *Binary, *String,
-		*LargeBinary, *LargeString, *BinaryView, *StringView,
+	case *Binary:
+		// Binary builders can retain string datatypes, which need normalization.
+		return left.DataType().ID() == arrow.BINARY && right.DataType().ID() == arrow.BINARY
+	case *LargeBinary:
+		return left.DataType().ID() == arrow.LARGE_BINARY && right.DataType().ID() == arrow.LARGE_BINARY
+	case *Null, *Boolean, *FixedSizeBinary, *String,
+		*LargeString, *BinaryView, *StringView,
 		*Int8, *Int16, *Int32, *Int64, *Uint8, *Uint16, *Uint32, *Uint64,
 		*Float16, *Float32, *Float64,
 		*Decimal32, *Decimal64, *Decimal128, *Decimal256,
@@ -427,6 +432,79 @@ func arrayEqualListOffsets[T listOffset](leftValues, rightValues arrow.Array,
 		}) == nil
 }
 
+func arrayApproxEqualListOffsets[T listOffset](leftValues, rightValues arrow.Array,
+	leftOffsets, rightOffsets []T, leftOffset, rightOffset, length int, validBits []byte, opt equalOption) bool {
+	if len(validBits) == 0 {
+		validBits = nil
+	}
+	return bitutils.VisitSetBitRuns(validBits, int64(leftOffset), int64(length),
+		func(pos, runLength int64) error {
+			leftIndex := leftOffset + int(pos)
+			rightIndex := rightOffset + int(pos)
+			for i := range int(runLength) {
+				leftLength := int64(leftOffsets[leftIndex+i+1]) - int64(leftOffsets[leftIndex+i])
+				rightLength := int64(rightOffsets[rightIndex+i+1]) - int64(rightOffsets[rightIndex+i])
+				if leftLength != rightLength {
+					return arrow.ErrInvalid
+				}
+			}
+
+			leftStart := int64(leftOffsets[leftIndex])
+			rightStart := int64(rightOffsets[rightIndex])
+			leftEnd := int64(leftOffsets[leftIndex+int(runLength)])
+			rightEnd := int64(rightOffsets[rightIndex+int(runLength)])
+			if !sliceApproxEqual(leftValues, leftStart, leftEnd, rightValues, rightStart, rightEnd, opt) {
+				return arrow.ErrInvalid
+			}
+			return nil
+		}) == nil
+}
+
+type listArrayWithValue interface {
+	arrow.Array
+	newListValue(int) arrow.Array
+}
+
+func arrayApproxEqualListScalar(left, right listArrayWithValue, opt equalOption) bool {
+	for i := 0; i < left.Len(); i++ {
+		if left.IsNull(i) {
+			continue
+		}
+		equal := func() bool {
+			l := left.newListValue(i)
+			defer l.Release()
+			r := right.newListValue(i)
+			defer r.Release()
+			return arrayApproxEqual(l, r, opt)
+		}()
+		if !equal {
+			return false
+		}
+	}
+	return true
+}
+
+func useScalarListEquality(validBits []byte, offset, length int64) bool {
+	if len(validBits) == 0 || length <= 64 {
+		return len(validBits) != 0
+	}
+
+	const (
+		sampleRuns          = 8
+		minAverageRunLength = 4
+	)
+	runs := bitutils.NewSetBitRunReader(validBits, offset, length)
+	validValues := int64(0)
+	for range sampleRuns {
+		run := runs.NextRun()
+		if run.Length == 0 {
+			return false
+		}
+		validValues += run.Length
+	}
+	return validValues < sampleRuns*minAverageRunLength
+}
+
 // SliceApproxEqual reports whether slices left[lbeg:lend] and right[rbeg:rend] are approximately equal.
 func SliceApproxEqual(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64, opts ...EqualOption) bool {
 	opt := newEqualOption(opts...)
@@ -434,6 +512,16 @@ func SliceApproxEqual(left arrow.Array, lbeg, lend int64, right arrow.Array, rbe
 }
 
 func sliceApproxEqual(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64, opt equalOption) bool {
+	if lbeg == 0 && lend == int64(left.Len()) &&
+		rbeg == 0 && rend == int64(right.Len()) &&
+		canEqualDirectly(left, right) {
+		return arrayApproxEqual(left, right, opt)
+	}
+
+	return sliceApproxEqualDirect(left, lbeg, lend, right, rbeg, rend, opt)
+}
+
+func sliceApproxEqualDirect(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64, opt equalOption) bool {
 	l := NewSlice(left, lbeg, lend)
 	defer l.Release()
 	r := NewSlice(right, rbeg, rend)
@@ -703,23 +791,24 @@ func validityBitmapEqual(left, right arrow.Array) bool {
 
 	leftBitmap := left.NullBitmapBytes()
 	rightBitmap := right.NullBitmapBytes()
-	if left.NullN() == 0 && len(leftBitmap) == 0 && len(rightBitmap) == 0 {
-		return true
+	if len(leftBitmap) == 0 {
+		return validityBitmapAllValid(right, rightBitmap)
 	}
-
-	if len(leftBitmap) == 0 || len(rightBitmap) == 0 {
-		for i := range left.Len() {
-			if left.IsNull(i) != right.IsNull(i) {
-				return false
-			}
-		}
-		return true
+	if len(rightBitmap) == 0 {
+		return validityBitmapAllValid(left, leftBitmap)
 	}
 
 	return bitutil.BitmapEquals(
 		leftBitmap, rightBitmap,
 		int64(left.Data().Offset()), int64(right.Data().Offset()), int64(left.Len()),
 	)
+}
+
+// validityBitmapAllValid reports whether the materialized validity bitmap
+// contains only valid values in the array's logical range. A missing bitmap
+// also represents an all-valid range, matching arrow.Array.IsValid.
+func validityBitmapAllValid(arr arrow.Array, bitmap []byte) bool {
+	return len(bitmap) == 0 || bitutil.BitmapAllSet(bitmap, arr.Data().Offset(), arr.Len())
 }
 
 func arrayApproxEqualString(left, right *String) bool {
@@ -795,41 +884,19 @@ func arrayApproxEqualFloat64(left, right *Float64, opt equalOption) bool {
 }
 
 func arrayApproxEqualList(left, right *List, opt equalOption) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		o := func() bool {
-			l := left.newListValue(i)
-			defer l.Release()
-			r := right.newListValue(i)
-			defer r.Release()
-			return arrayApproxEqual(l, r, opt)
-		}()
-		if !o {
-			return false
-		}
+	if useScalarListEquality(left.NullBitmapBytes(), int64(left.Offset()), int64(left.Len())) {
+		return arrayApproxEqualListScalar(left, right, opt)
 	}
-	return true
+	return arrayApproxEqualListOffsets(left.values, right.values, left.offsets, right.offsets,
+		left.data.offset, right.data.offset, left.Len(), left.NullBitmapBytes(), opt)
 }
 
 func arrayApproxEqualLargeList(left, right *LargeList, opt equalOption) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		o := func() bool {
-			l := left.newListValue(i)
-			defer l.Release()
-			r := right.newListValue(i)
-			defer r.Release()
-			return arrayApproxEqual(l, r, opt)
-		}()
-		if !o {
-			return false
-		}
+	if useScalarListEquality(left.NullBitmapBytes(), int64(left.Offset()), int64(left.Len())) {
+		return arrayApproxEqualListScalar(left, right, opt)
 	}
-	return true
+	return arrayApproxEqualListOffsets(left.values, right.values, left.offsets, right.offsets,
+		left.data.offset, right.data.offset, left.Len(), left.NullBitmapBytes(), opt)
 }
 
 func arrayApproxEqualListView(left, right *ListView, opt equalOption) bool {
@@ -871,22 +938,24 @@ func arrayApproxEqualLargeListView(left, right *LargeListView, opt equalOption) 
 }
 
 func arrayApproxEqualFixedSizeList(left, right *FixedSizeList, opt equalOption) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		o := func() bool {
-			l := left.newListValue(i)
-			defer l.Release()
-			r := right.newListValue(i)
-			defer r.Release()
-			return arrayApproxEqual(l, r, opt)
-		}()
-		if !o {
-			return false
-		}
+	if useScalarListEquality(left.NullBitmapBytes(), int64(left.Offset()), int64(left.Len())) {
+		return arrayApproxEqualListScalar(left, right, opt)
 	}
-	return true
+	listSize := int64(left.n)
+	validBits := left.NullBitmapBytes()
+	if len(validBits) == 0 {
+		validBits = nil
+	}
+	return bitutils.VisitSetBitRuns(validBits, int64(left.Offset()), int64(left.Len()),
+		func(pos, length int64) error {
+			leftStart := (int64(left.Offset()) + pos) * listSize
+			rightStart := (int64(right.Offset()) + pos) * listSize
+			if !sliceApproxEqual(left.values, leftStart, leftStart+length*listSize,
+				right.values, rightStart, rightStart+length*listSize, opt) {
+				return arrow.ErrInvalid
+			}
+			return nil
+		}) == nil
 }
 
 func arrayApproxEqualStruct(left, right *Struct, opt equalOption) bool {

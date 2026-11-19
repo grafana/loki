@@ -425,32 +425,18 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 }
 
 func convertLogsTimePredicate(p TimeRangeRowPredicate, column dataset.Column) dataset.Predicate {
-	var start dataset.Predicate = dataset.GreaterThanPredicate{
-		Column: column,
-		Value:  dataset.Int64Value(p.StartTime.UnixNano()),
-	}
-	if p.IncludeStart {
-		start = dataset.OrPredicate{
-			Left: start,
-			Right: dataset.EqualPredicate{
-				Column: column,
-				Value:  dataset.Int64Value(p.StartTime.UnixNano()),
-			},
-		}
-	}
+	var (
+		startTime = dataset.Int64Value(p.StartTime.UnixNano())
+		endTime   = dataset.Int64Value(p.EndTime.UnixNano())
 
-	var end dataset.Predicate = dataset.LessThanPredicate{
-		Column: column,
-		Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+		start dataset.Predicate = dataset.GreaterThanPredicate{Column: column, Value: startTime}
+		end   dataset.Predicate = dataset.LessThanPredicate{Column: column, Value: endTime}
+	)
+	if p.IncludeStart {
+		start = dataset.GreaterThanOrEqualPredicate{Column: column, Value: startTime}
 	}
 	if p.IncludeEnd {
-		end = dataset.OrPredicate{
-			Left: end,
-			Right: dataset.EqualPredicate{
-				Column: column,
-				Value:  dataset.Int64Value(p.EndTime.UnixNano()),
-			},
-		}
+		end = dataset.LessThanOrEqualPredicate{Column: column, Value: endTime}
 	}
 
 	return dataset.AndPredicate{

@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3130373737383931373330383137363536363734\"",
+  "etag": "\"36343836353730373237303939393235333638\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -456,40 +456,8 @@
             "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
-        "pause": {
-          "description": "Pauses an Anywhere Cache instance.",
-          "httpMethod": "POST",
-          "id": "storage.anywhereCaches.pause",
-          "parameterOrder": [
-            "bucket",
-            "anywhereCacheId"
-          ],
-          "parameters": {
-            "anywhereCacheId": {
-              "description": "The ID of requested Anywhere Cache instance.",
-              "location": "path",
-              "required": true,
-              "type": "string"
-            },
-            "bucket": {
-              "description": "Name of the parent bucket.",
-              "location": "path",
-              "required": true,
-              "type": "string"
-            }
-          },
-          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}/pause",
-          "response": {
-            "$ref": "AnywhereCache"
-          },
-          "scopes": [
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/devstorage.full_control",
-            "https://www.googleapis.com/auth/devstorage.read_write"
-          ]
-        },
         "resume": {
-          "description": "Resumes a paused or disabled Anywhere Cache instance.",
+          "description": "Resumes a disabled Anywhere Cache instance.",
           "httpMethod": "POST",
           "id": "storage.anywhereCaches.resume",
           "parameterOrder": [
@@ -4761,7 +4729,7 @@
       }
     }
   },
-  "revision": "20261009",
+  "revision": "20261107",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5608,6 +5576,16 @@
         "locationType": {
           "description": "The type of the bucket location.",
           "type": "string"
+        },
+        "rapidCacheInfo": {
+          "description": "The Rapid Cache configuration for the bucket.",
+          "properties": {
+            "cacheType": {
+              "description": "The type of cache in the bucket. Set to `rapid-cache` or `rapid-cache-ultra`, only if there is a cache present.",
+              "type": "string"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"

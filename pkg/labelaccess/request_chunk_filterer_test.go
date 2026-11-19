@@ -171,6 +171,48 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			labels.FromStrings("host", "host1", "env", "prod"),
 			true,
 		},
+		{
+			"invalid regex",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+			},
+			labels.FromStrings("host", "(", "env", "prod"),
+			true,
+		},
+		{
+			"invalid matcher after a matching one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}, {Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			true,
+		},
+		{
+			"matching selector after an invalid one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
+		{
+			"matcher of an invalid selector repeated in a valid one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}, {Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
+		{
+			"selector with no matchers",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

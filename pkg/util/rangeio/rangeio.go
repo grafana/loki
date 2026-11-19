@@ -127,20 +127,18 @@ func (cfg *Config) effectiveParallelism() int {
 
 // DefaultConfig holds the default values for [Config].
 var DefaultConfig = Config{
-	// Benchmarks of GCS and S3 revealed that more parallelism is always better.
-	// However, too much parallelism (especially parallel [ReadRanges] calls)
-	// can eventually saturate the network. MaxParallelism of 10 appears to
-	// provide a good balance of throughput without saturating the network.
-	MaxParallelism: 10,
+	// ReadRanges splits ranges until it has MaxParallelism of them, so the parallelism must grow with
+	// MaxRangeSize. A lower parallelism leaves large requests, and large requests raise the tail
+	// latency. Too much parallelism, across many parallel ReadRanges calls, can saturate the network.
+	MaxParallelism: 16,
 
-	// Coalesce ranges no further than 1 MiB apart. 1 MiB is a good balance
-	// between combining ranges without introducing too many "wasted" bytes.
-	CoalesceSize: 1 << 20, // 1 MiB
+	// Coalesce ranges no further than 128 KiB apart. A larger gap reads more bytes than the caller
+	// asks for, and gives no lower latency.
+	CoalesceSize: 128 << 10, // 128 KiB
 
-	// Constrain ranges to be no longer than 8 MiB. Benchmarks of GCS and S3
-	// revealed that 8 MiB typically offers the best throughput when there's
-	// enough ranges to fill MaxParallelism.
-	MaxRangeSize: 8 * (1 << 20), // 8 MiB
+	// Constrain ranges to be no longer than 32 MiB. Large ranges make fewer requests per call, which
+	// offsets the extra requests that a small CoalesceSize makes.
+	MaxRangeSize: 32 << 20, // 32 MiB
 
 	// Constrain split ranges to be no smaller than 1 MiB.
 	MinRangeSize: 1 << 20, // 1 MiB
