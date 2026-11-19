@@ -14,7 +14,6 @@ The `dataobj` package provides a container format for storing and retrieving str
 - [Section Types](#section-types)
 - [Operational Components](#operational-components)
 - [Creating Custom Sections](#creating-custom-sections)
-- [Usage Examples](#usage-examples)
 
 ---
 
@@ -59,7 +58,7 @@ reader resolve every section's layout with one read from offset 0.
 2. **Encoder** - Low-level encoding of sections and metadata
 3. **Decoder** - Low-level decoding of sections from object storage
 4. **SectionReader** - Interface for reading data/metadata from sections
-5. **Section Implementations** - Specific section types (logs, streams, pointers, etc.)
+5. **Section Implementations** - Specific section types (logs, streams, postings, etc.)
 
 ---
 
@@ -231,10 +230,10 @@ The encoding uses a multi-level compression strategy:
 │ - List columns   │
 └──────┬───────────┘
        │
-       │ NewReader
+       │ NewRowReader
        ▼
 ┌──────────────────┐
-│ logs.Reader      │
+│ logs.RowReader   │
 │ - Read pages     │
 │ - Apply filters  │
 │ - Decompress     │
@@ -243,7 +242,7 @@ The encoding uses a multi-level compression strategy:
        │ Read batches
        ▼
 ┌──────────────────┐
-│ Arrow Records    │
+│ Records          │
 └──────────────────┘
 ```
 
@@ -275,11 +274,11 @@ Section opening:
 #### 4. Reading Data
 
 Reading process:
-1. Validates reader options
+1. Resolves the projected columns of the section
 2. Maps predicates to internal dataset predicates
 3. Reads pages in batches (with prefetching)
 4. Applies predicates at page and row level
-5. Converts to Arrow record batches
+5. Decodes the rows into records
 
 Reader optimizations:
 - **Range coalescing**: Adjacent pages are read in a single request
@@ -331,14 +330,13 @@ Stores stream metadata and statistics in logs objects.
 - `rows` (uint64): Number of log records
 - `uncompressed_size` (uint64): Uncompressed data size
 
-### 3. Pointers Section
+### 3. Pointers Section (legacy)
 
 **Namespace**: `github.com/grafana/loki`
 **Kind**: `pointers`
-**Location**: `pkg/dataobj/sections/pointers/`
 
-Used in older index objects to point to other objects that contain logs, via stream or predicate lookup.
-The index builder no longer writes this section, and the compactor skips it.
+Older index objects hold this section. It points to objects that contain logs, via a stream or predicate lookup.
+The index builder does not write it, and Loki has no code to read it.
 
 **Columns:**
 - `path` (binary): Path to data object in object storage
@@ -409,150 +407,6 @@ Creates index objects that contain indexes over data objects containing the logs
 **Location**: `pkg/dataobj/explorer/`
 
 HTTP service for inspecting data objects.
-
----
-
-## Usage Examples
-
-### Example 1: Building and Uploading a Data Object
-
-```go
-package main
-
-import (
-    "context"
-    "time"
-
-    "github.com/grafana/loki/v3/pkg/dataobj"
-    "github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-    "github.com/grafana/loki/v3/pkg/dataobj/uploader"
-    "github.com/prometheus/prometheus/model/labels"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // Create logs builder
-    logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-        PageSizeHint: 256 * 1024,
-        BufferSize: 10 * 1024 * 1024,
-        AppendStrategy: logs.AppendUnordered,
-        SortOrder: logs.SortStreamASC,
-    })
-
-    // Append log records
-    logsBuilder.Append(logs.Record{
-        StreamID:  12345,
-        Timestamp: time.Now(),
-        Metadata:  labels.Labels{{Name: "level", Value: "error"}},
-        Line:      []byte("error occurred"),
-    })
-
-    // Create data object
-    objBuilder := dataobj.NewBuilder(nil)
-    objBuilder.Append(logsBuilder)
-
-    obj, closer, err := objBuilder.Flush()
-    if err != nil {
-        panic(err)
-    }
-    defer closer.Close()
-
-    // Upload to object storage
-    uploader := uploader.New(uploaderCfg, bucket, logger)
-    objectPath, err := uploader.Upload(ctx, obj)
-    if err != nil {
-        panic(err)
-    }
-
-    println("Uploaded to:", objectPath)
-}
-```
-
-### Example 2: Reading and Querying Logs
-
-```go
-package main
-
-import (
-    "context"
-    "io"
-
-    "github.com/apache/arrow-go/v18/arrow/scalar"
-    "github.com/grafana/loki/v3/pkg/dataobj"
-    "github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // Open data object
-    obj, err := dataobj.FromBucket(ctx, bucket, "objects/ab/cd123...", 0)
-    if err != nil {
-        panic(err)
-    }
-
-    // Find logs sections
-    var logsSection *dataobj.Section
-    for _, sec := range obj.Sections() {
-        if logs.CheckSection(sec) {
-            logsSection = sec
-            break
-        }
-    }
-
-    // Open logs section
-    section, err := logs.Open(ctx, logsSection)
-    if err != nil {
-        panic(err)
-    }
-
-    // Find columns
-    var timestampCol, messageCol *logs.Column
-    for _, col := range section.Columns() {
-        switch col.Type {
-        case logs.ColumnTypeTimestamp:
-            timestampCol = col
-        case logs.ColumnTypeMessage:
-            messageCol = col
-        }
-    }
-
-    // Create reader with predicate
-    reader := logs.NewReader(logs.ReaderOptions{
-        Columns: []*logs.Column{timestampCol, messageCol},
-        Predicates: []logs.Predicate{
-            logs.GreaterThanPredicate{
-                Column: timestampCol,
-                Value:  scalar.NewInt64Scalar(startTime.UnixNano()),
-            },
-        },
-    })
-    defer reader.Close()
-
-    if err := reader.Open(ctx); err != nil {
-        panic(err)
-    }
-
-    // Read batches
-    for {
-        batch, err := reader.Read(ctx, 1000)
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            panic(err)
-        }
-
-        // Process batch (Arrow record)
-        for i := 0; i < int(batch.NumRows()); i++ {
-            timestamp := batch.Column(0).(*array.Timestamp).Value(i)
-            message := batch.Column(1).(*array.String).Value(i)
-            println(timestamp, message)
-        }
-    }
-}
-```
 
 ---
 

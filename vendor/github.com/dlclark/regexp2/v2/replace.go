@@ -77,7 +77,7 @@ func replace(regex *Regexp, data *syntax.ReplacerData, evaluator MatchEvaluator,
 		return "", errors.New("count too small")
 	}
 	if count == 0 {
-		return "", nil
+		return input, nil
 	}
 
 	if evaluator == nil {
@@ -195,7 +195,7 @@ func replaceRunnerLTR(regex *Regexp, data *syntax.ReplacerData, input string, st
 		runeStart = 0
 	}
 
-	m, err := runner.scan(text, textInfo, runeStart, runeStart, -1, true, regex.MatchTimeout)
+	m, err := runner.scan(text, textInfo, runeStart, runeStart, -1, scanCaptures, regex.MatchTimeout)
 	if err != nil {
 		return "", err
 	}
@@ -226,7 +226,7 @@ func replaceRunnerLTR(regex *Regexp, data *syntax.ReplacerData, input string, st
 			break
 		}
 
-		m, err = runner.scan(text, textInfo, m.textpos, m.textpos, m.RuneLength, true, regex.MatchTimeout)
+		m, err = runner.scan(text, textInfo, m.textpos, m.textpos, m.RuneLength, scanCaptures, regex.MatchTimeout)
 		if err != nil {
 			return "", err
 		}
@@ -259,7 +259,7 @@ func replaceRunnerRTL(regex *Regexp, data *syntax.ReplacerData, input string, st
 		runeStart = len(text)
 	}
 
-	m, err := runner.scan(text, textInfo, runeStart, runeStart, -1, true, regex.MatchTimeout)
+	m, err := runner.scan(text, textInfo, runeStart, runeStart, -1, scanCaptures, regex.MatchTimeout)
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +297,7 @@ func replaceRunnerRTL(regex *Regexp, data *syntax.ReplacerData, input string, st
 			break
 		}
 
-		m, err = runner.scan(text, textInfo, m.textpos, m.textpos, m.RuneLength, true, regex.MatchTimeout)
+		m, err = runner.scan(text, textInfo, m.textpos, m.textpos, m.RuneLength, scanCaptures, regex.MatchTimeout)
 		if err != nil {
 			return "", err
 		}

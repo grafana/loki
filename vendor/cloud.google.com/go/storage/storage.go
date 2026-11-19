@@ -76,6 +76,9 @@ var (
 	errMethodNotSupported = errors.New("storage: method is not currently supported")
 	// errSignedURLMethodNotValid indicates that given HTTP method is not valid.
 	errSignedURLMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
+	// errChecksumMismatch is wrapped by the errors returned when a checksum
+	// computed by the client does not match the expected value.
+	errChecksumMismatch = errors.New("storage: checksum mismatch")
 )
 
 var userAgent = fmt.Sprintf("gcloud-golang-storage/%s", internal.Version)
@@ -129,6 +132,10 @@ type Client struct {
 	grpcAppendableUploads bool
 
 	bucketMetadataCache *bucketMetadataCache
+
+	// rpcSystem is the OTel rpc.system.name span attribute for this client's
+	// transport (rpcSystemHTTP or rpcSystemGRPC).
+	rpcSystem attribute.KeyValue
 }
 
 // credsJSON returns the raw JSON of the Client's creds and true, or an empty slice
@@ -172,8 +179,11 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		// Don't error out here. The user may have passed in their own HTTP
 		// client which does not auth with ADC or other common conventions.
 		c, err := internaloption.AuthCreds(ctx, opts)
-		if err == nil {
-			creds = c
+		if err == nil && c != nil {
+			// Clone so that credential wrapping in newHTTPStorageClient never
+			// mutates caller-owned credentials passed via WithAuthCredentials.
+			clone := *c
+			creds = &clone
 			opts = append(opts, option.WithAuthCredentials(creds))
 		}
 	} else {
@@ -236,12 +246,13 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 	}
 
 	c := &Client{
-		hc:      hc,
-		raw:     rawService,
-		scheme:  u.Scheme,
-		xmlHost: u.Host,
-		creds:   creds,
-		tc:      tcWrapped,
+		hc:        hc,
+		raw:       rawService,
+		scheme:    u.Scheme,
+		xmlHost:   u.Host,
+		creds:     creds,
+		tc:        tcWrapped,
+		rpcSystem: rpcSystemHTTP,
 	}
 	if isACOEnabled() {
 		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
@@ -277,6 +288,7 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	c := &Client{
 		tc:                    tcWrapped,
 		grpcAppendableUploads: tc.config.grpcAppendableUploads,
+		rpcSystem:             rpcSystemGRPC,
 	}
 	if isACOEnabled() {
 		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
@@ -1066,7 +1078,7 @@ func (o *ObjectHandle) Key(encryptionKey []byte) *ObjectHandle {
 // Attrs returns meta information about the object.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Attrs")
+	ctx, _ = startSpanWithObject(ctx, o.c, o.bucket, o.object, "Object.Attrs")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1080,7 +1092,7 @@ func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error
 // ObjectAttrsToUpdate docs for details on treatment of zero values.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Update(ctx context.Context, uattrs ObjectAttrsToUpdate) (oa *ObjectAttrs, err error) {
-	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Update")
+	ctx, _ = startSpanWithObject(ctx, o.c, o.bucket, o.object, "Object.Update")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1158,7 +1170,7 @@ type ObjectAttrsToUpdate struct {
 
 // Delete deletes the single specified object.
 func (o *ObjectHandle) Delete(ctx context.Context) (err error) {
-	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Delete")
+	ctx, _ = startSpanWithObject(ctx, o.c, o.bucket, o.object, "Object.Delete")
 	defer func() { endSpan(ctx, err) }()
 	if err := o.validate(); err != nil {
 		return err
@@ -1280,7 +1292,7 @@ type MoveObjectDestination struct {
 // It is the caller's responsibility to call Close when writing is done. To
 // stop writing without saving the data, cancel the context.
 func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
-	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Writer")
+	ctx, _ = startSpanWithObject(ctx, o.c, o.bucket, o.object, "Object.Writer")
 	return &Writer{
 		ctx:         ctx,
 		o:           o,
@@ -1314,8 +1326,13 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 //
 // NewWriterFromAppendableObject is supported only for gRPC clients and only for
 // objects which were created append semantics and not finalized.
-func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
-	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.WriterFromAppendableObject")
+func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (_ *Writer, _ int64, err error) {
+	ctx, _ = startSpanWithObject(ctx, o.c, o.bucket, o.object, "Object.WriterFromAppendableObject")
+	defer func() {
+		if err != nil {
+			endSpan(ctx, err)
+		}
+	}()
 	if o.gen < 0 {
 		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
 	}
@@ -1335,8 +1352,7 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 	if w.ChunkRetryDeadline == 0 {
 		w.ChunkRetryDeadline = defaultWriteChunkRetryDeadline
 	}
-	err := w.openWriter()
-	if err != nil {
+	if err := w.openWriter(); err != nil {
 		return nil, 0, err
 	}
 	// Block until we discover the takeover offset, or the stream fails

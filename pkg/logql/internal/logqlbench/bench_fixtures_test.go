@@ -25,7 +25,7 @@ const storageDirName = "storage"
 
 const (
 	// Bump fixtureVersion when the generation logic below changes, so stale caches regenerate.
-	fixtureVersion = 4
+	fixtureVersion = 5
 	fixtureSeed    = 1
 	numStreams     = 2000
 	linesPerStream = 5000
@@ -203,7 +203,7 @@ func streamWindow(i int, rng *rand.Rand) (offsetSecs, durSecs int64) {
 
 // line builds a ~lineBytes line, unique per (stream, line) so chunk dedup never drops it.
 func line(streamIdx, lineIdx int) string {
-	prefix := fmt.Sprintf("level=info stream=%d line=%d msg=\"request served\" ", streamIdx, lineIdx)
+	prefix := fmt.Sprintf("level=info stream=%d value=%d msg=\"request served\" ", streamIdx, lineIdx)
 	if len(prefix) >= lineBytes {
 		return prefix[:lineBytes]
 	}

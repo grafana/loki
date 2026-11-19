@@ -4,39 +4,20 @@ import (
 	"flag"
 	"fmt"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
-	defaultNgramLength                    = 6
-	defaultMaxHintParallel                = 64
-	defaultHintTimeout                    = 15 * time.Second
-	defaultShardPlanningEnabled           = true
-	defaultShardPlanningMinReductionRatio = 0.75
-
-	shardPlanningStrategyPowerOfTwo = "power_of_two"
+	defaultNgramLength     = 6
+	defaultMaxHintParallel = 64
+	defaultMaxConjunctions = 1
+	defaultHintTimeout     = 15 * time.Second
 )
-
-// ShardPlanningConfig controls cancel-then-rerun behavior: when logline hints
-// finish before the provisional query and show sufficient narrowing, the
-// in-flight query is cancelled and restarted with power_of_two TSDB sharding.
-type ShardPlanningConfig struct {
-	Enabled               bool    `yaml:"enabled"`
-	MinTimeReductionRatio float64 `yaml:"min_time_reduction_ratio"`
-}
-
-func (c *ShardPlanningConfig) applyDefaults() {
-	if c.MinTimeReductionRatio == 0 {
-		c.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
-}
-
-func (c *ShardPlanningConfig) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain ShardPlanningConfig
-	defaults := ShardPlanningConfig{Enabled: defaultShardPlanningEnabled}
-	defaults.applyDefaults()
-	*c = defaults
-	return unmarshal((*plain)(c))
-}
 
 // Config is logline's read path configuration.
 type Config struct {
@@ -54,11 +35,17 @@ type Config struct {
 	// MaxHintParallel is the maximum number of concurrent hint index workers
 	// dispatched per query. Defaults to 64 when zero.
 	MaxHintParallel int `yaml:"max_hint_parallel"`
+	// MaxConjunctions is the most needle sets a query is planned into. A filter
+	// with an or, or a regex with alternation, gives one set per branch, and
+	// the sets are ORed. Over the limit, sets collapse to the needles they
+	// share. 1 gives one set, the needles every branch shares. Defaults to 1
+	// when zero.
+	MaxConjunctions int `yaml:"max_conjunctions"`
 	// QueryIngestersWithin is the window of recent data that lives only in
 	// ingesters (not yet flushed to object storage). The logline index cannot
 	// cover this window, so it is always passed through to the Loki pipeline.
 	// Populated from Loki's querier.query_ingesters_within at assembly time.
-	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryIngestersWithin time.Duration `yaml:"-"`
 	// HintTimeout is the maximum time to wait for the logline index hint
 	// lookup before falling back to passthrough. Defaults to 15s when zero.
 	HintTimeout time.Duration `yaml:"hint_timeout"`
@@ -71,9 +58,10 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
-	// ShardPlanning controls optional live-query reruns that force Loki's TSDB
-	// shard planner to use a configured strategy when hints prove the request is narrow.
-	ShardPlanning ShardPlanningConfig `yaml:"shard_planning"`
+	// AlignQueriesWithStep floors both ends of a range metric query onto the step
+	// before the splitter rounds the end up. Populated from
+	// query_range.align_queries_with_step at assembly time.
+	AlignQueriesWithStep bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers the section's flags under prefix.
@@ -86,16 +74,37 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Require X-Logline-Index header to activate hint narrowing")
 	f.IntVar(&c.MaxHintParallel, prefix+".max-hint-parallel", 0,
 		"Maximum concurrent hint index workers per query (default 64)")
+	f.IntVar(&c.MaxConjunctions, prefix+".max-conjunctions", defaultMaxConjunctions,
+		"Maximum needle sets a query is planned into. Filters with or and regexes with alternation give one set per branch. 1 keeps only the needles every branch shares.")
 	f.DurationVar(&c.HintTimeout, prefix+".hint-timeout", 0,
 		"Maximum time to wait for logline index hint lookup (default 15s)")
 	f.DurationVar(&c.HintCacheTTL, prefix+".hint-cache-ttl", 2*time.Minute,
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
-	f.BoolVar(&c.ShardPlanning.Enabled, prefix+".shard-planning.enabled", defaultShardPlanningEnabled,
-		"Enable logline shard-planning reruns for narrow live queries")
-	f.Float64Var(&c.ShardPlanning.MinTimeReductionRatio, prefix+".shard-planning.min-time-reduction-ratio", defaultShardPlanningMinReductionRatio,
-		"Minimum hinted time reduction ratio required for a shard-planning rerun (default 0.75)")
+
+	// Cancel-and-rerun no longer reads these. Keep them so existing
+	// deployments still start, and remove them in a follow-up.
+	const shardPlanningDeprecated = "Deprecated: cancel-and-rerun has been removed. This flag is ignored and will be removed in a future release."
+	f.Var(deprecatedBoolFlag{name: prefix + ".shard-planning.enabled", logger: util_log.Logger}, prefix+".shard-planning.enabled", shardPlanningDeprecated)
+	flagext.DeprecatedFlag(f, prefix+".shard-planning.min-time-reduction-ratio", shardPlanningDeprecated, util_log.Logger)
+}
+
+// deprecatedBoolFlag accepts a boolean flag and ignores the value.
+// IsBoolFlag preserves the bare -flag form, which a plain DeprecatedFlag rejects.
+type deprecatedBoolFlag struct {
+	name   string
+	logger log.Logger
+}
+
+func (deprecatedBoolFlag) String() string { return "deprecated" }
+
+func (deprecatedBoolFlag) IsBoolFlag() bool { return true }
+
+func (d deprecatedBoolFlag) Set(string) error {
+	level.Warn(d.logger).Log("msg", "flag disabled", "flag", d.name)
+	flagext.DeprecatedFlagsUsed.Inc()
+	return nil
 }
 
 // Validate checks constraints and applies defaults for zero-valued fields.
@@ -105,6 +114,12 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxHintParallel <= 0 {
 		c.MaxHintParallel = defaultMaxHintParallel
+	}
+	if c.MaxConjunctions < 0 {
+		return fmt.Errorf("max_conjunctions must be >= 0")
+	}
+	if c.MaxConjunctions == 0 {
+		c.MaxConjunctions = defaultMaxConjunctions
 	}
 	if c.HintTimeout <= 0 {
 		c.HintTimeout = defaultHintTimeout
@@ -118,23 +133,5 @@ func (c *Config) Validate() error {
 	if c.HintCacheMaxSizeMB == 0 {
 		c.HintCacheMaxSizeMB = 100
 	}
-	if err := c.ShardPlanning.Validate(); err != nil {
-		return fmt.Errorf("invalid shard_planning config: %w", err)
-	}
-	return nil
-}
-
-func (c *ShardPlanningConfig) Validate() error {
-	zero := *c == ShardPlanningConfig{}
-	if c.MinTimeReductionRatio < 0 {
-		return fmt.Errorf("min_time_reduction_ratio must be >= 0")
-	}
-	if zero {
-		c.Enabled = defaultShardPlanningEnabled
-	}
-	if !c.Enabled {
-		return nil
-	}
-	c.applyDefaults()
 	return nil
 }

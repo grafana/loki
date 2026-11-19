@@ -151,6 +151,18 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.Equal(t, int64(len(content)), value(dataobj.StatObjectBytesDownloaded))
 	})
 
+	t.Run("a Get body reports the size that the wrapped body reports", func(t *testing.T) {
+		reader := dataobj.NewInstrumentedBucketReader(newBucket(t))
+
+		rc, err := reader.Get(t.Context(), "obj")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, rc.Close()) }()
+
+		size, err := objstore.TryToGetSize(rc)
+		require.NoError(t, err)
+		require.Equal(t, int64(len(content)), size)
+	})
+
 	t.Run("a successful GetRange call records one request and no failure, and the bytes read", func(t *testing.T) {
 		ctx, value := newCapturedContext(t)
 		reader := dataobj.NewInstrumentedBucketReader(newBucket(t))
@@ -419,7 +431,9 @@ func TestFromBucket_RequestStatistics(t *testing.T) {
 		obj, err := dataobj.FromBucket(ctx, bucket, "obj", 0)
 		require.NoError(t, err)
 		for _, sec := range obj.Sections() {
-			readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+			readAll(t, func() (io.ReadCloser, error) {
+				return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+			})
 		}
 	}
 

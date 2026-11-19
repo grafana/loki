@@ -22,6 +22,7 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -153,18 +154,40 @@ func FromString(v string, prec, scale int32) (n Num, err error) {
 	if err != nil {
 		return
 	}
+	if out.IsInf() {
+		return Num{}, fmt.Errorf("cannot convert %s to decimal256", v)
+	}
 
 	if scale < 0 {
-		var tmp big.Int
-		val, _ := out.Int(&tmp)
-		if val.BitLen() > 255 {
+		// Check the magnitude before converting, which would allocate as many
+		// bits as the value has.
+		if out.MantExp(nil) > 255 {
 			return Num{}, errors.New("bitlen too large for decimal256")
 		}
+		if scale < -MaxScale {
+			return Num{}, fmt.Errorf("scale %d out of range for decimal256, must be between %d and %d", scale, -MaxScale, MaxScale)
+		}
+		var tmp big.Int
+		val, _ := out.Int(&tmp)
 		n = FromBigInt(val)
 
 		n, _ = n.Div(scaleMultipliers[-scale])
 	} else {
+		if scale > MaxScale {
+			return Num{}, fmt.Errorf("scale %d out of range for decimal256, must be between %d and %d", scale, -MaxScale, MaxScale)
+		}
 		out.Mul(out, (&big.Float{}).SetInt(scaleMultipliers[scale].BigInt())).SetPrec(precInBits)
+		// Reject before rounding and converting, which would allocate as many
+		// bits as the value has.
+		if out.IsInf() || out.MantExp(nil) > 256 {
+			return Num{}, errors.New("bitlen too large for decimal256")
+		}
+		// A magnitude below 1/4 rounds to zero. Clearing it skips the
+		// rounding below, which allocates in proportion to the gap between
+		// the value's exponent and 0.5's.
+		if out.MantExp(nil) < -1 {
+			out.SetInt64(0)
+		}
 		// Since we're going to truncate this to get an integer, we need to round
 		// the value instead because of edge cases so that we match how other implementations
 		// (e.g. C++) handles Decimal values. So if we're negative we'll subtract 0.5 and if
@@ -340,6 +363,9 @@ func (n Num) ToFloat64(scale int32) float64 {
 }
 
 func (n Num) ToBigFloat(scale int32) *big.Float {
+	if scale < -MaxScale || scale > MaxScale {
+		panic("arrow/decimal256: scale out of range")
+	}
 	f := (&big.Float{}).SetInt(n.BigInt())
 	if scale < 0 {
 		f.SetPrec(256).Mul(f, (&big.Float{}).SetInt(scaleMultipliers[-scale].BigInt()))
@@ -356,6 +382,7 @@ func (n Num) Sign() int {
 	return int(1 | (int64(n.arr[3]) >> 63))
 }
 
+// FromBigInt converts a big.Int to a Num. It panics if v.BitLen() > 255.
 func FromBigInt(v *big.Int) (n Num) {
 	bitlen := v.BitLen()
 	if bitlen > 255 {
@@ -365,8 +392,15 @@ func FromBigInt(v *big.Int) (n Num) {
 	}
 
 	b := v.Bits()
-	for i, bits := range b {
-		n.arr[i] = uint64(bits)
+	if bits.UintSize == 32 {
+		// Each 64-bit limb contains two native-sized big.Int words.
+		for i, word := range b {
+			n.arr[i/2] |= uint64(word) << (32 * (i % 2))
+		}
+	} else {
+		for i, word := range b {
+			n.arr[i] = uint64(word)
+		}
 	}
 	if v.Sign() < 0 {
 		return n.Negate()
@@ -375,6 +409,14 @@ func FromBigInt(v *big.Int) (n Num) {
 }
 
 func toBigIntPositive(n Num) *big.Int {
+	if bits.UintSize == 32 {
+		return new(big.Int).SetBits([]big.Word{
+			big.Word(n.arr[0]), big.Word(n.arr[0] >> 32),
+			big.Word(n.arr[1]), big.Word(n.arr[1] >> 32),
+			big.Word(n.arr[2]), big.Word(n.arr[2] >> 32),
+			big.Word(n.arr[3]), big.Word(n.arr[3] >> 32),
+		})
+	}
 	return new(big.Int).SetBits([]big.Word{big.Word(n.arr[0]), big.Word(n.arr[1]), big.Word(n.arr[2]), big.Word(n.arr[3])})
 }
 
@@ -478,29 +520,35 @@ func (n Num) ReduceScaleBy(reduce int32, round bool) Num {
 	return FromBigInt(result)
 }
 
-func (n Num) rescaleWouldCauseDataLoss(deltaScale int32, multiplier Num) (out Num, loss bool) {
+func (n Num) rescaleWouldCauseDataLoss(deltaScale int64, multiplier Num) (out Num, loss bool) {
 	if deltaScale < 0 {
 		var remainder Num
 		out, remainder = n.Div(multiplier)
 		return out, remainder != Num{}
 	}
 
-	out = n.Mul(multiplier)
-	if n.Sign() < 0 {
-		loss = n.Less(out)
-	} else {
-		loss = out.Less(n)
+	result := n.BigInt()
+	result.Mul(result, multiplier.BigInt())
+	if result.BitLen() > 255 {
+		return Num{}, true
 	}
-	return
+	return FromBigInt(result), false
 }
 
 func (n Num) Rescale(original, newscale int32) (out Num, err error) {
-	if original == newscale {
+	if original == newscale || n == (Num{}) {
 		return n, nil
 	}
 
-	deltaScale := newscale - original
-	absDeltaScale := int32(math.Abs(float64(deltaScale)))
+	deltaScale := int64(newscale) - int64(original)
+	absDeltaScale := deltaScale
+	if absDeltaScale < 0 {
+		absDeltaScale = -absDeltaScale
+	}
+	// Scaling any nonzero value by 10^77 or more overflows or drops every digit.
+	if absDeltaScale >= int64(len(scaleMultipliers)) {
+		return Num{}, errors.New("rescale data loss")
+	}
 
 	multiplier := scaleMultipliers[absDeltaScale]
 	var wouldHaveLoss bool
@@ -526,13 +574,41 @@ func (n Num) FitsInPrecision(prec int32) bool {
 }
 
 func (n Num) ToString(scale int32) string {
-	f := (&big.Float{}).SetInt(n.BigInt())
-	if scale < 0 {
-		f.SetPrec(256).Mul(f, (&big.Float{}).SetInt(scaleMultipliers[-scale].BigInt()))
-	} else {
-		f.SetPrec(256).Quo(f, (&big.Float{}).SetInt(scaleMultipliers[scale].BigInt()))
+	if scale < -MaxScale || scale > MaxScale {
+		panic("arrow/decimal256: scale out of range")
 	}
-	return f.Text('f', int(scale))
+
+	value := n.BigInt().String()
+	digits := len(value)
+	if value[0] == '-' {
+		digits--
+	}
+	if digits > MaxPrecision {
+		return n.ToBigFloat(scale).Text('f', int(scale))
+	}
+	if scale <= 0 {
+		if scale < 0 && value != "0" {
+			value += strings.Repeat("0", int(-scale))
+		}
+		return value
+	}
+
+	negative := value[0] == '-'
+	if negative {
+		value = value[1:]
+	}
+	places := int(scale)
+	var result string
+	if len(value) <= places {
+		result = "0." + strings.Repeat("0", places-len(value)) + value
+	} else {
+		at := len(value) - places
+		result = value[:at] + "." + value[at:]
+	}
+	if negative {
+		return "-" + result
+	}
+	return result
 }
 
 func GetScaleMultiplier(pow int) Num { return scaleMultipliers[pow] }

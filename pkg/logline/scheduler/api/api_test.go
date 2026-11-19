@@ -2,6 +2,8 @@ package schedulerapi
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -35,6 +37,40 @@ func TestLastCompletedJobID_Missing(t *testing.T) {
 	require.Equal(t, "", LastCompletedJobID(req))
 }
 
+func TestParseJobResponse_Errors(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		status          int
+		body            string
+		wantUnavailable bool
+		wantMsg         string
+	}{
+		{
+			name:            "scheduler not running",
+			status:          http.StatusServiceUnavailable,
+			body:            "scheduler is not running: Starting",
+			wantUnavailable: true,
+			wantMsg:         "scheduler unavailable: scheduler is not running: Starting",
+		},
+		{
+			name:    "server error",
+			status:  http.StatusInternalServerError,
+			body:    "boom",
+			wantMsg: "unexpected scheduler response: 500",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			http.Error(rec, tc.body, tc.status)
+
+			job, err := ParseJobResponse(rec.Result())
+			require.Nil(t, job)
+			require.EqualError(t, err, tc.wantMsg)
+			require.Equal(t, tc.wantUnavailable, errors.Is(err, ErrSchedulerUnavailable))
+		})
+	}
+}
+
 func TestNewAbandonRequest(t *testing.T) {
 	req, err := NewAbandonRequest(context.Background(), "http://scheduler:3100", "w1", "job789")
 	require.NoError(t, err)
@@ -43,6 +79,16 @@ func TestNewAbandonRequest(t *testing.T) {
 	require.Equal(t, "w1", req.URL.Query().Get(ParamWorkerID))
 	require.Equal(t, "job789", req.URL.Query().Get(ParamJobID))
 	require.Equal(t, LegacyAbandonPath, req.URL.Path)
+}
+
+func TestNewCompleteRequest(t *testing.T) {
+	req, err := NewCompleteRequest(context.Background(), "http://scheduler:3100", "w1", "job789")
+	require.NoError(t, err)
+
+	require.Equal(t, "POST", req.Method)
+	require.Equal(t, CompletePath, req.URL.Path)
+	require.Equal(t, "w1", req.URL.Query().Get(ParamWorkerID))
+	require.Equal(t, "job789", req.URL.Query().Get(ParamJobID))
 }
 
 func TestJobID(t *testing.T) {

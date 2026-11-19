@@ -46,25 +46,15 @@ func Ole(raw []byte, limit uint32) bool {
 	return bytes.HasPrefix(raw, []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1})
 }
 
-// Doc matches a Microsoft Word 97-2003 file.
-// See: https://github.com/decalage2/oletools/blob/412ee36ae45e70f42123e835871bac956d958461/oletools/common/clsid.py
-func Doc(raw []byte, _ uint32) bool {
+// cdfOrClsid checks if the raw input is detected as the given CDF type, and if
+// the CDF parser returns a generic result, falls back to matching root storage CLSIDs.
+func cdfOrClsid(raw []byte, want cdf.CDFType, clsids ...[]byte) bool {
 	fromParsing := cdf.Detect(raw)
-	if fromParsing == cdf.CDFTypeDoc {
+	if fromParsing == want {
 		return true
 	}
 	if fromParsing != cdf.CDFTypeGeneric {
 		return false
-	}
-	// Fallback for inputs where the CDF directory is past the read limit: match
-	// the root storage CLSID, which often lies within the first sectors.
-	clsids := [][]byte{
-		// Microsoft Word 97-2003 Document (Word.Document.8)
-		{0x06, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
-		// Microsoft Word 6.0-7.0 Document (Word.Document.6)
-		{0x00, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
-		// Microsoft Word Picture (Word.Picture.8)
-		{0x07, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
 	}
 	for _, clsid := range clsids {
 		if matchOleClsid(raw, clsid) {
@@ -74,25 +64,27 @@ func Doc(raw []byte, _ uint32) bool {
 	return false
 }
 
+// Doc matches a Microsoft Word 97-2003 file.
+// See: https://github.com/decalage2/oletools/blob/412ee36ae45e70f42123e835871bac956d958461/oletools/common/clsid.py
+func Doc(raw []byte, _ uint32) bool {
+	return cdfOrClsid(raw, cdf.CDFTypeDoc,
+		// Microsoft Word 97-2003 Document (Word.Document.8)
+		[]byte{0x06, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
+		// Microsoft Word 6.0-7.0 Document (Word.Document.6)
+		[]byte{0x00, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
+		// Microsoft Word Picture (Word.Picture.8)
+		[]byte{0x07, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
+	)
+}
+
 // Ppt matches a Microsoft PowerPoint 97-2003 file or a PowerPoint 95 presentation.
 func Ppt(raw []byte, limit uint32) bool {
-	fromParsing := cdf.Detect(raw)
-	if fromParsing == cdf.CDFTypePpt {
-		return true
-	}
-	if fromParsing != cdf.CDFTypeGeneric {
-		return false
-	}
-	// Fallback for inputs where the CDF directory is past the read limit.
-	// Root CLSID test is the safest way to identify the OLE, however, the format
-	// often places the root CLSID at the end of the file.
-	if matchOleClsid(raw, []byte{
-		0x10, 0x8d, 0x81, 0x64, 0x9b, 0x4f, 0xcf, 0x11,
-		0x86, 0xea, 0x00, 0xaa, 0x00, 0xb9, 0x29, 0xe8,
-	}) || matchOleClsid(raw, []byte{
-		0x70, 0xae, 0x7b, 0xea, 0x3b, 0xfb, 0xcd, 0x11,
-		0xa9, 0x03, 0x00, 0xaa, 0x00, 0x51, 0x0e, 0xa3,
-	}) {
+	if cdfOrClsid(raw, cdf.CDFTypePpt,
+		[]byte{0x10, 0x8d, 0x81, 0x64, 0x9b, 0x4f, 0xcf, 0x11,
+			0x86, 0xea, 0x00, 0xaa, 0x00, 0xb9, 0x29, 0xe8},
+		[]byte{0x70, 0xae, 0x7b, 0xea, 0x3b, 0xfb, 0xcd, 0x11,
+			0xa9, 0x03, 0x00, 0xaa, 0x00, 0x51, 0x0e, 0xa3},
+	) {
 		return true
 	}
 
@@ -117,21 +109,10 @@ func Ppt(raw []byte, limit uint32) bool {
 
 // Xls matches a Microsoft Excel 97-2003 file.
 func Xls(raw []byte, limit uint32) bool {
-	fromParsing := cdf.Detect(raw)
-	if fromParsing == cdf.CDFTypeXls {
-		return true
-	}
-	if fromParsing != cdf.CDFTypeGeneric {
-		return false
-	}
-	// Fallback for inputs where the CDF directory is past the read limit.
-	// Root CLSID test is the safest way to identify the OLE, however, the format
-	// often places the root CLSID at the end of the file.
-	if matchOleClsid(raw, []byte{
-		0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-	}) || matchOleClsid(raw, []byte{
-		0x20, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-	}) {
+	if cdfOrClsid(raw, cdf.CDFTypeXls,
+		[]byte{0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00},
+		[]byte{0x20, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00},
+	) {
 		return true
 	}
 
@@ -168,19 +149,10 @@ func Pub(raw []byte, limit uint32) bool {
 
 // Msg matches a Microsoft Outlook email file.
 func Msg(raw []byte, limit uint32) bool {
-	fromParsing := cdf.Detect(raw)
-	if fromParsing == cdf.CDFTypeMsg {
-		return true
-	}
-	if fromParsing != cdf.CDFTypeGeneric {
-		return false
-	}
-	// Fallback for inputs where the CDF directory does not carry the streams the
-	// parser keys on: match the root storage CLSID instead.
-	return matchOleClsid(raw, []byte{
-		0x0B, 0x0D, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
-	})
+	return cdfOrClsid(raw, cdf.CDFTypeMsg,
+		[]byte{0x0B, 0x0D, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
+	)
 }
 
 // Msi matches a Microsoft Windows Installer file.

@@ -309,6 +309,18 @@ func (cfg *SchemaConfig) Validate() error {
 			}
 		}
 	}
+
+	// The sharded index copy must not overwrite the index of any period.
+	for _, sharded := range cfg.Configs {
+		if sharded.IndexTables.ShardedPathPrefix == "" {
+			continue
+		}
+		for _, p := range cfg.Configs {
+			if p.IndexTables.PathPrefix == sharded.IndexTables.ShardedPathPrefix {
+				return fmt.Errorf("validating period_config: sharded_path_prefix %s of the period starting at %s is the path_prefix of the period starting at %s", sharded.IndexTables.ShardedPathPrefix, sharded.From.String(), p.From.String())
+			}
+		}
+	}
 	return nil
 }
 
@@ -467,6 +479,7 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 type IndexPeriodicTableConfig struct {
 	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	ShardedPathPrefix   string `yaml:"sharded_path_prefix" category:"experimental" doc:"hidden"`
 	PeriodicTableConfig `yaml:",inline"`
 }
 
@@ -475,15 +488,26 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 		return err
 	}
 
-	return ValidatePathPrefix(cfg.PathPrefix)
+	if err := ValidatePathPrefix(cfg.PathPrefix); err != nil {
+		return err
+	}
+
+	if cfg.ShardedPathPrefix == "" {
+		return nil
+	}
+	if err := ValidatePathPrefix(cfg.ShardedPathPrefix); err != nil {
+		return fmt.Errorf("sharded_path_prefix: %w", err)
+	}
+	return nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
-		PathPrefix string         `yaml:"path_prefix"`
-		Prefix     string         `yaml:"prefix"`
-		Period     model.Duration `yaml:"period"`
+		PathPrefix        string         `yaml:"path_prefix"`
+		ShardedPathPrefix string         `yaml:"sharded_path_prefix"`
+		Prefix            string         `yaml:"prefix"`
+		Period            model.Duration `yaml:"period"`
 	}{}
 	// We always want strict config parsing so leftover keys (e.g. the removed
 	// tags setting) are rejected instead of silently ignored.
@@ -492,6 +516,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	cfg.PathPrefix = g.PathPrefix
+	cfg.ShardedPathPrefix = g.ShardedPathPrefix
 	cfg.Prefix = g.Prefix
 	cfg.Period = time.Duration(g.Period)
 
@@ -501,13 +526,15 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 // MarshalYAML implements the yaml.Marshaler interface.
 func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	g := &struct {
-		PathPrefix string         `yaml:"path_prefix"`
-		Prefix     string         `yaml:"prefix"`
-		Period     model.Duration `yaml:"period"`
+		PathPrefix        string         `yaml:"path_prefix"`
+		ShardedPathPrefix string         `yaml:"sharded_path_prefix,omitempty"`
+		Prefix            string         `yaml:"prefix"`
+		Period            model.Duration `yaml:"period"`
 	}{
-		PathPrefix: cfg.PathPrefix,
-		Prefix:     cfg.Prefix,
-		Period:     model.Duration(cfg.Period),
+		PathPrefix:        cfg.PathPrefix,
+		ShardedPathPrefix: cfg.ShardedPathPrefix,
+		Prefix:            cfg.Prefix,
+		Period:            model.Duration(cfg.Period),
 	}
 
 	return g, nil

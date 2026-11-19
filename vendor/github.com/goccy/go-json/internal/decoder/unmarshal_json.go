@@ -12,9 +12,7 @@ import (
 )
 
 type unmarshalJSONDecoder struct {
-	typ        reflect.Type
-	structName string
-	fieldName  string
+	typ reflect.Type
 	// retainsNothing is set for a type whose UnmarshalJSON keeps nothing of the bytes it is given, which are then
 	// the ones of the buffer: a type of the standard library ( see runtime.IsStdMarshalerType ), a type which has
 	// the UnmarshalJSON of one only by embedding it, and json.RawMessage, which copies them. The bytes of any other type are copied: its UnmarshalJSON may keep them,
@@ -33,11 +31,9 @@ var rawMessagePtrType = reflect.TypeOf(&json.RawMessage{})
 // timeType is the type of time.Time.
 var timeType = timePtrType.Elem()
 
-func newUnmarshalJSONDecoder(typ reflect.Type, structName, fieldName string) *unmarshalJSONDecoder {
+func newUnmarshalJSONDecoder(typ reflect.Type) *unmarshalJSONDecoder {
 	return &unmarshalJSONDecoder{
 		typ:            typ,
-		structName:     structName,
-		fieldName:      fieldName,
 		retainsNothing: typ == rawMessagePtrType || runtime.IsStdMarshalerType(typ) || promotesStdUnmarshalJSON(typ),
 	}
 }
@@ -52,7 +48,7 @@ func promotesStdUnmarshalJSON(typ reflect.Type) bool {
 func (d *unmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
 	cursor = skipWhiteSpace(buf, cursor)
-	if timeKindTypeErrors && d.typ == timePtrType {
+	if d.typ == timePtrType {
 		if c := buf[cursor]; c != '"' && c != 'n' {
 			// a time.Time is decoded from a string only: any other value is a type error
 			return ctx.skipTypeError(cursor, depth, timeType)
@@ -84,11 +80,11 @@ func (d *unmarshalJSONDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, 
 			c = context.Background()
 		}
 		if err := v.UnmarshalJSON(c, dst); err != nil {
-			return ctx.methodError(cursor, end, err, d.structName, d.fieldName)
+			ctx.methodError(err)
 		}
 	case json.Unmarshaler:
 		if err := v.UnmarshalJSON(dst); err != nil {
-			return ctx.methodError(cursor, end, err, d.structName, d.fieldName)
+			ctx.methodError(err)
 		}
 	}
 	return end, nil

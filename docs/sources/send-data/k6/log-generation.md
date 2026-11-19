@@ -30,8 +30,8 @@ import loki from 'k6/x/loki';
 const KB = 1024;
 const MB = KB * KB;
 
-const conf = loki.Config("http://localhost:3100");
-const client = loki.Client(conf);
+const conf = new loki.Config("http://localhost:3100");
+const client = new loki.Client(conf);
 
 export default () => {
    client.pushParameterized(2, 500 * KB, 1 * MB);
@@ -82,28 +82,28 @@ a stream defines the format of its log lines.
 * JSON (`json`)
 * [logfmt](https://pkg.go.dev/github.com/kr/logfmt) (`logfmt`)
 
-Under the hood, the extension uses a fork the library
+Under the hood, the extension uses a fork of the library
 [flog](https://github.com/mingrammer/flog) for generating log lines.
 
 ## Labels
 
 `xk6-loki` uses the following label names for generating streams:
 
-| name      | type     | cardinality     |
-| --------- | -------- | --------------- |
-| instance  | fixed    | 1 per k6 worker |
-| format    | fixed    | 7               |
-| os        | fixed    | 3               |
-| namespace | variable | >100            |
-| app       | variable | >100            |
-| pod       | variable | >100            |
-| language  | variable | >100            |
-| word      | variable | >100            |
+| name      | type     | default cardinality |
+| --------- | -------- | -------------------- |
+| instance  | fixed    | 1 per k6 worker      |
+| format    | fixed    | 7                    |
+| os        | fixed    | 3                    |
+| app       | variable | 5                    |
+| namespace | variable | 10                   |
+| pod       | variable | 50                   |
+| language  | variable | not used by default  |
+| word      | variable | not used by default  |
 
-By default, variable labels are not used.
-However, you can specify the
-cardinality (quantity of distinct label values) using the `cardinality` argument
-in the `Config` constructor.
+By default, the variable labels `app`, `namespace`, and `pod` are generated
+automatically with the cardinalities shown above. `language` and `word` are
+not used unless you specify a cardinality for them. You can override any of
+these defaults using the `cardinality` argument in the `Config` constructor.
 
 **JavaScript example code fragment:**
 ```javascript
@@ -115,13 +115,35 @@ const cardinality = {
    "language": 2,
    "pod": 5,
 };
-const conf = loki.Config("http://localhost:3100", 5000, 1.0, cardinality);
-const client = loki.Client(conf);
+const conf = new loki.Config("http://localhost:3100", 5000, 1.0, cardinality);
+const client = new loki.Client(conf);
 ```
 
 The total quantity of distinct streams is defined by the cartesian product of
 all label values. Keep in mind that high cardinality negatively impacts the performance of
 the Loki instance.
+
+## Custom labels
+
+Instead of the built-in label pool, you can define your own label names and
+values using the `Labels` class. Pass a `Labels` instance as the fifth
+argument to the `Config` constructor.
+
+**JavaScript example code fragment:**
+```javascript
+import loki from 'k6/x/loki';
+
+const labels = loki.Labels({
+  "format": ["json", "logfmt"], // must contain at least one of the supported log formats
+  "namespace": ["dev", "staging", "prod"],
+  "container": ["nginx", "app-1", "app-2"],
+});
+
+// The fourth argument (cardinality) is not used when custom labels are set,
+// but a value, such as an empty object, must still be passed.
+const conf = new loki.Config("http://localhost:3100", 5000, 1.0, {}, labels);
+const client = new loki.Client(conf);
+```
 
 ## Payload encoding
 
@@ -141,6 +163,6 @@ The default value is 0.9.
 import loki from 'k6/x/loki';
 
 const ratio = 0.8; // 80% Protobuf, 20% JSON
-const conf = loki.Config("http://localhost:3100", 5000, ratio);
-const client = loki.Client(conf);
+const conf = new loki.Config("http://localhost:3100", 5000, ratio);
+const client = new loki.Client(conf);
 ```

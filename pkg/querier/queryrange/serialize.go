@@ -64,6 +64,7 @@ func stripClientHints(request queryrangebase.Request) {
 		request.HintRanges = nil
 		request.DataObjOptions = nil
 	case *LokiInstantRequest:
+		request.HintRanges = nil
 		request.DataObjOptions = nil
 	}
 }
@@ -97,6 +98,8 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		serverutil.WriteError(err, w)
 		return
 	}
+
+	setQueryBytesProcessedHeader(w.Header(), response)
 
 	// TODO(karsten): use rt.codec.EncodeResponse(ctx, r, response) which is the central encoding logic instead.
 	if r.Header.Get("Accept") == ParquetType {

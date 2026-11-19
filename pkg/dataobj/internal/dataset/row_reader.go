@@ -7,11 +7,14 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -20,10 +23,11 @@ type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
 	// ProjectedColumns are the columns that a RowReader returns. Row.Values holds one Value per
-	// projected column, in this order. It is invalid to provide a Column that is not in Dataset.
+	// projected column, in this order. A record batch from ReadRecordBatch holds one array per
+	// projected column, in the same order. It is invalid to provide a Column that is not in Dataset.
 	//
 	// A predicate can read a column that is not projected. The reader reads that column to run
-	// the predicate, and leaves it out of the rows it returns.
+	// the predicate, and leaves it out of the rows and record batches it returns.
 	ProjectedColumns []Column
 
 	// Predicates filter the data returned by a RowReader. Predicates are
@@ -57,28 +61,43 @@ type ColumnReadPageStats struct {
 	Relevant uint64
 }
 
-// A RowReader reads [Row]s from a [Dataset].
+// A RowReader reads rows from a [Dataset], as [Row]s with Read or as columnar
+// record batches with ReadRecordBatch.
 type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	columns              []Column            // opts.ProjectedColumns, then the columns that only predicates read.
-	projectedColumns     []Column            // Prefix of columns: the columns that Read keeps in Row.Values.
-	columnsLookup        map[Column]int      // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
-	primaryColumnIndexes []int               // Indexes of primary columns in columns.
-	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
+	columns              []Column              // opts.ProjectedColumns, then the columns that only predicates read.
+	projectedColumns     []Column              // Prefix of columns: the columns that Read keeps in Row.Values.
+	columnsLookup        map[Column]int        // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
+	primaryColumnIndexes []int                 // Indexes of primary columns in columns.
+	compiledPredicates   []compiledPredicate   // opts.Predicates with column indexes resolved, one per predicate.
+	keepBatchPredicates  []*keepBatchPredicate // One per predicate, nil for a row by row predicate.
+	keepScratch          []int32               // Scratch for the indexes that KeepBatch returns.
+	firstIsStreamID      bool                  // Whether the first predicate is a stream ID predicate.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
 	inner  *basicRowReader      // Underlying reader that reads from columns.
 	ranges rangeset.Set         // Valid ranges to read across the entire dataset.
+
+	// The state of ReadRecordBatch.
+	//
+	// recordBatchScratch holds the memory that lives for one input record batch.
+	// ReadRecordBatch reclaims it at the start of each input record batch. It holds:
+	//   - the arrays that predicates test,
+	//   - the pages that a read decodes before it copies the rows out,
+	//   - the intermediate selections.
+	recordBatchScratch    memory.Allocator
+	currRecordBatch       recordBatch      // The input record batch that ReadRecordBatch is reading, or read last.
+	recordBatchPageArrays []columnar.Array // Scratch for the page arrays that readColumnPages joins.
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
 
 // NewRowReader creates a new RowReader from the provided options.
 //
-// Call [RowReader.Open] before calling [RowReader.Read].
+// Call [RowReader.Open] before calling [RowReader.Read] or [RowReader.ReadRecordBatch].
 func NewRowReader(opts RowReaderOptions) *RowReader {
 	var r RowReader
 	r.Reset(opts)
@@ -87,8 +106,8 @@ func NewRowReader(opts RowReaderOptions) *RowReader {
 
 // Open initializes RowReader resources.
 //
-// Open must be called before [RowReader.Read]. Open is safe to call multiple
-// times.
+// Open must be called before [RowReader.Read] or [RowReader.ReadRecordBatch]. Open is
+// safe to call multiple times.
 func (r *RowReader) Open(ctx context.Context) error {
 	if r.ready {
 		return nil
@@ -292,12 +311,16 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 
 	// The first predicate finds its columns already filled, so it only filters.
 	for i, p := range r.opts.Predicates {
-		var filledBytes int64
-		passCount, filledBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
+		var readBytes int64
+		if r.keepBatchPredicates[i] != nil {
+			passCount, readBytes, err = r.evalKeepBatchPredicate(ctx, r.keepBatchPredicates[i], s[:readSize])
+		} else {
+			passCount, readBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
+		}
 		if err != nil {
 			return rowsRead, 0, err
 		}
-		primaryColumnBytes += filledBytes
+		primaryColumnBytes += readBytes
 
 		// Track rows that are relevant to the stream matchers.
 		// This is updated only if the first predicate is streamID
@@ -355,7 +378,7 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 	for j := range rows {
 		filledBytes += rows[j].SizeOfColumns(idxs)
 
-		if !compiled.eval(rows[j]) {
+		if !compiled.evalRow(rows[j]) {
 			continue
 		}
 		// We move rows[j] to rows[passCount] by *swapping* the rows. Copying would
@@ -370,6 +393,46 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 	}
 
 	return passCount, filledBytes, nil
+}
+
+// evalKeepBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
+// passing rows to the front of rows. It returns the number of passing rows and the size in
+// bytes of the values it read. It copies the value of a passing row into the row only when the
+// column is projected. On error it returns zero values.
+func (r *RowReader) evalKeepBatchPredicate(ctx context.Context, bp *keepBatchPredicate, rows []Row) (int, int64, error) {
+	var (
+		pass      = 0
+		readBytes int64
+		keep      = r.keepScratch
+	)
+	_, err := r.inner.visitColumn(ctx, r.allColumns()[bp.index], rows, func(offset int, values *columnar.UTF8) error {
+		readBytes += int64(values.DataLen())
+
+		keep = bp.predicate.KeepBatch(bp.predicate.Column, values, keep[:0])
+		prev := int32(-1)
+		for _, k := range keep {
+			if k <= prev || int(k) >= values.Len() {
+				return fmt.Errorf("batch predicate kept index %d of %d values after index %d, want ascending indexes in range", k, values.Len(), prev)
+			}
+			prev = k
+
+			// Ascending indexes guarantee pass <= j. We move rows[j] to rows[pass] by *swapping* the
+			// rows. Copying would result in the Row.Values slice existing in two places in the
+			// buffer, which causes memory corruption when filling in rows.
+			j := offset + int(k)
+			rows[pass], rows[j] = rows[j], rows[pass]
+			if bp.projected {
+				copyUTF8Value(&rows[pass].Values[bp.index], values, int(k))
+			}
+			pass++
+		}
+		return nil
+	})
+	r.keepScratch = keep[:0]
+	if err != nil {
+		return 0, 0, err
+	}
+	return pass, readBytes, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
@@ -389,8 +452,8 @@ func (r *RowReader) alignRow() (uint64, error) {
 
 // compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
 // references resolved to Row value indexes. It returns an error if a predicate column is missing
-// from r.columnsLookup. initColumns adds every predicate column, so this error means a bug in
-// the reader.
+// from r.columnsLookup, or if a func predicate has no Keep function. initColumns adds every
+// predicate column, so a missing column means a bug in the reader.
 func (r *RowReader) compilePredicates() error {
 	for _, p := range r.opts.Predicates {
 		cp, err := compilePredicate(p, r.columnsLookup)
@@ -400,6 +463,68 @@ func (r *RowReader) compilePredicates() error {
 		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
 	return nil
+}
+
+// initKeepBatchPredicates decides which predicates [RowReader.Read] runs on an array of values at
+// once. Read calls KeepBatch only for a func predicate that sets KeepBatch and:
+//   - is not the first predicate,
+//   - is not inside And, Or or Not,
+//   - reads a binary column,
+//   - reads a column that no other predicate reads.
+//
+// Read calls Keep for every other predicate.
+func (r *RowReader) initKeepBatchPredicates() {
+	r.keepBatchPredicates = make([]*keepBatchPredicate, len(r.opts.Predicates))
+
+	// predicatesPerColumn counts the leaf predicates that read each column.
+	predicatesPerColumn := make(map[Column]int)
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) { predicatesPerColumn[c]++ })
+	}
+
+	for i, p := range r.opts.Predicates {
+		// Only a FuncPredicate with a KeepBatch function can run on an array. A predicate inside
+		// an And, Or or Not is not a FuncPredicate here, so it stays on the row path.
+		fp, ok := p.(FuncPredicate)
+		if !ok || fp.KeepBatch == nil {
+			continue
+		}
+
+		// ReadColumns reads the columns of the first predicate into every row before the predicates
+		// run. KeepBatch would have nothing left to skip there.
+		if i == 0 {
+			continue
+		}
+
+		// The KeepBatch path does not mark its column as filled. A second predicate on the same column
+		// would read it again and count its bytes twice. So predicates that share a column stay on
+		// the row path.
+		if predicatesPerColumn[fp.Column] != 1 {
+			continue
+		}
+
+		// KeepBatch tests an array of binary values.
+		if fp.Column.ColumnDesc().Type.Physical != datasetmd.PHYSICAL_TYPE_BINARY {
+			continue
+		}
+
+		index, ok := r.columnsLookup[fp.Column]
+		if !ok {
+			continue
+		}
+		r.keepBatchPredicates[i] = &keepBatchPredicate{
+			predicate: fp,
+			index:     index,
+			projected: index < len(r.projectedColumns),
+		}
+	}
+}
+
+// keepBatchPredicate is a predicate that the reader tests on an array of values at once.
+type keepBatchPredicate struct {
+	predicate FuncPredicate
+	index     int  // Index of the column of predicate in the values of a Row.
+	projected bool // Whether the column is projected, so the value goes into the rows that pass.
 }
 
 // buildMask returns an iterator that yields row ranges from full that are not
@@ -441,7 +566,13 @@ func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
 
 // Close closes the RowReader. Closed RowReaders can be reused by calling
 // [RowReader.Reset].
+//
+// The record batches that [RowReader.ReadRecordBatch] returned stay valid,
+// because they use memory from the caller.
 func (r *RowReader) Close() error {
+	r.recordBatchScratch.Free()
+	clear(r.currRecordBatch.columns)
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
@@ -463,6 +594,11 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.row = 0
 	r.ranges.Reset()
 	r.ready = false
+
+	// The columns of the last input record batch point into scratch memory. Drop them, because Reclaim
+	// lets later reads reuse that memory.
+	clear(r.currRecordBatch.columns)
+	r.recordBatchScratch.Reclaim()
 }
 
 // clearInitState clears the state that init builds from the options.
@@ -472,6 +608,7 @@ func (r *RowReader) clearInitState() {
 	r.projectedColumns = nil
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
+	r.keepBatchPredicates = sliceclear.Clear(r.keepBatchPredicates)
 }
 
 func (r *RowReader) init(ctx context.Context) error {
@@ -491,6 +628,8 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.compilePredicates(); err != nil {
 		return err
 	}
+	r.initKeepBatchPredicates()
+	r.firstIsStreamID = len(r.opts.Predicates) > 0 && isStreamIDPredicate(r.opts.Predicates[0])
 
 	if err := r.initDownloader(ctx); err != nil {
 		return err
@@ -701,8 +840,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 		return rangeset.Union(left, right), nil
 
 	case NotPredicate:
-		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
-		// predicates that can be applied to pages.
+		// Reduce the NotPredicate to predicates that page statistics can evaluate.
 		//
 		// See comment on [simplifyNotPredicate] for more information.
 		simplified, err := simplifyNotPredicate(p)
@@ -731,6 +869,12 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
+	case GreaterThanOrEqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
+	case LessThanOrEqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
 	case TruePredicate, FuncPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
@@ -748,8 +892,8 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	}
 }
 
-// simplifyNotPredicate applies De Morgan's laws to a NotPredicate to permit
-// page filtering.
+// simplifyNotPredicate rewrites a NotPredicate into a predicate that page
+// statistics can evaluate.
 //
 // While during evaluation, a NotPredicate inverts the result of the inner
 // predicate, the same can't be done for page filtering. For example, imagine
@@ -760,6 +904,13 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 // To correctly apply page filtering to a NotPredicate, we reduce the
 // NotPredicate to a set of predicates that can be applied to pages. This may
 // result in other NotPredicates that also need to be simplified.
+//
+// The rewrite pushes the NotPredicate down with De Morgan's laws. It replaces a
+// negated comparison with the opposite comparison. Each rewrite is exact for the
+// rows, including a null, because CompareValues returns a negative, zero or
+// positive result for every pair. Page statistics skip nulls, so pruning by a
+// less than or less than or equal predicate can still drop a page whose null
+// rows pass.
 //
 // If the NotPredicate can't be simplified, simplifyNotPredicate returns an
 // error.
@@ -777,7 +928,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 			Right: NotPredicate{Inner: inner.Right},
 		}, nil
 
-	case NotPredicate: // De Morgan's law: !!A == A
+	case NotPredicate: // Double negation: !!A == A
 		return inner.Inner, nil
 
 	case FalsePredicate:
@@ -788,23 +939,23 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 		// keeps none.
 		return FalsePredicate{}, nil
 
-	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
+	case EqualPredicate: // !(A == B) == A < B || A > B
 		return OrPredicate{
 			Left:  LessThanPredicate(inner),
 			Right: GreaterThanPredicate(inner),
 		}, nil
 
-	case GreaterThanPredicate: // De Morgan's law: !(A > B) == A <= B
-		return OrPredicate{
-			Left:  EqualPredicate(inner),
-			Right: LessThanPredicate(inner),
-		}, nil
+	case GreaterThanPredicate: // !(A > B) == A <= B
+		return LessThanOrEqualPredicate(inner), nil
 
-	case LessThanPredicate: // De Morgan's law: !(A < B) == A >= B
-		return OrPredicate{
-			Left:  EqualPredicate(inner),
-			Right: GreaterThanPredicate(inner),
-		}, nil
+	case LessThanPredicate: // !(A < B) == A >= B
+		return GreaterThanOrEqualPredicate(inner), nil
+
+	case GreaterThanOrEqualPredicate: // !(A >= B) == A < B
+		return LessThanPredicate(inner), nil
+
+	case LessThanOrEqualPredicate: // !(A <= B) == A > B
+		return GreaterThanPredicate(inner), nil
 
 	case InPredicate:
 		// TODO: can be supported when we introduce NotInPredicate.
@@ -818,9 +969,11 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 	}
 }
 
-// buildColumnPredicateRanges returns a set of rowRanges that are valid based
-// on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
-// true for each page in a column.
+// buildColumnPredicateRanges returns the row ranges of the pages of column c
+// where p may be true. A page without statistics is always kept.
+//
+// p must be an EqualPredicate, an InPredicate, or one of the four ordering
+// predicates. Any other type panics.
 func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
 	if idx, ok := r.columnsLookup[c]; ok {
@@ -886,14 +1039,27 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		var include bool
 
+		// Page statistics skip nulls, and CompareValues treats a null as equal to an
+		// empty binary value. A page can hold a null that passes an EqualPredicate or
+		// a LessThanOrEqualPredicate on an empty value, even when minValue and
+		// maxValue rule the page out. Keep the page for that value.
+		//
+		// A GreaterThanOrEqualPredicate needs no such check, because no binary
+		// maxValue is below an empty value.
+		//
+		// A null also passes a LessThanPredicate or a LessThanOrEqualPredicate on any
+		// other value. The statistics do not show nulls, so the pruning ignores them.
 		switch p := p.(type) {
-		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
-			isEmpty := p.Value.Type() == datasetmd.PHYSICAL_TYPE_BINARY && p.Value.IsZero()
-			include = isEmpty || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)
+		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page, or if p.Value is empty.
+			include = isEmptyBinary(p.Value) || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)
 		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
 			include = CompareValues(&maxValue, &p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
 			include = CompareValues(&minValue, &p.Value) < 0
+		case GreaterThanOrEqualPredicate: // GreaterThanOrEqualPredicate may be true if maxValue of a page is greater than or equal to p.Value
+			include = CompareValues(&maxValue, &p.Value) >= 0
+		case LessThanOrEqualPredicate: // LessThanOrEqualPredicate may be true if minValue of a page is less than or equal to p.Value, or if p.Value is empty
+			include = isEmptyBinary(p.Value) || CompareValues(&minValue, &p.Value) <= 0
 		case InPredicate:
 			// Check if any value falls within the page's range
 			for v := range p.Values.Iter() {
@@ -934,6 +1100,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 	}
 
 	return ranges, nil
+}
+
+// isEmptyBinary reports whether v is a binary value of length zero. It reports
+// false for a nil value.
+func isEmptyBinary(v Value) bool {
+	return v.Type() == datasetmd.PHYSICAL_TYPE_BINARY && v.IsZero()
 }
 
 // readMinMax reads the minimum and maximum values from the provided
@@ -991,5 +1163,5 @@ func isStreamIDPredicate(p Predicate) bool {
 }
 
 func isStreamIDColumn(col Column) bool {
-	return col.ColumnDesc().Type.Logical == "stream_id"
+	return col.ColumnDesc().Type.Logical == format.LogsColumnStreamID
 }

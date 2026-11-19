@@ -14,7 +14,10 @@ type metrics struct {
 	discardedBytes prometheus.Counter
 	records        prometheus.Counter
 	recordFailures prometheus.Counter
+	droppedRecords prometheus.Counter
 	sizeEstimate   prometheus.Gauge
+
+	flushWaitSeconds prometheus.Counter
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -43,9 +46,17 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name: "loki_dataobj_builder_record_failures_total",
 			Help: "Total number of records that failed to be processed.",
 		}),
+		droppedRecords: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_toc_watermark_dropped_records_total",
+			Help: "Total number of records that the builder dropped because the ToC of their tenant and window already holds them. A record that spans several windows counts once for each window it dropped.",
+		}),
 		sizeEstimate: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_size_estimate_bytes",
-			Help: "Current estimated size in bytes buffered across all window-specific builders for the partition.",
+			Help: "Current estimated size in bytes buffered across all window-specific builders for the partition. It does not include the builders of a flush in progress.",
+		}),
+		flushWaitSeconds: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_builder_flush_wait_seconds_total",
+			Help: "Total time in seconds that the processor waited for the previous flush to end before it started the next flush. The processor appends no records while it waits.",
 		}),
 	}
 }

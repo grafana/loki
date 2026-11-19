@@ -55,6 +55,10 @@ func _computeJD(tls *libc.TLS, p uintptr) {
 		Y = int32(2000) /* If no YMD specified, assume 2000-Jan-01 */
 		M = int32(1)
 		D = int32(1)
+		if (*TDateTime)(unsafe.Pointer(p)).FvalidHMS != 0 && (*TDateTime)(unsafe.Pointer(p)).Fh == int32(24) {
+			(*TDateTime)(unsafe.Pointer(p)).Fh = 0
+			D = int32(2)
+		}
 	}
 	if Y < -int32(4713) || Y > int32(9999) || int32(uint32(*(*uint8)(unsafe.Pointer(p + 44))&0x1>>0)) != 0 {
 		_datetimeError(tls, p)

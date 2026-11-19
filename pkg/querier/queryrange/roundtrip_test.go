@@ -22,11 +22,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -266,7 +268,7 @@ func TestMetricsTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -293,7 +295,28 @@ func TestMetricsTripperware(t *testing.T) {
 	h := getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 0, *queryCount)
+
+	// Test that MaxQueryBytesRead counts the data that the splits of a range aggregation
+	// read again. The query splits at 08:00, and the 2h range vector makes the two splits
+	// read 8h of data, but the index stats cover 6h. 2*400 bytes scale to about 1066.
+	rangeReq := &LokiRequest{
+		Query:     `count_over_time({app="foo"} |= "foo"[2h])`,
+		Limit:     1000,
+		Step:      30000, // 30sec
+		StartTs:   testTime.Add(-4 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan:      testutil.MustPlan(`count_over_time({app="foo"} |= "foo"[2h])`),
+	}
+	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 400})
+	queryCount, queryHandler = counter()
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, rangeReq)
+	require.ErrorIs(t, err, logqlerr.ErrMaxQueryBytesRead)
+	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	// Test MaxQuerierBytesRead limit
@@ -303,7 +326,7 @@ func TestMetricsTripperware(t *testing.T) {
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.ErrorContains(t, err, "query too large to execute on a single querier")
 	require.Equal(t, 0, *queryCount)
-	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 3, *statsCount)
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
@@ -315,7 +338,7 @@ func TestMetricsTripperware(t *testing.T) {
 	require.Error(t, err)
 
 	// Configure with cache
-	tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -353,7 +376,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -394,7 +417,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 1, *statsCount)
+	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	// Test MaxQuerierBytesRead limit
@@ -403,7 +426,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
-	require.Equal(t, 2, *statsCount)
+	require.Equal(t, 4, *statsCount)
 	require.Equal(t, 0, *queryCount)
 }
 
@@ -426,7 +449,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewMiddleware(testLocal, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -488,7 +511,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 		// so making request [15] range, will have 2 subqueries aligned with [5m] giving total of [10m]. And 2 more subqueries for remaining [5m] aligning depending on exec time of the query.
 		"1": 5 * time.Minute,
 	}
-	tpw, stopper, err = NewMiddleware(testLocal, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err = NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -539,7 +562,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewMiddleware(testShardingConfigNoCache, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testShardingConfigNoCache, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -595,7 +618,7 @@ func TestSeriesTripperware(t *testing.T) {
 			"1": 24 * time.Hour,
 		},
 	}
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -633,7 +656,7 @@ func TestLabelsTripperware(t *testing.T) {
 			"1": 24 * time.Hour,
 		},
 	}
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -679,7 +702,7 @@ func TestLabelsTripperware(t *testing.T) {
 }
 
 func TestIndexStatsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -702,8 +725,8 @@ func TestIndexStatsTripperware(t *testing.T) {
 
 	count, h := indexStatsResult(response)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	// 2 queries
-	require.Equal(t, 2, *count)
+	// 4 queries
+	require.Equal(t, 4, *count)
 	require.NoError(t, err)
 
 	// Test the cache.
@@ -716,10 +739,33 @@ func TestIndexStatsTripperware(t *testing.T) {
 	// Test the response is the expected
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
-	require.Equal(t, response.Streams*2, res.Response.Streams)
-	require.Equal(t, response.Chunks*2, res.Response.Chunks)
-	require.Equal(t, response.Bytes*2, res.Response.Bytes)
-	require.Equal(t, response.Entries*2, res.Response.Entries)
+	require.Equal(t, response.Streams*4, res.Response.Streams)
+	require.Equal(t, response.Chunks*4, res.Response.Chunks)
+	require.Equal(t, response.Bytes*4, res.Response.Bytes)
+	require.Equal(t, response.Entries*4, res.Response.Entries)
+}
+
+func TestIndexShardsTripperware(t *testing.T) {
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	lreq := &logproto.ShardsRequest{
+		Query:   `{job="varlogs"}`,
+		From:    model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than the index stats split
+		Through: model.TimeFromUnixNano(testTime.UnixNano()),
+	}
+
+	count := 0
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		count++
+		return &ShardsResponse{Response: &logproto.ShardsResponse{}}, nil
+	})
+	_, err = tpw.Wrap(h).Do(user.InjectOrgID(context.Background(), "1"), lreq)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
 }
 
 func TestVolumeTripperware(t *testing.T) {
@@ -729,7 +775,7 @@ func TestVolumeTripperware(t *testing.T) {
 			volumeEnabled:  true,
 			maxSeries:      42,
 		}
-		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
@@ -785,7 +831,7 @@ func TestVolumeTripperware(t *testing.T) {
 	})
 
 	t.Run("range queries return a prometheus style metrics response, putting volumes in buckets based on the step", func(t *testing.T) {
-		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
@@ -976,7 +1022,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, stopper, err := NewMiddleware(tc.config, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			_, stopper, err := NewMiddleware(tc.config, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1006,12 +1052,17 @@ func TestNewTripperware_Caches(t *testing.T) {
 }
 
 func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
-	const storageLag = 3 * time.Hour
+	const (
+		storageLag  = 3 * time.Hour
+		shardingOn  = true
+		shardingOff = false
+		dataObjOn   = true
+	)
 
 	ctx := user.InjectOrgID(t.Context(), "1")
-	// The clock stands at 12:00 UTC, so that no range below crosses a UTC midnight. A stats request
+	// The clock stands at 13:00 UTC, so that no range below crosses an 8h stats split. A stats request
 	// that crosses one splits in two, and the fake index answers both halves.
-	now := time.Now().UTC().Truncate(24 * time.Hour).Add(-12 * time.Hour)
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(-11 * time.Hour)
 	heldEnd := now.Add(-storageLag)
 
 	newLimits := func(opts ...func(*fakeLimits)) Limits {
@@ -1033,10 +1084,11 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		limits.tsdbShardingStrategy = func(context.Context, string) string { return logql.BoundedVersion.String() }
 	}
 
-	// newHandler builds the real middleware chain over a terminal handler that answers the index
-	// with 64 GiB, so the chunk logic shards a split into 128 shards and the data-object logic into
-	// 16 shards. The terminal handler answers a shards request with 1000 bounded shards.
-	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+	// newHandlerWithSharding builds the real middleware chain over a terminal handler that answers the
+	// index with 64 GiB. With sharding on, the chunk logic shards a split into 128 shards and the
+	// data-object logic into 16 shards. With sharding off, the chain does not shard. The terminal
+	// handler answers a shards request with 1000 bounded shards.
+	newHandlerWithSharding := func(t *testing.T, shardedQueries, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
 		t.Helper()
 
 		cfg := testConfig
@@ -1044,13 +1096,13 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		cfg.CacheIndexStatsResults = false
 		cfg.CacheInstantMetricResults = false
 		cfg.MaxRetries = 0
-		cfg.ShardedQueries = true
+		cfg.ShardedQueries = shardedQueries
 		cfg.DataObjEnabled = dataObjEnabled
 		cfg.DataObjStorageLag = storageLag
 		cfg.now = func() time.Time { return now }
 
 		reg := prometheus.NewRegistry()
-		tripperware, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, newLimits(opts...), config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, reg, constants.Loki)
+		tripperware, stopper, err := NewMiddleware(cfg, testEngineOpts, nil, util_log.Logger, newLimits(opts...), config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, reg, constants.Loki)
 		require.NoError(t, err)
 		if stopper != nil {
 			t.Cleanup(stopper.Stop)
@@ -1076,6 +1128,10 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		})
 		return tripperware.Wrap(terminal), requests, reg
 	}
+	newHandler := func(t *testing.T, dataObjEnabled bool, opts ...func(*fakeLimits)) (base.Handler, *requestLog, *prometheus.Registry) {
+		t.Helper()
+		return newHandlerWithSharding(t, shardingOn, dataObjEnabled, opts...)
+	}
 
 	rangeRequest := func(query string, start, end time.Time) *LokiRequest {
 		return &LokiRequest{
@@ -1089,10 +1145,10 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 			Path:      "/loki/api/v1/query_range",
 		}
 	}
-	// The range sits inside one UTC day and starts after 00:00.
+	// The range sits inside the 08:00 to 16:00 stats split and crosses the 12:00 data-object split.
 	yesterday := now.Truncate(24 * time.Hour).Add(-24 * time.Hour)
 	insideRange := func(query string) *LokiRequest {
-		return rangeRequest(query, yesterday.Add(time.Hour), yesterday.Add(14*time.Hour))
+		return rangeRequest(query, yesterday.Add(9*time.Hour), yesterday.Add(15*time.Hour))
 	}
 	instantRequest := func() *LokiInstantRequest {
 		const query = `sum(count_over_time({app="a"}[2h]))`
@@ -1117,6 +1173,33 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		require.NotEmpty(t, requests.rangeRequests())
 		for _, req := range requests.rangeRequests() {
 			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("marks the whole query as eligible when it holds a stream-first supported part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (count_over_time({app="a"}[1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.Equal(t, testutil.MustPlan(query).AST.String(), req.Plan.AST.String())
+			require.True(t, req.DataObjOptions.GetEligible())
+		}
+	})
+
+	t.Run("does not mark the whole query as eligible when it holds no stream-first part and sharding is off", func(t *testing.T) {
+		const query = `max by (node) (sum by (node, pod) (avg_over_time({app="a"} | logfmt | unwrap n [1m])))`
+		handler, requests, _ := newHandlerWithSharding(t, shardingOff, dataObjOn)
+
+		_, err := handler.Do(ctx, insideRange(query))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, requests.rangeRequests())
+		for _, req := range requests.rangeRequests() {
+			require.False(t, req.DataObjOptions.GetEligible())
 		}
 	})
 
@@ -1147,7 +1230,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(streamFirstQuery))
 
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 12)
+		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 6)
 		for _, shards := range requests.requestsBySplit() {
 			require.Equal(t, 128, shards)
 		}
@@ -1163,7 +1246,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(`rate({app="a"}[1m])`))
 
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 12)
+		require.GreaterOrEqual(t, len(requests.requestsBySplit()), 6)
 		for _, shards := range requests.requestsBySplit() {
 			require.Equal(t, 128, shards)
 		}
@@ -1388,7 +1471,7 @@ func (l *requestLog) requestsBySplit() map[time.Time]int {
 }
 
 func TestLogNoFilter(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -1444,7 +1527,7 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestTripperware_EntriesLimit(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -1476,7 +1559,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// Raised in-process, so it carries the sentinel and is classified by errors.Is.
-	requireSentinelClassification(t, err, logqlmodel.ErrMaxEntriesLimit,
+	requireSentinelClassification(t, err, logqlerr.ErrMaxEntriesLimit,
 		server.FailureLimit, "max_entries",
 		http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)")
 	require.False(t, called)
@@ -1514,7 +1597,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
-			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1618,7 +1701,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				maxQueryParallelism:  1,
 				requiredNumberLabels: tc.requiredNumberLabels,
 			}
-			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1817,7 +1900,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tpw, stopper, err := NewMiddleware(statsTestCfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(statsTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1975,10 +2058,6 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 	return f.requiredNumberLabels
 }
 
-func (f fakeLimits) EngineResultsCacheTimeBucketInterval(_ string) time.Duration {
-	return 24 * time.Hour
-}
-
 func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
 }
@@ -1999,6 +2078,10 @@ func (f fakeLimits) DataObjMaxBytesPerShard(_ string) uint64 {
 	return valid.DefaultDataObjMaxBytesPerShard
 }
 
+func (f fakeLimits) DataObjShardLayout(_ string) dataobjstreams.ShardLayout {
+	return dataobjstreams.DefaultShardLayout()
+}
+
 func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) string {
 	if f.tsdbShardingStrategy != nil {
 		return f.tsdbShardingStrategy(ctx, userID)
@@ -2016,14 +2099,6 @@ func (f fakeLimits) StreamFirstExecutionEnabled(user string) bool {
 
 func (f fakeLimits) DataObjQueryStartTime(user string) time.Time {
 	return f.dataObjQueryStartTime[user]
-}
-
-func (f fakeLimits) DebugEngineTasks(_ string) bool {
-	return false
-}
-
-func (f fakeLimits) DebugEngineStreams(_ string) bool {
-	return false
 }
 
 type ingesterQueryOpts struct {
@@ -2194,7 +2269,7 @@ func TestLogFilterTripperwareCacheGenNumber(t *testing.T) {
 		splitDuration:       map[string]time.Duration{"1": time.Hour},
 	}
 	genLoader := &mutableCacheGenNumberLoader{gen: "1"}
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, genLoader, true, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, genLoader, true, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

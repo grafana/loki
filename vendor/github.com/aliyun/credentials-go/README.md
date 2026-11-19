@@ -164,6 +164,8 @@ func main() {
     SetType("oidc_role_arn").
     // Specify the ARN of the OIDC IdP by specifying the ALIBABA_CLOUD_OIDC_PROVIDER_ARN environment variable.
     SetOIDCProviderArn("OIDCProviderArn").
+    // Specify the OIDC token directly. A token, whether set here or by ALIBABA_CLOUD_OIDC_TOKEN, is used before either token file path.
+    SetOIDCToken("OIDCToken").
     // Specify the path of the OIDC token file by specifying the ALIBABA_CLOUD_OIDC_TOKEN_FILE environment variable.
     SetOIDCTokenFilePath("OIDCTokenFilePath").
     // Specify the ARN of the RAM role by specifying the ALIBABA_CLOUD_ROLE_ARN environment variable.
@@ -371,9 +373,11 @@ If no credentials are found in the previous step, the Credentials tool obtains t
 
 `ALIBABA_CLOUD_OIDC_PROVIDER_ARN`: the ARN of the OIDC IdP.
 
-`ALIBABA_CLOUD_OIDC_TOKEN_FILE`: the path of the OIDC token file.
+`ALIBABA_CLOUD_OIDC_TOKEN`: the OIDC token. Precedence is an explicit token, then this variable, then an explicit token file path, then `ALIBABA_CLOUD_OIDC_TOKEN_FILE`.
 
-If the preceding three environment variables are specified, the Credentials tool uses the environment variables to call the [AssumeRoleWithOIDC](https://www.alibabacloud.com/help/en/ram/developer-reference/api-sts-2015-04-01-assumerolewithoidc) operation of STS to obtain an STS token as the default credential.
+`ALIBABA_CLOUD_OIDC_TOKEN_FILE`: the path of the OIDC token file. Either this variable or `ALIBABA_CLOUD_OIDC_TOKEN` is required.
+
+If the role ARN, OIDC provider ARN, and either the OIDC token or the token file path are specified, the Credentials tool uses the environment variables to call the [AssumeRoleWithOIDC](https://www.alibabacloud.com/help/en/ram/developer-reference/api-sts-2015-04-01-assumerolewithoidc) operation of STS to obtain an STS token as the default credential.
 
 ### 3. Using the config.json Configuration File of Aliyun CLI Tool
 If there is no higher-priority credential information, the Credentials tool will first check the following locations to see if the config.json file exists:

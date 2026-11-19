@@ -3,19 +3,15 @@ package stages
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"reflect"
 	"sort"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	json "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 var (
@@ -38,7 +34,7 @@ func (w *Packed) UnmarshalJSON(data []byte) error {
 	w.Labels = map[string]string{}
 	for k, v := range *m {
 		// _entry key goes to the Entry field, everything else becomes a label
-		if k == logqlmodel.PackedEntryKey {
+		if k == logqlerr.PackedEntryKey {
 			if s, ok := v.(string); ok {
 				w.Entry = s
 			} else {
@@ -98,7 +94,7 @@ func (w Packed) MarshalJSON() ([]byte, error) {
 		buf.WriteString(",")
 	}
 	// Add the line entry
-	buf.WriteString("\"" + logqlmodel.PackedEntryKey + "\":")
+	buf.WriteString("\"" + logqlerr.PackedEntryKey + "\":")
 	buf.Write(b)
 
 	buf.WriteString("}")
@@ -123,7 +119,7 @@ func validatePackConfig(cfg *PackConfig) error {
 }
 
 // newPackStage creates a DropStage from config
-func newPackStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newPackStage(config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &PackConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {
@@ -135,7 +131,6 @@ func newPackStage(logger log.Logger, config interface{}, registerer prometheus.R
 	}
 
 	return &packStage{
-		logger:    log.With(logger, "component", "stage", "type", "pack"),
 		cfg:       cfg,
 		dropCount: getDropCountMetric(registerer),
 	}, nil
@@ -143,7 +138,6 @@ func newPackStage(logger log.Logger, config interface{}, registerer prometheus.R
 
 // packStage applies Label matchers to determine if the include stages should be run
 type packStage struct {
-	logger    log.Logger
 	cfg       *PackConfig
 	dropCount *prometheus.CounterVec
 }
@@ -170,9 +164,6 @@ func (m *packStage) pack(e Entry) Entry {
 			if lk == wl {
 				sv, err := getString(lv)
 				if err != nil {
-					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be packed", lk), "err", err, "type", reflect.TypeOf(lv))
-					}
 					continue
 				}
 				packedLabels[wl] = sv
@@ -190,9 +181,6 @@ func (m *packStage) pack(e Entry) Entry {
 	// Marshal to json
 	wl, err := json.Marshal(w)
 	if err != nil {
-		if Debug {
-			level.Debug(m.logger).Log("msg", "pack stage failed to marshal packed object to json, packing will be skipped", "err", err)
-		}
 		return e
 	}
 

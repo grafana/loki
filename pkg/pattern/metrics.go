@@ -13,6 +13,8 @@ type ingesterMetrics struct {
 	tokensPerLine          *prometheus.HistogramVec
 	statePerLine           *prometheus.HistogramVec
 	metricSamples          *prometheus.CounterVec
+	kafkaRecordsTotal      prometheus.Counter
+	kafkaRecordsFailed     prometheus.Counter
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -61,6 +63,14 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "metric_samples",
 			Help:      "The total number of metric samples created to write back to Loki.",
 		}, []string{"tenant"}),
+		kafkaRecordsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_pattern_ingester_kafka_records_total",
+			Help: "The total number of records consumed from Kafka.",
+		}),
+		kafkaRecordsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_pattern_ingester_kafka_records_failed_total",
+			Help: "The total number of records consumed from Kafka that failed to be decoded or pushed.",
+		}),
 	}
 }
 

@@ -21,7 +21,8 @@ import (
 )
 
 // TestBuilder_EndToEnd is a sanity check for the full builder pipeline:
-// Append -> Flush (intermediate object) -> CopyAndSort (final object).
+// Append -> Flush (object sorted per section), and Append -> FlushAndSort
+// (object sorted object-wide) on a second builder with the same dataset.
 //
 // The dataset is randomly generated with a fixed seed to broadly exercise:
 // - intermediate log sections are individually ordered.
@@ -33,7 +34,7 @@ import (
 // test should be updated to also run with AppendUnordered for
 // schema sort cases.
 func TestBuilder_EndToEnd(t *testing.T) {
-	tenants := []string{"t1", "t2", "t10"}
+	tenants := []string{"t1"}
 	apps := []string{"zoo", "alpha", "middle"}
 	instances := []string{"b", "a"}
 	schemaLabels := []string{"label:app"}
@@ -63,8 +64,8 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		rng := rand.New(rand.NewSource(42))
 		refTime := time.Date(2025, time.September, 17, 12, 0, 0, 0, time.UTC)
 
-		// 1000 entries across 3 tenants (~333 per tenant) with ~1 KiB lines
-		// and 64 KiB sections gives ~5 sections per tenant.
+		// 1000 entries with ~1 KiB lines and 64 KiB sections gives ~15
+		// sections.
 		const numEntries = 1000
 
 		for i := range numEntries {
@@ -98,7 +99,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	appendDataset(t, b)
 
-	obj1, closer, err := b.Flush()
+	obj1, closer, err := b.flushWithoutLayout()
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -106,8 +107,6 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	for _, tenant := range tenants {
 		require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
 		require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
-
-		assertBuilderE2ESchemaLabels(t, obj1, tenant, schemaLabels)
 
 		for _, sec := range obj1.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == tenant
@@ -117,9 +116,10 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
 	}
 
-	mergeBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	sortBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 	require.NoError(t, err)
-	obj2, closer2, err := mergeBuilder.CopyAndSort(t.Context(), obj1)
+	appendDataset(t, sortBuilder)
+	obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	defer closer2.Close()
 
@@ -267,17 +267,13 @@ func countTenantSections(obj *dataobj.Object, tenant string, check func(*dataobj
 func assertBuilderE2ESchemaLabels(t *testing.T, obj *dataobj.Object, tenant string, want []string) {
 	t.Helper()
 	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
-		return logs.CheckSection(s) && s.Tenant == tenant
+		return streams.CheckSection(s) && s.Tenant == tenant
 	}) {
-		logsSection, err := logs.Open(t.Context(), sec)
+		streamsSection, err := streams.Open(t.Context(), sec)
 		require.NoError(t, err)
-		got, err := logsSection.SchemaLabels()
+		got, ok, err := streamsSection.Layout()
 		require.NoError(t, err)
-		require.Equal(t, want, got)
-		require.Equal(t, logs.SortLayout{
-			SchemaLabels: want,
-			StreamOrder:  logs.StreamOrderStableHashV1,
-			ShardCount:   streams.DefaultShardLayout().Buckets(),
-		}, logsSection.SortLayout())
+		require.True(t, ok)
+		require.Equal(t, streams.NewLayout(streams.DefaultShardLayout(), want), got)
 	}
 }

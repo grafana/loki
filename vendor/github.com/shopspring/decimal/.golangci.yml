@@ -29,6 +29,17 @@ linters:
       disable:
         - fieldalignment # field order follows readability, not padding
         - shadow # shadowing err and loop variables is common and harmless here
+    staticcheck:
+      checks:
+        # golangci-lint's defaults
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1004 # suggests strings.ReplaceAll, which needs Go 1.12
     gocritic:
       # Bug and performance checks only. The style checks are opinionated, and the experimental
       # commentedOutCode check reads formula comments like "v * 10^(f-q) = e^s * 10^f" as code.

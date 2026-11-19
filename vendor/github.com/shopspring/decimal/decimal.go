@@ -18,6 +18,7 @@ package decimal
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"math/bits"
@@ -27,7 +28,10 @@ import (
 )
 
 // DivisionPrecision is the number of decimal places in the result when it
-// doesn't divide exactly.
+// doesn't divide exactly. Div and Sqrt read it, and so do Avg, Atan and Tan through Div.
+//
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
+// To choose the precision per call, use DivRound instead of Div and SqrtRound instead of Sqrt.
 //
 // Example:
 //
@@ -47,6 +51,9 @@ var DivisionPrecision = 16
 // PowPrecisionNegativeExponent significant digits instead (at least one).
 // PowWithPrecision is not affected, it takes the precision as an argument.
 //
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
+// To choose the precision per call, use PowWithPrecision.
+//
 // Example:
 //
 //	d1, err := decimal.NewFromFloat(15.2).PowInt32(-2)
@@ -63,12 +70,18 @@ var PowPrecisionNegativeExponent = 16
 // unmarshallers (ex: Javascript's) will unmarshal JSON numbers to IEEE 754
 // double-precision floating point numbers, which means you can potentially
 // silently lose precision.
+//
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
 var MarshalJSONWithoutQuotes = false
 
 // TrimTrailingZeros specifies whether trailing zeroes should be trimmed from a string representation of decimal.
 // If set to true, trailing zeroes will be truncated (2.00 -> 2, 3.11 -> 3.11, 13.000 -> 13),
 // otherwise trailing zeroes will be preserved (2.00 -> 2.00, 3.11 -> 3.11, 13.000 -> 13.000).
 // Setting this value to false can be useful for APIs where exact decimal string representation matters.
+// It affects String and everything built on it, such as MarshalJSON, MarshalText and Value.
+//
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
+// For a fixed number of decimal places per call, use StringFixed.
 var TrimTrailingZeros = true
 
 // UseScientificNotation specifies whether scientific notation should be used when a decimal is turned
@@ -76,14 +89,20 @@ var TrimTrailingZeros = true
 //
 // For example, 1200 rounded to the nearest 100 cannot accurately be shown as "1200" because the last two
 // digits are unknown. With this set to true, that number would be expressed as "1.2E3" instead.
+//
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
+// StringFixed never uses scientific notation.
 var UseScientificNotation = false
 
 // ExpMaxIterations specifies the maximum number of iterations needed to calculate
 // precise natural exponent value using ExpHullAbrham method.
+//
+// Set it once at program start. Changing it while other goroutines use the package is a data race.
 var ExpMaxIterations = 1000
 
 // MaxDecodeExponent is the largest exponent magnitude that NewFromString and UnmarshalBinary accept,
-// and so UnmarshalJSON, UnmarshalText, Scan, GobDecode, DecodeSpanner and their NullDecimal variants too.
+// and so UnmarshalJSON, UnmarshalText, Scan, GobDecode, DecodeSpanner, UnmarshalBSONValue and their
+// NullDecimal variants too.
 // Operations like String, Add and Float64 take time and memory that grow with the exponent, so without
 // this limit a short input like "1e-2000000000" can stall the process or exhaust its memory.
 // The default covers the float64 and IEEE 754 decimal128 exponent ranges.
@@ -92,7 +111,8 @@ var ExpMaxIterations = 1000
 // their own String or MarshalBinary output. The limit does not bound the cost of Pow or ExpTaylor
 // arguments or of very long inputs; validate those separately.
 //
-// Set it once at program start, before any decoding. Raise it only for trusted input.
+// Set it once at program start, before any decoding. Changing it while other goroutines decode is a
+// data race. Raise it only for trusted input.
 var MaxDecodeExponent = 10000
 
 // Zero constant, to make computations faster.
@@ -192,6 +212,28 @@ func NewFromBigRat(value *big.Rat, precision int32) Decimal {
 	}, precision)
 }
 
+// NewFromBigFloat returns a new Decimal from a big.Float. The result is the shortest decimal
+// that rounds back to value at value's precision, as NewFromFloat does for a float64.
+// It returns an error for nil and infinite values, and for exponents beyond MaxDecodeExponent.
+//
+// Example:
+//
+//	f, _ := new(big.Float).SetString("-123.45")
+//	d, err := NewFromBigFloat(f)
+//	d.String() // output: "-123.45"
+func NewFromBigFloat(value *big.Float) (Decimal, error) {
+	if value == nil {
+		return Decimal{}, fmt.Errorf("can't convert nil *big.Float to decimal")
+	}
+	if value.IsInf() {
+		return Decimal{}, fmt.Errorf("can't convert infinite *big.Float to decimal")
+	}
+	if value.Sign() == 0 {
+		return New(0, 0), nil
+	}
+	return NewFromString(value.Text('g', -1))
+}
+
 // NewFromString returns a new Decimal from a string representation.
 // Trailing zeroes are not trimmed.
 //
@@ -203,6 +245,9 @@ func NewFromBigRat(value *big.Rat, precision int32) Decimal {
 func NewFromString(value string) (Decimal, error) {
 	originalInput := value
 	var exp int64
+
+	// Accept Unicode minus sign (U+2212) in addition to ASCII '-'.
+	value = strings.Replace(value, "\u2212", "-", -1)
 
 	// Check if number is using scientific notation and find dots
 	eIndex := -1
@@ -364,7 +409,7 @@ func NewFromFloat(value float64) Decimal {
 	if value == 0 {
 		return New(0, 0)
 	}
-	return newFromFloat(value, math.Float64bits(value), &float64info)
+	return newFromFloat(value, 64)
 }
 
 // NewFromFloat32 converts a float32 to Decimal.
@@ -383,55 +428,66 @@ func NewFromFloat32(value float32) Decimal {
 	if value == 0 {
 		return New(0, 0)
 	}
-	// XOR is workaround for https://github.com/golang/go/issues/26285
-	a := math.Float32bits(value) ^ 0x80808080
-	return newFromFloat(float64(value), uint64(a)^0x80808080, &float32info)
+	return newFromFloat(float64(value), 32)
 }
 
-func newFromFloat(val float64, bits uint64, flt *floatInfo) Decimal {
+// newFromFloat converts val to a Decimal holding the shortest decimal digit
+// string that round-trips back to val when parsed at the given bit size.
+//
+// strconv already computes exactly that string, so we ask it for the value in
+// 'e' format with precision -1 and read the digits back out. The 'e' layout is
+// [-]d[.ddd]e±dd, which is bounded (at most 24 bytes) and trivial to scan,
+// unlike 'f' which can run to over 750 bytes for extreme exponents.
+func newFromFloat(val float64, bitSize int) Decimal {
 	if math.IsNaN(val) || math.IsInf(val, 0) {
 		panic(fmt.Sprintf("Cannot create a Decimal from %v", val))
 	}
-	exp := int(bits>>flt.mantbits) & (1<<flt.expbits - 1)
-	mant := bits & (uint64(1)<<flt.mantbits - 1)
 
-	switch exp {
-	case 0:
-		// denormalized
-		exp++
+	var buf [32]byte
+	b := strconv.AppendFloat(buf[:0], val, 'e', -1, bitSize)
 
-	default:
-		// add implicit top bit
-		mant |= uint64(1) << flt.mantbits
+	neg := b[0] == '-'
+	if neg {
+		b = b[1:]
 	}
-	exp += flt.bias
 
-	var d decimal
-	d.Assign(mant)
-	d.Shift(exp - int(flt.mantbits))
-	d.neg = bits>>(flt.expbits+flt.mantbits) != 0
+	// Split the significand from the exponent. b always contains an 'e'.
+	var i int
+	for b[i] != 'e' {
+		i++
+	}
+	digits, expDigits := b[:i], b[i+1:]
 
-	roundShortest(&d, mant, exp, flt)
-	// If less than 19 digits, we can do calculation in an int64.
-	if d.nd < 19 {
-		tmp := int64(0)
-		m := int64(1)
-		for i := d.nd - 1; i >= 0; i-- {
-			tmp += m * int64(d.d[i]-'0')
-			m *= 10
+	// The shortest round-trip form has at most 17 significant digits for a
+	// float64 and 9 for a float32, so the significand always fits in an int64.
+	var mant int64
+	nd := 0
+	for _, c := range digits {
+		if c == '.' {
+			continue
 		}
-		if d.neg {
-			tmp *= -1
-		}
-		return Decimal{value: big.NewInt(tmp), exp: int32(d.dp) - int32(d.nd)}
+		mant = mant*10 + int64(c-'0')
+		nd++
 	}
-	dValue := new(big.Int)
-	dValue, ok := dValue.SetString(string(d.d[:d.nd]), 10)
-	if ok {
-		return Decimal{value: dValue, exp: int32(d.dp) - int32(d.nd)}
+	if neg {
+		mant = -mant
 	}
 
-	return NewFromFloatWithExponent(val, int32(d.dp)-int32(d.nd))
+	esign := 1
+	switch expDigits[0] {
+	case '-':
+		esign = -1
+		expDigits = expDigits[1:]
+	case '+':
+		expDigits = expDigits[1:]
+	}
+	e := 0
+	for _, c := range expDigits {
+		e = e*10 + int(c-'0')
+	}
+
+	// digits is d.ddd, i.e. the significand scaled by 10^(nd-1).
+	return Decimal{value: big.NewInt(mant), exp: int32(esign*e - nd + 1)}
 }
 
 // NewFromFloatWithExponent converts a float64 to Decimal, with an arbitrary
@@ -535,18 +591,18 @@ func (d Decimal) Copy() Decimal {
 //
 // Example:
 //
-//	d := New(12345, -4)
-//	d2 := d.rescale(-1)
+//	d1 := New(12345, -4)
+//	d2 := d1.rescale(-1)
 //	d3 := d2.rescale(-4)
-//	println(d1)
-//	println(d2)
-//	println(d3)
+//	fmt.Println(d1)
+//	fmt.Println(d2)
+//	fmt.Println(d3)
 //
 // Output:
 //
 //	1.2345
 //	1.2
-//	1.2000
+//	1.2
 func (d Decimal) rescale(exp int32) Decimal {
 	if d.exp == exp {
 		return Decimal{
@@ -673,8 +729,50 @@ func (d Decimal) Shift(shift int32) Decimal {
 	}
 }
 
+// Normalize returns d with the trailing zeros removed from its coefficient, so equal decimals get the
+// same coefficient and exponent: 1.50, 1.5 and New(15, -1) all become New(15, -1), and every zero
+// becomes Decimal{}, the same as Zero. It's like Java's BigDecimal.stripTrailingZeros.
+//
+// reflect.DeepEqual, and test helpers built on it such as testify's assert.Equal and gomock.Eq, compare
+// the coefficient and exponent rather than the value, so normalize decimals before comparing them that
+// way. Equal and Cmp compare values and don't need it.
+//
+// The value doesn't change, but its string form can: with TrimTrailingZeros = false, 1.50 prints as
+// 1.5, and with UseScientificNotation = true, 1500 prints as 1.5E3.
+func (d Decimal) Normalize() Decimal {
+	v := d.getValue()
+	if v.Sign() == 0 {
+		return Decimal{}
+	}
+
+	// Count the trailing zeros with integer math: in v if it fits an int64, else in v mod 10^19,
+	// and in all the digits of v only when those 19 are all zeros.
+	var zeros int64
+	if v.IsInt64() {
+		for x := v.Int64(); x%10 == 0; x /= 10 {
+			zeros++
+		}
+	} else {
+		r := new(big.Int).Rem(v, pow10(19))
+		for n := r.Abs(r).Uint64(); n%10 == 0 && zeros < 19; n /= 10 {
+			zeros++
+		}
+		if zeros == 19 {
+			s := v.String()
+			zeros = int64(len(s) - len(strings.TrimRight(s, "0")))
+		}
+	}
+	if room := math.MaxInt32 - int64(d.exp); zeros > room {
+		zeros = room
+	}
+	if zeros == 0 {
+		return d
+	}
+	return Decimal{value: new(big.Int).Quo(v, pow10(zeros)), exp: d.exp + int32(zeros)}
+}
+
 // Div returns d / d2. If it doesn't divide exactly, the result will have
-// DivisionPrecision digits after the decimal point.
+// DivisionPrecision digits after the decimal point. Use DivRound to choose the precision per call.
 func (d Decimal) Div(d2 Decimal) Decimal {
 	return d.DivRound(d2, int32(DivisionPrecision))
 }
@@ -698,7 +796,7 @@ func (d Decimal) quoRem(d2 Decimal, precision int32, bb *big.Int) (Decimal, Deci
 	}
 	scale := -precision
 	e := int64(d.exp) - int64(d2.exp) - int64(scale)
-	if e > math.MaxInt32 || e < math.MinInt32 {
+	if precision == math.MinInt32 || e > math.MaxInt32 || e < math.MinInt32 {
 		panic("overflow in decimal QuoRem")
 	}
 	if bb == nil {
@@ -811,7 +909,7 @@ func (d Decimal) IsInteger() bool {
 	q := new(big.Int).Set(v)
 	for z := abs(d.exp); z > 0; z-- {
 		q.QuoRem(q, tenInt, &r)
-		if r.Cmp(zeroInt) != 0 {
+		if r.Sign() != 0 {
 			return false
 		}
 	}
@@ -1045,7 +1143,7 @@ func (d Decimal) String() string {
 //	NewFromFloat(5.45).StringFixed(1) // output: "5.5"
 //	NewFromFloat(5.45).StringFixed(2) // output: "5.45"
 //	NewFromFloat(5.45).StringFixed(3) // output: "5.450"
-//	NewFromFloat(545).StringFixed(-1) // output: "540"
+//	NewFromFloat(545).StringFixed(-1) // output: "550"
 //
 // Regardless of the UseScientificNotation option, the returned string will never be in scientific notation.
 func (d Decimal) StringFixed(places int32) string {
@@ -1079,6 +1177,106 @@ func (d Decimal) StringFixedBank(places int32) string {
 func (d Decimal) StringFixedCash(interval uint8) string {
 	rounded := d.RoundCash(interval)
 	return rounded.string(false, false)
+}
+
+// Format implements fmt.Formatter, so decimals work with the fmt verbs:
+//
+//   - %v and %s print String(), and %q, %x and %X quote it or print it in hex, as for any fmt.Stringer.
+//   - %f and %F print fixed-point notation. With a precision, as in %.2f, the decimal is rounded like
+//     StringFixed. Without one, it's printed exactly, like String() but never in scientific notation.
+//     Width and the '-', '+', ' ' and '0' flags work as they do for floats.
+//   - %#v prints Go syntax that recreates the decimal exactly, such as decimal.New(314, -2).
+//
+// Other verbs print fmt's usual error, such as %!d(decimal.Decimal=3.14).
+func (d Decimal) Format(f fmt.State, verb rune) {
+	switch verb {
+	case 'v', 's', 'q', 'x', 'X':
+		if verb == 'v' && f.Flag('#') {
+			formatString(f, 's', d.goSyntax())
+		} else {
+			formatString(f, verb, d.String())
+		}
+	case 'f', 'F':
+		d.formatFixed(f)
+	default:
+		_, _ = fmt.Fprintf(f, "%%!%c(decimal.Decimal=%s)", verb, d.String())
+	}
+}
+
+// formatString formats s as fmt would for the directive that called Format, with verb in place of its own.
+func formatString(f fmt.State, verb rune, s string) {
+	// Println and plain %v are the common case, and rebuilding the directive costs 3 allocations.
+	_, hasWidth := f.Width()
+	_, hasPrec := f.Precision()
+	if (verb == 'v' || verb == 's') && !hasWidth && !hasPrec {
+		_, _ = io.WriteString(f, s)
+		return
+	}
+	_, _ = fmt.Fprintf(f, fmtDirective(f, verb), s)
+}
+
+// fmtDirective rebuilds the directive that called Format, as fmt.FormatString does from Go 1.20.
+func fmtDirective(f fmt.State, verb rune) string {
+	b := []byte{'%'}
+	for _, flag := range "+-# 0" {
+		if f.Flag(int(flag)) {
+			b = append(b, byte(flag))
+		}
+	}
+	if width, ok := f.Width(); ok {
+		b = strconv.AppendInt(b, int64(width), 10)
+	}
+	if prec, ok := f.Precision(); ok {
+		b = strconv.AppendInt(append(b, '.'), int64(prec), 10)
+	}
+	return string(append(b, string(verb)...))
+}
+
+func (d Decimal) formatFixed(f fmt.State) {
+	var s string
+	if prec, ok := f.Precision(); ok {
+		s = d.StringFixed(int32(prec))
+	} else {
+		s = d.string(TrimTrailingZeros, false)
+	}
+
+	sign := ""
+	switch {
+	case s[0] == '-':
+		sign, s = "-", s[1:]
+	case f.Flag('+'):
+		sign = "+"
+	case f.Flag(' '):
+		sign = " "
+	}
+	// Before Go 1.23, fmt keeps the width of an earlier directive when ok is false.
+	pad := 0
+	if width, ok := f.Width(); ok {
+		pad = width - len(sign) - len(s)
+	}
+	switch {
+	case pad <= 0:
+		s = sign + s
+	case f.Flag('-'):
+		s = sign + s + strings.Repeat(" ", pad)
+	case f.Flag('0'):
+		s = sign + strings.Repeat("0", pad) + s
+	default:
+		s = strings.Repeat(" ", pad) + sign + s
+	}
+	_, _ = io.WriteString(f, s)
+}
+
+func (d Decimal) goSyntax() string {
+	switch {
+	case d.value == nil:
+		return "decimal.Decimal{}"
+	case d.value.IsInt64():
+		return fmt.Sprintf("decimal.New(%d, %d)", d.value.Int64(), d.exp)
+	default:
+		// Shift instead of an exponent in the string, which RequireFromString caps at MaxDecodeExponent.
+		return fmt.Sprintf("decimal.RequireFromString(%q).Shift(%d)", d.value.String(), d.exp)
+	}
 }
 
 // Round rounds the decimal to places decimal places.
@@ -1291,7 +1489,7 @@ func (d Decimal) Ceil() Decimal {
 
 	// NOTE(vadim): must negate after casting to prevent int32 overflow
 	z, m := new(big.Int).DivMod(d.getValue(), pow10(-int64(d.exp)), new(big.Int))
-	if m.Cmp(zeroInt) != 0 {
+	if m.Sign() != 0 {
 		z.Add(z, oneInt)
 	}
 	return Decimal{value: z, exp: 0}
@@ -1305,9 +1503,9 @@ func (d Decimal) Ceil() Decimal {
 //
 // Example:
 //
-//	decimal.NewFromString("123.456").Truncate(2).String()  // "123.45"
-//	decimal.NewFromString("5432").Truncate(-2).String()    // "5400"
-//	decimal.NewFromString("-5432").Truncate(-2).String()   // "-5400"
+//	decimal.RequireFromString("123.456").Truncate(2).String() // output: "123.45"
+//	decimal.RequireFromString("5432").Truncate(-2).String()   // output: "5400"
+//	decimal.RequireFromString("-5432").Truncate(-2).String()  // output: "-5400"
 func (d Decimal) Truncate(precision int32) Decimal {
 	if -precision > d.exp {
 		return d.rescale(-precision)

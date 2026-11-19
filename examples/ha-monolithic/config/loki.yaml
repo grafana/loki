@@ -49,7 +49,7 @@ storage_config:
   use_thanos_objstore: true
   object_store: ## thanos storage client
     s3:
-      endpoint: minio:9000
+      endpoint: silo:9000
       insecure: true
       bucket_name: loki-chunks
       access_key_id: loki
@@ -89,16 +89,15 @@ compactor:
   delete_request_store: s3
   horizontal_scaling_mode: ${COMPACTOR_MODE:-worker}
 
-ruler:
-  storage:
-    type: s3
-    s3:
-      endpoint: minio:9000
-      insecure: true
-      bucketnames: loki-ruler
-      access_key_id: loki
-      secret_access_key: supersecret
-      s3forcepathstyle: true
+ruler_storage:
+  backend: s3
+  s3:
+    endpoint: silo:9000
+    insecure: true
+    bucket_name: loki-ruler
+    access_key_id: loki
+    secret_access_key: supersecret
+    bucket_lookup_type: path
 
 limits_config:
   allow_structured_metadata: true

@@ -1983,6 +1983,58 @@ limits_config:
 	})
 }
 
+func TestLoglineConfig(t *testing.T) {
+	const yamlContent = `logline:
+  index:
+    ngram_length: 7
+  query:
+    enabled: true`
+
+	for _, tc := range []struct {
+		name        string
+		yaml        string
+		args        []string
+		ngramLength int
+		enabled     bool
+	}{
+		{
+			name:        "loads YAML config",
+			yaml:        yamlContent,
+			ngramLength: 7,
+			enabled:     true,
+		},
+		{
+			name:        "preserves flags-only config",
+			yaml:        minimalConfig,
+			args:        []string{"-logline-index.ngram-length=8", "-logline-query.enabled=true"},
+			ngramLength: 8,
+			enabled:     true,
+		},
+		{
+			name:        "flags override YAML config",
+			yaml:        yamlContent,
+			args:        []string{"-logline-index.ngram-length=8", "-logline-query.enabled=false"},
+			ngramLength: 8,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config, _, err := configWrapperFromYAML(t, tc.yaml, tc.args)
+			require.NoError(t, err)
+			require.Equal(t, tc.ngramLength, config.Logline.Index.NgramLength)
+			require.Equal(t, tc.enabled, config.Logline.Query.Enabled)
+			require.Equal(t, config.Logline.Index, config.Logline.Builder.Index)
+		})
+	}
+}
+
+func TestLoglineConfigRejectsIngesterWindowOverride(t *testing.T) {
+	const yamlContent = `logline:
+  query:
+    query_ingesters_within: 1h`
+	_, _, err := configWrapperFromYAML(t, yamlContent, nil)
+	require.ErrorContains(t, err, "field query_ingesters_within not found")
+}
+
 func Test_applyQuerierDataObjConfig(t *testing.T) {
 	t.Run("copies the data-object settings into the querier config", func(t *testing.T) {
 		yamlContent := `dataobj:
@@ -2505,4 +2557,48 @@ func TestBucketNamedStores_applyDefaults(t *testing.T) {
 
 		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
+}
+
+// TestLoglineBuilderAPIVersionsMaxVersion checks that the logline builder inherits
+// the root ApiVersions cap unless its own flag is set.
+func TestLoglineBuilderAPIVersionsMaxVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantRoot    int
+		wantLogline int
+	}{
+		{
+			name:        "defaults",
+			wantRoot:    4,
+			wantLogline: 4,
+		},
+		{
+			name:        "root cap disabled",
+			args:        []string{"-kafka.api-versions-max-version=0"},
+			wantRoot:    0,
+			wantLogline: 0,
+		},
+		{
+			name:        "root cap lowered",
+			args:        []string{"-kafka.api-versions-max-version=3"},
+			wantRoot:    3,
+			wantLogline: 3,
+		},
+		{
+			name:        "logline builder flag wins",
+			args:        []string{"-kafka.api-versions-max-version=0", "-logline-builder.kafka.api-versions-max-version=2"},
+			wantRoot:    0,
+			wantLogline: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _, err := configWrapperFromYAML(t, "", tt.args)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantRoot, cfg.KafkaConfig.APIVersionsMaxVersion)
+			assert.Equal(t, tt.wantLogline, cfg.Logline.Builder.Kafka.APIVersionsMaxVersion)
+		})
+	}
 }

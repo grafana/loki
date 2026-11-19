@@ -1,10 +1,12 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log"
@@ -33,7 +35,7 @@ type indexer interface {
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
 // Implementations must be safe for concurrent use.
 type tocWriter interface {
-	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
+	WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error
 }
 
 // A flusher allows mocking of flushes in tests. Implementations must be safe
@@ -52,6 +54,7 @@ type flushCommitterImpl struct {
 	committer committer
 	indexer   indexer
 	tocWriter tocWriter
+	topic     string
 	partition int32
 	logger    log.Logger
 
@@ -61,26 +64,15 @@ type flushCommitterImpl struct {
 	// memory. It is at least 1.
 	concurrency int
 
+	metrics *flushCommitterMetrics
+}
+
+type flushCommitterMetrics struct {
 	duration      *prometheus.HistogramVec
 	e2eLagSeconds prometheus.Gauge
 }
 
-const (
-	resultOK        = "ok"
-	resultError     = "error"
-	resultCancelled = "cancelled"
-)
-
-func newFlushCommitter(
-	flusher flusher,
-	committer committer,
-	indexer indexer,
-	tocWriter tocWriter,
-	partition int32,
-	concurrency int,
-	logger log.Logger,
-	r prometheus.Registerer,
-) *flushCommitterImpl {
+func newFlushCommitterMetrics(r prometheus.Registerer) *flushCommitterMetrics {
 	d := promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 		Name:                            "loki_dataobj_builder_flush_commit_duration_seconds",
 		Help:                            "Time taken to flush a group of builders and commit the Kafka offset.",
@@ -96,15 +88,8 @@ func newFlushCommitter(
 	d.WithLabelValues(resultError)
 	d.WithLabelValues(resultCancelled)
 
-	return &flushCommitterImpl{
-		flusher:     flusher,
-		committer:   committer,
-		indexer:     indexer,
-		tocWriter:   tocWriter,
-		partition:   partition,
-		logger:      logger,
-		duration:    d,
-		concurrency: concurrency,
+	return &flushCommitterMetrics{
+		duration: d,
 		e2eLagSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_e2e_lag_seconds",
 			Help: "Time between a log line being written to Kafka by the distributors and it becoming available for querying in seconds.",
@@ -112,7 +97,38 @@ func newFlushCommitter(
 	}
 }
 
-// Flush multiple data object builders and, if successful, commit the offset.
+const (
+	resultOK        = "ok"
+	resultError     = "error"
+	resultCancelled = "cancelled"
+)
+
+func newFlushCommitter(
+	flusher flusher,
+	committer committer,
+	indexer indexer,
+	tocWriter tocWriter,
+	topic string,
+	partition int32,
+	concurrency int,
+	logger log.Logger,
+	r prometheus.Registerer,
+) *flushCommitterImpl {
+	return &flushCommitterImpl{
+		flusher:     flusher,
+		committer:   committer,
+		indexer:     indexer,
+		tocWriter:   tocWriter,
+		topic:       topic,
+		partition:   partition,
+		logger:      logger,
+		concurrency: concurrency,
+		metrics:     newFlushCommitterMetrics(r),
+	}
+}
+
+// Flush flushes the data object builders, adds their indexes to the ToCs with
+// the ToC watermark raised to offset, and then commits offset.
 func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) (returnErr error) {
 	start := time.Now()
 	defer func() { c.observeResult(time.Since(start), returnErr) }()
@@ -121,14 +137,14 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	// earliest record times.
 	earliest := earliestRecordTime(builders)
 
-	if err := c.flushAll(ctx, builders, reason); err != nil {
+	if err := c.flushAll(ctx, builders, reason, offset); err != nil {
 		return err
 	}
 
 	// Everything above is queryable once its index is in the metastore, so the
 	// oldest record in this flush is the one that determines ingest lag.
 	if !earliest.IsZero() {
-		c.e2eLagSeconds.Set(time.Since(earliest).Seconds())
+		c.metrics.e2eLagSeconds.Set(time.Since(earliest).Seconds())
 	}
 
 	// commit returns an error only if context is cancelled, otherwise it retries indefinitely
@@ -145,31 +161,51 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 // The first failure cancels the builders in progress and skips the builders
 // not yet started. flushAll returns that first failure, not the cancellation
 // errors that it causes in the other builders.
-//
-// flushAll takes the builders in the order given, but builders in progress
-// can run and finish in any order. This is safe because a ToC is an unordered
-// set of index pointers, and the ToC writer is safe for concurrent use. The
-// caller commits the offset only after flushAll returns.
-func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
+func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string, offset int64) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.concurrency)
-	for _, b := range builders {
+
+	ordered := builders
+	if c.concurrency > 1 {
+		// One large builder can take most of the flush time. If it starts
+		// last, it runs alone after the small builders. If it starts first,
+		// the small builders run beside it, and the flush ends sooner.
+		//
+		// With one slot, the order does not change the flush time. Largest
+		// first would only delay the ToC entries of the small builders.
+		//
+		// Largest first also builds the largest sorted objects at the same
+		// time, which raises peak memory.
+		ordered = largestFirst(builders)
+	}
+	for _, b := range ordered {
 		g.Go(func() error {
 			// Skip the builder if the flush was canceled or another builder
-			// failed while this one waited for a slot. builder.Flush takes no
-			// context, so it would build the whole object before the sort
-			// sees the cancellation.
+			// failed while this one waited for a slot. FlushAndSort ignores ctx
+			// while it builds, so it would build the whole object before the
+			// sort sees the cancellation.
 			if err := gctx.Err(); err != nil {
 				return err
 			}
-			return c.flushOne(gctx, b, reason)
+			return c.flushOne(gctx, b, reason, offset)
 		})
 	}
 	return g.Wait()
 }
 
-func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
-	obj, objCloser, objPath, err := c.flusher.Flush(ctx, builder, reason)
+// largestFirst returns a new slice with the builders sorted by estimated size,
+// largest first. Builders of equal size keep their order. largestFirst does
+// not modify the given slice.
+func largestFirst(builders []builder) []builder {
+	ordered := slices.Clone(builders)
+	slices.SortStableFunc(ordered, func(a, b builder) int {
+		return cmp.Compare(b.GetEstimatedSize(), a.GetEstimatedSize())
+	})
+	return ordered
+}
+
+func (c *flushCommitterImpl) flushOne(ctx context.Context, b builder, reason string, offset int64) error {
+	obj, objCloser, objPath, err := c.flusher.Flush(ctx, b, reason)
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
@@ -184,17 +220,32 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
-	// A WriteEntry error fails the flush, so the offset is not committed and
+	// A ToC write error fails the flush, so the offset is not committed and
 	// the records are read again.
-	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
-		Path:      res.Path,
-		StartTime: res.TimeRange.MinTime,
-		EndTime:   res.TimeRange.MaxTime,
-	}); err != nil {
+	scope := builderScope{tenant: res.TimeRange.Tenant, window: res.TimeRange.MinTime.UTC().Truncate(metastore.MetastoreWindowSize)}
+	if err := c.writeToC(ctx, scope, b.InitialWatermark(), res, offset); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
 
 	return nil
+}
+
+// writeToC adds the index to the ToC of the scope and raises the watermark of
+// the partition to offset in the same write. The write applies only if the ToC
+// holds the initial watermark of the builder.
+func (c *flushCommitterImpl) writeToC(ctx context.Context, scope builderScope, initialWatermark *int64, res index.Result, offset int64) error {
+	entry := metastore.TableOfContentsEntry{
+		Path:         res.Path,
+		StartTime:    res.TimeRange.MinTime,
+		EndTime:      res.TimeRange.MaxTime,
+		ShardBuckets: res.ShardBuckets,
+	}
+	return c.tocWriter.WriteEntryWithWatermark(ctx, scope.tenant, entry, metastore.WatermarkUpdate{
+		Topic:     c.topic,
+		Partition: c.partition,
+		EndOffset: offset,
+		Expected:  initialWatermark,
+	})
 }
 
 // earliestRecordTime returns the oldest record time across builders, or the
@@ -268,7 +319,7 @@ func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 }
 
 func (c *flushCommitterImpl) observeResult(duration time.Duration, err error) {
-	c.duration.WithLabelValues(resultOf(err)).Observe(duration.Seconds())
+	c.metrics.duration.WithLabelValues(resultOf(err)).Observe(duration.Seconds())
 }
 
 // resultOf returns the result label value for an operation that returned err.

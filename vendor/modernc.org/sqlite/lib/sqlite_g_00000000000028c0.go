@@ -80,9 +80,9 @@ func _robust_open(tls *libc.TLS, z uintptr, f int32, m Tmode_t) (r int32) {
 			(*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(16)].FpCurrent})))(tls, z)
 		}
 		(*(*func(*libc.TLS, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(1)].FpCurrent})))(tls, fd)
-		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3752, libc.VaList(bp+152, z, fd))
+		Xsqlite3_log(tls, int32(SQLITE_WARNING), __ccgo_ts+3766, libc.VaList(bp+152, z, fd))
 		fd = -int32(1)
-		if (*(*func(*libc.TLS, uintptr, int32, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[0].FpCurrent})))(tls, __ccgo_ts+3795, O_RDONLY, libc.Int32FromUint32(m)) < 0 {
+		if (*(*func(*libc.TLS, uintptr, int32, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[0].FpCurrent})))(tls, __ccgo_ts+3809, O_RDONLY, libc.Int32FromUint32(m)) < 0 {
 			break
 		}
 	}
@@ -121,4 +121,54 @@ func _unixAccess(tls *libc.TLS, NotUsed uintptr, zPath uintptr, flags int32, pRe
 		**(**int32)(__ccgo_up(pResOut)) = libc.BoolInt32((*(*func(*libc.TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(2)].FpCurrent})))(tls, zPath, libc.Int32FromInt32(W_OK)|libc.Int32FromInt32(R_OK)) == 0)
 	}
 	return SQLITE_OK
+}
+
+// C documentation
+//
+//	/*
+//	** Return the name of a directory in which to put temporary files.
+//	** If no suitable temporary file directory can be found, return NULL.
+//	**
+//	** The return value might be a string obtained from getenv() and so
+//	** the return value should not be used after any call to setenv() or
+//	** putenv() as that value might have been freed.
+//	*/
+func _unixTempFileDir(tls *libc.TLS) (r uintptr) {
+	bp := tls.Alloc(144)
+	defer tls.Free(144)
+	var i uint32
+	var zDir uintptr
+	var _ /* buf at bp+0 */ Tstat
+	_, _ = i, zDir
+	i = uint32(0)
+	for {
+		if !(i < uint32(7)) {
+			break
+		}
+		switch i {
+		case uint32(0):
+			zDir = Xsqlite3_temp_directory
+		case uint32(1):
+			zDir = libc.Xgetenv(tls, __ccgo_ts+4039)
+		case uint32(2):
+			zDir = libc.Xgetenv(tls, __ccgo_ts+4053)
+		case uint32(3):
+			zDir = __ccgo_ts + 4060
+		case uint32(4):
+			zDir = __ccgo_ts + 4069
+		case uint32(5):
+			zDir = __ccgo_ts + 4078
+		default:
+			zDir = __ccgo_ts + 1767
+			break
+		}
+		if zDir != uintptr(0) && (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(4)].FpCurrent})))(tls, zDir, bp) == 0 && (**(**Tstat)(__ccgo_up(bp))).Fst_mode&uint32(S_IFMT) == uint32(S_IFDIR) && (*(*func(*libc.TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(2)].FpCurrent})))(tls, zDir, int32(03)) == 0 {
+			return zDir
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	return uintptr(0)
 }

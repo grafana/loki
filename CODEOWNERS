@@ -4,9 +4,7 @@
 # Documentation.
 /docs/ @grafana/docs-logs @grafana/loki-team
 
-# Loki operator
-/operator/ @grafana/loki-team @periklis @xperimental @JoaoBraveCoding
-/.github/workflows/operator* @grafana/loki-team @periklis @xperimental @JoaoBraveCoding
+# Product Security
 /.github/workflows/sbom-on-release.yml @grafana/security
 
 # Logql grammar

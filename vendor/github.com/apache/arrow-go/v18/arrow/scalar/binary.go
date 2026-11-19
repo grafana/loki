@@ -19,6 +19,7 @@ package scalar
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"unicode/utf8"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -73,13 +74,17 @@ func (b *Binary) CastTo(to arrow.DataType) (Scalar, error) {
 
 	switch to.ID() {
 	case arrow.BINARY:
-		return NewBinaryScalar(b.Value, b.Type), nil
+		return NewBinaryScalar(b.Value, to), nil
 	case arrow.LARGE_BINARY:
 		return NewLargeBinaryScalar(b.Value), nil
 	case arrow.STRING:
 		return NewStringScalarFromBuffer(b.Value), nil
 	case arrow.LARGE_STRING:
 		return NewLargeStringScalarFromBuffer(b.Value), nil
+	case arrow.BINARY_VIEW:
+		return NewBinaryViewScalar(b.Value), nil
+	case arrow.STRING_VIEW:
+		return NewStringViewScalarFromBuffer(b.Value), nil
 	case arrow.FIXED_SIZE_BINARY:
 		if b.Value.Len() == to.(*arrow.FixedSizeBinaryType).ByteWidth {
 			return NewFixedSizeBinaryScalar(b.Value, to), nil
@@ -92,7 +97,15 @@ func (b *Binary) CastTo(to arrow.DataType) (Scalar, error) {
 func (b *Binary) Validate() (err error) {
 	err = b.scalar.Validate()
 	if err == nil {
-		err = validateOptional(&b.scalar, b.Value, "value")
+		err = validateOptional(&b.scalar, b.Value != nil)
+	}
+	if err == nil && b.Valid && b.Value.Len() > math.MaxInt32 {
+		switch b.Type.ID() {
+		case arrow.BINARY_VIEW, arrow.STRING_VIEW:
+			// A view header stores the size as an int32.
+			err = fmt.Errorf("%w: %s scalar value of %d bytes exceeds the view size limit of %d bytes",
+				arrow.ErrInvalid, b.Type, b.Value.Len(), math.MaxInt32)
+		}
 	}
 	return
 }
@@ -112,6 +125,14 @@ type LargeBinary struct {
 
 func NewLargeBinaryScalar(val *memory.Buffer) *LargeBinary {
 	return &LargeBinary{NewBinaryScalar(val, arrow.BinaryTypes.LargeBinary)}
+}
+
+type BinaryView struct {
+	*Binary
+}
+
+func NewBinaryViewScalar(val *memory.Buffer) *BinaryView {
+	return &BinaryView{NewBinaryScalar(val, arrow.BinaryTypes.BinaryView)}
 }
 
 type String struct {
@@ -175,6 +196,20 @@ func NewLargeStringScalar(val string) *LargeString {
 func NewLargeStringScalarFromBuffer(val *memory.Buffer) *LargeString {
 	// NewBinaryScalar will call retain on val, so we don't have to
 	return &LargeString{stringScalar: &String{NewBinaryScalar(val, arrow.BinaryTypes.LargeString)}}
+}
+
+type StringView struct {
+	*stringScalar
+}
+
+func NewStringViewScalar(val string) *StringView {
+	buf := memory.NewBufferBytes([]byte(val))
+	defer buf.Release()
+	return NewStringViewScalarFromBuffer(buf)
+}
+
+func NewStringViewScalarFromBuffer(val *memory.Buffer) *StringView {
+	return &StringView{stringScalar: &String{NewBinaryScalar(val, arrow.BinaryTypes.StringView)}}
 }
 
 type FixedSizeBinary struct {
