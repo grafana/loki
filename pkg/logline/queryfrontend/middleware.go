@@ -1550,38 +1550,51 @@ func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bo
 	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
-// rangesOverlapping returns hint ranges that overlap [start, end] and can cover
-// a stream in queryShards, which is any stream when queryShards is empty.
-// Assumes ranges are normalized: grouped by document shard, each group sorted
-// by Start.
+// rangesOverlapping returns the hint ranges that
+//   - can hold a stream in one of queryShards, or any stream when the request
+//     is not sharded, and
+//   - overlap the queried [start, end].
+//
+// ranges must be normalized: grouped by document shard, each group sorted by
+// Start.
 func rangesOverlapping(ranges []hintprovider.HintTimeRange, queryShards logql.Shards, start, end time.Time) []hintprovider.HintTimeRange {
-	var result []hintprovider.HintTimeRange
+	var overlapping []hintprovider.HintTimeRange
 	for len(ranges) > 0 {
-		n := sort.Search(len(ranges), func(i int) bool {
-			return ranges[i].DocumentShard != ranges[0].DocumentShard || ranges[i].DocumentShardBits != ranges[0].DocumentShardBits
-		})
-		group := ranges[:n]
-		ranges = ranges[n:]
-		if !coversQueryShards(group[0], queryShards) {
+		group, rest := nextDocumentShardGroup(ranges)
+		ranges = rest
+		if !overlapsQueryShards(group[0], queryShards) {
 			continue
 		}
-
-		idx := sort.Search(len(group), func(i int) bool {
-			return !group[i].End.Before(start)
-		})
-		for _, r := range group[idx:] {
-			if r.Start.After(end) {
-				break
-			}
-			result = append(result, r)
-		}
+		overlapping = appendOverlapping(overlapping, group, start, end)
 	}
-	return result
+	return overlapping
 }
 
-// coversQueryShards reports whether r's document shard can hold a stream in
-// one of queryShards, or in any query shard when queryShards is empty.
-func coversQueryShards(r hintprovider.HintTimeRange, queryShards logql.Shards) bool {
+// nextDocumentShardGroup splits off the leading ranges in ranges[0]'s document
+// shard. ranges must be grouped by document shard.
+func nextDocumentShardGroup(ranges []hintprovider.HintTimeRange) (group, rest []hintprovider.HintTimeRange) {
+	n := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].DocumentShard != ranges[0].DocumentShard || ranges[i].DocumentShardBits != ranges[0].DocumentShardBits
+	})
+	return ranges[:n], ranges[n:]
+}
+
+// appendOverlapping appends the ranges in group that overlap [start, end].
+// group must be sorted by Start with no overlaps, so End is sorted too.
+func appendOverlapping(dst, group []hintprovider.HintTimeRange, start, end time.Time) []hintprovider.HintTimeRange {
+	first := sort.Search(len(group), func(i int) bool { return !group[i].End.Before(start) })
+	for _, r := range group[first:] {
+		if r.Start.After(end) {
+			break
+		}
+		dst = append(dst, r)
+	}
+	return dst
+}
+
+// overlapsQueryShards reports whether r's document shard can hold a stream in
+// one of queryShards, or any stream when queryShards is empty.
+func overlapsQueryShards(r hintprovider.HintTimeRange, queryShards logql.Shards) bool {
 	return len(queryShards) == 0 || slices.ContainsFunc(queryShards, func(s logql.Shard) bool {
 		from, through := s.GetFromThrough()
 		return r.MatchesFingerprintRange(uint64(from), uint64(through))
