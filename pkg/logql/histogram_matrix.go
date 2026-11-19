@@ -126,6 +126,9 @@ func histogramToProto(h *histogram.FloatHistogram) (*logproto.NativeHistogram, e
 // custom bounds, and one that has more was not built by a query. It is refused, as is a histogram that Prometheus
 // does not accept, such as one whose spans do not match its buckets, or whose counts are negative. The frontend
 // would otherwise sum whatever a response holds.
+//
+// The size of what it keeps is limited as well, see checkEncodedBuckets, and that is checked before the histogram
+// is copied.
 func histogramFromProto(p *logproto.NativeHistogram) (*histogram.FloatHistogram, error) {
 	if p == nil {
 		return nil, fmt.Errorf("a sample has no histogram")
@@ -135,6 +138,9 @@ func histogramFromProto(p *logproto.NativeHistogram) (*histogram.FloatHistogram,
 	}
 	if len(p.CustomValues) > syntax.MaxBucketBounds {
 		return nil, fmt.Errorf("a histogram has %d custom bounds, and at most %d are allowed", len(p.CustomValues), syntax.MaxBucketBounds)
+	}
+	if err := checkEncodedBuckets(p); err != nil {
+		return nil, err
 	}
 
 	h := &histogram.Histogram{
@@ -159,6 +165,29 @@ func histogramFromProto(p *logproto.NativeHistogram) (*histogram.FloatHistogram,
 		return nil, err
 	}
 	return fh, nil
+}
+
+// checkEncodedBuckets fails when a side of p has more than maxHistogramBuckets buckets or spans.
+//
+// The buckets of a histogram of a query are its non-empty ones: the builder only makes those, and the sum of
+// histograms compacts the empty ones away. So a side has no more of them than the limit of non-empty buckets,
+// and each span holds at least one. Prometheus accepts any number of empty buckets, and of spans that hold none,
+// as long as they match each other, and the limit of non-empty buckets does not count them. A response could
+// otherwise make a histogram as large as the response itself, which ToFloat copies and the frontend adds up.
+func checkEncodedBuckets(p *logproto.NativeHistogram) error {
+	for _, side := range [...]struct {
+		name           string
+		spans, buckets int
+	}{
+		{"positive", len(p.PositiveSpans), len(p.PositiveDeltas)},
+		{"negative", len(p.NegativeSpans), len(p.NegativeDeltas)},
+	} {
+		if side.spans > maxHistogramBuckets || side.buckets > maxHistogramBuckets {
+			return fmt.Errorf("the %s side of a histogram has %d spans and %d buckets, and at most %d of either are allowed",
+				side.name, side.spans, side.buckets, maxHistogramBuckets)
+		}
+	}
+	return nil
 }
 
 // wholeCount returns v as a count. It fails for a number that is not one: negative, with a fraction, or too

@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"math"
+	"runtime"
 	"testing"
 	"time"
 
@@ -132,19 +133,36 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 		require.NoError(t, err)
 		return p
 	}
-	manyBuckets := func(n int) *logproto.NativeHistogram {
-		deltas := make([]int64, n)
-		deltas[0] = 1
-		for i := 1; i < n; i++ {
-			deltas[i] = 0 // each bucket holds one value as the one before it does
+	// manyBuckets has pos buckets on the positive side and neg on the negative one, which each hold one value.
+	manyBuckets := func(pos, neg int) *logproto.NativeHistogram {
+		side := func(n int) ([]*logproto.BucketSpan, []int64) {
+			if n == 0 {
+				return nil, nil
+			}
+			deltas := make([]int64, n)
+			deltas[0] = 1 // the others hold one value as the one before them does
+			return []*logproto.BucketSpan{{Offset: 0, Length: uint32(n)}}, deltas
 		}
-		return &logproto.NativeHistogram{
-			Schema:         3,
-			Count:          uint64(n),
-			Sum:            1,
-			PositiveSpans:  []*logproto.BucketSpan{{Offset: 0, Length: uint32(n)}},
-			PositiveDeltas: deltas,
+		p := &logproto.NativeHistogram{Schema: 3, Count: uint64(pos + neg), Sum: 1}
+		p.PositiveSpans, p.PositiveDeltas = side(pos)
+		p.NegativeSpans, p.NegativeDeltas = side(neg)
+		return p
+	}
+	// emptyBuckets has n buckets that hold no value on the positive side, or on the negative one.
+	emptyBuckets := func(n int, negative bool) *logproto.NativeHistogram {
+		spans, deltas := []*logproto.BucketSpan{{Offset: 0, Length: uint32(n)}}, make([]int64, n)
+		if negative {
+			return &logproto.NativeHistogram{Schema: 3, NegativeSpans: spans, NegativeDeltas: deltas}
 		}
+		return &logproto.NativeHistogram{Schema: 3, PositiveSpans: spans, PositiveDeltas: deltas}
+	}
+	// emptySpans has n spans that hold no bucket.
+	emptySpans := func(n int) *logproto.NativeHistogram {
+		spans := make([]*logproto.BucketSpan, n)
+		for i := range spans {
+			spans[i] = &logproto.BucketSpan{Offset: 1}
+		}
+		return &logproto.NativeHistogram{Schema: 3, PositiveSpans: spans}
 	}
 
 	for name, tc := range map[string]struct {
@@ -171,8 +189,16 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 			}(),
 			wantErr: "custom bounds",
 		},
-		"too many buckets":       {h: manyBuckets(maxHistogramBuckets + 1), wantErr: "non-empty buckets", wantIs: logqlerr.ErrLimit},
-		"as many as are allowed": {h: manyBuckets(maxHistogramBuckets)},
+		"too many buckets on a side":                  {h: manyBuckets(maxHistogramBuckets+1, 0), wantErr: "positive side"},
+		"too many non-empty buckets on the two sides": {h: manyBuckets(maxHistogramBuckets/2+1, maxHistogramBuckets/2), wantErr: "non-empty buckets", wantIs: logqlerr.ErrLimit},
+		"as many as are allowed":                      {h: manyBuckets(maxHistogramBuckets, 0)},
+		"as many on the two sides as are allowed":     {h: manyBuckets(maxHistogramBuckets/2, maxHistogramBuckets/2)},
+		// Prometheus accepts these, and they have no non-empty bucket to count.
+		"a run of empty buckets":                      {h: emptyBuckets(maxHistogramBuckets+1, false), wantErr: "positive side"},
+		"a run of empty buckets on the negative side": {h: emptyBuckets(maxHistogramBuckets+1, true), wantErr: "negative side"},
+		"many spans that hold no bucket":              {h: emptySpans(maxHistogramBuckets + 1), wantErr: "positive side"},
+		"as many empty buckets as are allowed":        {h: emptyBuckets(maxHistogramBuckets, false)},
+		"as many empty spans as are allowed":          {h: emptySpans(maxHistogramBuckets)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := HistogramMatrixFromProto(&logproto.HistogramMatrix{Values: []*logproto.HistogramVector{{
@@ -188,6 +214,26 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 			}
 		})
 	}
+}
+
+// The buckets that a response holds are in memory when they are read, so what the reader may do is not to make
+// more of them: ToFloat makes a copy of the same size, and the sum of the frontend walks through them. A histogram
+// that is too large is refused before that.
+func TestHistogramMatrix_fromProtoDoesNotCopyWhatItRefuses(t *testing.T) {
+	const n = 1 << 22 // 32 MiB as floats
+	p := &logproto.NativeHistogram{
+		Schema:         3,
+		PositiveSpans:  []*logproto.BucketSpan{{Offset: 0, Length: n}},
+		PositiveDeltas: make([]int64, n),
+	}
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := histogramFromProto(p)
+	runtime.ReadMemStats(&after)
+
+	require.ErrorContains(t, err, "positive side")
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(1<<20), "the histogram was copied before it was refused")
 }
 
 func TestHistogramMatrixStepEvaluator(t *testing.T) {
