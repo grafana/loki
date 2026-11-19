@@ -3769,7 +3769,7 @@ func TestLive_MetricRange_AttachesLoglineStats(t *testing.T) {
 	})
 }
 
-func TestLive_MetricRange_AbsentOverTimeSkipsHintLookup(t *testing.T) {
+func TestLive_MetricRange_WrappedAbsentOverTimeSkipsHintLookup(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{

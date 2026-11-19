@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -72,4 +73,45 @@ func TestAbsentSamples_MatchEngine(t *testing.T) {
 			require.Equal(t, want, got)
 		})
 	}
+}
+
+// TestSetAbsentSeries_MergesWithEvaluatedSplit checks that skipped splits and an
+// evaluated split merge into the same single series the engine returns for the
+// whole range.
+func TestSetAbsentSeries_MergesWithEvaluatedSplit(t *testing.T) {
+	const query = `absent_over_time({app="api"} |= "timeout" [5s])`
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	step := 5 * time.Second
+	streams := []logproto.Stream{{
+		Labels:  `{app="api"}`,
+		Entries: []logproto.Entry{{Timestamp: base.Add(10 * time.Second), Line: "timeout"}},
+	}}
+	eng := logql.NewEngine(logql.EngineOpts{}, logql.NewMockQuerier(1, streams), logql.NoLimits, nil)
+
+	evaluate := func(start, end time.Time) *queryrange.LokiPromResponse {
+		params, err := logql.NewLiteralParams(query, start, end, step, 0, logproto.FORWARD, 100, nil, nil)
+		require.NoError(t, err)
+		res, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "tenant"))
+		require.NoError(t, err)
+		resp, err := queryrange.ResultToResponse(res, params)
+		require.NoError(t, err)
+		return resp.(*queryrange.LokiPromResponse)
+	}
+	skip := func(start, end time.Time) *queryrange.LokiPromResponse {
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+		req := &queryrange.LokiRequest{Query: query, StartTs: start, EndTs: end, Step: step.Milliseconds()}
+		resp := skippedMetricResponse()
+		require.NoError(t, setAbsentSeries(resp, req, expr))
+		return resp
+	}
+
+	end := base.Add(20 * time.Second)
+	merged, err := queryrange.DefaultCodec.MergeResponse(
+		skip(base, base.Add(5*time.Second)),
+		evaluate(base.Add(10*time.Second), base.Add(15*time.Second)),
+		skip(end, end),
+	)
+	require.NoError(t, err)
+	require.Equal(t, evaluate(base, end).Response.Data.Result, merged.(*queryrange.LokiPromResponse).Response.Data.Result)
 }
