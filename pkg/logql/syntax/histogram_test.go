@@ -389,6 +389,45 @@ func TestHistogramFuncExpr_walkAndVisit(t *testing.T) {
 	require.False(t, expr.Shardable(false))
 }
 
+// The histograms of a series on different shards have the same buckets, and adding their counts bucket by bucket gives
+// the histogram of all the observations. So histogram_over_time is shardable and additive, and so is the sum of it,
+// and the reader of a histogram is not: the quantile of two histograms is not the quantile of their sum.
+func TestHistogram_isShardableAndAdditive(t *testing.T) {
+	require.True(t, IsAdditiveRangeOp(OpRangeTypeHistogram))
+
+	for name, query := range map[string]string{
+		"the range aggregation":              `histogram_over_time(` + histogramTestRange + `)`,
+		"the range aggregation with a group": `histogram_over_time(` + histogramTestRange + `) by (path)`,
+		"custom buckets":                     `histogram_over_time(buckets(0.5, 5), ` + histogramTestRange + `)`,
+		"a sum":                              `sum(histogram_over_time(` + histogramTestRange + `))`,
+		"a sum by":                           `sum by (path) (histogram_over_time(` + histogramTestRange + `))`,
+		"a sum of a sum":                     `sum(sum by (path) (histogram_over_time(` + histogramTestRange + `)))`,
+		"a sum of the range with a grouping": `sum by (code) (histogram_over_time(` + histogramTestRange + `) by (path, code))`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// A query cannot return a histogram, which is what these are. A shard does.
+			expr, err := ParseExprWithoutValidation(query)
+			require.NoError(t, err)
+			require.True(t, expr.Shardable(true))
+			require.True(t, expr.Shardable(false))
+			require.False(t, HasNonAdditiveAggr(expr), "the shards are added up")
+		})
+	}
+
+	for name, query := range map[string]string{
+		"a quantile":    `histogram_quantile(0.9, sum by (path) (histogram_over_time(` + histogramTestRange + `)))`,
+		"a count":       `histogram_count(histogram_over_time(` + histogramTestRange + `))`,
+		"a fraction":    `histogram_fraction(0, 1, sum(histogram_over_time(` + histogramTestRange + `)))`,
+		"the quantiles": `histogram_quantiles(histogram_over_time(` + histogramTestRange + `), "q", 0.5, 0.9)`,
+	} {
+		t.Run("the reader is not shardable, "+name, func(t *testing.T) {
+			expr := MustParseExpr(query)
+			require.False(t, expr.Shardable(true))
+			require.False(t, expr.Shardable(false))
+		})
+	}
+}
+
 // negativeZeroQueries write -0.0 as an argument of each kind: a quantile, a bound, the quantiles of a list, and a
 // bucket bound.
 var negativeZeroQueries = []string{

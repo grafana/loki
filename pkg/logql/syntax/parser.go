@@ -122,9 +122,12 @@ func validateExpr(expr Expr) error {
 	case SampleExpr:
 		// A histogram vector cannot be a query result, because the query API
 		// only returns float samples.
-		// TODO: allow it once query results can carry native histograms. The
-		// shard sub-queries of a histogram query have a histogram root too, so
-		// they will need to skip this check before that.
+		// The shard sub-queries of a histogram query have a histogram root too.
+		// They are not parsed: they reach a querier as a plan, which is not
+		// validated. That is why sharding histograms needs the protobuf encoding
+		// between the query frontend and the queriers. With JSON the querier
+		// parses the query string of the shard, and refuses it here.
+		// TODO: allow it once query results can carry native histograms.
 		if IsHistogramValued(e) {
 			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
 		}
