@@ -24,6 +24,10 @@ type Config struct {
 	// builds, uploads and indexes at the same time. It must be at least 1.
 	FlushConcurrency int `yaml:"flush_concurrency"`
 
+	// SortParallelism is the maximum number of goroutines that sort the logs of
+	// one tenant when a flush builds a data object. It must be at least 1.
+	SortParallelism int `yaml:"sort_parallelism"`
+
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`
 
@@ -49,6 +53,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.FlushConcurrency < 1 {
 		return errors.New("flush concurrency must be at least 1")
+	}
+	if cfg.SortParallelism < 1 {
+		return errors.New("sort parallelism must be at least 1")
 	}
 	if cfg.RequiredReplicasRefreshInterval <= 0 {
 		return errors.New("required replicas refresh interval must be positive")
@@ -101,6 +108,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+"flush-concurrency",
 		1,
 		"The maximum number of data objects that one flush builds, uploads and indexes at the same time. Each extra object in progress adds the memory to sort, upload and index it. If one object fails, the flush cancels the others. The builder commits the Kafka offset only after every object succeeds.",
+	)
+	f.IntVar(
+		&cfg.SortParallelism,
+		prefix+"sort-parallelism",
+		1,
+		"The maximum number of goroutines that sort the logs of one tenant on flush.",
 	)
 	f.IntVar(
 		&cfg.PartitionID,

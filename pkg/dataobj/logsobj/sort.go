@@ -1,18 +1,21 @@
 package logsobj
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
+	"github.com/grafana/loki/v3/pkg/util/parallel"
 )
 
 // A stream is one label set of a tenant, one row of its streams section. Before
@@ -64,14 +67,14 @@ func (b *Builder) sortAndWriteTenant(ctx context.Context, originalObj *dataobj.O
 	if err != nil {
 		return fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 	}
-	sortedStreams, err := newSortedStreams(streamsSectionIter(ctx, originalStreams), tenant, tenantLayout.SchemaLabels(), tenantLayout.ShardLayout(), originalStreams.NumRows())
+	plan, err := b.planTenantSort(ctx, tenant, originalStreams, tenantLayout)
 	if err != nil {
-		return fmt.Errorf("ordering the streams of tenant %s: %w", tenant, err)
-	}
-	if err := b.writeLogsSections(ctx, tenant, originalLogsSections, sortedStreams); err != nil {
 		return err
 	}
-	return b.writeStreamsSection(ctx, tenant, sortedStreams, tenantLayout)
+	if err := b.writeLogsSections(ctx, tenant, originalLogsSections, plan); err != nil {
+		return err
+	}
+	return b.writeStreamsSection(ctx, tenant, plan, tenantLayout)
 }
 
 func tenantSections(obj *dataobj.Object, tenant string) ([]*dataobj.Section, *dataobj.Section, error) {
@@ -98,46 +101,184 @@ func tenantSections(obj *dataobj.Object, tenant string) ([]*dataobj.Section, *da
 	return logsSections, streamSections[0], nil
 }
 
-// writeLogsSections merges the records of the tenant from originalLogsSections in sort
-// order, and appends the sorted logs sections to b.builder. It adds each
-// appended record to the counters of its stream in sortedStreams.
-func (b *Builder) writeLogsSections(ctx context.Context, tenant string, originalLogsSections []*dataobj.Section, sortedStreams []sortedStream) error {
-	byOldID := make(map[int64]*sortedStream, len(sortedStreams))
-	for i := range sortedStreams {
-		byOldID[sortedStreams[i].oldID] = &sortedStreams[i]
-	}
-	iter, err := mergeAndRemapLogsIter(ctx, originalLogsSections, sortKeysByOldID(sortedStreams), byOldID)
-	if err != nil {
-		return fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
-	}
+// sortPlan says how to sort the logs of one tenant.
+type sortPlan struct {
+	// streams holds the streams of the tenant in sort order, with the new IDs
+	// 1 to N.
+	streams []sortedStream
 
-	// drainLogsIter drops duplicates itself when DropDuplicates is set, so the
-	// section builder must not drop any. Otherwise the stream counters would
-	// count records that the builder drops.
-	lb := logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
-		PageSizeHint:     int(b.cfg.TargetPageSize),
-		PageMaxRowCount:  b.cfg.MaxPageRows,
-		BufferSize:       int(b.cfg.BufferSize),
-		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
-		SortOrder:        logs.SortSchemaASC,
-		DropDuplicates:   false,
-	})
-	lb.SetTenant(tenant)
-	return b.drainLogsIter(ctx, iter, lb, tenant)
+	// ranges splits streams into groups of consecutive streams. The sort
+	// handles the groups independently, each on one goroutine, and each group
+	// fills about one logs section. They are sub-slices of streams.
+	ranges [][]sortedStream
 }
 
-// drainLogsIter consumes iter and appends each record to lb. It appends lb to
-// b.builder whenever the section size target is exceeded and once more after
-// iter ends, and it resets lb after each append. It adds each appended record to
-// the counters of its stream.
+// planTenantSort orders the streams of the tenant, and cuts them into ranges of
+// about one logs section. It returns an error if the tenant has no streams,
+// because a sort without ranges would drop every record of its logs sections.
+func (b *Builder) planTenantSort(ctx context.Context, tenant string, originalStreams *streams.Section, tenantLayout streams.Layout) (*sortPlan, error) {
+	sortedStreams, err := newSortedStreams(streamsSectionIter(ctx, originalStreams), tenant, tenantLayout.SchemaLabels(), tenantLayout.ShardLayout(), originalStreams.NumRows())
+	if err != nil {
+		return nil, fmt.Errorf("ordering the streams of tenant %s: %w", tenant, err)
+	}
+	ranges := planSortRanges(sortedStreams, int64(b.cfg.TargetSectionSize))
+	if len(ranges) == 0 {
+		return nil, fmt.Errorf("tenant %s has logs sections but no streams", tenant)
+	}
+	return &sortPlan{streams: sortedStreams, ranges: ranges}, nil
+}
+
+// writeLogsSections sorts the records of the tenant, and appends the sorted
+// logs sections to b.builder. It sorts each range of the plan on up to
+// b.cfg.SortParallelism goroutines, and appends the sections of the ranges in
+// range order. It adds each appended record to the counters of its stream in
+// the plan. originalLogsSections are the logs sections of the tenant in the object that
+// the sort reads.
+//
+// At most SortParallelism ranges hold records or encoded sections at a time,
+// even when an early range is slow. A range keeps its encoded sections in memory
+// until the range before it is in b.builder, and b.builder writes them to the
+// scratch store only then. The first range that is not yet in b.builder does
+// not wait. It appends each section as soon as the section is encoded. So a
+// range with a stream much larger than the target section size holds several
+// sections in memory only while an earlier range runs. A section builder holds
+// the records of a range up to the target section size.
+//
+// The ranges reuse their section builders, so that a builder keeps the
+// capacity of its record buffer from one range to the next.
+func (b *Builder) writeLogsSections(
+	ctx context.Context,
+	tenant string,
+	originalLogsSections []*dataobj.Section,
+	plan *sortPlan,
+) error {
+	var (
+		parallelism = max(1, b.cfg.SortParallelism)
+		free        = make(chan *logs.Builder, parallelism)
+		ordering    = sortKeysByOldID(plan.streams)
+
+		// head is the index of the first range whose sections are not all in
+		// b.builder. Only the range at head appends from its own goroutine. The
+		// yield function moves head on after it appends the rest of a range.
+		head atomic.Int64
+	)
+
+	return parallel.ForEachOrdered(ctx, len(plan.ranges), parallelism,
+		func(ctx context.Context, i int) ([]*encodedSection, error) {
+			var lb *logs.Builder
+			select {
+			case lb = <-free:
+			default:
+				// sortRange drops duplicates itself when DropDuplicates is set,
+				// so the section builder must not drop any. Otherwise the
+				// stream counters would count records that the builder drops.
+				lb = logs.NewBuilder(b.sortLogsMetrics, logs.BuilderOptions{
+					PageSizeHint:     int(b.cfg.TargetPageSize),
+					PageMaxRowCount:  b.cfg.MaxPageRows,
+					BufferSize:       int(b.cfg.BufferSize),
+					StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+					AppendStrategy:   logs.AppendOrdered,
+					SortOrder:        logs.SortSchemaASC,
+					DropDuplicates:   false,
+				})
+				lb.SetTenant(tenant)
+			}
+			appendIfHead := func(pending []*encodedSection) ([]*encodedSection, error) {
+				if head.Load() != int64(i) {
+					return pending, nil
+				}
+				return nil, b.appendSections(pending)
+			}
+			encoded, err := b.sortRange(ctx, tenant, originalLogsSections, ordering, plan.ranges[i], lb, appendIfHead)
+			if err != nil {
+				return nil, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
+			}
+			// Only a range that succeeded gives its builder back. Its last flush
+			// reset the builder, so the next range starts clean. A failed range
+			// drops its builder. free has room for every builder, because at
+			// most parallelism ranges run at a time.
+			free <- lb
+			return encoded, nil
+		},
+		// b.builder is not safe for concurrent use, and it needs the sections in
+		// range order. ForEachOrdered calls this on one goroutine, in range order.
+		func(i int, encoded []*encodedSection) error {
+			if err := b.appendSections(encoded); err != nil {
+				return fmt.Errorf("appending the sections of stream range %d of tenant %s: %w", i, tenant, err)
+			}
+			head.Store(int64(i) + 1)
+			return nil
+		})
+}
+
+func (b *Builder) appendSections(sections []*encodedSection) error {
+	for _, sec := range sections {
+		if err := b.builder.Append(sec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sortRange merges the records of the streams in a range and encodes them into
+// sections, each about the target section size. It adds the records to the
+// counters of the streams. After each flush, sortRange passes the sections that
+// it holds to release. release returns the sections that sortRange keeps, and
+// sortRange returns the ones that remain after the last flush. lb must be empty
+// and hold the tenant. After success,
+// sortRange leaves lb empty and holding the tenant. After an error, lb is in an
+// unknown state, and the caller must drop it. sortRange does not use b.builder,
+// so it is safe to run on several goroutines at once, as long as their ranges
+// differ.
+func (b *Builder) sortRange(
+	ctx context.Context,
+	tenant string,
+	originalLogsSections []*dataobj.Section,
+	ordering []streams.SortKey,
+	rangeStreams []sortedStream,
+	lb *logs.Builder,
+	release func([]*encodedSection) ([]*encodedSection, error),
+) ([]*encodedSection, error) {
+	iter, err := mergeAndRemapLogsIter(ctx, originalLogsSections, ordering, rangeStreams)
+	if err != nil {
+		return nil, fmt.Errorf("creating sort iterator: %w", err)
+	}
+
+	recorder := sectionRecorder{typ: lb.Type()}
+	flush := func(lb *logs.Builder) error {
+		if _, err := lb.Flush(&recorder); err != nil {
+			return err
+		}
+		var err error
+		recorder.sections, err = release(recorder.sections)
+		return err
+	}
+	if err := b.drainLogsIter(ctx, iter, lb, tenant, flush); err != nil {
+		return nil, err
+	}
+	return recorder.sections, nil
+}
+
+// drainLogsIter consumes iter and appends each record to lb. It passes lb to
+// flush whenever the section size target is exceeded and once more after iter
+// ends, and it resets lb after each flush. It adds each appended record to the
+// counters of its stream.
 //
 // If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
 // yield the records of each stream and timestamp together, as
 // [logs.DuplicateTracker] requires.
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[sortedRecord], lb *logs.Builder, tenant string) error {
-	appendAndReset := func() error {
-		if err := b.builder.Append(lb); err != nil {
+//
+// drainLogsIter changes only the counters of the streams in iter, so several
+// calls can run at the same time if their streams differ.
+func (b *Builder) drainLogsIter(
+	ctx context.Context,
+	iter result.Seq[sortedRecord],
+	lb *logs.Builder,
+	tenant string,
+	flush func(*logs.Builder) error,
+) error {
+	flushAndReset := func() error {
+		if err := flush(lb); err != nil {
 			return err
 		}
 		lb.Reset()
@@ -163,29 +304,29 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[sortedRecor
 		sr.stream.UncompressedSize += sr.UncompressedSize()
 		lb.Append(sr.Record)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := appendAndReset(); err != nil {
+			if err := flushAndReset(); err != nil {
 				return err
 			}
 		}
 	}
-	return appendAndReset()
+	return flushAndReset()
 }
 
 // writeStreamsSection appends the sorted streams section of the tenant to
-// b.builder. It takes the streams from sortedStreams, with the rows and the sizes that
-// writeLogsSections counted.
-func (b *Builder) writeStreamsSection(ctx context.Context, tenant string, sortedStreams []sortedStream, tenantLayout streams.Layout) error {
+// b.builder. It takes the streams from the plan, with the rows and the sizes
+// that writeLogsSections counted.
+func (b *Builder) writeStreamsSection(ctx context.Context, tenant string, plan *sortPlan, tenantLayout streams.Layout) error {
 	sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, tenantLayout.ShardLayout())
 	sb.SetLayout(tenantLayout)
 	sb.SetTenant(tenant)
 
-	for i := range sortedStreams {
+	for i := range plan.streams {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		sb.AppendValue(sortedStreams[i].Stream)
+		sb.AppendValue(plan.streams[i].Stream)
 	}
 	return b.builder.Append(sb)
 }
@@ -199,6 +340,13 @@ type sortedStream struct {
 
 	oldID int64
 	key   streams.SortKey
+
+	// size is the number of bytes that the records of the stream add to the size
+	// of a logs section builder. That is the uncompressed size of the stream
+	// plus [logs.RecordOverhead] for each row. It comes from the stream stats of
+	// the input, which can count duplicates that the sort drops, so it is an
+	// upper bound.
+	size int64
 }
 
 // streamSortKey returns the sort key of a stream with the labels ls.
@@ -233,7 +381,12 @@ func newSortedStreams(iter result.Seq[streams.Stream], tenant string, schemaLabe
 		if err != nil {
 			return nil, err
 		}
-		s := sortedStream{Stream: stream, oldID: stream.ID, key: key}
+		s := sortedStream{
+			Stream: stream,
+			oldID:  stream.ID,
+			key:    key,
+			size:   stream.UncompressedSize + int64(stream.Rows)*logs.RecordOverhead,
+		}
 		s.Rows, s.UncompressedSize = 0, 0
 		sortedStreams = append(sortedStreams, s)
 	}
@@ -272,6 +425,44 @@ func sortKeysByOldID(sortedStreams []sortedStream) []streams.SortKey {
 	return keys
 }
 
+// planSortRanges splits the streams, in sort order, into ranges of consecutive
+// streams. A range takes the next stream only while its total section size
+// stays within targetSize, so that it fills about one logs section. A stream
+// larger than targetSize gets a range of its own, and a stream is never split.
+// Streams with the same sort key stay in one range, because the merge orders
+// them by old ID, and splitting them would change the order of their records.
+//
+// For example, with a targetSize of 100:
+//   - the section sizes 60, 30, 50, 80, 10 give the ranges {60, 30}, {50}, {80, 10}.
+//   - the section sizes 10, 500, 10 give the ranges {10}, {500}, {10}.
+func planSortRanges(sortedStreams []sortedStream, targetSize int64) [][]sortedStream {
+	var (
+		ranges [][]sortedStream
+		start  int
+		size   int64
+	)
+	for i := 0; i+1 < len(sortedStreams); i++ {
+		size += sortedStreams[i].size
+		if size+sortedStreams[i+1].size > targetSize && sortedStreams[i].key.Compare(sortedStreams[i+1].key) != 0 {
+			ranges = append(ranges, sortedStreams[start:i+1])
+			start, size = i+1, 0
+		}
+	}
+	if start < len(sortedStreams) {
+		ranges = append(ranges, sortedStreams[start:])
+	}
+	return ranges
+}
+
+// oldIDs returns the old IDs of the streams.
+func oldIDs(list []sortedStream) []int64 {
+	ids := make([]int64, len(list))
+	for i := range list {
+		ids[i] = list[i].oldID
+	}
+	return ids
+}
+
 // sortedRecord is a record of the merge with the stream that owns it. The
 // record has the new ID of its stream.
 type sortedRecord struct {
@@ -279,14 +470,25 @@ type sortedRecord struct {
 	stream *sortedStream
 }
 
-// mergeAndRemapLogsIter merges sections which are ordered by the sort keys in
-// ordering, indexed by old ID. It injects the sort-key sidecars of each stream,
-// and rewrites the old stream IDs of the records to the new IDs. byOldID finds
-// the stream of a record.
-func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, byOldID map[int64]*sortedStream) (result.Seq[sortedRecord], error) {
-	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, ordering)
+// mergeAndRemapLogsIter merges the records of the given streams from sections,
+// which are ordered by the sort keys in ordering, indexed by old ID. It injects
+// the sort-key sidecars of each stream, and rewrites the old stream IDs of the
+// records to the new IDs.
+//
+// rangeStreams must not be empty. Each range of the sort merges its own
+// streams, so that the goroutines of the sort never read or write the same
+// record. The section readers use the old IDs of the streams to skip the rows
+// of other streams. A record of a stream that no range lists does not reach the
+// merge, so the caller must give every stream of the tenant to some range.
+func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, rangeStreams []sortedStream) (result.Seq[sortedRecord], error) {
+	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, ordering, oldIDs(rangeStreams))
 	if err != nil {
 		return nil, err
+	}
+
+	byOldID := make(map[int64]*sortedStream, len(rangeStreams))
+	for i := range rangeStreams {
+		byOldID[rangeStreams[i].oldID] = &rangeStreams[i]
 	}
 
 	return result.Iter(func(yield func(sortedRecord) bool) error {
@@ -297,7 +499,7 @@ func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, ord
 			}
 			s, ok := byOldID[rec.StreamID]
 			if !ok {
-				return fmt.Errorf("missing stream ID remap for stream ID %d", rec.StreamID)
+				return fmt.Errorf("record of stream %d, which is not in the range", rec.StreamID)
 			}
 			rec.SchemaKey = s.key.SchemaKey
 			rec.ShardBucket = s.key.ShardBucket
@@ -325,3 +527,43 @@ func streamsSectionIter(ctx context.Context, section *streams.Section) result.Se
 		return nil
 	})
 }
+
+// sectionRecorder is a [dataobj.SectionWriter] that keeps a copy of each
+// section written to it, so that the section can reach a [dataobj.Builder]
+// later. The copies stay in memory.
+type sectionRecorder struct {
+	typ      dataobj.SectionType
+	sections []*encodedSection
+}
+
+func (r *sectionRecorder) WriteSection(opts *dataobj.WriteSectionOptions, data, metadata []byte) (int64, error) {
+	// The caller may reuse data and metadata after this call, so copy them.
+	sec := &encodedSection{
+		typ:      r.typ,
+		data:     bytes.Clone(data),
+		metadata: bytes.Clone(metadata),
+	}
+	if opts != nil {
+		copied := *opts
+		copied.ExtensionData = bytes.Clone(opts.ExtensionData)
+		sec.opts = &copied
+	}
+	r.sections = append(r.sections, sec)
+	return int64(len(data) + len(metadata)), nil
+}
+
+// encodedSection is a [dataobj.SectionBuilder] for a section that is already
+// encoded. Flush writes the same bytes each time.
+type encodedSection struct {
+	typ            dataobj.SectionType
+	opts           *dataobj.WriteSectionOptions
+	data, metadata []byte
+}
+
+func (s *encodedSection) Type() dataobj.SectionType { return s.typ }
+
+func (s *encodedSection) Flush(w dataobj.SectionWriter) (int64, error) {
+	return w.WriteSection(s.opts, s.data, s.metadata)
+}
+
+func (s *encodedSection) Reset() {}

@@ -2,6 +2,7 @@ package builder
 
 import (
 	"flag"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	require.Equal(t, 1, cfg.FlushConcurrency)
+	require.Equal(t, 1, cfg.SortParallelism)
 
 	require.Equal(t, 1<<20, int(cfg.LogsobjBuilder.TargetPageSize))
 	require.Equal(t, 8, cfg.LogsobjBuilder.EstimatedCompressionRatio)
@@ -73,5 +75,23 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("rejects a zero required replicas refresh interval", func(t *testing.T) {
 		cfg := newConfig(t, "-dataobj.builder.required-replicas-refresh-interval=0s")
 		require.Error(t, cfg.Validate())
+	})
+
+	t.Run("accepts a sort parallelism of 1 and above, read from the flag", func(t *testing.T) {
+		for _, parallelism := range []int{1, 4} {
+			cfg := newConfig(t, "-dataobj.builder.sort-parallelism="+strconv.Itoa(parallelism))
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, parallelism, cfg.SortParallelism)
+		}
+	})
+
+	t.Run("rejects a sort parallelism of 0", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-parallelism=0")
+		require.EqualError(t, cfg.Validate(), "sort parallelism must be at least 1")
+	})
+
+	t.Run("rejects a negative sort parallelism", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-parallelism=-1")
+		require.EqualError(t, cfg.Validate(), "sort parallelism must be at least 1")
 	})
 }
