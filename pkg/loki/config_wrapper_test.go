@@ -2027,6 +2027,14 @@ func TestLoglineConfig(t *testing.T) {
 	}
 }
 
+func TestLoglineConfigRejectsIngesterWindowOverride(t *testing.T) {
+	const yamlContent = `logline:
+  query:
+    query_ingesters_within: 1h`
+	_, _, err := configWrapperFromYAML(t, yamlContent, nil)
+	require.ErrorContains(t, err, "field query_ingesters_within not found")
+}
+
 func Test_applyQuerierDataObjConfig(t *testing.T) {
 	t.Run("copies the data-object settings into the querier config", func(t *testing.T) {
 		yamlContent := `dataobj:

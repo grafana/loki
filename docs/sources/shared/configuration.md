@@ -5076,8 +5076,6 @@ query:
   # CLI flag: -logline-query.max-conjunctions
   [max_conjunctions: <int> | default = 1]
 
-  [query_ingesters_within: <duration>]
-
   # Maximum time to wait for logline index hint lookup (default 15s)
   # CLI flag: -logline-query.hint-timeout
   [hint_timeout: <duration> | default = 0s]
