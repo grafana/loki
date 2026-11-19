@@ -89,9 +89,10 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	case *logproto.IndexStatsRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.IndexStatsRequest{
-				From:     model.TimeFromUnix(start.Unix()),
-				Through:  model.TimeFromUnix(end.Unix()),
-				Matchers: r.GetMatchers(),
+				From:       model.TimeFromUnix(start.Unix()),
+				Through:    model.TimeFromUnix(end.Unix()),
+				Matchers:   r.GetMatchers(),
+				HintRanges: splitIndexStatsHintRanges(r.HintRanges, start, end),
 			})
 		}
 	case *logproto.ShardsRequest:
