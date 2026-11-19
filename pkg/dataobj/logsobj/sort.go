@@ -56,21 +56,25 @@ func (b *Builder) sort(ctx context.Context, originalObj *dataobj.Object, layouts
 // streams section needs the rows and the sizes that the sort of the logs
 // counts.
 func (b *Builder) sortAndWriteTenant(ctx context.Context, originalObj *dataobj.Object, tenant string, tenantLayout streams.Layout) error {
-	originalLogs, originalStreams, err := tenantSections(ctx, originalObj, tenant)
+	originalLogsSections, originalStreamsSection, err := tenantSections(originalObj, tenant)
 	if err != nil {
 		return err
+	}
+	originalStreams, err := streams.Open(ctx, originalStreamsSection)
+	if err != nil {
+		return fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 	}
 	sortedStreams, err := newSortedStreams(streamsSectionIter(ctx, originalStreams), tenant, tenantLayout.SchemaLabels(), tenantLayout.ShardLayout(), originalStreams.NumRows())
 	if err != nil {
 		return fmt.Errorf("ordering the streams of tenant %s: %w", tenant, err)
 	}
-	if err := b.writeLogsSections(ctx, tenant, originalLogs, sortedStreams); err != nil {
+	if err := b.writeLogsSections(ctx, tenant, originalLogsSections, sortedStreams); err != nil {
 		return err
 	}
 	return b.writeStreamsSection(ctx, tenant, sortedStreams, tenantLayout)
 }
 
-func tenantSections(ctx context.Context, obj *dataobj.Object, tenant string) ([]*dataobj.Section, *streams.Section, error) {
+func tenantSections(obj *dataobj.Object, tenant string) ([]*dataobj.Section, *dataobj.Section, error) {
 	var logsSections []*dataobj.Section
 	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
 		logsSections = append(logsSections, sec)
@@ -91,23 +95,18 @@ func tenantSections(ctx context.Context, obj *dataobj.Object, tenant string) ([]
 	if len(streamSections) > 1 {
 		return nil, nil, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
 	}
-
-	streamsSection, err := streams.Open(ctx, streamSections[0])
-	if err != nil {
-		return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
-	}
-	return logsSections, streamsSection, nil
+	return logsSections, streamSections[0], nil
 }
 
-// writeLogsSections merges the records of the tenant from originalLogs in sort
+// writeLogsSections merges the records of the tenant from originalLogsSections in sort
 // order, and appends the sorted logs sections to b.builder. It adds each
 // appended record to the counters of its stream in sortedStreams.
-func (b *Builder) writeLogsSections(ctx context.Context, tenant string, originalLogs []*dataobj.Section, sortedStreams []sortedStream) error {
+func (b *Builder) writeLogsSections(ctx context.Context, tenant string, originalLogsSections []*dataobj.Section, sortedStreams []sortedStream) error {
 	byOldID := make(map[int64]*sortedStream, len(sortedStreams))
 	for i := range sortedStreams {
 		byOldID[sortedStreams[i].oldID] = &sortedStreams[i]
 	}
-	iter, err := mergeAndRemapLogsIter(ctx, originalLogs, sortKeysByOldID(sortedStreams), byOldID)
+	iter, err := mergeAndRemapLogsIter(ctx, originalLogsSections, sortKeysByOldID(sortedStreams), byOldID)
 	if err != nil {
 		return fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, err)
 	}
@@ -237,6 +236,10 @@ func newSortedStreams(iter result.Seq[streams.Stream], tenant string, schemaLabe
 		s := sortedStream{Stream: stream, oldID: stream.ID, key: key}
 		s.Rows, s.UncompressedSize = 0, 0
 		sortedStreams = append(sortedStreams, s)
+	}
+
+	if len(sortedStreams) != numStreams {
+		return nil, fmt.Errorf("the streams section of tenant %s has %d rows, but it holds %d streams", tenant, numStreams, len(sortedStreams))
 	}
 
 	slices.SortFunc(sortedStreams, func(a, b sortedStream) int {

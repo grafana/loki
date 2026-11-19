@@ -61,6 +61,11 @@ func TestNewSortedStreams(t *testing.T) {
 		require.ErrorContains(t, err, "stream id 5 out of range for tenant tenant with 2 streams")
 	})
 
+	t.Run("returns an error when the section yields fewer streams than it has rows", func(t *testing.T) {
+		_, err := newSortedStreams(seqOf(stream(1, "a", 0, 0), stream(3, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 3)
+		require.ErrorContains(t, err, "the streams section of tenant tenant has 3 rows, but it holds 2 streams")
+	})
+
 	t.Run("returns an error when two streams have the same old ID", func(t *testing.T) {
 		_, err := newSortedStreams(seqOf(stream(1, "a", 0, 0), stream(1, "b", 0, 0)), "tenant", schema, streams.DefaultShardLayout(), 2)
 		require.ErrorContains(t, err, "duplicate stream id for tenant tenant: old id 1")
