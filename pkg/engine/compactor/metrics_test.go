@@ -36,6 +36,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	// A second tenant that must survive.
 	m.unconsolidatedBacklog.WithLabelValues("other").Set(7)
 	m.tenantCyclesTotal.WithLabelValues("compacted", "other").Inc()
+	m.indexesPerTenantWindow.WithLabelValues("other", "0").Set(4)
 
 	// A non-tenant-labeled metric that must survive.
 	m.cyclesTotal.WithLabelValues("compacted").Inc()
@@ -45,7 +46,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	// keeps the post-delete assertions honest.
 	require.Equal(t, 2, testutil.CollectAndCount(m.unconsolidatedBacklog), "acme + other before delete")
 	require.Equal(t, 1, testutil.CollectAndCount(m.oldestBacklogLogAgeSeconds))
-	require.Equal(t, 2, testutil.CollectAndCount(m.indexesPerTenantWindow), "one series per window lookback")
+	require.Equal(t, 3, testutil.CollectAndCount(m.indexesPerTenantWindow), "two acme window lookbacks + other")
 	require.Equal(t, 1, testutil.CollectAndCount(m.indexesRemovedTotal))
 	require.Equal(t, 1, testutil.CollectAndCount(m.indexesAddedTotal))
 	require.Equal(t, 1, testutil.CollectAndCount(m.tasksTotal))
@@ -61,7 +62,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 
 	// Every acme-only series is gone; series shared with "other" drop only acme.
 	require.Equal(t, 0, testutil.CollectAndCount(m.oldestBacklogLogAgeSeconds))
-	require.Equal(t, 0, testutil.CollectAndCount(m.indexesPerTenantWindow))
+	require.Equal(t, 1, testutil.CollectAndCount(m.indexesPerTenantWindow), "only the other tenant's window series remains")
 	require.Equal(t, 0, testutil.CollectAndCount(m.indexesRemovedTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.indexesAddedTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.tasksTotal))

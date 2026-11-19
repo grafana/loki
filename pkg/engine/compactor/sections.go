@@ -23,14 +23,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// prefetchBytes is the head window that each opened object reads and keeps.
-// Every open object holds a buffer of this full size, even when the object is
-// smaller, so phases that hold many objects open scale with it.
+// prefetchBytes is the prefetch window that each opened index object reads
+// from its start and keeps. Each open object holds a buffer of this full size,
+// even when the object is smaller. The memory of a phase is about
+// prefetchBytes times its open objects.
 const prefetchBytes = 1 * 1024 * 1024
 
-// errCorruptIndex reports an index or index run whose sections of one tenant
-// do not share one stream layout, or whose layout cannot be read. No retry can
-// fix it, so compaction skips it.
+// errCorruptIndex reports an index or index run that breaks an invariant of
+// its format. Examples are a wrong run length, stream layouts that differ or
+// cannot be read, and postings sections without bounds. No retry can fix it,
+// so compaction skips it.
 var errCorruptIndex = errors.New("corrupt index")
 
 // logSortPrefix is the planner key for log sections. It orders by the shared
@@ -63,16 +65,6 @@ func compareIndexSortKey(a, b indexSortKey) int {
 		cmp.Compare(a.minTimestamp, b.minTimestamp),
 		cmp.Compare(a.maxTimestamp, b.maxTimestamp),
 	)
-}
-
-func indexKey(row postings.Row) indexSortKey {
-	return indexSortKey{
-		kind:         row.Kind,
-		columnName:   row.ColumnName,
-		labelValue:   row.LabelValue,
-		minTimestamp: row.MinTimestamp,
-		maxTimestamp: row.MaxTimestamp,
-	}
 }
 
 // loadTenantIndexes returns the entries of the tenant's ToC for the window.
@@ -124,8 +116,8 @@ type indexRunRead struct {
 
 // readIndexRun opens the index objects of run once, and reads both the stream
 // layout and the postings bounds of run for tenant. It keeps no reference to
-// the objects, so the garbage collector frees their prefetch buffers after it
-// returns.
+// the objects or to their decoded pages, so the garbage collector can free
+// them after it returns.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
 //   - records a run length other than the number of index objects of run,
@@ -133,6 +125,8 @@ type indexRunRead struct {
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run,
+//   - has a postings section without a bound column, or with bounds out of
+//     order,
 //   - has no postings rows of tenant, while the ToC records it in a run.
 func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (indexRunRead, error) {
 	opened, err := openRunObjects(ctx, bucket, tenant, run)
@@ -144,9 +138,10 @@ func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, ru
 		return indexRunRead{}, err
 	}
 
+	reader := newRunBoundsReader(tenant, run)
 	var sections []v2.Section[indexSortKey]
 	for _, index := range opened {
-		refs, err := indexObjectSectionRefs(ctx, tenant, index, run.planningUnit())
+		refs, err := reader.objectSectionRefs(ctx, index)
 		if err != nil {
 			return indexRunRead{}, err
 		}
@@ -161,39 +156,60 @@ func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, ru
 	return indexRunRead{run: run, layout: layout, hasLayout: hasLayout, sections: sections}, nil
 }
 
-// indexObjectSectionRefs returns one bounded reference per postings section of
-// tenant in index that has rows, in section order. Every reference has
-// planningUnit.
-func indexObjectSectionRefs(ctx context.Context, tenant string, index openedIndex, planningUnit string) ([]v2.Section[indexSortKey], error) {
+// runBoundsReader reads the postings bounds of the index objects of one index
+// run. It is not safe for concurrent use.
+//
+// The strings of a decoded postings row point into the buffers of its page.
+// The reader interns the strings of each bound, so a bound does not keep a
+// page alive after the read. Planning holds the bounds of every run of a
+// window at once.
+type runBoundsReader struct {
+	tenant       string
+	planningUnit string
+	interned     map[string]string
+}
+
+func newRunBoundsReader(tenant string, run indexRun) *runBoundsReader {
+	return &runBoundsReader{tenant: tenant, planningUnit: run.planningUnit(), interned: make(map[string]string)}
+}
+
+// objectSectionRefs returns one bounded reference per postings section of the
+// tenant in index that has rows, in section order.
+func (r *runBoundsReader) objectSectionRefs(ctx context.Context, index openedIndex) ([]v2.Section[indexSortKey], error) {
 	var refs []v2.Section[indexSortKey]
 	for sectionIndex, section := range index.obj.Sections() {
-		if !postings.CheckSection(section) || section.Tenant != tenant {
+		if !postings.CheckSection(section) || section.Tenant != r.tenant {
 			continue
 		}
-		ref, err := indexSectionRef(ctx, index.path, int64(sectionIndex), section, planningUnit)
+		ref, hasRows, err := r.sectionRef(ctx, index.path, int64(sectionIndex), section)
 		if err != nil {
-			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, index.path, sectionIndex, err)
+			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", r.tenant, index.path, sectionIndex, err)
 		}
-		if ref != nil {
-			refs = append(refs, *ref)
+		if hasRows {
+			refs = append(refs, ref)
 		}
 	}
 	return refs, nil
 }
 
-func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section, planningUnit string) (*v2.Section[indexSortKey], error) {
+// sectionRef returns the bounded reference of section. hasRows is false when
+// section has no postings rows.
+//
+// It returns an error that wraps errCorruptIndex if section has no bound
+// column or its bounds are out of order. No retry can fix either case.
+func (r *runBoundsReader) sectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (ref v2.Section[indexSortKey], hasRows bool, err error) {
 	postingsSection, err := postings.Open(ctx, section)
 	if err != nil {
-		return nil, fmt.Errorf("open postings section: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("open postings section: %w", err)
 	}
 	columns, err := postingsBoundColumns(postingsSection)
 	if err != nil {
-		return nil, err
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("%w: %w", errCorruptIndex, err)
 	}
 
 	reader := postings.NewReader(postings.ReaderOptions{Columns: columns})
 	if err := reader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("open postings reader: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("open postings reader: %w", err)
 	}
 	rows := postings.NewRowReader(ctx, reader)
 	defer rows.Close()
@@ -201,7 +217,7 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 	// Postings sections use CompareRows order. compareIndexSortKey is its prefix,
 	// so the first and last rows bound the section for run planning.
 	var first, last postings.Row
-	hasRows := rows.Next()
+	hasRows = rows.Next()
 	if hasRows {
 		first = rows.At()
 		last = first
@@ -210,25 +226,36 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 		last = rows.At()
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read postings rows: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("read postings rows: %w", err)
 	}
 	if !hasRows {
-		return nil, nil
+		return v2.Section[indexSortKey]{}, false, nil
 	}
 
-	minKey, maxKey := indexKey(first), indexKey(last)
+	minKey, maxKey := r.key(first), r.key(last)
 	if compareIndexSortKey(minKey, maxKey) > 0 {
-		return nil, errors.New("postings section bounds are out of order")
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("%w: postings section bounds are out of order", errCorruptIndex)
 	}
-	return &v2.Section[indexSortKey]{
+	return v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
 			ObjectPath:   objectPath,
 			SectionIndex: sectionIndex,
 		},
 		Min:          minKey,
 		Max:          maxKey,
-		PlanningUnit: planningUnit,
-	}, nil
+		PlanningUnit: r.planningUnit,
+	}, true, nil
+}
+
+// key returns the sort key of row, with interned strings.
+func (r *runBoundsReader) key(row postings.Row) indexSortKey {
+	return indexSortKey{
+		kind:         row.Kind,
+		columnName:   intern(r.interned, row.ColumnName),
+		labelValue:   intern(r.interned, row.LabelValue),
+		minTimestamp: row.MinTimestamp,
+		maxTimestamp: row.MaxTimestamp,
+	}
 }
 
 func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error) {

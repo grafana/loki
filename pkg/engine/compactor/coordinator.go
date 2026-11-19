@@ -532,10 +532,13 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 //     step reads nothing from the bucket.
 //  3. Run the merges of each group and swap the ToC.
 //
-// Runs in different layout groups never merge. It skips a corrupt run, so the
-// run does not block the other runs of the tenant. A failed group does not stop
-// the other groups. An error that is not corruption in step 1 fails the whole
-// pass, because no group can plan without all of its runs.
+// Runs in different layout groups never merge. compactTenantIndexes skips a
+// corrupt run, so the run does not block the other runs of the tenant. A failed
+// group does not stop the other groups.
+//
+// Any other error in step 1 fails the whole pass. Such an error can be
+// temporary, for example a failed bucket request, so the next pass reads every
+// run again.
 //
 // The stats count every group that succeeded, even when the error is non-nil.
 //
@@ -615,9 +618,9 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 // readIndexRuns reads every run in runs with readIndexRun, up to
 // indexReadConcurrency runs at once. It returns the reads in the order of runs.
 //
-// A window can hold tens of thousands of runs. Each read is a round trip to the
-// bucket and holds the prefetch buffers of its objects, so the limit bounds
-// both the time and the memory of the step.
+// A window can hold tens of thousands of runs. Each read makes several bucket
+// requests and holds the prefetch buffers of its objects. The limit bounds both
+// the time and the memory of the step.
 //
 // It skips and counts a corrupt run, and leaves it out of the result. Any other
 // error stops every read and returns the error.
@@ -628,6 +631,11 @@ func (c *coordinator) readIndexRuns(ctx context.Context, tenant string, window t
 	group.SetLimit(indexReadConcurrency)
 	for i, run := range runs {
 		group.Go(func() error {
+			// After a failure or a shutdown, skip the runs that did not
+			// start. A pass can hold tens of thousands of them.
+			if err := groupCtx.Err(); err != nil {
+				return err
+			}
 			read, err := readIndexRun(groupCtx, c.bucket, tenant, run)
 			if errors.Is(err, errCorruptIndex) {
 				c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge, err)
