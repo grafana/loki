@@ -845,8 +845,12 @@ func TestRunPlan(t *testing.T) {
 		seedSourceIndexObject(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), "acme")
 		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
 		entries := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
-		sections, err := indexSectionRefsFor(ctx, bucket, "acme", entries)
+		reads, err := c.readIndexRuns(ctx, "acme", window, groupIndexRuns(entries))
 		require.NoError(t, err)
+		var sections []v2.Section[indexSortKey]
+		for _, read := range reads {
+			sections = append(sections, read.sections...)
+		}
 		specs := v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), "acme", c.cfg.MaxRunsPerTask)
 		require.Len(t, specs, 1)
 		plan := buildIndexMergePlan("acme", window, specs[0])

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/thanos-io/objstore"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -103,52 +102,77 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	return out, nil
 }
 
-// indexReadConcurrency is the number of index objects or index runs that one
-// planning step reads from the bucket at once.
+// indexReadConcurrency is the number of index runs that IndexMerge planning
+// reads from the bucket at once.
 const indexReadConcurrency = 16
 
-// indexSectionRefsFor returns one bounded reference per postings section of
-// tenant in entries, in entry order and then section order.
-//
-// Each open index object holds a prefetch buffer of prefetchBytes. A window can
-// hold tens of thousands of indexes, so the function releases each object after
-// it reads its bounds. At most indexReadConcurrency objects stay open at
-// once.
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexpointers.IndexPointer) ([]v2.Section[indexSortKey], error) {
-	refsByEntry := make([][]v2.Section[indexSortKey], len(entries))
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(indexReadConcurrency)
-	for i, entry := range entries {
-		group.Go(func() error {
-			refs, err := indexObjectSectionRefs(groupCtx, bucket, tenant, entry.Path)
-			if err != nil {
-				return err
-			}
-			refsByEntry[i] = refs
-			return nil
-		})
-	}
-	if err := group.Wait(); err != nil {
-		return nil, err
-	}
-	return slices.Concat(refsByEntry...), nil
+// indexRunRead is what IndexMerge planning needs from the index objects of one
+// index run.
+type indexRunRead struct {
+	run indexRun
+
+	// layout is the stream layout of run. It has no meaning when hasLayout is
+	// false, because run has no stats sections of the tenant.
+	layout    streams.Layout
+	hasLayout bool
+
+	// sections has one bounded reference per postings section of the tenant
+	// that has rows. Every reference has the planning unit of run, so
+	// planning puts every index object of run in one task.
+	sections []v2.Section[indexSortKey]
 }
 
-// indexObjectSectionRefs opens the index object at path and returns one
-// bounded reference per postings section of tenant that has rows.
-func indexObjectSectionRefs(ctx context.Context, bucket objstore.Bucket, tenant, path string) ([]v2.Section[indexSortKey], error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, path, prefetchBytes)
+// readIndexRun opens the index objects of run once, and reads both the stream
+// layout and the postings bounds of run for tenant. It keeps no reference to
+// the objects, so the garbage collector frees their prefetch buffers after it
+// returns.
+//
+// It returns an error that wraps errCorruptIndex if an index object of run:
+//   - records a run length other than the number of index objects of run,
+//   - has stats sections that do not share one layout,
+//   - has a layout that cannot be read,
+//   - records no layout while another index object of run does,
+//   - records another layout than another index object of run,
+//   - has no postings rows of tenant, while the ToC records it in a run.
+func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (indexRunRead, error) {
+	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {
-		return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, path, err)
+		return indexRunRead{}, err
 	}
+	layout, hasLayout, err := indexLayoutOfRun(ctx, tenant, opened)
+	if err != nil {
+		return indexRunRead{}, err
+	}
+
+	var sections []v2.Section[indexSortKey]
+	for _, index := range opened {
+		refs, err := indexObjectSectionRefs(ctx, tenant, index, run.planningUnit())
+		if err != nil {
+			return indexRunRead{}, err
+		}
+		// Planning places an index object by its postings rows, so a task
+		// would leave out an object without them. The ToC writer refuses a
+		// swap that removes only part of a run.
+		if len(refs) == 0 && run.entries[0].RunID != 0 {
+			return indexRunRead{}, fmt.Errorf("%w: index %s has no postings rows", errCorruptIndex, index.path)
+		}
+		sections = append(sections, refs...)
+	}
+	return indexRunRead{run: run, layout: layout, hasLayout: hasLayout, sections: sections}, nil
+}
+
+// indexObjectSectionRefs returns one bounded reference per postings section of
+// tenant in index that has rows, in section order. Every reference has
+// planningUnit.
+func indexObjectSectionRefs(ctx context.Context, tenant string, index openedIndex, planningUnit string) ([]v2.Section[indexSortKey], error) {
 	var refs []v2.Section[indexSortKey]
-	for sectionIndex, section := range obj.Sections() {
+	for sectionIndex, section := range index.obj.Sections() {
 		if !postings.CheckSection(section) || section.Tenant != tenant {
 			continue
 		}
-		ref, err := indexSectionRef(ctx, path, int64(sectionIndex), section)
+		ref, err := indexSectionRef(ctx, index.path, int64(sectionIndex), section, planningUnit)
 		if err != nil {
-			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, path, sectionIndex, err)
+			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, index.path, sectionIndex, err)
 		}
 		if ref != nil {
 			refs = append(refs, *ref)
@@ -157,7 +181,7 @@ func indexObjectSectionRefs(ctx context.Context, bucket objstore.Bucket, tenant,
 	return refs, nil
 }
 
-func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {
+func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section, planningUnit string) (*v2.Section[indexSortKey], error) {
 	postingsSection, err := postings.Open(ctx, section)
 	if err != nil {
 		return nil, fmt.Errorf("open postings section: %w", err)
@@ -196,8 +220,6 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 	if compareIndexSortKey(minKey, maxKey) > 0 {
 		return nil, errors.New("postings section bounds are out of order")
 	}
-	// The index object is the unit of its sections. The caller joins the
-	// index objects of one index run into one unit.
 	return &v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
 			ObjectPath:   objectPath,
@@ -205,7 +227,7 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 		},
 		Min:          minKey,
 		Max:          maxKey,
-		PlanningUnit: objectPath,
+		PlanningUnit: planningUnit,
 	}, nil
 }
 

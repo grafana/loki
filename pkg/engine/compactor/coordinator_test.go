@@ -20,6 +20,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -1105,6 +1106,26 @@ func TestCompactTenantIndexes(t *testing.T) {
 		require.Len(t, runner.snapshot(), 2)
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexMergeFailedGroupsTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("plans every layout group before it runs the first merge", func(t *testing.T) {
+		var c *coordinator
+		var plannedAtFirstMerge atomic.Uint64
+		var calls atomic.Int32
+		runner := &fakeRunner{}
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) ([]v2.ResultArtifact, error) {
+			if calls.Inc() == 1 {
+				var metric dto.Metric
+				require.NoError(t, c.metrics.indexInputRuns.Write(&metric))
+				plannedAtFirstMerge.Store(metric.GetHistogram().GetSampleCount())
+			}
+			return []v2.ResultArtifact{{Path: fmt.Sprintf("artifact-%d", calls.Load())}}, nil
+		}
+		c, _, entries := newTwoGroupCoordinator(t, runner)
+
+		_, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), plannedAtFirstMerge.Load(), "both groups planned before the first merge")
 	})
 
 	t.Run("publishes the merged index when a task fails once and its retry succeeds", func(t *testing.T) {
@@ -3553,50 +3574,48 @@ func buildMixedLayoutIndex(ctx context.Context, t *testing.T, bucket objstore.Bu
 	uploadObject(ctx, t, bucket, path, obj)
 }
 
-func TestRunLayouts(t *testing.T) {
+func TestReadIndexRuns(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 
-	t.Run("returns the result of each run at its index when there are more runs than concurrent reads", func(t *testing.T) {
+	t.Run("returns the reads in run order and leaves out and counts corrupt runs when there are more runs than concurrent reads", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		schemas := []string{"label:service_name", "label:namespace"}
 		entries := make([]indexpointers.IndexPointer, 3*indexReadConcurrency)
+		var wantPaths []string
 		for i := range entries {
 			entries[i].Path = fmt.Sprintf("indexes/idx-%03d", i)
 			if i%3 == 2 {
 				buildMixedLayoutIndex(ctx, t, bucket, "acme", entries[i].Path)
 				continue
 			}
+			wantPaths = append(wantPaths, entries[i].Path)
 			buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: entries[i].Path, sectionSize: 1 << 21, shardBuckets: streams.DefaultShardBuckets,
 				stats:    []stats.Stat{{ObjectPath: "logs/a", SortSchema: schemas[i%3]}},
 				postings: []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api"}}})
 		}
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		results, err := c.runLayouts(ctx, "acme", groupIndexRuns(entries))
+		reads, err := c.readIndexRuns(ctx, "acme", window, groupIndexRuns(entries))
 		require.NoError(t, err)
-		require.Len(t, results, len(entries))
-		for i, result := range results {
-			if i%3 == 2 {
-				require.ErrorIs(t, result.corruptErr, errCorruptIndex, "run %d", i)
-				continue
-			}
-			require.NoError(t, result.corruptErr, "run %d", i)
-			require.True(t, result.hasLayout, "run %d", i)
-			want := layoutOfStats(streams.DefaultShardBuckets, []stats.Stat{{SortSchema: schemas[i%3]}})
-			require.True(t, want.Equal(result.layout), "run %d has layout %v, want %v", i, result.layout, want)
+		require.Len(t, reads, len(wantPaths))
+		for i, read := range reads {
+			require.Equal(t, wantPaths[i], read.run.planningUnit())
+			require.True(t, read.hasLayout, "run %s", wantPaths[i])
+			require.Len(t, read.sections, 1, "run %s", wantPaths[i])
 		}
+		require.Equal(t, float64(len(entries)-len(wantPaths)), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelIndexMerge)))
 	})
 
-	t.Run("returns an error and no results when a run cannot be read", func(t *testing.T) {
+	t.Run("returns an error and no reads when a run cannot be read", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/good")
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		results, err := c.runLayouts(ctx, "acme", groupIndexRuns([]indexpointers.IndexPointer{{Path: "indexes/good"}, {Path: "indexes/missing"}}))
+		reads, err := c.readIndexRuns(ctx, "acme", window, groupIndexRuns([]indexpointers.IndexPointer{{Path: "indexes/good"}, {Path: "indexes/missing"}}))
 		require.Error(t, err)
 		require.NotErrorIs(t, err, errCorruptIndex)
-		require.Nil(t, results)
+		require.Nil(t, reads)
 	})
 }
 
