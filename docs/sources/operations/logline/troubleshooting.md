@@ -2,12 +2,12 @@
 title: Troubleshoot Logline
 menuTitle: Troubleshooting
 description: Diagnose high Logline consumption lag, protect query results, and tune extraction and merge parallelism during catch-up.
-weight: 10
+weight: 20
 ---
 
 # Troubleshoot Logline
 
-This page explains how to investigate high consumption lag and recover indexing throughput. For the architecture, deployment steps, and query examples, refer to [Manage Logline indexing and querying](../).
+This page explains how to investigate high consumption lag and recover indexing throughput. For the architecture and query examples, refer to [Logline](../). For prerequisites and deployment steps, refer to [Configure Logline]({{< relref "./configure.md" >}}).
 
 ## High consumption lag
 
@@ -122,7 +122,7 @@ Before restoring live mode:
 4. Compare representative historical query results with Logline disabled and with a limited live trial, including the period affected by the lag.
 5. Restore live acceleration gradually and continue monitoring.
 
-After catch-up, return temporary `extract_threads` and `merge_threads` changes to their normal values unless ongoing measurements justify keeping them. For scratch disk sizing and other capacity settings, refer to [Sizing and tuning](../#sizing-and-tuning).
+After catch-up, return temporary `extract_threads` and `merge_threads` changes to their normal values unless ongoing measurements justify keeping them. For scratch disk sizing and other capacity settings, refer to [Sizing and tuning]({{< relref "./configure.md#sizing-and-tuning" >}}).
 
 ## Queries do not accelerate
 
