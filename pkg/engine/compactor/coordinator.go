@@ -692,7 +692,20 @@ func (c *coordinator) planIndexMerge(tenant string, window time.Time, key layout
 
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
-	return indexMergePlan{key: key, group: group, tasks: tasks}, nil
+
+	var splitter indexTaskSplitter = noopIndexTaskSplitter{}
+	if c.cfg.MaxTaskSize > 0 {
+		splitter = newSizeIndexTaskSplitter(windowLogger, uint64(c.cfg.MaxTaskSize), group.sections)
+	}
+	merges := make([]splitIndexMerge, len(tasks))
+	for i, task := range tasks {
+		split, err := splitter.split(task)
+		if err != nil {
+			return indexMergePlan{}, fmt.Errorf("split index merge %d: %w", i, err)
+		}
+		merges[i] = splitIndexMerge{spec: task, tasks: split}
+	}
+	return indexMergePlan{key: key, group: group, merges: merges}, nil
 }
 
 // executeIndexMerge runs the tasks of plan and swaps their source indexes for
@@ -705,7 +718,11 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
-	artifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plan.physicalPlans(tenant, window))
+	plans := plan.physicalPlans(tenant, window)
+	if len(plans) > len(plan.merges) {
+		level.Info(windowLogger).Log("msg", "split index merges by posting key span", "merges", len(plan.merges), "tasks", len(plans))
+	}
+	taskArtifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
@@ -713,6 +730,10 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
 	// the next pass runs the tasks again.
 	ctx = context.WithoutCancel(ctx)
+	artifacts, err := plan.joinArtifacts(taskArtifacts)
+	if err != nil {
+		return compactionStats{}, err
+	}
 	newRuns, err := outputRuns(planned, artifacts)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
@@ -722,6 +743,9 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 	removedRuns, err := plan.group.countRuns(oldPaths)
 	if err != nil {
 		return compactionStats{}, err
+	}
+	if reused := reusedPaths(oldPaths, newRuns); len(reused) > 0 {
+		level.Error(windowLogger).Log("msg", "index merge wrote a copy of an index object it replaces, so the ToC swap rejects the new runs", "paths", strings.Join(reused, ","), "merges", len(plan.merges), "tasks", len(plans))
 	}
 
 	swapped, err := c.publisher.Replace(ctx, tenant, window, oldPaths, newRuns)
@@ -742,7 +766,7 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 	return compactionStats{
 		removed:    removedRuns,
 		added:      len(newRuns),
-		dispatched: len(plan.tasks),
+		dispatched: len(plans),
 	}, nil
 }
 
@@ -791,11 +815,11 @@ func newTimeRange(start, end time.Time) timeRange {
 	return timeRange{start: start.UTC(), end: end.UTC()}
 }
 
-// plannedRun is what planning knows about the index run that one task writes.
-// Every entry of the run takes:
+// plannedRun is what planning knows about the index run that one merge
+// writes. Every entry of the run takes:
 //
-//   - the time range of the task inputs,
-//   - the shard layout of the task inputs.
+//   - the time range of the merge inputs,
+//   - the shard layout of the merge inputs.
 //
 // ReplaceIndexPointers requires one time range for all entries of a run.
 type plannedRun struct {
@@ -823,8 +847,8 @@ func (r plannedRun) entries(artifacts []v2.ResultArtifact) (metastore.IndexRunEn
 	return run, nil
 }
 
-// outputRuns returns one run for each task: the ToC entries of the artifacts
-// of the task. planned and artifacts must both be in task order.
+// outputRuns returns one run for each planned run: the ToC entries of its
+// artifacts. artifacts[i] holds the artifacts of planned[i].
 //
 // A length mismatch returns an error. It stops a ToC swap that would drop a
 // result or reference the wrong object.

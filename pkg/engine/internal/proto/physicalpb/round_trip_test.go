@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/testutils"
@@ -29,7 +31,9 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 	for _, n := range cases {
 		name := reflect.TypeOf(n).Elem().Name()
 		t.Run(name, func(t *testing.T) {
-			testutils.NewFiller().Fill(reflect.ValueOf(n).Elem())
+			filler := testutils.NewFiller()
+			filler.RegisterFixed(boundedKeySpan(t))
+			filler.Fill(reflect.ValueOf(n).Elem())
 
 			var graph dag.Graph[physical.Node]
 			graph.Add(n)
@@ -52,4 +56,15 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 				name)
 		})
 	}
+}
+
+// boundedKeySpan returns a key span with both bounds. A merge with stats
+// sources must have a bounded key span.
+func boundedKeySpan(t *testing.T) postings.KeySpan {
+	t.Helper()
+	start := postings.Key{Kind: postings.KindLabel, ColumnName: "app"}
+	end := postings.Key{Kind: postings.KindLabel, ColumnName: "env"}
+	span, err := postings.NewKeySpan(&start, &end)
+	require.NoError(t, err)
+	return span
 }

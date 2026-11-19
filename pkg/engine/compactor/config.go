@@ -76,6 +76,12 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
+	// MaxTaskSize is the maximum uncompressed postings size of one IndexMerge
+	// task. The planner splits a larger merge into tasks by posting key span,
+	// which run in parallel and together write one index run. 0 disables the
+	// split.
+	MaxTaskSize flagext.Bytes `yaml:"max_task_size"`
+
 	// LogMaxRunsPerTask (K for log compaction) is the number of runs in each
 	// planned log merge. Log compaction merges only groups of K runs from one
 	// size level, and keeps the other runs unmerged.
@@ -275,6 +281,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+	f.Var(&cfg.MaxTaskSize, prefix+"max-task-size",
+		"Experimental: Maximum uncompressed postings size of one IndexMerge task. The planner splits a larger merge into tasks by posting key. The tasks run in parallel and together write one index run. The planner estimates sizes from a sample of the posting keys and cuts only at sampled keys, so a task can exceed the maximum. Each task also merges the stats rows of some of the source indexes, which the maximum does not count. A worker that does not support the split fails its tasks, so upgrade every worker before you set it. 0 disables the split.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
 		"Experimental: Runs per planned log merge (K for log compaction), before logs.max-task-size splits it into tasks. Log compaction merges only groups of K runs from one size level, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")

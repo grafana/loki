@@ -1253,6 +1253,17 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
+    # Experimental: Maximum uncompressed postings size of one IndexMerge task.
+    # The planner splits a larger merge into tasks by posting key. The tasks run
+    # in parallel and together write one index run. The planner estimates sizes
+    # from a sample of the posting keys and cuts only at sampled keys, so a task
+    # can exceed the maximum. Each task also merges the stats rows of some of
+    # the source indexes, which the maximum does not count. A worker that does
+    # not support the split fails its tasks, so upgrade every worker before you
+    # set it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.max-task-size
+    [max_task_size: <int> | default = 0B]
+
     # Experimental: Runs per planned log merge (K for log compaction), before
     # logs.max-task-size splits it into tasks. Log compaction merges only groups
     # of K runs from one size level, so a larger K leaves more overlapping runs

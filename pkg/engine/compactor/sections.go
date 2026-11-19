@@ -217,13 +217,16 @@ func (r *runBoundsReader) sectionRef(ctx context.Context, objectPath string, sec
 	// Postings sections use CompareRows order. compareIndexSortKey is its prefix,
 	// so the first and last rows bound the section for run planning.
 	var first, last postings.Row
+	samples := keySamples{interned: r.interned}
 	hasRows = rows.Next()
 	if hasRows {
 		first = rows.At()
 		last = first
+		samples.add(first)
 	}
 	for rows.Next() {
 		last = rows.At()
+		samples.add(last)
 	}
 	if err := rows.Err(); err != nil {
 		return v2.Section[indexSortKey]{}, false, fmt.Errorf("read postings rows: %w", err)
@@ -243,6 +246,7 @@ func (r *runBoundsReader) sectionRef(ctx context.Context, objectPath string, sec
 		},
 		Min:          minKey,
 		Max:          maxKey,
+		Keys:         samples.sizes(postingsSection.UncompressedSize()),
 		PlanningUnit: r.planningUnit,
 	}, true, nil
 }
@@ -256,6 +260,66 @@ func (r *runBoundsReader) key(row postings.Row) indexSortKey {
 		minTimestamp: row.MinTimestamp,
 		maxTimestamp: row.MaxTimestamp,
 	}
+}
+
+// indexKeySampleRows is the number of postings rows that one key sample of a
+// section stands for. A larger value saves planner memory, and a smaller one
+// lets a split of an index merge cut closer to its budget.
+const indexKeySampleRows = 4096
+
+// keySamples samples the posting keys of the rows of one postings section, in
+// row order. It keeps the key of the first row of each group of
+// indexKeySampleRows rows, so a split of an index merge can cut at real keys
+// without holding every key in memory.
+type keySamples struct {
+	samples   []keySample
+	totalRows uint64
+
+	// interned holds the strings of the keys, shared with the bounds of the
+	// run.
+	interned map[string]string
+}
+
+// keySample is the key of the first row of a group of rows.
+type keySample struct {
+	key indexSortKey
+
+	// rows is the number of rows in the group.
+	rows uint64
+}
+
+// add samples row if it starts a new group of indexKeySampleRows rows, and
+// counts it otherwise.
+func (s *keySamples) add(row postings.Row) {
+	s.totalRows++
+	if n := len(s.samples); n > 0 && s.samples[n-1].rows < indexKeySampleRows {
+		s.samples[n-1].rows++
+		return
+	}
+	// The decoded strings of row point into the buffers of a record batch, so
+	// the sample keeps interned copies.
+	s.samples = append(s.samples, keySample{
+		key: indexSortKey{
+			kind:       row.Kind,
+			columnName: intern(s.interned, row.ColumnName),
+			labelValue: intern(s.interned, row.LabelValue),
+		},
+		rows: 1,
+	})
+}
+
+// sizes returns the samples with their share of sectionBytes, the
+// uncompressed size of the section. Each sample gets a share by its number of
+// rows.
+func (s keySamples) sizes(sectionBytes uint64) []v2.KeySize[indexSortKey] {
+	if s.totalRows == 0 {
+		return nil
+	}
+	sizes := make([]v2.KeySize[indexSortKey], len(s.samples))
+	for i, sample := range s.samples {
+		sizes[i] = v2.KeySize[indexSortKey]{Key: sample.key, UncompressedSize: sectionBytes * sample.rows / s.totalRows}
+	}
+	return sizes
 }
 
 func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error) {

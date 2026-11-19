@@ -681,6 +681,129 @@ func TestDoIndexMerge(t *testing.T) {
 		require.Equal(t, readAllStatsRowsFromBucket(t, bucket, single.Path), gotStats)
 	})
 
+	keySpanSources := func(t *testing.T, bucket objstore.Bucket, layout streams.Layout) *physical.IndexMerge {
+		t.Helper()
+		for i, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			for _, column := range []string{"app", "env", "zone"} {
+				postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath: fmt.Sprintf("log-%d", i), ColumnName: column, LabelValue: fmt.Sprintf("v%d", i), StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("log-%d", i), SortSchema: "label:service", Labels: map[string]string{"service": "api"},
+				MinTimestamp: 100, MaxTimestamp: 200, RowCount: 1, UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
+		}
+		return twoSources("source/index-a.dat", "source/index-b.dat")
+	}
+	keySpan := func(t *testing.T, start, end *postings.Key) postings.KeySpan {
+		t.Helper()
+		span, err := postings.NewKeySpan(start, end)
+		require.NoError(t, err)
+		return span
+	}
+	envKey := postings.Key{Kind: postings.KindLabel, ColumnName: "env"}
+	zoneKey := postings.Key{Kind: postings.KindLabel, ColumnName: "zone"}
+
+	layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+	readRows := func(t *testing.T, bucket objstore.Bucket, node *physical.IndexMerge) (v2.ResultArtifact, []postings.Row, []stats.Stat) {
+		t.Helper()
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
+		require.NoError(t, err)
+		return artifact, readAllPostingsRowsFromBucket(t.Context(), t, bucket, artifact.Path), readAllStatsRowsFromBucket(t, bucket, artifact.Path)
+	}
+	postingKeys := func(rows []postings.Row) []postings.Key {
+		keys := make([]postings.Key, len(rows))
+		for i, row := range rows {
+			keys[i] = row.Key()
+		}
+		return keys
+	}
+	labelKey := func(column, value string) postings.Key {
+		return postings.Key{Kind: postings.KindLabel, ColumnName: column, LabelValue: value}
+	}
+
+	t.Run("merges only the postings rows in its key span and writes no stats rows but records the layout when it has no stats sources", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &envKey, &zoneKey)
+
+		artifact, rows, statRows := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("env", "v0"), labelKey("env", "v1")}, postingKeys(rows))
+		require.Equal(t, labelKey("env", "v0"), artifact.PostingKeys.Min())
+		require.Equal(t, labelKey("env", "v1"), artifact.PostingKeys.Max())
+		require.Empty(t, statRows)
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("writes only the stats rows of its stats sources when its key span has bounds", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &zoneKey, nil)
+		node.StatsSources = []string{"source/index-b.dat"}
+
+		_, rows, statRows := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("zone", "v0"), labelKey("zone", "v1")}, postingKeys(rows))
+		require.Len(t, statRows, 1)
+		require.Equal(t, "log-1", statRows[0].ObjectPath)
+	})
+
+	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &zoneKey, nil)
+		node.StatsSources = []string{"source/other.dat"}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `stats source "source/other.dat" is not a source of the merge`)
+	})
+
+	t.Run("keeps a row at the start of its key span and drops a row at its end", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		start, end := labelKey("env", "v1"), labelKey("zone", "v0")
+		node.KeySpan = keySpan(t, &start, &end)
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("env", "v1")}, postingKeys(rows))
+	})
+
+	t.Run("writes the rows of a merge over every key when key spans split the merge and share the stats sources", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		_, wantPostings, wantStats := readRows(t, bucket, node)
+
+		var gotPostings []postings.Row
+		var gotStats []stats.Stat
+		for _, part := range []struct {
+			span         postings.KeySpan
+			statsSources []string
+		}{
+			{span: keySpan(t, nil, &envKey), statsSources: []string{"source/index-b.dat"}},
+			{span: keySpan(t, &envKey, &zoneKey)},
+			{span: keySpan(t, &zoneKey, nil), statsSources: []string{"source/index-a.dat"}},
+		} {
+			task := *node
+			task.NodeID = ulid.Make()
+			task.KeySpan = part.span
+			task.StatsSources = part.statsSources
+			_, rows, statRows := readRows(t, bucket, &task)
+			gotPostings = append(gotPostings, rows...)
+			gotStats = append(gotStats, statRows...)
+		}
+		require.Equal(t, wantPostings, gotPostings)
+		require.ElementsMatch(t, wantStats, gotStats)
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)
