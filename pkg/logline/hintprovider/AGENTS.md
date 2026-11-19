@@ -196,17 +196,9 @@ Query-shape support and hint lookup for logline index lookups.
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.
 19. **`MinDate` never falls before the index retention cutoff**
     - After `SetRetention`, `MinDate` is the later of the store's `min_date`
-      and the retention cutoff: now minus `RetentionPeriod()`, rounded up to
-      the next UTC day. Without it, or with a zero period, it is `min_date`.
-    - The scheduler deletes an index once its `MaxLogTs` is older than now minus
-      the same period. Loki can still return data there: it keeps backfilled
-      chunks by ingestion time, and per-stream retention can be longer. A
-      lookup finds no index for that data and returns no ranges, which would
-      skip its chunks. `PlanHints` gives everything before `MinDate` the
-      pre-min-date passthrough instead.
-    - Rounding up only adds passthrough. It covers clock skew and limits
-      reloads between the scheduler and the frontend, and keeps `MinDate` a
-      date, so the hint cache key (invariant 6) changes once a day.
-    - Only the query-frontend sets it, because it plans lookups. The querier
-      looks up the indexes it is sent, and the correctness service reads the
-      store's `min_date`.
+      and now minus `RetentionPeriod()`, rounded up to the next UTC day so the
+      hint cache key (invariant 6) changes once a day.
+    - The scheduler deletes indexes past that period, but Loki can still return
+      their data (backfilled chunks, longer per-stream retention). A lookup
+      would find no index and skip it, so it passes through as pre-min-date.
+    - Only the query-frontend sets it, because it plans lookups.

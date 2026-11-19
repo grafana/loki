@@ -2530,8 +2530,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
 	cfg.AlignQueriesWithStep = t.Cfg.QueryRange.AlignQueriesWithStep
 
-	// The scheduler deletes indexes by the longest retention across tenants,
-	// so the frontend reads the same limits to know which indexes may be gone.
+	// The same limits the scheduler deletes indexes by.
 	overrides, err := validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline retention limits: %w", err)
@@ -2545,8 +2544,7 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
 			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
 			QueryIngestersWithin: t.Cfg.Querier.QueryIngestersWithin,
-			// No registerer: the scheduler reports the retention gauge, and a
-			// second registration would panic when both run in one process.
+			// Nil registerer: the scheduler already registers the retention gauge.
 			IndexRetention: loglinelimits.NewMaxLimits(overrides, nil),
 		},
 		// Per-tenant mode and minimum query bytes are limits_config settings,

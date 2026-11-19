@@ -41,8 +41,7 @@ type LoglineHintProvider struct {
 	// wrapReader, when set, wraps every reader opened for a query. Tests use
 	// it to count lookups.
 	wrapReader func(logline.Reader) logline.Reader
-	// retention, when set, reports the retention the scheduler deletes
-	// indexes by. MinDate does not fall before it. See SetRetention.
+	// retention, when set, is the retention the scheduler deletes indexes by.
 	retention loglinelimits.Limits
 	now       func() time.Time
 }
@@ -242,23 +241,16 @@ func loglineIndexRequest(
 	}
 }
 
-// SetRetention makes MinDate no earlier than the retention cutoff: now minus
-// the retention the scheduler deletes indexes by, rounded up to the next UTC
-// day. The scheduler deletes an index once its newest log is older than that,
-// but Loki can still return data there: it keeps backfilled chunks by
-// ingestion time, and per-stream retention can be longer. A lookup there finds
-// no index and would hide that data, so the query passes it through instead.
-// The rounding gives up to a day of margin for clock skew and limits reloads.
-//
-// Call it before the provider is used. Only the query-frontend needs it,
-// because it is the one that plans lookups.
+// SetRetention makes MinDate no earlier than the retention cutoff, so queries
+// pass through data whose index the scheduler may have deleted. Call it before
+// the provider is used.
 func (p *LoglineHintProvider) SetRetention(retention loglinelimits.Limits) {
 	p.retention = retention
 }
 
-// MinDate returns the first time the index is trusted to cover: the store's
-// min_date, or the retention cutoff when SetRetention was called and the
-// cutoff is later. A zero value means no boundary is available.
+// MinDate returns the configured minimum trusted date boundary used by the
+// underlying store, or the retention cutoff when it is later. A zero value
+// means no boundary is available.
 func (p *LoglineHintProvider) MinDate() time.Time {
 	if p == nil || p.store == nil {
 		return time.Time{}
@@ -270,8 +262,8 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 	return minDate
 }
 
-// retentionCutoff returns the start of the first UTC day whose indexes the
-// scheduler cannot have deleted yet, or zero when indexes are kept forever.
+// retentionCutoff returns now minus the retention period, rounded up to the
+// next UTC day for clock skew, or zero when indexes are kept forever.
 func (p *LoglineHintProvider) retentionCutoff() time.Time {
 	if p.retention == nil {
 		return time.Time{}

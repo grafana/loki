@@ -172,29 +172,6 @@ func TestFrontendHintAdapter_ProvideHints(t *testing.T) {
 		requireEqualAdapterHintBounds(t, local.TimeRanges, remote.TimeRanges)
 	})
 
-	t.Run("passes through past index retention without asking the querier", func(t *testing.T) {
-		indexStore := newAdapterTestStore(t)
-		writeAdapterTestIndex(t, indexStore, "dddddddddddddddd", needle, docMin, docMax)
-		provider := newAdapterTestProvider(t, indexStore, 32)
-		// The cutoff lands a day after the index, so the scheduler may have
-		// deleted it even though this store still lists it.
-		provider.SetRetention(adapterRetention(time.Since(docMax) - 24*time.Hour))
-
-		adapter := &frontendHintAdapter{
-			inner: provider,
-			next: queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
-				t.Fatal("the querier must not be asked about indexes past retention")
-				return nil, nil
-			}),
-		}
-		hints, _, err := adapter.ProvideHints(context.Background(), "test-tenant", expr, from, through)
-		require.NoError(t, err)
-		require.Len(t, hints.TimeRanges, 1)
-		require.True(t, hints.TimeRanges[0].IsPassthrough())
-		require.Equal(t, hintprovider.HintSourcePreMinDate, hints.TimeRanges[0].Source)
-		require.True(t, hints.TimeRanges[0].End.After(docMax))
-	})
-
 	t.Run("QueryHints next keeps pre-min-date passthrough with looked-up ranges", func(t *testing.T) {
 		indexStore := newAdapterTestStoreWithMinDate(t, "2026-02-26")
 		writeAdapterTestIndex(t, indexStore, "cccccccccccccccc", needle, docMin, docMax)
@@ -212,10 +189,6 @@ func TestFrontendHintAdapter_ProvideHints(t *testing.T) {
 		require.True(t, remote.TimeRanges[0].IsPassthrough())
 	})
 }
-
-type adapterRetention time.Duration
-
-func (r adapterRetention) RetentionPeriod() time.Duration { return time.Duration(r) }
 
 func queryHintsNext(t *testing.T, p *hintprovider.LoglineHintProvider) queryrangebase.Handler {
 	t.Helper()

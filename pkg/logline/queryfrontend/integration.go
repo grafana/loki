@@ -64,10 +64,8 @@ type Deps struct {
 	ResultsCache cache.Config
 	// QueryIngestersWithin is querier.query_ingesters_within.
 	QueryIngestersWithin time.Duration
-	// IndexRetention reports the retention the logline scheduler deletes
-	// indexes by, the longest retention_period across tenants. Queries pass
-	// through data older than that instead of looking up indexes that may be
-	// gone. Nil means indexes are kept forever.
+	// IndexRetention is the retention the logline scheduler deletes indexes
+	// by. Nil means indexes are kept forever.
 	IndexRetention loglinelimits.Limits
 }
 
@@ -191,9 +189,7 @@ func WrapMiddlewareWithStore(
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)
 	}
-	if deps.IndexRetention != nil {
-		baseHintProvider.SetRetention(deps.IndexRetention)
-	}
+	baseHintProvider.SetRetention(deps.IndexRetention)
 
 	var hintCache cache.Cache
 	if cfg.HintCacheTTL > 0 {
