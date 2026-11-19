@@ -16,6 +16,7 @@ There are several methods of installing Loki:
 - [Install using Docker or Docker Compose](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/docker/)
 - [Install and run locally](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/local/)
 - [Install from source](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/install-from-source/)
+- [Install using Juju](https://canonical.com/observability/docs/latest/how-to/deploy-and-manage/deploy-loki-on-juju/)
 
 Alloy:
 
