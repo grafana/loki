@@ -39,7 +39,7 @@ Zone-aware replication is enabled by default for ingesters. This creates three i
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use the deprecated built-in MinIO subchart to provide a complete self-contained example. Configure a dedicated external object storage backend for production.
+Microservices (distributed) mode requires object storage; filesystem storage is not supported for this deployment mode. The example below requires a real S3-compatible object storage endpoint.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -66,11 +66,7 @@ If this is the first time you have deployed the Loki Helm chart since the move t
    helm repo update
    ```
 
-1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
-
-   {{< admonition type="warning" >}}
-   The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. The example below requires `ignoreMinioDeprecation: true` to render with chart v17+. For production, configure a dedicated external object storage backend.
-   {{< /admonition >}}
+1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in microservices mode using S3-compatible object storage:
 
      ```yaml
      loki:
@@ -93,7 +89,15 @@ If this is the first time you have deployed the Loki Helm chart since the move t
        limits_config:
          allow_structured_metadata: true
          volume_enabled: true
-
+       storage:
+         type: s3
+         bucketNames:
+           chunks: <CHUNKS-BUCKET>
+           ruler: <RULER_BUCKET>
+         s3:
+           endpoint: <S3-ENDPOINT>
+           accessKeyId: <KEY-ID>
+           secretAccessKey: <ACCESS-KEY>
 
      deploymentMode: Distributed
 
@@ -142,11 +146,6 @@ If this is the first time you have deployed the Loki Helm chart since the move t
      gateway:
        service:
          type: LoadBalancer
-
-     ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
-     # Enable minio for storage
-     minio:
-       enabled: true
      ```
 
 1. Install or upgrade the Loki deployment.
@@ -185,7 +184,6 @@ If this is the first time you have deployed the Loki Helm chart since the move t
       loki-ingester-0                        1/1     Running   0          167m
       loki-ingester-1                        1/1     Running   0          167m
       loki-ingester-2                        1/1     Running   0          167m
-      loki-minio-0                           1/1     Running   0          167m
       loki-querier-bb8695c6d-bv9x2           1/1     Running   0          167m
       loki-querier-bb8695c6d-bz2rw           1/1     Running   0          167m
       loki-querier-bb8695c6d-z9qf8           1/1     Running   0          167m
@@ -198,10 +196,10 @@ If this is the first time you have deployed the Loki Helm chart since the move t
 
 ## Object Storage Configuration
 
-After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html), we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+You must configure Loki with an object storage provider for production deployments. The following examples show how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
-When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
+When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
 {{< /admonition >}}
 
 {{< collapse title="S3" >}}
@@ -262,10 +260,6 @@ loki:
       http_config: {}
 
 deploymentMode: Distributed
-
-# Disable minio storage
-minio:
-  enabled: false
 
 ingester:
   replicas: 3

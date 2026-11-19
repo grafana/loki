@@ -9,12 +9,11 @@ weight: 500
 keywords:
   - object store
   - filesystem
-  - minio
 ---
 
 # Configure storage
 
-The [scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
+The [scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage, or a self-hosted S3-compatible store. The [single binary](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via a cloud provider or a self-hosted S3-compatible store for production deployments.
 
 This guide assumes Loki will be installed in one of the modes above and that a `values.yaml` has been created.
 
@@ -26,23 +25,9 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 1. Set `loki.storage.bucketNames.chunks` and `loki.storage.bucketNames.ruler` to your bucket or container names.
 
-**To install Minio alongside Loki:**
+These values configure the legacy storage clients, which are deprecated. To use the Thanos-based clients instead, refer to the following section.
 
-{{< admonition type="warning" >}}
-The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` fails chart rendering with v17+ unless `ignoreMinioDeprecation: true` is also set. Grafana recommends configuring a dedicated external object storage backend instead of using the built-in MinIO subchart for new deployments.
-{{< /admonition >}}
-
-1. Change the configuration in `values.yaml`:
-
-    - Enable Minio
-
-    ```yaml
-    ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
-    minio:
-      enabled: true
-    ```
-
-**To use Thanos object store clients (experimental):**
+**To use Thanos object store clients:**
 
 Loki supports using Thanos-compatible storage clients as an alternative to the built-in storage clients. This is configured via `loki.storage.use_thanos_objstore` and will become the default in a future release.
 

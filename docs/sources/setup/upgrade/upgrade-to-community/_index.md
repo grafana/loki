@@ -389,14 +389,18 @@ If you did not set any `loki.annotations`, `loki.serviceAnnotations`, or `loki.s
 
 ### 16.x to 17.0: Built-in MinIO subchart deprecated
 
-The built-in MinIO subchart is officially deprecated and **will be removed on 2026-10-31**. Setting `minio.enabled=true` now fails chart rendering unless the workaround `ignoreMinioDeprecation: true` is also set.
+The built-in MinIO subchart was deprecated in this release. Setting `minio.enabled=true` failed chart rendering unless the workaround `ignoreMinioDeprecation: true` was also set.
+
+{{< admonition type="note" >}}
+The workaround period has ended. The MinIO subchart, the `minio:` values block, and `ignoreMinioDeprecation` have been removed entirely in chart 20.0.0. If you are upgrading from 16.x or earlier directly to chart 20.0.0 or later, complete the migration steps below before upgrading past chart 19.x. See [19.x to 20.0](#19x-to-200-built-in-minio-subchart-removed) for details on the final removal.
+{{< /admonition >}}
 
 #### Temporary workaround (not for new deployments)
 
-If you need to continue using the built-in MinIO subchart temporarily while you plan a migration:
+If you need to continue using the built-in MinIO subchart temporarily while you plan a migration, this workaround is valid on chart versions 17.x through 19.x only:
 
 ```yaml
-ignoreMinioDeprecation: true  # Remove before 2026-10-31
+ignoreMinioDeprecation: true  # Valid on chart 17.x-19.x only; removed in chart 20.0.0
 minio:
   enabled: true
 ```
@@ -577,6 +581,47 @@ Recording rule `record:` names now use the `cluster_job:`, `cluster_job_route:`,
 
 Dashboards are now generated into individual ConfigMap resources (one per dashboard) instead of a single ConfigMap containing all dashboards. If you reference the dashboard ConfigMap by name in any tooling or GitOps manifests, update those references.
 
+### 19.x to 20.0: Built-in MinIO subchart removed
+
+The `minio` dependency, the `minio:` values block, `ignoreMinioDeprecation`, and the `loki.minio` template helper have been removed entirely. Setting `minio.enabled: true` no longer has any effect. The values schema also now forbids unknown top-level keys (`additionalProperties: false`). Any leftover `minio:` or `ignoreMinioDeprecation:` key in your values file causes `helm install`, `helm upgrade`, or `helm template` to fail with an error similar to:
+
+```text
+values don't meet the specifications of the schema(s) in the following chart(s):
+loki:
+- additional properties 'minio' not allowed
+```
+
+{{< admonition type="caution" >}}
+If you are still using the built-in MinIO subchart on chart 19.x, complete your migration to external object storage before upgrading to chart 20.0.0 or later. Follow the migration steps in [16.x to 17.0](#16x-to-170-built-in-minio-subchart-deprecated), and wait until the retention window for existing MinIO data has elapsed before upgrading past chart 19.x.
+{{< /admonition >}}
+
+**Before (chart 19.x, using the deprecated workaround):**
+
+```yaml
+ignoreMinioDeprecation: true
+minio:
+  enabled: true
+```
+
+**After (chart 20.0.0 or later):**
+
+Remove the `minio:` and `ignoreMinioDeprecation` keys entirely, and configure an external object storage backend:
+
+```yaml
+loki:
+  storage:
+    type: s3
+    bucketNames:
+      chunks: FIXME
+      ruler: FIXME
+    s3:
+      endpoint: FIXME
+      accessKeyId: FIXME
+      secretAccessKey: FIXME
+```
+
+Replace the `FIXME` placeholders with your own S3-compatible endpoint and credentials, or configure GCS or Azure Blob Storage instead. For more information, see [Configure storage](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/configure-storage/).
+
 ## Review additional deprecations
 
 Several per-component fields have been deprecated in favor of unified blocks. These deprecated per-component service fields apply to indexGateway, compactor, and others.
@@ -690,13 +735,14 @@ After a successful upgrade:
 
 **Fix:** Replace `persistence.ephemeralDataVolume.enabled: true` with `persistence.enabled: true` and `persistence.type: ephemeral`, and move all nested fields directly under `persistence` as described in [12.x to 13.0](#12x-to-130-ephemeral-volume-persistence-flattened).
 
-### `minio.enabled=true` fails chart rendering
+### `minio.enabled=true` fails chart rendering, or `additional properties 'minio' not allowed`
 
-**Cause:** The built-in MinIO subchart was deprecated in 17.0.0. Setting `minio.enabled=true` without `ignoreMinioDeprecation: true` causes chart rendering to fail with the error:
+**Cause:** The built-in MinIO subchart was deprecated in 17.0.0 and removed entirely in 20.0.0.
 
-`The Loki chart builtin MinIO dependency is deprecated and will be removed 2026-10-31.`
+- On chart 17.x through 19.x, setting `minio.enabled=true` without `ignoreMinioDeprecation: true` causes chart rendering to fail with the error: `The Loki chart builtin MinIO dependency is deprecated and will be removed 2026-10-31.`
+- On chart 20.0.0 or later, the `minio` and `ignoreMinioDeprecation` keys no longer exist. Any leftover `minio:` or `ignoreMinioDeprecation:` key in your values file causes Helm to reject the values with `additional properties 'minio' not allowed`.
 
-**Fix:** Either set `ignoreMinioDeprecation: true` as a temporary workaround while you plan a migration, or migrate to an external object storage backend. See [16.x to 17.0](#16x-to-170-built-in-minio-subchart-deprecated) for migration steps.
+**Fix:** On chart 20.0.0 or later, the only fix is to remove the `minio:` and `ignoreMinioDeprecation` keys and migrate to an external object storage backend. See [19.x to 20.0](#19x-to-200-built-in-minio-subchart-removed) for details. Users still on chart 17.x through 19.x can use `ignoreMinioDeprecation: true` as a temporary workaround while they plan a migration; see [16.x to 17.0](#16x-to-170-built-in-minio-subchart-deprecated) for migration steps.
 
 ### Monitoring values rejected or dashboards missing after upgrade to 18.x
 

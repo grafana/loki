@@ -62,6 +62,10 @@ minio:
   enabled: false
 ```
 
+{{< admonition type="note" >}}
+The `minio` key was removed entirely in chart 20.0.0. If you are using chart 20.0.0 or later, omit the `minio: enabled: false` block above. For more information, see [19.x to 20.0](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-community/#19x-to-200-built-in-minio-subchart-removed).
+{{< /admonition >}}
+
 ```yaml
 monitoring:
   selfMonitoring:
