@@ -195,10 +195,20 @@ func waitForKafkaCoordinator(t *testing.T, addr string) {
 	defer client.Close()
 
 	require.Eventually(t, func() bool {
+		// Brokers read the group from CoordinatorKey up to version 3 and from CoordinatorKeys from
+		// version 4 on, and the client picks the version, so set both.
+		const group = "smoke-test-warmup"
 		req := kmsg.NewPtrFindCoordinatorRequest()
-		req.CoordinatorKey = "smoke-test-warmup"
+		req.CoordinatorKey = group
+		req.CoordinatorKeys = []string{group}
 		resp, err := req.RequestWith(t.Context(), client)
-		return err == nil && resp.ErrorCode == 0 && (len(resp.Coordinators) == 0 || resp.Coordinators[0].ErrorCode == 0)
+		if err != nil {
+			return false
+		}
+		if resp.Version < 4 {
+			return resp.ErrorCode == 0
+		}
+		return len(resp.Coordinators) == 1 && resp.Coordinators[0].ErrorCode == 0
 	}, 30*time.Second, 500*time.Millisecond, "Kafka did not start serving consumer groups")
 }
 
@@ -264,10 +274,19 @@ type request struct {
 	headers     map[string]string
 }
 
-// do sends req as the test tenant and returns the status code and the body.
+// do sends req as the test tenant and returns the status code and the body. It fails the test if
+// the request cannot be sent. Use tryDo where a failed request should be retried.
 func do(t *testing.T, req request) (int, string) {
 	t.Helper()
 
+	status, body, err := tryDo(t.Context(), req)
+	require.NoError(t, err)
+	return status, body
+}
+
+// tryDo sends req as the test tenant and returns the status code and the body, or the error that
+// kept it from getting a response.
+func tryDo(ctx context.Context, req request) (int, string, error) {
 	if req.method == "" {
 		req.method = http.MethodGet
 	}
@@ -275,11 +294,13 @@ func do(t *testing.T, req request) (int, string) {
 	if len(req.query) > 0 {
 		target += "?" + req.query.Encode()
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(ctx, req.method, target, strings.NewReader(req.body))
-	require.NoError(t, err)
+	if err != nil {
+		return 0, "", err
+	}
 	httpReq.Header.Set("X-Scope-OrgID", tenant)
 	if req.contentType != "" {
 		httpReq.Header.Set("Content-Type", req.contentType)
@@ -289,11 +310,15 @@ func do(t *testing.T, req request) (int, string) {
 	}
 
 	resp, err := http.DefaultClient.Do(httpReq)
-	require.NoError(t, err, "%s %s", req.method, target)
+	if err != nil {
+		return 0, "", fmt.Errorf("%s %s: %w", req.method, target, err)
+	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	return resp.StatusCode, string(body)
+	if err != nil {
+		return 0, "", fmt.Errorf("%s %s: %w", req.method, target, err)
+	}
+	return resp.StatusCode, string(body), nil
 }
 
 // stream is a log stream with a single line.

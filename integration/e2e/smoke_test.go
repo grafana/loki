@@ -60,7 +60,8 @@ func TestSmoke(t *testing.T) {
 		// The write path is asynchronous in distributed mode. Wait for the data to be readable
 		// before checking the read APIs.
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			status, body := do(t, h.get("/loki/api/v1/query_range", queryParams(now, `{job="smoke"}`)))
+			status, body, err := tryDo(t.Context(), h.get("/loki/api/v1/query_range", queryParams(now, `{job="smoke"}`)))
+			require.NoError(c, err)
 			require.Equal(c, http.StatusOK, status, body)
 			require.Contains(c, body, "dev line")
 			require.Contains(c, body, "prod line")
@@ -81,7 +82,8 @@ func testPush(t *testing.T, h *harness, now time.Time) {
 
 	// OTLP pushes a log record as a stream labelled with its service name.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, body := do(t, h.get("/loki/api/v1/query_range", queryParams(now, `{service_name="otlp-smoke"}`)))
+		status, body, err := tryDo(t.Context(), h.get("/loki/api/v1/query_range", queryParams(now, `{service_name="otlp-smoke"}`)))
+		require.NoError(c, err)
 		require.Equal(c, http.StatusOK, status, body)
 		require.Contains(c, body, "otlp line")
 	}, 30*time.Second, time.Second)
