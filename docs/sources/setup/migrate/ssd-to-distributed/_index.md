@@ -268,6 +268,37 @@ To start the migration process:
    Let all components reach the `Running` state before proceeding to the next stage.
    {{< /admonition >}}
 
+1. Verify that the distributed components handle requests. In stage 1, the gateway still sends all requests to the SSD components, so the distributed components don't receive requests through it. Before you continue with stage 2, push a log line directly to the distributor and read it back directly from the query frontend.
+
+   Forward the ports of both services. Run each command in a separate terminal:
+
+    ```bash
+    kubectl port-forward -n loki svc/loki-distributor 3100:3100
+    ```
+
+    ```bash
+    kubectl port-forward -n loki svc/loki-query-frontend 3101:3100
+    ```
+
+   Push a log line to the distributor. Replace `<TENANT_ID>` with your tenant ID. If you disabled multi-tenancy with `auth_enabled: false`, remove the `X-Scope-OrgID` header. The command prints the status `204`.
+
+    ```bash
+    curl -s -w '%{http_code}\n' -X POST http://localhost:3100/loki/api/v1/push \
+      -H 'Content-Type: application/json' \
+      -H 'X-Scope-OrgID: <TENANT_ID>' \
+      -d "{\"streams\":[{\"stream\":{\"job\":\"migration-check\"},\"values\":[[\"$(date +%s)000000000\",\"hello from the distributor\"]]}]}"
+    ```
+
+   Query the log line from the query frontend:
+
+    ```bash
+    curl -s -G http://localhost:3101/loki/api/v1/query_range \
+      -H 'X-Scope-OrgID: <TENANT_ID>' \
+      --data-urlencode 'query={job="migration-check"}'
+    ```
+
+   The response contains the log line `hello from the distributor`. If the push fails or the response doesn't contain the log line, don't continue with stage 2. Stop both `kubectl port-forward` commands afterwards.
+
 ## Stage 2: Transitioning to distributed components
 
 The final stage of the migration involves transitioning all traffic to the distributed components. This is done by scaling down the SSD components and swapping the `deploymentMode` to `Distributed`.
