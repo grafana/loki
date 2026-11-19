@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -428,12 +429,15 @@ func addFullRangeVectorWarning(req base.Request, resp base.Response) base.Respon
 		return resp
 	}
 
-	if !logql.HasFullRangeVector(r.Plan.AST, r.EndTs.Sub(r.StartTs)) {
-		return resp
-	}
-
 	promResp, ok := resp.(*LokiPromResponse)
 	if !ok || promResp.Response == nil {
+		return resp
+	}
+	if !logql.HasFullRangeVector(r.Plan.AST, r.EndTs.Sub(r.StartTs)) {
+		// Split queries can emit this warning for their own range rather than the original request.
+		promResp.Response.Warnings = slices.DeleteFunc(promResp.Response.Warnings, func(warning string) bool {
+			return warning == logql.FullRangeVectorWarning
+		})
 		return resp
 	}
 	for _, existing := range promResp.Response.Warnings {
