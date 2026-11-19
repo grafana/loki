@@ -175,7 +175,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 		if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
 			resp = q.filterAggregatedMetricsFromSeriesResp(resp)
 		}
-		resp = removeInternalLabelsFromSeriesResp(resp)
+		resp = removeShardLabelsFromSeriesResp(resp)
 		resLength = len(resp.Series)
 	}
 
@@ -362,15 +362,18 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 	return resp
 }
 
-// removeInternalLabelsFromSeriesResp removes the labels Loki sets for its own use from every
-// series. Streams that differ only in those labels, such as the shards of one stream, become one
-// series.
-func removeInternalLabelsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
+// removeShardLabelsFromSeriesResp removes the labels that the distributor adds when it divides a
+// stream, so the series API returns the labels the client wrote. Streams that then have the same
+// labels, such as the shards of one stream, become one series.
+//
+// It keeps __aggregated_metric__ and __pattern__, which tell apart the streams the pattern ingester
+// writes. The series API leaves those streams out unless a matcher asks for them.
+func removeShardLabelsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
 	seen := make(map[string]struct{}, len(resp.Series))
 	series := resp.Series[:0]
 	for _, s := range resp.Series {
 		s.Labels = slices.DeleteFunc(s.Labels, func(l logproto.SeriesIdentifier_LabelsEntry) bool {
-			return constants.IsInternalLabel(l.Key)
+			return l.Key == constants.TimeShardLabel || l.Key == constants.StreamShardLabel
 		})
 		key := seriesKey(s)
 		if _, ok := seen[key]; ok {

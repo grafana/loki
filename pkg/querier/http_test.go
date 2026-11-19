@@ -209,7 +209,7 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 
-	t.Run("hides internal labels and merges the series that differ only by them", func(t *testing.T) {
+	t.Run("hides shard labels and merges the series that differ only by them", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
 			return &logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{
@@ -220,6 +220,9 @@ func TestSeriesHandler(t *testing.T) {
 						{Key: "__stream_shard__", Value: "1"}, {Key: "job", Value: "a"}, {Key: "__time_shard__", Value: "1"},
 					}},
 					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "b"}}},
+					// Pattern and aggregated metric streams differ by these labels, so they stay.
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "c"}, {Key: "__pattern__", Value: "x"}}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "c"}, {Key: "__pattern__", Value: "y"}}},
 				},
 			}
 		}
@@ -233,7 +236,7 @@ func TestSeriesHandler(t *testing.T) {
 		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
-		require.JSONEq(t, `{"status":"success","data":[{"job":"a"},{"job":"b"}]}`, res.Body.String())
+		require.JSONEq(t, `{"status":"success","data":[{"job":"a"},{"job":"b"},{"job":"c","__pattern__":"x"},{"job":"c","__pattern__":"y"}]}`, res.Body.String())
 	})
 
 	t.Run("ignores __aggregated_metric__ and __patern__ series, when possible, unless explicitly requested", func(t *testing.T) {

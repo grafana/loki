@@ -224,15 +224,16 @@ func testInternalLabels(t *testing.T, h *harness, now time.Time) {
 		}
 	}
 
-	// The series API should return the labels of every stream that matches, minus the internal
-	// ones, like the label names API does.
+	// The series API returns the labels of every stream that matches, minus the ones the
+	// distributor adds when it divides a stream. It keeps the labels that tell apart the streams
+	// the pattern ingester writes, because the API leaves those streams out unless asked.
 	t.Run("series", func(t *testing.T) {
 		status, body := do(t, h.get("/loki/api/v1/series", url.Values{
 			"match[]": {`{job="internal"}`}, "start": {nanos(now.Add(-time.Hour))}, "end": {nanos(now.Add(time.Minute))},
 		}))
 		require.Equal(t, http.StatusOK, status, body)
 		require.Contains(t, body, `"env":"dev"`)
-		for _, label := range internalLabels {
+		for _, label := range []string{"__time_shard__", "__stream_shard__"} {
 			require.NotContains(t, body, label)
 		}
 	})
