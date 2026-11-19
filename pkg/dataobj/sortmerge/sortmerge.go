@@ -96,8 +96,12 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 // keepStreamIDs reads only the rows of those streams, and a non-nil empty slice
 // reads none. A nil keepStreamIDs reads every row. A non-empty dropStreamIDs
 // skips the rows of those streams, as [RemappedSection.DropStreamIDs] does. The
-// caller sets at most one of them. If both are set, keepStreamIDs wins.
+// caller sets at most one of them. openSectionSequence returns an error if both
+// are set.
 func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, keepStreamIDs, dropStreamIDs []int64) (*sectionSequence, error) {
+	if keepStreamIDs != nil && len(dropStreamIDs) > 0 {
+		return nil, fmt.Errorf("a section sequence takes either streams to keep or streams to drop, not both")
+	}
 	ds, err := logs.MakeColumnarDataset(sec)
 	if err != nil {
 		return nil, fmt.Errorf("creating columnar dataset: %w", err)

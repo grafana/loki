@@ -17,7 +17,7 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	require.Equal(t, 1, cfg.FlushConcurrency)
-	require.Equal(t, 1, cfg.SortParallelism)
+	require.Equal(t, 2, cfg.SortParallelism)
 
 	require.Equal(t, 1<<20, int(cfg.LogsobjBuilder.TargetPageSize))
 	require.Equal(t, 8, cfg.LogsobjBuilder.EstimatedCompressionRatio)

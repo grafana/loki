@@ -34,7 +34,7 @@ func TestPlanSortRanges(t *testing.T) {
 	streamsOf := func(sizes []int64, keys []streams.SortKey) []sortedStream {
 		out := make([]sortedStream, len(sizes))
 		for i := range out {
-			out[i] = sortedStream{Stream: streams.Stream{ID: int64(i + 1)}, key: keys[i], size: sizes[i]}
+			out[i] = sortedStream{Stream: streams.Stream{ID: int64(i + 1)}, key: keys[i], uncompressedBytes: sizes[i]}
 		}
 		return out
 	}
@@ -159,7 +159,7 @@ func TestNewSortedStreams(t *testing.T) {
 		sortedStreams, err := newSortedStreams(seqOf(stream(1, "a", 4, 100)), "tenant", schema, streams.DefaultShardLayout(), 1)
 		require.NoError(t, err)
 
-		require.Equal(t, int64(100+4*logs.RecordOverhead), sortedStreams[0].size)
+		require.Equal(t, int64(100+4*logs.RecordOverhead), sortedStreams[0].uncompressedBytes)
 		require.Zero(t, sortedStreams[0].Rows)
 		require.Zero(t, sortedStreams[0].UncompressedSize)
 	})
@@ -407,7 +407,7 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 		lb.SetTenant("tenant")
 		var released []int
 
-		kept, err := sorter.sortRange(t.Context(), "tenant", sections, sortKeysByOldID(plan.streams), plan.ranges[0], lb,
+		kept, _, err := sorter.sortRange(t.Context(), "tenant", sections, sortKeysByOldID(plan.streams), plan.ranges[0], lb,
 			func(pending []*encodedSection) ([]*encodedSection, error) {
 				released = append(released, len(pending))
 				return nil, nil
@@ -423,6 +423,15 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 		require.Greater(t, total, 1, "a section size of 1 byte must cut the range into several sections")
 	})
 
+	t.Run("returns an error when a logs row belongs to a stream that no range lists", func(t *testing.T) {
+		sorter, sections, plan := newRun(t, 2)
+		plan.ranges = plan.ranges[:len(plan.ranges)-1]
+
+		err := sorter.writeLogsSections(t.Context(), "tenant", sections, plan)
+
+		require.ErrorContains(t, err, "the logs sections of tenant tenant hold 200 rows, but the sort read 160")
+	})
+
 	t.Run("returns the context error when the context is canceled", func(t *testing.T) {
 		sorter, sections, plan := newRun(t, 2)
 		ctx, cancel := context.WithCancel(t.Context())
@@ -431,11 +440,13 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 		require.ErrorIs(t, sorter.writeLogsSections(ctx, "tenant", sections, plan), context.Canceled)
 	})
 
-	t.Run("returns no error and leaves the counters at zero when there are no ranges", func(t *testing.T) {
+	t.Run("returns an error and leaves the counters at zero when there are no ranges but the logs sections hold rows", func(t *testing.T) {
 		sorter, sections, plan := newRun(t, 2)
 		plan.ranges = nil
 
-		require.NoError(t, sorter.writeLogsSections(t.Context(), "tenant", sections, plan))
+		err := sorter.writeLogsSections(t.Context(), "tenant", sections, plan)
+
+		require.ErrorContains(t, err, "hold 200 rows, but the sort read 0")
 		for _, s := range plan.streams {
 			require.Zero(t, s.Rows)
 		}

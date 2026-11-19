@@ -41,8 +41,9 @@ The merge compares lines, and the encoder compresses the pages.
 
 ## The problem with one goroutine
 
-One tenant often holds most of the bytes of a flush.
-Its sort runs on one goroutine, so more CPU does not make it faster.
+Tenants have very different volumes.
+When the builder consumes a Kafka partition, one tenant usually holds most of the bytes of a flush.
+The sort of a tenant runs on one goroutine, so more CPU does not make the flush of that tenant faster.
 If a flush takes as long as the builder needs to fill the next object, the builder cannot keep up.
 It stops reading from Kafka while it flushes, and the lag grows.
 
@@ -50,7 +51,7 @@ It stops reading from Kafka while it flushes, and the lag grows.
 
 The sort can run in parallel, because the logs of different streams do not depend on each other.
 The setting `-dataobj.builder.sort-parallelism` sets the maximum number of goroutines for one tenant.
-The default is 1.
+The default is 2.
 
 The idea:
 
@@ -80,16 +81,14 @@ The result has the same lines in the same order as the sort on one goroutine.
 ### Memory
 
 The sort holds encoded sections in memory until the object builder takes them.
-Two rules limit this memory.
+At most `sort-parallelism` ranges hold lines or encoded sections at a time.
+A range keeps its slot until the object builder has all of its sections.
+A slow early range therefore stops the later ranges from starting.
 
-- At most `sort-parallelism` ranges hold lines or encoded sections at a time.
-  A range keeps its slot until the object builder has all of its sections.
-  A slow early range therefore stops the later ranges from starting.
-- The first range that is not yet in the object does not wait.
-  It appends each section as soon as the encoder finishes it.
+The first range that is not yet in the object does not wait for the others.
+It appends each section as soon as the encoder finishes it, so its sections do not pile up.
 
 The goroutines reuse their section builders from one range to the next.
-The helper `parallel.ForEachOrdered` in `pkg/util/parallel` implements the slots and the order.
 
 ### Limits
 
@@ -97,9 +96,3 @@ The helper `parallel.ForEachOrdered` in `pkg/util/parallel` implements the slots
   A tenant with most of its bytes in one stream does not get faster with more goroutines.
 - A flush can sort several objects at the same time, up to `flush-concurrency`.
   Each of them uses up to `sort-parallelism` goroutines.
-
-## Where the code is
-
-- `pkg/dataobj/logsobj/sort.go`: the steps, the plan of the ranges and the writers.
-- `pkg/dataobj/sortmerge`: the merge of sorted sections, with a filter for the stream IDs of a range.
-- `pkg/util/parallel/ordered.go`: the ordered parallel helper.

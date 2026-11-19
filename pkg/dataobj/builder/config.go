@@ -112,7 +112,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(
 		&cfg.SortParallelism,
 		prefix+"sort-parallelism",
-		1,
+		2,
 		"The maximum number of goroutines that sort the logs of one tenant on flush.",
 	)
 	f.IntVar(

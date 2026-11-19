@@ -153,21 +153,25 @@ func (b *Builder) writeLogsSections(
 	plan *sortPlan,
 ) error {
 	var (
-		parallelism = max(1, b.cfg.SortParallelism)
-		free        = make(chan *logs.Builder, parallelism)
-		ordering    = sortKeysByOldID(plan.streams)
+		parallelism  = max(1, b.cfg.SortParallelism)
+		freeBuilders = make(chan *logs.Builder, parallelism)
+		ordering     = sortKeysByOldID(plan.streams)
 
 		// head is the index of the first range whose sections are not all in
 		// b.builder. Only the range at head appends from its own goroutine. The
 		// yield function moves head on after it appends the rest of a range.
 		head atomic.Int64
+
+		// rowsRead counts the rows that the ranges read, before the sort drops
+		// duplicates. Only the yield function of ForEachOrdered changes it.
+		rowsRead int64
 	)
 
-	return parallel.ForEachOrdered(ctx, len(plan.ranges), parallelism,
-		func(ctx context.Context, i int) ([]*encodedSection, error) {
+	err := parallel.ForEachOrdered(ctx, len(plan.ranges), parallelism,
+		func(ctx context.Context, i int) (sortedRange, error) {
 			var lb *logs.Builder
 			select {
-			case lb = <-free:
+			case lb = <-freeBuilders:
 			default:
 				// sortRange drops duplicates itself when DropDuplicates is set,
 				// so the section builder must not drop any. Otherwise the
@@ -183,32 +187,70 @@ func (b *Builder) writeLogsSections(
 				})
 				lb.SetTenant(tenant)
 			}
+			// The yield function below appends the sections of a range after the
+			// whole range is done. The range at head does not wait for that. It
+			// appends each section when the encoder finishes it, so that its
+			// sections do not pile up in memory while it runs.
 			appendIfHead := func(pending []*encodedSection) ([]*encodedSection, error) {
 				if head.Load() != int64(i) {
 					return pending, nil
 				}
 				return nil, b.appendSections(pending)
 			}
-			encoded, err := b.sortRange(ctx, tenant, originalLogsSections, ordering, plan.ranges[i], lb, appendIfHead)
+			encoded, rangeRows, err := b.sortRange(ctx, tenant, originalLogsSections, ordering, plan.ranges[i], lb, appendIfHead)
 			if err != nil {
-				return nil, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
+				return sortedRange{}, fmt.Errorf("sorting stream range %d of tenant %s: %w", i, tenant, err)
 			}
 			// Only a range that succeeded gives its builder back. Its last flush
 			// reset the builder, so the next range starts clean. A failed range
-			// drops its builder. free has room for every builder, because at
+			// drops its builder. freeBuilders has room for every builder, because at
 			// most parallelism ranges run at a time.
-			free <- lb
-			return encoded, nil
+			freeBuilders <- lb
+			return sortedRange{sections: encoded, rowsRead: rangeRows}, nil
 		},
 		// b.builder is not safe for concurrent use, and it needs the sections in
 		// range order. ForEachOrdered calls this on one goroutine, in range order.
-		func(i int, encoded []*encodedSection) error {
-			if err := b.appendSections(encoded); err != nil {
+		func(i int, done sortedRange) error {
+			rowsRead += done.rowsRead
+			if err := b.appendSections(done.sections); err != nil {
 				return fmt.Errorf("appending the sections of stream range %d of tenant %s: %w", i, tenant, err)
 			}
 			head.Store(int64(i) + 1)
 			return nil
 		})
+	if err != nil {
+		return err
+	}
+	return checkAllRowsRead(ctx, tenant, originalLogsSections, rowsRead)
+}
+
+// sortedRange is the result of the sort of one range.
+type sortedRange struct {
+	// sections are the encoded sections that the range did not yet append.
+	sections []*encodedSection
+
+	// rowsRead is the number of rows that the range read, including the
+	// duplicates that the sort dropped.
+	rowsRead int64
+}
+
+// checkAllRowsRead returns an error if the ranges read fewer rows than the logs
+// sections hold. The section readers skip the rows of streams that no range
+// lists, so a stream that the streams section does not hold makes its rows
+// disappear from the sorted object without any other error.
+func checkAllRowsRead(ctx context.Context, tenant string, originalLogsSections []*dataobj.Section, rowsRead int64) error {
+	var total int64
+	for _, sec := range originalLogsSections {
+		opened, err := logs.Open(ctx, sec)
+		if err != nil {
+			return fmt.Errorf("opening a logs section of tenant %s: %w", tenant, err)
+		}
+		total += int64(opened.NumRows())
+	}
+	if rowsRead != total {
+		return fmt.Errorf("the logs sections of tenant %s hold %d rows, but the sort read %d: some rows belong to streams that the streams section does not hold", tenant, total, rowsRead)
+	}
+	return nil
 }
 
 func (b *Builder) appendSections(sections []*encodedSection) error {
@@ -224,12 +266,13 @@ func (b *Builder) appendSections(sections []*encodedSection) error {
 // sections, each about the target section size. It adds the records to the
 // counters of the streams. After each flush, sortRange passes the sections that
 // it holds to release. release returns the sections that sortRange keeps, and
-// sortRange returns the ones that remain after the last flush. lb must be empty
-// and hold the tenant. After success,
-// sortRange leaves lb empty and holding the tenant. After an error, lb is in an
-// unknown state, and the caller must drop it. sortRange does not use b.builder,
-// so it is safe to run on several goroutines at once, as long as their ranges
-// differ.
+// sortRange returns the ones that remain after the last flush. It also returns
+// the number of rows that it read, including the duplicates that it dropped.
+//
+// lb must be empty and hold the tenant. After success, sortRange leaves lb
+// empty and holding the tenant. After an error, lb is in an unknown state, and
+// the caller must drop it. sortRange does not use b.builder, so it is safe to
+// run on several goroutines at once, as long as their ranges differ.
 func (b *Builder) sortRange(
 	ctx context.Context,
 	tenant string,
@@ -238,10 +281,10 @@ func (b *Builder) sortRange(
 	rangeStreams []sortedStream,
 	lb *logs.Builder,
 	release func([]*encodedSection) ([]*encodedSection, error),
-) ([]*encodedSection, error) {
+) (sections []*encodedSection, rowsRead int64, err error) {
 	iter, err := mergeAndRemapLogsIter(ctx, originalLogsSections, ordering, rangeStreams)
 	if err != nil {
-		return nil, fmt.Errorf("creating sort iterator: %w", err)
+		return nil, 0, fmt.Errorf("creating sort iterator: %w", err)
 	}
 
 	recorder := sectionRecorder{typ: lb.Type()}
@@ -253,16 +296,18 @@ func (b *Builder) sortRange(
 		recorder.sections, err = release(recorder.sections)
 		return err
 	}
-	if err := b.drainLogsIter(ctx, iter, lb, tenant, flush); err != nil {
-		return nil, err
+	rowsRead, err = b.drainLogsIter(ctx, iter, lb, tenant, flush)
+	if err != nil {
+		return nil, 0, err
 	}
-	return recorder.sections, nil
+	return recorder.sections, rowsRead, nil
 }
 
 // drainLogsIter consumes iter and appends each record to lb. It passes lb to
 // flush whenever the section size target is exceeded and once more after iter
 // ends, and it resets lb after each flush. It adds each appended record to the
-// counters of its stream.
+// counters of its stream. It returns the number of records that it read from
+// iter, including the duplicates that it skipped.
 //
 // If DropDuplicates is set, drainLogsIter skips duplicate records. iter must
 // yield the records of each stream and timestamp together, as
@@ -276,7 +321,7 @@ func (b *Builder) drainLogsIter(
 	lb *logs.Builder,
 	tenant string,
 	flush func(*logs.Builder) error,
-) error {
+) (rowsRead int64, err error) {
 	flushAndReset := func() error {
 		if err := flush(lb); err != nil {
 			return err
@@ -290,13 +335,14 @@ func (b *Builder) drainLogsIter(
 	for res := range iter {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return rowsRead, ctx.Err()
 		default:
 		}
 		sr, err := res.Value()
 		if err != nil {
-			return err
+			return rowsRead, err
 		}
+		rowsRead++
 		if b.cfg.DropDuplicates && duplicates.IsDuplicate(sr.Record) {
 			continue
 		}
@@ -305,11 +351,11 @@ func (b *Builder) drainLogsIter(
 		lb.Append(sr.Record)
 		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := flushAndReset(); err != nil {
-				return err
+				return rowsRead, err
 			}
 		}
 	}
-	return flushAndReset()
+	return rowsRead, flushAndReset()
 }
 
 // writeStreamsSection appends the sorted streams section of the tenant to
@@ -341,12 +387,12 @@ type sortedStream struct {
 	oldID int64
 	key   streams.SortKey
 
-	// size is the number of bytes that the records of the stream add to the size
-	// of a logs section builder. That is the uncompressed size of the stream
-	// plus [logs.RecordOverhead] for each row. It comes from the stream stats of
-	// the input, which can count duplicates that the sort drops, so it is an
-	// upper bound.
-	size int64
+	// uncompressedBytes is the number of bytes that the records of the stream
+	// add to the size of a logs section builder. That is the uncompressed size
+	// of the stream plus [logs.RecordOverhead] for each row. It comes from the
+	// stream stats of the input, which can count duplicates that the sort
+	// drops, so it is an upper bound. The sort plan uses it to size the ranges.
+	uncompressedBytes int64
 }
 
 // streamSortKey returns the sort key of a stream with the labels ls.
@@ -382,10 +428,10 @@ func newSortedStreams(iter result.Seq[streams.Stream], tenant string, schemaLabe
 			return nil, err
 		}
 		s := sortedStream{
-			Stream: stream,
-			oldID:  stream.ID,
-			key:    key,
-			size:   stream.UncompressedSize + int64(stream.Rows)*logs.RecordOverhead,
+			Stream:            stream,
+			oldID:             stream.ID,
+			key:               key,
+			uncompressedBytes: stream.UncompressedSize + int64(stream.Rows)*logs.RecordOverhead,
 		}
 		s.Rows, s.UncompressedSize = 0, 0
 		sortedStreams = append(sortedStreams, s)
@@ -442,8 +488,8 @@ func planSortRanges(sortedStreams []sortedStream, targetSize int64) [][]sortedSt
 		size   int64
 	)
 	for i := 0; i+1 < len(sortedStreams); i++ {
-		size += sortedStreams[i].size
-		if size+sortedStreams[i+1].size > targetSize && sortedStreams[i].key.Compare(sortedStreams[i+1].key) != 0 {
+		size += sortedStreams[i].uncompressedBytes
+		if size+sortedStreams[i+1].uncompressedBytes > targetSize && sortedStreams[i].key.Compare(sortedStreams[i+1].key) != 0 {
 			ranges = append(ranges, sortedStreams[start:i+1])
 			start, size = i+1, 0
 		}
