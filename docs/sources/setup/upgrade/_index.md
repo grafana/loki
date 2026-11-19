@@ -245,10 +245,19 @@ The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-var
 
 #### Breaking change: Limit allowed S3 storage classes
 
-Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
-If you have been using such classes, you must switch to a supported class before upgrading.
+Loki now rejects S3 storage classes such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+Only `STANDARD`, `STANDARD_IA`, `GLACIER_IR`, `INTELLIGENT_TIERING`, and `REDUCED_REDUNDANCY` are supported.
+If you have been using any other class, you must switch to a supported class before upgrading.
 
 `REDUCED_REDUNDANCY` is only intended for use with MinIO.
+
+{{< admonition type="note" >}}
+Grafana Labs has only tested Loki with the `STANDARD` and `STANDARD_IA` storage classes.
+`GLACIER_IR` and `INTELLIGENT_TIERING` are accepted but untested, so use them at your own risk.
+{{< /admonition >}}
+
+`GLACIER_IR` (Glacier Instant Retrieval) and `INTELLIGENT_TIERING` provide millisecond access, like `STANDARD_IA`.
+If you use `INTELLIGENT_TIERING`, don't enable the optional asynchronous Archive Access or Deep Archive Access tiers on the bucket, because Loki can't read objects in those tiers.
 
 #### Breaking change: Removal of the `row_shards` schema setting
 
