@@ -67,15 +67,9 @@ loki:
       s3forcepathstyle: false
   ingester:
     chunk_encoding: snappy
-  ruler:
+  rulerConfig:
     enable_api: true
-    storage:
-      type: s3
-      s3:
-        region: eu-central-1
-        bucketnames: aws-ruler-bucket
-        s3forcepathstyle: false
-      alertmanager_url: http://prom:9093
+    alertmanager_url: http://prom:9093
   querier:
     max_concurrent: 4
 
@@ -127,6 +121,8 @@ ruler:
 singleBinary:
   replicas: 0
 ```
+
+The chart builds the ruler storage configuration from `loki.storage`. Set all other ruler settings, such as `alertmanager_url`, under `loki.rulerConfig`. The chart ignores a `loki.ruler` key.
 
 ## Stage 1: Deploying the Loki distributed components
 
@@ -189,15 +185,9 @@ To start the migration process:
        # Add this to ingester; this will force ingesters to flush before shutting down
        wal:
          flush_on_shutdown: true
-     ruler:
+     rulerConfig:
        enable_api: true
-       storage:
-         type: s3
-         s3:
-           region: eu-central-1
-           bucketnames: aws-ruler-bucket
-           s3forcepathstyle: false
-         alertmanager_url: http://prom:9093
+       alertmanager_url: http://prom:9093
      querier:
        max_concurrent: 4
 
@@ -313,15 +303,9 @@ To transition all traffic to the distributed components:
        chunk_encoding: snappy
        wal:
          flush_on_shutdown: true
-     ruler:
+     rulerConfig:
        enable_api: true
-       storage:
-         type: s3
-         s3:
-           region: eu-central-1
-           bucketnames: aws-ruler-bucket
-           s3forcepathstyle: false
-         alertmanager_url: http://prom:9093
+       alertmanager_url: http://prom:9093
      querier:
        max_concurrent: 4
 
