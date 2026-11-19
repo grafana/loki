@@ -1,6 +1,37 @@
 # Changes
 
 
+## [1.71.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.70.0...storage/v1.71.0) (2026-11-14)
+
+
+### Features
+
+* **storage:** Add default buffer pool for gRPC parallel uploads ([#20719](https://github.com/googleapis/google-cloud-go/issues/20719)) ([69a9ad3](https://github.com/googleapis/google-cloud-go/commit/69a9ad383a6db9d8bc84c4bfc1ace15f13257f33))
+* **storage:** Add error.type and gcp.errors.domain to operation spans ([#20705](https://github.com/googleapis/google-cloud-go/issues/20705)) ([50cd4a3](https://github.com/googleapis/google-cloud-go/commit/50cd4a3df13ce08b7e30f68893598b76b73de1d1))
+* **storage:** Add gcp.client.retry.attempt_number to gRPC attempt spans ([#20716](https://github.com/googleapis/google-cloud-go/issues/20716)) ([5528a50](https://github.com/googleapis/google-cloud-go/commit/5528a500bbee73f8fdf42cd4c818373f3b39a490))
+* **storage:** Add gcp.storage.payload.offset/size_bytes to attempt spans ([#20757](https://github.com/googleapis/google-cloud-go/issues/20757)) ([56721d1](https://github.com/googleapis/google-cloud-go/commit/56721d1c3b85c29e66e00c1697092f4f3d6c51be))
+* **storage:** Add gcp.storage.upload.id attribute for resumable uploads ([#20687](https://github.com/googleapis/google-cloud-go/issues/20687)) ([1259592](https://github.com/googleapis/google-cloud-go/commit/1259592d377953a55ccf5c70537f13f51877bb90))
+* **storage:** Add gcp.storage.uri trace attribute to object and bucket operation spans ([#20606](https://github.com/googleapis/google-cloud-go/issues/20606)) ([dfdddde](https://github.com/googleapis/google-cloud-go/commit/dfdddde514104daf16e070d65464b9fd5897a7ab))
+* **storage:** Add OpenTelemetry tracing for auth credential refreshes ([#20677](https://github.com/googleapis/google-cloud-go/issues/20677)) ([3ec4bb2](https://github.com/googleapis/google-cloud-go/commit/3ec4bb23854391c97aa8c186c01c9ed7e9dc07ec))
+* **storage:** Add RetryBackoff spans for retry backoffs ([#20715](https://github.com/googleapis/google-cloud-go/issues/20715)) ([edca405](https://github.com/googleapis/google-cloud-go/commit/edca4055ed4dc120a355ff3807653cf9802226e6))
+* **storage:** Add rpc.system.name attribute to trace spans ([#20655](https://github.com/googleapis/google-cloud-go/issues/20655)) ([7d238ad](https://github.com/googleapis/google-cloud-go/commit/7d238ad99d97c0cde92183fa587ef57122b812a6))
+* **storage:** Add Storage.UploadChunk spans for resumable uploads ([#20750](https://github.com/googleapis/google-cloud-go/issues/20750)) ([22c9ad5](https://github.com/googleapis/google-cloud-go/commit/22c9ad539e406502f5eda08ea2c88b60d9da2a2a))
+* **storage:** Align metric names, units, and base labels ([#20796](https://github.com/googleapis/google-cloud-go/issues/20796)) ([9e83e4c](https://github.com/googleapis/google-cloud-go/commit/9e83e4c11676da19d4b22909ea69afaa130edbe0))
+* **storage:** Expose Unfinalized on ReaderObjectAttrs ([#20703](https://github.com/googleapis/google-cloud-go/issues/20703)) ([c2aabb1](https://github.com/googleapis/google-cloud-go/commit/c2aabb1f1e231353310d06c9d7d5878dce5918fb))
+* **storage:** Record read and write mode trace attributes ([#20714](https://github.com/googleapis/google-cloud-go/issues/20714)) ([f41be16](https://github.com/googleapis/google-cloud-go/commit/f41be163730b8fe4d31a05b4e67895823048b576))
+
+
+### Bug Fixes
+
+* Adds additional validation for REST RPC requests ([#20753](https://github.com/googleapis/google-cloud-go/issues/20753)) ([7827181](https://github.com/googleapis/google-cloud-go/commit/7827181e7cb653fb69645c538b162b2c7490b0bb))
+* Correct 'seperated' and 'paramters' typos in comments ([#20828](https://github.com/googleapis/google-cloud-go/issues/20828)) ([51c6cf6](https://github.com/googleapis/google-cloud-go/commit/51c6cf6222505975d8c93d73fa55e6ac760f5ba3))
+* **storage:** Apply read stall timeout to initial stream open in MultiRangeDownloader ([#20840](https://github.com/googleapis/google-cloud-go/issues/20840)) ([1ddfb07](https://github.com/googleapis/google-cloud-go/commit/1ddfb07e171b8c34dccc7e9c15926e94d823c2eb))
+* **storage:** Do not discard seen bytes on 206 Partial Content during reader reopen ([#20766](https://github.com/googleapis/google-cloud-go/issues/20766)) ([aa773a1](https://github.com/googleapis/google-cloud-go/commit/aa773a14c30080411415639683467c1a65bf5b67))
+* **storage:** Fix WaitGroup data race in MultiRangeDownloader callbacks ([#20827](https://github.com/googleapis/google-cloud-go/issues/20827)) ([b6b9f0b](https://github.com/googleapis/google-cloud-go/commit/b6b9f0b4ae81d95ccbc1924144e6f273e4f81ffd))
+* **storage:** Prevent spurious cancelled status on completed gRPC reads ([#20409](https://github.com/googleapis/google-cloud-go/issues/20409)) ([4749772](https://github.com/googleapis/google-cloud-go/commit/47497723ad3d4196398fb7e7d7ba4a79c92b53ac))
+* **storage:** Unbreak storage benchmark module ([#20893](https://github.com/googleapis/google-cloud-go/issues/20893)) ([51e96b4](https://github.com/googleapis/google-cloud-go/commit/51e96b4289a81f022e6a8285de547a14d5d36d87))
+* **storage:** Use URL-safe base64 for the feature tracking header ([#20684](https://github.com/googleapis/google-cloud-go/issues/20684)) ([50fd4eb](https://github.com/googleapis/google-cloud-go/commit/50fd4eba573f24e3ef6ecff5be97d93dcd83f62f))
+
 ## [1.70.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.69.0...storage/v1.70.0) (2026-10-22)
 
 

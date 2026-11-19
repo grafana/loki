@@ -315,7 +315,7 @@ func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err
 // it is inserted into the table. The return value 'found' indicates whether the value
 // was found in the table (true) or inserted (false) along with any possible error.
 func (b *BinaryMemoTable) InsertOrGet(val []byte) (idx int, found bool, err error) {
-	h := b.getHash(val)
+	h := Hash(val, 0)
 	p, found := b.lookup(h, val)
 	if found {
 		idx = int(p.payload.val)

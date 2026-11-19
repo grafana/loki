@@ -185,7 +185,7 @@ func (a *union) ValidateFull() error {
 		}
 	}
 
-	if a.unionType.Mode() == arrow.DenseMode {
+	if a.unionType.Mode() == arrow.DenseMode && a.data.length > 0 {
 		// validate offsets
 
 		// map logical typeid to child length

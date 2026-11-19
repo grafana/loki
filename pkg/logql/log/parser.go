@@ -141,6 +141,9 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	if parserHints.NoLabels() {
 		return line, true
 	}
+	if !lbs.LabelFilterHints().ShouldParseLine(line, lbs) {
+		return line, false
+	}
 
 	// reset the state.
 	j.prefixBuffer = j.prefixBuffer[:0]
@@ -414,6 +417,9 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if parserHints.NoLabels() {
 		return line, true
 	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
+	}
 
 	r.renames.reset()
 	for i, value := range r.regex.FindSubmatch(line) {
@@ -482,6 +488,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
+	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
 	}
 
 	l.dec.Reset(line)
@@ -587,6 +596,9 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
+	}
+	if !labelFilterHints.ShouldParseLine(line, lbs) {
+		return line, false
 	}
 	matches := l.matcher.Matches(line)
 	names := l.names[:len(matches)]
@@ -782,9 +794,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// after the loop: an empty label that the loop had set in advance would count as extracted, so
 	// it would block a renamed key and make AllRequiredExtracted stop the loop too early. A name
 	// that a stream label or structured metadata holds, or that a parser stage already extracted,
-	// gets no label.
+	// gets no label. The builder says what a stage extracted, because the hints only grow: they still
+	// list a label that a later stage, such as `drop`, deleted.
 	for id := range l.expressions {
-		if lbs.ParserLabelHints().Extracted(id) {
+		if lbs.HasInCategory(id, ParsedLabel) {
 			continue
 		}
 		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {

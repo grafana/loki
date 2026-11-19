@@ -65,6 +65,14 @@ func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
 			return false
 		}
 		return l.elem.Nullable == right.(*ListType).elem.Nullable
+	case *LargeListType:
+		if !TypeEqual(l.Elem(), right.(*LargeListType).Elem(), opts...) {
+			return false
+		}
+		if cfg.metadata && !l.elem.Metadata.Equal(right.(*LargeListType).elem.Metadata) {
+			return false
+		}
+		return l.elem.Nullable == right.(*LargeListType).elem.Nullable
 	case *FixedSizeListType:
 		if !TypeEqual(l.Elem(), right.(*FixedSizeListType).Elem(), opts...) {
 			return false

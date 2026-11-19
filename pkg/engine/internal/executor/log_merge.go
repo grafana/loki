@@ -28,14 +28,11 @@ var errNoSourceObjects = errors.New("no source objects found")
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
-		artifact, err := c.doLogObjectMerge(ctx, node)
+		artifacts, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		if artifact == nil {
-			return errorPipeline(ctx, errors.New("LogMerge: missing result artifact"))
-		}
-		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		rec, err := v2.EncodeResultArtifacts(memory.DefaultAllocator, artifacts)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -55,7 +52,7 @@ func (c *Context) dataObjectBucket() objstore.Bucket {
 	return c.bucket
 }
 
-func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) (*v2.ResultArtifact, error) {
+func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -138,7 +135,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxPath, err := c.flushAndUploadIndex(ctx, node.Tenant, calc)
+	artifact, err := c.flushAndUploadIndex(ctx, node.Tenant, calc)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +168,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 
 	c.logMergeObserver.ObserveLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
-	return &v2.ResultArtifact{Path: idxPath}, nil
+	return []v2.ResultArtifact{artifact}, nil
 }
 
 const (
@@ -615,7 +612,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) (returnErr erro
 // uploadObject streams a built object to the given bucket and returns its encoded
 // size. The index object goes to the index bucket; compacted log objects go to
 // the data bucket.
-func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
+func uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (size int64, returnErr error) {
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("getting object reader: %w", err)

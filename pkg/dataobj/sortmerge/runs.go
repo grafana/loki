@@ -227,7 +227,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize 
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize, input.DropStreamIDs)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, nil, input.DropStreamIDs)
 	if err != nil {
 		return nil, err
 	}

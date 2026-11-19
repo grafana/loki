@@ -53,9 +53,30 @@ Query-shape support and hint lookup for logline index lookups.
    - Bare `| json | field="literal"` can also match stream/SM labels of that
      name; that residual is accepted. We cannot tell parsed-field vs stream
      vs SM, so we do not re-escape needles — only values already in the line.
-6. **Hint cache keys are day-aligned**
+6. **Hint cache keys are day-aligned and keyed on needles**
    - `CachingHintProvider` stores one entry per UTC day touched by `[from, through]`.
-   - Logical format: `logline:1:<tenant>:<expr.String()>:<min-date>:<YYYY-MM-DD>`.
+   - Logical format: `logline:2:<tenant>:<key>:<min-date>:<YYYY-MM-DD>`.
+   - `<key>` is built by `cacheKeyQuery` from the delegate's `Needles(expr)`:
+     the needle sets it plans (`needle.Conjunctions`, already sorted and
+     normalized, formatted by its `String`) and the n-gram length. Queries with
+     the same needle sets share an entry whatever else they contain. A metric
+     query shares with the log query it wraps, and Grafana's logs volume query,
+     which appends `| drop __error__`, shares with its log query. Stream matchers
+     are not part of the key.
+   - With no needles, or when the delegate has no `Needles` method (like
+     `MinDate()`), the key is `expr.String()`.
+   - `PlanHints` plans with the same `Needles` call, and its result is what the
+     adapter sends to the querier (invariant 18). The key and the lookup
+     therefore come from one planner and one set of settings.
+   - **Everything the lookup reads must be in the key.** The delegate is asked
+     about the expression as written, so equal keys give equal hints only while
+     the lookup reads nothing but the needle sets and the n-gram length. If it starts
+     to read anything else, such as stream matchers, other pipeline stages or new
+     config, add that to `cacheKeyQuery` and bump `hintCacheGeneration`.
+     `TestNeedleKey_EqualKeysGetEqualHints` fails when equal keys stop giving
+     equal hints.
+   - Bump `hintCacheGeneration` when the key format or the meaning of a cached
+     value changes.
    - On cache miss, delegate lookups are also day-aligned: each missed day calls the delegate with that full day window (`[day_start, day_end)`).
    - Responses are post-filtered back to the caller's `[from, through]` overlap window so API behavior stays window-scoped while cache payloads stay day-complete.
 7. **Cache API keys must be hashed**
@@ -100,8 +121,9 @@ Query-shape support and hint lookup for logline index lookups.
       and uppercase rule (`planner.keep`). A literal shorter than
       `ngramLength` becomes TRUE, so a set left empty makes the regex TRUE.
 14. **A shared day lookup runs under the context of the caller that started it**
-    - Concurrent lookups of the same tenant, query and day share one delegate
-      call through singleflight.
+    - Concurrent lookups of the same tenant, key (invariant 6) and day share one
+      delegate call through singleflight. A log query and a metric query with the
+      same needles therefore share a call.
     - Each caller stops waiting when its own context ends. The query frontend
       cancels a lookup when its query returns first, and the shared call keeps
       running for the callers still waiting on it.
@@ -161,7 +183,14 @@ Query-shape support and hint lookup for logline index lookups.
       once on the complete requirement. Compilation bounds DNF expansion and
       prunes at the end. Over the limit an operand or union collapses to its
       implied existing literals. 1 gives at most one set.
-    - The query-frontend sends its value in `LoglineIndexRequest.max_conjunctions`.
-      The querier uses it when above 0, otherwise 1 regardless of its local cap.
+    - The query-frontend plans the needles once, with its own cap, and sends
+      them in `LoglineIndexRequest.conjunctions`. The querier looks up those sets
+      and does not plan or take a cap. The hint cache key is built from the same
+      plan, so the key and the lookup cannot disagree. During a rollout that
+      holds only once every component on the path (frontend, query-scheduler
+      and querier) runs this version. A request without `conjunctions` is from
+      an older frontend, or passed through an older scheduler, which drops the
+      field. The querier plans `expr` with one set, which is what an older
+      frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.

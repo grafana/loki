@@ -41,7 +41,9 @@ type MergeBuilder struct {
 	layout   streams.Layout
 	postings *postings.MergeBuilder
 
-	unflushedSizeEstimate int
+	// wroteStats is true once the builder appended a stats section to the
+	// object it builds.
+	wroteStats bool
 
 	state builderState
 }
@@ -107,17 +109,16 @@ func (b *MergeBuilder) AppendStat(tenantID string, stat stats.Stat) error {
 	}
 
 	tenantStats := b.stats
-	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
 	tenantStats.Append(stat)
 
-	postAppendSizeEstimate := tenantStats.EstimatedSize()
-	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+	sectionSize := tenantStats.EstimatedSize()
 
-	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantStats); err != nil {
 			return err
 		}
+		b.wroteStats = true
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
@@ -138,16 +139,14 @@ func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.
 	}
 
 	tenantPostings := b.postings
-	preSize := tenantPostings.EstimatedSize()
 
 	if err := tenantPostings.AppendLabelEntry(entry); err != nil {
 		return err
 	}
 
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
+	sectionSize := tenantPostings.EstimatedSize()
 
-	if postSize > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantPostings); err != nil {
 			return err
 		}
@@ -170,17 +169,15 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	}
 
 	tenantPostings := b.postings
-	preSize := tenantPostings.EstimatedSize()
 
 	if err := tenantPostings.AppendBloomEntry(entry); err != nil {
 		return err
 	}
 
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
+	sectionSize := tenantPostings.EstimatedSize()
 
 	// Cut a section at the target size; see AppendPostingsLabelEntry.
-	if postSize > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantPostings); err != nil {
 			return err
 		}
@@ -194,15 +191,24 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	return nil
 }
 
+// estimatedSize returns the estimated size of the object that the builder
+// builds: the estimated sizes of the sections that it holds, and the encoded
+// size of the sections that it already cut.
 func (b *MergeBuilder) estimatedSize() int {
 	var size int
-	size += b.unflushedSizeEstimate
+	size += b.stats.EstimatedSize()
+	size += b.postings.EstimatedSize()
 	size += b.builder.Bytes()
 	b.metrics.sizeEstimate.Set(float64(size))
 	return size
 }
 
 // Flush flushes all buffered data and returns the built object.
+//
+// The object records the layout of the builder in a stats section, even if
+// the builder got no stats rows. A builder with the zero layout writes no stats
+// section: its index has no layout, which compaction accepts for an index whose
+// sources have none.
 //
 // On success the caller owns the returned [io.Closer] and must close it to
 // release the object's backing scratch storage; reads of the object fail once
@@ -221,8 +227,11 @@ func (b *MergeBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	var flushErrors []error
 
-	if b.stats.EstimatedSize() > 0 {
+	switch {
+	case b.stats.EstimatedSize() > 0:
 		flushErrors = append(flushErrors, b.builder.Append(b.stats))
+	case !b.wroteStats && b.layout.StreamOrder() != streams.StreamOrderUnspecified:
+		flushErrors = append(flushErrors, b.builder.Append(stats.NewLayoutSectionBuilder(b.tenant, b.layout)))
 	}
 	if b.postings.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.postings))
@@ -283,7 +292,7 @@ func (b *MergeBuilder) Reset() {
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
-	b.unflushedSizeEstimate = 0
 	b.builderFull = false
+	b.wroteStats = false
 	b.state = builderStateEmpty
 }

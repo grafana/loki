@@ -331,6 +331,44 @@ func TestKeyShortCircuit(t *testing.T) {
 	}
 }
 
+func TestLineShortCircuit(t *testing.T) {
+	jsonLine := []byte(`{"foo":"bar","baz":"qux"}`)
+	logfmtLine := []byte(`foo=bar baz=qux`)
+
+	for _, tt := range []struct {
+		name string
+		line []byte
+		p    Stage
+	}{
+		{"json", jsonLine, NewJSONParser(false)},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false)},
+		{"regexp", logfmtLine, mustStage(NewRegexpParser(`foo=(?P<foo>\w+)`))},
+		{"pattern", logfmtLine, mustStage(NewPatternParser(`foo=<foo> <_>`))},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, skipLine := range []bool{true, false} {
+				hints := newFakeParserHints()
+				hints.extractAll = true
+				hints.skipLine = skipLine
+
+				lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+				lbs.parserKeyHints = hints
+				lbs.labelFilterHints = hints
+
+				_, ok := tt.p.Process(0, tt.line, lbs)
+				if skipLine {
+					require.False(t, ok)
+					require.Zero(t, hints.checkCount, "the parser read a key of a line that the hints skip")
+					require.Zero(t, lbs.LabelsResult().Labels().Len())
+				} else {
+					require.True(t, ok)
+					require.NotZero(t, lbs.LabelsResult().Labels().Len())
+				}
+			}
+		})
+	}
+}
+
 func TestLabelShortCircuit(t *testing.T) {
 	simpleJsn := []byte(`{
       "data": "Click Here",
@@ -388,6 +426,7 @@ type fakeParseHints struct {
 	keepGoing  bool
 	extractAll bool
 	extracted  map[string]struct{}
+	skipLine   bool
 }
 
 func (p *fakeParseHints) Extracted(key string) bool {
@@ -428,6 +467,10 @@ func (p *fakeParseHints) Reset() {
 
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
 	return p.keepGoing
+}
+
+func (p *fakeParseHints) ShouldParseLine(_ []byte, _ *LabelsBuilder) bool {
+	return !p.skipLine
 }
 
 func TestJSONExpressionParser(t *testing.T) {
