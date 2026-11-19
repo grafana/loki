@@ -81,6 +81,11 @@ type BuilderBaseConfig struct {
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 
+	// SortParallelism is the maximum number of goroutines that sort the logs of
+	// one tenant in FlushAndSort. A value of 1 or less sorts the stream ranges
+	// of a tenant one at a time.
+	SortParallelism int `yaml:"-"`
+
 	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during FlushAndSort.
 	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
 	// Flush returns an error if DropDuplicates is set.
