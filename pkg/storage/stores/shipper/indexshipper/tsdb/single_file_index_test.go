@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
@@ -439,6 +440,164 @@ func TestTSDBIndex_Stats(t *testing.T) {
 			require.Equal(t, tc.expectedErr, err)
 			require.Equal(t, tc.expected, *acc)
 		})
+	}
+}
+
+func TestTSDBIndex_StatsWithHints(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{MinTime: 0, MaxTime: 9, Checksum: 1, Entries: 10, KB: 10},
+				{MinTime: 10, MaxTime: 19, Checksum: 2, Entries: 20, KB: 20},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{MinTime: 30, MaxTime: 39, Checksum: 3, Entries: 30, KB: 30},
+				{MinTime: 40, MaxTime: 49, Checksum: 4, Entries: 40, KB: 40},
+			},
+		},
+	}
+	variants := map[string]func() Index{
+		"file": func() Index { return BuildIndex(t, t.TempDir(), series) },
+		"head": func() Index {
+			head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
+			for _, s := range series {
+				_, _ = head.Append(s.Labels, labels.StableHash(s.Labels), s.Chunks)
+			}
+			return NewTSDBIndex(head.Index())
+		},
+	}
+
+	hint := func(startMs, endMs int64) *logproto.HintTimeRanges {
+		return &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{Start: time.UnixMilli(startMs), End: time.UnixMilli(endMs)}}}
+	}
+	entries := func(streams, chunks, entries uint64) stats.Stats {
+		return stats.Stats{Streams: streams, Chunks: chunks, Entries: entries, Bytes: entries * 1024}
+	}
+
+	for _, tc := range []struct {
+		name     string
+		hints    *logproto.HintTimeRanges
+		expected stats.Stats
+	}{
+		{name: "no hints counts every chunk", hints: nil, expected: entries(2, 4, 100)},
+		{name: "empty hints count nothing", hints: &logproto.HintTimeRanges{}, expected: stats.Stats{}},
+		{name: "hint inside a chunk", hints: hint(5, 6), expected: entries(1, 1, 10)},
+		{name: "hint across both series", hints: hint(15, 35), expected: entries(2, 2, 50)},
+		{name: "series without a hinted chunk is not a stream", hints: hint(40, 41), expected: entries(1, 1, 40)},
+		{name: "hint starting at a chunk's last millisecond", hints: hint(19, 20), expected: entries(1, 1, 20)},
+		{name: "hint ending at a chunk's first millisecond", hints: hint(25, 30), expected: stats.Stats{}},
+	} {
+		for variant, build := range variants {
+			t.Run(fmt.Sprintf("%s/%s", variant, tc.name), func(t *testing.T) {
+				acc := &stats.Stats{}
+				filter := newHintChunkFilter(tc.hints, 0, 50)
+				err := build().Stats(context.Background(), "fake", 0, 50, acc, nil, filter, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, *acc)
+			})
+		}
+	}
+}
+
+func TestTSDBIndex_StatsWithDocumentShardHints(t *testing.T) {
+	// Every series has a chunk in [0, 10) and one in [10, 20). The hints cover
+	// [0, 10) for document shard 1 of 2 and [10, 20) for every stream.
+	chunks := index.ChunkMetas{
+		{MinTime: 0, MaxTime: 9, Checksum: 1, Entries: 1, KB: 1},
+		{MinTime: 10, MaxTime: 19, Checksum: 2, Entries: 1, KB: 1},
+	}
+	series := []LoadableSeries{
+		{Labels: mustParseLabels(`{foo="bar", shard="0"}`), Chunks: chunks, Fingerprint: 1 << 62},
+		{Labels: mustParseLabels(`{foo="bar", shard="1"}`), Chunks: chunks, Fingerprint: 1<<63 | 1<<62},
+		// The ingester may have remapped this fingerprint, so its document shard is unknown.
+		{Labels: mustParseLabels(`{foo="bar", shard="remapped"}`), Chunks: chunks, Fingerprint: logline.MaxMappedFingerprint},
+	}
+	hints := &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{
+		{Start: time.UnixMilli(0), End: time.UnixMilli(10), DocumentShard: 1, DocumentShardBits: 1},
+		{Start: time.UnixMilli(10), End: time.UnixMilli(20)},
+	}}
+	variants := map[string]func() Index{
+		"file": func() Index { return BuildIndex(t, t.TempDir(), series) },
+		"head": func() Index {
+			head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
+			for _, s := range series {
+				_, _ = head.Append(s.Labels, uint64(s.Fingerprint), s.Chunks)
+			}
+			return NewTSDBIndex(head.Index())
+		},
+	}
+
+	for variant, build := range variants {
+		idx := build()
+		for shard, wantChunks := range map[string]uint64{"0": 1, "1": 2, "remapped": 2} {
+			t.Run(fmt.Sprintf("%s/%s", variant, shard), func(t *testing.T) {
+				var got stats.Stats
+				filter := newHintChunkFilter(hints, 0, 20)
+				require.NoError(t, idx.Stats(context.Background(), "fake", 0, 20, &got, nil, filter, labels.MustNewMatcher(labels.MatchEqual, "shard", shard)))
+				require.Equal(t, wantChunks, got.Chunks)
+			})
+		}
+	}
+}
+
+func TestTSDBIndex_StatsWithHintsAcrossChunkPages(t *testing.T) {
+	// The series has enough chunks for the index to write chunk pages, so the
+	// page-level shortcuts run.
+	const numChunks = 300
+	metas := make([]index.ChunkMeta, 0, numChunks)
+	for i := range numChunks {
+		metas = append(metas, index.ChunkMeta{MinTime: int64(i) * 10, MaxTime: int64(i)*10 + 9, Checksum: uint32(i), Entries: 1, KB: 1})
+	}
+	through := model.Time(numChunks * 10)
+
+	hints := func(msRanges ...[2]int64) *logproto.HintTimeRanges {
+		h := &logproto.HintTimeRanges{}
+		for _, r := range msRanges {
+			h.Ranges = append(h.Ranges, logproto.HintTimeRange{Start: time.UnixMilli(r[0]), End: time.UnixMilli(r[1])})
+		}
+		return h
+	}
+	cases := map[string]*logproto.HintTimeRanges{
+		"empty":                hints(),
+		"everything":           hints([2]int64{0, int64(through)}),
+		"page aligned":         hints([2]int64{640, 1280}),
+		"across page bounds":   hints([2]int64{635, 1285}),
+		"one chunk":            hints([2]int64{1000, 1001}),
+		"several ranges":       hints([2]int64{5, 6}, [2]int64{700, 2000}, [2]int64{2995, 3000}),
+		"sub-millisecond edge": {Ranges: []logproto.HintTimeRange{{Start: time.UnixMilli(1999).Add(time.Microsecond), End: time.UnixMilli(2000)}}},
+		"document shards": {Ranges: []logproto.HintTimeRange{
+			{Start: time.UnixMilli(700), End: time.UnixMilli(2000), DocumentShard: 1, DocumentShardBits: 1},
+			{Start: time.UnixMilli(0), End: through.Time(), DocumentShard: 0, DocumentShardBits: 1},
+		}},
+	}
+	// The first fingerprint is in document shard 1 of 2. The ingester may have
+	// remapped the second, so every document shard's ranges cover it.
+	for _, fp := range []uint64{1 << 63, logline.MaxMappedFingerprint} {
+		idx := BuildIndex(t, t.TempDir(), []LoadableSeries{{Labels: mustParseLabels(`{foo="bar"}`), Chunks: metas, Fingerprint: model.Fingerprint(fp)}})
+		for name, h := range cases {
+			t.Run(fmt.Sprintf("fp=%d/%s", fp, name), func(t *testing.T) {
+				filter := newHintChunkFilter(h, 0, through)
+				var want stats.Stats
+				for _, m := range metas {
+					if filter.Overlaps(fp, m.MinTime, m.MaxTime) {
+						want.Chunks++
+						want.Entries++
+						want.Bytes += 1024
+					}
+				}
+				if want.Chunks > 0 {
+					want.Streams = 1
+				}
+
+				var got stats.Stats
+				require.NoError(t, idx.Stats(context.Background(), "fake", 0, through, &got, nil, filter, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")))
+				require.Equal(t, want, got)
+			})
+		}
 	}
 }
 

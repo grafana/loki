@@ -815,11 +815,121 @@ func TestDecoderChunkStats(t *testing.T) {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 					dec := newDecoder(nil, 0)
 
-					stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through)
+					stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through, 0, nil)
 					require.Nil(t, err)
 					require.Equal(t, tc.exp, stats)
 				})
 			}
+		}
+	}
+}
+
+// rangesFilter includes the chunks that overlap one of its closed ranges.
+type rangesFilter [][2]int64
+
+func (f rangesFilter) Overlaps(_ uint64, minT, maxT int64) bool {
+	for _, r := range f {
+		if r[0] <= maxT && minT <= r[1] {
+			return true
+		}
+	}
+	return false
+}
+
+func (f rangesFilter) Covers(_ uint64, minT, maxT int64) bool {
+	for _, r := range f {
+		if r[0] <= minT && maxT <= r[1] {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDecoderChunkStatsWithFilter(t *testing.T) {
+	// Eight chunks of 10ms each: [0, 9], [10, 19], ..., [70, 79].
+	chks := make([]ChunkMeta, 0, 8)
+	for i := range int64(8) {
+		chks = append(chks, ChunkMeta{MinTime: i * 10, MaxTime: i*10 + 9, KB: 1, Entries: 1})
+	}
+	nChunks := func(n uint64) ChunkStats { return ChunkStats{Chunks: n, KB: n, Entries: n} }
+
+	for _, tc := range []struct {
+		desc          string
+		from, through int64
+		filter        ChunkFilter
+		exp           ChunkStats
+	}{
+		{desc: "nil filter counts every chunk", from: 0, through: 80, exp: nChunks(8)},
+		{desc: "empty filter counts nothing", from: 0, through: 80, filter: rangesFilter{}, exp: nChunks(0)},
+		{desc: "drops chunks outside the ranges", from: 0, through: 80, filter: rangesFilter{{15, 15}}, exp: nChunks(1)},
+		{desc: "range touching chunk bounds", from: 0, through: 80, filter: rangesFilter{{19, 20}}, exp: nChunks(2)},
+		{desc: "covers every chunk", from: 0, through: 80, filter: rangesFilter{{0, 79}}, exp: nChunks(8)},
+		{desc: "covers some pages and part of another", from: 0, through: 80, filter: rangesFilter{{0, 29}, {60, 65}}, exp: nChunks(4)},
+		{desc: "query range still applies", from: 20, through: 50, filter: rangesFilter{{0, 79}}, exp: nChunks(3)},
+	} {
+		for _, version := range allChunkFormats {
+			for _, pageSize := range []int{2, 3} {
+				for _, bypass := range []int{0, 100} {
+					t.Run(fmt.Sprintf("%s/version=%d/pageSize=%d/bypass=%d", tc.desc, version, pageSize, bypass), func(t *testing.T) {
+						var w Creator
+						w.Version = version
+						primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+						scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+						w.addChunks(chks, &primary, &scratch, pageSize)
+
+						decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+						dec := newDecoder(nil, bypass)
+
+						stats, err := dec.readChunkStats(version, &decbuf, 1, tc.from, tc.through, 0, tc.filter)
+						require.NoError(t, err)
+						require.Equal(t, tc.exp, stats)
+					})
+				}
+			}
+		}
+	}
+}
+
+// firstChunkFilter includes only the chunks that start at 0. Covers reports
+// covered, whatever the bounds, so a test can tell page aggregates from
+// per-chunk checks.
+type firstChunkFilter struct{ covered bool }
+
+func (f firstChunkFilter) Overlaps(_ uint64, minT, _ int64) bool { return minT == 0 }
+func (f firstChunkFilter) Covers(_ uint64, _, _ int64) bool      { return f.covered }
+
+func TestDecoderChunkStatsPageAggregateRequiresCover(t *testing.T) {
+	chks := []ChunkMeta{
+		{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
+		{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
+		{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
+		{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
+	}
+	for _, tc := range []struct {
+		desc    string
+		covered bool
+		exp     ChunkStats
+	}{
+		// The first page holds the first two chunks and the filter overlaps it,
+		// so it is aggregated as a whole. The second page is skipped.
+		{desc: "covered page uses its aggregate", covered: true, exp: ChunkStats{Chunks: 2, KB: 2, Entries: 2}},
+		{desc: "uncovered page checks each chunk", covered: false, exp: ChunkStats{Chunks: 1, KB: 1, Entries: 1}},
+	} {
+		for _, version := range []int{FormatV3, FormatV4} {
+			t.Run(fmt.Sprintf("%s/version=%d", tc.desc, version), func(t *testing.T) {
+				var w Creator
+				w.Version = version
+				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+				w.addChunks(chks, &primary, &scratch, 2)
+
+				decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+				dec := newDecoder(nil, 0)
+
+				stats, err := dec.readChunkStats(version, &decbuf, 1, 0, 4, 0, firstChunkFilter{covered: tc.covered})
+				require.NoError(t, err)
+				require.Equal(t, tc.exp, stats)
+			})
 		}
 	}
 }
@@ -841,7 +951,7 @@ func BenchmarkChunkStats(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 
-					_, _ = dec.readChunkStats(version, &decbuf, 1, from, through)
+					_, _ = dec.readChunkStats(version, &decbuf, 1, from, through, 0, nil)
 				}
 			})
 		}

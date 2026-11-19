@@ -1780,7 +1780,7 @@ func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64
 	return fprint, nil
 }
 
-func (r *ByteSliceReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (r *ByteSliceReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, filter ChunkFilter) (uint64, ChunkStats, error) {
 	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
 	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1788,7 +1788,7 @@ func (r *ByteSliceReader) ChunkStats(id storage.SeriesRef, from, through int64, 
 		return 0, ChunkStats{}, d.Err()
 	}
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
+	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by, filter)
 }
 
 func (r *ByteSliceReader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
@@ -2184,31 +2184,34 @@ func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error)
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+// ChunkStats decodes a series entry and returns the stats of its chunks
+// overlapping [from, through). If filter is not nil, only the chunks it
+// includes are counted.
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, filter ChunkFilter) (uint64, ChunkStats, error) {
 	d, fp, err := dec.prepSeries(b, lbls, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
 
-	stats, err := dec.readChunkStats(version, d, seriesRef, from, through)
+	stats, err := dec.readChunkStats(version, d, seriesRef, from, through, fp, filter)
 	return fp, stats, err
 }
 
-func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
+func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64, fp uint64, filter ChunkFilter) (ChunkStats, error) {
 	if version > FormatV2 {
-		return dec.readChunkStatsV3(version, d, from, through)
+		return dec.readChunkStatsV3(version, d, from, through, fp, filter)
 	}
-	return dec.readChunkStatsPriorV3(d, seriesRef, from, through)
+	return dec.readChunkStatsPriorV3(d, seriesRef, from, through, fp, filter)
 }
 
-func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, through int64, fp uint64, filter ChunkFilter) (res ChunkStats, err error) {
 	nChunks := d.Uvarint()
 	markersLn := int(d.Be32()) // markersLn
 	startMarkers := d.Len()
 
 	if nChunks < dec.maxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
-		return dec.accumulateChunkStats(version, d, nChunks, from, through)
+		return dec.accumulateChunkStats(version, d, nChunks, from, through, fp, filter)
 	}
 
 	nMarkers := d.Uvarint()
@@ -2219,7 +2222,9 @@ func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, thro
 		var marker chunkPageMarker
 		marker.decode(d)
 		if overlap(from, through, marker.MinTime, marker.MaxTime) {
-			relevantPages = append(relevantPages, marker)
+			if filterIncludes(filter, fp, marker.MinTime, marker.MaxTime) {
+				relevantPages = append(relevantPages, marker)
+			}
 		} else if marker.MinTime >= through {
 			break
 		}
@@ -2244,7 +2249,7 @@ func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, thro
 	for markerIdx := 0; markerIdx < len(relevantPages); markerIdx++ {
 		curMarker := relevantPages[markerIdx]
 
-		if curMarker.subsetOf(from, through) {
+		if curMarker.subsetOf(from, through) && (filter == nil || filter.Covers(fp, curMarker.MinTime, curMarker.MaxTime)) {
 			// use aggregated stats for this page
 			res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
 			continue
@@ -2277,8 +2282,10 @@ func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, thro
 			prevMaxT = chunkMeta.MaxTime
 
 			if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
-				// add to stats
-				res.AddChunk(chunkMeta, from, through)
+				if filterIncludes(filter, fp, chunkMeta.MinTime, chunkMeta.MaxTime) {
+					// add to stats
+					res.AddChunk(chunkMeta, from, through)
+				}
 			} else if chunkMeta.MinTime >= through {
 				break
 			}
@@ -2288,7 +2295,7 @@ func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, thro
 	return res, d.Err()
 }
 
-func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunks int, from, through int64, fp uint64, filter ChunkFilter) (res ChunkStats, err error) {
 	var prevMaxT int64
 	chunkMeta := &ChunkMeta{}
 	for i := 0; i < nChunks; i++ {
@@ -2298,8 +2305,10 @@ func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunk
 		prevMaxT = chunkMeta.MaxTime
 
 		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
-			// add to stats
-			res.AddChunk(chunkMeta, from, through)
+			if filterIncludes(filter, fp, chunkMeta.MinTime, chunkMeta.MaxTime) {
+				// add to stats
+				res.AddChunk(chunkMeta, from, through)
+			}
 		} else if chunkMeta.MinTime >= through {
 			break
 		}
@@ -2307,7 +2316,7 @@ func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunk
 	return res, d.Err()
 }
 
-func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64, fp uint64, filter ChunkFilter) (res ChunkStats, err error) {
 	// prior to v3, chunks needed iteration for stats aggregation
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
@@ -2318,7 +2327,9 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 	for _, chk := range chks {
 		if overlap(from, through, chk.MinTime, chk.MaxTime) {
-			res.AddChunk(&chk, from, through)
+			if filterIncludes(filter, fp, chk.MinTime, chk.MaxTime) {
+				res.AddChunk(&chk, from, through)
+			}
 		} else if chk.MinTime >= through {
 			break
 		}

@@ -110,6 +110,18 @@ func (r HintTimeRanges) ForFingerprint(fp uint64) HintTimeRanges {
 	return HintTimeRanges{enabled: true, ranges: r.documentShards[logline.DocumentShard(fp, r.documentShardBits)]}
 }
 
+// NewHintTimeRangeSet is NewHintTimeRanges for a hint set. Unlike a list, a
+// set distinguishes no hints (nil, passthrough) from an empty set, which
+// matches nothing.
+func NewHintTimeRangeSet(hints *logproto.HintTimeRanges, from, through time.Time) HintTimeRanges {
+	if hints == nil {
+		return HintTimeRanges{}
+	}
+	result := NewHintTimeRanges(hints.Ranges, from, through)
+	result.enabled = true
+	return result
+}
+
 // clipHintRange clips the half-open interval [start, end) to [from, through)
 // before converting to unix nanoseconds. ok is false when the clipped interval
 // is empty. Clipping happens first so extreme wire timestamps are not passed to
@@ -159,6 +171,43 @@ func (r HintTimeRanges) OverlapsClosed(from, through time.Time) bool {
 		return true
 	}
 	return r.overlaps(from.UnixNano(), through.UnixNano(), true)
+}
+
+// Covers reports whether, for every stream, a single hint range contains the
+// half-open bounds [from, through).
+func (r HintTimeRanges) Covers(from, through time.Time) bool {
+	return r.covers(from.UnixNano(), through.UnixNano(), false)
+}
+
+// CoversClosed reports whether, for every stream, a single hint range contains
+// the closed bounds [from, through].
+func (r HintTimeRanges) CoversClosed(from, through time.Time) bool {
+	return r.covers(from.UnixNano(), through.UnixNano(), true)
+}
+
+func (r HintTimeRanges) covers(from, through int64, throughInclusive bool) bool {
+	if !r.enabled {
+		return true
+	}
+	for _, ranges := range r.documentShards {
+		if !hintRangesCover(ranges, from, through, throughInclusive) {
+			return false
+		}
+	}
+	return hintRangesCover(r.ranges, from, through, throughInclusive)
+}
+
+func hintRangesCover(ranges []hintTimeRange, from, through int64, throughInclusive bool) bool {
+	i := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].end > from
+	})
+	if i == len(ranges) || ranges[i].start > from {
+		return false
+	}
+	if throughInclusive {
+		return ranges[i].end > through
+	}
+	return ranges[i].end >= through
 }
 
 func (r HintTimeRanges) overlaps(from, through int64, throughInclusive bool) bool {

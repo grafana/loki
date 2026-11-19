@@ -15,13 +15,19 @@ import (
 type LoadableSeries struct {
 	Labels labels.Labels
 	Chunks index.ChunkMetas
+	// Fingerprint is the series fingerprint, or labels.StableHash(Labels) if zero.
+	Fingerprint model.Fingerprint
 }
 
 func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	b := NewBuilder(index.FormatV3)
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, model.Fingerprint(labels.StableHash(s.Labels)), s.Chunks)
+		fp := s.Fingerprint
+		if fp == 0 {
+			fp = model.Fingerprint(labels.StableHash(s.Labels))
+		}
+		b.AddSeries(s.Labels, fp, s.Chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {

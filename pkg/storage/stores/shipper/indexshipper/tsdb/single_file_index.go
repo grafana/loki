@@ -434,7 +434,10 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
+// Stats adds the stats of the series matching matchers to acc. If timeFilter is
+// not nil, only the chunks it includes are counted, so a series whose chunks
+// are all excluded does not count as a stream.
+func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, timeFilter index.ChunkFilter, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
@@ -453,7 +456,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		defer scan.Close()
 
 		for p.Next() {
-			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by, timeFilter)
 			if err != nil {
 				return err
 			}
@@ -503,7 +506,7 @@ func (i *TSDBIndex) Volume(
 	from, through model.Time,
 	acc VolumeAccumulator,
 	fpFilter index.FingerprintFilter,
-	_ shouldIncludeChunk,
+	_ index.ChunkFilter,
 	targetLabels []string,
 	aggregateBy string,
 	matchers ...*labels.Matcher,
@@ -542,7 +545,7 @@ func (i *TSDBIndex) Volume(
 		defer scan.Close()
 
 		for p.Next() {
-			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := scan.ChunkStats(p.At(), int64(from), int64(through), &ls, by, nil)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
