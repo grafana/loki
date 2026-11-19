@@ -155,7 +155,7 @@ func (s *streamSharder) shardByRate(stream logproto.InternalStreamAdapter, lbls 
 	case shardstreams.LimitsServiceStreamShardingModeLive:
 		s.liveCandidates = append(s.liveCandidates, candidate)
 	case shardstreams.LimitsServiceStreamShardingModeShadow:
-		s.streams = append(s.streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
+		s.streams = append(s.streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards, pushSize)...)
 		s.shadowCandidates = append(s.shadowCandidates, candidate)
 	}
 }

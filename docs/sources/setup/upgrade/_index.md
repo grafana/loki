@@ -70,6 +70,10 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### Experimental per-push stream packing
+
+The new `distributor.pack_streams` setting defaults to `false`. Enabling it changes rate-shard assignments and packs each push toward the byte value of `shard_streams.desired_rate`. See [automatic stream sharding](../../operations/automatic-stream-sharding/#limit-the-number-of-shards-used-by-each-push) for sizing and ordering considerations.
+
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
