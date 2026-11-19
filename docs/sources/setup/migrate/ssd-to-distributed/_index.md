@@ -31,7 +31,7 @@ Migrating from a simple scalable deployment to a distributed deployment requires
 1. **Kubernetes Resources:** This migration method requires you to spin up distributed Loki pods before shutting down the SSD pods. This means that you need to have enough resources in your Kubernetes cluster to run both the SSD and distributed Loki pods at the same time.
 1. **Short interruptions:** Both stages restart pods, and stage 2 also switches the gateway routes. Pushes and queries through the gateway can fail with `502` responses or time out during each `helm upgrade`. In a test with a small cluster, requests failed for up to about 30 seconds in stage 1 and up to about 40 seconds in stage 2. The duration depends on your cluster. Make sure that the clients that push logs retry failed requests, and run the migration when traffic is low.
 1. **Data:** No changes are required to your underlying data storage. Although data loss or corruption is unlikely, it is always recommended to back up your data before starting the migration process. If you are using a cloud provider you can take a snapshot/backup.
-1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana Logs Drilldown feature.
+1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if you set `loki.pattern_ingester.enabled: true`, you need to spin up the `patternIngester` component before shutting down the SSD ingesters. This is primarily needed for the Grafana Logs Drilldown feature.
 1. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note, not all parameters are equivalent between Mimir and Loki.
 
 ## Prerequisites
@@ -135,8 +135,8 @@ The following table outlines which components take over the responsibilities of 
 
 Simple Scalable Components |  Distributed Components
 ---------------------------|--------------------------------
-write (Deployment)         |   Distributor + Ingester
-read (StatefulSet)         |   Query Frontend + Querier
+write (StatefulSet)        |   Distributor + Ingester
+read (Deployment)          |   Query Frontend + Querier
 backend (StatefulSet)      |   Compactor + Ruler + Index Gateway
 
 How Loki handles request routing during the migration:
@@ -415,6 +415,12 @@ To transition all traffic to the distributed components:
     ```
 
 You should see all distributed components running and the SSD components have now been removed.
+
+Helm doesn't delete the volume claims of the SSD write pods. Their names start with `data-loki-write-`. The ingesters flush their data to object storage when they shut down. After you verify that you can query logs from before the migration, delete the volume claims to free the storage:
+
+```bash
+kubectl delete pvc -n loki data-loki-write-0 data-loki-write-1 data-loki-write-2
+```
 
 ## Upgrade to Loki 4.0
 
