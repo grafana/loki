@@ -474,6 +474,7 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		DialTimeout:   7 * time.Second,
 		SASLUsername:  "root-user",
 		SASLPassword:  flagext.SecretWithValue("root-pass"),
+		SASLMechanism: kafka.SASLMechanismScramSHA256,
 		ConsumerGroup: "ingester-partition-zone-a",
 	}
 
@@ -487,6 +488,7 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		require.Equal(t, 7*time.Second, cfg.DialTimeout)
 		require.Equal(t, "root-user", cfg.SASLUsername)
 		require.Equal(t, "root-pass", cfg.SASLPassword.String())
+		require.Equal(t, kafka.SASLMechanismScramSHA256, cfg.SASLMechanism)
 
 		require.Empty(t, cfg.ConsumerGroupName, "consumer group must not be inherited")
 		require.NoError(t, cfg.Validate())
@@ -500,6 +502,7 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 			ClientID:          "logline-client",
 			DialTimeout:       time.Second,
 			ConsumerGroupName: "logline-builders",
+			SASLMechanism:     kafka.SASLMechanismPlain,
 		}
 		cfg.ApplyDefaultsFrom(root)
 
@@ -508,6 +511,7 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		require.Equal(t, "logline-client", cfg.ClientID)
 		require.Equal(t, time.Second, cfg.DialTimeout)
 		require.Equal(t, "logline-builders", cfg.ConsumerGroupName)
+		require.Equal(t, kafka.SASLMechanismPlain, cfg.SASLMechanism)
 	})
 
 	t.Run("deprecated bare address and client id are honoured", func(t *testing.T) {
@@ -564,6 +568,45 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 		explicit.ApplyDefaultsFrom(root)
 		require.Equal(t, 1<<10, explicit.MaxDecompressBatchBytes)
 	})
+}
+
+// TestKafkaSASLMechanismValidation checks that the builder accepts the same
+// mechanisms as the root Kafka config, including the empty PLAIN default.
+func TestKafkaSASLMechanismValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		mechanism string
+		wantErr   bool
+	}{
+		{name: "empty defaults to PLAIN"},
+		{name: "PLAIN", mechanism: kafka.SASLMechanismPlain},
+		{name: "SCRAM-SHA-256", mechanism: kafka.SASLMechanismScramSHA256},
+		{name: "SCRAM-SHA-512", mechanism: kafka.SASLMechanismScramSHA512},
+		{name: "unsupported", mechanism: "GSSAPI", wantErr: true},
+		{name: "case sensitive", mechanism: "plain", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, credentials := range []bool{false, true} {
+				name := "without credentials"
+				if credentials {
+					name = "with credentials"
+				}
+				t.Run(name, func(t *testing.T) {
+					cfg := KafkaConfig{Address: "b:9092", Topic: "t", SASLMechanism: tt.mechanism}
+					if credentials {
+						cfg.SASLUsername = "user"
+						cfg.SASLPassword = flagext.SecretWithValue("password")
+					}
+					if tt.wantErr {
+						require.ErrorIs(t, cfg.Validate(), kafka.ErrUnsupportedSASLMechanism)
+						return
+					}
+					require.NoError(t, cfg.Validate())
+				})
+			}
+		})
+	}
 }
 
 // TestKafkaMaxDecompressBatchBytesMustBeValid checks that the logline builder
@@ -658,6 +701,7 @@ func TestKafkaConfigFlags(t *testing.T) {
 		"logline-builder.kafka.dial-timeout",
 		"logline-builder.kafka.sasl-username",
 		"logline-builder.kafka.sasl-password",
+		"logline-builder.kafka.sasl-mechanism",
 		"logline-builder.kafka.consumer-group-name",
 		"logline-builder.kafka.session-timeout",
 		"logline-builder.kafka.instance-id",
@@ -677,9 +721,14 @@ func TestKafkaConfigFlags(t *testing.T) {
 	require.Empty(t, cfg.Kafka.Address)
 	require.Empty(t, cfg.Kafka.Topic)
 	require.Zero(t, cfg.Kafka.DialTimeout)
+	require.Empty(t, cfg.Kafka.SASLMechanism)
 	require.Equal(t, apiVersionsMaxVersionUnset, cfg.Kafka.APIVersionsMaxVersion)
 	require.Equal(t, DefaultConsumerGroupName, cfg.Kafka.ConsumerGroupName)
 	require.Equal(t, DefaultKafkaSessionTimeout, cfg.Kafka.SessionTimeout)
+
+	require.NoError(t, fs.Parse([]string{"-logline-builder.kafka.sasl-mechanism=SCRAM-SHA-512"}))
+	cfg.Kafka.ApplyDefaultsFrom(kafka.Config{SASLMechanism: kafka.SASLMechanismScramSHA256})
+	require.Equal(t, kafka.SASLMechanismScramSHA512, cfg.Kafka.SASLMechanism)
 }
 
 // TestConfig_ExtractThreads_ValidRangeAndDefault pins the extract_threads

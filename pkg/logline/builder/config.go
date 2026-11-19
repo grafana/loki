@@ -81,6 +81,9 @@ type KafkaConfig struct {
 
 	SASLUsername string         `yaml:"sasl_username"`
 	SASLPassword flagext.Secret `yaml:"sasl_password"`
+	// SASLMechanism defaults to the root kafka_config mechanism when unset.
+	// An empty mechanism after inheritance uses PLAIN for backward compatibility.
+	SASLMechanism string `yaml:"sasl_mechanism"`
 
 	// ConsumerGroupName is the group every builder replica joins.
 	ConsumerGroupName string `yaml:"consumer_group_name"`
@@ -129,6 +132,8 @@ func (c *KafkaConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Kafka SASL username. Defaults to the root kafka_config username.")
 	f.Var(&c.SASLPassword, prefix+".sasl-password",
 		"Kafka SASL password. Defaults to the root kafka_config password.")
+	f.StringVar(&c.SASLMechanism, prefix+".sasl-mechanism", "",
+		`Kafka SASL mechanism. Supported values: "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512". Defaults to the root kafka_config mechanism, then to PLAIN.`)
 
 	f.StringVar(&c.ConsumerGroupName, prefix+".consumer-group-name", DefaultConsumerGroupName,
 		"Kafka consumer group every builder replica joins. Deliberately not inherited from "+
@@ -184,6 +189,9 @@ func (c *KafkaConfig) ApplyDefaultsFrom(root kafka.Config) {
 		c.SASLUsername = root.SASLUsername
 		c.SASLPassword = root.SASLPassword
 	}
+	if c.SASLMechanism == "" {
+		c.SASLMechanism = root.SASLMechanism
+	}
 }
 
 // Validate checks the Kafka settings and applies defaults.
@@ -196,6 +204,11 @@ func (c *KafkaConfig) Validate() error {
 	}
 	if (c.SASLUsername == "") != (c.SASLPassword.String() == "") {
 		return kafka.ErrInconsistentSASLUsernameAndPassword
+	}
+	switch c.SASLMechanism {
+	case "", kafka.SASLMechanismPlain, kafka.SASLMechanismScramSHA256, kafka.SASLMechanismScramSHA512:
+	default:
+		return kafka.ErrUnsupportedSASLMechanism
 	}
 
 	if c.ClientID == "" {
