@@ -27,10 +27,21 @@ Automatic stream sharding is enabled by default (`shard_streams.enabled` default
    limits_config:
      shard_streams:
        enabled: true
-       desired_rate: 2097152 #2MiB
+       desired_rate: 2MiB
    ```
 
-   The `desired_rate` defaults to `1536KB` (1.5MB), which is below the default `per_stream_rate_limit` of `3MB`. This gives Loki some headroom to shard a stream before it hits the per-stream rate limit.
+   The `desired_rate` defaults to `1536KB` (1.5MB), which is below the default `per_stream_rate_limit` of `3MB`. This gives Loki some headroom to shard a stream before it hits the per-stream rate limit. For more detail on tuning `per_stream_rate_limit` itself, refer to [Understanding Loki configuration limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/loki-limits/#per_stream_rate_limit).
+
+1. Optionally set `max_shard_count` to cap the number of shards Loki can create for a single stream:
+
+   ```yaml
+   limits_config:
+     shard_streams:
+       enabled: true
+       max_shard_count: 64
+   ```
+
+   `max_shard_count` defaults to `0`, which means unlimited. Set it to protect against runaway shard counts for extremely high-volume streams. When a stream's shard count is capped, Loki increments the `loki_distributor_rate_store_max_shards_limited_total` metric.
 
 1. Optionally enable `time_sharding_enabled` if you need to ingest old, out-of-order logs, for example during a backfill:
 
@@ -61,7 +72,7 @@ Automatic stream sharding is enabled by default (`shard_streams.enabled` default
 Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
 Distributors. The general recommendation is to explore existing log streams for additional label values that are both
 useful for querying and sufficiently low cardinality. There are many cases, however, where no more labels can
-be extracted, or cardinality for a label is dangerously large. To protect itself from such volume leading to operational failure, Loki implements per-stream rate limits;
+be extracted, or cardinality for a label is dangerously large. To protect against this volume causing operational failures, Loki implements per-stream rate limits;
 but the result is that some data is lost. The per-stream limit also needs human intervention to change, which is not ideal when log volumes increase and decrease.
 
 Loki uses automatic stream sharding to avoid rate limiting and large streams for any log stream by ensuring it is close
@@ -76,12 +87,13 @@ Loki supports two independent sharding mechanisms, rate-based sharding and time-
 Rate-based sharding works by adding a new label, `__stream_shard__`, to streams and incrementing its value to try
 and keep all streams below a configured `desired_rate`.
 
-The feature adds a new API to Ingesters that reports the size of all existing log streams. Once per second, Distributors
-query the API to get a picture of all stream rates in the system. Distributors use the existing stream-rate data and a
-configured `desired_rate` to determine how many shards a given stream should have. The desired number of new log streams
-are created with the label `__stream_shard__` and logs are divided evenly among the streams.
+The feature uses an API on Ingesters that reports the size of all existing log streams. Approximately once per second
+(controlled by the `stream_rate_update_interval` setting), Distributors query the API to get a picture of all stream
+rates in the system. Distributors use the existing stream-rate data and a configured `desired_rate` to determine how
+many shards a given stream should have. The desired number of new log streams are created with the label
+`__stream_shard__` and logs are divided evenly among the streams.
 
-The once-per-second query interval is a Distributor setting, not a `shard_streams` limit. Use the `-distributor.rate-store.stream-rate-update-interval` flag, or the equivalent `rate_store` block in the Distributor configuration, to change how often Distributors refresh their view of stream rates.
+The query interval is a Distributor setting, not a `shard_streams` limit. Use the `-distributor.rate-store.stream-rate-update-interval` flag, or the equivalent `rate_store` block in the Distributor configuration, to change how often Distributors refresh their view of stream rates.
 
 Because rate-based sharding is reactive and relies on successive calls to Ingesters, the view of current rates is
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
@@ -107,10 +119,15 @@ Use these metrics to help tune Loki so that it is sharding streams aggressively 
 limit:
 
 - `loki_rate_store_refresh_failures_total`: The total number of failed attempts to refresh the distributor's view of
-  stream rates.
+  stream rates. Labeled by `source`, which is either `ring` for a ring lookup failure, or the address of the specific
+  ingester that failed to respond.
 - `loki_rate_store_streams`: The number of unique streams reported by all Ingesters. Sharded streams are reported as if
   they were unsharded.
-- `loki_rate_store_max_stream_shards`: The maximum number of shards for any tenant of the system.
+- `loki_rate_store_active_streams`: The number of non-expired streams per tenant known to the rate store. Sharded
+  streams are combined.
+- `loki_rate_store_expired_streams_total`: The total number of streams that have been expired from the rate store.
+- `loki_rate_store_max_stream_shards`: The maximum shard count of any single stream across all tenants, as reported
+  during a sync operation.
 - `loki_rate_store_stream_shards`: A histogram of the distribution of shard counts across all streams.
 - `loki_rate_store_max_stream_rate_bytes`: The maximum stream size in bytes/second for any tenant of the system. Sharded
   streams are reported as if they are unsharded.
@@ -118,5 +135,9 @@ limit:
   individually reported.
 - `loki_rate_store_stream_rate_bytes`: A histogram of the distribution of stream sizes across all tenants in
   bytes/second.
+- `loki_rate_store_refresh_duration_seconds`: A histogram of the time spent refreshing the distributor's view of
+  stream rates.
+- `loki_distributor_rate_store_max_shards_limited_total`: The total number of times a tenant's shard count was capped
+  by the configured `max_shard_count`.
 - `loki_stream_sharding_count`: The total number of times that streams have been sharded. Useful for calculating the
   sharding rate.

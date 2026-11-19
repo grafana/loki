@@ -119,7 +119,13 @@ func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path s
 		}
 	}
 
-	sorted, sortedCloser, err := b.FlushAndSort(t.Context())
+	// FlushAndSort sorts the objects of one tenant. An object of several
+	// tenants, which older builders wrote, is only flushed.
+	flush := b.FlushAndSort
+	if len(byTenant) > 1 {
+		flush = func(context.Context) (*dataobj.Object, io.Closer, error) { return b.Flush() }
+	}
+	sorted, sortedCloser, err := flush(t.Context())
 	require.NoError(t, err)
 	defer sortedCloser.Close()
 
