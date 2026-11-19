@@ -21,7 +21,7 @@ There are two types of alerts in Grafana:
     These alert rules can query a wide range of backend data sources, including multiple data sources in a single alert rule. They support expression-based transformations, advanced alert conditions, images in notifications, handling of error and no data states, and more.
 - **Data-source-managed alerts:** These alert rules can only query Prometheus-based data sources such as Mimir, Loki, and Prometheus. The rules are stored in the data source.
 
-To learn more about Grafana managed alerts, you can refer to the [Alert and measure reliability documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or follow this Learning Path.
+To learn more about Grafana managed alerts, you can refer to the [Alert and measure reliability documentation](https://grafana.com/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/), or follow this Learning Path.
 
 {{< docs/learning-paths title="Create infrastructure alerts" url="https://grafana.com/docs/learning-paths/infrastructure-alerting/" >}}
 
@@ -404,7 +404,7 @@ For details on how rules are distributed within a tenant (by group or by individ
 
 The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos`, `bos`, `alibabacloud`, and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 

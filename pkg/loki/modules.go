@@ -1040,6 +1040,8 @@ func (t *Loki) initStore() (services.Service, error) {
 		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
 		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
+		// Evict indexes this gateway no longer owns, judged from ACTIVE instances
+		t.Cfg.StorageConfig.TSDBShipperConfig.DropFilter = filter.FilterTenantsToDrop
 	}
 
 	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
@@ -1049,15 +1051,19 @@ func (t *Loki) initStore() (services.Service, error) {
 
 	t.Store = store
 
-	if perIndexOwnership {
-		logger := log.With(util_log.Logger, "component", "index-gateway")
-		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer))
-	}
-
-	return services.NewIdleService(nil, func(_ error) error {
+	stopStore := func(_ error) error {
 		t.Store.Stop()
 		return nil
-	}), nil
+	}
+
+	if perIndexOwnership {
+		logger := log.With(util_log.Logger, "component", "index-gateway")
+		watcher := indexgateway.NewIndexOwnershipWatcher(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer)
+		t.indexGatewayRingManager.SetBeforeActive(watcher.Preload)
+		return services.NewBasicService(nil, watcher.Run, stopStore), nil
+	}
+
+	return services.NewIdleService(nil, stopStore), nil
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {
@@ -1132,10 +1138,12 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
-	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg := &t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+	clientCfg.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg.PerIndexOwnership = t.Cfg.IndexGateway.PerIndexOwnership.Enabled
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
-		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		clientCfg.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
