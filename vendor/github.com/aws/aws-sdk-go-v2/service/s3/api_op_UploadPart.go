@@ -143,8 +143,6 @@ import (
 //
 //   - HTTP Status Code: 404 Not Found
 //
-//   - SOAP Fault Code Prefix: Client
-//
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
 // Bucket-name.s3express-zone-id.region-code.amazonaws.com .
 //
@@ -522,6 +520,14 @@ type UploadPartOutput struct {
 	// When accessing data stored in Amazon FSx file systems using S3 access points,
 	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
+
+	// Version ID of the object.
+	//
+	// Returns the Version ID of the object for the uploaded part, if bucket
+	// versioning is enabled.
+	//
+	// This functionality is not supported for directory buckets.
+	VersionId *string
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
