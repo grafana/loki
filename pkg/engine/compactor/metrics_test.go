@@ -154,15 +154,14 @@ func TestWorkerMetrics_IndexMergeObserver(t *testing.T) {
 }
 
 func TestWorkerMetrics_ObserveIndexMerge(t *testing.T) {
-	t.Run("counts every outcome and observes input bytes and duration for each attempt", func(t *testing.T) {
+	t.Run("counts each task and observes its input bytes and duration", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newWorkerMetrics(reg)
 
 		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", PostingsInputBytes: 200, StatsInputBytes: 100}, 3*time.Second)
-		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "failed", PostingsInputBytes: 50}, time.Second)
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", PostingsInputBytes: 50}, time.Second)
 
-		require.Equal(t, 1.0, testutil.ToFloat64(m.indexMergeTasksTotal.WithLabelValues("acme", "success")))
-		require.Equal(t, 1.0, testutil.ToFloat64(m.indexMergeTasksTotal.WithLabelValues("acme", "failed")))
+		require.Equal(t, 2.0, testutil.ToFloat64(m.indexMergeTasksTotal.WithLabelValues("acme", "success")))
 
 		mfm, err := metrics.NewMetricFamilyMapFromGatherer(reg)
 		require.NoError(t, err)
@@ -176,12 +175,12 @@ func TestWorkerMetrics_ObserveIndexMerge(t *testing.T) {
 		require.Equal(t, 4.0, duration.GetSampleSum())
 	})
 
-	t.Run("observes output sizes only for attempts that report output", func(t *testing.T) {
+	t.Run("observes output sizes only for tasks that report output", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newWorkerMetrics(reg)
 
 		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", OutputBytesCompressed: 40, OutputBytesUncompressed: 90}, time.Second)
-		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "failed"}, time.Second)
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success"}, time.Second)
 
 		mfm, err := metrics.NewMetricFamilyMapFromGatherer(reg)
 		require.NoError(t, err)

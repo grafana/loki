@@ -55,9 +55,7 @@ type Config struct {
 
 // IndexMergeObserver receives IndexMerge statistics from one worker thread.
 type IndexMergeObserver interface {
-	// ObserveIndexMerge receives the summary of one task attempt, including
-	// an attempt that failed. An attempt that kills the process reports
-	// nothing.
+	// ObserveIndexMerge receives the summary of one successful task.
 	ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, duration time.Duration)
 
 	// ObserveIndexMergeInputBytes receives the size of the source rows that
