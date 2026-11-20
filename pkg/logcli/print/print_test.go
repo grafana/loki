@@ -1,11 +1,14 @@
 package print
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logcli/output"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
@@ -147,4 +150,34 @@ func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
 	require.NoErrorf(t, err, "Failed to parse %q", s)
 
 	return l
+}
+
+// Entries from different streams that share a timestamp and a line must not be
+// treated as duplicates of each other when a batch boundary falls on that timestamp.
+func TestPrintResult_OverlapKeepsSameLineFromOtherStream(t *testing.T) {
+	ts := time.Unix(100, 0)
+	streamA := loghttp.LabelSet{"app": "a"}
+	streamB := loghttp.LabelSet{"app": "b"}
+
+	buf := &bytes.Buffer{}
+	out, err := output.NewLogOutput(buf, "raw", &output.LogOutputOptions{NoLabels: true})
+	require.NoError(t, err)
+	p := NewQueryResultPrinter(nil, nil, true, 0, true, false)
+
+	// First batch ended after stream a's entry at ts, before stream b's.
+	_, last, err := p.PrintResult(loghttp.Streams{
+		{Labels: streamA, Entries: []loghttp.Entry{{Timestamp: ts, Line: "same"}}},
+	}, out, nil)
+	require.NoError(t, err)
+	require.Equal(t, "same\n", buf.String())
+
+	// Next batch starts at ts again, so it contains a's entry again plus b's.
+	buf.Reset()
+	printed, _, err := p.PrintResult(loghttp.Streams{
+		{Labels: streamA, Entries: []loghttp.Entry{{Timestamp: ts, Line: "same"}}},
+		{Labels: streamB, Entries: []loghttp.Entry{{Timestamp: ts, Line: "same"}}},
+	}, out, last)
+	require.NoError(t, err)
+	require.Equal(t, 1, printed, "only stream b's entry is new")
+	require.Equal(t, "same\n", buf.String())
 }

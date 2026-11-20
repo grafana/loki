@@ -145,7 +145,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		total := 0
 		start := q.Start
 		end := q.End
-		var lastEntry []*loghttp.Entry
+		var lastEntry []*print.BatchEntry
 		for total < q.Limit || unlimited {
 			bs := q.BatchSize
 			// We want to truncate the batch size if the remaining number
