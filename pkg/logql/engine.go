@@ -347,10 +347,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	cutoffTracker := q.newCutoffTracker()
-	if cutoffTracker != nil {
-		ctx = contextWithCutoffTracker(ctx, cutoffTracker)
-	}
+	cutoffTracker, ctx := q.newCutoffTrackerWithContext(ctx)
 
 	data, err := q.Eval(ctx)
 
