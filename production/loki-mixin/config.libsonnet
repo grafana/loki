@@ -74,5 +74,34 @@
     // Enable panels that depend on autoscaler metrics
     // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
     autoscaling_metrics: false,
+
+    // Prefix of the HPA objects created for each autoscaled component. KEDA
+    // names the HPA behind a ScaledObject "keda-hpa-<ScaledObject name>".
+    autoscaling_hpa_prefix: 'keda-hpa-',
+
+    // Per-component HPA/KEDA autoscaling rows on the Reads and Writes
+    // dashboards. hpa_name is a regex matched against the HPA name.
+    autoscaling: {
+      gateway: {
+        enabled: false,
+        hpa_name: $._config.autoscaling_hpa_prefix + 'cortex-gw(-internal)?',
+      },
+      distributor: {
+        enabled: false,
+        hpa_name: $._config.autoscaling_hpa_prefix + 'distributor',
+      },
+      ingester: {
+        enabled: false,
+        hpa_name: $._config.autoscaling_hpa_prefix + '(partition-)?ingester.*',
+      },
+      querier: {
+        enabled: false,
+        hpa_name: $._config.autoscaling_hpa_prefix + 'querier.*',
+      },
+      index_gateway: {
+        enabled: false,
+        hpa_name: $._config.autoscaling_hpa_prefix + 'index-gateway',
+      },
+    },
   },
 }
