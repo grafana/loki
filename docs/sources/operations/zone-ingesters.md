@@ -8,11 +8,11 @@ weight:
 
 The Loki zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra Kubernetes configuration you could deploy them in separate zones.
 
-By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost. However two or more ingesters restarting can result in data loss and also impacts the systems ability to ingest logs because of an unhealthy ring status.
+By default, an incoming log stream's logs are replicated to 3 ingesters, selected using consistent hashing on the ring. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost. However two or more ingesters restarting can result in data loss and also impacts the system's ability to ingest logs because of an unhealthy ring status.
 
-With zone awareness enabled, an incoming log line will be replicated to one ingester in each zone. This means that we're not only concerned about ingesters in multiple zones restarting at the same time, we can now rollout or lose an entire zone at once without impacting writes. This allows deployments with a large number of ingesters to be deployed much more quickly.
+With zone awareness enabled, an incoming log line will be replicated to one ingester in each zone. This means the concern is no longer limited to ingesters in multiple zones restarting at the same time: you can now roll out or lose an entire zone at once without impacting writes. This allows deployments with a large number of ingesters to be deployed much more quickly.
 
-At Grafana Labs, we also make use of [rollout-operator](https://github.com/grafana/rollout-operator) to manage rollouts to the 3 StatefulSets gracefully. The rollout-operator looks for labels on StatefulSets to know which ones are part of a certain rollout group, and coordinates rollouts of pods only from a single StatefulSet in the group at a time. See the README in the rollout-operator repo for a more in depth explanation.
+At Grafana Labs, we also make use of [rollout-operator](https://github.com/grafana/rollout-operator) to manage rollouts to the 3 StatefulSets gracefully. The rollout-operator looks for labels on StatefulSets to know which ones are part of a certain rollout group, and coordinates rollouts of pods only from a single StatefulSet in the group at a time. See the README in the rollout-operator repo for a more in-depth explanation.
 
 {{< admonition type="note" >}}
 This guide describes the [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet) deployment method used internally at Grafana Labs. New jsonnet deployments run zone aware ingesters by default, so this guide is only needed if you have an existing deployment that still uses a single ingester StatefulSet.
@@ -26,7 +26,7 @@ The number of zones is fixed at 3 in the jsonnet library described in this guide
 
 Migrating from a single ingester StatefulSet to 3 zone aware ingester StatefulSets. The migration follows a few general steps, regardless of deployment method.
 
-1. Configure your existing ingesters to be part of a zone, for example `zone-default`, this will allow us to later exclude them from the write path while still allowing for graceful shutdowns.
+1. Configure your existing ingesters to be part of a zone, for example `zone-default`, this allows you to later exclude them from the write path while still allowing for graceful shutdowns.
 1. Prep for the increase in active streams (due to the way streams are split between ingesters) by increasing the number of active streams allowed for your tenants.
 1. Add and scale up your new zone-aware ingester StatefulSets such that each has 1/3rd of the total number of replicas you want to run.
 1. Enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to `true` for distributors and rulers.
@@ -47,7 +47,7 @@ The following are steps to live migrate (no downtime) an existing Loki deploymen
 
 These instructions assume you are using the zone aware ingester jsonnet deployment code from this repo, see [here](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet). **If you are not using jsonnet see the relevant annotations in some steps that describe how to perform that step manually.**
 
-1. Configure the zone for the existing ingester StatefulSet as `zone-default` by setting `multi_zone_default_ingester_zone: true`, this allows us to later filter out that zone from the write path.
+1. Configure the zone for the existing ingester StatefulSet as `zone-default` by setting `multi_zone_default_ingester_zone: true`, this allows you to later filter out that zone from the write path.
 
     If you're not using jsonnet, this is done by setting the `-ingester.availability-zone=zone-default` flag (or the equivalent `availability_zone` field under the ingester's `lifecycler` YAML configuration) on the existing ingesters.
 
@@ -68,13 +68,13 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
     Setting `multi_zone_ingester_migration_enabled: true` already configures the existing `ingester` PodDisruptionBudget (PDB) with `maxUnavailable: 0` for you, so no manual PDB change is needed when using jsonnet.
 
-    If you're not using jsonnet, manually set `maxUnavailable` to `0` on the existing ingester-pdb. The new ingester StatefulSets should have a label with `rollout-group: ingester`, annotation `rollout-max-unavailable: x` (put a placeholder value in, later you should set the value of this to be some portion of the StatefulSets total replicas, for example in jsonnet we template this so that each StatefulSet runs 1/3 of the total replicas and the max unavailable is 1/3 of each StatefulSets replicas), set the update strategy to `OnDelete`, and set `-ingester.availability-zone=zone-<a|b|c>` for each of the three new StatefulSets.
+    If you're not using jsonnet, manually set `maxUnavailable` to `0` on the existing ingester-pdb. The new ingester StatefulSets should have a label with `rollout-group: ingester`, annotation `rollout-max-unavailable: x` (put a placeholder value in, later you should set the value of this to be some portion of the StatefulSets total replicas; for example, the jsonnet library templates this so that each StatefulSet runs 1/3 of the total replicas and the max unavailable is 1/3 of each StatefulSet's replicas), set the update strategy to `OnDelete`, and set `-ingester.availability-zone=zone-<a|b|c>` for each of the three new StatefulSets.
 
 1. Diff ingester and ingester-zone-a StatefulSets and make sure all config matches
 
     ```bash
-    kubectl get statefulset -n loki-dev-008 ingester -o yaml > ingester.yaml
-    kubectl get statefulset -n loki-dev-008 ingester-zone-a -o yaml > ingester-zone-a.yaml
+    kubectl get statefulset -n <namespace> ingester -o yaml > ingester.yaml
+    kubectl get statefulset -n <namespace> ingester-zone-a -o yaml > ingester-zone-a.yaml
     diff ingester.yaml ingester-zone-a.yaml
     ```
 
@@ -104,18 +104,18 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
     To also spread the ingesters within a single zone evenly across nodes, set `multi_zone_ingester_use_topology_spread: true`. This adds a [topology spread constraint](https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/) to each zone's StatefulSet, which you can tune with `multi_zone_ingester_topology_spread_max_skew` and `multi_zone_ingester_topology_spread_when_unsatisfiable`.
 
-1. Enable zone awareness on the write path by setting `multi_zone_ingester_replication_write_path_enabled: true`, this causes distributors and rulers to reshuffle series to distributors in each zone.  Be sure to check that all the distributors and rulers have restarted properly.
+1. Enable zone awareness on the write path by setting `multi_zone_ingester_replication_write_path_enabled: true`, this causes distributors and rulers to reshuffle series to ingesters in each zone.  Be sure to check that all the distributors and rulers have restarted properly.
 
     If you're not using jsonnet, enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to true for distributors and rulers.
 
-1. Wait for `query_ingesters_within` configured hours. The default is `3h`. This ensures that no data will be missing if we query a new ingester. However, because we cut chunks at least every 30m due to `chunk_idle_period` we can likely reduce this amount of time.
+1. Wait for `query_ingesters_within` configured hours. The default is `3h`. This ensures that no data is missing when querying a new ingester. However, because chunks for streams that stop receiving writes are flushed after 30 minutes of inactivity by default (`chunk_idle_period`), you can likely reduce this amount of time.
 
-1. Check that rule evaluations are still correct on the migration, look for increases in the rate for metrics with names with the following suffixes:
+1. Check that rule evaluations are still correct on the migration, look for increases in the rate for the following metrics (exposed with both a `cortex_` prefix, per rule group, and a `loki_` prefix, aggregated per tenant):
 
     ```
-    rule_evaluations_total
-    rule_evaluation_failures_total
-    rule_group_iterations_missed_total
+    cortex_prometheus_rule_evaluations_total / loki_prometheus_rule_evaluations_total
+    cortex_prometheus_rule_evaluation_failures_total / loki_prometheus_rule_evaluation_failures_total
+    cortex_prometheus_rule_group_iterations_missed_total / loki_prometheus_rule_group_iterations_missed_total
     ```
 
 1. Enable zone-aware replication on the read path `multi_zone_ingester_replication_read_path_enabled: true`. If you're not using jsonnet, set `distributor.zone-awareness-enabled` to true for queriers.
@@ -132,10 +132,10 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
     See [Flush in-memory chunks and shut down](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#flush-in-memory-chunks-and-shut-down) for details on this endpoint. For Kubernetes-native scale-down automation, you can instead use [`POST /ingester/prepare_shutdown`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#prepare-ingester-shutdown), which arms the ingester to flush and unregister on its next `SIGTERM` rather than shutting it down immediately.
 
-1. manually scale down the default ingester StatefulSet to 0 replicas, we do this via `tk apply` but you could do it via modifying the yaml.
+1. Manually scale down the default ingester StatefulSet to 0 replicas. At Grafana Labs this is done via `tk apply`, but you can also do it by modifying the YAML directly.
 
-1. merge a PR to your central config repo to keep the StatefulSet 0'd, and then remove the flux ignore.
+1. Merge a PR to your central config repo to keep the StatefulSet at 0 replicas, and then remove the flux ignore.
 
-1. clean up any remaining temporary config from the migration, for example `multi_zone_ingester_migration_enabled: true` is no longer needed.
+1. Clean up any remaining temporary config from the migration, for example `multi_zone_ingester_migration_enabled: true` is no longer needed.
 
-1. ensure that all the old default ingester PVC/PV are removed.
+1. Ensure that all the old default ingester PVC/PV are removed.
