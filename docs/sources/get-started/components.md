@@ -27,6 +27,8 @@ or individually (in microservices mode). For more information see [Deployment mo
 | [Bloom Planner (Deprecated)](#bloom-planner)       | x            |   |
 | [Bloom Builder (Deprecated)](#bloom-builder)       | x            |   |
 | [Bloom Gateway (Deprecated)](#bloom-gateway)       | x            |   |
+| [Ingest Limits (Experimental - Kafka)](#kafka-based-ingestion-experimental) | x  |   |
+| [Ingest Limits Frontend (Experimental - Kafka)](#kafka-based-ingestion-experimental) | x  |   |
 
 This page describes the responsibilities of each of these components.
 
