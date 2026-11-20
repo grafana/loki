@@ -224,6 +224,160 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	metrics.Unregister()
 }
 
+func TestPutObjectNotRetried(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+		},
+		Retry: RetrierConfig{
+			// even with retries configured, PutObject must not use them: it has no way to safely
+			// re-issue a request after the body has been partially consumed.
+			Strategy: "limited",
+			Limit:    2,
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+
+	// fail every request
+	cli := newMockObjectClient(maxFailer{max: 0})
+	ctrl.Wrap(cli)
+
+	err := ctrl.PutObject(context.Background(), "foo", strings.NewReader("body"))
+	require.ErrorIs(t, err, errFakeFailure)
+
+	// exactly one call reached the inner client; no retries were attempted
+	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
+	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	metrics.Unregister()
+}
+
+func TestPutObjectFeedsAIMDSignal(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+			AIMD: AIMD{
+				Start:         10,
+				UpperBound:    100,
+				BackoffFactor: 0.5,
+			},
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+	require.EqualValues(t, 10, testutil.ToFloat64(metrics.currentLimit))
+
+	// first call succeeds: limit grows
+	cli := newMockObjectClient(maxFailer{max: 1})
+	ctrl.Wrap(cli)
+
+	require.NoError(t, ctrl.PutObject(context.Background(), "foo", strings.NewReader("body")))
+	require.EqualValues(t, 11, testutil.ToFloat64(metrics.currentLimit))
+
+	// subsequent calls fail with a retryable error: limit shrinks
+	err := ctrl.PutObject(context.Background(), "foo", strings.NewReader("body"))
+	require.ErrorIs(t, err, errFakeFailure)
+	require.EqualValues(t, 6, testutil.ToFloat64(metrics.currentLimit))
+	metrics.Unregister()
+}
+
+func TestPutObjectNonRetryableErrDoesNotAffectLimit(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+			AIMD: AIMD{
+				Start:      10,
+				UpperBound: 100,
+			},
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+
+	cli := newMockObjectClient(maxFailer{max: 0})
+	cli.nonRetryableErrs = true
+	ctrl.Wrap(cli)
+
+	err := ctrl.PutObject(context.Background(), "foo", strings.NewReader("body"))
+	require.ErrorIs(t, err, errFakeFailure)
+
+	// the shared limit is untouched, and it's the same signal reads share
+	require.EqualValues(t, 10, testutil.ToFloat64(metrics.currentLimit))
+	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
+	metrics.Unregister()
+}
+
+func TestAwaitCapacityRespectsContextCancellation(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+			AIMD: AIMD{
+				Start:      1,
+				UpperBound: 1,
+			},
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+
+	// never fails; we only care about admission pacing here
+	cli := newMockObjectClient(maxFailer{max: 1000})
+	ctrl.Wrap(cli)
+
+	// consume the only token in the bucket
+	require.NoError(t, ctrl.PutObject(context.Background(), "foo", strings.NewReader("body")))
+	require.EqualValues(t, 1, cli.reqCounter.Load())
+
+	// the limiter now has no capacity for ~1s; a context that's about to be cancelled must not
+	// block that long waiting for a token that will arrive well after the caller has given up
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := ctrl.PutObject(ctx, "foo", strings.NewReader("body"))
+	elapsed := time.Since(start)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, elapsed, 500*time.Millisecond, "must give up once the context is done rather than wait out the full backoff")
+	// the inner client must never see a request we already gave up on
+	require.EqualValues(t, 1, cli.reqCounter.Load())
+	metrics.Unregister()
+}
+
+func TestPutObjectSharesLimiterWithGetObject(t *testing.T) {
+	cfg := Config{
+		Controller: ControllerConfig{
+			Strategy: "aimd",
+			AIMD: AIMD{
+				Start:         10,
+				UpperBound:    100,
+				BackoffFactor: 0.5,
+			},
+		},
+	}
+
+	metrics := NewMetrics(t.Name(), cfg, nil)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
+
+	// GetObject succeeds via the retrier, PutObject fails directly: both must move the same limit.
+	cli := newMockObjectClient(maxFailer{max: 0})
+	ctrl.Wrap(cli)
+
+	err := ctrl.PutObject(context.Background(), "foo", strings.NewReader("body"))
+	require.ErrorIs(t, err, errFakeFailure)
+	require.EqualValues(t, 5, testutil.ToFloat64(metrics.currentLimit))
+
+	cli.strategy = maxFailer{max: 1000}
+	_, _, err = ctrl.GetObject(context.Background(), "foo")
+	require.NoError(t, err)
+	require.EqualValues(t, 6, testutil.ToFloat64(metrics.currentLimit))
+	metrics.Unregister()
+}
+
 func runAndMeasureRate(ctx context.Context, ctrl Controller, duration time.Duration) (float64, float64) {
 	var count, success float64
 
@@ -253,7 +407,11 @@ type mockObjectClient struct {
 }
 
 func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
-	panic("not implemented")
+	if m.strategy.fail(m.reqCounter.Inc()) {
+		return errFakeFailure
+	}
+
+	return nil
 }
 
 func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
@@ -281,7 +439,11 @@ func (m *mockObjectClient) List(context.Context, string, string) ([]client.Stora
 }
 
 func (m *mockObjectClient) DeleteObject(context.Context, string) error {
-	panic("not implemented")
+	if m.strategy.fail(m.reqCounter.Inc()) {
+		return errFakeFailure
+	}
+
+	return nil
 }
 func (m *mockObjectClient) IsObjectNotFoundErr(error) bool { return false }
 func (m *mockObjectClient) IsRetryableErr(error) bool      { return !m.nonRetryableErrs }
