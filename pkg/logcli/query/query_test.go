@@ -564,24 +564,39 @@ func TestDoQueryPrintsWarnings(t *testing.T) {
 		},
 	}}
 	tests := []struct {
-		name        string
-		instant     bool
-		warnings    [][]string
-		expectedLog string
+		name         string
+		instant      bool
+		showWarnings bool
+		warnings     [][]string
+		expectedLog  string
 	}{
 		{
-			name:        "instant query",
+			name:         "instant query",
+			instant:      true,
+			showWarnings: true,
+			warnings:     [][]string{{"partial results"}},
+			expectedLog:  "Warning: partial results\n",
+		},
+		{
+			name:         "range query in batches prints each warning once",
+			showWarnings: true,
+			warnings:     [][]string{{"partial results"}, nil, {"partial results", "series limit reached"}},
+			expectedLog:  "Warning: partial results\nWarning: series limit reached\n",
+		},
+		{
+			name:         "range query without warnings",
+			showWarnings: true,
+			expectedLog:  "",
+		},
+		{
+			name:        "instant query doesn't print warnings by default",
 			instant:     true,
 			warnings:    [][]string{{"partial results"}},
-			expectedLog: "Warning: partial results\n",
+			expectedLog: "",
 		},
 		{
-			name:        "range query in batches prints each warning once",
+			name:        "range query doesn't print warnings by default",
 			warnings:    [][]string{{"partial results"}, nil, {"partial results", "series limit reached"}},
-			expectedLog: "Warning: partial results\nWarning: series limit reached\n",
-		},
-		{
-			name:        "range query without warnings",
 			expectedLog: "",
 		},
 	}
@@ -598,13 +613,14 @@ func TestDoQueryPrintsWarnings(t *testing.T) {
 
 			tc := &warningsQueryClient{testQueryClient: newTestQueryClient(streams...), warnings: tt.warnings}
 			q := Query{
-				QueryString: `{test="simple"}`,
-				Start:       time.Unix(1, 0),
-				End:         time.Unix(5, 0),
-				Limit:       10,
-				BatchSize:   2,
-				Forward:     true,
-				Quiet:       true,
+				QueryString:  `{test="simple"}`,
+				Start:        time.Unix(1, 0),
+				End:          time.Unix(5, 0),
+				Limit:        10,
+				BatchSize:    2,
+				Forward:      true,
+				Quiet:        true,
+				ShowWarnings: tt.showWarnings,
 			}
 			if tt.instant {
 				q.SetInstant(time.Unix(5, 0))
