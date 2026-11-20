@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/push"
@@ -77,26 +79,11 @@ func requireShardsCarryTheStream(t *testing.T, source logproto.InternalStreamAda
 		}
 	}
 
-	// How many entries each shard must hold: an even share, with the remainder going to the
-	// leading shards. Counted here rather than through nestedEntryCount, which is under test.
-	base, remainder := len(want)/len(shards), len(want)%len(shards)
-
 	seen := 0
 	seenNames := map[string]struct{}{}
 	for s := range shards {
 		shard := &shards[s]
 
-		held := 0
-		for i := range shard.ResourceLogs {
-			for j := range shard.ResourceLogs[i].ScopeLogs {
-				held += len(shard.ResourceLogs[i].ScopeLogs[j].Entries)
-			}
-		}
-		wantHeld := base
-		if s < remainder {
-			wantHeld++
-		}
-		require.Equal(t, wantHeld, held, "shard %d holds the wrong share of the entries", s)
 		// The source's labels and hash, carried through unchanged. Naming a shard is the caller's,
 		// so these are placeholders rather than what a named shard ends up with.
 		require.NotEqual(t, source.Labels, shard.Labels, "shard %d carries the stream's own name", s)
@@ -354,42 +341,55 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 // rewriting an entry rewrites it for both. Everything above the entries is the shard's own, and
 // appending to a shard cannot reach the entries the next one holds.
 func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
-	for _, shards := range []int{1, 2, 5} {
-		input := buildGroupedStream(2, 2, 3)
-		out := shardNested(input, shardLabels, shards, 0)
-		require.NotEmpty(t, out)
+	for _, packed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("packed=%t", packed), func(t *testing.T) {
+			shardStream := func(stream logproto.InternalStreamAdapter, count int) []logproto.InternalStreamAdapter {
+				var quotas []int
+				if packed {
+					quotas = packedShardQuotas(stream, expandedShardSize(stream), count, uint64((expandedShardSize(stream)+count-1)/count))
+				}
+				return shardNestedWithQuotas(stream, shardLabels, count, 0, quotas)
+			}
+			for _, shards := range []int{1, 2, 5} {
+				input := buildGroupedStream(2, 2, 3)
+				out := shardStream(input, shards)
+				require.NotEmpty(t, out)
 
-		out[0].Labels = "rewritten"
-		out[0].Hash = 99
-		out[0].ResourceLogs[0].Attrs = buildNestedAttrs("service", "MUTATED")
+				out[0].Labels = "rewritten"
+				out[0].Hash = 99
+				out[0].ResourceLogs[0].Attrs = buildNestedAttrs("service", "MUTATED")
 
-		require.Equal(t, `{app="a"}`, input.Labels, "shards %d: labels", shards)
-		require.Equal(t, uint64(7), input.Hash, "shards %d: hash", shards)
-		require.Equal(t, "svc-0", input.ResourceLogs[0].Attrs[0].Value, "shards %d: attributes", shards)
+				require.Equal(t, `{app="a"}`, input.Labels, "shards %d: labels", shards)
+				require.Equal(t, uint64(7), input.Hash, "shards %d: hash", shards)
+				require.Equal(t, "svc-0", input.ResourceLogs[0].Attrs[0].Value, "shards %d: attributes", shards)
 
-		// The entries are the source's, not copies of them, which is what makes a shard free.
-		out[0].ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
-		require.Equal(t, "rewritten", input.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
-			"shards %d: a shard holds copies of the entries rather than the stream's own", shards)
+				// The entries are the source's, not copies of them, which is what makes a shard free.
+				out[0].ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
+				require.Equal(t, "rewritten", input.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
+					"shards %d: a shard holds copies of the entries rather than the stream's own", shards)
 
-		// Appending to a shard reallocates rather than reaching into the source. The scope has
-		// to be one a boundary falls inside, or the shard holds it whole and an append runs off
-		// the end where nothing would notice.
-		split := buildGroupedStream(1, 1, 9)
-		partial := shardNested(split, shardLabels, 3, 0)
-		require.Len(t, partial, 3)
-		require.Len(t, partial[0].ResourceLogs[0].ScopeLogs[0].Entries, 3, "a partial run")
+				// Appending to a shard reallocates rather than reaching into the source. The scope has
+				// to be one a boundary falls inside, or the shard holds it whole and an append runs off
+				// the end where nothing would notice.
+				split := buildGroupedStream(1, 1, 9)
+				partial := shardStream(split, 3)
+				require.Len(t, partial, 3)
+				firstCount := partial[0].EntryCount()
+				require.Positive(t, firstCount)
+				require.Less(t, firstCount, split.EntryCount(), "a partial run")
 
-		before := make([]push.Entry, len(split.ResourceLogs[0].ScopeLogs[0].Entries))
-		copy(before, split.ResourceLogs[0].ScopeLogs[0].Entries)
+				before := make([]push.Entry, len(split.ResourceLogs[0].ScopeLogs[0].Entries))
+				copy(before, split.ResourceLogs[0].ScopeLogs[0].Entries)
 
-		first := &partial[0].ResourceLogs[0].ScopeLogs[0]
-		first.Entries = append(first.Entries, buildEntry("appended"))
+				first := &partial[0].ResourceLogs[0].ScopeLogs[0]
+				first.Entries = append(first.Entries, buildEntry("appended"))
 
-		require.Equal(t, before, split.ResourceLogs[0].ScopeLogs[0].Entries,
-			"appending to a shard reached into the source")
-		require.Equal(t, "r0-s0-e3", partial[1].ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
-			"appending to a shard overwrote what the next one holds")
+				require.Equal(t, before, split.ResourceLogs[0].ScopeLogs[0].Entries,
+					"appending to a shard reached into the source")
+				require.Equal(t, before[firstCount].Line, partial[1].ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
+					"appending to a shard overwrote what the next one holds")
+			}
+		})
 	}
 }
 
@@ -461,5 +461,201 @@ func BenchmarkRateSharding(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func expandedShardSize(stream logproto.InternalStreamAdapter) int {
+	size := 0
+	stream.EachGroup(func(resource, scope []logproto.LabelAdapter, entries []logproto.Entry) {
+		size += (util.StructuredMetadataSize(resource)+util.StructuredMetadataSize(scope))*len(entries) + util.EntriesTotalSize(entries)
+	})
+	return size
+}
+
+func TestPackedShardQuotas(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sizes  []int
+		shards int
+		target uint64
+		want   []int
+	}{
+		{"fill before splitting", []int{10, 10, 10, 10, 10, 10, 10}, 10, 30, []int{3, 3, 1}},
+		{"front heavy", []int{90, 10, 10, 10, 10, 10, 10, 10, 10, 10}, 10, 100, []int{2, 8}},
+		{"back heavy", []int{10, 10, 10, 10, 10, 10, 10, 10, 10, 90}, 10, 100, []int{9, 1}},
+		{"oversized entry", []int{900, 1, 1, 1, 1}, 10, 100, []int{1, 4}},
+		{"zero byte entries", []int{0, 0, 0, 0}, 10, 100, []int{4}},
+		{"zero target", []int{10}, 10, 0, nil},
+		{"zero shards", []int{10}, 0, 100, nil},
+		{"empty", nil, 10, 100, nil},
+		{"one shard", []int{100, 1, 1}, 1, 10, []int{3}},
+		{"entry boundary needs extra output", []int{60, 60, 60}, 10, 100, []int{1, 1, 1}},
+		{"recommended count caps fanout", []int{80, 80, 80, 80}, 3, 100, []int{1, 2, 1}},
+		{"binding ceiling shares excess", []int{20, 20, 20, 20, 20, 20, 20, 20, 20, 20}, 3, 10, []int{3, 4, 3}},
+		{"ceiling avoids a large tail", []int{128, 256, 192, 64, 256, 64, 64, 256}, 4, 128, []int{2, 2, 2, 2}},
+		{"average equals target", []int{60, 60, 60, 60, 60}, 3, 100, []int{2, 1, 2}},
+		{"target above max int", []int{1, 2, 3}, 10, ^uint64(0), []int{3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := make([]logproto.Entry, len(tc.sizes))
+			for i, size := range tc.sizes {
+				entries[i] = buildEntry(strings.Repeat("x", size))
+			}
+			input := *logproto.FromStream(logproto.Stream{Labels: shardLabels.String(), Entries: entries})
+			quotas := packedShardQuotas(input, expandedShardSize(input), tc.shards, tc.target)
+			require.Equal(t, tc.want, quotas)
+			if len(quotas) == 0 {
+				return
+			}
+			out := shardNestedWithQuotas(input, shardLabels, tc.shards, tc.shards-1, quotas)
+			requireShardsCarryTheStream(t, input, out)
+			for i := range out {
+				require.Equal(t, quotas[i], out[i].EntryCount())
+			}
+		})
+	}
+	t.Run("shared and entry metadata contribute to size", func(t *testing.T) {
+		input := *logproto.FromStream(logproto.Stream{Labels: shardLabels.String(), Entries: []logproto.Entry{buildEntry("x"), buildEntry("x"), buildEntry("x"), buildEntry("x")}})
+		input.ResourceLogs[0].Attrs = buildNestedAttrs("r", strings.Repeat("r", 39))
+		input.ResourceLogs[0].ScopeLogs[0].Attrs = buildNestedAttrs("s", strings.Repeat("s", 9))
+		input.ResourceLogs[0].ScopeLogs[0].Entries[0].StructuredMetadata = buildNestedAttrs("e", strings.Repeat("e", 101))
+		require.Equal(t, 306, expandedShardSize(input))
+		require.Equal(t, []int{1, 3}, packedShardQuotas(input, 306, 4, 153))
+	})
+	t.Run("group boundaries and empty groups", func(t *testing.T) {
+		input := buildGroupedStream(4, 3, 7)
+		input.ResourceLogs = append([]logproto.ResourceLogs{{}}, input.ResourceLogs...)
+		input.ResourceLogs[1].ScopeLogs = append([]logproto.ScopeLogs{{}}, input.ResourceLogs[1].ScopeLogs...)
+		for count := 1; count <= input.EntryCount(); count++ {
+			quotas := packedShardQuotas(input, expandedShardSize(input), count, 100)
+			out := shardNestedWithQuotas(input, shardLabels, count+5, 3, quotas)
+			requireShardsCarryTheStream(t, input, out)
+			require.LessOrEqual(t, attrCopies(out), 4+12+2*(count-1))
+		}
+	})
+}
+
+func BenchmarkPackedRateSharding(b *testing.B) {
+	for _, shape := range []struct {
+		name                               string
+		resources, scopes, entries, shards int
+	}{
+		{"small push", 1, 1, 100, 100}, {"medium push", 1, 1, 1000, 100}, {"large push", 1, 1, 8000, 8}, {"many groups", 100, 10, 1, 100},
+	} {
+		for _, attrs := range []int{0, 12} {
+			input := benchNestedStream(shape.resources, shape.scopes, shape.entries, attrs)
+			size := expandedShardSize(input)
+			for _, target := range []int{0, 64 * 1024} {
+				b.Run(fmt.Sprintf("%s/attrs=%d/target=%d", shape.name, attrs, target), func(b *testing.B) {
+					tracker := NewShardTracker()
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if target == 0 {
+							start := tracker.LastShardNum("tenant", input.Hash)
+							out := shardNested(input, shardLabels, shape.shards, start)
+							tracker.SetLastShardNum("tenant", input.Hash, start+len(out))
+							continue
+						}
+						entries := input.EntryCount()
+						count := min(shape.shards, entries)
+						var quotas []int
+						if target > 0 {
+							quotas = packedShardQuotas(input, size, shape.shards, uint64(target))
+							count = len(quotas)
+						}
+						start := tracker.Reserve("tenant", input.Hash, shape.shards, count, target > 0)
+						out := shardNestedWithQuotas(input, shardLabels, shape.shards, start, quotas)
+						if len(out) != count {
+							b.Fatal("unexpected fanout")
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func FuzzPackedShardQuotas(f *testing.F) {
+	f.Add([]byte{0, 0, 255, 0, 0}, uint8(3))
+	f.Add([]byte{255, 1, 1, 1, 1}, uint8(2))
+	f.Add([]byte{0, 0, 0, 0, 0}, uint8(3))
+	f.Fuzz(func(t *testing.T, data []byte, n uint8) {
+		if len(data) == 0 || len(data) > 1024 {
+			return
+		}
+		input := buildGroupedStream(1, 1, len(data))
+		for i, size := range data {
+			input.ResourceLogs[0].ScopeLogs[0].Entries[i].Line = strings.Repeat("x", int(size)*16)
+		}
+		count := min(int(n)+1, len(data))
+		quotas := packedShardQuotas(input, expandedShardSize(input), count, 1024)
+		require.NotEmpty(t, quotas)
+		require.LessOrEqual(t, len(quotas), count)
+		total := 0
+		for _, quota := range quotas {
+			require.Positive(t, quota)
+			total += quota
+		}
+		require.Equal(t, len(data), total)
+		out := shardNestedWithQuotas(input, shardLabels, count, 0, quotas)
+		requireShardsCarryTheStream(t, input, out)
+	})
+}
+
+func TestPackedShardingPreservesNestedEntries(t *testing.T) {
+	rng := rand.New(rand.NewPCG(17, 31))
+	for trial := range 300 {
+		input := logproto.InternalStreamAdapter{Labels: shardLabels.String(), Hash: 7}
+		resourceCount := 1 + rng.IntN(5)
+		for r := range resourceCount {
+			resource := logproto.ResourceLogs{}
+			if rng.IntN(2) == 0 {
+				resource.Attrs = buildNestedAttrs("resource", strings.Repeat("r", rng.IntN(256)))
+			}
+			scopeCount := rng.IntN(6)
+			for g := range scopeCount {
+				scope := logproto.ScopeLogs{}
+				if rng.IntN(2) == 0 {
+					scope.Attrs = buildNestedAttrs("scope", strings.Repeat("s", rng.IntN(128)))
+				}
+				entryCount := rng.IntN(20)
+				for e := range entryCount {
+					size := rng.IntN(2048)
+					if trial%10 == 0 {
+						size = 0
+					}
+					entry := buildEntry(strings.Repeat("x", size))
+					entry.Timestamp = time.Unix(int64(r), int64(g*20+e))
+					if rng.IntN(3) == 0 {
+						entry.StructuredMetadata = buildNestedAttrs("entry", strings.Repeat("m", rng.IntN(128)))
+					}
+					scope.Entries = append(scope.Entries, entry)
+				}
+				resource.ScopeLogs = append(resource.ScopeLogs, scope)
+			}
+			input.ResourceLogs = append(input.ResourceLogs, resource)
+		}
+		before, err := input.Marshal()
+		require.NoError(t, err)
+		entries, size := input.EntryCount(), expandedShardSize(input)
+		totalShards := 1 + rng.IntN(37)
+		quotas := packedShardQuotas(input, size, totalShards, uint64(1+rng.IntN(64*1024)))
+		count := len(quotas)
+		if count == 0 {
+			require.Zero(t, entries)
+			continue
+		}
+		out := shardNestedWithQuotas(input, shardLabels, totalShards, rng.IntN(totalShards), quotas)
+		require.Len(t, out, count)
+		requireShardsCarryTheStream(t, input, out)
+		after, err := input.Marshal()
+		require.NoError(t, err)
+		require.Equal(t, before, after, "sharding mutated input in trial %d", trial)
+		gotSize := 0
+		for _, shard := range out {
+			gotSize += expandedShardSize(shard)
+		}
+		require.Equal(t, size, gotSize)
 	}
 }

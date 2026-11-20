@@ -99,6 +99,18 @@ Because rate-based sharding is reactive and relies on successive calls to Ingest
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
 In practice, this is still sufficient to keep log producers from being rate limited by per-stream rate limits.
 
+#### Limit the number of shards used by each push
+
+The experimental `distributor.pack_streams` setting defaults to `false` and applies to all tenants. Without packing, Loki spreads each push across all shards, even if that produces many small outputs. Packing groups consecutive entries into fewer outputs when their byte size allows it, reducing number of sharded push requests sent to downstream components.
+
+The **packing target** is the amount of data Loki aims to put in each output shard for one push. It starts at the byte value of the effective `desired_rate`, including tenant and policy overrides. For example, `desired_rate: 128KB` gives a packing target of 128 KB per output shard. A zero `desired_rate` disables packing.
+
+[Rate-based sharding](#rate-based-sharding) determines how many shards the stream needs from its ingestion rate. If set, `max_shard_count` caps that number. Packing can use fewer shards for an individual push, but cannot exceed this calculated count. Successive pushes rotate across the available shard numbers to distribute the load.
+
+Since, Loki does not split log lines across shards, outputs can exceed the packing target when an entry is larger than the target or when the available shards cannot hold the push at that size. For example, a 512 KB push with only two available shards needs outputs averaging 256 KB, even if the initial target is 128 KB. Loki increases the target for that push and chooses entry boundaries that balance the remaining data.
+
+Exceeding the packing target does not itself reject entries or require corrective action; other ingestion limits still apply. If you see `per_stream_rate_limit` rejections, refer to [rate-limit troubleshooting](../request-validation-rate-limits/#per_stream_rate_limit) and [sharding metrics](#automatic-stream-sharding-metrics).
+
 ### Time-based sharding
 
 Time-based sharding works by adding a different label, `__time_shard__`, to streams. Loki calculates the value of this label from each log entry's timestamp, divided into buckets of `max_chunk_age`/2. This lets Loki accept out-of-order log entries that are older than would normally be allowed, because each time bucket becomes its own stream instead of extending an existing one.
