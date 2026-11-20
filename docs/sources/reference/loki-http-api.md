@@ -446,7 +446,7 @@ gave this response:
 #### Multi-tenant queries
 
 If your cluster has
-[Grafana Loki Multi-Tenancy](../../operations/multi-tenancy/) enabled,
+[Grafana Loki Multi-Tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
 
