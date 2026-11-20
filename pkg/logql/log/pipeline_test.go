@@ -1,6 +1,7 @@
 package log
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -895,4 +896,22 @@ func BenchmarkLogfmtExpressionParser(b *testing.B) {
 	}
 
 	logfmtBenchmark(b, parser)
+}
+
+func TestPipelineResetClearsResultCache(t *testing.T) {
+	lbs := labels.FromStrings("foo", "bar")
+	p := NewPipeline([]Stage{
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+	}).(*pipeline)
+	sp := p.ForStream(lbs)
+
+	// Each line carries distinct structured metadata, as OTLP trace ids do, so every line adds a cache entry.
+	for i := 0; i < 100; i++ {
+		sm := labels.FromStrings("trace_id", strconv.Itoa(i))
+		_, _, _ = sp.Process(0, []byte("line"), sm)
+	}
+	require.Greater(t, len(p.baseBuilder.resultCache), 1)
+
+	p.Reset()
+	require.Len(t, p.baseBuilder.resultCache, 0)
 }
