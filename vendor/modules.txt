@@ -957,6 +957,11 @@ github.com/grafana/dskit/test
 github.com/grafana/dskit/timeutil
 github.com/grafana/dskit/tracing
 github.com/grafana/dskit/user
+# github.com/grafana/e2e v0.1.2-0.20261026011823-81b51f5a0481
+## explicit; go 1.25.5
+github.com/grafana/e2e
+github.com/grafana/e2e/db
+github.com/grafana/e2e/images
 # github.com/grafana/gomemcache v0.0.0-20261112174412-3f2aa5dee9f7
 ## explicit; go 1.23
 github.com/grafana/gomemcache/memcache

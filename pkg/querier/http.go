@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,12 +171,12 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 
 	resLength := 0
 	if resp != nil {
-		resLength = len(resp.Series)
-
 		// filter the response to catch the empty matcher case
 		if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
 			resp = q.filterAggregatedMetricsFromSeriesResp(resp)
 		}
+		resp = removeShardLabelsFromSeriesResp(resp)
+		resLength = len(resp.Series)
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
@@ -359,6 +360,46 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
 	resp.Series = slices.DeleteFunc(resp.Series, isPatternIngesterSeries)
 	return resp
+}
+
+// removeShardLabelsFromSeriesResp removes the labels that the distributor adds when it divides a
+// stream, so the series API returns the labels the client wrote. Streams that then have the same
+// labels, such as the shards of one stream, become one series.
+//
+// It keeps __aggregated_metric__ and __pattern__, which tell apart the streams the pattern ingester
+// writes. The series API leaves those streams out unless a matcher asks for them.
+func removeShardLabelsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
+	seen := make(map[string]struct{}, len(resp.Series))
+	series := resp.Series[:0]
+	for _, s := range resp.Series {
+		s.Labels = slices.DeleteFunc(s.Labels, func(l logproto.SeriesIdentifier_LabelsEntry) bool {
+			return l.Key == constants.TimeShardLabel || l.Key == constants.StreamShardLabel
+		})
+		key := seriesKey(s)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		series = append(series, s)
+	}
+	resp.Series = series
+	return resp
+}
+
+// seriesKey identifies a series by its labels, whatever their order.
+func seriesKey(s logproto.SeriesIdentifier) string {
+	labels := slices.Clone(s.Labels)
+	slices.SortFunc(labels, func(a, b logproto.SeriesIdentifier_LabelsEntry) int {
+		return strings.Compare(a.Key, b.Key)
+	})
+	var b strings.Builder
+	for _, l := range labels {
+		b.WriteString(l.Key)
+		b.WriteByte(0)
+		b.WriteString(l.Value)
+		b.WriteByte(0)
+	}
+	return b.String()
 }
 
 func isPatternIngesterSeries(s logproto.SeriesIdentifier) bool {
