@@ -23,6 +23,12 @@ type Metrics struct {
 	hintWaitDuration *prometheus.HistogramVec
 	// hintRangesReturned measures the number of time ranges returned per query.
 	hintRangesReturned prometheus.Histogram
+	// subRequestHintRanges measures the number of hint ranges attached to each
+	// narrowed sub-request, after coarsening.
+	subRequestHintRanges prometheus.Histogram
+	// coarsenedSubRequests counts narrowed sub-requests whose hint ranges were
+	// coarsened to fit MaxHintRangesPerRequest.
+	coarsenedSubRequests prometheus.Counter
 	// hintPassthrough counts sub-requests that waited for the hint lookup and
 	// then passed through without hint narrowing. Ingester-window and
 	// pre-min-date sub-requests don't wait, so they are counted in
@@ -52,6 +58,10 @@ type Metrics struct {
 	dryRunVerified *prometheus.CounterVec
 }
 
+// hintRangeBuckets reach about 16M ranges. A lookup for a long metric query
+// can return millions.
+var hintRangeBuckets = append([]float64{0}, prometheus.ExponentialBuckets(1, 4, 13)...)
+
 // NewMetrics creates a new Metrics instance registered with reg.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return &Metrics{
@@ -77,7 +87,16 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		hintRangesReturned: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "logline_query_frontend_hint_ranges_returned",
 			Help:    "Number of time ranges returned by ProvideHints per query",
-			Buckets: []float64{0, 1, 2, 5, 10, 20, 50, 100, 200, 500},
+			Buckets: hintRangeBuckets,
+		}),
+		subRequestHintRanges: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:    "logline_query_frontend_sub_request_hint_ranges",
+			Help:    "Number of hint ranges attached to each narrowed sub-request, after coarsening",
+			Buckets: hintRangeBuckets,
+		}),
+		coarsenedSubRequests: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "logline_query_frontend_coarsened_sub_requests_total",
+			Help: "Total narrowed sub-requests whose hint ranges were coarsened to fit max_hint_ranges_per_request",
 		}),
 		hintPassthrough: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_query_frontend_hint_passthrough_total",

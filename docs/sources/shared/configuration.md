@@ -5101,6 +5101,12 @@ query:
   # CLI flag: -logline-query.hint-cache-max-size-mb
   [hint_cache_max_size_mb: <int> | default = 0]
 
+  # Maximum hint ranges attached to one split or shard sub-request. Over it, the
+  # smallest gaps between a document shard's ranges are merged, so every match
+  # stays covered. 0 disables the cap.
+  # CLI flag: -logline-query.max-hint-ranges-per-request
+  [max_hint_ranges_per_request: <int> | default = 100000]
+
 correctness:
   # Comma-separated Loki query endpoint base URLs
   # CLI flag: -logline-correctness.loki-query-endpoints
