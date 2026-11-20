@@ -15,8 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -210,6 +212,12 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 //
 // The caller must not modify the region. When the cache answers with an item that is not compressed,
 // the region aliases a buffer that the cache owns.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [StatMetadataPrefetchRequestsToCache]
+//   - [StatMetadataPrefetchBytesFromCache]
+//   - [StatMetadataPrefetchRequestsToStorage]
+//   - [StatMetadataPrefetchBytesFromStorage]
 func (l *CachedRegionLoader) Load(ctx context.Context, req PrefetchRequest, opts ...LoadOption) (region []byte, err error) {
 	start := time.Now()
 	l.loadRequests.Inc()
@@ -278,7 +286,18 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 		answers <- answer{region, fromCache, err}
 	}
 	go read(true, func() ([]byte, error) { return l.loadFromCache(ctx, req.Path) })
-	go read(false, func() ([]byte, error) { return l.loadFromStorage(ctx, req, size) })
+	go read(false, func() ([]byte, error) {
+		// An isolated region holds only the storage reads of this load, and not those of concurrent work in the
+		// region of ctx. The instrumented bucket counts a request before it sends it, so the count includes
+		// the failed requests. The merge into the region of ctx runs when the read returns. A read that the
+		// cache answer cancels does not delay Load, so a query that ends first does not count its request.
+		return xcap.RunIsolated(ctx, "prefetch_load",
+			func(ctx context.Context) ([]byte, error) { return l.loadFromStorage(ctx, req, size) },
+			xcap.MergeDerived(
+				xcap.Derive(StatMetadataPrefetchRequestsToStorage, bucketstat.StatObjectRequestsGetRange),
+				xcap.Derive(StatMetadataPrefetchBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+			))
+	})
 
 	var storageErr error
 	for range 2 {
@@ -298,6 +317,7 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]byte, error) {
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
 	found, bufs, _, err := l.cache.Fetch(ctx, []string{hashedKey})
+	recordPrefetchCacheLookup(ctx)
 	if len(found) == 0 {
 		if err != nil {
 			// A cancelled context also fails the read, when the other read wins the race.
@@ -318,6 +338,7 @@ func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]
 		}
 		return nil, err
 	}
+	recordPrefetchCacheBytes(ctx, int64(len(region)))
 	return region, nil
 }
 

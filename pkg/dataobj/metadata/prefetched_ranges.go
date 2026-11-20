@@ -59,8 +59,8 @@ func (rs PrefetchedRanges) Valid() bool {
 	return true
 }
 
-// size returns the number of bytes that the ranges hold.
-func (rs PrefetchedRanges) size() int64 {
+// DataBytes returns the total length of the data of the ranges.
+func (rs PrefetchedRanges) DataBytes() int64 {
 	var n int64
 	for _, r := range rs {
 		n += int64(len(r.Data))
