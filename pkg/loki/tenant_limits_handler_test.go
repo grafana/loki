@@ -1,10 +1,12 @@
 package loki
 
 import (
+	"encoding/json"
 	"io"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v4"
@@ -115,7 +117,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
-			req.Header.Set("X-Scope-OrgID", tt.tenantID)
+			req = req.WithContext(user.InjectOrgID(req.Context(), tt.tenantID))
 
 			loki := &Loki{
 				TenantLimits: mockTenantLimits,
@@ -139,4 +141,44 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTenantLimitsHandlerWithContextTenant(t *testing.T) {
+	limits := &validation.Limits{
+		IngestionRateMB: 10.0,
+	}
+	mockTenantLimits := &mockTenantLimits{limits: limits}
+
+	loki := &Loki{
+		TenantLimits: mockTenantLimits,
+	}
+
+	t.Run("resolves tenant from request context when auth is disabled and header is omitted", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/loki/api/v1/drilldown-limits", nil)
+		ctx := user.InjectOrgID(req.Context(), "test-tenant")
+		req = req.WithContext(ctx)
+
+		handler := loki.tenantLimitsHandler(true)
+		w := httptest.NewRecorder()
+		handler(w, req)
+
+		resp := w.Result()
+		require.Equal(t, 200, resp.StatusCode)
+
+		var res DrilldownConfigResponse
+		err := json.NewDecoder(resp.Body).Decode(&res)
+		require.NoError(t, err)
+		require.Equal(t, float64(10), res.Limits["ingestion_rate_mb"])
+	})
+
+	t.Run("returns unauthorized when tenant is absent from request context", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/loki/api/v1/drilldown-limits", nil)
+
+		handler := loki.tenantLimitsHandler(true)
+		w := httptest.NewRecorder()
+		handler(w, req)
+
+		resp := w.Result()
+		require.Equal(t, 401, resp.StatusCode)
+	})
 }

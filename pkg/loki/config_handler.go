@@ -223,7 +223,7 @@ func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
 
 func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		user, err := tenant.TenantID(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
