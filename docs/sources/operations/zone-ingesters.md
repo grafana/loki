@@ -8,7 +8,7 @@ weight:
 
 The Loki zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra Kubernetes configuration you could deploy them in separate zones.
 
-By default, an incoming log stream's logs are replicated to 3 ingesters, selected using consistent hashing on the ring. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost. However two or more ingesters restarting can result in data loss and also impacts the system's ability to ingest logs because of an unhealthy ring status.
+By default, an incoming log stream's logs are replicated to 3 (`-distributor.replication-factor) ingesters, selected using consistent hashing on the ring. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost. However two or more ingesters restarting can result in data loss and also impacts the system's ability to ingest logs because of an unhealthy ring status.
 
 With zone awareness enabled, an incoming log line will be replicated to one ingester in each zone. This means the concern is no longer limited to ingesters in multiple zones restarting at the same time: you can now roll out or lose an entire zone at once without impacting writes. This allows deployments with a large number of ingesters to be deployed much more quickly.
 
@@ -110,12 +110,12 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
 1. Wait for `query_ingesters_within` configured hours. The default is `3h`. This ensures that no data is missing when querying a new ingester. However, because chunks for streams that stop receiving writes are flushed after 30 minutes of inactivity by default (`chunk_idle_period`), you can likely reduce this amount of time.
 
-1. Check that rule evaluations are still correct on the migration, look for increases in the rate for the following metrics (exposed with both a `cortex_` prefix, per rule group, and a `loki_` prefix, aggregated per tenant):
+1. Check that rule evaluations are still correct on the migration, look for increases in the rate for the following metrics:
 
     ```
-    cortex_prometheus_rule_evaluations_total / loki_prometheus_rule_evaluations_total
-    cortex_prometheus_rule_evaluation_failures_total / loki_prometheus_rule_evaluation_failures_total
-    cortex_prometheus_rule_group_iterations_missed_total / loki_prometheus_rule_group_iterations_missed_total
+    loki_prometheus_rule_evaluations_total
+    loki_prometheus_rule_evaluation_failures_total
+    loki_prometheus_rule_group_iterations_missed_total
     ```
 
 1. Enable zone-aware replication on the read path `multi_zone_ingester_replication_read_path_enabled: true`. If you're not using jsonnet, set `distributor.zone-awareness-enabled` to true for queriers.
