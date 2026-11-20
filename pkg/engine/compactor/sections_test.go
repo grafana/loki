@@ -166,7 +166,9 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 	for _, stat := range object.stats {
 		require.NoError(t, builder.AppendStat(object.tenant, stat))
 	}
-	for _, row := range object.postings {
+	// The merge builder requires rows in strictly increasing CompareRows order,
+	// as an index object stores them. Fixtures may list the rows in any order.
+	for _, row := range slices.SortedFunc(slices.Values(object.postings), postings.CompareRows) {
 		switch row.Kind {
 		case postings.KindBloom:
 			require.NoError(t, builder.AppendPostingsBloomEntry(object.tenant, row.BloomEntry()))

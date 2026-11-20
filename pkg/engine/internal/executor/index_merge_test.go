@@ -584,6 +584,21 @@ func TestDoIndexMerge(t *testing.T) {
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "v"}, artifact.PostingKeys.Max())
 	})
 
+	t.Run("returns an error when two source indexes give one logs section different time ranges for a posting", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		observe := func(logObject string, ts int64) postings.LabelObservation {
+			return postings.LabelObservation{
+				ObjectPath: logObject, ColumnName: "service", LabelValue: "api", StreamID: 1,
+				Time: postings.At(time.Unix(0, ts)), UncompressedSize: 100,
+			}
+		}
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-a.dat", []postings.LabelObservation{observe("log-A", 100)})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{observe("log-B", 200), observe("log-A", 300)})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		require.ErrorContains(t, err, `object "log-A", section 0 have different time ranges`)
+	})
+
 	t.Run("reports no posting key bounds when its output has no postings rows", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
@@ -1138,7 +1153,8 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		},
 	})
 
-	// Source B has row for (log-A, 0, service, api, sid=99) - overlaps with A's first row.
+	// Source B has row for (log-A, 0, service, api, sid=99) with the time range
+	// of A's first row, so the merge treats it as a repeat of that row.
 	sourceBPath := "source/index-b.dat"
 	buildSourcePostingsObject(t, bucket, "tenant", sourceBPath, []postings.LabelObservation{
 		{
@@ -1147,7 +1163,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         99,
-			Time:             postings.At(time.Unix(0, 150)),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 300,
 		},
 	})

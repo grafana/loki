@@ -197,8 +197,9 @@ func (s *sourceLayout) shared() (streams.Layout, error) {
 // objectSections holds one source object's mergable sections, split by type and
 // kept in section order. A single object's same-type sections are contiguous,
 // non-overlapping slices of that object's sorted row stream (the section
-// encoders sort every row, then split into sections at size boundaries), so
-// they can be concatenated in section order — see [sectionConcatSeq].
+// builders write every row in sorted order, then split into sections at size
+// boundaries), so they can be concatenated in section order — see
+// [sectionConcatSeq].
 type objectSections struct {
 	path     string
 	postings []*dataobj.Section
@@ -226,7 +227,7 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 		closeSeq[postings.Row])
 	defer tree.Close()
 
-	var last *postings.Row
+	var dedup postingsDedup
 	for tree.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -237,12 +238,14 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 			continue
 		}
 
-		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
-		// ColumnName, LabelValue) means two source index objects reference the same
-		// physical section/column/label — this shouldn't happen, so log a
-		// warning. The data is logically equivalent, so keep the first row and
-		// drop the later duplicate.
-		if last != nil && samePostingsKey(*last, row) {
+		// Two source index objects should not reference the same logs section,
+		// so log a warning for a repeated row. The repeated row describes the
+		// same postings, so keep the first row and drop the later one.
+		duplicate, err := dedup.add(row)
+		if err != nil {
+			return fmt.Errorf("tenant %q: %w", out.tenant, err)
+		}
+		if duplicate {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: postings full-key collision",
 				"tenant", out.tenant,
@@ -255,7 +258,6 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 			continue
 		}
 
-		last = &row
 		if err := out.appendPostingsRow(ctx, row); err != nil {
 			return err
 		}
