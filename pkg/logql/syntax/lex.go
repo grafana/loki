@@ -248,6 +248,10 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 	}
 
 	if tok, ok := tokens[tokenTextLower]; ok {
+		if tok == OFFSET && !isOffset(l.Scanner) {
+			lval.str = tokenText
+			return IDENTIFIER
+		}
 		return tok
 	}
 
@@ -412,6 +416,25 @@ func isFunction(sc Scanner) bool {
 		}
 	}
 	return false
+}
+
+// isOffset reports whether an "offset" keyword is followed by a duration,
+// allowing "offset" to be lexed as an identifier in label and unwrap positions.
+func isOffset(sc Scanner) bool {
+	sc.Error = func(*Scanner, string) {}
+	for {
+		switch r := sc.Scan(); r {
+		case '#':
+			//nolint:revive
+			for next := sc.Peek(); next != '\n' && next != scanner.EOF; next = sc.Next() {
+			}
+		case scanner.Int, scanner.Float, '-':
+			_, ok := tryScanDuration(sc.TokenText(), &sc)
+			return ok
+		default:
+			return false
+		}
+	}
 }
 
 func trimSpace(l Scanner) Scanner {
