@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,10 +18,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-// splitByRange splits the range vector of an instant metric request into sub-queries. The split
-// interval comes from the chunk policy or from the data-object policy, whichever fits the request.
+// splitByRange splits the range vector of a metric request into sub-queries. The split interval of
+// an instant request comes from the chunk policy or from the data-object policy, whichever fits the
+// request. A range request uses the interval that splits it by time.
 type splitByRange struct {
 	logger        log.Logger
 	next          queryrangebase.Handler
@@ -74,33 +77,41 @@ func (s *splitByRange) policy(tenantIDs []string, request queryrangebase.Request
 func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 
-	params, err := ParamsFromRequest(request)
-	if err != nil {
-		return nil, err
-	}
-
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	interval := s.policy(tenants, request).instantQueryInterval(tenants)
+	var interval time.Duration
+	switch r := request.(type) {
+	case *LokiRequest:
+		// The legs of a range request share one downstream query only when their offsets are whole steps.
+		step := time.Duration(r.Step) * time.Millisecond
+		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
+		interval = (interval + step - 1) / step * step
+		if interval != 0 {
+			// The time splits answer on these steps, so the downstream engine must evaluate on them too.
+			request = r.WithStartEnd(alignStartEnd(r.Step, r.StartTs, r.EndTs))
+		}
+	default:
+		interval = s.policy(tenants, request).instantQueryInterval(tenants)
+	}
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)
 	}
 
-	mapperStats := logql.NewMapperStats()
-
-	ir, ok := request.(*LokiInstantRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected *LokiInstantRequest, got %T", request)
+	params, err := ParamsFromRequest(request)
+	if err != nil {
+		return nil, err
 	}
+
+	mapperStats := logql.NewMapperStats()
 
 	var mapper logql.RangeMapper
 
 	if s.splitAlign {
-		mapper, err = logql.NewRangeMapperWithSplitAlign(interval, ir.TimeTs, s.metrics, mapperStats)
+		mapper, err = logql.NewRangeMapperWithSplitAlign(interval, request.GetStart(), s.metrics, mapperStats)
 	} else {
 		mapper, err = logql.NewRangeMapper(interval, s.metrics, mapperStats)
 	}

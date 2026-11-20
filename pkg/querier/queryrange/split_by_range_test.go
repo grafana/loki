@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -442,6 +443,125 @@ func Test_RangeVectorSplit(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
 		})
+	}
+}
+
+func Test_RangeVectorSplit_RangeRequest(t *testing.T) {
+	limits := fakeLimits{
+		maxSeries:     10000,
+		queryTimeout:  time.Second,
+		splitDuration: map[string]time.Duration{"tenant": time.Minute},
+	}
+	ctx := user.InjectOrgID(context.TODO(), "tenant")
+	at := func(d time.Duration) time.Time { return time.Unix(0, 0).Add(d).UTC() }
+
+	for _, tc := range []struct {
+		name                       string
+		query                      string
+		start, end                 time.Time
+		step                       time.Duration
+		expectedQuery              string
+		expectedStart, expectedEnd time.Time
+		legs                       int
+		legInterval                time.Duration
+	}{
+		{
+			name:          "legs share one step-aligned query that starts earlier by the range they span",
+			query:         `sum by (app) (count_over_time({app="foo"}[3m]))`,
+			start:         at(10*time.Minute + 30*time.Second),
+			end:           at(14*time.Minute + 30*time.Second),
+			step:          time.Minute,
+			expectedQuery: `sum by (app)(count_over_time({app="foo"}[1m]))`,
+			expectedStart: at(8 * time.Minute),
+			expectedEnd:   at(15 * time.Minute),
+			legs:          3,
+			legInterval:   time.Minute,
+		},
+		{
+			name:          "the split interval is rounded up to whole steps",
+			query:         `sum by (app) (count_over_time({app="foo"}[4m]))`,
+			start:         at(1000 * time.Second),
+			end:           at(1400 * time.Second),
+			step:          40 * time.Second,
+			expectedQuery: `sum by (app)(count_over_time({app="foo"}[1m20s]))`,
+			expectedStart: at(840 * time.Second),
+			expectedEnd:   at(1400 * time.Second),
+			legs:          3,
+			legInterval:   80 * time.Second,
+		},
+		{
+			name:          "a range that fits in the split interval is not mapped",
+			query:         `sum by (app) (count_over_time({app="foo"}[1m]))`,
+			start:         at(10 * time.Minute),
+			end:           at(15 * time.Minute),
+			step:          time.Minute,
+			expectedQuery: `sum by (app) (count_over_time({app="foo"}[1m]))`,
+			expectedStart: at(10 * time.Minute),
+			expectedEnd:   at(15 * time.Minute),
+			legs:          1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), Config{}, testEngineOpts, limits, false, nilShardingMetrics)
+
+			var (
+				mu   sync.Mutex
+				reqs []queryrangebase.Request
+			)
+			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
+				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					mu.Lock()
+					reqs = append(reqs, req)
+					mu.Unlock()
+					return rangeResponse(req.GetStart(), req.GetEnd(), tc.step, func(ts time.Time) float64 { return float64(ts.Unix()) }), nil
+				})).Do(ctx, &LokiRequest{
+				Query:   tc.query,
+				StartTs: tc.start,
+				EndTs:   tc.end,
+				Step:    tc.step.Milliseconds(),
+				Path:    "/loki/api/v1/query_range",
+				Plan:    testutil.MustPlan(tc.query),
+			})
+			require.NoError(t, err)
+
+			require.Len(t, reqs, 1)
+			require.Equal(t, tc.expectedQuery, reqs[0].GetQuery())
+			require.Equal(t, tc.expectedStart, reqs[0].GetStart().UTC())
+			require.Equal(t, tc.expectedEnd, reqs[0].GetEnd().UTC())
+
+			// Each step sums the legs, which read the shared query legInterval apart.
+			expected := rangeResponse(tc.expectedStart.Add(time.Duration(tc.legs-1)*tc.legInterval), tc.expectedEnd, tc.step, func(ts time.Time) float64 {
+				var sum float64
+				for leg := 0; leg < tc.legs; leg++ {
+					sum += float64(ts.Add(-time.Duration(leg) * tc.legInterval).Unix())
+				}
+				return sum
+			})
+			require.Equal(t, expected.Response, resp.(*LokiPromResponse).Response)
+		})
+	}
+}
+
+// rangeResponse returns a matrix response with one series that has a sample of value(ts) at every
+// step from start to end.
+func rangeResponse(start, end time.Time, step time.Duration, value func(time.Time) float64) *LokiPromResponse {
+	var samples []logproto.LegacySample
+	for ts := start; !ts.After(end); ts = ts.Add(step) {
+		samples = append(samples, logproto.LegacySample{TimestampMs: ts.UnixMilli(), Value: value(ts)})
+	}
+	return &LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result: []queryrangebase.SampleStream{
+					{
+						Labels:  []logproto.LabelAdapter{{Name: "app", Value: "foo"}},
+						Samples: samples,
+					},
+				},
+			},
+		},
 	}
 }
 

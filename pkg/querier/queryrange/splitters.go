@@ -258,7 +258,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 		return nil, false
 	}
 
-	start, end := s.alignStartEnd(r.GetStep(), lokiReq.StartTs, lokiReq.EndTs)
+	start, end := alignStartEnd(r.GetStep(), lokiReq.StartTs, lokiReq.EndTs)
 
 	lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
 
@@ -278,10 +278,13 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 		})
 	}
 
-	// step is >= configured split interval, let us just split the query interval by step
-	// TODO this is likely buggy when step >= query range, how should we handle this?
+	// The interval fits at most one step, and a split evaluates both its start and its end, so every
+	// step gets a split of its own. Splits that shared an end would evaluate that step twice.
 	if lokiReq.Step >= interval.Milliseconds() {
-		util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, factory)
+		step := time.Duration(lokiReq.Step) * time.Millisecond
+		for t := lokiReq.StartTs; !t.After(lokiReq.EndTs); t = t.Add(step) {
+			factory(t, t)
+		}
 
 		return reqs, true
 	}
@@ -295,7 +298,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	origEnd := end
 
 	start, end, needsIngesterSplits = ingesterQueryBounds(execTime, s.iqo, lokiReq)
-	start, end = s.alignStartEnd(r.GetStep(), start, end)
+	start, end = alignStartEnd(r.GetStep(), start, end)
 
 	if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
 		// perform splitting using special interval (`split_ingester_queries_by_interval`)
@@ -306,7 +309,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 		// the end time should now be the boundary of the `query_ingester_within` window, which is "start" currently;
 		// but since start is already step-aligned we need to subtract 1ns to align it down by 1 more step so that we
 		// get a consistent step between splits
-		end, _ = s.alignStartEnd(r.GetStep(), start.Add(-time.Nanosecond), end)
+		end, _ = alignStartEnd(r.GetStep(), start.Add(-time.Nanosecond), end)
 		// we restore the previous start time (the start time of the query)
 		start = origStart
 
@@ -332,7 +335,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	return reqs, true
 }
 
-func (s *metricQuerySplitter) alignStartEnd(step int64, start, end time.Time) (time.Time, time.Time) {
+func alignStartEnd(step int64, start, end time.Time) (time.Time, time.Time) {
 	// step align start and end time of the query. Start time is rounded down and end time is rounded up.
 	stepNs := step * 1e6
 	startNs := start.UnixNano()

@@ -994,6 +994,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		)
 
 		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSplitByRangeMiddleware(log, cfg, engineOpts, limits, false, metrics.rangeMapper),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, metricSplitter, metrics.SplitByMetrics),
 		)
