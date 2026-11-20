@@ -26,6 +26,10 @@ const (
 	queryFrontendShardDataObjStackName                = "query-frontend + query-scheduler (sharding, dataobj)"
 	queryFrontendShardDataObjAndChunkStackName        = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
 	queryFrontendNoShardMaxQuerySeriesCutoffStackName = "query-frontend + query-scheduler (no sharding, timestamp-first, max query series cutoff)"
+	queryFrontendNoShardIdentityOnlyStackName         = "query-frontend + query-scheduler (no sharding, timestamp-first, identity-only range iterator)"
+	queryFrontendNoShardHashKeyedStackName            = "query-frontend + query-scheduler (no sharding, timestamp-first, hash-keyed range iterator)"
+	queryFrontendNoShardMinMaxPushdownStackName       = "query-frontend + query-scheduler (no sharding, timestamp-first, min/max grouping pushdown)"
+	queryFrontendNoShardRestrictedParsingStackName    = "query-frontend + query-scheduler (no sharding, timestamp-first, restricted parsing)"
 )
 
 var (
@@ -40,6 +44,10 @@ var (
 		queryFrontendShardDataObjStackName,
 		queryFrontendShardDataObjAndChunkStackName,
 		queryFrontendNoShardMaxQuerySeriesCutoffStackName,
+		queryFrontendNoShardIdentityOnlyStackName,
+		queryFrontendNoShardHashKeyedStackName,
+		queryFrontendNoShardMinMaxPushdownStackName,
+		queryFrontendNoShardRestrictedParsingStackName,
 	}
 )
 
@@ -110,6 +118,20 @@ type stackOptions struct {
 	// runs, in the querier and in the query-frontend.
 	maxQuerySeriesCutoff bool
 
+	// identityOnlyRangeIterator turns on IdentityOnlyRangeIterator in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	identityOnlyRangeIterator bool
+
+	// hashKeyedRangeIterator turns on HashKeyedRangeIterator in every engine the stack
+	// runs, in the querier and in the query-frontend.
+	hashKeyedRangeIterator bool
+	// pushMinMaxGrouping turns on PushMinMaxGrouping in every engine the stack runs, in the querier
+	// and in the query-frontend.
+	pushMinMaxGrouping bool
+	// restrictedParsing turns on RestrictedParsing in every engine the stack runs, in the querier
+	// and in the query-frontend.
+	restrictedParsing bool
+
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
 
@@ -131,6 +153,30 @@ func withMaxQuerySeriesCutoff() stackOption {
 	return func(o *stackOptions) { o.maxQuerySeriesCutoff = true }
 }
 
+// withIdentityOnlyRangeIterator returns the stackOption that turns on IdentityOnlyRangeIterator in
+// every engine of the stack.
+func withIdentityOnlyRangeIterator() stackOption {
+	return func(o *stackOptions) { o.identityOnlyRangeIterator = true }
+}
+
+// withHashKeyedRangeIterator returns the stackOption that turns on HashKeyedRangeIterator in
+// every engine of the stack.
+func withHashKeyedRangeIterator() stackOption {
+	return func(o *stackOptions) { o.hashKeyedRangeIterator = true }
+}
+
+// withMinMaxGroupingPushdown returns the stackOption that turns on PushMinMaxGrouping in every
+// engine of the stack.
+func withMinMaxGroupingPushdown() stackOption {
+	return func(o *stackOptions) { o.pushMinMaxGrouping = true }
+}
+
+// withRestrictedParsing returns the stackOption that turns on RestrictedParsing in every engine of
+// the stack.
+func withRestrictedParsing() stackOption {
+	return func(o *stackOptions) { o.restrictedParsing = true }
+}
+
 // withQuerySharding returns the stackOption that turns query sharding on in the query-frontend.
 func withQuerySharding() stackOption {
 	return func(o *stackOptions) { o.queryShardingEnabled = true }
@@ -146,6 +192,10 @@ func newEngineOpts(o stackOptions) logql.EngineOpts {
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	engineOpts.IdentityOnlyRangeIterator = o.identityOnlyRangeIterator
+	engineOpts.HashKeyedRangeIterator = o.hashKeyedRangeIterator
+	engineOpts.PushMinMaxGrouping = o.pushMinMaxGrouping
+	engineOpts.RestrictedParsing = o.restrictedParsing
 	return engineOpts
 }
 

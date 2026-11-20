@@ -188,6 +188,17 @@ func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 
 		// Every engine runs with max query series cutoff on.
 		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMaxQuerySeriesCutoffStackName, withMaxQuerySeriesCutoff())),
+
+		// Every engine runs with the identity-only range iterator on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardIdentityOnlyStackName, withIdentityOnlyRangeIterator())),
+
+		// Every engine runs with the hash-keyed range iterator on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardHashKeyedStackName, withHashKeyedRangeIterator())),
+
+		// Every engine runs with max and min grouping pushdown on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardMinMaxPushdownStackName, withMinMaxGroupingPushdown())),
+		// Every engine runs with restricted parsing on.
+		must(newQueryFrontendTimestampFirstStack(t, queryFrontendNoShardRestrictedParsingStackName, withRestrictedParsing())),
 	}
 }
 

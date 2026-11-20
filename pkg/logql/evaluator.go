@@ -276,12 +276,29 @@ type EvaluatorFactory interface {
 }
 
 // NodeContext describes characteristics of an expression.
-// `preserving` describes whether an expression is known to preserve its series output. It is worked
-// out from the parent down while evaluators are built. The zero value is the conservative one:
-// an expression that is not known to preserve the output.
+// - `preserving` describes whether an expression is known to preserve its series output
+// - `reads` is what the parent of the expression reads from its output.
+// These are worked out from the root down through the tree while evaluators are built.
+// The zero value is the conservative one: an expression that is not
+// known to preserve the output, whose parent reads everything from it.
 type NodeContext struct {
 	preserving bool
 	maxSeries  int
+	reads      ParentReads
+	// identityOnly is true when the query lets a range iterator keep only the identity of its
+	// series. Unlike the other fields it is a setting of the query, so every child inherits it.
+	identityOnly bool
+	// hashKeyed is true when the query lets a range iterator key its series on a hash and keep
+	// only the labels that its parent reads.
+	hashKeyed bool
+	// pushMinMaxGrouping is true when the query lets max and min push their grouping into the
+	// range aggregation below. Unlike the other fields it is a setting of the query, so every
+	// child inherits it.
+	pushMinMaxGrouping bool
+	// restrictParsing is true when the query lets the extractor of a range aggregation parse only
+	// the fields its parent reads. Unlike the other fields it is a setting of the query, so every
+	// child inherits it.
+	restrictParsing bool
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -316,6 +333,59 @@ func isSketch(expr syntax.SampleExpr) bool {
 	return false
 }
 
+// withIdentityOnlyRangeIterator returns c, and the NodeContexts derived from it, with range
+// iterators allowed to keep only the identity of their series when enabled is true.
+func (c NodeContext) withIdentityOnlyRangeIterator(enabled bool) NodeContext {
+	c.identityOnly = enabled
+	return c
+}
+
+// identityOnlyRangeIterator is true when the range iterator of the expression may keep only which
+// series exist: the query allows it, and the parent reads no label or value and keeps every
+// series apart.
+func (c NodeContext) identityOnlyRangeIterator() bool {
+	return c.identityOnly && c.reads.Labels().None() && c.reads.Identity() && !c.reads.Values()
+}
+
+// withHashKeyedRangeIterator returns c, and the NodeContexts derived from it, with range
+// iterators allowed to key their series on a hash when enabled is true.
+func (c NodeContext) withHashKeyedRangeIterator(enabled bool) NodeContext {
+	c.hashKeyed = enabled
+	return c
+}
+
+// hashKeyedRangeIterator returns the hashKeyedRangeIterator of the expression. It is enabled when
+// the query allows it, and the parent reads the values, keeps every series apart, and reads no
+// label or only some.
+func (c NodeContext) hashKeyedRangeIterator() hashKeyedRangeIterator {
+	if !c.hashKeyed || !c.reads.Identity() || !c.reads.Values() || !c.reads.Labels().Bounded() {
+		return hashKeyedRangeIterator{}
+	}
+	return hashKeyedRangeIterator{enabled: true, keep: c.reads.Labels()}
+}
+
+// withMinMaxGroupingPushdown returns c, and the NodeContexts derived from it, with max and min
+// allowed to push their grouping into the range aggregation below when enabled is true.
+func (c NodeContext) withMinMaxGroupingPushdown(enabled bool) NodeContext {
+	c.pushMinMaxGrouping = enabled
+	return c
+}
+
+// withRestrictedParsing returns c, and the NodeContexts derived from it, with the extractor of a
+// range aggregation allowed to parse only the fields its parent reads when enabled is true.
+func (c NodeContext) withRestrictedParsing(enabled bool) NodeContext {
+	c.restrictParsing = enabled
+	return c
+}
+
+// restrictsParsing is true when the query allows restricted parsing and the parent of the
+// expression, which reads reads from it, needs neither series kept apart nor any label outside a
+// listed set. Fields the parent does not read then tell no series apart that the parent keeps
+// apart, so the extractor may leave them out.
+func (c NodeContext) restrictsParsing(reads ParentReads) bool {
+	return c.restrictParsing && reads.labels.only && !reads.Identity()
+}
+
 // OutputPreserving is true when every operator between the expression and the root keeps every
 // series it receives, though it may add series from elsewhere. The query then returns at least as
 // many series as the expression holds. It is true for the root expression unless that produces a
@@ -324,13 +394,18 @@ func (c NodeContext) OutputPreserving() bool {
 	return c.preserving
 }
 
-// child returns the NodeContext of an operand of an operator that keeps every series it receives
-// when opPreserves is true.
-func (c NodeContext) child(opPreserves bool) NodeContext {
+// ParentReads returns what the parent of the expression reads from its output.
+func (c NodeContext) ParentReads() ParentReads {
+	return c.reads
+}
+
+// child returns the NodeContext of an operand. The operand keeps the preserving flag and maxSeries
+// of c only when opPreserves is true, and it takes reads as given rather than inheriting c's.
+func (c NodeContext) child(opPreserves bool, reads ParentReads) NodeContext {
 	if !opPreserves {
-		return NodeContext{}
+		return NodeContext{reads: reads, identityOnly: c.identityOnly, hashKeyed: c.hashKeyed, pushMinMaxGrouping: c.pushMinMaxGrouping, restrictParsing: c.restrictParsing}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, reads: reads, identityOnly: c.identityOnly, hashKeyed: c.hashKeyed, pushMinMaxGrouping: c.pushMinMaxGrouping, restrictParsing: c.restrictParsing}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -424,6 +499,20 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 	return ev.querier.SelectLogs(ctx, params)
 }
 
+// pushesGrouping is true when the evaluator of e sends e itself, not only its range aggregation, to
+// the store, so the extractor builds only the label sets of e's grouping. A sum always does. max and
+// min do when [syntax.VectorAggregationExpr.InjectedGrouping] says they can and the query enables
+// either the pushdown or restricted parsing.
+func pushesGrouping(e *syntax.VectorAggregationExpr, nc NodeContext) bool {
+	if e.Operation == syntax.OpTypeSum {
+		return true
+	}
+	if _, ok := e.InjectedGrouping(); !ok {
+		return false
+	}
+	return nc.pushMinMaxGrouping || nc.restrictsParsing(vectorAggReads(e))
+}
+
 func (ev *DefaultEvaluator) NewStepEvaluator(
 	ctx context.Context,
 	nextEvFactory SampleEvaluatorFactory,
@@ -433,7 +522,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && pushesGrouping(e, nc) {
 			sampleOrder := sampleOrderForExpr(ctx, e, ev.limits)
 
 			// if range expression is wrapped with a vector expression
@@ -452,7 +541,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				case logproto.SAMPLE_ORDER_BY_STREAM:
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.seriesCutoff(ctx, nc), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(rangeNC, rangExpr))
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines, false, hashKeyedRangeIterator{}, rangeAggIteratorLimits(rangeNC, rangExpr))
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -472,7 +561,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, rangeAggIteratorLimits(nc, e))
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines, nc.identityOnlyRangeIterator(), nc.hashKeyedRangeIterator(), rangeAggIteratorLimits(nc, e))
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false, nc.iteratorLimits(e))
 	case *syntax.CountDistinctSketchExpr:
@@ -480,7 +569,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.LabelReplaceExpr:
-		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
+		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q, nc)
 	case *syntax.VectorExpr:
 		val, err := e.Value()
 		if err != nil {
@@ -610,7 +699,7 @@ func newVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(vectorAggPreservesSeries(expr.Operation)))
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(vectorAggPreservesSeries(expr.Operation), vectorAggReads(expr)))
 	if err != nil {
 		return nil, err
 	}
@@ -871,7 +960,10 @@ func (e *VectorAggEvaluator) Error() error {
 }
 
 // newTimestampFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples
-// must come in global timestamp order. On error, it closes the input iterator.
+// must come in global timestamp order. identityOnly is true when the parent reads only which series
+// exist, which lets the iterator keep only the identity of each. hashKeyed is enabled when the
+// parent reads the values and only some of the labels. On error, it closes the input
+// iterator.
 func newTimestampFirstRangeAggEvaluator(
 	ctx context.Context,
 	it iter.PeekingSampleIterator,
@@ -879,6 +971,8 @@ func newTimestampFirstRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 	keepsErroredLines bool,
+	identityOnly bool,
+	hashKeyed hashKeyedRangeIterator,
 	limits iteratorLimits,
 ) (_ StepEvaluator, returnErr error) {
 	defer func() {
@@ -949,7 +1043,16 @@ func newTimestampFirstRangeAggEvaluator(
 			keepsErroredLines: keepsErroredLines,
 		}, nil
 	default:
-		iter, err := newTimestampFirstRangeVectorIterator(
+		newIterator := newTimestampFirstRangeVectorIterator
+		switch {
+		case identityOnly:
+			newIterator = newTimestampFirstIdentityRangeVectorIterator
+		case hashKeyed.enabled:
+			newIterator = func(it iter.PeekingSampleIterator, expr *syntax.RangeAggregationExpr, selRange, step, start, end, offset int64, limits iteratorLimits) (RangeVectorIterator, error) {
+				return newTimestampFirstHashKeyedRangeVectorIterator(it, expr, hashKeyed.keep, selRange, step, start, end, offset, limits)
+			}
+		}
+		iter, err := newIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
@@ -1073,7 +1176,28 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 // rangeAggIteratorLimits returns the limits of the range iterator of expr, an expression whose
 // NodeContext is nc.
 func rangeAggIteratorLimits(nc NodeContext, expr *syntax.RangeAggregationExpr) iteratorLimits {
-	return nc.child(rangeAggPreservesSeries(expr.Operation)).iteratorLimits(expr)
+	return rangeAggIteratorContext(nc, expr).iteratorLimits(expr)
+}
+
+// rangeAggIteratorContext returns the NodeContext of the range iterator of expr, an expression whose
+// NodeContext is nc.
+func rangeAggIteratorContext(nc NodeContext, expr *syntax.RangeAggregationExpr) NodeContext {
+	return nc.child(rangeAggPreservesSeries(expr.Operation), rangeAggIteratorReads(expr))
+}
+
+// rangeAggIteratorReads returns what the range aggregation expr reads from its range iterator.
+// absent_over_time reads only whether the range has any sample. A grouping merges the series that
+// share its labels, so it reads only those labels and does not keep the series apart. Without a
+// grouping, every series of the range is one series of the output.
+func rangeAggIteratorReads(expr *syntax.RangeAggregationExpr) ParentReads {
+	switch {
+	case expr.Operation == syntax.OpRangeTypeAbsent:
+		return newParentReads(noLabels(), false, false)
+	case expr.Grouping != nil:
+		return newParentReads(groupingLabels(expr.Grouping), false, true)
+	default:
+		return readsEverything()
+	}
 }
 
 // rangeAggPreservesSeries reports whether the range aggregation op returns one series for each
@@ -1086,6 +1210,61 @@ func rangeAggPreservesSeries(op string) bool {
 // series of its input.
 func vectorAggPreservesSeries(op string) bool {
 	return op == syntax.OpTypeSort || op == syntax.OpTypeSortDesc
+}
+
+// vectorAggReads returns what the vector aggregation expr reads from its operand.
+//
+// sum, min, max, avg, stddev and stdvar read the grouping labels and the values. count reads the
+// grouping labels and only whether each series is present. All of them need distinct series kept
+// apart, since merging two series changes the answer, except where the operand is a range
+// aggregation that merges the same way (see vectorAggMergesRangeAgg). topk, bottomk, sort and
+// sort_desc return the series they read, so they read everything.
+func vectorAggReads(expr *syntax.VectorAggregationExpr) ParentReads {
+	labels := groupingLabels(expr.Grouping)
+	switch expr.Operation {
+	case syntax.OpTypeSum, syntax.OpTypeMin, syntax.OpTypeMax:
+		return newParentReads(labels, !vectorAggMergesRangeAgg(expr.Operation, expr.Left), true)
+	case syntax.OpTypeAvg, syntax.OpTypeStddev, syntax.OpTypeStdvar:
+		return newParentReads(labels, true, true)
+	case syntax.OpTypeCount:
+		return newParentReads(labels, true, false)
+	default:
+		return readsEverything()
+	}
+}
+
+// vectorAggMergesRangeAgg reports whether the vector aggregation op over left, a range aggregation,
+// returns the same answer when left merges series before it aggregates them. sum is additive over
+// the range aggregations that count or add, and max and min over themselves. Every other pair
+// depends on the series being kept apart, such as sum over max_over_time, or max over rate.
+func vectorAggMergesRangeAgg(op string, left syntax.SampleExpr) bool {
+	rangeExpr, ok := left.(*syntax.RangeAggregationExpr)
+	return ok && syntax.CanInjectVectorGrouping(op, rangeExpr.Operation)
+}
+
+// binOpReads returns what expr reads from its left and right legs.
+//
+// and and unless read the right leg only for whether a series with the same matching labels is
+// present, so merging right series that share them changes nothing. Every other binary operation
+// reads everything from both legs: arithmetic and comparisons fail on duplicate matches, and or
+// returns the series of both legs.
+func binOpReads(expr *syntax.BinOpExpr) (lhs, rhs ParentReads) {
+	if expr.Op == syntax.OpTypeAnd || expr.Op == syntax.OpTypeUnless {
+		return readsEverything(), newParentReads(binOpMatchingLabels(expr.Opts), false, false)
+	}
+	return readsEverything(), readsEverything()
+}
+
+// binOpMatchingLabels returns the labels a binary operation with opts matches its legs on: the
+// on() labels, every label but the ignoring() labels, or every label without a modifier.
+func binOpMatchingLabels(opts *syntax.BinOpOptions) LabelReads {
+	if opts == nil || opts.VectorMatching == nil {
+		return allLabels()
+	}
+	if opts.VectorMatching.On {
+		return onlyLabels(opts.VectorMatching.MatchingLabels...)
+	}
+	return labelsWithout(opts.VectorMatching.MatchingLabels...)
 }
 
 // binOpPreservesSeries reports whether expr returns at least as many series as each of its
@@ -1123,7 +1302,9 @@ func newBinOpStepEvaluator(
 	q Params,
 	nc NodeContext,
 ) (StepEvaluator, error) {
-	legNC := nc.child(binOpPreservesSeries(expr))
+	preserves := binOpPreservesSeries(expr)
+	lhsReads, rhsReads := binOpReads(expr)
+	lhsNC, rhsNC := nc.child(preserves, lhsReads), nc.child(preserves, rhsReads)
 
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
@@ -1131,7 +1312,7 @@ func newBinOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, rhsNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1144,7 +1325,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, lhsNC)
 		if err != nil {
 			return nil, err
 		}
@@ -1166,7 +1347,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, legNC)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, lhsNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -1174,7 +1355,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, legNC)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, rhsNC)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1598,8 +1779,9 @@ func newLabelReplaceEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.LabelReplaceExpr,
 	q Params,
+	nc NodeContext,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, NodeContext{})
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, nc.child(false, labelReplaceReads(expr, nc.ParentReads())))
 	if err != nil {
 		return nil, err
 	}
@@ -1609,6 +1791,12 @@ func newLabelReplaceEvaluator(
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
 	}, nil
+}
+
+// labelReplaceReads returns what the label_replace expr reads from its operand, given what its own
+// parent reads from it: the src label, plus whatever its parent reads.
+func labelReplaceReads(expr *syntax.LabelReplaceExpr, reads ParentReads) ParentReads {
+	return reads.withLabels(reads.Labels().union(onlyLabels(expr.Src)))
 }
 
 type LabelReplaceEvaluator struct {

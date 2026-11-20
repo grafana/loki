@@ -5642,6 +5642,32 @@ engine:
   # CLI flag: -querier.engine.enable-histograms
   [enable_histograms: <boolean> | default = false]
 
+  # Experimental: Keep only a hash and the last timestamp of each series in the
+  # range iterator of a query that reads only which series exist, such as
+  # count(count_over_time(...)), instead of the labels and the points.
+  # CLI flag: -querier.engine.identity-only-range-iterator
+  [identity_only_range_iterator: <boolean> | default = false]
+
+  # Experimental: Keep the series of the range iterator of a query that reads
+  # the values of its series but few or no labels, such as
+  # avg(max_over_time(...)), by a hash, and keep only the labels that the query
+  # reads, instead of all the labels.
+  # CLI flag: -querier.engine.hash-keyed-range-iterator
+  [hash_keyed_range_iterator: <boolean> | default = false]
+
+  # Experimental: Push the by grouping of max and min into max_over_time and
+  # min_over_time, so the range iterator holds only the label sets of the
+  # grouping instead of every label set.
+  # CLI flag: -querier.engine.push-min-max-grouping
+  [push_min_max_grouping: <boolean> | default = false]
+
+  # Experimental: Make the json and logfmt parsers of a range aggregation
+  # extract only the fields that its parent aggregation reads, where the parent
+  # needs neither the labels it does not group by nor the series kept apart,
+  # such as max by (x) (max_over_time(... | unwrap y [5m])).
+  # CLI flag: -querier.engine.restricted-parsing
+  [restricted_parsing: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

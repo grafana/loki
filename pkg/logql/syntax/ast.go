@@ -2072,31 +2072,74 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 		return nil, e.err
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
-	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
-		// if the range vec operation has no grouping we can push down the vec one.
-		if r.Grouping == nil {
-			return r.extractor(e.Grouping)
-		}
+	if r, g, ok := e.injectedGrouping(); ok {
+		return r.extractor(g)
 	}
 	return e.Left.Extractor()
 }
 
 // CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
 //
+// It can when merging the series that share the grouping before the range aggregation gives the same
+// answer as merging them after it: sum over the range aggregations that count or add, and max and min
+// over their own range aggregation.
+//
 // An injected grouping replaces the extractor's label set at extraction time. It reaches the
 // extractor only when the range aggregation carries no grouping of its own, because that one
-// wins.
+// wins. max and min qualify only over the matching range operation, and only for a by grouping,
+// which [VectorAggregationExpr.InjectedGrouping] checks.
 func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
-	if vecOp != OpTypeSum {
-		return false
+	switch vecOp {
+	case OpTypeSum:
+		switch rangeOp {
+		case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeRate, OpRangeTypeCount:
+			return true
+		}
+	case OpTypeMax:
+		return rangeOp == OpRangeTypeMax
+	case OpTypeMin:
+		return rangeOp == OpRangeTypeMin
 	}
-	switch rangeOp {
-	case OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeRate, OpRangeTypeCount:
-		return true
-	default:
-		return false
+	return false
+}
+
+// InjectedGrouping returns the grouping that e injects into the extractor of the range aggregation
+// it wraps, and true when it injects one.
+func (e *VectorAggregationExpr) InjectedGrouping() (*Grouping, bool) {
+	_, g, ok := e.injectedGrouping()
+	return g, ok
+}
+
+// injectedGrouping returns the range aggregation that e wraps and the grouping that e injects into
+// its extractor.
+//
+// An extractor without a grouping drops the unwrap label from the series it emits, but an injected
+// by grouping keeps every label it names. The injected grouping therefore leaves the unwrap label
+// out of a by grouping, so the series that the parent reads are the ones the range aggregation
+// would have emitted. A without grouping already names the labels to drop, and the extractor adds
+// the unwrap label to them.
+func (e *VectorAggregationExpr) injectedGrouping() (*RangeAggregationExpr, *Grouping, bool) {
+	if e.err != nil || e.Grouping == nil {
+		return nil, nil, false
 	}
+	r, ok := e.Left.(*RangeAggregationExpr)
+	if !ok || r.Grouping != nil || !CanInjectVectorGrouping(e.Operation, r.Operation) {
+		return nil, nil, false
+	}
+	if e.Operation != OpTypeSum && e.Grouping.Without {
+		return nil, nil, false
+	}
+	if e.Grouping.Without || r.Left == nil || r.Left.Unwrap == nil {
+		return r, e.Grouping, true
+	}
+
+	groups := make([]string, 0, len(e.Grouping.Groups))
+	for _, g := range e.Grouping.Groups {
+		if g != r.Left.Unwrap.Identifier {
+			groups = append(groups, g)
+		}
+	}
+	return r, &Grouping{Groups: groups}, true
 }
 
 func (e *VectorAggregationExpr) String() string {

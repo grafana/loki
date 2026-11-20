@@ -1072,7 +1072,15 @@ func Test_CanInjectVectorGrouping(t *testing.T) {
 		{OpTypeSum, OpRangeTypeMin, false},
 		{OpTypeSum, OpRangeTypeMax, false},
 
+		{OpTypeMax, OpRangeTypeMax, true},
+		{OpTypeMin, OpRangeTypeMin, true},
+		{OpTypeMax, OpRangeTypeMin, false},
+		{OpTypeMin, OpRangeTypeMax, false},
+		{OpTypeMax, OpRangeTypeSum, false},
+		{OpTypeMin, OpRangeTypeAvg, false},
+
 		{OpTypeAvg, OpRangeTypeBytes, false},
+		{OpTypeAvg, OpRangeTypeMax, false},
 		{OpTypeCount, OpRangeTypeBytesRate, false},
 		{OpTypeBottomK, OpRangeTypeSum, false},
 		{OpTypeMax, OpRangeTypeRate, false},
@@ -1084,6 +1092,87 @@ func Test_CanInjectVectorGrouping(t *testing.T) {
 			if got := CanInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
 				t.Errorf("CanInjectVectorGrouping() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestVectorAggregationExpr_InjectedGrouping_ShouldDeriveTheGroupingTheRangeAggregationEmits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		query string
+		want  string
+		ok    bool
+	}{
+		"max by a label":                           {query: `max by (a) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (a)`, ok: true},
+		"min by a label":                           {query: `min by (a) (min_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (a)`, ok: true},
+		"max by the unwrap label":                  {query: `max by (v) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by ()`, ok: true},
+		"max by the unwrap label and another":      {query: `max by (v, a) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (a)`, ok: true},
+		"max by another label and the unwrap one":  {query: `max by (a, v) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (a)`, ok: true},
+		"max by the unwrap label of a conversion":  {query: `max by (v, a) (max_over_time({x="y"} | json | unwrap bytes(v) [1m]))`, want: ` by (a)`, ok: true},
+		"max by nothing":                           {query: `max(max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by ()`, ok: true},
+		"max by the error label":                   {query: `max by (__error__, v) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (__error__)`, ok: true},
+		"sum by the unwrap label":                  {query: `sum by (v, a) (sum_over_time({x="y"} | json | unwrap v [1m]))`, want: ` by (a)`, ok: true},
+		"sum by a label of a rate":                 {query: `sum by (a) (rate({x="y"} | json [1m]))`, want: ` by (a)`, ok: true},
+		"sum without keeps the grouping":           {query: `sum without (v) (sum_over_time({x="y"} | json | unwrap v [1m]))`, want: ` without (v)`, ok: true},
+		"max without":                              {query: `max without (a) (max_over_time({x="y"} | json | unwrap v [1m]))`},
+		"min without":                              {query: `min without (a) (min_over_time({x="y"} | json | unwrap v [1m]))`},
+		"max over a range aggregation by":          {query: `max by (a) (max_over_time({x="y"} | json | unwrap v [1m]) by (b))`},
+		"max over a range aggregation without":     {query: `max by (a) (max_over_time({x="y"} | json | unwrap v [1m]) without (b))`},
+		"max over min_over_time":                   {query: `max by (a) (min_over_time({x="y"} | json | unwrap v [1m]))`},
+		"min over max_over_time":                   {query: `min by (a) (max_over_time({x="y"} | json | unwrap v [1m]))`},
+		"avg over avg_over_time":                   {query: `avg by (a) (avg_over_time({x="y"} | json | unwrap v [1m]))`},
+		"max over an expression that is not range": {query: `max by (a) (max by (a, b) (max_over_time({x="y"} | json | unwrap v [1m])))`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			vec, ok := expr.(*VectorAggregationExpr)
+			require.True(t, ok)
+
+			got, ok := vec.InjectedGrouping()
+			require.Equal(t, tc.ok, ok)
+			if !tc.ok {
+				require.Nil(t, got)
+				return
+			}
+			require.Equal(t, tc.want, got.String())
+		})
+	}
+}
+
+func TestVectorAggregationExpr_InjectedGrouping_ShouldNotChangeTheExpression(t *testing.T) {
+	expr, err := ParseSampleExpr(`max by (v, a) (max_over_time({x="y"} | json | unwrap v [1m]))`)
+	require.NoError(t, err)
+	before := expr.String()
+
+	vec := expr.(*VectorAggregationExpr)
+	_, ok := vec.InjectedGrouping()
+	require.True(t, ok)
+	require.Equal(t, before, expr.String())
+	require.Equal(t, []string{"v", "a"}, vec.Grouping.Groups)
+}
+
+func TestVectorAggregationExpr_Extractor_ShouldNotKeepTheUnwrapLabel(t *testing.T) {
+	for name, tc := range map[string]struct {
+		query string
+		want  string
+	}{
+		"max by the unwrap label":                   {query: `max by (v) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: `{}`},
+		"max by the unwrap label and another":       {query: `max by (v, a) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: `{a="1"}`},
+		"min by another label":                      {query: `min by (a) (min_over_time({x="y"} | json | unwrap v [1m]))`, want: `{a="1"}`},
+		"max without is the extractor of the range": {query: `max without (a) (max_over_time({x="y"} | json | unwrap v [1m]))`, want: `{a="1", b="2", x="y"}`},
+		"sum by the unwrap label":                   {query: `sum by (v) (sum_over_time({x="y"} | json | unwrap v [1m]))`, want: `{}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			extractor, err := expr.Extractor()
+			require.NoError(t, err)
+
+			stream := extractor.ForStream(labels.FromStrings("x", "y"))
+			sample, ok := stream.Process(0, []byte(`{"v":5,"a":"1","b":"2"}`), labels.EmptyLabels())
+			require.True(t, ok)
+			require.Equal(t, 5.0, sample.Value)
+			require.Equal(t, tc.want, sample.Labels.String())
 		})
 	}
 }

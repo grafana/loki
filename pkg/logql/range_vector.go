@@ -53,11 +53,7 @@ func newTimestampFirstRangeVectorIterator(
 		start = start - offset
 		end = end - offset
 	}
-	var overlap bool
-	if selRange >= step && start != end {
-		overlap = true
-	}
-	if !overlap {
+	if !windowsOverlap(selRange, step, start, end) {
 		_, err := streamingAggregator(expr, 0)
 		if err != nil {
 			return nil, err
@@ -90,6 +86,16 @@ func newTimestampFirstRangeVectorIterator(
 		offset:   offset,
 		limits:   limits,
 	}, nil
+}
+
+// windowsOverlap reports whether the range windows of a query with selRange, step, start and end
+// overlap, so that a sample can fall into more than one window.
+func windowsOverlap(selRange, step, start, end int64) bool {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	return selRange >= step && start != end
 }
 
 //batch
@@ -135,11 +141,17 @@ func (r *batchRangeVectorIterator) Error() error {
 
 // popBack removes all entries out of the current window from the back.
 func (r *batchRangeVectorIterator) popBack(newStart int64) {
+	popExpiredPoints(r.window, newStart)
+}
+
+// popExpiredPoints removes the points at or before newStart from every series of window, and the
+// series left without points. Removed series go back to the pool.
+func popExpiredPoints[K comparable](window map[K]*promql.Series, newStart int64) {
 	// possible improvement: if there is no overlap we can just remove all.
-	for fp := range r.window {
+	for fp := range window {
 		lastPoint := 0
 		remove := false
-		for i, p := range r.window[fp].Floats {
+		for i, p := range window[fp].Floats {
 			if p.T <= newStart {
 				lastPoint = i
 				remove = true
@@ -148,11 +160,11 @@ func (r *batchRangeVectorIterator) popBack(newStart int64) {
 			break
 		}
 		if remove {
-			r.window[fp].Floats = r.window[fp].Floats[lastPoint+1:]
+			window[fp].Floats = window[fp].Floats[lastPoint+1:]
 		}
-		if len(r.window[fp].Floats) == 0 {
-			s := r.window[fp]
-			delete(r.window, fp)
+		if len(window[fp].Floats) == 0 {
+			s := window[fp]
+			delete(window, fp)
 			putSeries(s)
 		}
 	}

@@ -792,3 +792,50 @@ func TestNewLabelFilterHintsMatchers(t *testing.T) {
 		})
 	}
 }
+
+func TestNewParserHint_ShouldExtractEveryFieldWhenATemplateReadsAllOfThem(t *testing.T) {
+	lineFormat := func(tmpl string) log.Stage {
+		s, err := log.NewFormatter(tmpl)
+		require.NoError(t, err)
+		return s
+	}
+	labelFormat := func(fmts ...log.LabelFmt) log.Stage {
+		s, err := log.NewLabelsFormatter(fmts)
+		require.NoError(t, err)
+		return s
+	}
+
+	for name, tc := range map[string]struct {
+		stages         log.Stages
+		wantEveryField bool
+	}{
+		"line_format naming its fields":           {stages: log.Stages{lineFormat(`{{.a}}-{{.b}}`)}},
+		"line_format naming a field of a branch":  {stages: log.Stages{lineFormat(`{{ if .a }}{{ .b }}{{ end }}`)}},
+		"line_format naming a field of the root":  {stages: log.Stages{lineFormat(`{{ $.a }}`)}},
+		"line_format with a function":             {stages: log.Stages{lineFormat(`{{ .a | upper }}`)}},
+		"line_format with index":                  {stages: log.Stages{lineFormat(`{{ index . "a" }}`)}, wantEveryField: true},
+		"line_format with the whole data":         {stages: log.Stages{lineFormat(`{{ . }}`)}, wantEveryField: true},
+		"line_format with range over the data":    {stages: log.Stages{lineFormat(`{{ range $k, $v := . }}{{ $k }}{{ end }}`)}, wantEveryField: true},
+		"line_format with the root as an operand": {stages: log.Stages{lineFormat(`{{ printf "%v" $ }}`)}, wantEveryField: true},
+		"line_format with index in a branch":      {stages: log.Stages{lineFormat(`{{ if .a }}{{ index . "b" }}{{ end }}`)}, wantEveryField: true},
+		"line_format calling a named template":    {stages: log.Stages{lineFormat(`{{define "echo"}}{{.}}{{end}}{{template "echo" .a}}`)}, wantEveryField: true},
+		"label_format calling a named template":   {stages: log.Stages{labelFormat(log.NewTemplateLabelFmt("z", `{{define "echo"}}{{.}}{{end}}{{template "echo" .a}}`))}, wantEveryField: true},
+		"label_format renaming":                   {stages: log.Stages{labelFormat(log.NewRenameLabelFmt("z", "a"))}},
+		"label_format with a template":            {stages: log.Stages{labelFormat(log.NewTemplateLabelFmt("z", `{{.a}}`))}},
+		"label_format with index":                 {stages: log.Stages{labelFormat(log.NewRenameLabelFmt("y", "a"), log.NewTemplateLabelFmt("z", `{{ index . "a" }}`))}, wantEveryField: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			hints := log.NewParserHint(tc.stages, []string{"g"}, false, false, "")
+			require.Equal(t, tc.wantEveryField, hints.ShouldExtract("never_named"))
+		})
+	}
+}
+
+func TestNewParserHint_ShouldExtractEveryFieldWhenATemplateReadsAllOfThemWithoutGrouping(t *testing.T) {
+	stage, err := log.NewFormatter(`{{ index . "a" }}`)
+	require.NoError(t, err)
+
+	hints := log.NewParserHint(log.Stages{stage}, nil, false, true, "")
+	require.False(t, hints.NoLabels())
+	require.True(t, hints.ShouldExtract("a"))
+}

@@ -649,7 +649,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, hashKeyedRangeIterator{}, iteratorLimits{})
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -661,12 +661,54 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, iteratorLimits{})
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, hashKeyedRangeIterator{}, iteratorLimits{})
 		require.NoError(t, err)
 		require.False(t, *closed)
 
 		require.NoError(t, ev.Close())
 		require.True(t, *closed)
+	})
+
+	t.Run("builds the identity-only iterator only when the parent reads only the identity", func(t *testing.T) {
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: syntax.OpRangeTypeCount,
+		}
+		for name, tc := range map[string]struct {
+			identityOnly bool
+			want         RangeVectorIterator
+		}{
+			"identity only":     {identityOnly: true, want: &identityBatchRangeVectorIterator{}},
+			"not identity only": {identityOnly: false, want: &batchRangeVectorIterator{}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				it, _ := newIterator()
+				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, tc.identityOnly, hashKeyedRangeIterator{}, iteratorLimits{})
+				require.NoError(t, err)
+				require.IsType(t, tc.want, ev.(*RangeVectorEvaluator).iter)
+			})
+		}
+	})
+
+	t.Run("builds the hash-keyed iterator only when the parent reads values and few labels", func(t *testing.T) {
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: syntax.OpRangeTypeCount,
+		}
+		for name, tc := range map[string]struct {
+			hashKeyed hashKeyedRangeIterator
+			want      RangeVectorIterator
+		}{
+			"hash keyed":     {hashKeyed: hashKeyedRangeIterator{enabled: true, keep: noLabels()}, want: &hashKeyedBatchRangeVectorIterator{}},
+			"not hash keyed": {want: &batchRangeVectorIterator{}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				it, _ := newIterator()
+				ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false, false, tc.hashKeyed, iteratorLimits{})
+				require.NoError(t, err)
+				require.IsType(t, tc.want, ev.(*RangeVectorEvaluator).iter)
+			})
+		}
 	})
 }
 
@@ -698,9 +740,10 @@ func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		query string
+		want  ParentReads
 	}{
-		{"sum", `sum(rate({app="a"}[1m]))`},
-		{"sum by", `sum by (app) (rate({app="a"}[1m]))`},
+		{"sum", `sum(rate({app="a"}[1m]))`, newParentReads(noLabels(), false, true)},
+		{"sum by", `sum by (app) (rate({app="a"}[1m]))`, newParentReads(onlyLabels("app"), false, true)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseSampleExpr(tc.query)
@@ -715,6 +758,7 @@ func TestNewVectorAggEvaluator_SumOfRangeAggregation(t *testing.T) {
 			_, err = newVectorAggEvaluator(context.Background(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, 0))
 			require.NoError(t, err)
 			require.False(t, got.OutputPreserving())
+			require.Equal(t, tc.want, got.ParentReads())
 		})
 	}
 }
@@ -1283,6 +1327,106 @@ func TestDefaultEvaluator_OutputPreserving(t *testing.T) {
 	}
 }
 
+// TestDefaultEvaluator_ShouldDeriveWhatEachParentReads checks what each operator reads from
+// the range aggregations under it. The factory builds vector aggregations itself, since
+// DefaultEvaluator swaps the factory for sum over a range aggregation and the table could not see
+// the operand otherwise.
+func TestDefaultEvaluator_ShouldDeriveWhatEachParentReads(t *testing.T) {
+	const (
+		a        = `rate({app="a"}[1m])`
+		b        = `rate({app="b"}[1m])`
+		maxOver  = `max_over_time({app="a"} | unwrap x [1m])`
+		replaced = `label_replace(` + a + `, "dst", "$1", "src", "(.*)")`
+	)
+	everything := readsEverything()
+	for name, tc := range map[string]struct {
+		query string
+		want  map[string]ParentReads
+	}{
+		// The parents of a range aggregation in the axes table of the design.
+		"sum":                          {`sum(` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"max of max_over_time":         {`max(` + maxOver + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"avg of max_over_time":         {`avg(` + maxOver + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"count":                        {`count(` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, false)}},
+		"topk":                         {`topk(1, ` + a + `)`, map[string]ParentReads{`{app="a"}`: everything}},
+		"root":                         {a, map[string]ParentReads{`{app="a"}`: everything}},
+		"absent_over_time at the root": {`absent_over_time({app="a"}[1m])`, map[string]ParentReads{`{app="a"}`: everything}},
+
+		// Vector aggregations.
+		"sum by":                           {`sum by (app, pod) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app", "pod"), false, true)}},
+		"sum without":                      {`sum without (pod) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(labelsWithout("pod"), false, true)}},
+		"sum of count_over_time":           {`sum(count_over_time({app="a"}[1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"sum of bytes_over_time":           {`sum(bytes_over_time({app="a"}[1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"sum of bytes_rate":                {`sum(bytes_rate({app="a"}[1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"sum of sum_over_time":             {`sum(sum_over_time({app="a"} | unwrap x [1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), false, true)}},
+		"sum of max_over_time":             {`sum(` + maxOver + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"sum of rate_counter":              {`sum(rate_counter({app="a"} | unwrap x [1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"sum of avg_over_time":             {`sum(avg_over_time({app="a"} | unwrap x [1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"max":                              {`max(` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"min of min_over_time":             {`min by (app) (min_over_time({app="a"} | unwrap x [1m]))`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app"), false, true)}},
+		"min of max_over_time":             {`min(` + maxOver + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"avg by":                           {`avg by (app) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app"), true, true)}},
+		"stddev":                           {`stddev(` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(noLabels(), true, true)}},
+		"stdvar without":                   {`stdvar without (pod) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(labelsWithout("pod"), true, true)}},
+		"count by":                         {`count by (app) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app"), true, false)}},
+		"count without":                    {`count without (pod) (` + a + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(labelsWithout("pod"), true, false)}},
+		"bottomk":                          {`bottomk(1, ` + a + `)`, map[string]ParentReads{`{app="a"}`: everything}},
+		"topk by":                          {`topk by (app) (1, ` + a + `)`, map[string]ParentReads{`{app="a"}`: everything}},
+		"sort":                             {`sort(` + a + `)`, map[string]ParentReads{`{app="a"}`: everything}},
+		"sort_desc":                        {`sort_desc(` + a + `)`, map[string]ParentReads{`{app="a"}`: everything}},
+		"count of sum by":                  {`count(sum by (app) (` + a + `))`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app"), false, true)}},
+		"sum of sort":                      {`sum(sort(` + a + `))`, map[string]ParentReads{`{app="a"}`: everything}},
+		"sum of arithmetic with a literal": {`sum(` + a + ` * 2)`, map[string]ParentReads{`{app="a"}`: everything}},
+
+		// Binary operations.
+		"arithmetic with a literal":  {a + ` * 2`, map[string]ParentReads{`{app="a"}`: everything}},
+		"filtering comparison":       {a + ` > 1`, map[string]ParentReads{`{app="a"}`: everything}},
+		"or":                         {a + ` or ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: everything}},
+		"arithmetic between vectors": {a + ` / on(app) ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: everything}},
+		"group_left":                 {a + ` * on(app) group_left(pod) ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: everything}},
+		"and":                        {a + ` and ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: newParentReads(allLabels(), false, false)}},
+		"and on":                     {a + ` and on(app) ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: newParentReads(onlyLabels("app"), false, false)}},
+		"unless ignoring":            {a + ` unless ignoring(pod) ` + b, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: newParentReads(labelsWithout("pod"), false, false)}},
+		"count of and":               {`count(` + a + ` and ` + b + `)`, map[string]ParentReads{`{app="a"}`: everything, `{app="b"}`: newParentReads(allLabels(), false, false)}},
+
+		// label_replace reads src plus whatever its parent reads.
+		"label_replace":                  {replaced, map[string]ParentReads{`{app="a"}`: everything}},
+		"count by of label_replace":      {`count by (dst) (` + replaced + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("dst", "src"), true, false)}},
+		"sum by of label_replace":        {`sum by (app) (` + replaced + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("app", "src"), true, true)}},
+		"sum without of label_replace":   {`sum without (src, pod) (` + replaced + `)`, map[string]ParentReads{`{app="a"}`: newParentReads(labelsWithout("pod"), true, true)}},
+		"and on of label_replace":        {b + ` and on(dst) ` + replaced, map[string]ParentReads{`{app="b"}`: everything, `{app="a"}`: newParentReads(onlyLabels("dst", "src"), false, false)}},
+		"label_replace of label_replace": {`count by (x) (label_replace(` + replaced + `, "x", "$1", "dst", "(.*)"))`, map[string]ParentReads{`{app="a"}`: newParentReads(onlyLabels("dst", "src", "x"), true, false)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tc.query)
+			require.NoError(t, err)
+			params, err := NewLiteralParams(tc.query, time.Unix(0, 0), time.Unix(60, 0), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+			require.NoError(t, err)
+
+			var mu sync.Mutex
+			got := map[string]ParentReads{}
+			ev := NewDefaultEvaluator(nil, 0, 0, NoLimits)
+			var factory SampleEvaluatorFunc
+			factory = func(ctx context.Context, _ SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, nc NodeContext) (StepEvaluator, error) {
+				switch e := expr.(type) {
+				case *syntax.RangeAggregationExpr:
+					mu.Lock()
+					defer mu.Unlock()
+					got[e.Left.Left.String()] = nc.ParentReads()
+					return newReturnVectorEvaluator(nil), nil
+				case *syntax.VectorAggregationExpr:
+					return newVectorAggEvaluator(ctx, factory, e, p, 0, nc)
+				}
+				return ev.NewStepEvaluator(ctx, factory, expr, p, nc)
+			}
+
+			_, err = factory.NewStepEvaluator(t.Context(), factory, expr, params, RootContext(expr, 0))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // TestVectorAggEvaluator_Precision checks that the sum() and avg()
 // aggregations of VectorAggEvaluator use Kahan summation, and that avg()
 // switches to an incremental mean when the sum overflows float64.
@@ -1331,7 +1475,7 @@ func TestVectorAggEvaluator_ShouldFailOnGroupsPastSeriesLimit(t *testing.T) {
 		nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
 			return &returnVectorEvaluator{vec: vec}, nil
 		})
-		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries).child(false))
+		ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, RootContext(expr, maxSeries).child(false, readsEverything()))
 		require.NoError(t, err)
 
 		ok, _, _ := ev.Next()
@@ -1515,6 +1659,27 @@ func TestRangeAggPreservesSeries(t *testing.T) {
 	}
 }
 
+func TestRangeAggIteratorContext_ShouldReadWhatTheRangeAggregationNeeds(t *testing.T) {
+	for query, want := range map[string]ParentReads{
+		`rate({app="a"}[1m])`:                                              readsEverything(),
+		`max_over_time({app="a"} | unwrap x [1m])`:                         readsEverything(),
+		`absent_over_time({app="a"}[1m])`:                                  newParentReads(noLabels(), false, false),
+		`max_over_time({app="a"} | unwrap x [1m]) by (app)`:                newParentReads(onlyLabels("app"), false, true),
+		`quantile_over_time(0.5, {app="a"} | unwrap x [1m]) without (pod)`: newParentReads(labelsWithout("pod"), false, true),
+		`avg_over_time({app="a"} | unwrap x [1m]) by ()`:                   newParentReads(noLabels(), false, true),
+	} {
+		t.Run(query, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(query)
+			require.NoError(t, err)
+			rangeExpr := expr.(*syntax.RangeAggregationExpr)
+
+			nc := rangeAggIteratorContext(RootContext(expr, 10), rangeExpr)
+			require.Equal(t, want, nc.ParentReads())
+			require.Equal(t, rangeAggPreservesSeries(rangeExpr.Operation), nc.OutputPreserving())
+		})
+	}
+}
+
 func TestNodeContext(t *testing.T) {
 	parse := func(t *testing.T, query string) syntax.SampleExpr {
 		t.Helper()
@@ -1527,7 +1692,68 @@ func TestNodeContext(t *testing.T) {
 	t.Run("zero value is not preserving", func(t *testing.T) {
 		var nc NodeContext
 		require.False(t, nc.OutputPreserving())
-		require.Equal(t, NodeContext{}, nc.child(true))
+		require.Equal(t, NodeContext{}, nc.child(true, readsEverything()))
+	})
+
+	t.Run("identity-only range iterator needs the setting and a parent that reads only the identity", func(t *testing.T) {
+		identityOnly := newParentReads(noLabels(), true, false)
+		for name, tc := range map[string]struct {
+			enabled bool
+			reads   ParentReads
+			want    bool
+		}{
+			"enabled and the parent reads only the identity": {enabled: true, reads: identityOnly, want: true},
+			"not enabled":                 {enabled: false, reads: identityOnly},
+			"the parent reads a label":    {enabled: true, reads: newParentReads(onlyLabels("app"), true, false)},
+			"the parent reads the values": {enabled: true, reads: newParentReads(noLabels(), true, true)},
+			"the parent merges series":    {enabled: true, reads: newParentReads(noLabels(), false, false)},
+			"the parent reads everything": {enabled: true, reads: readsEverything()},
+		} {
+			t.Run(name, func(t *testing.T) {
+				nc := RootContext(parse(t, rate), 10).withIdentityOnlyRangeIterator(tc.enabled)
+				require.Equal(t, tc.want, nc.child(false, tc.reads).identityOnlyRangeIterator())
+				require.Equal(t, tc.want, nc.child(true, tc.reads).identityOnlyRangeIterator())
+			})
+		}
+	})
+
+	t.Run("hash-keyed range iterator needs the setting and a parent that reads values and a bounded set of labels", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			enabled bool
+			reads   ParentReads
+			want    hashKeyedRangeIterator
+		}{
+			"no labels":                       {enabled: true, reads: newParentReads(noLabels(), true, true), want: hashKeyedRangeIterator{enabled: true, keep: noLabels()}},
+			"some labels":                     {enabled: true, reads: newParentReads(onlyLabels("app"), true, true), want: hashKeyedRangeIterator{enabled: true, keep: onlyLabels("app")}},
+			"not enabled":                     {enabled: false, reads: newParentReads(noLabels(), true, true)},
+			"every label but some":            {enabled: true, reads: newParentReads(labelsWithout("app"), true, true)},
+			"every label":                     {enabled: true, reads: newParentReads(allLabels(), true, true)},
+			"the parent reads no values":      {enabled: true, reads: newParentReads(noLabels(), true, false)},
+			"the parent merges series":        {enabled: true, reads: newParentReads(noLabels(), false, true)},
+			"the parent reads everything":     {enabled: true, reads: readsEverything()},
+			"the parent reads some, not ids":  {enabled: true, reads: newParentReads(onlyLabels("app"), false, true)},
+			"the parent reads only the label": {enabled: true, reads: newParentReads(onlyLabels("app"), true, false)},
+		} {
+			t.Run(name, func(t *testing.T) {
+				nc := RootContext(parse(t, rate), 10).withHashKeyedRangeIterator(tc.enabled)
+				require.Equal(t, tc.want, nc.child(false, tc.reads).hashKeyedRangeIterator())
+				require.Equal(t, tc.want, nc.child(true, tc.reads).hashKeyedRangeIterator())
+			})
+		}
+	})
+
+	t.Run("zero value and root read everything", func(t *testing.T) {
+		require.Equal(t, readsEverything(), NodeContext{}.ParentReads())
+		require.Equal(t, readsEverything(), RootContext(parse(t, rate), 10).ParentReads())
+	})
+
+	t.Run("child carries what its parent reads whether or not it preserves", func(t *testing.T) {
+		reads := newParentReads(onlyLabels("app"), false, true)
+		nc := RootContext(parse(t, rate), 10)
+		require.Equal(t, reads, nc.child(true, reads).ParentReads())
+		require.Equal(t, reads, nc.child(false, reads).ParentReads())
+		require.True(t, nc.child(true, reads).OutputPreserving())
+		require.False(t, nc.child(false, reads).OutputPreserving())
 	})
 
 	t.Run("root of a query that returns series is preserving", func(t *testing.T) {
@@ -1538,23 +1764,23 @@ func TestNodeContext(t *testing.T) {
 	t.Run("child preserves only while every operator above it does", func(t *testing.T) {
 		nc := RootContext(parse(t, rate), 0)
 
-		preserving := nc.child(true)
+		preserving := nc.child(true, readsEverything())
 		require.True(t, preserving.OutputPreserving())
-		require.True(t, preserving.child(true).OutputPreserving())
+		require.True(t, preserving.child(true, readsEverything()).OutputPreserving())
 
-		require.Equal(t, NodeContext{}, nc.child(false))
-		require.Equal(t, NodeContext{}, preserving.child(false))
-		require.Equal(t, NodeContext{}, nc.child(false).child(true))
+		require.Equal(t, NodeContext{}, nc.child(false, readsEverything()))
+		require.Equal(t, NodeContext{}, preserving.child(false, readsEverything()))
+		require.Equal(t, NodeContext{}, nc.child(false, readsEverything()).child(true, readsEverything()))
 	})
 
 	t.Run("series limit follows preserving children only", func(t *testing.T) {
 		expr := parse(t, rate)
 		nc := RootContext(expr, 10)
 		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.iteratorLimits(expr))
-		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.child(true).child(true).iteratorLimits(expr))
-		require.Equal(t, iteratorLimits{}, nc.child(false).iteratorLimits(expr))
-		require.Equal(t, iteratorLimits{}, nc.child(false).child(true).iteratorLimits(expr))
-		require.Equal(t, iteratorLimits{}, nc.child(rangeAggPreservesSeries(syntax.OpRangeTypeAbsent)).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{maxSeries: 10}, nc.child(true, readsEverything()).child(true, readsEverything()).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(false, readsEverything()).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(false, readsEverything()).child(true, readsEverything()).iteratorLimits(expr))
+		require.Equal(t, iteratorLimits{}, nc.child(rangeAggPreservesSeries(syntax.OpRangeTypeAbsent), readsEverything()).iteratorLimits(expr))
 	})
 
 	t.Run("zero series limit turns the cut-off off", func(t *testing.T) {
@@ -1593,7 +1819,7 @@ func TestNodeContext(t *testing.T) {
 		t.Run("root of a sketch is not preserving: "+name, func(t *testing.T) {
 			nc := RootContext(build(t), 10)
 			require.False(t, nc.OutputPreserving())
-			require.False(t, nc.child(true).OutputPreserving())
+			require.False(t, nc.child(true, readsEverything()).OutputPreserving())
 			require.Equal(t, iteratorLimits{}, nc.iteratorLimits(build(t)))
 		})
 	}
@@ -1610,7 +1836,7 @@ func TestSketchScoping_ShouldOnlyAffectTheSketchPath(t *testing.T) {
 	require.True(t, RootContext(root, 5).OutputPreserving())
 
 	ev := NewDefaultEvaluator(nil, 0, 0, fakeLimits{maxSeries: 7})
-	nc := RootContext(root, 5).child(binOpPreservesSeries(root))
+	nc := RootContext(root, 5).child(binOpPreservesSeries(root), readsEverything())
 	require.Equal(t, 7, ev.seriesCutoff(contextForTenant(t, "a"), nc))
 
 	require.Equal(t, iteratorLimits{maxSeries: 5}, nc.iteratorLimits(left))
@@ -1623,9 +1849,9 @@ func TestSeriesCutoff_ShouldApplyOnlyWhenEveryParentPreserves(t *testing.T) {
 	root := RootContext(mustParseSampleExpr(`sum(rate({app="a"}[1m]))`), 0)
 
 	require.Equal(t, 7, ev.seriesCutoff(ctx, root))
-	require.Equal(t, 7, ev.seriesCutoff(ctx, root.child(true)))
-	require.Zero(t, ev.seriesCutoff(ctx, root.child(false)))
-	require.Zero(t, ev.seriesCutoff(ctx, root.child(true).child(false)))
+	require.Equal(t, 7, ev.seriesCutoff(ctx, root.child(true, readsEverything())))
+	require.Zero(t, ev.seriesCutoff(ctx, root.child(false, readsEverything())))
+	require.Zero(t, ev.seriesCutoff(ctx, root.child(true, readsEverything()).child(false, readsEverything())))
 	require.Zero(t, ev.seriesCutoff(ctx, NodeContext{}))
 }
 

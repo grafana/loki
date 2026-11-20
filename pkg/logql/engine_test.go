@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1765,6 +1766,397 @@ func TestEngine_MaxQuerySeriesCutoff_ShouldEndLikeWithoutItWhenOrDiscardsSteps(t
 				return
 			}
 			require.NoError(t, errOn)
+		})
+	}
+}
+
+func TestEngine_IdentityOnlyRangeIterator_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, identityOnly, cutoff bool, query string, numSeries, step int) (logqlmodel.Result, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, distinctStreams(numSeries, end))
+		eng := NewEngine(EngineOpts{IdentityOnlyRangeIterator: identityOnly, MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		// step is in seconds. Zero is an instant query.
+		step int
+		// wantEmpty is true when the query returns no series.
+		wantEmpty bool
+		// wantErr is a part of the error that the query returns, whether the option is on or off. The
+		// error names one series, and which one is not fixed.
+		wantErr string
+	}{
+		"count":                                 {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count of rate":                         {query: `count(rate({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count by an empty grouping":            {query: `count by () (count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count without windows that overlap":    {query: `count(count_over_time({app="a"}[10s]))`, numSeries: 2, step: 30},
+		"count of an instant query":             {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 0},
+		"count by reads the label":              {query: `count by (id) (count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"sum reads the values":                  {query: `sum(count_over_time({app="a"}[1m]))`, numSeries: 2, step: 30},
+		"count of a filtered range aggregation": {query: `count(count_over_time({app="a"} |= "line 9" [1m]))`, numSeries: 2, step: 30},
+		"count of a malformed json":             {query: `count(count_over_time({app="a"} | json [1m]))`, numSeries: 2, step: 30, wantErr: "JSONParserErr"},
+		"count that drops the errored lines":    {query: `count(count_over_time({app="a"} | json | __error__="" [1m]))`, numSeries: 2, step: 30, wantEmpty: true},
+		"count that keeps the errored lines":    {query: `count(count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 2, step: 30},
+		"count of more series than the limit":   {query: `count(count_over_time({app="a"}[1m]))`, numSeries: 10, step: 30},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, cutoff := range []bool{false, true} {
+				resOff, errOff := run(t, false, cutoff, tc.query, tc.numSeries, tc.step)
+				resOn, errOn := run(t, true, cutoff, tc.query, tc.numSeries, tc.step)
+
+				if tc.wantErr != "" {
+					require.ErrorContains(t, errOff, tc.wantErr)
+					require.ErrorContains(t, errOn, tc.wantErr)
+					continue
+				}
+				require.NoError(t, errOff)
+				require.NoError(t, errOn)
+				if !tc.wantEmpty {
+					require.NotEmpty(t, resOn.Data)
+				}
+				require.Equal(t, resOff.Data, resOn.Data)
+			}
+		})
+	}
+}
+
+func TestEngine_HashKeyedRangeIterator_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	const maxSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, hashKeyed, cutoff bool, query string, numSeries, step int) (logqlmodel.Result, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, distinctStreams(numSeries, end))
+		eng := NewEngine(EngineOpts{HashKeyedRangeIterator: hashKeyed, MaxQuerySeriesCutoff: cutoff}, querier, &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		return eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+	}
+
+	for name, tc := range map[string]struct {
+		query     string
+		numSeries int
+		// step is in seconds. Zero is an instant query.
+		step int
+		// wantEmpty is true when the query returns no series.
+		wantEmpty bool
+		// wantErr is a part of the error that the query returns, whether the option is on or off.
+		wantErr string
+	}{
+		"avg of max_over_time":                    {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of min_over_time":                    {query: `avg(min_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of avg_over_time":                    {query: `avg(avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of sum_over_time":                    {query: `avg(sum_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of stddev_over_time":                 {query: `avg(stddev_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of quantile_over_time":               {query: `avg(quantile_over_time(0.5, {app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of first_over_time":                  {query: `avg(first_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of last_over_time":                   {query: `avg(last_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of rate_counter":                     {query: `avg(rate_counter({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg of count_over_time":                  {query: `avg(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg of rate":                             {query: `avg(rate({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg of bytes_over_time":                  {query: `avg(bytes_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"stddev of count_over_time":               {query: `stddev(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"stdvar of rate":                          {query: `stdvar(rate({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg by an empty grouping":                {query: `avg by () (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that every series has":    {query: `avg by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that tells series apart":  {query: `avg by (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg by a label that no series has":       {query: `avg by (missing) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg without reads every label but one":   {query: `avg without (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"stddev by":                               {query: `stddev by (app) (count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"sum of max_over_time keeps series apart": {query: `sum(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"sum by of max_over_time":                 {query: `sum by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"max of avg_over_time":                    {query: `max(avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"min by of avg_over_time":                 {query: `min by (app) (avg_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg with a range aggregation grouping":   {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]) by (app))`, numSeries: 3, step: 30},
+		"avg with an offset":                      {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m] offset 30s))`, numSeries: 3, step: 30},
+		"avg with a step longer than the range":   {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [10s]))`, numSeries: 3, step: 30},
+		"avg of an instant query":                 {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 0},
+		"avg of a filtered range aggregation":     {query: `avg(count_over_time({app="a"} |= "line 9" [1m]))`, numSeries: 3, step: 30},
+		"avg of a conversion that fails":          {query: `avg(max_over_time({app="a"} | unwrap app [1m]))`, numSeries: 3, step: 30, wantErr: "SampleExtractionErr"},
+		"avg of a malformed json":                 {query: `avg(count_over_time({app="a"} | json [1m]))`, numSeries: 3, step: 30, wantErr: "JSONParserErr"},
+		"avg that drops the errored lines":        {query: `avg(count_over_time({app="a"} | json | __error__="" [1m]))`, numSeries: 3, step: 30, wantEmpty: true},
+		"avg that keeps the errored lines":        {query: `avg(count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 3, step: 30},
+		"avg by that keeps the errored lines":     {query: `avg by (id) (count_over_time({app="a"} | json | __error__!="" [1m]))`, numSeries: 3, step: 30},
+		"avg of more series than the limit":       {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30},
+		"avg by id of more series than the limit": {query: `avg by (id) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30, wantErr: "maximum number of series (3)"},
+		"avg by of more series than the limit":    {query: `avg by (app) (max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 10, step: 30},
+		"avg of a binary operation":               {query: `avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m])) + avg(count_over_time({app="a"}[1m]))`, numSeries: 3, step: 30},
+		"avg compared with a vector":              {query: `max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]) > on() group_left avg(max_over_time({app="a"} | label_format v="{{ .id }}" | unwrap v [1m]))`, numSeries: 3, step: 30},
+		"avg inside topk":                         {query: `topk(2, avg by (id) (count_over_time({app="a"}[1m])))`, numSeries: 3, step: 30},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, cutoff := range []bool{false, true} {
+				resOff, errOff := run(t, false, cutoff, tc.query, tc.numSeries, tc.step)
+				resOn, errOn := run(t, true, cutoff, tc.query, tc.numSeries, tc.step)
+
+				if tc.wantErr != "" {
+					require.ErrorContains(t, errOff, tc.wantErr)
+					require.ErrorContains(t, errOn, tc.wantErr)
+					continue
+				}
+				require.Equal(t, errOff, errOn)
+				if errOff != nil {
+					require.NotEqual(t, logqlmodel.Result{}, resOff)
+				}
+				if errOff == nil && !tc.wantEmpty {
+					require.NotEmpty(t, resOn.Data)
+				}
+				require.Equal(t, resOff.Data, resOn.Data)
+			}
+		})
+	}
+}
+
+// recordingQuerier records the selector of every sample request that reaches the Querier below it.
+type recordingQuerier struct {
+	Querier
+	mtx       *sync.Mutex
+	selectors *[]string
+}
+
+// newRecordingQuerier returns a Querier over q that appends the selector of each sample request to
+// selectors.
+func newRecordingQuerier(q Querier, selectors *[]string) recordingQuerier {
+	return recordingQuerier{Querier: q, mtx: &sync.Mutex{}, selectors: selectors}
+}
+
+func (q recordingQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+	q.mtx.Lock()
+	*q.selectors = append(*q.selectors, p.Selector)
+	q.mtx.Unlock()
+	return q.Querier.SelectSamples(ctx, p)
+}
+
+// minMaxPushdownStreams returns streams of JSON lines that carry a number, a label and, now and
+// then, a value that is NaN or not a number.
+func minMaxPushdownStreams(end time.Time) []logproto.Stream {
+	values := []string{"1", "7", "3", `"NaN"`, "5", "2", "9", "4"}
+	streams := make([]logproto.Stream, 0, 6)
+	for i := range 6 {
+		var entries []logproto.Entry
+		for n, ts := 0, time.Unix(0, 0); !ts.After(end); n, ts = n+1, ts.Add(5*time.Second) {
+			line := fmt.Sprintf(`{"v":%s,"w":"%d","msg":"m%d"}`, values[(n+i)%len(values)], (n+i)%3, n%2)
+			if i == 5 && n%11 == 3 {
+				line = `{"v":"abc","w":"1","msg":"bad"}`
+			}
+			entries = append(entries, logproto.Entry{Timestamp: ts, Line: line})
+		}
+		streams = append(streams, logproto.Stream{Labels: fmt.Sprintf(`{app="a", pod="p%d", zone="z%d"}`, i, i%2), Entries: entries})
+	}
+	return streams
+}
+
+func TestEngine_PushMinMaxGrouping_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	end := time.Unix(120, 0)
+	const (
+		unwrap = `{app="a"} | json | unwrap v | __error__=""`
+		tail   = `{app="a"} | json | unwrap v`
+	)
+
+	for name, tc := range map[string]struct {
+		query      string
+		start      time.Time
+		step       time.Duration
+		wantPushed bool
+		wantErr    bool
+	}{
+		"max by the unwrap label":                   {query: `max by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"min by the unwrap label":                   {query: `min by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the unwrap label and another":       {query: `max by (v, zone) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a stream label":                     {query: `max by (zone) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"min by a stream label":                     {query: `min by (zone) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a parsed label":                     {query: `max by (w) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a stream and a parsed label":        {query: `max by (pod, w) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by nothing":                            {query: `max(max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by a label no series has":              {query: `max by (nope) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the error label":                    {query: `max by (__error__) (max_over_time(` + tail + ` | __error__!="zzz" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max by the error label and a stream label": {query: `max by (__error__, zone) (max_over_time(` + tail + ` | __error__!="zzz" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max over the errors only":                  {query: `max by (v) (max_over_time(` + tail + ` | __error__!="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max over a failing unwrap":                 {query: `max by (zone) (max_over_time(` + tail + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true, wantErr: true},
+		"max with a step longer than the range":     {query: `max by (v) (max_over_time(` + unwrap + ` [10s]))`, start: time.Unix(30, 0), step: 30 * time.Second, wantPushed: true},
+		"min with a step longer than the range":     {query: `min by (zone) (min_over_time(` + unwrap + ` [10s]))`, start: time.Unix(30, 0), step: 30 * time.Second, wantPushed: true},
+		"max with an offset":                        {query: `max by (v, zone) (max_over_time(` + unwrap + ` [30s] offset 20s))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with an instant query":                 {query: `max by (v, zone) (max_over_time(` + unwrap + ` [1m]))`, start: end, wantPushed: true},
+		"max over a converted unwrap":               {query: `max by (zone) (max_over_time({app="a"} | json | unwrap bytes(v) | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a post filter":                    {query: `max by (v) (max_over_time({app="a"} | json | unwrap v | __error__="" | v > 2 [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a label format on the group":      {query: `max by (v) (max_over_time({app="a"} | json | label_format v="{{.w}}" | unwrap v | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max with a dropped group":                  {query: `max by (zone) (max_over_time({app="a"} | json | drop zone | unwrap v | __error__="" [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max without":                               {query: `max without (pod) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max without the unwrap label":              {query: `max without (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max with a grouping on the range":          {query: `max by (v) (max_over_time(` + unwrap + ` [30s]) by (v, zone))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max over min_over_time":                    {query: `max by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"min over max_over_time":                    {query: `min by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max over sum_over_time":                    {query: `max by (v) (sum_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"avg over max_over_time":                    {query: `avg by (v) (max_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"sum by the unwrap label":                   {query: `sum by (v) (sum_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second},
+		"max in a binary operation":                 {query: `max by (v) (max_over_time(` + unwrap + ` [30s])) + min by (v) (min_over_time(` + unwrap + ` [30s]))`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+		"max under label_replace":                   {query: `label_replace(max by (v, pod) (max_over_time(` + unwrap + ` [30s])), "x", "$1", "pod", "(.*)")`, start: time.Unix(60, 0), step: 15 * time.Second, wantPushed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			run := func(t *testing.T, push bool) (logqlmodel.Result, []string, error) {
+				t.Helper()
+				var selectors []string
+				querier := newRecordingQuerier(NewMockQuerier(1, minMaxPushdownStreams(end)), &selectors)
+				eng := NewEngine(EngineOpts{PushMinMaxGrouping: push}, querier, &fakeLimits{maxSeries: 1000, timeout: time.Minute}, log.NewNopLogger())
+				params, err := NewLiteralParams(tc.query, tc.start, end, tc.step, 0, logproto.FORWARD, 1000, nil, nil)
+				require.NoError(t, err)
+				res, err := eng.Query(params).Exec(ctx)
+				return res, selectors, err
+			}
+
+			resOff, selectorsOff, errOff := run(t, false)
+			resOn, selectorsOn, errOn := run(t, true)
+
+			if tc.wantErr {
+				require.ErrorContains(t, errOff, "SampleExtractionErr")
+				require.ErrorContains(t, errOn, "SampleExtractionErr")
+				return
+			}
+			require.NoError(t, errOff)
+			require.NoError(t, errOn)
+			require.NotEmpty(t, resOff.Data)
+			require.Equal(t, resOff.Data.String(), resOn.Data.String())
+
+			for _, selector := range selectorsOff {
+				require.True(t, strings.HasPrefix(selector, "max_over_time") || !strings.HasPrefix(selector, "max by") && !strings.HasPrefix(selector, "min by"), "off must send the range aggregation: %s", selector)
+			}
+			pushed := 0
+			for _, selector := range selectorsOn {
+				if strings.HasPrefix(selector, "max by") || strings.HasPrefix(selector, "min by") || strings.HasPrefix(selector, "max(") {
+					pushed++
+				}
+			}
+			require.Equal(t, tc.wantPushed, pushed > 0, "selectors with the flag on: %v", selectorsOn)
+		})
+	}
+}
+
+// restrictedParsingStreams returns streams of json lines that differ in fields no query below
+// groups by, so merging the series of a group at the source would show.
+func restrictedParsingStreams(end time.Time) []logproto.Stream {
+	var streams []logproto.Stream
+	for p := range 3 {
+		var entries []logproto.Entry
+		for ts, i := time.Unix(0, 0), 0; !ts.After(end); ts, i = ts.Add(time.Second), i+1 {
+			v := fmt.Sprintf("%d", (i*7+p*3)%11)
+			if i%13 == 0 {
+				v = "NaN"
+			}
+			w := fmt.Sprintf("%d", i%9)
+			if i%17 == 0 {
+				w = "oops"
+			}
+			entries = append(entries, logproto.Entry{
+				Timestamp: ts,
+				Line:      fmt.Sprintf(`{"v":%q,"w":%q,"d":"%ds","x":"g%d","ok":"%t","id":"%d","a":"%d","level":"l%d","junk":"%d"}`, v, w, i%9, i%3, i%4 != 0, i, i%5, i%2, p),
+			})
+		}
+		streams = append(streams, logproto.Stream{
+			Labels:  fmt.Sprintf(`{app="a", pod="p%d", level="s%d"}`, p, p%2),
+			Entries: entries,
+		})
+	}
+	return streams
+}
+
+func TestEngine_RestrictedParsing_ShouldReturnWhatItReturnsWithoutIt(t *testing.T) {
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	run := func(t *testing.T, restricted bool, query string, step int) (string, error) {
+		t.Helper()
+		querier := NewMockQuerier(1, restrictedParsingStreams(end))
+		eng := NewEngine(EngineOpts{RestrictedParsing: restricted}, querier, &fakeLimits{maxSeries: 10000, timeout: time.Minute}, log.NewNopLogger())
+		from := start
+		if step == 0 {
+			from = end
+		}
+		params, err := NewLiteralParams(query, from, end, time.Duration(step)*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		res, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprint(res.Data), nil
+	}
+
+	for name, query := range map[string]string{
+		"count of a filtered json":               `count(count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"count by of a filtered json":            `count by (x) (count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"avg of a json":                          `avg(count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"stddev by of a json":                    `stddev by (x) (count_over_time({app="a"} | json [1m]))`,
+		"sum by of a json":                       `sum by (x) (count_over_time({app="a"} | json | ok="true" [1m]))`,
+		"sum without of a json":                  `sum without (id, a, junk) (count_over_time({app="a"} | json [1m]))`,
+		"max by of max_over_time":                `max by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of max_over_time filtered":       `max by (x) (max_over_time({app="a"} | json | ok="true" | unwrap v [1m]))`,
+		"max by two labels":                      `max by (x, pod) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by a stream label":                  `max by (pod) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by an empty grouping":               `max(max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by the unwrap label":                `max by (v) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max without":                            `max without (id, a, junk, ok) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of a conversion":                 `max by (x) (max_over_time({app="a"} | json | unwrap duration(d) [1m]))`,
+		"max by that keeps errored lines":        `max by (x) (max_over_time({app="a"} | json | unwrap v | __error__!="" [1m]))`,
+		"max by that drops errored lines":        `max by (x) (max_over_time({app="a"} | json | unwrap v | __error__="" [1m]))`,
+		"max by of an unwrap with a post filter": `max by (x) (max_over_time({app="a"} | json | unwrap v | v > 3 [1m]))`,
+		"max by a clashing label":                `max by (level_extracted) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by a clashing label filtered":       `max by (level) (max_over_time({app="a"} | json | level_extracted="l1" | unwrap v [1m]))`,
+		"max by a clashing unwrap":               `max by (x) (max_over_time({app="a"} | json | unwrap level_extracted [1m]))`,
+		"min by of min_over_time":                `min by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"min by of min_over_time with a label":   `min by (a) (min_over_time({app="a"} | json | x="g1" | unwrap v [1m]))`,
+		"max by of min_over_time":                `max by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of avg_over_time":                `max by (x) (avg_over_time({app="a"} | json | unwrap v [1m]))`,
+		"sum by of max_over_time":                `sum by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by of rate":                         `max by (x) (rate({app="a"} | json [1m]))`,
+		"sum by of sum_over_time":                `sum by (x) (sum_over_time({app="a"} | json | unwrap v [1m]))`,
+		"sum by the unwrap label":                `sum by (v) (sum_over_time({app="a"} | json | unwrap v [1m]))`,
+		"max by with a range grouping":           `max by (x) (max_over_time({app="a"} | json | unwrap v [1m]) by (a))`,
+		"label_format template":                  `max by (z) (max_over_time({app="a"} | json | label_format z="{{.a}}{{.x}}" | unwrap v [1m]))`,
+		"label_format rename":                    `max by (z) (max_over_time({app="a"} | json | label_format z=a | unwrap v [1m]))`,
+		"label_format with index":                `max by (z) (max_over_time({app="a"} | json | label_format z=` + "`{{ index . \"a\" }}`" + ` | unwrap v [1m]))`,
+		"line_format template":                   `max(max_over_time({app="a"} | json | line_format "k={{.a}}" | logfmt | unwrap k [1m]))`,
+		"line_format with index":                 `max(max_over_time({app="a"} | json | line_format ` + "`k={{ index . \"a\" }}`" + ` | logfmt | unwrap k [1m]))`,
+		"line_format filtered with index":        `sum(count_over_time({app="a"} | json | line_format ` + "`{{ index . \"a\" }}-{{ index . \"x\" }}`" + ` |= "3-g1" [1m]))`,
+		"and on the max":                         `max by (x) (max_over_time({app="a"} | json | unwrap v [1m])) and on (x) max by (x) (max_over_time({app="a"} | json | unwrap v [1m]))`,
+		"binary operation":                       `max by (x) (max_over_time({app="a"} | json | unwrap v [1m])) / on (x) min by (x) (min_over_time({app="a"} | json | unwrap v [1m]))`,
+		"label_replace over a max":               `label_replace(max by (x) (max_over_time({app="a"} | json | unwrap v [1m])), "y", "$1", "x", "(.*)")`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, step := range []int{0, 30, 90} {
+				off, errOff := run(t, false, query, step)
+				on, errOn := run(t, true, query, step)
+				if errOff != nil {
+					require.ErrorContains(t, errOn, "pipeline error: 'SampleExtractionErr'")
+					require.ErrorContains(t, errOff, "pipeline error: 'SampleExtractionErr'")
+					continue
+				}
+				require.NoError(t, errOn)
+				if name != "max by that keeps errored lines" {
+					require.NotEmpty(t, off)
+				}
+				require.Equal(t, off, on, "step %d", step)
+			}
 		})
 	}
 }
