@@ -343,3 +343,58 @@ func TestHistogramFuncs_quantilesReplaceALabelOfTheSeries(t *testing.T) {
 	got := histogramInstant(t, streams, `histogram_quantiles(`+h+`, "quantile", 0.5)`)
 	require.Equal(t, map[string]float64{`{app="a", quantile="0.5"}`: want}, got)
 }
+
+// Series that differ only in the label that the quantile replaces become one series, which PromQL fails at, as the
+// parser cannot know. A series is not the same as another only because it has the label.
+func TestHistogramFuncs_quantilesFailWhenTheLabelMakesTwoSeriesTheSame(t *testing.T) {
+	const h = `histogram_over_time(buckets(1, 2, 4), {app="a"} | logfmt | unwrap duration [1m])`
+	values := []histogramTimedValue{{histogramSeconds(10), "1"}, {histogramSeconds(20), "3"}}
+
+	t.Run("two series that differ in the label", func(t *testing.T) {
+		streams := []logproto.Stream{
+			histogramStream(`{app="a", quantile="x"}`, values...),
+			histogramStream(`{app="a", quantile="y"}`, values...),
+		}
+		_, err := histogramRunQuery(t, streams, `histogram_quantiles(`+h+`, "quantile", 0.5, 0.9)`, histogramAt(60), histogramAt(60), 0)
+		require.ErrorIs(t, err, logqlerr.ErrParse)
+		require.ErrorContains(t, err, `the label "quantile" replaces a label of the series`)
+		require.ErrorContains(t, err, `{app="a", quantile="0.5"}`)
+	})
+
+	t.Run("a series with the label and a series without it", func(t *testing.T) {
+		streams := []logproto.Stream{
+			histogramStream(`{app="a", quantile="x"}`, values...),
+			histogramStream(`{app="a"}`, values...),
+		}
+		_, err := histogramRunQuery(t, streams, `histogram_quantiles(`+h+`, "quantile", 0.5)`, histogramAt(60), histogramAt(60), 0)
+		require.ErrorIs(t, err, logqlerr.ErrParse)
+	})
+
+	t.Run("a label that tells the series apart is not a collision", func(t *testing.T) {
+		streams := []logproto.Stream{
+			histogramStream(`{app="a", pod="1", quantile="x"}`, values...),
+			histogramStream(`{app="a", pod="2", quantile="x"}`, values...),
+		}
+		got := histogramInstant(t, streams, `histogram_quantiles(`+h+`, "quantile", 0.5, 0.9)`)
+		require.Len(t, got, 4)
+		require.Contains(t, got, `{app="a", pod="1", quantile="0.5"}`)
+		require.Contains(t, got, `{app="a", pod="2", quantile="0.9"}`)
+	})
+
+	t.Run("series without the label cannot collide", func(t *testing.T) {
+		streams := []logproto.Stream{
+			histogramStream(`{app="a", pod="1"}`, values...),
+			histogramStream(`{app="a", pod="2"}`, values...),
+		}
+		require.Len(t, histogramInstant(t, streams, `histogram_quantiles(`+h+`, "quantile", 0.5, 0.9)`), 4)
+	})
+
+	t.Run("grouping the label away avoids it", func(t *testing.T) {
+		streams := []logproto.Stream{
+			histogramStream(`{app="a", quantile="x"}`, values...),
+			histogramStream(`{app="a", quantile="y"}`, values...),
+		}
+		got := histogramInstant(t, streams, `histogram_quantiles(sum by (app) (`+h+`), "quantile", 0.5)`)
+		require.Len(t, got, 1)
+	})
+}

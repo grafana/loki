@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
@@ -305,7 +306,11 @@ func TestHistogramMatrixStepEvaluator(t *testing.T) {
 // histogramShardEngine returns an engine over a querier with two series that have values in the window of each
 // of the two steps of the queries of the tests.
 func histogramShardEngine(maxSeries int) *QueryEngine {
-	streams := []logproto.Stream{
+	return NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, histogramShardStreams()), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
+}
+
+func histogramShardStreams() []logproto.Stream {
+	return []logproto.Stream{
 		histogramStream(`{app="a"}`,
 			histogramTimedValue{histogramSeconds(10), "0.1"}, histogramTimedValue{histogramSeconds(20), "0.2"},
 			histogramTimedValue{histogramSeconds(70), "2.0"}),
@@ -313,18 +318,71 @@ func histogramShardEngine(maxSeries int) *QueryEngine {
 			histogramTimedValue{histogramSeconds(15), "5"},
 			histogramTimedValue{histogramSeconds(80), "6"}, histogramTimedValue{histogramSeconds(90), "7"}),
 	}
-	return NewEngine(EngineOpts{EnableHistograms: true}, NewMockQuerier(0, streams), &fakeLimits{maxSeries: maxSeries, timeout: time.Minute}, log.NewNopLogger())
 }
 
 // histogramShardQuery runs a query that the validation of a query would refuse, as a shard of a query does, because
-// its result is a histogram.
+// its result is a histogram. The shard is the only one, so that it reads every stream.
 func histogramShardQuery(t *testing.T, eng *QueryEngine, query string, start, end time.Time, step time.Duration) (logqlmodel.Result, error) {
+	t.Helper()
+	return histogramPlanQuery(t, eng, query, []string{"0_of_1"}, start, end, step)
+}
+
+// histogramPlanQuery runs the plan of a query that is not parsed, with the shards that the query has.
+func histogramPlanQuery(t *testing.T, eng *QueryEngine, query string, shards []string, start, end time.Time, step time.Duration) (logqlmodel.Result, error) {
 	t.Helper()
 	expr, err := syntax.ParseExprWithoutValidation(query)
 	require.NoError(t, err)
-	params, err := NewLiteralParams(`count_over_time({app="a"}[1m])`, start, end, step, 0, logproto.FORWARD, 100, nil, nil)
+	params, err := NewLiteralParams(`count_over_time({app="a"}[1m])`, start, end, step, 0, logproto.FORWARD, 100, shards, nil)
 	require.NoError(t, err)
 	return eng.Query(ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr}).Exec(user.InjectOrgID(context.Background(), "fake"))
+}
+
+// A plan is not parsed, so the parser is not what keeps a histogram result from a user. The engine runs a query
+// that returns one only when it has shards, which is what a shard of a query has and a query of a user does not.
+func TestEngine_AHistogramAtTheRootNeedsShards(t *testing.T) {
+	const rng = `{app=~".+"} | logfmt | unwrap duration`
+
+	for name, query := range map[string]string{
+		"histogram_over_time": `histogram_over_time(` + rng + ` [1m])`,
+		"a sum by":            `sum by (app) (histogram_over_time(` + rng + ` [1m]))`,
+		"a grouped range":     `histogram_over_time(` + rng + ` [1m]) by (app)`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, shards := range [][]string{nil, {}} {
+				res, err := histogramPlanQuery(t, histogramShardEngine(100), query, shards, histogramAt(60), histogramAt(120), time.Minute)
+				require.ErrorIs(t, err, logqlerr.ErrParse, "%v", res.Data)
+				require.ErrorContains(t, err, "a query cannot return a histogram")
+			}
+
+			res, err := histogramPlanQuery(t, histogramShardEngine(100), query, []string{"0_of_1"}, histogramAt(60), histogramAt(120), time.Minute)
+			require.NoError(t, err)
+			require.IsType(t, HistogramMatrix{}, res.Data)
+		})
+	}
+
+	// A query that reads the histogram has floats at its root, and it needs no shard.
+	t.Run("a reader needs none", func(t *testing.T) {
+		res, err := histogramPlanQuery(t, histogramShardEngine(100), `histogram_count(sum by (app) (histogram_over_time(`+rng+` [1m])))`, nil, histogramAt(60), histogramAt(120), time.Minute)
+		require.NoError(t, err)
+		require.IsType(t, promql.Matrix{}, res.Data)
+	})
+
+	// It is refused before anything is read.
+	t.Run("nothing is read", func(t *testing.T) {
+		var read atomic.Int64
+		q := newCountingQuerier(NewMockQuerier(0, histogramShardStreams()), &read)
+		eng := NewEngine(EngineOpts{EnableHistograms: true}, q, &fakeLimits{maxSeries: 100, timeout: time.Minute}, log.NewNopLogger())
+		const query = `sum by (app) (histogram_over_time(` + rng + ` [1m]))`
+
+		_, err := histogramPlanQuery(t, eng, query, nil, histogramAt(60), histogramAt(120), time.Minute)
+		require.ErrorIs(t, err, logqlerr.ErrParse)
+		require.Zero(t, read.Load())
+
+		// The same query is read when it is a shard, so the count is one that the query has.
+		_, err = histogramPlanQuery(t, eng, query, []string{"0_of_1"}, histogramAt(60), histogramAt(120), time.Minute)
+		require.NoError(t, err)
+		require.NotZero(t, read.Load())
+	})
 }
 
 func TestEngine_AHistogramAtTheRootIsAHistogramMatrix(t *testing.T) {

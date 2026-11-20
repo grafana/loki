@@ -223,6 +223,10 @@ func TestParseHistogram_errors(t *testing.T) {
 		{"reserved label", `histogram_quantiles(` + rangeAgg + `, "__name__", 0.5)`, `label name "__name__" is reserved`},
 		{"error label", `histogram_quantiles(` + rangeAgg + `, "__error__", 0.5)`, `label name "__error__" is reserved`},
 		{"too many quantiles", `histogram_quantiles(` + rangeAgg + `, "q", 1,2,3,4,5,6,7,8,9,10,11)`, "requires between 1 and 10 quantiles, got 11"},
+		{"a quantile twice", `histogram_quantiles(` + rangeAgg + `, "q", 0.5, 0.9, 0.5)`, "quantile 0.5 is given more than once"},
+		{"a quantile twice in another spelling", `histogram_quantiles(` + rangeAgg + `, "q", 0.5, 0.50)`, "quantile 0.5 is given more than once"},
+		{"zero and negative zero", `histogram_quantiles(` + rangeAgg + `, "q", 0, -0.0)`, "is given more than once"},
+		{"infinity twice", `histogram_quantiles(` + rangeAgg + `, "q", +Inf, Inf)`, "quantile +Inf is given more than once"},
 
 		// A reader needs a histogram.
 		{"reader of a rate", `histogram_quantile(0.9, rate({app="api"}[5m]))`, notHistErr},
@@ -499,18 +503,24 @@ func TestHistogram_negativeZeroKeepsItsSign(t *testing.T) {
 	}
 }
 
+// planRangeAgg and planReader are the JSON of a range aggregation and of a histogram function, as a querier
+// receives them in the plan of a sub-query. extra and params are fields that are written before the others.
+const planRange = `"range":{"interval_nanos":300000000000,"offset_nanos":0,"log_selector":{"raw":"{app=\"api\"}"},` +
+	`"unwrap":{"identifier":"d","operation":"","post_filterers":[]}}`
+
+func planRangeAgg(op, extra string) string {
+	return `{"range_agg":{"operation":"` + op + `",` + extra + planRange + `}}`
+}
+
+func planReader(op, params, inner string) string {
+	return `{"histogram_func":{"operation":"` + op + `",` + params + `"inner":` + inner + `}}`
+}
+
 // A querier builds the sub-queries of a sharded query from JSON, which does not
 // go through the grammar. The checks of the grammar must hold there too, because
 // a bad expression would otherwise give wrong results or panic when it is printed.
 func TestHistogram_decodeRejectsInvalid(t *testing.T) {
-	const rng = `"range":{"interval_nanos":300000000000,"offset_nanos":0,"log_selector":{"raw":"{app=\"api\"}"},` +
-		`"unwrap":{"identifier":"d","operation":"","post_filterers":[]}}`
-	rangeAgg := func(op, extra string) string {
-		return `{"range_agg":{"operation":"` + op + `",` + extra + rng + `}}`
-	}
-	reader := func(op, params, inner string) string {
-		return `{"histogram_func":{"operation":"` + op + `",` + params + `"inner":` + inner + `}}`
-	}
+	rangeAgg, reader := planRangeAgg, planReader
 
 	for _, tc := range []struct {
 		name    string
@@ -532,7 +542,11 @@ func TestHistogram_decodeRejectsInvalid(t *testing.T) {
 		{"quantile that is not a number", reader("histogram_quantile", `"params":["fast"],`, rangeAgg("histogram_over_time", "")), "invalid syntax"},
 		{"quantile that is NaN", reader("histogram_quantile", `"params":["NaN"],`, rangeAgg("histogram_over_time", "")), "must not be NaN"},
 		{"reserved quantile label", reader("histogram_quantiles", `"label":"__error__","params":["0.5"],`, rangeAgg("histogram_over_time", "")), "is reserved"},
-		{"unknown function", reader("histogram_median", "", rangeAgg("histogram_over_time", "")), "histogram_median"},
+		{"unknown function", reader("histogram_median", "", rangeAgg("histogram_over_time", "")), `unsupported histogram function "histogram_median"`},
+		{"a quantile twice", reader("histogram_quantiles", `"label":"q","params":["0.5","0.5"],`, rangeAgg("histogram_over_time", "")), "quantile 0.5 is given more than once"},
+		{"zero and negative zero", reader("histogram_quantiles", `"label":"q","params":["0","-0.0"],`, rangeAgg("histogram_over_time", "")), "is given more than once"},
+		{"a label that a quantile does not take", reader("histogram_quantile", `"label":"q","params":["0.5"],`, rangeAgg("histogram_over_time", "")), "takes no label name"},
+		{"a label that a count does not take", reader("histogram_count", `"label":"q",`, rangeAgg("histogram_over_time", "")), "takes no label name"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := DecodeJSON(tc.json)
@@ -553,6 +567,78 @@ func TestHistogram_decodeRejectsInvalid(t *testing.T) {
 			require.NoError(t, err, "a decoded expression must print as a query that parses: %s", expr)
 		})
 	}
+}
+
+// jsoniter does not stop at a value of the wrong type: it returns a zero value and loses its place. The plan
+// is then refused for what the decoder read after that, which is not what is wrong with it. These are refused for
+// the value that is.
+func TestHistogram_decodeNamesWhatCannotBeRead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		json string
+		want string
+	}{
+		{"buckets that are a string", planReader("histogram_count", "", planRangeAgg("histogram_over_time", `"buckets":"abc",`)), "decoding the buckets of histogram_over_time"},
+		{"a bound that is a string", planReader("histogram_count", "", planRangeAgg("histogram_over_time", `"buckets":[1,"x"],`)), "decoding the buckets of histogram_over_time"},
+		{"a bound that is out of range", planReader("histogram_count", "", planRangeAgg("histogram_over_time", `"buckets":[1,1e999],`)), "decoding the buckets of histogram_over_time"},
+		{"buckets that are an object", planReader("histogram_count", "", planRangeAgg("histogram_over_time", `"buckets":{},`)), "decoding the buckets of histogram_over_time"},
+		{"quantiles that are numbers", planReader("histogram_quantiles", `"label":"q","params":[0.5,0.9],`, planRangeAgg("histogram_over_time", "")), "decoding the params of histogram_quantiles"},
+		{"a quantile that is not a number", planReader("histogram_quantile", `"params":["fast"],`, planRangeAgg("histogram_over_time", "")), `decoding the params of histogram_quantile: strconv.ParseFloat: parsing "fast"`},
+		{"params that are an object", planReader("histogram_quantile", `"params":{},`, planRangeAgg("histogram_over_time", "")), "decoding the params of histogram_quantile"},
+		{"a label that is a number", planReader("histogram_quantiles", `"label":5,"params":["0.5"],`, planRangeAgg("histogram_over_time", "")), "decoding the label of histogram_quantiles"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeJSON(tc.json)
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.want)
+			for _, misleading := range []string{"has no range", "strictly increasing", "unknown sample expression type", `parsing ""`} {
+				require.NotContains(t, err.Error(), misleading)
+			}
+		})
+	}
+
+	// The same plans are valid when the values are right, so the cases above fail for the value that is wrong.
+	for name, doc := range map[string]string{
+		"buckets":   planReader("histogram_count", "", planRangeAgg("histogram_over_time", `"buckets":[1,1000],`)),
+		"quantiles": planReader("histogram_quantiles", `"label":"q","params":["0.5","0.9"],`, planRangeAgg("histogram_over_time", "")),
+	} {
+		t.Run("valid "+name, func(t *testing.T) {
+			_, err := DecodeJSON(doc)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// A label is only for histogram_quantiles, and a function that is built and not parsed has to be refused when
+// it has one, as it prints without it.
+func TestHistogramFuncExpr_validateLabel(t *testing.T) {
+	left, err := ParseExprWithoutValidation(`histogram_over_time(` + histogramTestRange + `) by (a)`)
+	require.NoError(t, err)
+
+	for op, params := range map[string][]float64{
+		OpHistogramQuantile:  {0.5},
+		OpHistogramFraction:  {0, 1},
+		OpHistogramCount:     nil,
+		OpHistogramSum:       nil,
+		OpHistogramAvg:       nil,
+		OpHistogramQuantiles: {0.5},
+	} {
+		t.Run(op, func(t *testing.T) {
+			e := &HistogramFuncExpr{Left: left.(SampleExpr), Operation: op, Params: params, Label: "ignored"}
+			if op == OpHistogramQuantiles {
+				require.NoError(t, e.validate())
+				return
+			}
+			require.ErrorContains(t, e.validate(), "takes no label name")
+			e.Label = ""
+			require.NoError(t, e.validate())
+		})
+	}
+
+	t.Run("an unknown function", func(t *testing.T) {
+		e := &HistogramFuncExpr{Left: left.(SampleExpr), Operation: "histogram_median", Label: "q"}
+		require.EqualError(t, e.validate(), `unsupported histogram function "histogram_median"`)
+	})
 }
 
 func TestBucketSpec_Pretty(t *testing.T) {
