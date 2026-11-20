@@ -60,12 +60,11 @@ func (page *uint32Page) Bounds() (min, max Value, ok bool) {
 }
 
 func (page *uint32Page) Slice(i, j int64) Page {
-	sliced := &uint32Page{
+	return &uint32Page{
 		typ:         page.typ,
+		values:      memory.SliceBufferFrom(page.values.Slice()[i:j:j]),
 		columnIndex: page.columnIndex,
 	}
-	sliced.values.Append(page.values.Slice()[i:j]...)
-	return sliced
 }
 
 func (page *uint32Page) makeValue(v uint32) Value {

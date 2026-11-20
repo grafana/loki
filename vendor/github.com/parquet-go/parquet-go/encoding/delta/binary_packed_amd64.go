@@ -1,9 +1,8 @@
-//go:build !purego
+//go:build !purego && !goexperiment.simd
 
 package delta
 
 import (
-	"github.com/parquet-go/bitpack/unsafecast"
 	"golang.org/x/sys/cpu"
 )
 
@@ -209,48 +208,8 @@ func decodeBlockInt32(dst []int32, minDelta, lastValue int32) int32 {
 }
 
 //go:noescape
-func decodeMiniBlockInt32Default(dst []int32, src []uint32, bitWidth uint)
-
-//go:noescape
-func decodeMiniBlockInt32x1to16bitsAVX2(dst []int32, src []uint32, bitWidth uint)
-
-//go:noescape
-func decodeMiniBlockInt32x17to26bitsAVX2(dst []int32, src []uint32, bitWidth uint)
-
-//go:noescape
-func decodeMiniBlockInt32x27to31bitsAVX2(dst []int32, src []uint32, bitWidth uint)
-
-func decodeMiniBlockInt32(dst []int32, src []uint32, bitWidth uint) {
-	hasAVX2 := cpu.X86.HasAVX2
-	switch {
-	case hasAVX2 && bitWidth <= 16:
-		decodeMiniBlockInt32x1to16bitsAVX2(dst, src, bitWidth)
-	case hasAVX2 && bitWidth <= 26:
-		decodeMiniBlockInt32x17to26bitsAVX2(dst, src, bitWidth)
-	case hasAVX2 && bitWidth <= 31:
-		decodeMiniBlockInt32x27to31bitsAVX2(dst, src, bitWidth)
-	case bitWidth == 32:
-		copy(dst, unsafecast.Slice[int32](src))
-	default:
-		decodeMiniBlockInt32Default(dst, src, bitWidth)
-	}
-}
-
-//go:noescape
 func decodeBlockInt64Default(dst []int64, minDelta, lastValue int64) int64
 
 func decodeBlockInt64(dst []int64, minDelta, lastValue int64) int64 {
 	return decodeBlockInt64Default(dst, minDelta, lastValue)
-}
-
-//go:noescape
-func decodeMiniBlockInt64Default(dst []int64, src []uint32, bitWidth uint)
-
-func decodeMiniBlockInt64(dst []int64, src []uint32, bitWidth uint) {
-	switch {
-	case bitWidth == 64:
-		copy(dst, unsafecast.Slice[int64](src))
-	default:
-		decodeMiniBlockInt64Default(dst, src, bitWidth)
-	}
 }
