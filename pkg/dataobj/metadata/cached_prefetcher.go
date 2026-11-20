@@ -352,7 +352,12 @@ func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, pat
 			continue
 		}
 		if err := f.addCacheItem(group.id, group.unhashedKey, bufs[i], maxRawSize, p.decoder); err != nil {
-			p.warn("data object metadata prefetcher group did not decode", path, err)
+			// A healthy cache holds items of another version while a rollout runs, so do not warn about
+			// them. An item of another key is not expected, so the warning stays. The group counts as a
+			// miss, and a load that succeeds replaces the item.
+			if !errors.Is(err, errVersionMismatch) {
+				p.warn("data object metadata prefetcher group did not decode", path, err)
+			}
 		}
 	}
 	recordPrefetchCacheBytes(ctx, f.dataBytes())
