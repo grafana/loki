@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/common/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -197,4 +198,38 @@ func TestLiveTailQueryConnContextEstablishedConnection(t *testing.T) {
 			goleak.VerifyNone(t, leaks)
 		})
 	}
+}
+
+func TestRequestsWithInvalidTLSConfigReturnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := &DefaultClient{
+		Address:   srv.URL,
+		TLSConfig: config.TLSConfig{CAFile: "/nonexistent/ca.pem"},
+	}
+
+	t.Run("GET request", func(t *testing.T) {
+		var out map[string]any
+		require.NotPanics(t, func() {
+			err := c.doRequest("/loki/api/v1/labels", "", true, &out)
+			require.Error(t, err)
+		})
+	})
+
+	t.Run("POST request", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			err := c.doPostRequest("/loki/api/v1/delete", "", true)
+			require.Error(t, err)
+		})
+	})
+
+	t.Run("DELETE request", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			err := c.doDeleteRequest("/loki/api/v1/delete", "", true)
+			require.Error(t, err)
+		})
+	})
 }

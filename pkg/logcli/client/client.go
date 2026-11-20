@@ -378,10 +378,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
-	client.Timeout = 0
 	if err != nil {
 		return err
 	}
+	client.Timeout = 0
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
 	}
@@ -480,10 +480,10 @@ func (c *DefaultClient) doPostRequest(path, query string, quiet bool) error {
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
-	client.Timeout = 0
 	if err != nil {
 		return err
 	}
+	client.Timeout = 0
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
 	}
@@ -579,10 +579,10 @@ func (c *DefaultClient) doDeleteRequest(path, query string, quiet bool) error {
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
-	client.Timeout = 0
 	if err != nil {
 		return err
 	}
+	client.Timeout = 0
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
 	}
