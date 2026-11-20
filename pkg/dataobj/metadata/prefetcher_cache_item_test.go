@@ -24,6 +24,9 @@ func TestCacheItem(t *testing.T) {
 	// codecOf returns the codec byte of a cache item.
 	codecOf := func(stored []byte) byte { return stored[1] }
 
+	// The zstd frame checksum is the last 4 bytes of a compressed cache item.
+	const zstdChecksumBytes = 4
+
 	t.Run("a cache item below the size threshold stays raw", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), minCompressBytes-1)
 
@@ -114,7 +117,7 @@ func TestCacheItem(t *testing.T) {
 			maxRawSize: maxRawSize,
 		},
 		"a cache item with a corrupt payload": {
-			stored:     corrupt(func(s []byte) []byte { s[len(s)-1] ^= 0xff; return s }),
+			stored:     corrupt(func(s []byte) []byte { s[len(s)-zstdChecksumBytes-1] ^= 0xff; return s }),
 			maxRawSize: maxRawSize,
 		},
 		"a cache item that is cut short": {
@@ -135,6 +138,35 @@ func TestCacheItem(t *testing.T) {
 			require.NotErrorIs(t, err, errVersionMismatch)
 		})
 	}
+
+	t.Run("decodes a compressed cache item whose zstd frame checksum is wrong but whose CRC32 is valid", func(t *testing.T) {
+		stored := encodeCacheItem(compressible, key, codec, encoder)
+		require.Equal(t, codecZstd, codecOf(stored))
+		for i := len(stored) - zstdChecksumBytes; i < len(stored); i++ {
+			stored[i] ^= 0xff
+		}
+		verifying, err := zstd.NewReader(nil)
+		require.NoError(t, err)
+		t.Cleanup(verifying.Close)
+		_, err = decodeCacheItem(stored, key, maxRawSize, verifying)
+		require.EqualError(t, err, "decompressing cache item: "+zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
+
+		got, err := decodeCacheItem(stored, key, maxRawSize, decoder)
+
+		require.NoError(t, err)
+		require.Equal(t, compressible, got)
+	})
+
+	t.Run("rejects a compressed cache item whose CRC32 differs from the decoded bytes", func(t *testing.T) {
+		stored := encodeCacheItem(compressible, key, codec, encoder)
+		require.Equal(t, codecZstd, codecOf(stored))
+		_, n := binary.Uvarint(stored[versionAndCodecBytes:])
+		stored[versionAndCodecBytes+n] ^= 0xff
+
+		_, err := decodeCacheItem(stored, key, maxRawSize, decoder)
+
+		require.EqualError(t, err, "cache item checksum mismatch")
+	})
 
 	t.Run("rejects a raw cache item with a payload byte that differs from the checksum", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), 200)

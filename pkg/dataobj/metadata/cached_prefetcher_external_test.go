@@ -1101,14 +1101,17 @@ func (s *fakeCache) clear() {
 	clear(s.values)
 }
 
-// corrupt changes the last byte of an entry whose cache item holds an unhashed key with part after
-// the "#".
+// corrupt changes the first byte of the checksum of an entry whose cache item holds an unhashed key
+// with part after the "#". The checksum covers the decoded bytes, so every codec rejects the item.
+// The last byte of the item would not do: for a compressed item it belongs to the zstd frame
+// checksum, which the decoder skips.
 func (s *fakeCache) corrupt(part string) {
 	name := s.entry(part)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value := bytes.Clone(s.values[name])
-	value[len(value)-1] ^= 0xff
+	_, n := binary.Uvarint(value[2:])
+	value[2+n] ^= 0xff
 	s.values[name] = value
 }
 

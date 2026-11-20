@@ -128,8 +128,17 @@ func newZstdEncoder() (*zstd.Encoder, error) {
 
 // newZstdDecoder returns the decoder that decompresses the cache items. It is safe for concurrent
 // use. DecodeAll starts no goroutine, so the decoder needs no Close.
+//
+// The decoder does not verify the zstd frame checksum. The caller must verify the decoded bytes.
 func newZstdDecoder() (*zstd.Decoder, error) {
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecoderMaxMemory(maxZstdDecodedBytes))
+	return zstd.NewReader(nil,
+		zstd.WithDecoderConcurrency(0),
+		zstd.WithDecoderMaxMemory(maxZstdDecodedBytes),
+
+		// Skip the zstd frame checksum. decodeCacheItem already verifies the CRC32 of the decoded
+		// bytes.
+		zstd.IgnoreChecksum(true),
+	)
 }
 
 // maxCachedBytes returns the largest raw size of a cache item, before compression, for regions of up
