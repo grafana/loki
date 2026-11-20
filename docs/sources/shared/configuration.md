@@ -112,6 +112,15 @@ lbac:
 # CLI flag: -config.ballast-bytes
 [ballast_bytes: <int> | default = 0]
 
+# Set GOMEMLIMIT to 90% of the cgroup memory limit, falling back to system
+# memory, and refresh it when the limit changes, for example after an in-place
+# pod resize. Set the AUTOMEMLIMIT environment variable to a value in (0, 1] to
+# change the ratio. Has no effect if the GOMEMLIMIT environment variable is set.
+# Memory ballast counts toward this limit, so keep -config.ballast-bytes well
+# below it.
+# CLI flag: -config.automemlimit-enabled
+[automemlimit_enabled: <boolean> | default = false]
+
 # Configures the server of the launched module(s).
 [server: <server>]
 
