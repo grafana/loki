@@ -280,9 +280,8 @@ type EvaluatorFactory interface {
 // out from the parent down while evaluators are built. The zero value is the conservative one:
 // an expression that is not known to preserve the output.
 type NodeContext struct {
-	preserving bool
-	maxSeries  int
-	// cutoffTracker is set when the early cut-off only runs as a dry run.
+	preserving    bool
+	maxSeries     int
 	cutoffTracker *cutoffTracker
 }
 

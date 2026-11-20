@@ -70,6 +70,9 @@ func (t *cutoffTracker) outcome(err error) (string, bool) {
 // report counts the outcome of a finished query and logs a mismatch, so a query where the
 // cut-off disagrees with the real series limit can be found. It does nothing on a nil tracker.
 func (t *cutoffTracker) report(ctx context.Context, logger log.Logger, params Params, err error) {
+	if t == nil {
+		return
+	}
 	outcome, ok := t.outcome(err)
 	if !ok {
 		return

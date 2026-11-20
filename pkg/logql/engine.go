@@ -226,10 +226,9 @@ type queryOpts struct {
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
 func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
-		logExecutingQuery:    opts.LogExecutingQuery,
-		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
-		histogramsEnabled:    opts.EnableHistograms,
-
+		logExecutingQuery:          opts.LogExecutingQuery,
+		histogramsEnabled:          opts.EnableHistograms,
+		maxQuerySeriesCutoff:       opts.MaxQuerySeriesCutoff,
 		maxQuerySeriesCutoffDryRun: opts.MaxQuerySeriesCutoffDryRun,
 	}
 }
@@ -536,13 +535,15 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	return limitExceeded
 }
 
-// newCutoffTracker returns the tracker that records where the early cut-off would have fired, or
-// nil unless the cut-off only runs as a dry run.
-func (q *query) newCutoffTracker() *cutoffTracker {
+// newCutoffTrackerWithContext returns the tracker that records where the early cut-off would have
+// fired, and a context that carries it. Unless the cut-off only runs as a dry run, the tracker is
+// nil and the context is returned unchanged.
+func (q *query) newCutoffTrackerWithContext(ctx context.Context) (*cutoffTracker, context.Context) {
 	if q.opts.maxQuerySeriesCutoff || !q.opts.maxQuerySeriesCutoffDryRun {
-		return nil
+		return nil, ctx
 	}
-	return newCutoffTracker()
+	t := newCutoffTracker()
+	return t, contextWithCutoffTracker(ctx, t)
 }
 
 // maxQuerySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
