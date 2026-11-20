@@ -135,6 +135,7 @@ type Limits struct {
 
 	// Querier enforced limits.
 	MaxQuerySeries              int                `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryIntermediateSeries  int                `yaml:"max_query_intermediate_series" json:"max_query_intermediate_series" category:"experimental"`
 	MaxQueryLookback            model.Duration     `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength              model.Duration     `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryRange               model.Duration     `yaml:"max_query_range" json:"max_query_range"`
@@ -470,6 +471,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
+	f.IntVar(&l.MaxQueryIntermediateSeries, "querier.max-query-intermediate-series", 0, "Experimental: Limit the maximum number of label sets that a querier job may hold while it evaluates a metric query. 0 to disable. Not enforced yet.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
 	_ = l.MaxQueryRange.Set("0s")
 	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
@@ -916,6 +918,11 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 // MaxQuerySeries returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
+}
+
+// MaxQueryIntermediateSeries returns the limit of the label sets a querier job may hold.
+func (o *Overrides) MaxQueryIntermediateSeries(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueryIntermediateSeries
 }
 
 // MaxQueryRange returns the limit for the max [range] value that can be in a range query

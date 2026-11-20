@@ -322,6 +322,7 @@ type benchLimits struct {
 	streamFirstEnabled bool
 }
 
+func (benchLimits) MaxQueryIntermediateSeries(_ string) int                 { return 0 }
 func (benchLimits) MaxQuerySeries(_ string) int                             { return math.MaxInt32 }
 func (benchLimits) MaxQueryRange(_ context.Context, _ string) time.Duration { return 0 }
 func (benchLimits) QueryTimeout(_ context.Context, _ string) time.Duration  { return time.Hour }
