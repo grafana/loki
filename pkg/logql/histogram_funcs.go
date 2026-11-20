@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -68,7 +69,36 @@ func (e *HistogramFuncEvaluator) Next() (bool, int64, StepResult) {
 		}
 		out = e.appendSamples(out, ts, s)
 	}
+	if err := e.checkQuantileLabel(vec, out); err != nil {
+		e.err = err
+		return false, 0, SampleVector{}
+	}
 	return next, ts, SampleVector(out)
+}
+
+// checkQuantileLabel fails when histogram_quantiles made two series of one with the same labels. The label of the
+// quantile replaces a label of the series that has its name, as it does in PromQL, so series that differ only in
+// that label become the same one, which PromQL fails at as well. The parser cannot see it, the labels of the
+// series are not known until the query is evaluated. It is a client error, as the query and its data are what
+// is wrong, and it is the same on every retry.
+func (e *HistogramFuncEvaluator) checkQuantileLabel(in, out promql.Vector) error {
+	if e.expr.Operation != syntax.OpHistogramQuantiles {
+		return nil
+	}
+	// Without a series that has the label, adding it cannot make two series the same.
+	if !slices.ContainsFunc(in, func(s promql.Sample) bool { return s.Metric.Has(e.expr.Label) }) {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(out))
+	for _, s := range out {
+		key := s.Metric.String()
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("%w: %s: the label %q replaces a label of the series that has its name, and %s is then the labels of more than one series",
+				logqlerr.ErrParse, e.expr.Operation, e.expr.Label, key)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
 }
 
 // appendSamples appends the samples that the function returns for the histogram of s.
