@@ -31,6 +31,10 @@ func TestParseTailQuery(t *testing.T) {
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&time=2016-06-10T21:42:24.760738998Z&limit=100&delay_for=20`),
 			}, nil, true},
+		{"invalid regexp in line filter",
+			&http.Request{
+				URL: mustParseURL(`?query=%7Bfoo%3D%22bar%22%7D+%7C~+%22GET%28%22`),
+			}, nil, true},
 		{"good",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2017-06-10T21:42:24.760738998Z&limit=1000&delay_for=5`),

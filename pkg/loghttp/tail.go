@@ -74,6 +74,18 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Build the pipeline now so errors in stages (for example an invalid regexp
+	// in a line filter) are returned as HTTP 400 before the websocket upgrade.
+
+	if sel, ok := parsed.(syntax.LogSelectorExpr); ok {
+    cp, err := syntax.Clone(sel)
+    if err != nil {
+        return nil, err
+    }
+    if _, err := cp.Pipeline(); err != nil {
+        return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+    }
+	}
 	req := logproto.TailRequest{
 		Query: qs,
 		Plan: &plan.QueryPlan{
