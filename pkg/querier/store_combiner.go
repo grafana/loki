@@ -293,7 +293,7 @@ func (sc *StoreCombiner) LabelNamesForMetricName(ctx context.Context, userID str
 }
 
 // Stats implements Store
-func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	stores := sc.findStoresForTimeRange(toHalfOpenTimeRange(from, through))
 
 	if len(stores) == 0 {
@@ -301,13 +301,13 @@ func (sc *StoreCombiner) Stats(ctx context.Context, userID string, from, through
 	}
 
 	if len(stores) == 1 {
-		return stores[0].store.Stats(ctx, userID, from, through, matchers...)
+		return stores[0].store.Stats(ctx, userID, from, through, hints, matchers...)
 	}
 
 	// Collect stats from all stores
 	statsSlice := make([]*stats.Stats, 0, len(stores))
 	for _, s := range stores {
-		stats, err := s.store.Stats(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), matchers...)
+		stats, err := s.store.Stats(ctx, userID, s.inclusiveFrom(), s.inclusiveThrough(), hints, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -487,7 +487,7 @@ func (s *instrumentedStore) LabelNamesForMetricName(ctx context.Context, userID 
 	return s.Store.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
-func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	ctx, span := tracer.Start(ctx, "querier.Store."+s.name+".Stats")
 	defer span.End()
 
@@ -497,8 +497,11 @@ func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, thro
 		attribute.String("through", through.String()),
 		attribute.String("matchers", stringifyMatchers(matchers)),
 	)
+	if hints != nil {
+		span.SetAttributes(attribute.Int("hint_ranges", len(hints.Ranges)))
+	}
 
-	return s.Store.Stats(ctx, userID, from, through, matchers...)
+	return s.Store.Stats(ctx, userID, from, through, hints, matchers...)
 }
 
 func (s *instrumentedStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {

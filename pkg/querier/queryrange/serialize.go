@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -51,7 +52,8 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 //
 // Only Loki components may set these fields. A client that sets them could change what a query
 // reads, and Loki must stay in control of that:
-//   - Hint ranges limit the time ranges for which the querier returns samples.
+//   - Hint ranges limit the time ranges for which the querier returns samples, and the chunks
+//     that index stats count.
 //   - Data-object options mark a request as eligible for reads from data objects. Only the
 //     query-frontend decides this for each request.
 //
@@ -66,6 +68,8 @@ func stripClientHints(request queryrangebase.Request) {
 	case *LokiInstantRequest:
 		request.HintRanges = nil
 		request.DataObjOptions = nil
+	case *logproto.IndexStatsRequest:
+		request.HintRanges = nil
 	}
 }
 

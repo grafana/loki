@@ -113,6 +113,11 @@ func NewIndexStatsCacheMiddleware(
 			if shouldCache != nil && !shouldCache(ctx, r) {
 				return false
 			}
+			// IndexStatsExtractor prorates cached stats by time, which is wrong for stats
+			// that only count the chunks overlapping hint ranges.
+			if req, ok := r.(*logproto.IndexStatsRequest); ok && req.HintRanges != nil {
+				return false
+			}
 
 			cacheStats, err := shouldCacheStats(ctx, r, limits)
 			if err != nil {

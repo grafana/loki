@@ -243,20 +243,20 @@ func (q *MultiTenantQuerier) LoglineIndex(ctx context.Context, req *logproto.Log
 	return q.Querier.LoglineIndex(ctx, req)
 }
 
-func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery, hints *logproto.HintTimeRanges) (*stats.Stats, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(tenantIDs) == 1 {
-		return q.Querier.IndexStats(ctx, req)
+		return q.Querier.IndexStats(ctx, req, hints)
 	}
 
 	responses := make([]*stats.Stats, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.IndexStats(singleContext, req)
+		resp, err := q.Querier.IndexStats(singleContext, req, hints)
 		if err != nil {
 			return nil, err
 		}

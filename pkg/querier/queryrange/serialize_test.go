@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -187,13 +188,30 @@ func instantRequestWithHintRanges() *LokiInstantRequest {
 	}
 }
 
+// indexStatsRequestWithHintRanges returns an index stats request that carries hint ranges, as a client could send it.
+func indexStatsRequestWithHintRanges() *logproto.IndexStatsRequest {
+	start := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	return &logproto.IndexStatsRequest{
+		From:     model.TimeFromUnixNano(start.UnixNano()),
+		Through:  model.TimeFromUnixNano(start.Add(time.Hour).UnixNano()),
+		Matchers: `{foo="bar"}`,
+		HintRanges: &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{
+			Start: start.Add(5 * time.Minute),
+			End:   start.Add(10 * time.Minute),
+		}}},
+	}
+}
+
 // successResponseFor returns a successful response of the type that the codec expects for the request.
 func successResponseFor(req queryrangebase.Request) queryrangebase.Response {
-	if _, ok := req.(*LokiInstantRequest); ok {
+	switch req.(type) {
+	case *LokiInstantRequest:
 		return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{
 			Status: loghttp.QueryStatusSuccess,
 			Data:   queryrangebase.PrometheusData{ResultType: loghttp.ResultTypeVector},
 		}}
+	case *logproto.IndexStatsRequest:
+		return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{}}
 	}
 	return &LokiResponse{
 		Status: loghttp.QueryStatusSuccess,
@@ -232,6 +250,12 @@ func TestSerializeRoundTripperStripsClientHints(t *testing.T) {
 		got := roundTrip(t, instantRequestWithHintRanges())
 
 		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
+	})
+
+	t.Run("clears the hint ranges a client sends with an index stats request", func(t *testing.T) {
+		got := roundTrip(t, indexStatsRequestWithHintRanges())
+
+		require.Nil(t, got.(*logproto.IndexStatsRequest).HintRanges)
 	})
 
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
@@ -278,6 +302,12 @@ func TestSerializeHTTPHandlerStripsClientHints(t *testing.T) {
 		got := serve(t, instantRequestWithHintRanges())
 
 		require.Empty(t, got.(*LokiInstantRequest).HintRanges)
+	})
+
+	t.Run("clears the hint ranges a client sends with an index stats request", func(t *testing.T) {
+		got := serve(t, indexStatsRequestWithHintRanges())
+
+		require.Nil(t, got.(*logproto.IndexStatsRequest).HintRanges)
 	})
 
 	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {

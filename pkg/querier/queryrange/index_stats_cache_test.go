@@ -100,6 +100,52 @@ func TestIndexStatsCache(t *testing.T) {
 	require.Equal(t, expectedStats, resp)
 }
 
+func TestIndexStatsCache_BypassesHintedRequests(t *testing.T) {
+	statsCache := &countingCache{Cache: cache.NewMockCache()}
+	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
+		log.NewNopLogger(),
+		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+		DefaultCodec,
+		statsCache,
+		nil,
+		nil,
+		nil,
+		func(_ context.Context, _ []string, _ queryrangebase.Request) int {
+			return 1
+		},
+		false,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	calls, statsHandler := indexStatsResultHandler(&IndexStatsResponse{Response: &logproto.IndexStatsResponse{Chunks: 1}})
+	rc := cacheMiddleware.Wrap(statsHandler)
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	from, through := util.RoundToMilliseconds(testTime, testTime.Add(time.Hour))
+
+	for _, hints := range []*logproto.HintTimeRanges{
+		{Ranges: []logproto.HintTimeRange{{Start: testTime, End: testTime.Add(time.Minute)}}},
+		{Ranges: []logproto.HintTimeRange{{Start: from.Time(), End: through.Time().Add(time.Millisecond)}}},
+		{},
+	} {
+		req := &logproto.IndexStatsRequest{From: from, Through: through, Matchers: `{foo="bar"}`, HintRanges: hints}
+		for range 2 {
+			*calls = 0
+			_, err := rc.Do(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, 1, *calls)
+		}
+	}
+	require.Zero(t, statsCache.fetches)
+	require.Zero(t, statsCache.stores)
+
+	req := &logproto.IndexStatsRequest{From: from, Through: through, Matchers: `{foo="bar"}`}
+	_, err = rc.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, 1, statsCache.stores, "requests without hints are still cached")
+}
+
 func TestIndexStatsCache_RecentData(t *testing.T) {
 	statsCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
 	now := statsCacheMiddlewareNowTimeFunc()

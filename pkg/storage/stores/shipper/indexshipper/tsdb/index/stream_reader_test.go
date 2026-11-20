@@ -340,9 +340,9 @@ func requireStreamSeriesEqual(t *testing.T, mmap, stream SeriesScan, ref storage
 	// ChunkStats both without and with a `by` set.
 	for _, by := range []map[string]struct{}{nil, {"app": {}, "env": {}}} {
 		var mmapStatsLabels, streamStatsLabels labels.Labels
-		mmapFingerprint, mmapStats, err := mmap.ChunkStats(ref, from, through, &mmapStatsLabels, by)
+		mmapFingerprint, mmapStats, err := mmap.ChunkStats(ref, from, through, &mmapStatsLabels, by, nil)
 		require.NoError(t, err)
-		streamFingerprint, streamStats, err := stream.ChunkStats(ref, from, through, &streamStatsLabels, by)
+		streamFingerprint, streamStats, err := stream.ChunkStats(ref, from, through, &streamStatsLabels, by, nil)
 		require.NoError(t, err)
 		require.Equal(t, mmapFingerprint, streamFingerprint)
 		require.Equal(t, mmapStats, streamStats)
@@ -504,7 +504,7 @@ func TestReaders_RejectsCorruptSeriesRecord(t *testing.T) {
 					_, err = scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
 					require.ErrorContains(t, err, "invalid checksum")
 
-					_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
+					_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil, nil)
 					require.ErrorContains(t, err, "invalid checksum")
 				})
 			}
@@ -549,7 +549,7 @@ func TestReaders_RejectsOutOfRangeSeriesRef(t *testing.T) {
 			_, err = scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks)
 			require.ErrorContains(t, err, "invalid size")
 
-			_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil)
+			_, _, err = scan.ChunkStats(ref, 0, math.MaxInt64, &lbls, nil, nil)
 			require.ErrorContains(t, err, "invalid size")
 		})
 	}
@@ -763,7 +763,7 @@ func TestStreamReader_SeriesScanRefOrders(t *testing.T) {
 						r.chunks = slices.Clone(r.chunks)
 
 						var statsLabels labels.Labels
-						_, r.stats, err = scan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil)
+						_, r.stats, err = scan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil, nil)
 						require.NoError(t, err)
 
 						r.labelValue, err = scan.LabelValueFor(ref, "id")
@@ -782,7 +782,7 @@ func TestStreamReader_SeriesScanRefOrders(t *testing.T) {
 						require.Equal(t, wantChunks, got[i].chunks)
 
 						var statsLabels labels.Labels
-						_, wantStats, err := mmapScan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil)
+						_, wantStats, err := mmapScan.ChunkStats(ref, 0, math.MaxInt64, &statsLabels, nil, nil)
 						require.NoError(t, err)
 						require.Equal(t, wantStats, got[i].stats)
 
@@ -997,9 +997,9 @@ func requireSeriesEqual(t *testing.T, mmap, stream SeriesScan, seriesRef storage
 func requireChunkStatsEqual(t *testing.T, mmap, stream SeriesScan, seriesRef storage.SeriesRef, labelName string) {
 	for _, by := range []map[string]struct{}{nil, {labelName: {}}} {
 		var mmapLabels, streamLabels labels.Labels
-		mmapFingerprints, mmapChunkStats, err := mmap.ChunkStats(seriesRef, 0, math.MaxInt64, &mmapLabels, by)
+		mmapFingerprints, mmapChunkStats, err := mmap.ChunkStats(seriesRef, 0, math.MaxInt64, &mmapLabels, by, nil)
 		require.NoError(t, err)
-		streamFingerprints, streamChunkStats, err := stream.ChunkStats(seriesRef, 0, math.MaxInt64, &streamLabels, by)
+		streamFingerprints, streamChunkStats, err := stream.ChunkStats(seriesRef, 0, math.MaxInt64, &streamLabels, by, nil)
 		require.NoError(t, err)
 		require.Equal(t, mmapFingerprints, streamFingerprints)
 		require.Equal(t, mmapChunkStats, streamChunkStats)

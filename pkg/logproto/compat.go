@@ -311,10 +311,12 @@ func (m *IndexStatsRequest) GetQuery() string {
 func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
+// The hint ranges are clipped to the new bounds.
 func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
 	clone.From = model.TimeFromUnixNano(start.UnixNano())
 	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	clone.HintRanges = m.HintRanges.Clip(start, end)
 	return &clone
 }
 
@@ -337,6 +339,40 @@ func (m *IndexStatsRequest) LogToSpan(sp trace.Span) {
 		attribute.String("start", timestamp.Time(int64(m.From)).String()),
 		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
+	if m.HintRanges != nil {
+		sp.SetAttributes(attribute.Int("hint_ranges", len(m.HintRanges.Ranges)))
+	}
+}
+
+// Clip returns the hint ranges clipped to [start, end]. A nil set stays nil.
+// A non-nil set stays non-nil even when no range remains, because an empty
+// set means that nothing matches, while a nil set means no filtering.
+func (m *HintTimeRanges) Clip(start, end time.Time) *HintTimeRanges {
+	if m == nil {
+		return nil
+	}
+	return &HintTimeRanges{Ranges: ClipHintTimeRanges(m.Ranges, start, end)}
+}
+
+// ClipHintTimeRanges clips each range to [start, end] and drops the ranges
+// that end up empty. It does not modify ranges.
+func ClipHintTimeRanges(ranges []HintTimeRange, start, end time.Time) []HintTimeRange {
+	if len(ranges) == 0 {
+		return nil
+	}
+	clipped := make([]HintTimeRange, 0, len(ranges))
+	for _, hint := range ranges {
+		if hint.Start.Before(start) {
+			hint.Start = start
+		}
+		if hint.End.After(end) {
+			hint.End = end
+		}
+		if hint.Start.Before(hint.End) {
+			clipped = append(clipped, hint)
+		}
+	}
+	return clipped
 }
 
 func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeader {

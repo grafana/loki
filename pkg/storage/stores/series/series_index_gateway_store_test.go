@@ -3,9 +3,11 @@ package series
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -31,6 +33,41 @@ func (mockClient) GetChunkRef(_ context.Context, _ *logproto.GetChunkRefRequest)
 			UsedBloomFilters: true,
 		},
 	}, nil
+}
+
+type statsRecordingClient struct {
+	GatewayClient
+	req *logproto.IndexStatsRequest
+}
+
+func (c *statsRecordingClient) GetStats(_ context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	c.req = req
+	return &logproto.IndexStatsResponse{}, nil
+}
+
+func Test_IndexGatewayClientStore_Stats(t *testing.T) {
+	hints := &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{Start: time.Unix(1, 0), End: time.Unix(2, 0)}}}
+	for _, tc := range []struct {
+		desc  string
+		hints *logproto.HintTimeRanges
+	}{
+		{desc: "without hints", hints: nil},
+		{desc: "with hints", hints: hints},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			client := &statsRecordingClient{}
+			idx := NewIndexGatewayClientStore(client, log.NewNopLogger())
+
+			_, err := idx.Stats(context.Background(), "tenant", 1000, 2000, tc.hints, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			require.NoError(t, err)
+			require.Equal(t, &logproto.IndexStatsRequest{
+				From:       1000,
+				Through:    2000,
+				Matchers:   `{foo="bar"}`,
+				HintRanges: tc.hints,
+			}, client.req)
+		})
+	}
 }
 
 func Test_IndexGatewayClientStore_GetSeries(t *testing.T) {

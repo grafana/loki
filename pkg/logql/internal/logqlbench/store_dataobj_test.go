@@ -77,7 +77,7 @@ func (s unreachableStore) LabelNamesForMetricName(context.Context, string, model
 	return nil, nil
 }
 
-func (s unreachableStore) Stats(context.Context, string, model.Time, model.Time, ...*labels.Matcher) (*stats.Stats, error) {
+func (s unreachableStore) Stats(context.Context, string, model.Time, model.Time, *logproto.HintTimeRanges, ...*labels.Matcher) (*stats.Stats, error) {
 	s.unreachable("Stats")
 	return nil, nil
 }

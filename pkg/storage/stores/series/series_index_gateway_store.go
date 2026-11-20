@@ -115,11 +115,12 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 	return resp.Values, nil
 }
 
-func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	return c.client.GetStats(ctx, &logproto.IndexStatsRequest{
-		From:     from,
-		Through:  through,
-		Matchers: (&syntax.MatchersExpr{Mts: matchers}).String(),
+		From:       from,
+		Through:    through,
+		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
+		HintRanges: hints,
 	})
 }
 

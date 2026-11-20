@@ -63,7 +63,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				EndTs:          end,
 				Plan:           r.Plan,
 				CachingOptions: r.CachingOptions,
-				HintRanges:     clipHintTimeRanges(r.HintRanges, start, end),
+				HintRanges:     logproto.ClipHintTimeRanges(r.HintRanges, start, end),
 			})
 		}
 	case *LokiSeriesRequest:
@@ -89,9 +89,10 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	case *logproto.IndexStatsRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.IndexStatsRequest{
-				From:     model.TimeFromUnix(start.Unix()),
-				Through:  model.TimeFromUnix(end.Unix()),
-				Matchers: r.GetMatchers(),
+				From:       model.TimeFromUnix(start.Unix()),
+				Through:    model.TimeFromUnix(end.Unix()),
+				Matchers:   r.GetMatchers(),
+				HintRanges: splitIndexStatsHintRanges(r.HintRanges, start, end),
 			})
 		}
 	case *logproto.ShardsRequest:
@@ -274,7 +275,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 			EndTs:          end,
 			Plan:           lokiReq.Plan,
 			CachingOptions: lokiReq.CachingOptions,
-			HintRanges:     clipHintTimeRanges(lokiReq.HintRanges, start, end),
+			HintRanges:     logproto.ClipHintTimeRanges(lokiReq.HintRanges, start, end),
 		})
 	}
 

@@ -696,6 +696,147 @@ func TestIndexShardsTripperware(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+// countingCache counts the fetches and stores of a cache.
+type countingCache struct {
+	cache.Cache
+	mtx             sync.Mutex
+	fetches, stores int
+}
+
+func (c *countingCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	c.mtx.Lock()
+	c.fetches++
+	c.mtx.Unlock()
+	return c.Cache.Fetch(ctx, keys)
+}
+
+func (c *countingCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+	c.mtx.Lock()
+	c.stores++
+	c.mtx.Unlock()
+	return c.Cache.Store(ctx, keys, bufs)
+}
+
+// hintedIndexStatsTripperware wraps a stats tripperware around a handler that
+// records the hints it receives and answers every request with response.
+type hintedIndexStatsTripperware struct {
+	handler base.Handler
+	cache   *countingCache
+
+	mtx      sync.Mutex
+	gotHints []*logproto.HintTimeRanges
+}
+
+func newHintedIndexStatsTripperware(t *testing.T, response logproto.IndexStatsResponse) *hintedIndexStatsTripperware {
+	h := &hintedIndexStatsTripperware{cache: &countingCache{Cache: cache.NewMockCache()}}
+	tpw, err := NewIndexStatsTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, DefaultCodec, nil, h.cache, nil, false, NewMetrics(nil, constants.Loki), constants.Loki)
+	require.NoError(t, err)
+	h.handler = tpw.Wrap(base.HandlerFunc(func(_ context.Context, r base.Request) (base.Response, error) {
+		h.mtx.Lock()
+		defer h.mtx.Unlock()
+		h.gotHints = append(h.gotHints, r.(*logproto.IndexStatsRequest).HintRanges)
+		resp := response
+		return &IndexStatsResponse{Response: &resp}, nil
+	}))
+	return h
+}
+
+func (h *hintedIndexStatsTripperware) do(t *testing.T, from, through time.Time, hints *logproto.HintTimeRanges) logproto.IndexStatsResponse {
+	t.Helper()
+	h.gotHints = nil
+	resp, err := h.handler.Do(user.InjectOrgID(context.Background(), "1"), &logproto.IndexStatsRequest{
+		Matchers:   `{job="varlogs"}`,
+		From:       model.TimeFromUnixNano(from.UnixNano()),
+		Through:    model.TimeFromUnixNano(through.UnixNano()),
+		HintRanges: hints,
+	})
+	require.NoError(t, err)
+	return *resp.(*IndexStatsResponse).Response
+}
+
+func TestIndexStatsTripperware_HintRanges(t *testing.T) {
+	// The request spans three 8h splits: [01:00, 08:00), [08:00, 16:00) and [16:00, 23:00].
+	day := time.Date(2019, 12, 1, 0, 0, 0, 0, time.UTC)
+	at := func(hour int) time.Time { return day.Add(time.Duration(hour) * time.Hour) }
+	from, through := at(1), at(23)
+	hints := func(ranges ...logproto.HintTimeRange) *logproto.HintTimeRanges {
+		return &logproto.HintTimeRanges{Ranges: ranges}
+	}
+	response := logproto.IndexStatsResponse{Streams: 1, Chunks: 2, Bytes: 3, Entries: 4}
+	times := func(n uint64) logproto.IndexStatsResponse {
+		return logproto.IndexStatsResponse{Streams: n, Chunks: 2 * n, Bytes: 3 * n, Entries: 4 * n}
+	}
+
+	for _, tc := range []struct {
+		desc        string
+		hints       *logproto.HintTimeRanges
+		wantHints   []*logproto.HintTimeRanges
+		wantFetches int
+		want        logproto.IndexStatsResponse
+	}{
+		{
+			desc:        "without hints every split goes downstream through the cache",
+			wantHints:   []*logproto.HintTimeRanges{nil, nil, nil},
+			wantFetches: 3,
+			want:        times(3),
+		},
+		{
+			desc:      "splits without hints are zero and the hinted split skips the cache",
+			hints:     hints(logproto.HintTimeRange{Start: at(10), End: at(11)}),
+			wantHints: []*logproto.HintTimeRanges{hints(logproto.HintTimeRange{Start: at(10), End: at(11)})},
+			want:      response,
+		},
+		{
+			desc:  "a covered split goes downstream without hints through the cache",
+			hints: hints(logproto.HintTimeRange{Start: at(7), End: at(17)}),
+			wantHints: []*logproto.HintTimeRanges{
+				hints(logproto.HintTimeRange{Start: at(7), End: at(8).Add(-time.Millisecond)}),
+				nil,
+				hints(logproto.HintTimeRange{Start: at(16), End: at(17)}),
+			},
+			wantFetches: 1,
+			want:        times(3),
+		},
+		{
+			desc:  "hints outside the request are zero without calls",
+			hints: hints(logproto.HintTimeRange{Start: through.Add(time.Hour), End: through.Add(2 * time.Hour)}),
+		},
+		{
+			desc:  "empty hints are zero without calls",
+			hints: hints(),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			h := newHintedIndexStatsTripperware(t, response)
+			require.Equal(t, tc.want, h.do(t, from, through, tc.hints))
+			require.ElementsMatch(t, tc.wantHints, h.gotHints)
+			require.Equal(t, tc.wantFetches, h.cache.fetches)
+		})
+	}
+
+	t.Run("hinted requests don't reuse each other's results", func(t *testing.T) {
+		h := newHintedIndexStatsTripperware(t, response)
+		hint := hints(logproto.HintTimeRange{Start: at(2), End: at(3)})
+
+		require.Equal(t, response, h.do(t, at(1), at(7), hint))
+		require.Equal(t, response, h.do(t, at(1), at(15), hint))
+		require.Equal(t, response, h.do(t, at(1), at(3), hint))
+		require.Len(t, h.gotHints, 1, "every hinted split goes downstream")
+		require.Zero(t, h.cache.stores)
+	})
+
+	t.Run("a covered split reuses the results of a request without hints", func(t *testing.T) {
+		h := newHintedIndexStatsTripperware(t, response)
+		require.Equal(t, times(3), h.do(t, from, through, nil))
+
+		require.Equal(t, times(3), h.do(t, from, through, hints(logproto.HintTimeRange{Start: at(7), End: at(17)})))
+		require.Len(t, h.gotHints, 2, "only the partially hinted splits go downstream")
+		for _, got := range h.gotHints {
+			require.NotNil(t, got)
+		}
+	})
+}
+
 func TestVolumeTripperware(t *testing.T) {
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
 		limits := fakeLimits{

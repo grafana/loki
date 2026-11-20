@@ -134,6 +134,84 @@ func TestHintTimeRangesTreatInvalidShardBitsAsEveryStream(t *testing.T) {
 	}
 }
 
+func TestNewHintTimeRangeSet(t *testing.T) {
+	base := time.Unix(100, 0)
+	from, through := base, base.Add(10*time.Millisecond)
+	ms := func(n int) time.Time { return base.Add(time.Duration(n) * time.Millisecond) }
+
+	for _, tc := range []struct {
+		desc        string
+		hints       *logproto.HintTimeRanges
+		wantEnabled bool
+		wantOverlap bool
+	}{
+		{desc: "nil set passes everything", hints: nil, wantEnabled: false, wantOverlap: true},
+		{desc: "empty set matches nothing", hints: &logproto.HintTimeRanges{}, wantEnabled: true, wantOverlap: false},
+		{
+			desc:        "set outside the bounds matches nothing",
+			hints:       &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{Start: ms(20), End: ms(30)}}},
+			wantEnabled: true,
+			wantOverlap: false,
+		},
+		{
+			desc:        "set with a range matches it",
+			hints:       &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{{Start: ms(2), End: ms(4)}}},
+			wantEnabled: true,
+			wantOverlap: true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			ranges := NewHintTimeRangeSet(tc.hints, from, through)
+			require.Equal(t, tc.wantEnabled, ranges.Enabled())
+			require.Equal(t, tc.wantOverlap, ranges.OverlapsClosed(from, through))
+		})
+	}
+}
+
+func TestHintTimeRangesCovers(t *testing.T) {
+	base := time.Unix(100, 0)
+	ms := func(n int) time.Time { return base.Add(time.Duration(n) * time.Millisecond) }
+	ranges := NewHintTimeRanges([]logproto.HintTimeRange{
+		{Start: ms(1), End: ms(3)},
+		{Start: ms(3), End: ms(4)}, // merged with the previous range
+		{Start: ms(6), End: ms(8)},
+	}, base, ms(10))
+
+	for _, tc := range []struct {
+		desc          string
+		from, through time.Time
+		want          bool
+		wantClosed    bool
+	}{
+		{desc: "inside a range", from: ms(1), through: ms(2), want: true, wantClosed: true},
+		{desc: "across merged ranges", from: ms(2), through: ms(3).Add(999 * time.Microsecond), want: true, wantClosed: true},
+		{desc: "through equals the exclusive end", from: ms(6), through: ms(8), want: true, wantClosed: false},
+		{desc: "starts before a range", from: base, through: ms(2), want: false, wantClosed: false},
+		{desc: "spans a gap", from: ms(3), through: ms(6), want: false, wantClosed: false},
+		{desc: "outside every range", from: ms(4), through: ms(5), want: false, wantClosed: false},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.want, ranges.Covers(tc.from, tc.through))
+			require.Equal(t, tc.wantClosed, ranges.CoversClosed(tc.from, tc.through))
+		})
+	}
+
+	require.True(t, HintTimeRanges{}.Covers(base, ms(10)), "no hints covers everything")
+	require.True(t, HintTimeRanges{}.CoversClosed(base, ms(10)), "no hints covers everything")
+	empty := NewHintTimeRangeSet(&logproto.HintTimeRanges{}, base, ms(10))
+	require.False(t, empty.Covers(ms(1), ms(2)), "an empty set covers nothing")
+
+	sharded := []logproto.HintTimeRange{
+		{Start: base, End: ms(10), DocumentShard: 0, DocumentShardBits: 1},
+		{Start: base, End: ms(5), DocumentShard: 1, DocumentShardBits: 1},
+	}
+	partial := NewHintTimeRanges(sharded, base, ms(10))
+	require.False(t, partial.Covers(base, ms(10)), "the time union covers the bounds, but not for document shard 1")
+	require.True(t, partial.ForFingerprint(1<<32).Covers(base, ms(10)), "document shard 0 covers the bounds")
+	every := NewHintTimeRanges(append(sharded, logproto.HintTimeRange{Start: ms(5), End: ms(10)}), base, ms(10))
+	require.True(t, every.Covers(base, ms(10)), "every document shard covers the bounds")
+}
+
 func TestHintIterators(t *testing.T) {
 	base := time.Unix(100, 0)
 	allOffsets := []time.Duration{0, time.Millisecond, 2 * time.Millisecond, 3 * time.Millisecond, 4 * time.Millisecond, 5 * time.Millisecond}
