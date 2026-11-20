@@ -105,6 +105,37 @@ type batchRangeVectorIterator struct {
 	err                                  error
 }
 
+// newBatchRangeVectorIterator returns an iterator of the windows of a range aggregation, without an
+// aggregator: the iterator that wraps it aggregates the window in its At or Next. The input iterator must
+// return samples in global timestamp order.
+func newBatchRangeVectorIterator(
+	it iter.PeekingSampleIterator,
+	selRange, step, start, end, offset int64,
+	limits iteratorLimits,
+) *batchRangeVectorIterator {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
+
+	return &batchRangeVectorIterator{
+		iter:     it,
+		step:     step,
+		end:      end,
+		selRange: selRange,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      nil,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+		limits:   limits,
+	}
+}
+
 func (r *batchRangeVectorIterator) Next() bool {
 	if r.err != nil {
 		return false

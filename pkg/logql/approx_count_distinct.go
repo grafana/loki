@@ -275,28 +275,9 @@ func newCountDistinctIterator(
 	emitSketch bool,
 	limits iteratorLimits,
 ) RangeVectorIterator {
-	// forces at least one step.
-	if step == 0 {
-		step = 1
-	}
-	if offset != 0 {
-		start = start - offset
-		end = end - offset
-	}
-
 	return &countDistinctBatchRangeVectorIterator{
-		batchRangeVectorIterator: &batchRangeVectorIterator{
-			iter:     it,
-			step:     step,
-			end:      end,
-			selRange: selRange,
-			metrics:  map[string]labels.Labels{},
-			window:   map[string]*promql.Series{},
-			current:  start - step, // first loop iteration will set it to start
-			offset:   offset,
-			limits:   limits,
-		},
-		emitSketch: emitSketch,
+		batchRangeVectorIterator: newBatchRangeVectorIterator(it, selRange, step, start, end, offset, limits),
+		emitSketch:               emitSketch,
 	}
 }
 
