@@ -481,9 +481,6 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 // with regionTooLargeError remembers such a size. So a cache hit for an object that another querier
 // cached stays a hit.
 func (p *CachedPrefetcher) cacheMetadataRegionSize(path string, md *filemd.Metadata, startOffset int64) {
-	if p.sizes == nil {
-		return
-	}
 	if size, err := metadataRegionSize(md, startOffset); err == nil && size <= p.maxRegionBytes {
 		p.sizes.set(path, size)
 	}

@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -111,6 +113,35 @@ func TestMetadataRegionSizeCache_set(t *testing.T) {
 		r.set("a", 1)
 
 		requireNoSize(t, r, "a")
+	})
+}
+
+func TestMetadataRegionSizeEntryOverheadBytes(t *testing.T) {
+	t.Run("estimates the heap bytes of an entry within 25 percent", func(t *testing.T) {
+		heapBytes := func() uint64 {
+			runtime.GC()
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			return m.HeapAlloc
+		}
+
+		const entries = 20_000
+		paths := make([]string, entries)
+		for i := range paths {
+			paths[i] = fmt.Sprintf("objects/%02x/%062x", i%256, i)
+		}
+		r := newMetadataRegionSizeCache(1<<40, time.Now, nil)
+
+		before := heapBytes()
+		for i, path := range paths {
+			r.set(path, int64(i+1))
+		}
+		after := heapBytes()
+		runtime.KeepAlive(r)
+
+		// The allocator rounds objects up and the map grows in steps, so the estimate is only close. The
+		// tolerance still catches an estimate that is off by a wrong order of magnitude.
+		require.InEpsilon(t, float64(entryBytes(paths[0])), float64(after-before)/entries, 0.25)
 	})
 }
 
