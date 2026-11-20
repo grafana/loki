@@ -2,6 +2,7 @@ package logproto
 
 import (
 	"slices"
+	"unsafe"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -145,4 +146,42 @@ func hasName(attrs []push.LabelAdapter, name string) bool {
 		}
 	}
 	return false
+}
+
+// MemorySize returns the approximate number of bytes the request occupies on the Go heap, as
+// opposed to Size which returns the protobuf encoded size.
+// Attribute slices may be shared between groups; this function will not count those
+// if they are used by consecutive groups but will over-count if they are re-used in other patterns.
+func (m *InternalPushRequest) MemorySize() int {
+	if m == nil {
+		return 0
+	}
+	n := int(unsafe.Sizeof(*m)) + len(m.Format) + cap(m.Streams)*int(unsafe.Sizeof(InternalStreamAdapter{}))
+	var prevResourceAttrs, prevScopeAttrs []push.LabelAdapter
+	for i := range m.Streams {
+		s := &m.Streams[i]
+		n += len(s.Labels) + cap(s.ResourceLogs)*int(unsafe.Sizeof(ResourceLogs{}))
+		for j := range s.ResourceLogs {
+			r := &s.ResourceLogs[j]
+			if !sameBacking(r.Attrs, prevResourceAttrs) {
+				n += push.LabelsMemorySize(r.Attrs)
+				prevResourceAttrs = r.Attrs
+			}
+			n += cap(r.ScopeLogs) * int(unsafe.Sizeof(ScopeLogs{}))
+			for k := range r.ScopeLogs {
+				sc := &r.ScopeLogs[k]
+				if !sameBacking(sc.Attrs, prevScopeAttrs) {
+					n += push.LabelsMemorySize(sc.Attrs)
+					prevScopeAttrs = sc.Attrs
+				}
+				n += push.EntriesMemorySize(sc.Entries)
+			}
+		}
+	}
+	return n
+}
+
+// sameBacking reports whether a and b share the same backing array.
+func sameBacking(a, b []push.LabelAdapter) bool {
+	return unsafe.SliceData(a) == unsafe.SliceData(b)
 }
