@@ -40,7 +40,7 @@ func (b *LayoutSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 	if b.layout.StreamOrder() == streams.StreamOrderUnspecified {
 		return 0, errors.New("layout section of the zero layout")
 	}
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 	enc.SetSortInfo(streams.NewSortInfo(b.layout, nil))
 	enc.SetTenant(b.tenant)

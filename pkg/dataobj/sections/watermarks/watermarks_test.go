@@ -29,7 +29,7 @@ func (b *rawSectionBuilder) Type() dataobj.SectionType { return sectionType }
 func (b *rawSectionBuilder) Reset() { b.columns = nil }
 
 func (b *rawSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 
 	for _, col := range b.columns {
@@ -56,7 +56,7 @@ func (b *rawSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 				return 0, err
 			}
 		}
-		if err := encodeColumn(&enc, ColumnTypeInvalid, cb); err != nil {
+		if err := encodeColumn(enc, ColumnTypeInvalid, cb); err != nil {
 			return 0, err
 		}
 	}

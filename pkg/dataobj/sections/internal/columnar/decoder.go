@@ -19,19 +19,23 @@ import (
 // A Decoder allows reading an encoded dataset-based section.
 type Decoder struct {
 	sr dataobj.SectionReader
+
+	formatVersion uint32
 }
 
 // NewDecoder creates a new [Decoder] for the given [dataobj.SectionReader]. The
-// formatVersion argument must denote the format version of the data being
-// decoded.
+// formatVersion argument is the format version of the data being decoded.
 //
 // NewDecoder returns an error if the format version is not supported.
 func NewDecoder(reader dataobj.SectionReader, formatVersion uint32) (*Decoder, error) {
-	if formatVersion != FormatVersion {
+	if !IsSupportedVersion(formatVersion) {
 		return nil, fmt.Errorf("unsupported format version %d", formatVersion)
 	}
 
-	return &Decoder{sr: reader}, nil
+	return &Decoder{
+		sr:            reader,
+		formatVersion: formatVersion,
+	}, nil
 }
 
 // SectionMetadata returns the metadata for the section.

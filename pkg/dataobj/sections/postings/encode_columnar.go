@@ -109,9 +109,9 @@ func trimTrailingZeros(b []byte) []byte {
 // writeSection encodes a single-kind section (blooms or labels) into a columnar
 // encoder, flushes to w, and returns bytes written. Encoder is reset on return.
 func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, blooms []BloomEntry, labels []LabelEntry) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
-	if err := p.encodeColumns(blooms, labels, &enc); err != nil {
+	if err := p.encodeColumns(blooms, labels, enc); err != nil {
 		return 0, err
 	}
 	enc.SetTenant(tenant)

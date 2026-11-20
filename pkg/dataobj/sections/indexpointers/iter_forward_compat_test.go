@@ -72,7 +72,7 @@ func (b *unknownColumnSectionBuilder) Type() dataobj.SectionType { return sectio
 func (b *unknownColumnSectionBuilder) Reset() { b.pointers = nil }
 
 func (b *unknownColumnSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 
 	int64Column := func(name, logical string) (*dataset.ColumnBuilder, error) {
@@ -118,10 +118,10 @@ func (b *unknownColumnSectionBuilder) Flush(w dataobj.SectionWriter) (int64, err
 	// The unknown column is encoded last so it lands at a physical index beyond
 	// the recognized columns, reproducing "index out of range [3] with length 3".
 	errs := []error{
-		encodeColumn(&enc, ColumnTypePath, pathBuilder),
-		encodeColumn(&enc, ColumnTypeMinTimestamp, minBuilder),
-		encodeColumn(&enc, ColumnTypeMaxTimestamp, maxBuilder),
-		encodeColumn(&enc, ColumnTypeInvalid, futureBuilder),
+		encodeColumn(enc, ColumnTypePath, pathBuilder),
+		encodeColumn(enc, ColumnTypeMinTimestamp, minBuilder),
+		encodeColumn(enc, ColumnTypeMaxTimestamp, maxBuilder),
+		encodeColumn(enc, ColumnTypeInvalid, futureBuilder),
 	}
 	if err := errors.Join(errs...); err != nil {
 		return 0, err
