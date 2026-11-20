@@ -67,6 +67,16 @@ func (s *Section) Tenant() string { return s.tenant }
 // sections must not be mutated.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// UncompressedSize returns the size in bytes of the pages of every column in
+// the section before compression. It reads only the section metadata.
+func (s *Section) UncompressedSize() int64 {
+	var size int64
+	for _, column := range s.columns {
+		size += int64(column.desc.GetUncompressedSize())
+	}
+	return size
+}
+
 // SortInfo returns the raw SortInfo from the section metadata, or nil if none
 // is present.
 func (s *Section) SortInfo() *datasetmd.SortInfo { return s.sortInfo }

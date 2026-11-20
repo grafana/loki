@@ -70,14 +70,18 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
+	// The filter discards the counts, because the observer counts the rows
+	// of IndexMerge tasks only.
+	reads := newIndexReads(func(int64) {})
+
 	// A K-way merge keeps the rows in key order when they come from several
 	// index objects of one index run, so each output section stays sorted.
 	foundPostings := make(map[string]struct{}, len(keepSet))
-	if err := c.mergePostingsInto(ctx, sources, postings.KeySpan{}, keep(foundPostings), out); err != nil {
+	if err := c.mergePostingsInto(ctx, sources, postings.KeySpan{}, keep(foundPostings), out, reads); err != nil {
 		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
 	}
 	foundStats := make(map[string]struct{}, len(keepSet))
-	if err := c.mergeStatsInto(ctx, sources, keep(foundStats), out); err != nil {
+	if err := c.mergeStatsInto(ctx, sources, keep(foundStats), out, reads); err != nil {
 		return nil, fmt.Errorf("filtering stats of source index %q: %w", source, err)
 	}
 

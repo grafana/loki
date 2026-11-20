@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -35,6 +37,7 @@ import (
 // The output uploads each index object when it cuts it, so it holds only one
 // index object in memory.
 type indexOutput struct {
+	logger  log.Logger
 	tenant  string
 	bucket  objstore.Bucket
 	builder *indexobj.MergeBuilder
@@ -96,7 +99,7 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	return &indexOutput{tenant: tenant, bucket: c.bucket, builder: builder}, nil
+	return &indexOutput{logger: c.logger, tenant: tenant, bucket: c.bucket, builder: builder}, nil
 }
 
 // appendPostingsRow writes row to the output. It first uploads the current
@@ -181,6 +184,14 @@ func (o *indexOutput) uploadCurrent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	level.Info(o.logger).Log(
+		"msg", "uploaded index object",
+		"tenant", o.tenant,
+		"path", artifact.Path,
+		"bytes", sizes.compressed,
+		"uncompressed_bytes", sizes.uncompressed,
+		"object_index", len(o.artifacts),
+	)
 	o.artifacts = append(o.artifacts, artifact)
 	o.sizes.compressed += sizes.compressed
 	o.sizes.uncompressed += sizes.uncompressed

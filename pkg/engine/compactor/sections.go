@@ -241,8 +241,9 @@ func (r *runBoundsReader) sectionRef(ctx context.Context, objectPath string, sec
 	}
 	return v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
-			ObjectPath:   objectPath,
-			SectionIndex: sectionIndex,
+			ObjectPath:       objectPath,
+			SectionIndex:     sectionIndex,
+			UncompressedSize: int64(postingsSection.UncompressedSize()),
 		},
 		Min:          minKey,
 		Max:          maxKey,

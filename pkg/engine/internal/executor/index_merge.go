@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
@@ -45,17 +46,64 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 	})
 }
 
+// doIndexMerge runs one IndexMerge task attempt. It reports the attempt to the
+// observer whatever its outcome, and logs a summary when it succeeds.
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
-	// Check prerequisites
+	start := time.Now()
+	attempt := indexMergeAttempt{reads: newIndexReads(c.indexMergeObserver.ObserveIndexMergeInputRows)}
+	artifacts, err := c.mergeIndexes(ctx, node, &attempt)
+	attempt.reads.flush()
+	duration := time.Since(start)
+
+	stats := attempt.observedStats(indexMergeOutcome(ctx, err))
+	c.indexMergeObserver.ObserveIndexMerge(node.Tenant, stats, duration)
+	if err != nil {
+		return nil, err
+	}
+
+	inputBytes := stats.PostingsInputBytes + stats.StatsInputBytes
+	var inputBytesPerSecond int64
+	if duration > 0 {
+		inputBytesPerSecond = int64(float64(inputBytes) / duration.Seconds())
+	}
+	level.Info(c.logger).Log(
+		"msg", "IndexMerge: built index object(s)",
+		"tenant", node.Tenant,
+		"source_objects", stats.SourceObjects,
+		"postings_sections", stats.PostingsSections,
+		"stats_sections", stats.StatsSections,
+		"postings_input_bytes", stats.PostingsInputBytes,
+		"stats_input_bytes", stats.StatsInputBytes,
+		"input_bytes_per_second", inputBytesPerSecond,
+		"postings_rows", stats.PostingsRows,
+		"stats_rows", stats.StatsRows,
+		"output_objects", stats.OutputObjects,
+		"output_bytes", stats.OutputBytesCompressed,
+		"output_uncompressed_bytes", stats.OutputBytesUncompressed,
+		"classify_duration", attempt.classifyDuration,
+		"postings_duration", attempt.postingsDuration,
+		"stats_duration", attempt.statsDuration,
+		"finish_duration", attempt.finishDuration,
+		"duration", duration,
+	)
+	return artifacts, nil
+}
+
+// mergeIndexes classifies the source sections of node, merges their postings
+// and stats rows, and uploads the result. It records its progress in attempt,
+// so a failed attempt still reports what it read.
+func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, attempt *indexMergeAttempt) ([]v2.ResultArtifact, error) {
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	// Classify sections from all runs, grouped by source object.
+	phaseStart := time.Now()
 	objects, layout, err := c.classifyRuns(ctx, node)
+	attempt.classifyDuration = time.Since(phaseStart)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
+	attempt.sourceObjects = len(objects)
 
 	out, err := c.newIndexOutput(node.Tenant, layout)
 	if err != nil {
@@ -63,24 +111,32 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out); err != nil {
+	phaseStart = time.Now()
+	err = c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out, attempt.reads)
+	attempt.postingsDuration = time.Since(phaseStart)
+	if err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
+
+	phaseStart = time.Now()
+	err = c.mergeStatsInto(ctx, statsObjects, keepAll, out, attempt.reads)
+	attempt.statsDuration = time.Since(phaseStart)
+	if err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
+	phaseStart = time.Now()
 	artifacts, sizes, err := out.finish(ctx)
+	attempt.finishDuration = time.Since(phaseStart)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
-	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, sizes.compressed, sizes.uncompressed)
-	}
+	attempt.outputObjects = len(artifacts)
+	attempt.output = sizes
 	return artifacts, nil
 }
 
@@ -112,6 +168,141 @@ func statsSources(node *physical.IndexMerge, objects []objectSections) ([]object
 		}
 	}
 	return kept, nil
+}
+
+const (
+	indexMergeOutcomeSuccess   = "success"
+	indexMergeOutcomeFailed    = "failed"
+	indexMergeOutcomeCancelled = "cancelled"
+)
+
+// indexMergeOutcome returns the outcome of a task attempt that ended with err
+// under ctx. An error after ctx ended counts as cancelled, because the
+// scheduler or a shutdown stopped the attempt.
+func indexMergeOutcome(ctx context.Context, err error) string {
+	switch {
+	case err == nil:
+		return indexMergeOutcomeSuccess
+	case ctx.Err() != nil:
+		return indexMergeOutcomeCancelled
+	default:
+		return indexMergeOutcomeFailed
+	}
+}
+
+// IndexMergeObservedStats is the summary of one IndexMerge task attempt that
+// the executor reports to IndexMergeObserver. A failed attempt reports what it
+// read before it failed, and no output.
+type IndexMergeObservedStats struct {
+	Outcome       string
+	SourceObjects int
+
+	PostingsSections   int
+	StatsSections      int
+	PostingsInputBytes int64 // Uncompressed size of the postings sections that the attempt opened.
+	StatsInputBytes    int64 // Uncompressed size of the stats sections that the attempt opened.
+	PostingsRows       int64 // Postings rows read from the sources, including dropped duplicates.
+	StatsRows          int64 // Stats rows read from the sources, including dropped duplicates.
+
+	OutputObjects           int
+	OutputBytesCompressed   int64
+	OutputBytesUncompressed int64
+}
+
+// indexMergeAttempt collects what one IndexMerge task attempt read and wrote,
+// and how long each phase took.
+type indexMergeAttempt struct {
+	sourceObjects int
+	reads         *indexReads
+	outputObjects int
+	output        outputSizes
+
+	classifyDuration time.Duration
+	postingsDuration time.Duration
+	statsDuration    time.Duration
+	finishDuration   time.Duration
+}
+
+func (a *indexMergeAttempt) observedStats(outcome string) IndexMergeObservedStats {
+	stats := IndexMergeObservedStats{
+		Outcome:            outcome,
+		SourceObjects:      a.sourceObjects,
+		PostingsSections:   a.reads.postings.sections,
+		StatsSections:      a.reads.stats.sections,
+		PostingsInputBytes: a.reads.postings.uncompressedBytes,
+		StatsInputBytes:    a.reads.stats.uncompressedBytes,
+		PostingsRows:       a.reads.postings.rows,
+		StatsRows:          a.reads.stats.rows,
+	}
+	if outcome == indexMergeOutcomeSuccess {
+		stats.OutputObjects = a.outputObjects
+		stats.OutputBytesCompressed = a.output.compressed
+		stats.OutputBytesUncompressed = a.output.uncompressed
+	}
+	return stats
+}
+
+// indexReadRowsBatch is how many source rows indexReads counts before it
+// reports them.
+const indexReadRowsBatch = 1000
+
+// indexReads counts the source sections and rows that one index merge or
+// filter reads. It reports rows in batches of indexReadRowsBatch, so the
+// per-row path does no metric update. It is not safe for concurrent use.
+type indexReads struct {
+	postings, stats sectionReads
+
+	report     func(rows int64)
+	unreported int64
+}
+
+// sectionReads counts the source sections of one section type that a merge
+// opened, and the rows that it read from them.
+type sectionReads struct {
+	sections          int
+	uncompressedBytes int64
+	rows              int64
+}
+
+// newIndexReads returns empty counts that report rows to report.
+func newIndexReads(report func(rows int64)) *indexReads {
+	return &indexReads{report: report}
+}
+
+func (r *indexReads) openedPostingsSection(uncompressedBytes int64) {
+	r.postings.sections++
+	r.postings.uncompressedBytes += uncompressedBytes
+}
+
+func (r *indexReads) openedStatsSection(uncompressedBytes int64) {
+	r.stats.sections++
+	r.stats.uncompressedBytes += uncompressedBytes
+}
+
+func (r *indexReads) readPostingsRow() {
+	r.postings.rows++
+	r.readRow()
+}
+
+func (r *indexReads) readStatsRow() {
+	r.stats.rows++
+	r.readRow()
+}
+
+func (r *indexReads) readRow() {
+	r.unreported++
+	if r.unreported >= indexReadRowsBatch {
+		r.flush()
+	}
+}
+
+// flush reports the rows that r did not report yet.
+func (r *indexReads) flush() {
+	if r.unreported == 0 {
+		return
+	}
+	r.report(r.unreported)
+	r.unreported = 0
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
@@ -267,12 +458,13 @@ func keepAll(string) bool { return true }
 
 // mergePostingsInto merges the postings rows of all source index objects
 // whose posting key is in keySpan, with a K-way loser-tree merge. It writes a
-// row to out only if keep returns true for the log object path of the row.
+// row to out only if keep returns true for the log object path of the row. It
+// counts the sections and rows that it reads in reads.
 //
 // The readers skip the pages that hold no key of keySpan, so a task of a
 // merge split by key span reads little more than its own range.
-func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
-	readers := postingsSequences(ctx, objects, keySpan)
+func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput, reads *indexReads) error {
+	readers := postingsSequences(ctx, objects, keySpan, reads.openedPostingsSection)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -293,6 +485,7 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 		}
 
 		row := tree.Winner().At()
+		reads.readPostingsRow()
 		if !keep(row.ObjectPath) {
 			continue
 		}
@@ -332,9 +525,10 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 
 // postingsSequences returns one sequence over the postings rows of each object
 // that has postings sections, for the K-way merge. The sequences return only
-// the rows whose posting key is in keySpan.
-func postingsSequences(ctx context.Context, objects []objectSections, keySpan postings.KeySpan) []sequence[postings.Row] {
-	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+// the rows whose posting key is in keySpan. They call opened with the
+// uncompressed size of each section when they open it.
+func postingsSequences(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, opened func(uncompressedBytes int64)) []sequence[postings.Row] {
+	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], int64, error) {
 		return openPostingsReader(ctx, sec, keySpan)
 	}
 	readers := make([]sequence[postings.Row], 0, len(objects))
@@ -348,6 +542,7 @@ func postingsSequences(ctx context.Context, objects []objectSections, keySpan po
 			sections:   obj.postings,
 			seqIdx:     len(readers),
 			open:       open,
+			opened:     opened,
 		})
 	}
 	return readers
@@ -355,8 +550,9 @@ func postingsSequences(ctx context.Context, objects []objectSections, keySpan po
 
 // mergeStatsInto merges the stats sections of all source index objects with a
 // K-way loser-tree merge. It writes a row to out only if keep returns true for
-// the log object path of the row.
-func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
+// the log object path of the row. It counts the sections and rows that it
+// reads in reads.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput, reads *indexReads) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -368,6 +564,7 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 			sections:   obj.stats,
 			seqIdx:     len(readers),
 			open:       openStatsReader,
+			opened:     reads.openedStatsSection,
 		})
 	}
 	if len(readers) == 0 {
@@ -390,6 +587,7 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 		}
 
 		row := tree.Winner().At()
+		reads.readStatsRow()
 		if !keep(row.ObjectPath) {
 			continue
 		}
@@ -437,8 +635,13 @@ type sectionConcatSeq[R any] struct {
 	ctx        context.Context
 	objectPath string // source object path, for error context
 	sections   []*dataobj.Section
-	open       func(context.Context, *dataobj.Section) (iter.CloseIterator[R], error)
-	seqIdx     int
+	// open returns a reader over the rows of a section, and the uncompressed
+	// size of the section.
+	open func(context.Context, *dataobj.Section) (iter.CloseIterator[R], int64, error)
+	// opened receives the uncompressed size of each section that the
+	// sequence opens.
+	opened func(uncompressedBytes int64)
+	seqIdx int
 
 	idx int                   // index of the section currently being read
 	cur iter.CloseIterator[R] // reader for sections[idx-1]; nil until first Next / between sections
@@ -467,11 +670,12 @@ func (s *sectionConcatSeq[R]) Next() bool {
 			if s.idx >= len(s.sections) {
 				return false
 			}
-			it, err := s.open(s.ctx, s.sections[s.idx])
+			it, size, err := s.open(s.ctx, s.sections[s.idx])
 			if err != nil {
 				s.err = fmt.Errorf("opening section %d/%d of object %q: %w", s.idx, len(s.sections), s.objectPath, err)
 				return false
 			}
+			s.opened(size)
 			s.cur = it
 		}
 		if s.cur.Next() {
@@ -500,15 +704,16 @@ func (s *sectionConcatSeq[R]) Close() error {
 }
 
 // openPostingsReader opens a postings section and returns an iterator over its
-// rows whose posting key is in keySpan.
-func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan) (iter.CloseIterator[postings.Row], error) {
+// rows whose posting key is in keySpan, and the uncompressed size of the
+// section.
+func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan) (iter.CloseIterator[postings.Row], int64, error) {
 	ps, err := postings.Open(ctx, sec)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	predicate, err := keySpan.Predicate(ps)
 	if err != nil {
-		return nil, fmt.Errorf("building key span predicate: %w", err)
+		return nil, 0, fmt.Errorf("building key span predicate: %w", err)
 	}
 	var predicates []postings.Predicate
 	if predicate != nil {
@@ -516,18 +721,19 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan posti
 	}
 	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates})
 	if err := reader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening postings reader: %w", err)
+		return nil, 0, fmt.Errorf("opening postings reader: %w", err)
 	}
-	return postings.NewRowReader(ctx, reader), nil
+	return postings.NewRowReader(ctx, reader), int64(ps.UncompressedSize()), nil
 }
 
-// openStatsReader opens a stats section and returns a row iterator over it.
-func openStatsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[stats.Stat], error) {
+// openStatsReader opens a stats section and returns a row iterator over it,
+// and the uncompressed size of the section.
+func openStatsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[stats.Stat], int64, error) {
 	ss, err := stats.Open(ctx, sec)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return stats.NewRowReader(ctx, ss), nil
+	return stats.NewRowReader(ctx, ss), ss.UncompressedSize(), nil
 }
 
 // sequence[R] is one group cursor for the K-way merge. It is an

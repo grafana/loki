@@ -29,8 +29,8 @@ type Config struct {
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
-	// IndexMergeObserver is used  by compaction to populate output-size
-	// histograms. Optional; nil disables observation.
+	// IndexMergeObserver is used by compaction to populate index-merge
+	// metrics. Optional; nil disables observation.
 	IndexMergeObserver IndexMergeObserver
 
 	// LogMergeObserver is used by compaction to populate log-merge histograms.
@@ -53,9 +53,29 @@ type Config struct {
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 }
 
+// IndexMergeObserver receives IndexMerge statistics from one worker thread.
 type IndexMergeObserver interface {
-	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+	// ObserveIndexMerge receives the summary of one task attempt, including
+	// an attempt that failed. An attempt that kills the process reports
+	// nothing.
+	ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, duration time.Duration)
+
+	// ObserveIndexMergeInputRows receives the number of source rows that the
+	// task read since the last call. It reports during the task, not once at
+	// the end, so that rate() shows the progress of a task that has not
+	// finished.
+	ObserveIndexMergeInputRows(rows int64)
 }
+
+// nopIndexMergeObserver discards IndexMerge statistics.
+type nopIndexMergeObserver struct{}
+
+func (nopIndexMergeObserver) ObserveIndexMerge(string, IndexMergeObservedStats, time.Duration) {}
+func (nopIndexMergeObserver) ObserveIndexMergeInputRows(int64)                                 {}
+
+// NewIndexMergeObserverFunc returns the IndexMergeObserver for the worker
+// thread with the given index.
+type NewIndexMergeObserverFunc func(thread int) IndexMergeObserver
 
 // LogMergeObserver receives LogMerge statistics from one worker thread.
 type LogMergeObserver interface {
@@ -94,6 +114,9 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 	}
 	if c.logMergeObserver == nil {
 		c.logMergeObserver = nopLogMergeObserver{}
+	}
+	if c.indexMergeObserver == nil {
+		c.indexMergeObserver = nopIndexMergeObserver{}
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))

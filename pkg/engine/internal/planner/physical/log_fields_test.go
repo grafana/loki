@@ -12,8 +12,8 @@ import (
 func TestLogFields(t *testing.T) {
 	window := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
 	runs := []*compactionv2pb.RunRef{
-		{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "a", SectionIndex: 0}, {ObjectPath: "a", SectionIndex: 1}}},
-		{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "b"}, {ObjectPath: "c"}}},
+		{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 10}, {ObjectPath: "a", SectionIndex: 1, UncompressedSize: 20}}},
+		{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "b", UncompressedSize: 30}, {ObjectPath: "c"}}},
 	}
 
 	tests := []struct {
@@ -22,9 +22,9 @@ func TestLogFields(t *testing.T) {
 		want []any
 	}{
 		{
-			name: "index merge",
+			name: "index merge reports the summed section sizes as input_postings_bytes",
 			node: &IndexMerge{Tenant: "t", ToCWindowStart: window.UnixNano(), Runs: runs},
-			want: []any{"window", window, "input_objects", 3},
+			want: []any{"window", window, "input_objects", 3, "input_postings_bytes", int64(60)},
 		},
 		{
 			name: "log merge",
