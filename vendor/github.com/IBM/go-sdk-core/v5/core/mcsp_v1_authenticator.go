@@ -275,7 +275,8 @@ func (authenticator *MCSPAuthenticator) invokeRequestTokenData() error {
 		return err
 	}
 
-	GetLogger().Info("invokeRequestTokenData(): RequestToken returned tokenResponse:\n%+v", *tokenResponse)
+	GetLogger().Debug("invokeRequestTokenData(): RequestToken returned: tokenType=%s, expiresIn=%d",
+		tokenResponse.TokenType, tokenResponse.ExpiresIn)
 	tokenData, err := newMCSPTokenData(tokenResponse)
 	if err != nil {
 		tokenData = &mcspTokenData{}
