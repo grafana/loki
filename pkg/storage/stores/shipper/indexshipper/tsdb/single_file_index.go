@@ -98,6 +98,12 @@ type TSDBFile struct {
 	// shard is the fingerprint range of the file when its name says it is one
 	// of several shards of its table (see SingleTenantTSDBIdentifier.Shard).
 	shard index.ShardAnnotation
+
+	// Close stops new cursors from opening. If any cursors are still open,
+	// the last one to close releases the reader.
+	leaseMu sync.Mutex
+	leases  int
+	closed  bool
 }
 
 // FingerprintBounds returns the [from, through) fingerprint range the file
@@ -169,7 +175,32 @@ func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache
 }
 
 func (f *TSDBFile) Close() error {
+	f.leaseMu.Lock()
+	if f.closed {
+		f.leaseMu.Unlock()
+		return nil
+	}
+	f.closed = true
+	closeReader := f.leases == 0
+	f.leaseMu.Unlock()
+	if !closeReader {
+		return nil
+	}
 	return f.Index.Close()
+}
+
+func (f *TSDBFile) releaseCursor() {
+	f.leaseMu.Lock()
+	f.leases--
+	closeReader := f.closed && f.leases == 0
+	f.leaseMu.Unlock()
+	if closeReader {
+		// The file owner already requested closure. Report a shutdown error
+		// here since that Close call has returned.
+		if err := f.Index.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close retired TSDB index reader", "err", err)
+		}
+	}
 }
 
 func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
@@ -318,6 +349,14 @@ func (i *TSDBIndex) forPostings(
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
+	p, err := i.postings(ctx, fpFilter, matchers)
+	if err != nil {
+		return err
+	}
+	return fn(p)
+}
+
+func (i *TSDBIndex) postings(ctx context.Context, fpFilter index.FingerprintFilter, matchers []*labels.Matcher) (index.Postings, error) {
 	var p index.Postings
 	var err error
 	postingsCache, postingsID := i.postingsCache, i.postingsID
@@ -331,10 +370,7 @@ func (i *TSDBIndex) forPostings(
 	} else {
 		p, err = PostingsForMatchers(i.reader, fpFilter, matchers...)
 	}
-	if err != nil {
-		return err
-	}
-	return fn(p)
+	return p, err
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {

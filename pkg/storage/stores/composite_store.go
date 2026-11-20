@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -341,6 +342,27 @@ func (c CompositeStore) HasChunkSizingInfo(from, through model.Time) bool {
 	})
 
 	return allStoresHaveChunkSizingInfo
+}
+
+// OpenChunkCursors opens ordered chunk cursors across all matching schema periods.
+func (c CompositeStore) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	var cursors []sharding.ChunkCursor
+	err := c.forStores(ctx, from, through, func(ctx context.Context, from, through model.Time, store Store) error {
+		source, ok := store.(sharding.ChunkCursorSource)
+		if !ok {
+			return sharding.ErrChunkCursorsUnsupported
+		}
+		opened, err := source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+		cursors = append(cursors, opened...)
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Join(err, sharding.CloseChunkCursors(cursors))
+	}
+	return cursors, nil
 }
 
 func (c CompositeStore) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {

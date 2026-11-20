@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 // TenantLabel is part of the reserved label namespace (__ prefix)
@@ -94,4 +95,8 @@ func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, thro
 
 func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, withTenantLabelMatcher(userID, matchers)...)
+}
+
+func (m *MultiTenantIndex) openChunkCursors(ctx context.Context, userID string, from, through model.Time, filter index.FingerprintFilter, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	return openChunkCursors(ctx, m.idx, userID, from, through, filter, withTenantLabelMatcher(userID, matchers)...)
 }

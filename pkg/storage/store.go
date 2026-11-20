@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
@@ -426,6 +427,15 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
 	s.Store.SetChunkFilterer(chunkFilterer)
+}
+
+// OpenChunkCursors opens ordered chunk cursors for shard planning.
+func (s *LokiStore) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	source, ok := s.Store.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	return source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
 }
 
 func (s *LokiStore) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
