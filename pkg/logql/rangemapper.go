@@ -24,6 +24,12 @@ var splittableVectorOp = map[string]struct{}{
 	syntax.OpTypeSortDesc: {},
 }
 
+// splittableRangeVectorOp has the range aggregations that can be split by range.
+//
+// histogram_over_time is not one of them, on purpose: its histograms could be added up, but the parts of a split
+// are built in two ways. rangeSplit copies the expression, and sumOverFullRange makes a new one from the
+// operation and the log range alone, which would drop the buckets of a histogram. See
+// Test_SplitRangeVectorMapping_Noop before adding it.
 var splittableRangeVectorOp = map[string]struct{}{
 	syntax.OpRangeTypeRate:      {},
 	syntax.OpRangeTypeBytesRate: {},
