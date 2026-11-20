@@ -1379,6 +1379,11 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 		return nil, err
 	}
 	setQueryBytesProcessedHeader(response.Header, res)
+	for _, h := range res.GetHeaders() {
+		if h.Name == httpreq.LokiQueryGroupEstimatedBytesHeader {
+			response.Header[h.Name] = h.Values
+		}
+	}
 	return response, nil
 }
 

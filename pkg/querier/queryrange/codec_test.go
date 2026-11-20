@@ -3373,6 +3373,19 @@ func usageHeaderResponse(kind string, n int64) queryrangebase.Response {
 	}}
 }
 
+func TestEncodeResponseCopiesQueryGroupEstimatedBytesHeader(t *testing.T) {
+	for _, kind := range []string{"logs", "matrix"} {
+		response := usageHeaderResponse(kind, 0)
+		response.SetHeader(httpreq.LokiQueryGroupEstimatedBytesHeader, "42")
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range", nil)
+
+		actual, err := DefaultCodec.EncodeResponse(user.InjectOrgID(context.Background(), "test"), req, response)
+		require.NoError(t, err)
+		require.NoError(t, actual.Body.Close())
+		require.Equal(t, "42", actual.Header.Get(httpreq.LokiQueryGroupEstimatedBytesHeader), kind)
+	}
+}
+
 func TestQueryUsageHeaderEncodings(t *testing.T) {
 	for _, tc := range []struct {
 		kind      string

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -64,6 +66,7 @@ type mockLimits struct {
 	modes                 map[string]Mode
 	minQueryBytesForIndex map[string]int64
 	defaultMinQueryBytes  int64
+	groupPlanning         bool
 }
 
 func (m mockLimits) LoglineQueryMode(tenant string) string {
@@ -84,6 +87,10 @@ func (m mockLimits) LoglineQueryMinQueryBytesForIndex(tenant string) int64 {
 		return v
 	}
 	return m.defaultMinQueryBytes
+}
+
+func (m mockLimits) LoglineQueryGroupPlanning(string) bool {
+	return m.groupPlanning
 }
 
 func (m *mockHintProvider) ProvideHints(
@@ -5469,4 +5476,122 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 	require.Equal(t, req.StartTs, gotStart)
 	require.Equal(t, req.EndTs, gotEnd)
 	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
+}
+
+// queryGroupContext sets the query group headers that Grafana's Loki
+// datasource sends with every split. An empty estimate is the first split.
+func queryGroupContext(from, to time.Time, estimate string) context.Context {
+	ctx := testTenantContext()
+	ctx = httpreq.InjectHeader(ctx, QueryGroupIDHeader, "group-1")
+	ctx = httpreq.InjectHeader(ctx, QueryGroupFromHeader, strconv.FormatInt(from.UnixMilli(), 10))
+	ctx = httpreq.InjectHeader(ctx, QueryGroupToHeader, strconv.FormatInt(to.UnixMilli(), 10))
+	if estimate != "" {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiQueryGroupEstimatedBytesHeader, estimate)
+	}
+	return ctx
+}
+
+func responseHeader(resp queryrangebase.Response, name string) string {
+	for _, h := range resp.GetHeaders() {
+		if h.Name == name {
+			return strings.Join(h.Values, ",")
+		}
+	}
+	return ""
+}
+
+func TestPrefetch_QueryGroup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	groupFrom := now.Add(-72 * time.Hour)
+	splitStart, splitEnd := groupFrom.Add(time.Hour), groupFrom.Add(25*time.Hour)
+	// The group's lookup ends before the UTC day holding its ingester cutoff.
+	indexedEnd := now.Add(-2 * time.Hour).Truncate(24 * time.Hour).Add(-time.Millisecond)
+	ms := func(t time.Time) model.Time { return model.TimeFromUnixNano(t.UnixNano()) }
+
+	run := func(t *testing.T, groupPlanning bool, estimate string) (queryrangebase.Response, []*logproto.IndexStatsRequest, *mockHintProvider) {
+		var statsReqs []*logproto.IndexStatsRequest
+		querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			if r, ok := req.(*logproto.IndexStatsRequest); ok {
+				statsReqs = append(statsReqs, r)
+				return &queryrange.IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1000}}, nil
+			}
+			return emptyStreamResponse(), nil
+		})
+		hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+		limits := mockLimits{defaultMinQueryBytes: 500, groupPlanning: groupPlanning}
+		handler := buildStack(hp, Config{QueryIngestersWithin: 2 * time.Hour}, newTestMetrics(), querier, limits)
+		resp, err := handler.Do(queryGroupContext(groupFrom, now, estimate), newTestLokiRequest(`{job="test"} |= "error"`, splitStart, splitEnd))
+		require.NoError(t, err)
+		return resp, statsReqs, hp
+	}
+
+	t.Run("first split gates and looks up the whole group", func(t *testing.T) {
+		resp, statsReqs, hp := run(t, true, "")
+		require.Len(t, statsReqs, 1)
+		require.Equal(t, ms(groupFrom), statsReqs[0].From)
+		require.Equal(t, ms(now), statsReqs[0].Through)
+		from, through := hp.Window()
+		require.Equal(t, ms(groupFrom), from)
+		require.Equal(t, ms(indexedEnd), through)
+		require.Equal(t, "1000", responseHeader(resp, httpreq.LokiQueryGroupEstimatedBytesHeader))
+	})
+
+	t.Run("later split reuses the estimate and looks up its own window", func(t *testing.T) {
+		resp, statsReqs, hp := run(t, true, "1000")
+		require.Empty(t, statsReqs)
+		from, through := hp.Window()
+		require.Equal(t, ms(splitStart), from)
+		require.Equal(t, ms(splitEnd), through)
+		require.Empty(t, responseHeader(resp, httpreq.LokiQueryGroupEstimatedBytesHeader))
+	})
+
+	t.Run("later split below the threshold skips the lookup", func(t *testing.T) {
+		_, statsReqs, hp := run(t, true, "100")
+		require.Empty(t, statsReqs)
+		require.Zero(t, hp.Calls())
+	})
+
+	t.Run("headers are ignored without group planning", func(t *testing.T) {
+		resp, statsReqs, hp := run(t, false, "")
+		require.Len(t, statsReqs, 1)
+		require.Equal(t, ms(splitStart), statsReqs[0].From)
+		require.Equal(t, ms(splitEnd), statsReqs[0].Through)
+		from, through := hp.Window()
+		require.Equal(t, ms(splitStart), from)
+		require.Equal(t, ms(splitEnd), through)
+		require.Empty(t, responseHeader(resp, httpreq.LokiQueryGroupEstimatedBytesHeader))
+	})
+}
+
+func TestPrefetch_QueryGroupLaterSplitsRefreshCachedDays(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	groupFrom := now.Add(-72 * time.Hour)
+	indexedEnd := now.Add(-2 * time.Hour).Truncate(24 * time.Hour).Add(-time.Millisecond)
+	days := int(indexedEnd.Truncate(24*time.Hour).Sub(groupFrom.Truncate(24*time.Hour))/(24*time.Hour)) + 1
+
+	delegate := &mockHintProvider{hints: &hintprovider.Hints{}}
+	hintCache := cache.NewMockCache()
+	hp := hintprovider.NewCachingHintProvider(delegate, hintCache, nil)
+	metrics := newTestMetrics()
+	querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 1000}, nil, nil, queryrangebase.HandlerFunc(
+		func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+			return emptyStreamResponse(), nil
+		}))
+	limits := mockLimits{defaultMinQueryBytes: 500, groupPlanning: true}
+	handler := prefetchMiddlewareForTest(hp, Config{QueryIngestersWithin: 2 * time.Hour}, limits, metrics, nil).
+		Wrap(NewLoglineFilterMiddleware(10*time.Second, metrics, nil).Wrap(querier))
+	query := `{job="test"} |= "error"`
+
+	// The first split looks up and caches every day before the cutoff's day.
+	_, err := handler.Do(queryGroupContext(groupFrom, now, ""), newTestLokiRequest(query, groupFrom, groupFrom.Add(24*time.Hour)))
+	require.NoError(t, err)
+	require.Equal(t, days, delegate.Calls())
+	require.Equal(t, days, hintCache.NumKeyUpdates())
+
+	// A later split reads its days from the cache and stores all of the
+	// group's days again, so their TTL starts over.
+	_, err = handler.Do(queryGroupContext(groupFrom, now, "1000"), newTestLokiRequest(query, groupFrom.Add(12*time.Hour), groupFrom.Add(36*time.Hour)))
+	require.NoError(t, err)
+	require.Equal(t, days, delegate.Calls())
+	require.Equal(t, 2*days, hintCache.NumKeyUpdates())
 }

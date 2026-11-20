@@ -1125,3 +1125,32 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	require.NoError(t, err)
 	require.ElementsMatch(t, []HintTimeRange{oldRange, newRange}, freshHints.TimeRanges)
 }
+
+func TestCachingHintProvider_RefreshDaysStoresCachedDaysAgain(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &stubHintProvider{}
+	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	through := time.Date(2026, 3, 12, 11, 0, 0, 0, time.UTC)
+	days := buildDayWindows(tenant, expr.String(), "", from, through)
+	require.Len(t, days, 3)
+	cached := map[string][]byte{
+		days[0].hashedKey: []byte(`{"r":[{"s":1,"e":2}]}`),
+		days[2].hashedKey: []byte(`{}`),
+	}
+	for key, value := range cached {
+		backend.data[key] = value
+	}
+
+	provider.RefreshDays(context.Background(), tenant, expr, from, through)
+	require.Equal(t, 1, backend.StoreCalls())
+	require.Equal(t, cached, backend.data, "only cached days are stored, unchanged")
+	require.Zero(t, delegate.Calls(), "a refresh never looks days up")
+
+	provider.RefreshDays(WithSkipCache(context.Background()), tenant, expr, from, through)
+	provider.RefreshDays(context.Background(), tenant, expr, through, from)
+	require.Equal(t, 1, backend.FetchCalls(), "skip-cache requests and empty windows leave the cache alone")
+}
