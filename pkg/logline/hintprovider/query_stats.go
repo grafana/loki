@@ -46,11 +46,9 @@ type QueryStats struct {
 	totalIOWaitNanos atomic.Int64
 	totalIOBytes     atomic.Int64
 
-	activeWorkers        atomic.Int32
-	peakConcurrency      atomic.Int32
-	totalWorkNanos       atomic.Int64
-	wallTimeNanos        atomic.Int64
-	effectiveConcurrency atomic.Float64
+	activeWorkers   atomic.Int32
+	peakConcurrency atomic.Int32
+	wallTimeNanos   atomic.Int64
 
 	prefetchCalls    atomic.Int32
 	prefetchTimeouts atomic.Int32
@@ -142,18 +140,16 @@ func (s *QueryStats) WorkerStarted() {
 	}
 }
 
-// WorkerFinished records worker execution time and decrements active count.
-func (s *QueryStats) WorkerFinished(startedAt time.Time) {
+// WorkerFinished decrements the active worker count.
+func (s *QueryStats) WorkerFinished() {
 	if s == nil {
 		return
-	}
-	if !startedAt.IsZero() {
-		s.totalWorkNanos.Add(time.Since(startedAt).Nanoseconds())
 	}
 	s.activeWorkers.Add(-1)
 }
 
-// SetWallTime stores total wall time for the hint lookup.
+// SetWallTime stores the lookup's wall time, the denominator of
+// EffectiveConcurrency (0 until set). Merge and FromProtoStats do not carry it.
 func (s *QueryStats) SetWallTime(d time.Duration) {
 	if s == nil {
 		return
@@ -161,7 +157,9 @@ func (s *QueryStats) SetWallTime(d time.Duration) {
 	s.wallTimeNanos.Store(d.Nanoseconds())
 }
 
-// Merge adds counters from other into s.
+// Merge adds the counters of other into s and keeps the larger peak
+// concurrency. It does not merge wall time or active workers: the caller sets
+// wall time with SetWallTime.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil || s == other {
 		return
@@ -177,7 +175,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 
 	s.totalIOWaitNanos.Add(other.totalIOWaitNanos.Load())
 	s.totalIOBytes.Add(other.totalIOBytes.Load())
-	s.totalWorkNanos.Add(other.totalWorkNanos.Load())
 	s.prefetchCalls.Add(other.prefetchCalls.Load())
 	s.prefetchTimeouts.Add(other.prefetchTimeouts.Load())
 	if v, ok := other.hintCacheResult.Load().(string); ok && v != "" {
@@ -198,28 +195,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 			break
 		}
 		if s.peakConcurrency.CompareAndSwap(peak, otherPeak) {
-			break
-		}
-	}
-
-	otherWall := other.wallTimeNanos.Load()
-	for {
-		wall := s.wallTimeNanos.Load()
-		if otherWall <= wall {
-			break
-		}
-		if s.wallTimeNanos.CompareAndSwap(wall, otherWall) {
-			break
-		}
-	}
-
-	otherEffective := other.effectiveConcurrency.Load()
-	for {
-		effective := s.effectiveConcurrency.Load()
-		if otherEffective <= effective {
-			break
-		}
-		if s.effectiveConcurrency.CompareAndSwap(effective, otherEffective) {
 			break
 		}
 	}
@@ -250,6 +225,8 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 }
 
 // Snapshot returns a frozen copy of the accumulator as the wire stats type.
+// EffectiveConcurrency is derived: TotalIOWait divided by the wall time set
+// with SetWallTime, or 0 when no wall time is set.
 func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	if s == nil {
 		return logproto.HintQueryStats{}
@@ -266,11 +243,11 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	indexQueriesPositive := s.indexQueriesPositive.Load()
 	totalTermBatchesProcessed := s.totalTermBatchesProcessed.Load()
 
-	totalWorkNanos := s.totalWorkNanos.Load()
+	totalIOWaitNanos := s.totalIOWaitNanos.Load()
 	wallTimeNanos := s.wallTimeNanos.Load()
-	effective := s.effectiveConcurrency.Load()
-	if totalWorkNanos > 0 && wallTimeNanos > 0 {
-		effective = float64(totalWorkNanos) / float64(wallTimeNanos)
+	effective := 0.0
+	if wallTimeNanos > 0 {
+		effective = float64(totalIOWaitNanos) / float64(wallTimeNanos)
 	}
 
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
@@ -283,7 +260,7 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 		HeaderCacheMisses:         s.headerCacheMisses.Load(),
 		MetadataCacheMisses:       s.metadataCacheMisses.Load(),
 		ObjectStorageRequests:     objectStorageRequests,
-		TotalIOWait:               time.Duration(s.totalIOWaitNanos.Load()),
+		TotalIOWait:               time.Duration(totalIOWaitNanos),
 		TotalIOBytes:              s.totalIOBytes.Load(),
 		PeakConcurrency:           s.peakConcurrency.Load(),
 		EffectiveConcurrency:      effective,
@@ -300,7 +277,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	}
 }
 
-// fromProtoStats reconstructs a QueryStats accumulator from the wire type.
+// FromProtoStats rebuilds an accumulator from the wire type. It does not restore
+// wall time or EffectiveConcurrency; the caller sets its own wall time.
 func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s := NewQueryStats()
 	if p == nil {
@@ -315,7 +293,6 @@ func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
 	s.totalIOBytes.Store(p.TotalIOBytes)
 	s.peakConcurrency.Store(p.PeakConcurrency)
-	s.effectiveConcurrency.Store(p.EffectiveConcurrency)
 	s.prefetchCalls.Store(p.PrefetchCalls)
 	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
 	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
@@ -397,7 +374,7 @@ func (r *trackingReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	start := time.Now()
 	n, err := r.reader.ReadAt(p, off)
 	waited := time.Since(start)
-	r.stats.WorkerFinished(start)
+	r.stats.WorkerFinished()
 
 	readType := r.classify(off, int64(len(p)))
 	r.stats.observeRead(readType, n, waited)

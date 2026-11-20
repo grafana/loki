@@ -115,6 +115,7 @@ type stubHintProvider struct {
 	err     error
 	delay   time.Duration
 	minDate time.Time
+	onCall  func()
 
 	calls int
 }
@@ -132,8 +133,12 @@ func (s *stubHintProvider) ProvideHints(
 	stats := s.stats
 	err := s.err
 	delay := s.delay
+	onCall := s.onCall
 	s.mu.Unlock()
 
+	if onCall != nil {
+		onCall()
+	}
 	if delay > 0 {
 		time.Sleep(delay)
 	}
@@ -510,12 +515,136 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
 }
 
+// Parallel day lookups each report their own IO wait. The combined stats sum
+// it, and the ratio divides the sum by the one wall time the caller sets.
+func TestCachingHintProvider_MultiDayLookupSumsIOWait(t *testing.T) {
+	const readTime = time.Second
+
+	perDay := NewQueryStats()
+	perDay.totalIOWaitNanos.Store(readTime.Nanoseconds())
+	perDay.headerReads.Store(2)
+	delegate := &stubHintProvider{
+		stats: perDay,
+		hints: &Hints{TimeRanges: []HintTimeRange{{
+			Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+		}}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 12, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	_, stats, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+	require.Equal(t, 3, delegate.Calls(), "each day is its own lookup")
+
+	require.Equal(t, int64(3*2), stats.headerReads.Load())
+	require.Equal(t, 3*readTime, stats.Snapshot().TotalIOWait)
+
+	// The ratio uses one wall time for the whole lookup, not one per day.
+	stats.SetWallTime(time.Second)
+	require.Equal(t, 3.0, stats.Snapshot().EffectiveConcurrency)
+}
+
+// A caller that only joined a shared lookup keeps the leader's read counters
+// but reports no IO wait of its own. That holds when the lookup fails too,
+// because the joiner still gets the leader's stats back with the error.
+func TestCachingHintProvider_SingleflightJoinerRecordsNoIOWait(t *testing.T) {
+	const (
+		readTime  = 5 * time.Second
+		readBytes = 4096
+		// joinDelay lets the second caller reach the in-flight call before the
+		// leader is released.
+		joinDelay = 200 * time.Millisecond
+	)
+
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "lookup succeeds"},
+		{name: "lookup fails", err: errors.New("lookup failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shared := NewQueryStats()
+			shared.totalIOWaitNanos.Store(readTime.Nanoseconds())
+			shared.totalIOBytes.Store(readBytes)
+			shared.headerReads.Store(4)
+
+			var enteredOnce, releaseOnce sync.Once
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			t.Cleanup(unblock)
+
+			delegate := &stubHintProvider{
+				stats: shared,
+				err:   tc.err,
+				hints: &Hints{TimeRanges: []HintTimeRange{{
+					Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+				}}},
+				onCall: func() {
+					enteredOnce.Do(func() { close(entered) })
+					<-release
+				},
+			}
+			provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+
+			expr := mustParseExpr(t, `{job="api"} |= "error"`)
+			from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+			through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+			type result struct {
+				stats *QueryStats
+				err   error
+			}
+			run := func() <-chan result {
+				out := make(chan result, 1)
+				go func() {
+					_, stats, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+					out <- result{stats: stats, err: err}
+				}()
+				return out
+			}
+
+			leaderOut := run()
+			select {
+			case <-entered:
+			case <-time.After(2 * time.Second):
+				t.Fatal("leader did not start the lookup")
+			}
+			joinerOut := run()
+			time.Sleep(joinDelay)
+			unblock()
+			leader, joiner := <-leaderOut, <-joinerOut
+
+			require.Equal(t, 1, delegate.Calls(), "the joiner must share the leader's lookup")
+			require.ErrorIs(t, leader.err, tc.err)
+			require.ErrorIs(t, joiner.err, tc.err)
+			require.NotNil(t, leader.stats)
+			require.NotNil(t, joiner.stats)
+
+			require.Equal(t, readTime.Nanoseconds(), leader.stats.totalIOWaitNanos.Load())
+			require.Equal(t, int64(0), joiner.stats.totalIOWaitNanos.Load())
+			for _, stats := range []*QueryStats{leader.stats, joiner.stats} {
+				require.Equal(t, int64(4), stats.headerReads.Load())
+				require.Equal(t, int64(readBytes), stats.totalIOBytes.Load())
+			}
+		})
+	}
+}
+
 // cancelFirstCallHintProvider blocks its first call until that call's context
-// ends and answers later calls straight away.
+// ends and answers later calls straight away, reporting ioWait of IO wait.
 type cancelFirstCallHintProvider struct {
 	calls   atomic.Int64
 	started chan struct{}
 	hints   *Hints
+	ioWait  time.Duration
 }
 
 func (p *cancelFirstCallHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
@@ -524,7 +653,9 @@ func (p *cancelFirstCallHintProvider) ProvideHints(ctx context.Context, _ string
 		<-ctx.Done()
 		return nil, NewQueryStats(), ctx.Err()
 	}
-	return cloneHints(p.hints), NewQueryStats(), nil
+	stats := NewQueryStats()
+	stats.totalIOWaitNanos.Store(p.ioWait.Nanoseconds())
+	return cloneHints(p.hints), stats, nil
 }
 
 // releasedHintProvider blocks each call until release is closed or the call's
@@ -602,7 +733,11 @@ func TestCachingHintProvider_SingleflightJoinerStopsWaitingWhenCanceled(t *testi
 	require.Zero(t, testutil.ToFloat64(provider.singleflightRetriesTot))
 }
 
+// A joiner of a canceled lookup retries and runs the delegate itself, so the IO
+// wait of that second lookup is its own and it keeps it.
 func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing.T) {
+	const readTime = 3 * time.Second
+
 	reg := prometheus.NewRegistry()
 	hintRange := HintTimeRange{
 		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
@@ -611,6 +746,7 @@ func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing
 	delegate := &cancelFirstCallHintProvider{
 		started: make(chan struct{}),
 		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+		ioWait:  readTime,
 	}
 	provider := NewCachingHintProvider(delegate, nil, reg)
 
@@ -629,12 +765,13 @@ func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing
 
 	type result struct {
 		hints *Hints
+		stats *QueryStats
 		err   error
 	}
 	joiner := make(chan result, 1)
 	go func() {
-		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
-		joiner <- result{hints: hints, err: err}
+		hints, stats, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		joiner <- result{hints: hints, stats: stats, err: err}
 	}()
 	// Give the joiner time to join the leader's lookup before it is canceled.
 	time.Sleep(100 * time.Millisecond)
@@ -646,6 +783,8 @@ func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing
 	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
 	require.Equal(t, int64(2), delegate.calls.Load())
 	require.Equal(t, 1.0, testutil.ToFloat64(provider.singleflightRetriesTot))
+	require.NotNil(t, res.stats)
+	require.Equal(t, readTime.Nanoseconds(), res.stats.totalIOWaitNanos.Load())
 }
 
 func TestCachedHints_JSONRoundTrip(t *testing.T) {
