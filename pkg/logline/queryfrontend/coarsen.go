@@ -167,6 +167,10 @@ func (c *gapCut) keep(gap time.Duration) bool {
 	case gap < c.threshold || c.ties == 0:
 		return false
 	}
+	// Keep tie i when x*keepTies/ties, rounded down, goes up from x = i to
+	// x = i+1. That happens keepTies times across the ties, about every
+	// ties/keepTies. For example, keeping 3 of 7 ties keeps the 3rd, 5th and
+	// 7th.
 	i := c.seen
 	c.seen++
 	return (i+1)*c.keepTies/c.ties > i*c.keepTies/c.ties
