@@ -5,6 +5,7 @@ package queryrange;
 import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
+import "pkg/logproto/histogram.proto";
 import "pkg/logproto/indexgateway.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logproto/pattern.proto";
@@ -210,6 +211,18 @@ message CountMinSketchResponse {
   stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
+// HistogramResponse is the result of a query that returns histograms. That is the result of a shard of a
+// histogram query, and never the response to a user.
+message HistogramResponse {
+  logproto.HistogramMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.HistogramMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
+}
+
 message CountDistinctSketchResponse {
   logproto.CountDistinctSketchMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.CountDistinctSketchMatrix"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
@@ -274,6 +287,7 @@ message QueryResponse {
     CountMinSketchResponse countMinSketches = 14;
     CountDistinctSketchResponse countDistinctSketches = 15;
     LoglineIndexResponse hints = 16;
+    HistogramResponse histograms = 17;
   }
 }
 

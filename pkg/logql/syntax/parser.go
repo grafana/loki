@@ -125,13 +125,17 @@ func validateExpr(expr Expr) error {
 		// write, and this is where they get the error early, as a client error.
 		//
 		// The part of a sharded query that a shard runs has a histogram at its
-		// root too, and it is not a user query. It must not be exempt because of
-		// the way it arrives, as a plan, which is not parsed and so never gets
-		// here: whatever evaluates it has to know that it is a shard, and refuse
-		// a histogram result otherwise. Code that has to parse the string of
-		// such a part uses ParseExprWithoutValidation.
+		// root too, and it is not a user query. It reaches a querier as a plan,
+		// which is not parsed and so never gets here, but that is not what lets
+		// it through: the engine returns a histogram only for a query that has
+		// shards, and fails any other with the error that this check gives.
+		// Code that has to parse the string of such a part uses
+		// ParseExprWithoutValidation. The JSON encoding between the query
+		// frontend and the queriers cannot carry the answer of a shard, which is
+		// a HistogramResponse and has no JSON form, so sharding histograms needs
+		// the protobuf encoding.
 		// TODO: allow it for every query once results can carry native histograms.
-		if isHistogramValued(e) {
+		if IsHistogramValued(e) {
 			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
 		}
 		return validateSampleExpr(e)

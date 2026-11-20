@@ -879,7 +879,7 @@ func (e *ConcatStepEvaluator) Error() error {
 	}
 }
 
-// NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
+// NewResultStepEvaluator coerces a downstream vector, matrix or histogram matrix into a StepEvaluator
 func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
@@ -896,6 +896,8 @@ func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator
 		return NewVectorStepEvaluator(start, data), nil
 	case promql.Matrix:
 		return NewMatrixStepEvaluator(start, end, step, data), nil
+	case HistogramMatrix:
+		return NewHistogramMatrixStepEvaluator(data, params), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}

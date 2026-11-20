@@ -249,16 +249,22 @@ func newQueryOpts(opts EngineOpts) queryOpts {
 var errHistogramsDisabled = fmt.Errorf("%w: histogram functions are experimental and not enabled, "+
 	"set -querier.engine.enable-histograms to enable them", logqlerr.ErrParse)
 
-// checkNoHistograms fails when a sample of vec holds a histogram. The result of a query is a vector or
-// a matrix of floats, and a histogram that reached it would be dropped, which leaves a series with the
-// value zero. The parser does not allow a query that returns a histogram, so this is a second check.
+// errHistogramResult is returned for a query whose result would be a histogram. The result of a query is a vector
+// or a matrix of floats, and a histogram that reached it would be dropped, which leaves a series with the value
+// zero. Only a shard of a query may return one, see JoinHistogramVector.
 //
 // Like the other guards of the histograms, it wraps ErrParse: what is wrong is the query, and it is the same
 // on every retry, so it is a client error and not one that the query frontend retries.
+var errHistogramResult = fmt.Errorf("%w: a query cannot return a histogram, read it with a histogram_* function", logqlerr.ErrParse)
+
+// checkNoHistograms fails when a sample of vec holds a histogram. The parser does not allow a query that returns
+// a histogram, and the engine does not run one that is not a shard, so this is a third check. A histogram at the
+// root of the expression is not an error when the query has shards, it is what a shard of a histogram query
+// returns, see JoinHistogramVector. This catches a histogram that is anywhere else.
 func checkNoHistograms(vec promql.Vector) error {
 	for _, s := range vec {
 		if s.H != nil {
-			return fmt.Errorf("%w: a query cannot return a histogram, read it with a histogram_* function", logqlerr.ErrParse)
+			return errHistogramResult
 		}
 	}
 	return nil
@@ -494,6 +500,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
+	// The parser refuses a query whose result is a histogram, but a plan is not parsed, so it is not what keeps
+	// one out. The part of a sharded query that a shard runs has a histogram at its root, and it is known by its
+	// shards: a query that has none is not a shard, whatever its plan says.
+	if syntax.IsHistogramValued(expr) && len(q.params.Shards()) == 0 {
+		return nil, errHistogramResult
+	}
+
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
 	if err != nil {
 		return nil, err
@@ -508,6 +521,12 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
+			// A query is not valid when its result is a histogram, so the only histograms that reach this are the
+			// result of the part of a query that a shard runs, which has been checked above. The query frontend
+			// reads them, see HistogramMatrix.
+			if syntax.IsHistogramValued(expr) {
+				return JoinHistogramVector(next, vec, stepEvaluator, maxSeries)
+			}
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true

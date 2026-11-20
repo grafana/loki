@@ -1356,6 +1356,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 			return concrete.TopkSketches.WithHeaders(headers), nil
 		case *QueryResponse_QuantileSketches:
 			return concrete.QuantileSketches.WithHeaders(headers), nil
+		case *QueryResponse_Histograms:
+			return concrete.Histograms.WithHeaders(headers), nil
 		case *QueryResponse_CountDistinctSketches:
 			return concrete.CountDistinctSketches.WithHeaders(headers), nil
 		default:

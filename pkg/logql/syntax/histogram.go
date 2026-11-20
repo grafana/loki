@@ -318,17 +318,19 @@ func UsesHistograms(expr Expr) bool {
 	return found
 }
 
-// isHistogramValued reports whether expr evaluates to a histogram vector, which
+// IsHistogramValued reports whether expr evaluates to a histogram vector, which
 // only histogram_over_time and the sum of a histogram vector do.
 //
 // A histogram vector can only be consumed by sum and by the histogram reader
 // functions. It cannot be the result of a query, because the API returns floats.
-func isHistogramValued(expr SampleExpr) bool {
+// The engine returns one for the part of a query that a shard runs, which is
+// then read by the query frontend.
+func IsHistogramValued(expr SampleExpr) bool {
 	switch e := expr.(type) {
 	case *RangeAggregationExpr:
 		return e.Operation == OpRangeTypeHistogram
 	case *VectorAggregationExpr:
-		return e.Operation == OpTypeSum && isHistogramValued(e.Left)
+		return e.Operation == OpTypeSum && IsHistogramValued(e.Left)
 	default:
 		return false
 	}
@@ -336,7 +338,7 @@ func isHistogramValued(expr SampleExpr) bool {
 
 // validateHistogramFunc checks that a histogram reader is given a histogram.
 func validateHistogramFunc(e *HistogramFuncExpr) error {
-	if !isHistogramValued(e.Left) {
+	if !IsHistogramValued(e.Left) {
 		return logqlerr.NewParseError(
 			fmt.Sprintf("%s requires a histogram_over_time expression, or a sum of one, as its histogram argument", e.Operation), 0, 0)
 	}
@@ -349,17 +351,17 @@ func validateHistogramFunc(e *HistogramFuncExpr) error {
 func validateHistogramUse(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *BinOpExpr:
-		if isHistogramValued(e.SampleExpr) || isHistogramValued(e.RHS) {
+		if IsHistogramValued(e.SampleExpr) || IsHistogramValued(e.RHS) {
 			return logqlerr.NewParseError(
 				"a histogram_over_time expression cannot be used in a binary operation, read it with a histogram_* function first", 0, 0)
 		}
 	case *VectorAggregationExpr:
-		if e.Operation != OpTypeSum && isHistogramValued(e.Left) {
+		if e.Operation != OpTypeSum && IsHistogramValued(e.Left) {
 			return logqlerr.NewParseError(
 				fmt.Sprintf("%s is not supported on a histogram_over_time expression, only sum is", e.Operation), 0, 0)
 		}
 	case *LabelReplaceExpr:
-		if isHistogramValued(e.Left) {
+		if IsHistogramValued(e.Left) {
 			return logqlerr.NewParseError(
 				"label_replace is not supported on a histogram_over_time expression", 0, 0)
 		}
