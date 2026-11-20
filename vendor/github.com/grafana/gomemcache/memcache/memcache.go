@@ -25,11 +25,15 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 // Similar to:
@@ -129,6 +133,14 @@ func legalKey(key string) bool {
 	return true
 }
 
+func nextPowerTwo(n int) int {
+	if n <= 1 {
+		return 1
+	}
+	u := uint(n - 1)
+	return 1 << bits.Len(u)
+}
+
 var (
 	crlf            = []byte("\r\n")
 	resultOK        = []byte("OK\r\n")
@@ -158,9 +170,25 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
+	return NewShardedFromSelector(ss, 1)
+}
+
+// NewShardedFromSelector returns a new Client using the provided ServerSelector
+// with free connection lists striped over numShards different shards.
+func NewShardedFromSelector(ss ServerSelector, numShards int) *Client {
+	numShards = nextPowerTwo(numShards)
+	shards := make([]*freeConnectionShard, numShards)
+	for i := range numShards {
+		shards[i] = &freeConnectionShard{
+			mtx:  sync.Mutex{},
+			free: make(map[string][]*conn),
+		}
+	}
+
 	c := &Client{
 		selector: ss,
 		closed:   make(chan struct{}),
+		shards:   shards,
 	}
 
 	go c.releaseIdleConnectionsUntilClosed()
@@ -198,12 +226,16 @@ type Client struct {
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
 
-	// recentlyUsedConnsThreshold is the default grace period given to an
-	// idle connection to consider it "recently used". Recently used connections
-	// are never closed even if idle.
+	// RecentlyUsedConnsThreshold is the grace period given to a free connection
+	// to consider it "recently used". Recently used connections are never closed
+	// by the idle connections reaper, and they are the basis for the headroom
+	// computed from MinIdleConnsHeadroomPercentage.
 	//
-	// This field is used for testing.
-	recentlyUsedConnsThreshold time.Duration
+	// If zero, defaultRecentlyUsedConnsThreshold is used. It has no effect if
+	// MinIdleConnsHeadroomPercentage is negative. Idle connections are checked
+	// once a minute, so a connection may be closed up to a minute after it
+	// exceeds this threshold.
+	RecentlyUsedConnsThreshold time.Duration
 
 	// closed channel gets closed once the Client.Close() is called. Once closed,
 	// resources should be released.
@@ -211,9 +243,7 @@ type Client struct {
 	closeOnce sync.Once
 
 	selector ServerSelector
-
-	lk       sync.Mutex
-	freeconn map[string][]*conn
+	shards   []*freeConnectionShard
 }
 
 // Item is an item to be got or stored in a memcached server.
@@ -233,8 +263,30 @@ type Item struct {
 	// Zero means the Item has no expiration time.
 	Expiration int32
 
-	// Compare and swap ID.
-	casid uint64
+	// CasID is the compare and swap ID.
+	//
+	// It's populated by get requests and then the same value is
+	// required for a CompareAndSwap request to succeed.
+	CasID uint64
+}
+
+const (
+	cacheLineSize = 64                                     //nolint:unused
+	mtxSize       = unsafe.Sizeof(sync.Mutex{})            //nolint:unused
+	freeSize      = unsafe.Sizeof(map[string][]*conn(nil)) //nolint:unused
+)
+
+// freeConnectionShard is a subset of free connections to a server. Shards
+// are picked using a cheap hash of the server address string. Shards exist
+// to reduce contention when locks are taken.
+type freeConnectionShard struct {
+	mtx  sync.Mutex
+	free map[string][]*conn
+
+	// Pad the size of this struct so that each instance of it ends up on a separate
+	// cache line. This ensures the locking/unlocking of the mutex for a single shard
+	// does not invalidate the cache line another shard is on.
+	_padding [cacheLineSize - mtxSize - freeSize]byte //nolint:unused
 }
 
 // conn is a connection to a server.
@@ -270,33 +322,51 @@ func (cn *conn) condRelease(err *error) {
 	if *err == nil || resumableError(*err) {
 		cn.release()
 	} else {
-		cn.nc.Close()
+		_ = cn.nc.Close()
 	}
 }
 
-func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-	if c.freeconn == nil {
-		c.freeconn = make(map[string][]*conn)
+func (c *Client) pickShard(id string) *freeConnectionShard {
+	if len(c.shards) == 1 {
+		return c.shards[0]
 	}
-	freelist := c.freeconn[addr.String()]
+
+	sum := xxhash.Sum64String(id)
+	// We know the number of shards is a power of two so this
+	// is equivalent to a `%` operation on the length of shards.
+	idx := sum & uint64(len(c.shards)-1)
+
+	return c.shards[idx]
+}
+
+func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
+	addrStr := addr.String()
+
+	s := c.pickShard(addrStr)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	freelist := s.free[addrStr]
 	if len(freelist) >= c.maxIdleConns() {
-		cn.nc.Close()
+		_ = cn.nc.Close()
 		return
 	}
 
 	cn.idleSince = time.Now()
-	c.freeconn[addr.String()] = append(freelist, cn)
+	s.free[addrStr] = append(freelist, cn)
 }
 
 func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-	if c.freeconn == nil {
+	addrStr := addr.String()
+
+	s := c.pickShard(addrStr)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if len(s.free) == 0 {
 		return nil, false
 	}
-	freelist, ok := c.freeconn[addr.String()]
+	freelist, ok := s.free[addrStr]
 	if !ok || len(freelist) == 0 {
 		return nil, false
 	}
@@ -304,7 +374,7 @@ func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
 	// Pop the connection from the end of the list. This way we prefer to always reuse
 	// the same connections, so that the min idle connections logic is effective.
 	cn = freelist[len(freelist)-1]
-	c.freeconn[addr.String()] = freelist[:len(freelist)-1]
+	s.free[addrStr] = freelist[:len(freelist)-1]
 	return cn, true
 }
 
@@ -356,47 +426,48 @@ func (c *Client) releaseIdleConnections() {
 	}
 
 	// Get the recently used connections threshold, falling back to the default one.
-	recentlyUsedThreshold := c.recentlyUsedConnsThreshold
+	recentlyUsedThreshold := c.RecentlyUsedConnsThreshold
 	if recentlyUsedThreshold == 0 {
 		recentlyUsedThreshold = defaultRecentlyUsedConnsThreshold
 	}
 
-	c.lk.Lock()
+	for _, shard := range c.shards {
+		shard.mtx.Lock()
 
-	for addr, freeConnections := range c.freeconn {
-		numIdle := 0
+		for addr, freeConnections := range shard.free {
+			numIdle := 0
 
-		// Count the number of idle connections. Since the least used connections are at the beginning
-		// of the list, we can stop searching as soon as we find a non-idle connection.
-		for _, freeConn := range freeConnections {
-			if time.Since(freeConn.idleSince) < recentlyUsedThreshold {
-				break
+			// Count the number of idle connections. Since the least used connections are at the beginning
+			// of the list, we can stop searching as soon as we find a non-idle connection.
+			for _, freeConn := range freeConnections {
+				if time.Since(freeConn.idleSince) < recentlyUsedThreshold {
+					break
+				}
+
+				numIdle++
 			}
 
-			numIdle++
+			// Compute the number of connections to close. It keeps a number of idle connections equal to
+			// the configured headroom.
+			numRecentlyUsed := len(freeConnections) - numIdle
+			numIdleToKeep := int(math.Max(0, math.Ceil(float64(numRecentlyUsed)*minIdleHeadroomPercentage/100)))
+			numIdleToClose := numIdle - numIdleToKeep
+			if numIdleToClose <= 0 {
+				continue
+			}
+
+			// Close idle connections.
+			for i := 0; i < numIdleToClose; i++ {
+				toClose = append(toClose, freeConnections[i].nc)
+			}
+			shard.free[addr] = shard.free[addr][numIdleToClose:]
 		}
 
-		// Compute the number of connections to close. It keeps a number of idle connections equal to
-		// the configured headroom.
-		numRecentlyUsed := len(freeConnections) - numIdle
-		numIdleToKeep := int(math.Max(0, math.Ceil(float64(numRecentlyUsed)*minIdleHeadroomPercentage/100)))
-		numIdleToClose := numIdle - numIdleToKeep
-		if numIdleToClose <= 0 {
-			continue
-		}
-
-		// Close idle connections.
-		for i := 0; i < numIdleToClose; i++ {
-			toClose = append(toClose, freeConnections[i].nc)
-		}
-		c.freeconn[addr] = c.freeconn[addr][numIdleToClose:]
+		shard.mtx.Unlock()
 	}
 
-	// Release the lock and then close the connections.
-	c.lk.Unlock()
-
 	for _, freeConn := range toClose {
-		freeConn.Close()
+		_ = freeConn.Close()
 	}
 }
 
@@ -608,7 +679,7 @@ func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) e
 			}
 			switch {
 			case bytes.Equal(line, resultTouched):
-				break
+				// success response, OK to continue.
 			case bytes.Equal(line, resultNotFound):
 				return ErrCacheMiss
 			default:
@@ -742,7 +813,7 @@ func scanGetResponseLine(line []byte, it *Item) (size int, err error) {
 	if !found { // final CAS ID is optional.
 		return int(size64), nil
 	}
-	it.casid, err = strconv.ParseUint(rest, 10, 64)
+	it.CasID, err = strconv.ParseUint(rest, 10, 64)
 	if err != nil {
 		return errf(line)
 	}
@@ -808,7 +879,7 @@ func (c *Client) populateOne(rw *bufio.ReadWriter, verb string, item *Item) erro
 	var err error
 	if verb == "cas" {
 		_, err = fmt.Fprintf(rw, "%s %s %d %d %d %d\r\n",
-			verb, item.Key, item.Flags, item.Expiration, len(item.Value), item.casid)
+			verb, item.Key, item.Flags, item.Expiration, len(item.Value), item.CasID)
 	} else {
 		_, err = fmt.Fprintf(rw, "%s %s %d %d %d\r\n",
 			verb, item.Key, item.Flags, item.Expiration, len(item.Value))
