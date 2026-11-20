@@ -45,6 +45,7 @@ func (c *LazyChunk) Iterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	hintRanges = hintRanges.ForFingerprint(c.Chunk.Fingerprint)
 	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopEntryIterator, nil
@@ -126,6 +127,7 @@ func (c *LazyChunk) SampleIterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	hintRanges = hintRanges.ForFingerprint(c.Chunk.Fingerprint)
 	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopSampleIterator, nil

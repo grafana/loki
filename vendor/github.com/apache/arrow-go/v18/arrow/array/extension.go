@@ -78,6 +78,7 @@ func NewExtensionArrayWithStorage(dt arrow.ExtensionType, storage arrow.Array) a
 	// create a new data instance with the ExtensionType as the datatype but referencing the
 	// same underlying buffers to share them with the storage array.
 	data := NewData(dt, storageData.length, storageData.buffers, storageData.childData, storageData.nulls, storageData.offset)
+	data.SetDictionary(storageData.dictionary)
 	defer data.Release()
 	return NewExtensionData(data)
 }

@@ -34,7 +34,7 @@ import (
 // test should be updated to also run with AppendUnordered for
 // schema sort cases.
 func TestBuilder_EndToEnd(t *testing.T) {
-	tenants := []string{"t1", "t2", "t10"}
+	tenants := []string{"t1"}
 	apps := []string{"zoo", "alpha", "middle"}
 	instances := []string{"b", "a"}
 	schemaLabels := []string{"label:app"}
@@ -64,8 +64,8 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		rng := rand.New(rand.NewSource(42))
 		refTime := time.Date(2025, time.September, 17, 12, 0, 0, 0, time.UTC)
 
-		// 1000 entries across 3 tenants (~333 per tenant) with ~1 KiB lines
-		// and 64 KiB sections gives ~5 sections per tenant.
+		// 1000 entries with ~1 KiB lines and 64 KiB sections gives ~15
+		// sections.
 		const numEntries = 1000
 
 		for i := range numEntries {

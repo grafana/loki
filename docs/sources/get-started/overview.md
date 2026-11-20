@@ -38,8 +38,7 @@ Simple Scalable Deployment (SSD) mode, which decoupled requests into separate re
 {{< /admonition >}}
 <!-- vale Google.Will = YES -->
 
-- **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
-Multi-tenancy is [configured](../../operations/multi-tenancy/) by assigning a tenant ID in the agent.
+- **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant are completely isolated from the others. Requests identify their tenant with the `X-Scope-OrgID` HTTP header. For more information, refer to [Manage tenant isolation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/).
 
 - **Third-party integrations** - Several third-party agents (clients) have support for Loki, via plugins. This lets you keep your existing observability setup while also shipping logs to Loki.
 

@@ -99,8 +99,8 @@ func TestIndexRun_CheckLength(t *testing.T) {
 
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "plain"}}})
+	group.add(indexRunRead{run: indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}}})
+	group.add(indexRunRead{run: runOfPath("plain")})
 
 	t.Run("counts the index objects of one run as one run", func(t *testing.T) {
 		got, err := group.countRuns([]string{"run/a", "run/b", "plain"})

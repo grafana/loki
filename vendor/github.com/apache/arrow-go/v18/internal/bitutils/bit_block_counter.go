@@ -111,7 +111,8 @@ func (b *BitBlockCounter) NextFourWords() BitBlockCount {
 	} else {
 		// When the offset is > 0, we need there to be a word beyond the last
 		// aligned word in the bitmap for the bit shifting logic.
-		if b.bitsRemaining < 5*fourWordsBits-int64(b.bitOffset) {
+		// Reading four shifted 64-bit words needs five backing words.
+		if b.bitsRemaining < fourWordsBits+wordBits-int64(b.bitOffset) {
 			return b.getBlockSlow(fourWordsBits)
 		}
 

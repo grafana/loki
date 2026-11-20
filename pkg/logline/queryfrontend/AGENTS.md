@@ -59,9 +59,11 @@ the querier rejects it.
   the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **`max_conjunctions`** (default 1) bounds the needle sets a query is planned
-  into. The frontend uses it for the eligibility check and sends it to the
-  querier in `LoglineIndexRequest.max_conjunctions`, like `ngram_length`. Set it
-  above 1 explicitly to enable multiple conjunctions on a cell.
+  into. The frontend uses it for the eligibility check, the hint cache key and
+  the plan, and sends the planned needles to the querier in
+  `LoglineIndexRequest.conjunctions`. The querier does not plan, so it has no
+  setting for this. Set it above 1 explicitly to enable multiple conjunctions
+  on a cell.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
   sub-interval responses. It inherits `Direction`, `Limit`, and `Version` from
@@ -106,6 +108,23 @@ so the filter dispatches them without waiting. This changes what some signals co
   If the part of the query outside the ingester window predates the index, the
   middleware records the pre-min-date range the lookup would have returned, so the
   hint status, ranges and outcome match a query that ran the lookup.
+
+### Document shards
+
+v5 hint ranges belong to one document shard: the top bits of a stream's
+fingerprint (`hintprovider` invariant 15). A shard sub-request reads only the
+streams in its query shards' fingerprint bounds (`GetFromThrough`), so the
+filter keeps the ranges whose document shard lies in those bounds, plus every
+range without a shard. A request without shards keeps every range, and so
+does a query shard starting at or below `logline.MaxMappedFingerprint`: the
+ingester remaps colliding streams into that space, so they can belong to any
+document shard. Prefetched
+ranges are grouped by document shard, and ranges of different shards overlap
+in time, so `rangesOverlapping` searches each group on its own.
+
+The hint range duration in the query stats and the dry-run report use the
+time union (`hintprovider.TimeUnion`). Dry-run verifies entries by time
+alone, and a per-shard sum would count the same time once per shard.
 
 ### Detected fields
 
@@ -181,11 +200,13 @@ why it didn't:
    reads only the ingester window skips the size estimate, so it never records the
    last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
    the tenant limit or the `logline.query` settings records `size_estimate_failed`
-   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects, and
-   `absent_over_time` queries, return before these skips. They get no `Logline` stats,
-   so outcome counts leave them out. `absent_over_time` stays unhinted because a skipped
-   sub-request returns an empty matrix or vector, which drops the 1 that an empty window
-   returns.
+   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects return
+   before these skips. They get no `Logline` stats, so outcome counts leave them out.
+   `SupportedMetricQuery` rejects an `absent_over_time` wrapped in a vector
+   aggregation, because a skipped sub-request would need the wrapper applied to its
+   answer. A bare `absent_over_time` is hinted: a skipped sub-request answers 1 on
+   every step, labeled by `logql.AbsentLabels`, so it merges with the narrowed
+   sub-requests into one series.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a

@@ -146,6 +146,25 @@ The cache skips an object whose metadata region is above a limit. Moving a very 
 more than the direct read saves. A cache item also cannot be larger than the item size limit of the
 cache backend. Loki checks at startup that the limit fits in a cache item.
 
+A querier writes nothing to the cache for an object above its limit, so its lookup for the object
+misses. The load that follows reads the head of the object only to find that the region is too large.
+So each querier remembers the region size of the objects that it opened, in a cache in memory. For an
+object above the limit, the prefetcher then fails before it asks the cache, and the query reads the
+metadata directly.
+
+A known size also helps an object within the limit. When the cache has no file metadata item for it,
+the load reads the region with one read. Without the size, it reads the head first, and then the rest
+when the region is larger than the head.
+
+An object never changes, so an entry of the cache never goes stale. The cache has a limit in bytes
+(`-dataobj.metadata-prefetcher.max-region-size-cache-bytes`). A read of an entry, and a write of a known
+path, count as a use. When the cache is full, it drops the entry that was used least recently. It also
+drops every entry that was not used for 24 hours. That drop runs on a read or a write, at most once a
+minute, so an idle querier keeps its entries.
+
+A querier remembers a size above the limit only when its own load read the object and found the size. A
+cache hit for an object that another querier cached, with a larger limit, stays a hit.
+
 ### Cache items
 
 A cache item has these properties:
@@ -160,3 +179,56 @@ A cache item has these properties:
 
 A reader treats an item that fails a check as a miss, and the next write replaces it. A wrong or
 damaged cache costs time, and it cannot change the result of a query.
+
+## Metrics
+
+Two counters show where the metadata of a query comes from.
+
+| Metric | Counts |
+|---|---|
+| `loki_querier_dataobj_metadata_bytes_total` | Bytes of metadata that queries took from a cache or from object storage |
+| `loki_querier_dataobj_metadata_requests_total` | Lookups in a cache, and requests to object storage, that read metadata |
+
+Each counter has these labels:
+
+| Label | Values |
+|---|---|
+| `component` | The part of the read path that read the metadata: `metastore`, `streams-reader`, `logs-reader` or `other` |
+| `source` | `cache` or `storage` |
+| `phase` | `prefetch` or `on_demand` |
+
+### Prefetch and on demand
+
+| Phase | What it is |
+|---|---|
+| `prefetch` | The work of the metadata prefetcher, when an object opens. It reads the metadata that a query will need, before the query asks for it. |
+| `on_demand` | Every other read, when something asks for the metadata: the reads of a section that no prefetched range held, the open of an object that the prefetcher did not serve, the metadata cache, and the tables of contents of the metastore. |
+
+The prefetcher serves a section read from memory. That read counts in neither phase, because the
+`prefetch` phase counted its bytes already. With the prefetcher on, the `on_demand` storage reads of a logs
+object are the metadata that the prefetch could not serve. The index objects and the tables of contents of
+the metastore always count as `on_demand`. With the prefetcher off, every read is `on_demand`.
+
+### Series
+
+| `source` | `phase` | Counts |
+|---|---|---|
+| `cache` | `prefetch` | The lookups of the prefetcher, and the bytes that it returned from the cache |
+| `storage` | `prefetch` | The loads of the prefetcher after a miss |
+| `cache` | `on_demand` | The lookups of the metadata cache, and the bytes that it served |
+| `storage` | `on_demand` | The reads of sections, of an open without the prefetcher, of the metadata cache after a miss, and of the tables of contents |
+
+### What a number means
+
+- A request counts when it is sent, whether or not it fails.
+- A cache lookup is one call of the cache, whatever the number of keys. A cache client can split it
+  into several network requests.
+- Cache bytes are the decoded length of the metadata that the cache returned, and not the size of the
+  stored item. The prefetcher counts what the cache returned, also when it then reads object storage
+  because a group was missing.
+- Storage bytes and requests come from the instrumented bucket, so they are the bytes that were
+  downloaded, as stored. The metadata of an object is not compressed, so a read of metadata alone
+  matches its actual size. A load can download more than it keeps, for example the whole head of a
+  small object or a whole table of contents. The section data in those bytes counts at its compressed
+  size.
+- A concurrent miss for one object shares one load. Only the first query counts its storage requests.
