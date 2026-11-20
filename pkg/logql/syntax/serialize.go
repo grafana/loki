@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -841,6 +842,10 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 		default:
 			return nil, fmt.Errorf("unknown sample expression type: %s", key)
 		}
+		// Not going on: the iterator is not where the plan goes on, and the next key would be reported instead.
+		if err != nil {
+			return nil, err
+		}
 	}
 	return expr, err
 }
@@ -960,7 +965,10 @@ func decodeVectorAgg(iter *jsoniter.Iterator) (*VectorAggregationExpr, error) {
 
 func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 	expr := &RangeAggregationExpr{}
-	var err error
+	var (
+		err         error
+		failedField string // the field that the iterator first failed to read
+	)
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
@@ -980,6 +988,9 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 		case GroupingField:
 			expr.Grouping, err = decodeGrouping(iter)
 		}
+		if failedField == "" && decodeError(iter) != nil {
+			failedField = f
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -990,6 +1001,11 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 	// operations are not validated, they never were, and an in-flight query that was built by
 	// the shard mapper must not start failing.
 	if expr.Operation == OpRangeTypeHistogram || expr.Buckets != nil {
+		// This is checked first: after an error the iterator is not where the plan goes on, so what it
+		// read next is not what the plan holds, and the checks below would blame something else.
+		if failedField != "" {
+			return nil, fmt.Errorf("decoding the %s of %s: %w", failedField, expr.Operation, iter.Error)
+		}
 		if expr.Left == nil {
 			return nil, fmt.Errorf("%s has no range", expr.Operation)
 		}
@@ -1085,6 +1101,16 @@ func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
 	return mustNewLabelReplaceExpr(left, dst, replacement, src, regex), nil
 }
 
+// decodeError returns the error that the iterator ran into, if it did. jsoniter does not stop at one: it returns
+// zero values from then on and leaves its position wrong, so it is up to the decoder to look. io.EOF is what a read
+// at the end of the input leaves, which is not an error of the plan.
+func decodeError(iter *jsoniter.Iterator) error {
+	if err := iter.Error; err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
 func decodeHistogramFunc(iter *jsoniter.Iterator) (*HistogramFuncExpr, error) {
 	var (
 		left      SampleExpr
@@ -1102,9 +1128,13 @@ func decodeHistogramFunc(iter *jsoniter.Iterator) (*HistogramFuncExpr, error) {
 			label = iter.ReadString()
 		case Params:
 			for iter.ReadArray() {
-				p, parseErr := strconv.ParseFloat(iter.ReadString(), 64)
+				s := iter.ReadString()
+				if decodeError(iter) != nil {
+					break
+				}
+				p, parseErr := strconv.ParseFloat(s, 64)
 				if parseErr != nil {
-					return nil, parseErr
+					return nil, fmt.Errorf("decoding the %s of %s: %w", Params, operation, parseErr)
 				}
 				params = append(params, p)
 			}
@@ -1113,6 +1143,10 @@ func decodeHistogramFunc(iter *jsoniter.Iterator) (*HistogramFuncExpr, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+		// See decodeRangeAgg: what is checked below is what was read, which is not the plan after an error.
+		if err := decodeError(iter); err != nil {
+			return nil, fmt.Errorf("decoding the %s of %s: %w", f, operation, err)
 		}
 	}
 

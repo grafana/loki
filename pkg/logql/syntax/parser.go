@@ -121,10 +121,16 @@ func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
 		// A histogram vector cannot be a query result, because the query API
-		// only returns float samples.
-		// TODO: allow it once query results can carry native histograms. The
-		// shard sub-queries of a histogram query have a histogram root too, so
-		// they will need to skip this check before that.
+		// only returns float samples. ParseExpr is for the queries that users
+		// write, and this is where they get the error early, as a client error.
+		//
+		// The part of a sharded query that a shard runs has a histogram at its
+		// root too, and it is not a user query. It must not be exempt because of
+		// the way it arrives, as a plan, which is not parsed and so never gets
+		// here: whatever evaluates it has to know that it is a shard, and refuse
+		// a histogram result otherwise. Code that has to parse the string of
+		// such a part uses ParseExprWithoutValidation.
+		// TODO: allow it for every query once results can carry native histograms.
 		if isHistogramValued(e) {
 			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
 		}
