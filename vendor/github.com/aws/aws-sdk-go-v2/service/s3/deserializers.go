@@ -136,6 +136,11 @@ func awsRestxml_deserializeOpHttpBindingsAbortMultipartUploadOutput(v *AbortMult
 		v.RequestCharged = types.RequestCharged(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 
@@ -1215,6 +1220,11 @@ func awsRestxml_deserializeOpHttpBindingsCreateMultipartUploadOutput(v *CreateMu
 	if headerValues := response.Header.Values("x-amz-server-side-encryption-aws-kms-key-id"); len(headerValues) != 0 {
 		headerValues[0] = strings.TrimSpace(headerValues[0])
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
+	}
+
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
 	}
 
 	return nil
@@ -12172,6 +12182,11 @@ func awsRestxml_deserializeOpHttpBindingsListPartsOutput(v *ListPartsOutput, res
 		v.RequestCharged = types.RequestCharged(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 func awsRestxml_deserializeOpDocumentListPartsOutput(v **ListPartsOutput, decoder smithyxml.NodeDecoder) error {
@@ -15972,6 +15987,11 @@ func awsRestxml_deserializeOpHttpBindingsUploadPartOutput(v *UploadPartOutput, r
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 
@@ -16132,6 +16152,11 @@ func awsRestxml_deserializeOpHttpBindingsUploadPartCopyOutput(v *UploadPartCopyO
 	if headerValues := response.Header.Values("x-amz-server-side-encryption-aws-kms-key-id"); len(headerValues) != 0 {
 		headerValues[0] = strings.TrimSpace(headerValues[0])
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
+	}
+
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
 	}
 
 	return nil
@@ -24574,6 +24599,19 @@ func awsRestxml_deserializeDocumentMultipartUpload(v **types.MultipartUpload, de
 			{
 				xtv := string(val)
 				sv.UploadId = ptr.String(xtv)
+			}
+
+		case strings.EqualFold("VersionId", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				sv.VersionId = ptr.String(xtv)
 			}
 
 		default:
