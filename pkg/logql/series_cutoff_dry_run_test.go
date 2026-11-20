@@ -56,6 +56,21 @@ func TestCutoffTracker_ShouldReportTheOutcomeOnlyWhenItFired(t *testing.T) {
 	})
 }
 
+func TestCutoffTracker_Report_ShouldDoNothingOnANilTracker(t *testing.T) {
+	counts := func() float64 {
+		return testutil.ToFloat64(seriesCutoffDryRunTotal.WithLabelValues(cutoffDryRunAgreed)) +
+			testutil.ToFloat64(seriesCutoffDryRunTotal.WithLabelValues(cutoffDryRunMismatch)) +
+			testutil.ToFloat64(seriesCutoffDryRunTotal.WithLabelValues(cutoffDryRunInconclusive))
+	}
+	before := counts()
+
+	var tracker *cutoffTracker
+	require.NotPanics(t, func() {
+		tracker.report(context.Background(), log.NewNopLogger(), nil, nil)
+	})
+	require.Equal(t, before, counts())
+}
+
 func TestIteratorLimits_ShouldRecordInsteadOfFailingInADryRun(t *testing.T) {
 	tracker := newCutoffTracker()
 	limits := iteratorLimits{maxSeries: 2, cutoffTracker: tracker}
