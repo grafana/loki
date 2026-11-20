@@ -757,6 +757,59 @@ func TestDoIndexMerge(t *testing.T) {
 		require.Equal(t, "log-1", statRows[0].ObjectPath)
 	})
 
+	twoPostingsSections := func(t *testing.T, bucket objstore.Bucket) string {
+		t.Helper()
+		var observations []postings.LabelObservation
+		for _, column := range []string{"app", "zone"} {
+			observations = append(observations, postings.LabelObservation{
+				ObjectPath: "log-" + column, ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		buildSourcePostingsObjectSized(t, bucket, tenant, "source/index-a.dat", 1, observations)
+		sections := openObjectFromBucket(t.Context(), t, bucket, "source/index-a.dat").Sections()
+		require.Len(t, sections, 2, "a section size of 1 puts each posting key in a section of its own")
+		return "source/index-a.dat"
+	}
+	refsTo := func(path string, sectionIndexes ...int64) []*compactionv2pb.RunRef {
+		run := &compactionv2pb.RunRef{}
+		for _, index := range sectionIndexes {
+			run.Sections = append(run.Sections, &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index})
+		}
+		return []*compactionv2pb.RunRef{run}
+	}
+
+	t.Run("reads only the referenced postings sections when its key span has bounds", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 1), KeySpan: keySpan(t, nil, &zoneKey)}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorIs(t, err, indexobj.ErrBuilderEmpty, "the referenced section holds only zone, which is outside the span")
+
+		node.Runs = refsTo(path, 0)
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v")}, postingKeys(rows))
+	})
+
+	t.Run("reads every postings section of a referenced object when it merges every key", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 0)}
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("zone", "v")}, postingKeys(rows))
+	})
+
+	t.Run("returns an error when its key span has bounds and a referenced section is not a postings section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 0, 7), KeySpan: keySpan(t, nil, &zoneKey)}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, "1 of the 2 referenced sections are not postings sections")
+	})
+
 	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		node := keySpanSources(t, bucket, layout)

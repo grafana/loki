@@ -311,6 +311,10 @@ func (s *keySamples) add(row postings.Row) {
 // sizes returns the samples with their share of sectionBytes, the
 // uncompressed size of the section. Each sample gets a share by its number of
 // rows.
+//
+// Bloom rows and label rows never share a section, so the bloom filters weigh
+// only on bloom rows. Within a section the estimate treats every row as the
+// same size, although bloom filters of different columns differ in size.
 func (s keySamples) sizes(sectionBytes uint64) []v2.KeySize[indexSortKey] {
 	if s.totalRows == 0 {
 		return nil

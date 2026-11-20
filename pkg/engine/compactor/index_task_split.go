@@ -42,6 +42,20 @@ type splitIndexMerge struct {
 	tasks []indexMergeTask
 }
 
+// validate returns an error if the key spans of the tasks of m, in task order,
+// do not hold every posting key exactly once. A gap would drop the postings
+// rows of its keys from the run, and an overlap would write them twice.
+func (m splitIndexMerge) validate() error {
+	spans := make([]postings.KeySpan, len(m.tasks))
+	for i, task := range m.tasks {
+		spans[i] = task.keySpan
+	}
+	if !postings.HoldEveryKeyOnce(spans) {
+		return fmt.Errorf("the key spans %v of the %d tasks of the merge do not hold every posting key once", spans, len(spans))
+	}
+	return nil
+}
+
 // join returns the artifacts of the run of m. results must hold one entry for
 // each task of m, in task order. A run lists its index objects in posting key
 // order, and the tasks are in key order, so join appends the artifacts of each

@@ -126,3 +126,24 @@ func TestReusedPaths(t *testing.T) {
 		require.Empty(t, reusedPaths([]string{"index/old-0"}, []metastore.IndexRunEntries{{{Path: "index/new-0"}}}))
 	})
 }
+
+func TestSplitIndexMerge_Validate(t *testing.T) {
+	envKey := labelPostingKey("env")
+	span := func(t *testing.T, start, end *postings.Key) postings.KeySpan {
+		t.Helper()
+		keySpan, err := postings.NewKeySpan(start, end)
+		require.NoError(t, err)
+		return keySpan
+	}
+
+	t.Run("accepts tasks whose key spans hold every key once", func(t *testing.T) {
+		merge := splitIndexMerge{tasks: []indexMergeTask{{keySpan: span(t, nil, &envKey)}, {keySpan: span(t, &envKey, nil)}}}
+		require.NoError(t, merge.validate())
+	})
+
+	t.Run("returns an error when the key spans of the tasks leave a gap", func(t *testing.T) {
+		appKey := labelPostingKey("app")
+		merge := splitIndexMerge{tasks: []indexMergeTask{{keySpan: span(t, nil, &appKey)}, {keySpan: span(t, &envKey, nil)}}}
+		require.ErrorContains(t, merge.validate(), "do not hold every posting key once")
+	})
+}

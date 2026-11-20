@@ -215,3 +215,23 @@ func TestKeySpan_Predicate(t *testing.T) {
 		require.Nil(t, predicate)
 	})
 }
+
+func TestHoldEveryKeyOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		spans []postings.KeySpan
+		want  bool
+	}{
+		{name: "holds every key once with one span over every key", spans: []postings.KeySpan{{}}, want: true},
+		{name: "holds every key once with spans that each start where the one before ends", spans: []postings.KeySpan{mustKeySpan(t, nil, &keyAppWeb), mustKeySpan(t, &keyAppWeb, &keyEnvDev), mustKeySpan(t, &keyEnvDev, nil)}, want: true},
+		{name: "does not hold every key once without spans"},
+		{name: "does not hold every key once when the first span has a start", spans: []postings.KeySpan{mustKeySpan(t, &keyAppAPI, &keyAppWeb), mustKeySpan(t, &keyAppWeb, nil)}},
+		{name: "does not hold every key once when the last span has an end", spans: []postings.KeySpan{mustKeySpan(t, nil, &keyAppWeb), mustKeySpan(t, &keyAppWeb, &keyEnvDev)}},
+		{name: "does not hold every key once when a span leaves a gap", spans: []postings.KeySpan{mustKeySpan(t, nil, &keyAppAPI), mustKeySpan(t, &keyAppWeb, nil)}},
+		{name: "does not hold every key once when spans overlap", spans: []postings.KeySpan{mustKeySpan(t, nil, &keyAppWeb), mustKeySpan(t, &keyAppAPI, nil)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, postings.HoldEveryKeyOnce(tc.spans))
+		})
+	}
+}

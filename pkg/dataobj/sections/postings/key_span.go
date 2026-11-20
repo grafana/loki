@@ -83,6 +83,22 @@ func (s KeySpan) String() string {
 	return fmt.Sprintf("[%s, %s)", bound(s.start, s.hasStart), bound(s.end, s.hasEnd))
 }
 
+// HoldEveryKeyOnce reports whether spans, in order, hold every posting key
+// exactly once: the first span has no start, each span starts where the span
+// before it ends, and the last span has no end.
+func HoldEveryKeyOnce(spans []KeySpan) bool {
+	if len(spans) == 0 || spans[0].hasStart || spans[len(spans)-1].hasEnd {
+		return false
+	}
+	for i := 1; i < len(spans); i++ {
+		prev, next := spans[i-1], spans[i]
+		if !prev.hasEnd || !next.hasStart || prev.end.Compare(next.start) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // IsAll reports whether s holds every key.
 func (s KeySpan) IsAll() bool { return !s.hasStart && !s.hasEnd }
 

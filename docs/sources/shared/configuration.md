@@ -1257,10 +1257,12 @@ dataobj:
     # The planner splits a larger merge into tasks by posting key. The tasks run
     # in parallel and together write one index run. The planner estimates sizes
     # from a sample of the posting keys and cuts only at sampled keys, so a task
-    # can exceed the maximum. Each task also merges the stats rows of some of
-    # the source indexes, which the maximum does not count. A worker that does
-    # not support the split fails its tasks, so upgrade every worker before you
-    # set it. 0 disables the split.
+    # can exceed the maximum. The estimate shares the size of each postings
+    # section evenly over its rows, so a task over large bloom filters can
+    # exceed the maximum by more. Each task also merges the stats rows of some
+    # of the source indexes, which the maximum does not count. A worker that
+    # does not support the split fails its tasks, so upgrade every worker before
+    # you set it. 0 disables the split.
     # CLI flag: -dataobj.compaction.max-task-size
     [max_task_size: <int> | default = 0B]
 

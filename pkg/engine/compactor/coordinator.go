@@ -704,6 +704,9 @@ func (c *coordinator) planIndexMerge(tenant string, window time.Time, key layout
 			return indexMergePlan{}, fmt.Errorf("split index merge %d: %w", i, err)
 		}
 		merges[i] = splitIndexMerge{spec: task, tasks: split}
+		if err := merges[i].validate(); err != nil {
+			return indexMergePlan{}, fmt.Errorf("split index merge %d: %w", i, err)
+		}
 	}
 	return indexMergePlan{key: key, group: group, merges: merges}, nil
 }

@@ -119,6 +119,12 @@ func statsSources(node *physical.IndexMerge, objects []objectSections) ([]object
 // object. Non-mergable section types (streams, indexPointers) are silently
 // ignored.
 //
+// A merge with a bounded key span takes only the postings sections that its
+// runs reference, so a task of a split merge reads no section outside its
+// span. It returns an error if a referenced section is not a postings section
+// of the tenant. A merge over every key takes every postings section of each
+// object.
+//
 // classifyRuns also returns the stream layout of the source indexes. It
 // returns an error if they record different layouts, or if only some record
 // one.
@@ -127,9 +133,16 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
 	objects := make(map[string]*dataobj.Object)
+	// referenced holds the referenced section indexes of each object. Only a
+	// merge with a bounded key span uses it.
+	referenced := make(map[string]map[int64]struct{})
 
 	for _, runRef := range node.Runs {
 		for _, sectionRef := range runRef.Sections {
+			if referenced[sectionRef.ObjectPath] == nil {
+				referenced[sectionRef.ObjectPath] = make(map[int64]struct{})
+			}
+			referenced[sectionRef.ObjectPath][sectionRef.SectionIndex] = struct{}{}
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
@@ -157,7 +170,8 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
-		for _, sec := range obj.Sections() {
+		var found int
+		for i, sec := range obj.Sections() {
 			// Index objects are multi-tenant; only merge sections for the tenant
 			// being compacted, or other tenants' rows leak into this output.
 			if sec.Tenant != node.Tenant {
@@ -165,11 +179,20 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			switch {
 			case postings.CheckSection(sec):
+				if !node.KeySpan.IsAll() {
+					if _, ok := referenced[path][int64(i)]; !ok {
+						continue
+					}
+					found++
+				}
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
 				// default: skip silently (streams/indexPointers etc.)
 			}
+		}
+		if !node.KeySpan.IsAll() && found != len(referenced[path]) {
+			return nil, streams.Layout{}, fmt.Errorf("object %q: %d of the %d referenced sections are not postings sections of tenant %q", path, len(referenced[path])-found, len(referenced[path]), node.Tenant)
 		}
 		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
 			return nil, streams.Layout{}, err
