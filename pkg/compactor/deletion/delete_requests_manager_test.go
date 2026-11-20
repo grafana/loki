@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +23,10 @@ import (
 )
 
 const testUserID = "test-user"
+
+// The compactor always passes the table it is processing; the name carries the
+// day it covers, which decides whether a chunk still belongs to a later table.
+var testTableName = fmt.Sprintf("index_%05d", model.Now().Unix()/86400)
 
 func TestDeleteRequestsManager_Expired(t *testing.T) {
 	type resp struct {
@@ -1047,7 +1052,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, nil, "", model.Now())
+			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, nil, testTableName, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
@@ -1397,7 +1402,7 @@ func TestDeleteRequestsManagerWithoutHorizontalScalingMode_SeriesProgress(t *tes
 	// MarkSeriesAsProcessed should be just ignored and not fail
 	require.NoError(t, mgr.MarkSeriesAsProcessed(user1, []byte(lblFooBar.String()), lblFooBar, "t1"))
 	// expiry check should not fail either
-	isExpired, _ := mgr.Expired(user1, retention.Chunk{From: 0, Through: 50}, lblFooBar, []byte(lblFooBar.String()), "t1", model.Now())
+	isExpired, _ := mgr.Expired(user1, retention.Chunk{From: 0, Through: 50}, lblFooBar, []byte(lblFooBar.String()), testTableName, model.Now())
 	require.True(t, isExpired)
 
 	// mark phases should not cause any trouble due to a nil series progress file reference

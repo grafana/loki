@@ -96,7 +96,7 @@ func (b *deleteRequestBatch) checkDuplicate(deleteRequest deleteRequest) (bool, 
 	return false, nil
 }
 
-func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, skipRequest func(*deleteRequest) bool) (bool, filter.Func) {
+func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, tableInterval model.Interval, skipRequest func(*deleteRequest) bool) (bool, filter.Func) {
 	userIDStr := unsafeGetString(userID)
 	if b.deleteRequestsToProcess[userIDStr] == nil || !intervalsOverlap(b.deleteRequestsToProcess[userIDStr].requestsInterval, model.Interval{
 		Start: chk.From,
@@ -111,7 +111,7 @@ func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls la
 		if skipRequest(deleteRequest) {
 			continue
 		}
-		isDeleted, ff := deleteRequest.GetChunkFilter(userID, lbls, chk)
+		isDeleted, ff := deleteRequest.GetChunkFilter(userID, lbls, chk, tableInterval)
 		if !isDeleted {
 			continue
 		}

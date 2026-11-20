@@ -63,8 +63,10 @@ func (d *deleteRequest) SetQuery(logQL string) error {
 	return nil
 }
 
-// FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
-func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
+// FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest.
+// The chunk the lines come from decides whether they are counted: a chunk indexed in several daily tables is filtered
+// once per table, so only the pass over the last of those tables adds to the deleted line counters.
+func (d *deleteRequest) FilterFunction(chunk retention.Chunk, tableInterval model.Interval, lbls labels.Labels) (filter.Func, error) {
 	if !allMatch(d.matchers, lbls) {
 		return func(_ time.Time, _ string, _ labels.Labels) bool {
 			return false
@@ -87,6 +89,7 @@ func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 		return nil, err
 	}
 
+	countThisPass := d.countsChunk(chunk, tableInterval, lbls)
 	f := p.ForStream(lbls).ProcessString
 	return func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
@@ -95,12 +98,34 @@ func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 
 		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
-			d.TotalLinesDeletedMetric.WithLabelValues(d.UserID).Inc()
-			d.DeletedLines.Add(1)
+			if countThisPass {
+				d.TotalLinesDeletedMetric.WithLabelValues(d.UserID).Inc()
+				d.DeletedLines.Add(1)
+			}
 			return true
 		}
 		return false
 	}, nil
+}
+
+// countsChunk reports whether the deletes made while filtering this chunk belong in the line counters. Every daily
+// table a chunk's bounds overlap runs the filter over it again, and each run reports the same lines as deleted, so
+// counting each run would report the lines as many times as tables index the chunk. Only the last of those tables
+// counts them. That makes the counters follow the chunk instead of the table, and re-running a table after a failure
+// still counts it, since the answer depends only on which table is being processed.
+func (d *deleteRequest) countsChunk(chunk retention.Chunk, tableInterval model.Interval, lbls labels.Labels) bool {
+	// The whole chunk is deleted without a filter, so no line is ever visited and
+	// there is nothing to count here; the caller accounts for the chunk instead.
+	if d.StartTime <= chunk.From && d.EndTime >= chunk.Through && !d.logSelectorExpr.HasFilter() {
+		return false
+	}
+
+	if !labels.Selector(d.matchers).Matches(lbls) {
+		return false
+	}
+
+	// The last table indexing the chunk is the one holding its end.
+	return chunk.Through <= tableInterval.End
 }
 
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
@@ -150,7 +175,7 @@ func (d *deleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 
 // GetChunkFilter tells whether the chunk is covered by the DeleteRequest and
 // optionally returns a filter.Func if the chunk is supposed to be deleted partially or the delete request has line filters.
-func (d *deleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+func (d *deleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk, tableInterval model.Interval) (bool, filter.Func) {
 	if !d.IsDeleted(userID, lbls, chunk) {
 		return false, nil
 	}
@@ -160,7 +185,7 @@ func (d *deleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk 
 		return true, nil
 	}
 
-	ff, err := d.FilterFunction(lbls)
+	ff, err := d.FilterFunction(chunk, tableInterval, lbls)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
 		// So this error should not occur.
