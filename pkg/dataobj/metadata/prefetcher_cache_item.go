@@ -1,7 +1,7 @@
 package metadata
 
-// The prefetcher stores one cache item under each cache key. A cache item wraps a raw payload in the
-// envelope below. The raw payload is one of two things:
+// The prefetcher stores one cache item under each cache key. A cache item wraps a block of raw bytes
+// in the envelope below. The raw bytes are one of two things:
 //
 //   - A group of prefetched ranges, in the layout below. A group is the file metadata, the
 //     core metadata, the message column, or one structured metadata column.
@@ -15,7 +15,7 @@ package metadata
 //	┌──────────────┬────────────┬───────────────────┐
 //	│ version <1b> │ codec <1b> │ rawSize <uvarint> │
 //	├──────────────┴────────────┴───────────────────┤
-//	│ crc32(raw) <4b>                               │
+//	│ crc32(payload) <4b>                           │
 //	├───────────────────────┬───────────────────────┤
 //	│ len(key) <uvarint>    │ key <bytes>           │
 //	├───────────────────────┴───────────────────────┤
@@ -26,7 +26,8 @@ package metadata
 //   - codec is 0 when the payload is the raw bytes. It is 1 when the payload is one zstd frame of
 //     the raw bytes. The frame records its content size, and that size must equal rawSize.
 //   - rawSize is the number of raw bytes.
-//   - crc32 is the IEEE CRC32 of the raw bytes, not of the payload.
+//   - crc32 is the IEEE CRC32 of the payload as stored. It covers the compressed bytes when the codec
+//     is 1. A reader checks it before it decodes the payload.
 //   - key is the unhashed cache key of the item. The cache stores the item under a hash of the key,
 //     and two keys can have the same hash. A reader counts a cache item whose key differs from the key
 //     it asked for as a miss.
@@ -84,9 +85,10 @@ import (
 )
 
 const (
-	// cacheItemVersion changes when the layout of a cache item or of prefetched ranges changes. A
-	// reader counts a cache item of another version as a miss.
-	cacheItemVersion = 1
+	// cacheItemVersion changes when the layout of a cache item or of prefetched ranges changes. It also
+	// changes when a field of a cache item changes meaning. A reader counts a cache item of another
+	// version as a miss.
+	cacheItemVersion = 2
 
 	codecNone byte = 0
 	codecZstd byte = 1
@@ -94,7 +96,7 @@ const (
 	// versionAndCodecBytes is the size of the version and the codec at the start of a cache item.
 	versionAndCodecBytes = 2
 
-	// checksumBytes is the size of the CRC32 of the raw bytes in a cache item.
+	// checksumBytes is the size of the CRC32 of the payload in a cache item.
 	checksumBytes = 4
 
 	// minCompressBytes is the smallest raw size that a cache item compresses.
@@ -103,10 +105,10 @@ const (
 	// maxZstdDecodedBytes caps the decoded size of one zstd cache item.
 	maxZstdDecodedBytes = 512 << 20
 
-	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the raw bytes of
-	// the ranges of a group: the range headers, the column names and the cache item envelope. The
-	// prefetcher adds it to the max region size, and rejects a config where the sum is above the
-	// largest cache item of the cache.
+	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the data of the
+	// ranges of a group: the range headers, the column names and the envelope. The prefetcher adds it
+	// to the max region size, and rejects a config where the sum is above the largest cache item of
+	// the cache.
 	cacheItemOverheadBytes = 64 * 1024
 )
 
@@ -129,14 +131,15 @@ func newZstdEncoder() (*zstd.Encoder, error) {
 // newZstdDecoder returns the decoder that decompresses the cache items. It is safe for concurrent
 // use. DecodeAll starts no goroutine, so the decoder needs no Close.
 //
-// The decoder does not verify the zstd frame checksum. The caller must verify the decoded bytes.
+// The decoder does not verify the zstd frame checksum. The caller must verify the integrity of the
+// compressed bytes.
 func newZstdDecoder() (*zstd.Decoder, error) {
 	return zstd.NewReader(nil,
 		zstd.WithDecoderConcurrency(0),
 		zstd.WithDecoderMaxMemory(maxZstdDecodedBytes),
 
-		// Skip the zstd frame checksum. decodeCacheItem already verifies the CRC32 of the decoded
-		// bytes.
+		// Skip the zstd frame checksum. decodeCacheItem already verifies the CRC32 of the compressed
+		// bytes before it decodes them.
 		zstd.IgnoreChecksum(true),
 	)
 }
@@ -173,14 +176,15 @@ func encodeCacheItem(raw []byte, key string, codec CacheItemCodec, encoder *zstd
 	out := make([]byte, 0, maxEnvelopeBytes+len(key)+len(payload))
 	out = append(out, cacheItemVersion, codecType)
 	out = binary.AppendUvarint(out, uint64(len(raw)))
-	out = binary.LittleEndian.AppendUint32(out, crc32.ChecksumIEEE(raw))
+	out = binary.LittleEndian.AppendUint32(out, crc32.ChecksumIEEE(payload))
 	out = binary.AppendUvarint(out, uint64(len(key)))
 	out = append(out, key...)
 	return append(out, payload...)
 }
 
-// decodeCacheItem returns the raw bytes of a cache item. It decompresses the payload with decoder.
-// The result aliases stored when the cache item is not compressed.
+// decodeCacheItem returns the raw bytes of a cache item. It verifies the CRC32 of the payload, then
+// decompresses the payload with decoder. The result aliases stored when the cache item is not
+// compressed.
 //
 // It returns errKeyMismatch when the key in the cache item is not expectedKey, the unhashed cache key
 // that the caller asked for. It returns errVersionMismatch when the version of the cache item is not
@@ -214,6 +218,9 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 		return nil, errKeyMismatch
 	}
 	payload := rest[keyLength:]
+	if crc32.ChecksumIEEE(payload) != wantCRC {
+		return nil, errors.New("cache item checksum mismatch")
+	}
 
 	var raw []byte
 	switch codecType {
@@ -240,9 +247,6 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 
 	if uint64(len(raw)) != rawSize {
 		return nil, fmt.Errorf("cache item has %d bytes, want %d", len(raw), rawSize)
-	}
-	if crc32.ChecksumIEEE(raw) != wantCRC {
-		return nil, errors.New("cache item checksum mismatch")
 	}
 	return raw, nil
 }
