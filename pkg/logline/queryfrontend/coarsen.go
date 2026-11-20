@@ -19,9 +19,11 @@ type hintSpan struct {
 // overlappingSpans returns, for each document shard whose ranges
 //   - can hold a stream in one of queryShards, or any stream when the request
 //     is not sharded, and
-//   - overlap the queried [start, end],
+//   - overlap the queried [start, end),
 //
-// the span of those ranges. It does not copy them.
+// the span of those ranges. It does not copy them. A range that only touches
+// the window clips to nothing and is left out, because every span takes a
+// range of the cap.
 //
 // ranges must be normalized: grouped by document shard, each group sorted by
 // Start.
@@ -35,8 +37,8 @@ func overlappingSpans(ranges []hintprovider.HintTimeRange, queryShards logql.Sha
 			continue
 		}
 		// A group has no overlaps, so End is sorted like Start.
-		first := sort.Search(len(group), func(i int) bool { return !group[i].End.Before(start) })
-		last := sort.Search(len(group), func(i int) bool { return group[i].Start.After(end) })
+		first := sort.Search(len(group), func(i int) bool { return group[i].End.After(start) })
+		last := sort.Search(len(group), func(i int) bool { return !group[i].Start.Before(end) })
 		if first < last {
 			spans = append(spans, hintSpan{lo: offset + first, hi: offset + last})
 		}

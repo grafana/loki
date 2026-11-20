@@ -2003,6 +2003,40 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	require.Zero(t, loglineStats.HintRangesDuration, "the pre-min-date range has no index coverage")
 }
 
+// A range that only touches the interval has nothing in it, so the interval
+// still has only pre-min-date coverage and passes through.
+func TestPrefetchFilter_PreMinDatePassthroughIgnoresTouchingRanges(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-90 * time.Minute)
+	reqEnd := now.Add(-75 * time.Minute)
+	sentinel := hintprovider.HintTimeRange{End: now.Add(-30 * time.Minute), Source: hintprovider.HintSourcePreMinDate}
+
+	for _, tc := range []struct {
+		name     string
+		touching hintprovider.HintTimeRange
+	}{
+		{"starts at the interval end", hintprovider.HintTimeRange{Start: reqEnd, End: reqEnd.Add(time.Minute), DocumentShard: 3, DocumentShardBits: 5}},
+		{"ends at the interval start", hintprovider.HintTimeRange{Start: reqStart.Add(-time.Minute), End: reqStart, DocumentShard: 3, DocumentShardBits: 5}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{sentinel, tc.touching}}}
+			var gotHints []logproto.HintTimeRange
+			next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				gotHints = req.(*queryrange.LokiRequest).HintRanges
+				return emptyStreamResponse(), nil
+			})
+			metrics := newTestMetrics()
+			handler := buildStack(hp, Config{RequireOptInHeader: true}, metrics, next)
+
+			resp, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(`{job="test"} |= "error"`, reqStart, reqEnd))
+			require.NoError(t, err)
+			require.Empty(t, gotHints)
+			require.Equal(t, 1.0, testutil.ToFloat64(metrics.passthroughSubRequests.WithLabelValues("pre_min_date")))
+			require.Zero(t, resp.(*queryrange.LokiResponse).Statistics.Logline.NarrowedRequests)
+		})
+	}
+}
+
 func TestPrefetchFilter_QueryStatsAttached(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
@@ -3307,6 +3341,20 @@ func TestOverlappingSpans_DocumentShards(t *testing.T) {
 	require.Equal(t, ranges[3:], rangesOverlapping(ranges, nil, base.Add(30*time.Minute), base.Add(35*time.Minute)))
 	require.Equal(t, []hintprovider.HintTimeRange{ranges[0], ranges[2]}, rangesOverlapping(ranges, nil, base, base.Add(15*time.Minute)))
 	require.Equal(t, []hintSpan{{lo: 0, hi: 1}, {lo: 2, hi: 3}}, overlappingSpans(ranges, nil, base, base.Add(15*time.Minute)))
+}
+
+// The window is half-open like the clip, so ranges that only touch it are
+// left out.
+func TestOverlappingSpans_TouchingWindow(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ranges := []hintprovider.HintTimeRange{
+		{Start: base.Add(10 * time.Minute), End: base.Add(20 * time.Minute)},
+		{Start: base.Add(30 * time.Minute), End: base.Add(40 * time.Minute)},
+	}
+
+	require.Empty(t, overlappingSpans(ranges, nil, base.Add(20*time.Minute), base.Add(30*time.Minute)))
+	require.Equal(t, ranges[:1], rangesOverlapping(ranges, nil, base.Add(19*time.Minute), base.Add(30*time.Minute)))
+	require.Equal(t, ranges[1:], rangesOverlapping(ranges, nil, base.Add(20*time.Minute), base.Add(31*time.Minute)))
 }
 
 func TestOverlappingSpans_LeafShards(t *testing.T) {

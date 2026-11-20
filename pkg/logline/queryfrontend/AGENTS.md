@@ -145,6 +145,8 @@ sub-request reads more chunks but doesn't miss lines.
   shard's list, so dropping the shard would multiply the list on the querier.
 - Each overlapping document shard keeps at least one range, so a sub-request that
   overlaps more document shards than the cap gets one range per shard.
+  `overlappingSpans` searches the half-open window, like the clip, so a shard
+  whose ranges only touch the window doesn't take a range of the cap.
 - The gaps equal to the smallest kept gap are kept evenly spread in time. v5
   documents have a fixed width, so many gaps can be equal, and keeping the first
   ones would merge the rest of the window into one range.

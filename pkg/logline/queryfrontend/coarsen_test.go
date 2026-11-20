@@ -97,13 +97,12 @@ func TestCoarsenHintRanges(t *testing.T) {
 			wantCoarsened: true,
 		},
 		{
-			name:      "fits once ranges outside the window are clipped away",
+			name:      "ignores ranges that only touch the window",
 			ranges:    []hintprovider.HintTimeRange{hint(0, 5), hint(6, 7), hint(10, 11)},
 			start:     at(5),
 			end:       at(10),
 			maxRanges: 1,
-			// The search keeps ranges that only touch the window, and the clip drops them.
-			want: []logproto.HintTimeRange{want(6, 7)},
+			want:      []logproto.HintTimeRange{want(6, 7)},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -144,6 +143,35 @@ func TestHintRangesForSpans(t *testing.T) {
 	}
 }
 
+// A document shard whose ranges only touch the window has nothing in it, so
+// it doesn't take a range of the cap from the shards that do.
+func TestHintRangesForSpans_TouchingWindow(t *testing.T) {
+	at := func(minute int) time.Time { return time.Date(2025, 1, 1, 12, minute, 0, 0, time.UTC) }
+	inShard := func(shard uint32, start, end int) hintprovider.HintTimeRange {
+		return hintprovider.HintTimeRange{Start: at(start), End: at(end), DocumentShard: shard, DocumentShardBits: 5}
+	}
+	want := []logproto.HintTimeRange{
+		{Start: at(0), End: at(5), DocumentShard: 3, DocumentShardBits: 5},
+		{Start: at(20), End: at(25), DocumentShard: 3, DocumentShardBits: 5},
+	}
+
+	for _, tc := range []struct {
+		name     string
+		touching hintprovider.HintTimeRange
+	}{
+		{"starts at the window end", inShard(4, 30, 31)},
+		{"ends at the window start", inShard(4, -1, 0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ranges := hintprovider.NormalizeRanges([]hintprovider.HintTimeRange{inShard(3, 0, 5), inShard(3, 20, 25), tc.touching})
+			spans := overlappingSpans(ranges, nil, at(0), at(30))
+			got, coarsened := hintRangesForSpans(ranges, spans, at(0), at(30), 2)
+			require.Equal(t, want, got)
+			require.False(t, coarsened)
+		})
+	}
+}
+
 // Coarsening only fills gaps between a document shard's clipped ranges, keeps
 // the largest ones, and stays within the cap.
 func TestCoarsenHintRanges_Random(t *testing.T) {
@@ -152,21 +180,32 @@ func TestCoarsenHintRanges_Random(t *testing.T) {
 
 	var coarsenedCases int
 	for i := range 500 {
-		ranges := randomNormalizedRanges(rng, base)
-		start := base.Add(time.Duration(rng.IntN(600)) * time.Second)
-		end := start.Add(time.Duration(1+rng.IntN(3600)) * time.Second)
+		// Half the cases put every time on a one-minute grid, as v5 documents
+		// and split boundaries are, so ranges often only touch the window.
+		grid := time.Second
+		if rng.IntN(2) == 0 {
+			grid = time.Minute
+		}
+		ranges := randomNormalizedRanges(rng, base, grid)
+		start := base.Add(randomDuration(rng, 600, grid))
+		end := start.Add(grid + randomDuration(rng, 3600, grid))
 		spans := overlappingSpans(ranges, nil, start, end)
 		clipped := clipHintRangesForInterval(spanRanges(ranges, spans), start, end)
 		maxRanges := 1 + rng.IntN(len(clipped)+2)
 
 		got, coarsened := coarsenHintRanges(ranges, spans, start, end, maxRanges)
 
-		require.LessOrEqual(t, len(got), max(maxRanges, len(spans)), "case %d", i)
+		// Each document shard in the clip keeps at least one range, so the
+		// result fits when the clip has no more ranges than this.
+		shards := documentShardCount(clipped)
+		fits := max(maxRanges, shards)
+		require.Len(t, spans, shards, "case %d: a span has no range in the window", i)
+		require.Equal(t, len(clipped) > fits, coarsened, "case %d", i)
 		if !coarsened {
 			require.Equal(t, clipped, got, "case %d: nothing merged, so the result is the clip", i)
 			continue
 		}
-		require.Less(t, len(got), len(clipped), "case %d", i)
+		require.Len(t, got, fits, "case %d", i)
 		coarsenedCases++
 
 		owner := coveringRanges(t, clipped, got)
@@ -189,9 +228,21 @@ func TestCoarsenHintRanges_Random(t *testing.T) {
 		if minKept >= 0 {
 			require.LessOrEqual(t, maxMerged, minKept, "case %d: a merged gap is wider than a kept one", i)
 		}
-		require.Equal(t, max(maxRanges-len(spans), 0), keptGaps, "case %d", i)
+		require.Equal(t, max(maxRanges-shards, 0), keptGaps, "case %d", i)
 	}
 	require.Greater(t, coarsenedCases, 100, "too few cases coarsen to test it")
+}
+
+// documentShardCount returns the number of document shards in ranges, which
+// are grouped by document shard.
+func documentShardCount(ranges []logproto.HintTimeRange) int {
+	n := 0
+	for j := range ranges {
+		if j == 0 || documentShardKey(ranges[j]) != documentShardKey(ranges[j-1]) {
+			n++
+		}
+	}
+	return n
 }
 
 // coveringRanges checks that every clipped range lies in an output range of
@@ -230,18 +281,18 @@ func coveringRanges(t *testing.T, clipped, got []logproto.HintTimeRange) []int {
 
 // randomNormalizedRanges returns ranges without a document shard, sometimes
 // with a pre-min-date sentinel, and sometimes v5 ranges in up to 32 document
-// shards, normalized like a lookup result.
-func randomNormalizedRanges(rng *rand.Rand, base time.Time) []hintprovider.HintTimeRange {
+// shards, normalized like a lookup result. Every time is on grid.
+func randomNormalizedRanges(rng *rand.Rand, base time.Time, grid time.Duration) []hintprovider.HintTimeRange {
 	var ranges []hintprovider.HintTimeRange
 	if rng.IntN(4) == 0 {
-		ranges = append(ranges, hintprovider.HintTimeRange{End: base.Add(time.Duration(rng.IntN(900)) * time.Second)})
+		ranges = append(ranges, hintprovider.HintTimeRange{End: base.Add(randomDuration(rng, 900, grid))})
 	}
 	group := func(shard uint32, bits uint8) {
 		for range rng.IntN(40) {
-			start := base.Add(time.Duration(rng.IntN(4800)) * time.Second)
+			start := base.Add(randomDuration(rng, 4800, grid))
 			ranges = append(ranges, hintprovider.HintTimeRange{
 				Start:             start,
-				End:               start.Add(time.Duration(1+rng.IntN(120)) * time.Second),
+				End:               start.Add(grid + randomDuration(rng, 120, grid)),
 				DocumentShard:     shard,
 				DocumentShardBits: bits,
 			})
@@ -254,4 +305,10 @@ func randomNormalizedRanges(rng *rand.Rand, base time.Time) []hintprovider.HintT
 		}
 	}
 	return hintprovider.NormalizeRanges(ranges)
+}
+
+// randomDuration returns a random duration under n seconds, rounded down to
+// grid.
+func randomDuration(rng *rand.Rand, n int, grid time.Duration) time.Duration {
+	return (time.Duration(rng.IntN(n)) * time.Second).Truncate(grid)
 }
