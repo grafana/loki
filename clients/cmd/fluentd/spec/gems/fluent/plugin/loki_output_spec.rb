@@ -323,15 +323,17 @@ RSpec.describe Fluent::Plugin::LokiOutput do
   end
 
   context 'when output is multi-thread' do
-    let(:thread) do
-      class_double(
-        'Thread',
-        current: { _fluentd_plugin_helper_thread_title: 'thread1' }
-      ).as_stubbed_const
+    # The plugin reads the flush thread title from a fiber-local variable
+    # (Thread.current[:_fluentd_plugin_helper_thread_title] in out_loki.rb).
+    # Set the real thread-local instead of stubbing the Thread constant: stubbing
+    # Thread.current breaks rspec-support internals, which call
+    # Thread.current.thread_variable_get.
+    before do
+      Thread.current[:_fluentd_plugin_helper_thread_title] = 'thread1'
     end
 
-    before do
-      allow(Thread).to receive(:new).and_yield(thread)
+    after do
+      Thread.current[:_fluentd_plugin_helper_thread_title] = nil
     end
 
     it 'adds the fluentd_label by default' do
