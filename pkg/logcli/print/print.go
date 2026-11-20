@@ -37,6 +37,7 @@ func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, qui
 		FixedLabelsLen:      fixedLabelsLen,
 		Forward:             forward,
 		IncludeCommonLabels: includeCommonLabels,
+		printedWarnings:     make(map[string]struct{}),
 	}
 }
 
@@ -239,9 +240,6 @@ func (r *QueryResultPrinter) PrintWarnings(warnings []string) {
 	for _, w := range warnings {
 		if _, ok := r.printedWarnings[w]; ok {
 			continue
-		}
-		if r.printedWarnings == nil {
-			r.printedWarnings = make(map[string]struct{})
 		}
 		r.printedWarnings[w] = struct{}{}
 		log.Println("Warning:", w)
