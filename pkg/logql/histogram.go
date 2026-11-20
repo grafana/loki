@@ -66,7 +66,11 @@ type histogramBuilder struct {
 	negBuckets map[int]float64
 	zeroCount  float64
 
-	count, sum float64
+	count float64
+	// sum is summed with compensation, as sum_over_time and the sum aggregation do, so that the sum of a
+	// histogram is the same whether one builder sees all the values or the histograms of their parts are
+	// summed afterwards. A plain sum loses the 1 of 1e16 + 1 - 1e16, and the other forms do not.
+	sum kahanSum
 }
 
 // newHistogramBuilder returns a builder for the buckets of spec. A nil spec selects the exponential buckets.
@@ -87,7 +91,7 @@ func (b *histogramBuilder) observe(v float64) {
 		return
 	}
 	b.count++
-	b.sum += v
+	b.sum.addValue(v)
 
 	if b.bounds != nil {
 		// The first bound that is not below v. It is len(bounds) for a value above the last bound.
@@ -123,7 +127,7 @@ func (b *histogramBuilder) build() (*histogram.FloatHistogram, error) {
 		// A window is not a counter: the histogram of one window is not a part of the next one.
 		CounterResetHint: histogram.GaugeType,
 		Count:            b.count,
-		Sum:              b.sum,
+		Sum:              b.sum.result(),
 	}
 
 	if b.bounds != nil {
