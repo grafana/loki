@@ -1892,6 +1892,26 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			),
 			map[string]string{"app": "foo_sm"},
 		},
+		{
+			"rename to a key also in the line, source first",
+			[]byte(`code=200 status=500`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
+		{
+			"rename to a key also in the line, source last",
+			[]byte(`status=500 code=200`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2350,6 +2370,26 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	b.Reset()
 	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
+}
+
+// A grouping or a label filter on a renamed name asks the hints only for that name, so the parser must
+// still read the key that the expression renames.
+func TestLogfmtExpressionParserReadsTheSourceKeyOfARequiredName(t *testing.T) {
+	for _, line := range []string{`code=200 status=500`, `status=500 code=200`} {
+		t.Run(line, func(t *testing.T) {
+			parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			}, false)
+			require.NoError(t, err)
+
+			base := labels.FromStrings("app", "x")
+			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+			b.parserKeyHints = NewParserHint(nil, []string{"status"}, false, false, "")
+			b.Reset()
+			_, _ = parser.Process(0, []byte(line), b)
+			require.Equal(t, labels.FromStrings("app", "x", "status", "200"), b.LabelsResult().Labels())
+		})
+	}
 }
 
 // askedHints records the names that a parser asks the hints about.
