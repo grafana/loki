@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -22,10 +23,11 @@ type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
 	// ProjectedColumns are the columns that a RowReader returns. Row.Values holds one Value per
-	// projected column, in this order. It is invalid to provide a Column that is not in Dataset.
+	// projected column, in this order. A record batch from ReadRecordBatch holds one array per
+	// projected column, in the same order. It is invalid to provide a Column that is not in Dataset.
 	//
 	// A predicate can read a column that is not projected. The reader reads that column to run
-	// the predicate, and leaves it out of the rows it returns.
+	// the predicate, and leaves it out of the rows and record batches it returns.
 	ProjectedColumns []Column
 
 	// Predicates filter the data returned by a RowReader. Predicates are
@@ -59,30 +61,43 @@ type ColumnReadPageStats struct {
 	Relevant uint64
 }
 
-// A RowReader reads [Row]s from a [Dataset].
+// A RowReader reads rows from a [Dataset], as [Row]s with Read or as columnar
+// record batches with ReadRecordBatch.
 type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	columns              []Column            // opts.ProjectedColumns, then the columns that only predicates read.
-	projectedColumns     []Column            // Prefix of columns: the columns that Read keeps in Row.Values.
-	columnsLookup        map[Column]int      // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
-	primaryColumnIndexes []int               // Indexes of primary columns in columns.
-	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
-	batchPredicates      []*batchPredicate   // One per predicate, nil for a row by row predicate.
-	keepScratch          []int32             // Scratch for the indexes that KeepBatch returns.
+	columns              []Column              // opts.ProjectedColumns, then the columns that only predicates read.
+	projectedColumns     []Column              // Prefix of columns: the columns that Read keeps in Row.Values.
+	columnsLookup        map[Column]int        // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
+	primaryColumnIndexes []int                 // Indexes of primary columns in columns.
+	compiledPredicates   []compiledPredicate   // opts.Predicates with column indexes resolved, one per predicate.
+	keepBatchPredicates  []*keepBatchPredicate // One per predicate, nil for a row by row predicate.
+	keepScratch          []int32               // Scratch for the indexes that KeepBatch returns.
+	firstIsStreamID      bool                  // Whether the first predicate is a stream ID predicate.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
 	inner  *basicRowReader      // Underlying reader that reads from columns.
 	ranges rangeset.Set         // Valid ranges to read across the entire dataset.
+
+	// The state of ReadRecordBatch.
+	//
+	// recordBatchScratch holds the memory that lives for one input record batch.
+	// ReadRecordBatch reclaims it at the start of each input record batch. It holds:
+	//   - the arrays that predicates test,
+	//   - the pages that a read decodes before it copies the rows out,
+	//   - the intermediate selections.
+	recordBatchScratch    memory.Allocator
+	currRecordBatch       recordBatch      // The input record batch that ReadRecordBatch is reading, or read last.
+	recordBatchPageArrays []columnar.Array // Scratch for the page arrays that readColumnPages joins.
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
 
 // NewRowReader creates a new RowReader from the provided options.
 //
-// Call [RowReader.Open] before calling [RowReader.Read].
+// Call [RowReader.Open] before calling [RowReader.Read] or [RowReader.ReadRecordBatch].
 func NewRowReader(opts RowReaderOptions) *RowReader {
 	var r RowReader
 	r.Reset(opts)
@@ -91,8 +106,8 @@ func NewRowReader(opts RowReaderOptions) *RowReader {
 
 // Open initializes RowReader resources.
 //
-// Open must be called before [RowReader.Read]. Open is safe to call multiple
-// times.
+// Open must be called before [RowReader.Read] or [RowReader.ReadRecordBatch]. Open is
+// safe to call multiple times.
 func (r *RowReader) Open(ctx context.Context) error {
 	if r.ready {
 		return nil
@@ -297,8 +312,8 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 	// The first predicate finds its columns already filled, so it only filters.
 	for i, p := range r.opts.Predicates {
 		var readBytes int64
-		if r.batchPredicates[i] != nil {
-			passCount, readBytes, err = r.evalBatchPredicate(ctx, r.batchPredicates[i], s[:readSize])
+		if r.keepBatchPredicates[i] != nil {
+			passCount, readBytes, err = r.evalKeepBatchPredicate(ctx, r.keepBatchPredicates[i], s[:readSize])
 		} else {
 			passCount, readBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
 		}
@@ -363,7 +378,7 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 	for j := range rows {
 		filledBytes += rows[j].SizeOfColumns(idxs)
 
-		if !compiled.eval(rows[j]) {
+		if !compiled.evalRow(rows[j]) {
 			continue
 		}
 		// We move rows[j] to rows[passCount] by *swapping* the rows. Copying would
@@ -380,11 +395,11 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 	return passCount, filledBytes, nil
 }
 
-// evalBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
+// evalKeepBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
 // passing rows to the front of rows. It returns the number of passing rows and the size in
 // bytes of the values it read. It copies the value of a passing row into the row only when the
 // column is projected. On error it returns zero values.
-func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, rows []Row) (int, int64, error) {
+func (r *RowReader) evalKeepBatchPredicate(ctx context.Context, bp *keepBatchPredicate, rows []Row) (int, int64, error) {
 	var (
 		pass      = 0
 		readBytes int64
@@ -437,8 +452,8 @@ func (r *RowReader) alignRow() (uint64, error) {
 
 // compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
 // references resolved to Row value indexes. It returns an error if a predicate column is missing
-// from r.columnsLookup. initColumns adds every predicate column, so this error means a bug in
-// the reader.
+// from r.columnsLookup, or if a func predicate has no Keep function. initColumns adds every
+// predicate column, so a missing column means a bug in the reader.
 func (r *RowReader) compilePredicates() error {
 	for _, p := range r.opts.Predicates {
 		cp, err := compilePredicate(p, r.columnsLookup)
@@ -450,9 +465,16 @@ func (r *RowReader) compilePredicates() error {
 	return nil
 }
 
-// initBatchPredicates decides which predicates run on an array of values at once.
-func (r *RowReader) initBatchPredicates() {
-	r.batchPredicates = make([]*batchPredicate, len(r.opts.Predicates))
+// initKeepBatchPredicates decides which predicates [RowReader.Read] runs on an array of values at
+// once. Read calls KeepBatch only for a func predicate that sets KeepBatch and:
+//   - is not the first predicate,
+//   - is not inside And, Or or Not,
+//   - reads a binary column,
+//   - reads a column that no other predicate reads.
+//
+// Read calls Keep for every other predicate.
+func (r *RowReader) initKeepBatchPredicates() {
+	r.keepBatchPredicates = make([]*keepBatchPredicate, len(r.opts.Predicates))
 
 	// predicatesPerColumn counts the leaf predicates that read each column.
 	predicatesPerColumn := make(map[Column]int)
@@ -474,7 +496,7 @@ func (r *RowReader) initBatchPredicates() {
 			continue
 		}
 
-		// The batch path does not mark its column as filled. A second predicate on the same column
+		// The KeepBatch path does not mark its column as filled. A second predicate on the same column
 		// would read it again and count its bytes twice. So predicates that share a column stay on
 		// the row path.
 		if predicatesPerColumn[fp.Column] != 1 {
@@ -490,7 +512,7 @@ func (r *RowReader) initBatchPredicates() {
 		if !ok {
 			continue
 		}
-		r.batchPredicates[i] = &batchPredicate{
+		r.keepBatchPredicates[i] = &keepBatchPredicate{
 			predicate: fp,
 			index:     index,
 			projected: index < len(r.projectedColumns),
@@ -498,8 +520,8 @@ func (r *RowReader) initBatchPredicates() {
 	}
 }
 
-// batchPredicate is a predicate that the reader tests on an array of values at once.
-type batchPredicate struct {
+// keepBatchPredicate is a predicate that the reader tests on an array of values at once.
+type keepBatchPredicate struct {
 	predicate FuncPredicate
 	index     int  // Index of the column of predicate in the values of a Row.
 	projected bool // Whether the column is projected, so the value goes into the rows that pass.
@@ -544,7 +566,13 @@ func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
 
 // Close closes the RowReader. Closed RowReaders can be reused by calling
 // [RowReader.Reset].
+//
+// The record batches that [RowReader.ReadRecordBatch] returned stay valid,
+// because they use memory from the caller.
 func (r *RowReader) Close() error {
+	r.recordBatchScratch.Free()
+	clear(r.currRecordBatch.columns)
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
@@ -566,6 +594,11 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.row = 0
 	r.ranges.Reset()
 	r.ready = false
+
+	// The columns of the last input record batch point into scratch memory. Drop them, because Reclaim
+	// lets later reads reuse that memory.
+	clear(r.currRecordBatch.columns)
+	r.recordBatchScratch.Reclaim()
 }
 
 // clearInitState clears the state that init builds from the options.
@@ -575,7 +608,7 @@ func (r *RowReader) clearInitState() {
 	r.projectedColumns = nil
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
-	r.batchPredicates = sliceclear.Clear(r.batchPredicates)
+	r.keepBatchPredicates = sliceclear.Clear(r.keepBatchPredicates)
 }
 
 func (r *RowReader) init(ctx context.Context) error {
@@ -595,7 +628,8 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.compilePredicates(); err != nil {
 		return err
 	}
-	r.initBatchPredicates()
+	r.initKeepBatchPredicates()
+	r.firstIsStreamID = len(r.opts.Predicates) > 0 && isStreamIDPredicate(r.opts.Predicates[0])
 
 	if err := r.initDownloader(ctx); err != nil {
 		return err

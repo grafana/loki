@@ -84,4 +84,21 @@ func TestGenerate(t *testing.T) {
 			t.Errorf("generate() output mismatch\ngot:\n%s\nwant:\n%s", got, wantReport)
 		}
 	})
+
+	t.Run("pipes in a query expression are escaped in both tables", func(t *testing.T) {
+		const input = `BenchmarkLogQLMetricQueries/query=sum(count_over_time({app="x"}_|=_"a"_|_json[5m]))_(high_input,_low_output,_range)/scenario=chunk-timestamp-first/latency=0s-11	1	1000000000 ns/op	10 store_reqs/op
+`
+		rep, err := parse(strings.NewReader(input))
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+
+		var buf bytes.Buffer
+		generate(&buf, rep)
+
+		const want = "| `sum(count over time({app=\"x\"} \\|= \"a\" \\| json[5m]))`<br>"
+		if got := strings.Count(buf.String(), want); got != 2 {
+			t.Errorf("want %d rows with the escaped expression, got %d\n%s", 2, got, buf.String())
+		}
+	})
 }

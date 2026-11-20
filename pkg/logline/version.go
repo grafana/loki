@@ -11,13 +11,14 @@ import (
 )
 
 // CurrentVersion is the canonical name for the current index format.
-// "v3" indexes log lines, structured metadata values, and stream label values.
+// "v4" indexes log lines, structured metadata values, and stream label values
+// with packed numeric terms.
 //
 // "v5" is registered and in development. It forks the v3 on-disk format, uses
 // the v4 packed-term extractor, and will keep changing. Do not set
-// -logline-index.version=v5. CurrentVersion stays "v3" so a binary upgrade
+// -logline-index.version=v5. CurrentVersion stays "v4" so a binary upgrade
 // does not start writing v5.
-const CurrentVersion = "v3"
+const CurrentVersion = "v4"
 
 // AllVersions returns every supported format version.
 //

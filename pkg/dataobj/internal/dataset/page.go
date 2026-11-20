@@ -77,6 +77,14 @@ func (p *MemPage) ReadPage(_ context.Context) (PageData, error) {
 
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 
+// maxDecompressedSizeHint caps the buffer that [MemPage.open] reserves for the decompressed values
+// of a page.
+//
+// The CRC32 of a page covers the page bytes only, not its descriptor. A corrupt UncompressedSize
+// passes that check and would force a huge allocation or a panic. A page that expands beyond the
+// cap still decodes, because its buffer grows during decompression.
+const maxDecompressedSizeHint = 16 << 20
+
 // openedPage holds encoded (but decompressed) data for a page.
 type openedPage struct {
 	PresenceData []byte
@@ -122,7 +130,7 @@ func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Cl
 
 		// TODO(rfratto): Should this be switched out with using
 		// [memory.Allocator]?
-		decompressed := bufpool.Get(p.PageDesc().UncompressedSize)
+		decompressed := bufpool.Get(min(p.PageDesc().UncompressedSize, maxDecompressedSizeHint))
 		if _, err := io.Copy(decompressed, sr); err != nil {
 			bufpool.Put(decompressed)
 			return openedPage{}, nil, err
@@ -146,7 +154,7 @@ func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Cl
 			return openedPage{}, nil, err
 		}
 
-		decompressed := bufpool.Get(p.PageDesc().UncompressedSize)
+		decompressed := bufpool.Get(min(p.PageDesc().UncompressedSize, maxDecompressedSizeHint))
 
 		// We use DecodeAll which supports concurrent calls with the same
 		// decoder, unlike Decode.

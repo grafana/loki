@@ -38,7 +38,7 @@
             {{ else }}
                 <tr bgcolor="#BEBEBE">
             {{ end }}
-            <td>{{ .ID }}</td>
+            <td>{{ if .Link }}<a href="{{ .Link }}">{{ .ID }}</a>{{ else }}{{ .ID }}{{ end }}</td>
             <td>{{ .Zone }}</td>
             <td>{{ .State }}</td>
             <td>{{ .Address }}</td>

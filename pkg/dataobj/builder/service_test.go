@@ -28,6 +28,24 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestLogsobjBuilderConfig(t *testing.T) {
+	t.Run("copies the sort parallelism into the logsobj config, which has no flag for it", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.SortParallelism = 4
+
+		require.Equal(t, 4, logsobjBuilderConfig(cfg).SortParallelism)
+	})
+
+	t.Run("always drops duplicates", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		require.True(t, logsobjBuilderConfig(cfg).DropDuplicates)
+		require.False(t, cfg.LogsobjBuilder.DropDuplicates, "the helper must not change the config that it receives")
+	})
+}
+
 func TestService(t *testing.T) {
 	t.Run("fails with the processor error when the processor fails", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")

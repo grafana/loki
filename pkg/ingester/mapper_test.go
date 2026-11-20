@@ -5,6 +5,9 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logline"
 )
 
 var (
@@ -25,6 +28,12 @@ var (
 	cm31 = labels.FromStrings("bumms", "dings")
 	cm32 = labels.FromStrings("bar", "foo", "bumms", "dings")
 )
+
+// Logline readers treat fingerprints up to logline.MaxMappedFingerprint as
+// remapped, so it must cover every fingerprint the mapper assigns.
+func TestMaxMappedFPMatchesLogline(t *testing.T) {
+	require.EqualValues(t, maxMappedFP, logline.MaxMappedFingerprint)
+}
 
 func copyValuesAndSort(a labels.Labels) labels.Labels {
 	return a.Copy()

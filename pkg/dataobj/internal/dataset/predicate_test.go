@@ -120,6 +120,16 @@ func TestInt64ValueSet(t *testing.T) {
 				}
 			})
 
+			t.Run("ContainsInt64() gives the same answer as Contains() for members, non-members and the extreme values", func(t *testing.T) {
+				set := impl.newSet(math.MinInt64, 0, 3, math.MaxInt64)
+				lookup, ok := set.(interface{ ContainsInt64(v int64) bool })
+				require.True(t, ok)
+
+				for _, key := range []int64{math.MinInt64, -1, 0, 0, 3, 4, 4, math.MaxInt64, 3} {
+					require.Equal(t, set.Contains(dataset.Int64Value(key)), lookup.ContainsInt64(key), "key %d", key)
+				}
+			})
+
 			t.Run("Iter() yields every member once", func(t *testing.T) {
 				set := impl.newSet(7, 1, 3, 3)
 

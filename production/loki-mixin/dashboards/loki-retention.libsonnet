@@ -32,6 +32,87 @@
     ],
     yaxes: $.yaxes('ms'),
   },
+
+  // Dashed, lightly shaded line used for the resource reference lines (requests, limits and the Go
+  // runtime's own limits) so they stand out from the per-pod usage series.
+  local referenceLine(name, color) =
+    $.colorOverride(name, color) + {
+      properties+: [
+        { id: 'custom.lineWidth', value: 2 },
+        { id: 'custom.lineStyle', value: { dash: [10, 10], fill: 'dash' } },
+        { id: 'custom.fillOpacity', value: 10 },
+      ],
+    },
+
+  local resourcePanel(title, unit, queries, legends, overrides, description=null) =
+    $.newQueryPanel(title, unit) +
+    $.queryPanel(queries, legends) +
+    {
+      tooltip: { sort: 2 },  // Sort descending.
+      fieldConfig+: { overrides+: overrides },
+    } + (if description == null then {} else { description: description }),
+
+  // CPU usage with the Kubernetes request and limit, plus GOMAXPROCS to show how many threads the
+  // Go runtime schedules on (it should not exceed the CPU limit).
+  local cpuPanel(title, matcher, goMatcher) =
+    resourcePanel(
+      title,
+      'short',
+      [
+        'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
+        'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
+        'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s} > 0)' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
+        'min(go_sched_gomaxprocs_threads{%s} > 0)' % goMatcher,
+      ],
+      ['{{pod}}', 'Requests', 'Limits', 'GOMAXPROCS'],
+      [
+        referenceLine('Requests', 'blue'),
+        referenceLine('Limits', 'red'),
+        referenceLine('GOMAXPROCS', 'orange'),
+      ],
+    ),
+
+  // Container memory footprint (the figure the OOM killer acts on) with the Kubernetes request and limit.
+  local workingSetPanel(title, matcher) =
+    resourcePanel(
+      title,
+      'bytes',
+      [
+        // "max" rather than "sum": during a rolling update the old pod's stale series would otherwise be added to the new pod's.
+        'max by(pod) (container_memory_working_set_bytes{%s, %s})' % [$.namespaceMatcher(), matcher],
+        'min(kube_pod_container_resource_requests{%s, %s, resource="memory"} > 0)' % [$.namespaceMatcher(), matcher],
+        'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
+      ],
+      ['{{pod}}', 'Requests', 'Limits'],
+      [
+        referenceLine('Requests', 'blue'),
+        referenceLine('Limits', 'red'),
+      ],
+      "The container's memory footprint, used to trigger Out-Of-Memory (OOM) kills.",
+    ),
+
+  // Live heap objects with the Kubernetes request and limit, plus GOMEMLIMIT, the soft limit at which
+  // the Go garbage collector becomes more aggressive.
+  local liveObjectsPanel(title, matcher, goMatcher) =
+    resourcePanel(
+      title,
+      'bytes',
+      [
+        'sum by(%s) (go_memstats_heap_alloc_bytes{%s})' % [$._config.per_instance_label, goMatcher],
+        'min(kube_pod_container_resource_requests{%s, %s, resource="memory"} > 0)' % [$.namespaceMatcher(), matcher],
+        'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
+        // go_gc_gomemlimit_bytes is greater than 9e18 (math.MaxInt64) when GOMEMLIMIT is not set.
+        'min(go_gc_gomemlimit_bytes{%s} < 9e18)' % goMatcher,
+      ],
+      ['{{%s}}' % $._config.per_instance_label, 'Requests', 'Limits', 'GOMEMLIMIT'],
+      [
+        referenceLine('Requests', 'blue'),
+        referenceLine('Limits', 'red'),
+        referenceLine('GOMEMLIMIT', 'purple'),
+      ],
+      'The total amount of heap memory used by live objects.',
+    ),
+
   grafanaDashboards+::
     {
       'loki-retention.json':
@@ -43,15 +124,32 @@
         .addRow(
           $.row('Resource Usage')
           .addPanel(
-            $.CPUUsagePanel('CPU', compactor_pod_matcher),
+            cpuPanel('CPU', compactor_pod_matcher, $.jobMatcher(compactor_job_matcher)),
           )
           .addPanel(
-            $.memoryWorkingSetPanel('Memory (workingset)', compactor_pod_matcher),
+            liveObjectsPanel('Memory (live objects)', compactor_pod_matcher, $.jobMatcher(compactor_job_matcher)),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', compactor_job_matcher),
+            workingSetPanel('Memory (workingset)', compactor_pod_matcher),
           )
-
+        )
+        .addRow(
+          $.row('Object Store')
+          .addPanel(
+            $.newQueryPanel('Operations / sec', 'reqps') +
+            $.queryPanel(
+              'sum by(operation) (rate(loki_objstore_bucket_operations_total{%s}[$__rate_interval]))' % $.jobMatcher(compactor_job_matcher),
+              '{{operation}}'
+            ) +
+            $.withStacking,
+          )
+          .addPanel(
+            $.newQueryPanel('Errors / sec', 'reqps') +
+            $.queryPanel(
+              'sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{%s}[$__rate_interval])) > 0' % $.jobMatcher(compactor_job_matcher),
+              '{{operation}}'
+            ),
+          )
         )
         .addRow(
           $.row('Compaction')

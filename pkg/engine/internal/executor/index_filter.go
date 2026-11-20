@@ -18,8 +18,8 @@ import (
 )
 
 // executeIndexFilter copies the rows of the node's log objects from the
-// source index into a new index object, and emits a result record that
-// reports it.
+// source index into a new index run, and emits a result record that reports
+// the index objects of the run.
 func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifacts, err := c.doIndexFilter(ctx, node)
@@ -93,11 +93,11 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	artifact, _, _, err := out.upload(ctx, c.bucket)
+	artifacts, _, err := out.finish(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("index filter output for source index %q: %w", source, err)
 	}
-	return []v2.ResultArtifact{artifact}, nil
+	return artifacts, nil
 }
 
 // openFilterSources opens the source index objects of node and returns their

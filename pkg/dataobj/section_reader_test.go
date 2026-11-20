@@ -44,6 +44,7 @@ func TestSectionReader_MetadataRanges(t *testing.T) {
 			r       RelativeByteRange
 			wantErr string
 		}{
+			{name: "has one byte at the end of the region", r: RelativeByteRange{Offset: 10, Length: 1}, wantErr: "section metadata range 1 is invalid: offset=10 length=1 region length=10"},
 			{name: "ends one byte after the region", r: RelativeByteRange{Offset: 9, Length: 2}, wantErr: "section metadata range 1 is invalid: offset=9 length=2 region length=10"},
 			{name: "starts after the region", r: RelativeByteRange{Offset: 11, Length: 0}, wantErr: "section metadata range 1 is invalid: offset=11 length=0 region length=10"},
 			{name: "has a negative offset", r: RelativeByteRange{Offset: -1, Length: 2}, wantErr: "section metadata range 1 is invalid: offset=-1 length=2 region length=10"},
@@ -70,8 +71,8 @@ func TestSectionReader_MetadataRanges(t *testing.T) {
 			{name: "the section has no metadata region", wantErr: "section has no metadata"},
 			{name: "the region offset is above MaxInt64", region: &filemd.Region{Offset: math.MaxInt64 + 1}, wantErr: "section metadata region is too large"},
 			{name: "the region length is above MaxInt64", region: &filemd.Region{Length: math.MaxInt64 + 1}, wantErr: "section metadata region is too large"},
-			{name: "the region offset and the start offset overflow int64", startOff: 10, region: &filemd.Region{Offset: math.MaxInt64 - 5}, wantErr: "section metadata region overflows: offset=-9223372036854775804 length=0"},
-			{name: "the region end overflows int64", region: &filemd.Region{Offset: math.MaxInt64 - 1, Length: 5}, wantErr: "section metadata region overflows: offset=9223372036854775806 length=5"},
+			{name: "the region offset and the start offset overflow int64", startOff: 10, region: &filemd.Region{Offset: math.MaxInt64 - 5}, wantErr: "section metadata region overflows: start offset=10 region offset=9223372036854775802 region length=0"},
+			{name: "the region end overflows int64", region: &filemd.Region{Offset: math.MaxInt64 - 1, Length: 5}, wantErr: "section metadata region overflows: start offset=0 region offset=9223372036854775806 region length=5"},
 		}
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
@@ -92,79 +93,11 @@ func TestSectionReader_MetadataRanges(t *testing.T) {
 	})
 }
 
-func TestSectionReader_MetadataRange(t *testing.T) {
-	t.Run("returns the bytes of a range that starts after the start of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: 5, Length: 3})
-		require.NoError(t, err)
-		defer rc.Close()
-
-		got, err := io.ReadAll(rc)
-		require.NoError(t, err)
-		require.Equal(t, "567", string(got))
-	})
-
-	t.Run("returns the bytes of a range that ends at the end of the region", func(t *testing.T) {
-		rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: 0, Length: int64(len(testMetadataRegion))})
-		require.NoError(t, err)
-		defer rc.Close()
-
-		got, err := io.ReadAll(rc)
-		require.NoError(t, err)
-		require.Equal(t, testMetadataRegion, string(got))
-	})
-
-	t.Run("returns an error for a range that is not inside the metadata region", func(t *testing.T) {
-		tests := []struct {
-			name           string
-			offset, length int64
-			wantErr        string
-		}{
-			{name: "has one byte at the end of the region", offset: 10, length: 1, wantErr: "section metadata range is invalid: offset=10 length=1 region length=10"},
-			{name: "ends one byte after the region", offset: 0, length: 11, wantErr: "section metadata range is invalid: offset=0 length=11 region length=10"},
-			{name: "starts after the region", offset: 11, length: 0, wantErr: "section metadata range is invalid: offset=11 length=0 region length=10"},
-			{name: "has a negative offset", offset: -1, length: 2, wantErr: "parameters must not be negative: offset=-1 length=2"},
-			{name: "has a negative length", offset: 2, length: -1, wantErr: "parameters must not be negative: offset=2 length=-1"},
-			{name: "has an end that overflows", offset: 5, length: math.MaxInt64, wantErr: "section metadata range is invalid: offset=5 length=9223372036854775807 region length=10"},
-		}
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				rc, err := newTestSectionReader().MetadataRange(t.Context(), RelativeByteRange{Offset: tc.offset, Length: tc.length})
-
-				require.EqualError(t, err, tc.wantErr)
-				require.Nil(t, rc)
-			})
-		}
-	})
-
-	t.Run("returns an error when the metadata region is too large", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			region  *filemd.Region
-			wantErr string
-		}{
-			{name: "the region offset is above MaxInt64", region: &filemd.Region{Offset: math.MaxInt64 + 1}, wantErr: "section metadata offset is too large"},
-			{name: "the region length is above MaxInt64", region: &filemd.Region{Length: math.MaxInt64 + 1}, wantErr: "section metadata length is too large"},
-		}
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				// The section reader has a nil rangeReader, so a read before the validation panics and fails the test.
-				sr := &sectionReader{sec: &filemd.SectionInfo{Layout: &filemd.SectionLayout{Metadata: tc.region}}}
-
-				// An offset above 5 overflows the length check when the region length wraps around.
-				rc, err := sr.MetadataRange(t.Context(), RelativeByteRange{Offset: 6, Length: 1})
-
-				require.EqualError(t, err, tc.wantErr)
-				require.Nil(t, rc)
-			})
-		}
-	})
-}
-
 func TestSectionReader_DataRange(t *testing.T) {
 	t.Run("returns the bytes of a range that starts after the start of the region", func(t *testing.T) {
 		rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: 8, Length: 4})
 		require.NoError(t, err)
-		defer rc.Close()
+		t.Cleanup(func() { require.NoError(t, rc.Close()) })
 
 		got, err := io.ReadAll(rc)
 		require.NoError(t, err)
@@ -174,11 +107,37 @@ func TestSectionReader_DataRange(t *testing.T) {
 	t.Run("returns the bytes of a range that ends at the end of the region", func(t *testing.T) {
 		rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: 0, Length: int64(len(testDataRegion))})
 		require.NoError(t, err)
-		defer rc.Close()
+		t.Cleanup(func() { require.NoError(t, rc.Close()) })
 
 		got, err := io.ReadAll(rc)
 		require.NoError(t, err)
 		require.Equal(t, testDataRegion, string(got))
+	})
+
+	t.Run("returns an empty reader without a read for a range of zero length at the end of the region", func(t *testing.T) {
+		// The section reader has a nil rangeReader, so a read panics and fails the test.
+		sr := newTestSectionReader()
+		sr.rr = nil
+
+		rc, err := sr.DataRange(t.Context(), RelativeByteRange{Offset: int64(len(testDataRegion)), Length: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, rc.Close()) })
+
+		got, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
+
+	t.Run("returns an empty reader for a data region of zero length at the start of the object", func(t *testing.T) {
+		sr := &sectionReader{sec: &filemd.SectionInfo{Layout: &filemd.SectionLayout{Data: &filemd.Region{}}}}
+
+		rc, err := sr.DataRange(t.Context(), RelativeByteRange{Offset: 0, Length: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, rc.Close()) })
+
+		got, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.Empty(t, got)
 	})
 
 	t.Run("returns an error for a range that is not inside the data region", func(t *testing.T) {
@@ -189,12 +148,45 @@ func TestSectionReader_DataRange(t *testing.T) {
 		}{
 			{name: "has one byte at the end of the region", offset: 12, length: 1, wantErr: "section data range is invalid: offset=12 length=1 region length=12"},
 			{name: "ends one byte after the region", offset: 0, length: 13, wantErr: "section data range is invalid: offset=0 length=13 region length=12"},
+			{name: "starts after the region", offset: 13, length: 0, wantErr: "section data range is invalid: offset=13 length=0 region length=12"},
 			{name: "has a negative offset", offset: -1, length: 2, wantErr: "parameters must not be negative: offset=-1 length=2"},
+			{name: "has a negative length", offset: 2, length: -1, wantErr: "parameters must not be negative: offset=2 length=-1"},
 			{name: "has an end that overflows", offset: 5, length: math.MaxInt64, wantErr: "section data range is invalid: offset=5 length=9223372036854775807 region length=12"},
 		}
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
 				rc, err := newTestSectionReader().DataRange(t.Context(), RelativeByteRange{Offset: tc.offset, Length: tc.length})
+
+				require.EqualError(t, err, tc.wantErr)
+				require.Nil(t, rc)
+			})
+		}
+	})
+
+	t.Run("returns an error when the layout of the section is corrupt", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			startOff int64
+			region   *filemd.Region
+			wantErr  string
+		}{
+			{name: "the section has no data region", wantErr: "section has no data"},
+			{name: "the region offset is above MaxInt64", region: &filemd.Region{Offset: math.MaxInt64 + 1}, wantErr: "section data offset is too large"},
+			{name: "the region length is above MaxInt64", region: &filemd.Region{Length: math.MaxInt64 + 1}, wantErr: "section data length is too large"},
+			{name: "the region offset and the start offset overflow int64", startOff: 10, region: &filemd.Region{Offset: math.MaxInt64 - 5}, wantErr: "section data region overflows: start offset=10 region offset=9223372036854775802 region length=0"},
+			{name: "the region end overflows int64", region: &filemd.Region{Offset: math.MaxInt64 - 1, Length: 5}, wantErr: "section data region overflows: start offset=0 region offset=9223372036854775806 region length=5"},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				info := &filemd.SectionInfo{}
+				if tc.region != nil {
+					info.Layout = &filemd.SectionLayout{Data: tc.region}
+				}
+
+				// The section reader has a nil rangeReader, so a read before the validation panics and fails the test.
+				sr := &sectionReader{sec: info, startOff: tc.startOff}
+
+				rc, err := sr.DataRange(t.Context(), RelativeByteRange{Offset: 0, Length: 0})
 
 				require.EqualError(t, err, tc.wantErr)
 				require.Nil(t, rc)

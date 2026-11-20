@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -36,42 +37,26 @@ func (sr *sectionReader) DataRange(ctx context.Context, r RelativeByteRange) (io
 		return nil, fmt.Errorf("section data length is too large")
 	}
 
-	// Validate bounds within the range of the section. Subtract instead of add, so a large offset or
-	// length cannot overflow. An offset after the region makes the difference negative, and the
-	// length check rejects it.
-	if r.Length > int64(region.Length)-r.Offset {
-		return nil, fmt.Errorf("section data range is invalid: offset=%d length=%d region length=%d", r.Offset, r.Length, region.Length)
-	}
-
-	absoluteOffset := sr.startOff + int64(region.Offset) + r.Offset
-	return sr.rr.ReadRange(ctx, absoluteOffset, r.Length)
-}
-
-// MetadataRange opens a reader of r.Length bytes from the metadata region of the section. The offset
-// of r counts from the start of that region, not from the start of the object.
-func (sr *sectionReader) MetadataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error) {
-	if r.Offset < 0 || r.Length < 0 {
-		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", r.Offset, r.Length)
-	}
-
-	metadataRegion := sr.sec.GetLayout().GetMetadata()
-	if metadataRegion == nil {
-		return nil, fmt.Errorf("section has no metadata")
-	} else if metadataRegion.Offset > math.MaxInt64 {
-		return nil, fmt.Errorf("section metadata offset is too large")
-	} else if metadataRegion.Length > math.MaxInt64 {
-		return nil, fmt.Errorf("section metadata length is too large")
+	regionOffset := sr.startOff + int64(region.Offset)
+	regionLength := int64(region.Length)
+	if regionOffset < sr.startOff || regionOffset+regionLength < regionOffset {
+		return nil, fmt.Errorf("section data region overflows: start offset=%d region offset=%d region length=%d", sr.startOff, region.Offset, regionLength)
 	}
 
 	// Validate bounds within the range of the section. Subtract instead of add, so a large offset or
 	// length cannot overflow. An offset after the region makes the difference negative, and the
 	// length check rejects it.
-	if r.Length > int64(metadataRegion.Length)-r.Offset {
-		return nil, fmt.Errorf("section metadata range is invalid: offset=%d length=%d region length=%d", r.Offset, r.Length, metadataRegion.Length)
+	if r.Length > regionLength-r.Offset {
+		return nil, fmt.Errorf("section data range is invalid: offset=%d length=%d region length=%d", r.Offset, r.Length, regionLength)
 	}
 
-	absoluteOffset := sr.startOff + int64(metadataRegion.Offset) + r.Offset
-	return sr.rr.ReadRange(ctx, absoluteOffset, r.Length)
+	// Return an empty reader for a range of zero length, without a read. An S3 range request cannot
+	// have a length of zero, so the bucket rejects it.
+	if r.Length == 0 {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+
+	return sr.rr.ReadRange(ctx, regionOffset+r.Offset, r.Length)
 }
 
 // MetadataRanges returns the bytes of each range of the metadata region of the section. The offset
@@ -89,7 +74,7 @@ func (sr *sectionReader) MetadataRanges(ctx context.Context, ranges []RelativeBy
 	regionOffset := sr.startOff + int64(metadataRegion.Offset)
 	regionLength := int64(metadataRegion.Length)
 	if regionOffset < sr.startOff || regionOffset+regionLength < regionOffset {
-		return nil, fmt.Errorf("section metadata region overflows: offset=%d length=%d", regionOffset, regionLength)
+		return nil, fmt.Errorf("section metadata region overflows: start offset=%d region offset=%d region length=%d", sr.startOff, metadataRegion.Offset, regionLength)
 	}
 
 	absolute := make([]absoluteByteRange, len(ranges))

@@ -30,7 +30,7 @@ const indexPrefetchBytes = 64 * 1024
 
 // executeIndexMerge orchestrates the index merge: classify sections, drive
 // both merges, upload the result, and emit a result record that reports the
-// new index object.
+// index objects of the new index run.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifacts, err := c.doIndexMerge(ctx, node)
@@ -70,14 +70,14 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	artifact, compressedBytes, uncompressedBytes, err := out.upload(ctx, c.bucket)
+	artifacts, sizes, err := out.finish(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
 	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, compressedBytes, uncompressedBytes)
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, sizes.compressed, sizes.uncompressed)
 	}
-	return []v2.ResultArtifact{artifact}, nil
+	return artifacts, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
@@ -256,7 +256,7 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 		}
 
 		last = &row
-		if err := out.appendPostingsRow(row); err != nil {
+		if err := out.appendPostingsRow(ctx, row); err != nil {
 			return err
 		}
 	}

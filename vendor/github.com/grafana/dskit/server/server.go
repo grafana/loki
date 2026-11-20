@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/signals"
 )
@@ -106,11 +107,12 @@ type Config struct {
 	HTTPTLSConfig    TLSConfig `yaml:"http_tls_config"`
 	GRPCTLSConfig    TLSConfig `yaml:"grpc_tls_config"`
 
-	RegisterInstrumentation                  bool `yaml:"register_instrumentation"`
-	ReportGRPCCodesInInstrumentationLabel    bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
-	ReportHTTP4XXCodesInInstrumentationLabel bool `yaml:"-"`
-	ExcludeRequestInLog                      bool `yaml:"-"`
-	DisableRequestSuccessLog                 bool `yaml:"-"`
+	RegisterInstrumentation                  bool          `yaml:"register_instrumentation"`
+	MetricsCacheDuration                     time.Duration `yaml:"metrics_cache_duration"`
+	ReportGRPCCodesInInstrumentationLabel    bool          `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
+	ReportHTTP4XXCodesInInstrumentationLabel bool          `yaml:"-"`
+	ExcludeRequestInLog                      bool          `yaml:"-"`
+	DisableRequestSuccessLog                 bool          `yaml:"-"`
 
 	PerTenantInstrumentation middleware.PerTenantCallback `yaml:"-"`
 
@@ -215,6 +217,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
 	f.BoolVar(&cfg.GRPCCollectMaxStreamsByConn, "server.grpc-collect-max-streams-by-conn", true, "If true, the max streams by connection gauge will be collected.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
+	f.DurationVar(&cfg.MetricsCacheDuration, "server.metrics-cache-duration", 0, "Cache successful /metrics responses for this duration. Zero disables caching. Cached metrics may lag behind live values by up to this duration; consider scrape intervals and alerts. Only applies when -server.register-instrumentation is true.")
 	f.BoolVar(&cfg.ReportGRPCCodesInInstrumentationLabel, "server.report-grpc-codes-in-instrumentation-label-enabled", false, "If set to true, gRPC statuses will be reported in instrumentation labels with their string representations. Otherwise, they will be reported as \"error\".")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
 	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for entire HTTP request, including headers and body.")
@@ -260,6 +263,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.MetricsCacheDuration < 0 {
+		return fmt.Errorf("server.metrics-cache-duration must not be negative")
+	}
 	if cfg.EnableOpenMetricsTextCreatedSamples && !cfg.RegisterInstrumentation {
 		return fmt.Errorf("server.enable-open-metrics-text-created-samples can only be used if server.register-instrumentation is set to true")
 	}
@@ -426,7 +432,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
 	}
 	if cfg.RegisterInstrumentation {
-		RegisterInstrumentationWithGathererAndCreatedSamples(router, gatherer, cfg.EnableOpenMetricsTextCreatedSamples)
+		registerInstrumentation(router, gatherer, cfg.EnableOpenMetricsTextCreatedSamples, cfg.MetricsCacheDuration)
 	}
 
 	// Setup gRPC server
@@ -596,10 +602,14 @@ func RegisterInstrumentation(router *mux.Router) {
 // RegisterInstrumentationWithGathererAndCreatedSamples registers metrics and pprof handlers.
 // If enableOpenMetricsTextCreatedSamples is true, OpenMetrics 1.0 responses include _created samples.
 func RegisterInstrumentationWithGathererAndCreatedSamples(router *mux.Router, gatherer prometheus.Gatherer, enableOpenMetricsTextCreatedSamples bool) {
-	router.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
+	registerInstrumentation(router, gatherer, enableOpenMetricsTextCreatedSamples, 0)
+}
+
+func registerInstrumentation(router *mux.Router, gatherer prometheus.Gatherer, enableOpenMetricsTextCreatedSamples bool, cacheDuration time.Duration) {
+	router.Handle("/metrics", metrics.CachedHandlerFor(gatherer, promhttp.HandlerOpts{
 		EnableOpenMetrics:                   true,
 		EnableOpenMetricsTextCreatedSamples: enableOpenMetricsTextCreatedSamples,
-	}))
+	}, cacheDuration))
 	router.Handle("/debug/pprof/cmdline", http.NotFoundHandler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }

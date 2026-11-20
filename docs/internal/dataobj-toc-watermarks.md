@@ -54,7 +54,7 @@ A ToC never has the pointer without the watermark, and never has the watermark w
    See `MultiObjectBuilder.Append` in `pkg/dataobj/builder/multi_builder.go`.
 3. **Initial watermark.**
    The first record of a tenant and window decides the watermark of its builder.
-   The builder keeps it as the *initial watermark* until its flush ends.
+   The builder keeps it as the _initial watermark_ until its flush ends.
    See `WatermarkedBuilder` in `pkg/dataobj/builder/multi_builder.go`.
 4. **Flush.**
    The flush adds the index pointer and sets the watermark to the offset of the last record of the flush.
@@ -74,9 +74,9 @@ All scenarios use one partition, one 12-hour window, and two tenants, A and B.
 The numbers are Kafka offsets.
 The builder flushes after every four records.
 
-| Offset | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| ------ | - | - | - | - | - | - | - | - |
-| Tenant | A | B | A | B | A | B | A | B |
+| Offset | 1   | 2   | 3   | 4   | 5   | 6   | 7   | 8   |
+| ------ | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tenant | A   | B   | A   | B   | A   | B   | A   | B   |
 
 Flush 1 holds the offsets 1 to 4.
 Flush 2 holds the offsets 5 to 8.
@@ -84,10 +84,10 @@ Both ToCs start with no watermark.
 
 ### Scenario 1: no crash
 
-| Step | ToC of A | ToC of B | Commit |
-| ---- | -------- | -------- | ------ |
-| Flush 1 ends | pointer, watermark 4 | pointer, watermark 4 | 4 |
-| Flush 2 ends | pointers, watermark 8 | pointers, watermark 8 | 8 |
+| Step         | ToC of A              | ToC of B              | Commit |
+| ------------ | --------------------- | --------------------- | ------ |
+| Flush 1 ends | pointer, watermark 4  | pointer, watermark 4  | 4      |
+| Flush 2 ends | pointers, watermark 8 | pointers, watermark 8 | 8      |
 
 The watermark always moves with the pointer.
 Nothing is dropped.
@@ -113,10 +113,10 @@ The commit is 4.
 
 After the restart, the builder reads from offset 5.
 
-| Tenant | Records | Watermark | Action |
-| ------ | ------- | --------- | ------ |
-| A | 5, 7 | 8 | Drops both. The ToC holds them in the first run's object. |
-| B | 6, 8 | 4 | Keeps both. They go into a new log object. |
+| Tenant | Records | Watermark | Action                                                    |
+| ------ | ------- | --------- | --------------------------------------------------------- |
+| A      | 5, 7    | 8         | Drops both. The ToC holds them in the first run's object. |
+| B      | 6, 8    | 4         | Keeps both. They go into a new log object.                |
 
 **Result:** every line appears once. Without watermarks, the lines of A would appear twice.
 
@@ -187,12 +187,12 @@ It drops the part for window 1, and it keeps the part for window 2.
 
 ## What to watch
 
-| Metric | Meaning |
-| ------ | ------- |
+| Metric                                                     | Meaning                                                    |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
 | `loki_dataobj_builder_toc_watermark_dropped_records_total` | Records that the builder dropped. It grows after a replay. |
-| `loki_dataobj_builder_toc_watermark_cache_lookups_total` | Cache hits and misses. A miss reads a ToC. |
-| `loki_dataobj_builder_toc_watermark_read_duration_seconds` | Time to read one watermark, by result. |
-| `loki_dataobj_builder_toc_watermark_cache_entries` | Number of watermarks in the cache. |
+| `loki_dataobj_builder_toc_watermark_cache_lookups_total`   | Cache hits and misses. A miss reads a ToC.                 |
+| `loki_dataobj_builder_toc_watermark_read_duration_seconds` | Time to read one watermark, by result.                     |
+| `loki_dataobj_builder_toc_watermark_cache_entries`         | Number of watermarks in the cache.                         |
 
 A watermark mismatch has no metric, because the builder exits right after it.
 Look for the error log of the flush and for the restart count of the pod.

@@ -234,6 +234,34 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "logs/b"}, artifact.PostingKeys.Max())
 	})
 
+	t.Run("writes a run of several index objects whose rows together are the kept rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		var objects []string
+		for i := range 300 {
+			objects = append(objects, fmt.Sprintf("logs/%04d", i))
+		}
+		runSource(t, bucket, "indexes/run/a", "app", objects, objects)
+		kept := objects[:200]
+
+		artifacts, err := newSplittingContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a"}, ObjectPaths: kept,
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+		var postingsPaths, statsPaths []string
+		for _, artifact := range artifacts {
+			for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path) {
+				postingsPaths = append(postingsPaths, row.ObjectPath)
+			}
+			for _, row := range readAllStatsRowsFromBucket(t, bucket, artifact.Path) {
+				statsPaths = append(statsPaths, row.ObjectPath)
+			}
+		}
+		slices.Sort(statsPaths)
+		require.Equal(t, kept, postingsPaths)
+		require.Equal(t, kept, statsPaths)
+	})
+
 	t.Run("returns an error when no index object of a run has stats rows of a listed object", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b"}
