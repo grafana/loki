@@ -50,21 +50,19 @@ We want to explore a layout that provides independent access to compressed strin
 
 ## Non-Goals
 
-- Chnage compression of other column types.
+- Change compression of other column types.
 
-## Proposals
+## Proposal overview
 
-### Proposal 0: Retain plain strings with Zstd
-
-This approach preserves the current implementation.
-It retains per-string varints and requires whole-page decompression.
-
-### Proposal 1: Shared table with symbol offsets
+This proposal has a slightly different structure to other LIDs. 
+Since we have to make decisions on multiple challenges, those challenges are the main sections of the
+LID with sub-proposals for each challenge. 
+What follows is an overview of the FSST encoding where we've selected the preferred solution (proposal) for each challenge.
 
 FSST acts as a value encoding.
 Message columns use `ENCODING_TYPE_FSST` with `COMPRESSION_TYPE_NONE`.
 
-Each page is independantly compressed.
+Each page uses its own FSST table.
 The page stores the resulting byte ranges in an offsets array next to the FSST table and the symbol sequences.
 Symbol sequences contain codes that reference table entries, plus literal escapes for bytes without a symbol match.
 
@@ -92,55 +90,24 @@ symbolSequences[offsets[i]:offsets[i+1]]
 
 The presence bitmap retains its existing page header.
 
-#### String boundaries and decoded lengths
-
-The FSST table does not contain string boundaries or lengths.
-It contains symbols and their byte lengths.
 Offsets identify the symbol sequence for each string.
+The FSST table contains symbols and their byte lengths, but no string boundaries.
 
-This is the equivalent of the string lengths when strings are encoded with `ENCODING_TYPE_PLAIN` and `COMPRESSION_TYPE_ZSTD`.
-The decoder derives the decoded length from symbols and literal escapes within each range.
+The reader can decode each string independently from its symbol sequence.
+This permits future changes to `pageReader` that skip unwanted values without the current read-and-discard path in `skipUnwantedRows`.
 
-// TODO dimitarvdimitrov figure out how we can integrate the allocator into this design - iirc right now we may not need to worry about this, but to keep random access
+## Challenge 1: Choose the FSST table scope
 
-Doing random reads without decoding the whole page would allow the `pageReader` to do proper skipping of values in a column, as opposed to skipping via reading and discarding (`skipUnwantedRows`).
+### Proposal A: One table per page (preferred)
 
-#### Accepted tradeoffs
+Each page carries its own FSST table.
+Pages have no shared dictionary dependencies but require repeated table training.
 
-##### Offset overhead
+A table per page gives compaction the most flexibility.
+Compaction can retain an encoded page without a dependency on the table of its source object or column.
+If compaction changes a page, only that page needs a new table and re-encoding.
 
-Fixed-width symbol offsets cost four bytes per boundary (`<symbol offsets: uint32[N+1]>`).
-Short strings can therefore require more boundary metadata than varint lengths.
-Fixed-width offsets permit direct string access without a prefix scan.
-
-The `fsst-varint` fixture replaces `uint32[N+1]` offsets with one unsigned varint compressed length per non-NULL string.
-Both layouts use identical symbol tables and payloads.
-All page sizes are in bytes:
-
-| Page values | uint32 boundaries | Varint boundaries | uint32 page | Varint page |
-| --- | ---: | ---: | ---: | ---: |
-| `["1"]` | 8 | 1 | 29 | 22 |
-| Ten strings, `"0"`–`"9"` | 44 | 10 | 83 | 49 |
-| 10,000 cyclic digits | 40,004 | 10,000 | 50,035 | 20,031 |
-| 2,048 synthetic log strings | 8,196 | 2,730 | 249,633 | 244,167 |
-
-Page sizes include the header and presence bitmap, but exclude descriptor metadata and the optional decoded size.
-Varints save 5,466 bytes (2.19%) on the log page, versus 41% on the ten-digit page.
-They require a prefix scan or a reconstructed offset array before direct access.
-The existing `DecodeBatch` accepts that reconstructed array.
-Full results reside in `fsst-go/results/loki-pages-varint.json`.
-
-Warm decode throughput for the 2,048-row log page, in decoded MB/s:
-
-| Decode mode | uint32 offsets | Varint lengths |
-| --- | ---: | ---: |
-| Random single value | 4,447 | 183 |
-| Whole page | 4,961 | 4,863 |
-
-The timer includes boundary parsing and FSST decode, but excludes table construction, bitmap processing, CRC32C, and I/O.
-Full results reside in `fsst-go/results/loki-boundary-decode-summary.json`.
-
-##### Symbol table and small-page overhead
+### Symbol table and small-page overhead
 
 Each page also carries a symbol table, with a fixed 16-byte header plus symbol bytes.
 Small-page experiments with a fresh table per page show these costs, in bytes:
@@ -157,32 +124,109 @@ Both layouts exclude Loki page headers and presence bitmaps. The optional FSST t
 
 One-byte strings receive no FSST payload reduction.
 At 10,000 cyclic digit rows, offsets keep FSST amplification near 5×, despite the small table cost per row.
-Full results and reproduction commands reside in `fsst-go/RESEARCH.md`, under “Small-page storage experiment (2026-11-12)”.
 
-##### Training cost per page
+### Proposal B: One table per column
 
-Independent pages avoid shared dictionary dependencies but require repeated table training.
+All pages in a message column share one FSST table.
+Pages depend on that column's table for decompression.
 
-##### Compression ratio
+### Proposal C: One table per data object
 
-FSST can produce larger output than Zstd (~2x larger compressed blobs according to [Preliminary Go benchmark results
-](#preliminary-go-benchmark-results))
+All message pages in the data object share one FSST table.
+If new data changes the table, all existing pages in the object require re-encoding.
 
-### Proposal 2: Apply FSST to the existing length-prefixed stream
+## Challenge 2: Choose how to use FSST
 
-This approach fits the existing compression hooks.
-It retains per-string varints and requires whole-page decompression.
-This is less desired because it closes the door to random access decompression.
+### Proposal A: Use a separate encoding with symbol offsets (preferred)
 
-### Proposal 3: Compress concatenated strings with decoded offsets
+FSST acts as a value encoding with a dedicated page format, as described in the [proposal overview](#proposal-overview).
+Symbol offsets preserve direct access to each compressed string.
+
+The dedicated format permits random access decompression and future reader optimizations that skip unwanted values.
+The other two proposals require whole-page decompression for individual strings.
+
+FSST can produce larger output than Zstd.
+The [preliminary Go benchmark results](#preliminary-go-benchmark-results) show approximately twice as many stored bytes for FSST.
+
+### Proposal B: Compress concatenated strings and their lengths
+
+This approach applies FSST to the existing stream of length-prefixed strings.
+It fits the existing compression hooks, retains per-string varints, and requires whole-page decompression.
+
+### Proposal C: Compress concatenated strings with decoded offsets
 
 This approach removes per-string varints and preserves decoded boundaries.
 Individual strings still require whole-page decompression.
-We prefer symbol offsets because they preserve random access decompression.
+
+## Challenge 3: Right-size decompression buffers
+
+The decoder needs the decoded length to allocate a buffer of the correct size before decompression.
+The proposals differ in how the decoder obtains that length.
+The preferred proposal remains undecided until the comparison of decoded length layouts.
+
+### Proposal A: Do not store decoded lengths
+
+The decoder derives the decoded length from symbols and literal escapes within each range.
+
+TODO: Describe the tradeoffs and add measurements.
+
+### Proposal B: Store decoded lengths beside symbol offsets
+
+Each symbol offset shares an entry with its decoded length for cache locality.
+
+TODO: Describe the layout and add measurements.
+
+### Proposal C: Store decoded lengths in a separate sequence
+
+Decoded lengths occupy a separate sequence alongside the symbol offsets.
+
+TODO: Describe the layout and add measurements.
+
+## Challenge 4: Store symbol offsets
+
+### Proposal A: Store uint32 offsets (preferred)
+
+Fixed-width symbol offsets cost four bytes per boundary (`<symbol offsets: uint32[N+1]>`).
+Short strings can therefore require more boundary metadata than varint lengths.
+Fixed-width offsets permit direct string access without a prefix scan or a reconstructed offset array.
+The log-page measurements show a small space cost and substantially higher throughput for random access.
+
+### Proposal B: Store varint lengths
+
+The `fsst-varint` fixture replaces `uint32[N+1]` offsets with one unsigned varint compressed length per non-NULL string.
+Both layouts use identical symbol tables and payloads.
+Varint lengths require a prefix scan or a reconstructed offset array before direct access.
+
+### Comparison
+
+All page sizes are in bytes:
+
+| Page values | uint32 boundaries | varint boundaries | uint32 page | varint page |
+| --- | ---: | ---: | ---: | ---: |
+| `["1"]` | 8 | 1 | 29 | 22 |
+| Ten strings, `"0"`–`"9"` | 44 | 10 | 83 | 49 |
+| 10,000 cyclic digits | 40,004 | 10,000 | 50,035 | 20,031 |
+| 2,048 synthetic log strings | 8,196 | 2,730 | 249,633 | 244,167 |
+
+Page sizes include the header and presence bitmap, but exclude descriptor metadata and the optional decoded size.
+Varints save 5,466 bytes (2.19%) on the log page, versus 41% on the ten-digit page.
+They require a prefix scan or a reconstructed offset array before direct access.
+The existing `DecodeBatch` accepts that reconstructed array.
+Full results reside in `fsst-go/results/loki-pages-varint.json`.
+
+Warm decode throughput for the 2,048-row log page, in decoded MB/s:
+
+| Decode mode | uint32 offsets | varint lengths |
+| --- | ---: | ---: |
+| Random single value | 4,447 | 183 |
+| Whole page | 4,961 | 4,863 |
+
+The timer includes boundary parsing and FSST decode, but excludes table construction, bitmap processing, CRC32C, and I/O.
+Full results reside in `fsst-go/results/loki-boundary-decode-summary.json`.
 
 ## Other Notes
 
-### Preliminary Go benchmark results
+### Benchmark results
 
 The page comparison from 2026-11-05 uses the optimized FSST fork at revision `ee30e95` and `github.com/klauspost/compress v1.20.1`.
 All six configurations run in the same executable and process, with an independent repeat.
@@ -264,30 +308,9 @@ No FSST compression enum is necessary for this approach.
 The table and offsets reside within the page payload.
 They need no additional protobuf fields.
 
-### Validation and open questions
-
-Validation covers:
-
-- Exact round trips for empty strings, Unicode, and arbitrary bytes.
-- NULL values and pages with no non-NULL values.
-- Multiple pages and reused builders.
-- Ordered appends and incremental merges.
-- Invalid offsets, truncated tables, and corrupt compressed streams.
-- Compression ratio, encode throughput, decode throughput, and allocations.
-- Table overhead and repeated table training costs.
-- Accuracy of existing object size estimates.
-
-Further work must resolve:
-
-- How the decoder receives the number of strings.
-- How decoded buffers integrate with the existing memory allocator.
-- Whether fixed-width offsets need a more compact representation.
-- Where the page stores its total decoded size for exact page allocation.
-
 ### String boundaries and decoded lengths illustration
 
-This is an illustration of how strings are stored
-from [String boundaries and decoded lenghts](#string-boundaries-and-decoded-lengths)
+This example illustrates the layout from the [proposal overview](#proposal-overview).
 
 ```text
 FSST table:
