@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"hash/crc32"
 	"math"
 	"testing"
 
@@ -23,6 +24,14 @@ func TestCacheItem(t *testing.T) {
 
 	// codecOf returns the codec byte of a cache item.
 	codecOf := func(stored []byte) byte { return stored[1] }
+
+	// compressedPayload returns the zstd frame of a cache item that holds compressible. It aliases stored.
+	compressedPayload := func(stored []byte) []byte {
+		return stored[len(stored)-len(encoder.EncodeAll(compressible, nil)):]
+	}
+
+	// The zstd frame checksum is the last 4 bytes of a zstd frame.
+	const zstdChecksumBytes = 4
 
 	t.Run("a cache item below the size threshold stays raw", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), minCompressBytes-1)
@@ -84,12 +93,12 @@ func TestCacheItem(t *testing.T) {
 
 	t.Run("returns errVersionMismatch for a cache item of another version", func(t *testing.T) {
 		stored := encodeCacheItem(compressible, key, codec, encoder)
-		stored[0] = cacheItemVersion + 1
+		stored[0] = cacheItemVersion - 1
 
 		_, err := decodeCacheItem(stored, key, maxRawSize, decoder)
 
 		require.ErrorIs(t, err, errVersionMismatch)
-		require.EqualError(t, err, "cache item version does not match: got 2, want 1")
+		require.EqualError(t, err, "cache item version does not match: got 1, want 2")
 	})
 
 	corrupt := func(mutate func(stored []byte) []byte) []byte {
@@ -136,6 +145,42 @@ func TestCacheItem(t *testing.T) {
 		})
 	}
 
+	t.Run("decodes a compressed cache item whose zstd frame checksum is wrong but whose CRC32 is valid", func(t *testing.T) {
+		stored := encodeCacheItem(compressible, key, codec, encoder)
+		require.Equal(t, codecZstd, codecOf(stored))
+		payload := compressedPayload(stored)
+		for i := len(payload) - zstdChecksumBytes; i < len(payload); i++ {
+			payload[i] ^= 0xff
+		}
+		_, n := binary.Uvarint(stored[versionAndCodecBytes:])
+		binary.LittleEndian.PutUint32(stored[versionAndCodecBytes+n:], crc32.ChecksumIEEE(payload))
+		verifying, err := zstd.NewReader(nil)
+		require.NoError(t, err)
+		t.Cleanup(verifying.Close)
+		_, err = decodeCacheItem(stored, key, maxRawSize, verifying)
+		require.EqualError(t, err, "decompressing cache item: "+zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
+
+		got, err := decodeCacheItem(stored, key, maxRawSize, decoder)
+
+		require.NoError(t, err)
+		require.Equal(t, compressible, got)
+	})
+
+	t.Run("rejects a compressed cache item with any payload byte changed, before it decodes", func(t *testing.T) {
+		stored := encodeCacheItem(compressible, key, codec, encoder)
+		require.Equal(t, codecZstd, codecOf(stored))
+		payloadStart := len(stored) - len(compressedPayload(stored))
+
+		for i := payloadStart; i < len(stored); i++ {
+			changed := bytes.Clone(stored)
+			changed[i] ^= 0xff
+
+			_, err := decodeCacheItem(changed, key, maxRawSize, decoder)
+
+			require.EqualError(t, err, "cache item checksum mismatch", "payload byte %d", i-payloadStart)
+		}
+	})
+
 	t.Run("rejects a raw cache item with a payload byte that differs from the checksum", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), 200)
 		stored := encodeCacheItem(raw, key, codec, encoder)
@@ -146,13 +191,23 @@ func TestCacheItem(t *testing.T) {
 		require.EqualError(t, err, "cache item checksum mismatch")
 	})
 
-	t.Run("rejects a raw cache item that is one byte shorter than its raw size", func(t *testing.T) {
+	t.Run("rejects a raw cache item that lost its last byte with a checksum mismatch", func(t *testing.T) {
 		raw := bytes.Repeat([]byte("a"), 200)
 		stored := encodeCacheItem(raw, key, codec, encoder)
 
 		_, err := decodeCacheItem(stored[:len(stored)-1], key, maxRawSize, decoder)
 
-		require.EqualError(t, err, "cache item has 199 bytes, want 200")
+		require.EqualError(t, err, "cache item checksum mismatch")
+	})
+
+	t.Run("rejects a raw cache item whose payload has a valid CRC32 but is one byte shorter than its raw size", func(t *testing.T) {
+		raw := bytes.Repeat([]byte("a"), 100)
+		stored := encodeCacheItem(raw, key, codec, encoder)
+		stored[versionAndCodecBytes] = 101
+
+		_, err := decodeCacheItem(stored, key, maxRawSize, decoder)
+
+		require.EqualError(t, err, "cache item has 100 bytes, want 101")
 	})
 }
 

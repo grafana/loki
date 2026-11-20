@@ -1184,6 +1184,12 @@ dataobj:
     # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
     [max_region_bytes: <int> | default = 4194304]
 
+    # The largest memory, in bytes, that the metadata prefetcher uses to
+    # remember the size of the metadata region of each data object that has been
+    # opened.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-size-cache-bytes
+    [max_region_size_cache_bytes: <int> | default = 50MB]
+
     # The time limit of the load that follows a cache miss.
     # CLI flag: -dataobj.metadata-prefetcher.load-timeout
     [load_timeout: <duration> | default = 5s]
@@ -1246,6 +1252,19 @@ dataobj:
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Maximum uncompressed postings size of one IndexMerge task.
+    # The planner splits a larger merge into tasks by posting key. The tasks run
+    # in parallel and together write one index run. The planner estimates sizes
+    # from a sample of the posting keys and cuts only at sampled keys, so a task
+    # can exceed the maximum. The estimate shares the size of each postings
+    # section evenly over its rows, so a task over large bloom filters can
+    # exceed the maximum by more. Each task also merges the stats rows of some
+    # of the source indexes, which the maximum does not count. A worker that
+    # does not support the split fails its tasks, so upgrade every worker before
+    # you set it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.max-task-size
+    [max_task_size: <int> | default = 0B]
 
     # Experimental: Runs per planned log merge (K for log compaction), before
     # logs.max-task-size splits it into tasks. Log compaction merges only groups

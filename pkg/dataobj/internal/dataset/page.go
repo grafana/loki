@@ -214,11 +214,20 @@ func (c *closerFunc) Close() error { return c.onClose() }
 
 // getZstdDecoder lazily initializes a global Zstd decoder. It is only safe to
 // use DecodeAll concurrently.
+//
+// The decoder does not verify the zstd frame checksum. The caller must verify
+// the integrity of the input.
 var getZstdDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
 	// NOTE(rfratto): We used to use pooled decoders here with streaming decodes
 	// (Decode rather than DecodeAll), but using pooled decoders made it
 	// difficult to control total allocations.
 
-	// Using a concurrency of 0 will use GOMAXPROCS workers.
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0))
+	return zstd.NewReader(nil,
+		// Using a concurrency of 0 will use GOMAXPROCS workers.
+		zstd.WithDecoderConcurrency(0),
+
+		// Skip the zstd frame checksum. MemPage.open already verifies the CRC32
+		// of the compressed page before it decodes.
+		zstd.IgnoreChecksum(true),
+	)
 })

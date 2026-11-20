@@ -49,9 +49,8 @@ import (
 //
 // The arrays of the record batch use memory from alloc, so they stay valid until
 // the caller reclaims alloc. ReadRecordBatch can also leave temporary arrays in
-// alloc, and a failed call can leave memory in alloc. A binary column can use
-// the memory of a whole page, even when the record batch has few of its rows.
-// So the caller should reclaim alloc after it consumes each record batch.
+// alloc, and a failed call can leave memory in alloc. So the caller should
+// reclaim alloc after it consumes each record batch.
 //
 // ReadRecordBatch returns an error if batchSize is not positive, alloc is nil,
 // or [RowReader.Open] was not called first. It returns the error of ctx if ctx

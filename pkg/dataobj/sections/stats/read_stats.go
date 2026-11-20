@@ -87,7 +87,7 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 		for _, pages := range pageSets[i] {
 			columnStats.Pages = append(columnStats.Pages, PageStats{
 				UncompressedSize: pages.UncompressedSize,
-				CompressedSize:   pages.CompressedSize,
+				CompressedSize:   pages.DataSize,
 				CRC32:            pages.Crc32,
 				RowsCount:        pages.RowsCount,
 				Encoding:         pages.Encoding.String(),

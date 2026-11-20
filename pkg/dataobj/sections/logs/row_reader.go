@@ -18,6 +18,10 @@ import (
 )
 
 // RowReader reads the set of logs from an [Object].
+//
+// [RowReader.Read] returns the logs as [Record] values. [RowReader.ReadRecordBatch] returns them
+// as a [RecordBatch], with one array for each column. Calls of the two methods can follow each
+// other.
 type RowReader struct {
 	sec   *Section
 	ready bool
@@ -35,16 +39,21 @@ type RowReader struct {
 	reader *dataset.RowReader
 
 	// projSectionColumns are the projected columns, in the same order as the dataset columns
-	// given to the reader. Read decodes a row by position, so the two must stay aligned. It
-	// holds every recognized column when no projection is set.
+	// given to the reader. Read and ReadRecordBatch match the values of a row, or the arrays of a
+	// record batch, to these columns by position, so the two must stay aligned. It holds every
+	// recognized column when no projection is set.
 	projSectionColumns []*Column
+
+	// projMetadataColumns is the number of projected metadata columns. newRecordBatch uses it to size
+	// RecordBatch.Metadata.
+	projMetadataColumns int
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
 
 // NewRowReader creates a new RowReader that reads from the provided [Section].
 //
-// Call [RowReader.Open] before calling [RowReader.Read].
+// Call [RowReader.Open] before calling [RowReader.Read] or [RowReader.ReadRecordBatch].
 func NewRowReader(sec *Section) *RowReader {
 	var lr RowReader
 	lr.Reset(sec)
@@ -53,8 +62,8 @@ func NewRowReader(sec *Section) *RowReader {
 
 // Open initializes RowReader resources.
 //
-// Open must be called before [RowReader.Read]. Open is safe to call multiple
-// times. Open is a no-op when the reader has no section.
+// Open must be called before [RowReader.Read] or [RowReader.ReadRecordBatch]. Open is safe to
+// call multiple times. Open is a no-op when the reader has no section.
 func (r *RowReader) Open(ctx context.Context) error {
 	if r.sec == nil || r.ready {
 		return nil
@@ -102,14 +111,15 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 	return nil
 }
 
-// SetProjectedColumns restricts the [Record] to the given column types plus the metadata
-// columns named in metadataNames. A [ColumnTypeMetadata] entry in types selects all metadata
-// columns instead.
+// SetProjectedColumns restricts the [Record] and the [RecordBatch] to the given column types plus
+// the metadata columns named in metadataNames. A [ColumnTypeMetadata] entry in types selects all
+// metadata columns instead.
 //
-// The field of a column that is not projected comes back as its zero value.
+// The field of a column that is not projected comes back as its zero value in a [Record], and
+// as nil in a [RecordBatch].
 //
 // The reader reads the columns a stream match or a predicate needs, even when the caller
-// does not list them. It does not decode them into the [Record].
+// does not list them. It does not decode them into the [Record] or the [RecordBatch].
 //
 // When the section holds no such column, a metadata or message predicate evaluates against the
 // empty value.
@@ -246,6 +256,12 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 
 	r.projSectionColumns = projectedSectionColumns
+	r.projMetadataColumns = 0
+	for _, column := range projectedSectionColumns {
+		if column.Type == ColumnTypeMetadata {
+			r.projMetadataColumns++
+		}
+	}
 	r.ready = true
 	return nil
 }
@@ -290,6 +306,7 @@ func (r *RowReader) Reset(sec *Section) {
 	clear(r.projTypes)
 	clear(r.projMetadata)
 	r.projSectionColumns = nil
+	r.projMetadataColumns = 0
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Open.
