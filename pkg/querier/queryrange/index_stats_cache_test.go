@@ -126,6 +126,7 @@ func TestIndexStatsCache_BypassesHintedRequests(t *testing.T) {
 
 	for _, hints := range []*logproto.HintTimeRanges{
 		{Ranges: []logproto.HintTimeRange{{Start: testTime, End: testTime.Add(time.Minute)}}},
+		{Ranges: []logproto.HintTimeRange{{Start: from.Time(), End: through.Time().Add(time.Millisecond)}}},
 		{},
 	} {
 		req := &logproto.IndexStatsRequest{From: from, Through: through, Matchers: `{foo="bar"}`, HintRanges: hints}
