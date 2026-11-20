@@ -273,7 +273,7 @@ func (r *Reader) init(ctx context.Context) error {
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
-		PrefetchAllOnOpen: true,
+		PrefetchAllOnOpen: false,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)

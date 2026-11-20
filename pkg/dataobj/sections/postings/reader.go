@@ -205,7 +205,7 @@ func (r *Reader) init(ctx context.Context) error {
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
 		Predicates:        preds,
-		PrefetchAllOnOpen: true,
+		PrefetchAllOnOpen: false,
 		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
