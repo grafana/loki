@@ -209,7 +209,7 @@ func testInternalLabels(t *testing.T, h *harness, now time.Time) {
 	require.Equal(t, http.StatusOK, status, body)
 	require.Contains(t, body, `"job":"internal"`)
 
-	for _, name := range []string{"labels", "legacy label", "detected labels"} {
+	for _, name := range []string{"labels", "legacy label"} {
 		for _, e := range readEndpoints() {
 			if e.name != name {
 				continue
@@ -223,6 +223,17 @@ func testInternalLabels(t *testing.T, h *harness, now time.Time) {
 			})
 		}
 	}
+
+	// The detected labels API looks at the streams the selector matches, so it has to select the
+	// stream with the internal labels. The other label APIs take no selector.
+	t.Run("detected labels", func(t *testing.T) {
+		status, body := do(t, h.get("/loki/api/v1/detected_labels", queryParams(now, `{job="internal"}`)))
+		require.Equal(t, http.StatusOK, status, body)
+		require.Contains(t, body, `"env"`)
+		for _, label := range internalLabels {
+			require.NotContains(t, body, label)
+		}
+	})
 
 	// The series API returns the labels of every stream that matches, minus the ones the
 	// distributor adds when it divides a stream. It keeps the labels that tell apart the streams
