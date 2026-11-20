@@ -2829,6 +2829,8 @@ var shardableOps = map[string]bool{
 	OpRangeTypeMax:       true,
 	OpRangeTypeMin:       true,
 	OpRangeTypeQuantile:  true,
+	// the histograms of the shards of a series are added up, see IsAdditiveRangeOp
+	OpRangeTypeHistogram: true,
 
 	// binops - arith
 	OpTypeAdd: true,
@@ -2962,7 +2964,10 @@ func ReducesLabels(e Expr) (conflict bool) {
 // global result. The additive set matches the operations in [rangeMergeMap]
 // (in the shardmapper) that map to [OpTypeSum] as their cross-shard combiner.
 //
-// Additive: count_over_time, rate, bytes_over_time, bytes_rate, sum_over_time.
+// Additive: count_over_time, rate, bytes_over_time, bytes_rate, sum_over_time,
+// histogram_over_time. The histograms of a series on different shards have the
+// same buckets, so adding up the counts of the buckets gives the histogram of
+// all the observations.
 // Non-additive: max_over_time, min_over_time, avg_over_time, quantile_over_time,
 // stddev_over_time, stdvar_over_time, first_over_time, last_over_time,
 // absent_over_time, rate_counter. For non-additive ops, an outer `sum` must not
@@ -2971,7 +2976,7 @@ func ReducesLabels(e Expr) (conflict bool) {
 // combiner then adds where it should max/min/re-avg/etc.
 func IsAdditiveRangeOp(op string) bool {
 	switch op {
-	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum:
+	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum, OpRangeTypeHistogram:
 		return true
 	}
 	return false

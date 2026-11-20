@@ -18,6 +18,7 @@ const (
 	ShardLastOverTime          = "last_over_time"
 	ShardFirstOverTime         = "first_over_time"
 	ShardQuantileOverTime      = "quantile_over_time"
+	ShardHistogramOverTime     = "histogram_over_time"
 	SupportApproxTopk          = "approx_topk"
 	SupportApproxCountDistinct = "approx_count_distinct"
 )
@@ -26,6 +27,7 @@ type ShardMapper struct {
 	shards                     ShardingStrategy
 	metrics                    *MapperMetrics
 	quantileOverTimeSharding   bool
+	histogramOverTimeSharding  bool
 	lastOverTimeSharding       bool
 	firstOverTimeSharding      bool
 	approxTopkSupport          bool
@@ -37,6 +39,7 @@ func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggr
 		shards:                     strategy,
 		metrics:                    metrics,
 		quantileOverTimeSharding:   false,
+		histogramOverTimeSharding:  false,
 		lastOverTimeSharding:       false,
 		firstOverTimeSharding:      false,
 		approxTopkSupport:          false,
@@ -46,6 +49,8 @@ func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggr
 		switch a {
 		case ShardQuantileOverTime:
 			mapper.quantileOverTimeSharding = true
+		case ShardHistogramOverTime:
+			mapper.histogramOverTimeSharding = true
 		case ShardLastOverTime:
 			mapper.lastOverTimeSharding = true
 		case ShardFirstOverTime:
@@ -104,8 +109,7 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.HistogramFuncExpr:
-		// Not shardable yet, the query runs unsharded.
-		return noOp(e, m.shards.Resolver())
+		return m.mapHistogramFuncExpr(e, r)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
 	case *syntax.LabelAggregationExpr:
@@ -270,6 +274,11 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			// the fast leaf-compression path even under label reduction — an
 			// outer sum is the correct combiner regardless of collapse.
 			if syntax.ReducesLabels(expr.Left) && syntax.HasNonAdditiveAggr(expr.Left) {
+				break
+			}
+			// The sum of histograms is sharded only when histogram_over_time is, and it is left whole
+			// otherwise, as histogram_over_time is.
+			if !m.histogramOverTimeSharding && syntax.IsHistogramValued(expr) {
 				break
 			}
 			return m.wrappedShardedVectorAggr(expr, r)
@@ -483,6 +492,25 @@ func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downs
 	return &cpy, bytesPerShard, nil
 }
 
+// mapHistogramFuncExpr shards the histogram that the function reads, and keeps the function on top of it. The
+// quantile or the count of partial histograms is not the one of the histogram of all of them, so the function
+// is not pushed down to the shards: it is evaluated once, by the query frontend, on the sum of what the shards
+// return. Whether the histogram is sharded is up to histogram_over_time and the sum of it, which leave
+// the query whole when it is not enabled.
+func (m ShardMapper) mapHistogramFuncExpr(expr *syntax.HistogramFuncExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
+	subMapped, bytesPerShard, err := m.Map(expr.Left, r, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	sampleExpr, ok := subMapped.(syntax.SampleExpr)
+	if !ok {
+		return nil, 0, badASTMapping(subMapped)
+	}
+	cpy := *expr
+	cpy.Left = sampleExpr
+	return &cpy, bytesPerShard, nil
+}
+
 // These functions require a different merge strategy than the default
 // concatenation.
 // This is because the same label sets may exist on multiple shards when label-reducing parsing is applied or when
@@ -496,6 +524,9 @@ var rangeMergeMap = map[string]string{
 	syntax.OpRangeTypeBytesRate: syntax.OpTypeSum,
 	syntax.OpRangeTypeSum:       syntax.OpTypeSum,
 
+	// the histograms of a series are added up, bucket by bucket
+	syntax.OpRangeTypeHistogram: syntax.OpTypeSum,
+
 	// min & max require taking the min|max of the shards
 	syntax.OpRangeTypeMin: syntax.OpTypeMin,
 	syntax.OpRangeTypeMax: syntax.OpTypeMax,
@@ -506,9 +537,13 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		return noOp(expr, m.shards.Resolver())
 	}
 
+	if expr.Operation == syntax.OpRangeTypeHistogram && !m.histogramOverTimeSharding {
+		return noOp(expr, m.shards.Resolver())
+	}
+
 	switch expr.Operation {
 
-	case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytes, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeSum, syntax.OpRangeTypeMax, syntax.OpRangeTypeMin:
+	case syntax.OpRangeTypeCount, syntax.OpRangeTypeRate, syntax.OpRangeTypeBytes, syntax.OpRangeTypeBytesRate, syntax.OpRangeTypeSum, syntax.OpRangeTypeMax, syntax.OpRangeTypeMin, syntax.OpRangeTypeHistogram:
 		// if the expr can reduce labels, it can cause the same labelset to
 		// exist on separate shards and we'll need to merge the results
 		// accordingly. If it does not reduce labels and has no special grouping
