@@ -146,6 +146,25 @@ The cache skips an object whose metadata region is above a limit. Moving a very 
 more than the direct read saves. A cache item also cannot be larger than the item size limit of the
 cache backend. Loki checks at startup that the limit fits in a cache item.
 
+A querier writes nothing to the cache for an object above its limit, so its lookup for the object
+misses. The load that follows reads the head of the object only to find that the region is too large.
+So each querier remembers the region size of the objects that it opened, in a cache in memory. For an
+object above the limit, the prefetcher then fails before it asks the cache, and the query reads the
+metadata directly.
+
+A known size also helps an object within the limit. When the cache has no file metadata item for it,
+the load reads the region with one read. Without the size, it reads the head first, and then the rest
+when the region is larger than the head.
+
+An object never changes, so an entry of the cache never goes stale. The cache has a limit in bytes
+(`-dataobj.metadata-prefetcher.max-region-size-cache-bytes`). A read of an entry, and a write of a known
+path, count as a use. When the cache is full, it drops the entry that was used least recently. It also
+drops every entry that was not used for 24 hours. That drop runs on a read or a write, at most once a
+minute, so an idle querier keeps its entries.
+
+A querier remembers a size above the limit only when its own load read the object and found the size. A
+cache hit for an object that another querier cached, with a larger limit, stays a hit.
+
 ### Cache items
 
 A cache item has these properties:

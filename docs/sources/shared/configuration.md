@@ -1184,6 +1184,12 @@ dataobj:
     # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
     [max_region_bytes: <int> | default = 4194304]
 
+    # The largest memory, in bytes, that the metadata prefetcher uses to
+    # remember the size of the metadata region of each data object that has been
+    # opened.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-size-cache-bytes
+    [max_region_size_cache_bytes: <int> | default = 50MB]
+
     # The time limit of the load that follows a cache miss.
     # CLI flag: -dataobj.metadata-prefetcher.load-timeout
     [load_timeout: <duration> | default = 5s]

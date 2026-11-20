@@ -103,6 +103,10 @@ type CachedPrefetcher struct {
 
 	loads singleflight.Group
 
+	// sizes maps the path of an object to the size of its metadata region. It is nil when
+	// MaxRegionSizeCacheBytes is 0.
+	sizes *metadataRegionSizeCache
+
 	requests      prometheus.Counter
 	successes     *prometheus.CounterVec
 	failures      *prometheus.CounterVec
@@ -112,12 +116,15 @@ type CachedPrefetcher struct {
 }
 
 // NewCachedPrefetcher returns a CachedPrefetcher that keeps cache items in backend. It registers its
-// counters, and the counters of its region loader, on reg. The registerer and the logger may be nil.
+// metrics, and the metrics of its region loader, on reg. The registerer and the logger may be nil.
 //
 // The max region size of cfg is the largest metadata region that the prefetcher handles. The metadata
 // region of an object is the bytes from offset 0 to the end of the metadata of all sections. The
 // prefetcher skips an object with a larger region: it reads at most the head of the object, writes
-// nothing to the cache, and returns an error that wraps ErrNotPrefetchable.
+// nothing to the cache, and returns an error that wraps ErrNotPrefetchable. When the metadata region
+// size cache is on and the lookup found no file metadata item for the object, the prefetcher also
+// remembers the size of that region. It then skips the object with no cache lookup and no object
+// storage read, until the region size cache drops the entry.
 //
 // maxItemBytes is the largest cache item that backend holds. The max region size, plus
 // cacheItemOverheadBytes, must fit in it, so a region item fits in a cache item. NewCachedPrefetcher
@@ -151,6 +158,7 @@ func NewCachedPrefetcher(backend cache.Cache, maxItemBytes int64, cfg Prefetcher
 		regions:        regions,
 		encoder:        regions.encoder,
 		decoder:        regions.decoder,
+		sizes:          newMetadataRegionSizeCache(int64(cfg.MaxRegionSizeCacheBytes), time.Now, reg),
 
 		requests: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_requests_total",
@@ -225,6 +233,13 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 		p.responseBytes.Observe(float64(res.PrefetchedRanges.size()))
 	}()
 
+	// A remembered size above the limit means that the lookup found no file metadata item, and that the
+	// load would fail again. Skip both.
+	knownSize, _ := p.sizes.get(req.Path)
+	if err := p.regions.checkRegionSize(knownSize); err != nil {
+		return PrefetchResponse{}, err
+	}
+
 	// A prefetch set that names too many columns reads every column.
 	prefetchSet := req.PrefetchSet
 	if len(prefetchSet.MetadataNames) > maxNamedColumns {
@@ -236,6 +251,9 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 	found, lookupErr := p.fetchMetadataRangesFromCache(ctx, req.Path, prefetchSet)
 	if err := ctx.Err(); err != nil {
 		return PrefetchResponse{}, err
+	}
+	if knownSize == 0 && found.fileMetadata != nil {
+		p.cacheMetadataRegionSize(req.Path, found.fileMetadata, found.startOffset)
 	}
 	if found.satisfies(prefetchSet) {
 		hit := PrefetchResponse{PrefetchedRanges: prefetchSet.prefetchedRangesFor(found.ranges, found.region)}
@@ -264,7 +282,7 @@ func (p *CachedPrefetcher) Prefetch(ctx context.Context, req PrefetchRequest) (r
 		return PrefetchResponse{}, fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, cause, lookupErr)
 	}
 
-	loaded, err := p.fetchAndFillMetadataRangesCacheSingleFlight(ctx, req, found)
+	loaded, err := p.fetchAndFillMetadataRangesCacheSingleFlight(ctx, req, found, knownSize)
 	if err != nil {
 		return PrefetchResponse{}, err
 	}
@@ -331,14 +349,15 @@ func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, pat
 }
 
 // fetchAndFillMetadataRangesCacheSingleFlight reads the whole region and fills the cache.
-// Concurrent calls for one object share one run.
-func (p *CachedPrefetcher) fetchAndFillMetadataRangesCacheSingleFlight(ctx context.Context, req PrefetchRequest, f *fetchResult) (*loadedRegion, error) {
+// Concurrent calls for one object share one run. knownSize is the remembered region size, or 0 when
+// the region size cache has none.
+func (p *CachedPrefetcher) fetchAndFillMetadataRangesCacheSingleFlight(ctx context.Context, req PrefetchRequest, f *fetchResult, knownSize int64) (*loadedRegion, error) {
 	ch := p.loads.DoChan(req.Path, func() (any, error) {
 		// The run outlives the caller that starts it, so it keeps the values of ctx and drops its
 		// cancellation. Callers that wait for it can still leave.
 		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.cfg.LoadTimeout)
 		defer cancel()
-		return p.fetchAndFillMetadataRangesCache(loadCtx, req, f)
+		return p.fetchAndFillMetadataRangesCache(loadCtx, req, f, knownSize)
 	})
 
 	select {
@@ -354,19 +373,31 @@ func (p *CachedPrefetcher) fetchAndFillMetadataRangesCacheSingleFlight(ctx conte
 
 // fetchAndFillMetadataRangesCache loads the whole region, splits it into groups, and
 // writes to the cache the groups that f did not find. The loader writes the region item.
-func (p *CachedPrefetcher) fetchAndFillMetadataRangesCache(ctx context.Context, req PrefetchRequest, f *fetchResult) (*loadedRegion, error) {
+//
+// It also remembers the region size. It remembers a size above the limit only when f has no file
+// metadata.
+func (p *CachedPrefetcher) fetchAndFillMetadataRangesCache(ctx context.Context, req PrefetchRequest, f *fetchResult, knownSize int64) (*loadedRegion, error) {
 	var opts []LoadOption
-	if f.fileMetadata != nil {
+	switch {
+	case f.fileMetadata != nil:
 		// With the file metadata from the lookup, the loader knows the size of the region.
 		size, err := metadataRegionSize(f.fileMetadata, f.startOffset)
 		if err != nil {
 			return nil, err
 		}
 		opts = append(opts, WithRegionSizeHint(size))
+	case knownSize > 0:
+		opts = append(opts, WithRegionSizeHint(knownSize))
 	}
 
 	region, err := p.regions.Load(ctx, req, opts...)
 	if err != nil {
+		// A lookup that found the file metadata item means another querier, or an earlier run of this
+		// one, cached the object, maybe with a larger limit. Its groups can still serve a later lookup.
+		// So only a load that read the object itself remembers a size above the limit.
+		if tooLarge, ok := errors.AsType[regionTooLargeError](err); ok && f.fileMetadata == nil {
+			p.sizes.set(req.Path, tooLarge.size)
+		}
 		return nil, err
 	}
 
@@ -379,6 +410,7 @@ func (p *CachedPrefetcher) fetchAndFillMetadataRangesCache(ctx context.Context, 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNotPrefetchable, err)
 	}
+	p.cacheMetadataRegionSize(req.Path, md, startOffset)
 
 	filled := p.fillMetadataRangesCache(ctx, req.Path, groups, f, nil)
 	return &loadedRegion{region: region, groups: groups, filled: filled}, nil
@@ -442,6 +474,16 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 		p.warn("data object metadata prefetcher fill failed", path, err)
 	}
 	return written
+}
+
+// cacheMetadataRegionSize remembers the region size that md names. It remembers nothing when the layout of
+// md is not valid or the size is above the limit. Only a load that read the object itself and failed
+// with regionTooLargeError remembers such a size. So a cache hit for an object that another querier
+// cached stays a hit.
+func (p *CachedPrefetcher) cacheMetadataRegionSize(path string, md *filemd.Metadata, startOffset int64) {
+	if size, err := metadataRegionSize(md, startOffset); err == nil && size <= p.maxRegionBytes {
+		p.sizes.set(path, size)
+	}
 }
 
 // warn writes a warning about the object at path, unless it wrote one in the last warnInterval.
