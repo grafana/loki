@@ -136,6 +136,11 @@ func (m *Matcher) Test(in []byte) bool {
 		if j == -1 {
 			return false
 		}
+		if i == 0 && j != 0 {
+			// A leading literal anchors the pattern at the start of the line,
+			// as in Matches. A pattern that starts with <_> allows other text.
+			return false
+		}
 		if i != 0 && j == 0 {
 			// This means we either have repetitive literals, or an empty
 			// capture. Either way, the line does not match the pattern.
