@@ -1,7 +1,12 @@
 package metadata
 
-// The prefetcher stores one cache item under each cache key. A cache item wraps a raw payload in the
-// envelope below. The envelope does not look at the payload.
+// The prefetcher stores one cache item under each cache key. A cache item wraps a block of raw bytes
+// in the envelope below. The raw bytes are one of two things:
+//
+//   - A group of prefetched ranges, in the layout below. A group is the file metadata, the
+//     core metadata, the message column, or one structured metadata column.
+//   - The whole metadata region of an object, as it lies in the data object file. It is not encoded
+//     any further.
 //
 // A uvarint is encoded like binary.PutUvarint. A fixed size integer is little endian.
 //
@@ -10,7 +15,7 @@ package metadata
 //	┌──────────────┬────────────┬───────────────────┐
 //	│ version <1b> │ codec <1b> │ rawSize <uvarint> │
 //	├──────────────┴────────────┴───────────────────┤
-//	│ crc32(raw) <4b>                               │
+//	│ crc32(payload) <4b>                           │
 //	├───────────────────────┬───────────────────────┤
 //	│ len(key) <uvarint>    │ key <bytes>           │
 //	├───────────────────────┴───────────────────────┤
@@ -18,27 +23,75 @@ package metadata
 //	└───────────────────────────────────────────────┘
 //
 //   - version is cacheItemVersion. A reader counts a cache item of another version as a miss.
-//   - codec is 0 when the payload is the raw bytes. It is 1 when the payload is one zstd frame of
-//     the raw bytes. The frame records its content size, and that size must equal rawSize.
+//   - codec is 0 when the item stores the raw bytes as they are. It is 1 when the item stores them
+//     compressed with zstd.
 //   - rawSize is the number of raw bytes.
-//   - crc32 is the IEEE CRC32 of the raw bytes, not of the payload.
+//   - crc32 is the IEEE CRC32 of the payload as stored. It covers the compressed bytes when the codec
+//     is 1. A reader checks it before it decodes the payload.
 //   - key is the unhashed cache key of the item. The cache stores the item under a hash of the key,
 //     and two keys can have the same hash. A reader counts a cache item whose key differs from the key
 //     it asked for as a miss.
+//   - payload is the bytes that the item stores for the raw bytes. When the codec is 0, the payload is
+//     the raw bytes. When the codec is 1, the payload is one zstd frame of the raw bytes. The frame
+//     records its content size, and that size must equal rawSize.
+//
+// Prefetched ranges, the raw bytes of a group:
+//
+//	┌────────────────────────────────────────┐
+//	│ #ranges <uvarint>                      │
+//	├────────────────────────────────────────┤
+//	│ ┌────────────────────────────────────┐ │
+//	│ │ range 0                            │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ ...                                │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ range #ranges-1                    │ │
+//	│ └────────────────────────────────────┘ │
+//	├────────────────────────────────────────┤
+//	│ #columnNames <uvarint>                 │
+//	├────────────────────────────────────────┤
+//	│ ┌────────────────────────────────────┐ │
+//	│ │ column name 0                      │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ ...                                │ │
+//	│ ├────────────────────────────────────┤ │
+//	│ │ column name #columnNames-1         │ │
+//	│ └────────────────────────────────────┘ │
+//	└────────────────────────────────────────┘
+//
+// Range:
+//
+//	┌──────────────────┬──────────────────┬──────────────┐
+//	│ offset <uvarint> │ length <uvarint> │ data <bytes> │
+//	└──────────────────┴──────────────────┴──────────────┘
+//
+// Column name:
+//
+//	┌─────────────────────┬──────────────┐
+//	│ len(name) <uvarint> │ name <bytes> │
+//	└─────────────────────┴──────────────┘
+//
+//   - offset is the absolute offset of the range in the data object file. length is the number of
+//     bytes of data.
+//   - Only the core group has column names. It lists every structured metadata column of the object,
+//     sorted by name. Every other group has none.
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"math"
+	"slices"
 
 	"github.com/klauspost/compress/zstd"
 )
 
 const (
-	// cacheItemVersion changes when the layout of a cache item or of prefetched ranges changes. A
-	// reader counts a cache item of another version as a miss.
-	cacheItemVersion = 1
+	// cacheItemVersion changes when the layout of a cache item or of prefetched ranges changes. It also
+	// changes when a field of a cache item changes meaning. A reader counts a cache item of another
+	// version as a miss.
+	cacheItemVersion = 2
 
 	codecNone byte = 0
 	codecZstd byte = 1
@@ -46,7 +99,7 @@ const (
 	// versionAndCodecBytes is the size of the version and the codec at the start of a cache item.
 	versionAndCodecBytes = 2
 
-	// checksumBytes is the size of the CRC32 of the raw bytes in a cache item.
+	// checksumBytes is the size of the CRC32 of the payload in a cache item.
 	checksumBytes = 4
 
 	// minCompressBytes is the smallest raw size that a cache item compresses.
@@ -55,10 +108,10 @@ const (
 	// maxZstdDecodedBytes caps the decoded size of one zstd cache item.
 	maxZstdDecodedBytes = 512 << 20
 
-	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the raw bytes of
-	// the ranges of a group: the range headers, the column names and the cache item envelope. The
-	// prefetcher adds it to the max region size, and rejects a config where the sum is above the
-	// largest cache item of the cache.
+	// cacheItemOverheadBytes is the estimated maximum of what a cache item adds to the data of the
+	// ranges of a group: the range headers, the column names and the envelope. The prefetcher adds it
+	// to the max region size, and rejects a config where the sum is above the largest cache item of
+	// the cache.
 	cacheItemOverheadBytes = 64 * 1024
 )
 
@@ -80,8 +133,18 @@ func newZstdEncoder() (*zstd.Encoder, error) {
 
 // newZstdDecoder returns the decoder that decompresses the cache items. It is safe for concurrent
 // use. DecodeAll starts no goroutine, so the decoder needs no Close.
+//
+// The decoder does not verify the zstd frame checksum. The caller must verify the integrity of the
+// compressed bytes.
 func newZstdDecoder() (*zstd.Decoder, error) {
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecoderMaxMemory(maxZstdDecodedBytes))
+	return zstd.NewReader(nil,
+		zstd.WithDecoderConcurrency(0),
+		zstd.WithDecoderMaxMemory(maxZstdDecodedBytes),
+
+		// Skip the zstd frame checksum. decodeCacheItem already verifies the CRC32 of the compressed
+		// bytes before it decodes them.
+		zstd.IgnoreChecksum(true),
+	)
 }
 
 // maxCachedBytes returns the largest raw size of a cache item, before compression, for regions of up
@@ -116,14 +179,15 @@ func encodeCacheItem(raw []byte, key string, codec CacheItemCodec, encoder *zstd
 	out := make([]byte, 0, maxEnvelopeBytes+len(key)+len(payload))
 	out = append(out, cacheItemVersion, codecType)
 	out = binary.AppendUvarint(out, uint64(len(raw)))
-	out = binary.LittleEndian.AppendUint32(out, crc32.ChecksumIEEE(raw))
+	out = binary.LittleEndian.AppendUint32(out, crc32.ChecksumIEEE(payload))
 	out = binary.AppendUvarint(out, uint64(len(key)))
 	out = append(out, key...)
 	return append(out, payload...)
 }
 
-// decodeCacheItem returns the raw bytes of a cache item. It decompresses the payload with decoder.
-// The result aliases stored when the cache item is not compressed.
+// decodeCacheItem returns the raw bytes of a cache item. It verifies the CRC32 of the payload, then
+// decompresses the payload with decoder. The result aliases stored when the cache item is not
+// compressed.
 //
 // It returns errKeyMismatch when the key in the cache item is not expectedKey, the unhashed cache key
 // that the caller asked for. It returns errVersionMismatch when the version of the cache item is not
@@ -157,6 +221,9 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 		return nil, errKeyMismatch
 	}
 	payload := rest[keyLength:]
+	if crc32.ChecksumIEEE(payload) != wantCRC {
+		return nil, errors.New("cache item checksum mismatch")
+	}
 
 	var raw []byte
 	switch codecType {
@@ -184,8 +251,83 @@ func decodeCacheItem(stored []byte, expectedKey string, maxRawSize int64, decode
 	if uint64(len(raw)) != rawSize {
 		return nil, fmt.Errorf("cache item has %d bytes, want %d", len(raw), rawSize)
 	}
-	if crc32.ChecksumIEEE(raw) != wantCRC {
-		return nil, errors.New("cache item checksum mismatch")
-	}
 	return raw, nil
+}
+
+// marshalPrefetchedRanges encodes the ranges of a group and, for the core group, the names of the
+// structured metadata columns of the object.
+func marshalPrefetchedRanges(ranges PrefetchedRanges, columnNames map[string]struct{}) []byte {
+	var out []byte
+	out = binary.AppendUvarint(out, uint64(len(ranges)))
+	for _, r := range ranges {
+		out = binary.AppendUvarint(out, uint64(r.Offset))
+		out = binary.AppendUvarint(out, uint64(len(r.Data)))
+		out = append(out, r.Data...)
+	}
+
+	names := make([]string, 0, len(columnNames))
+	for name := range columnNames {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	out = binary.AppendUvarint(out, uint64(len(names)))
+	for _, name := range names {
+		out = binary.AppendUvarint(out, uint64(len(name)))
+		out = append(out, name...)
+	}
+	return out
+}
+
+// unmarshalPrefetchedRanges decodes the output of marshalPrefetchedRanges. The returned ranges alias b.
+func unmarshalPrefetchedRanges(b []byte) (PrefetchedRanges, map[string]struct{}, error) {
+	errTruncated := errors.New("prefetched ranges are truncated")
+	next := func() (uint64, error) {
+		v, n := binary.Uvarint(b)
+		if n <= 0 {
+			return 0, errTruncated
+		}
+		b = b[n:]
+		return v, nil
+	}
+
+	// Each range takes at least two bytes, its offset and its length. A count above half the remaining
+	// bytes is invalid. The check stops a crafted count from forcing a large allocation.
+	count, err := next()
+	if err != nil || count > uint64(len(b))/2 {
+		return nil, nil, errTruncated
+	}
+	ranges := make(PrefetchedRanges, count)
+	for i := range ranges {
+		offset, err := next()
+		if err != nil || offset > math.MaxInt64 {
+			return nil, nil, errTruncated
+		}
+		length, err := next()
+		if err != nil || length > uint64(len(b)) {
+			return nil, nil, errTruncated
+		}
+		ranges[i] = PrefetchedRange{Offset: int64(offset), Data: b[:length:length]}
+		b = b[length:]
+	}
+
+	// Each column name takes at least one byte, its length. The same check applies, with all the
+	// remaining bytes.
+	nameCount, err := next()
+	if err != nil || nameCount > uint64(len(b)) {
+		return nil, nil, errTruncated
+	}
+	columnNames := make(map[string]struct{}, nameCount)
+	for range nameCount {
+		nameLength, err := next()
+		if err != nil || nameLength > uint64(len(b)) {
+			return nil, nil, errTruncated
+		}
+		columnNames[string(b[:nameLength])] = struct{}{}
+		b = b[nameLength:]
+	}
+
+	if len(b) != 0 {
+		return nil, nil, errors.New("prefetched ranges have trailing bytes")
+	}
+	return ranges, columnNames, nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -23,6 +24,21 @@ import (
 type indexRun struct {
 	// entries is never empty. Its entries share RunID.
 	entries []indexpointers.IndexPointer
+}
+
+// checkLength returns an error that wraps errCorruptIndex if an index object of
+// r records a run length other than the number of index objects of r. The ToC
+// then does not list the run that the ToC writer recorded.
+//
+// A run length of zero is unknown, so it matches any number. A ToC writer that
+// predates the run_length column drops the length when it rewrites the ToC.
+func (r indexRun) checkLength() error {
+	for _, entry := range r.entries {
+		if entry.RunLength != 0 && int(entry.RunLength) != len(r.entries) {
+			return fmt.Errorf("%w: index %s records a run of %d index objects, but the ToC lists %d", errCorruptIndex, entry.Path, entry.RunLength, len(r.entries))
+		}
+	}
+	return nil
 }
 
 // maxLoggedRunPaths is the largest number of index object paths that
@@ -95,7 +111,7 @@ func (r indexRun) String() string {
 
 // layoutGroup holds the index runs of one tenant and window that share a
 // stream layout, so they can merge with each other. It knows the index run of
-// each of its index objects.
+// each of its index objects, and the postings bounds that planning needs.
 //
 // The zero value is not usable. Use [newLayoutGroup].
 type layoutGroup struct {
@@ -105,6 +121,10 @@ type layoutGroup struct {
 	hasLayout bool
 
 	runs []indexRun
+
+	// sections holds the postings section references of every run, in the
+	// order of runs.
+	sections []v2.Section[indexSortKey]
 
 	// runOfPath maps the path of each index object of runs to its index in
 	// runs.
@@ -126,12 +146,14 @@ func (g *layoutGroup) shardBuckets() indexpointers.ShardBuckets {
 	return indexpointers.NewShardBuckets(g.layout.ShardLayout())
 }
 
-// add adds run to g. run must not share an index object with a run of g.
-func (g *layoutGroup) add(run indexRun) {
-	for _, entry := range run.entries {
+// add adds the run of read and its sections to g. The run must not share an
+// index object with a run of g, and read must have the layout of g.
+func (g *layoutGroup) add(read indexRunRead) {
+	for _, entry := range read.run.entries {
 		g.runOfPath[entry.Path] = len(g.runs)
 	}
-	g.runs = append(g.runs, run)
+	g.runs = append(g.runs, read.run)
+	g.sections = append(g.sections, read.sections...)
 }
 
 // entries returns the index objects of every run of g.
@@ -141,16 +163,6 @@ func (g *layoutGroup) entries() []indexpointers.IndexPointer {
 		out = append(out, run.entries...)
 	}
 	return out
-}
-
-// runOf returns the index run of the index object at path. It returns an
-// error if g holds no index object at path.
-func (g *layoutGroup) runOf(path string) (indexRun, error) {
-	i, ok := g.runOfPath[path]
-	if !ok {
-		return indexRun{}, fmt.Errorf("index %q is not in the layout group", path)
-	}
-	return g.runs[i], nil
 }
 
 // countRuns returns the number of index runs that the index objects at paths

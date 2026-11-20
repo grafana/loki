@@ -9,8 +9,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func (cfg *PerIndexOwnershipConfig) registerReconcileFlags(prefix string, f *flag.FlagSet) {
@@ -43,69 +46,86 @@ func (f *IndexOwnershipFilter) FilterTenantsToDrop(table string, tenantIDs []str
 	var drop []string
 	for _, tenantID := range tenantIDs {
 		k := f.shardFactor(table, tenantID)
-		serving, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexOwnersRead)
+		ownedForRead, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexOwnersRead)
 		if err != nil {
 			return nil, err
 		}
-		if len(serving) > 0 {
-			continue
-		}
-		owned, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexesSync)
+		ownedForSync, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexesSync)
 		if err != nil {
 			return nil, err
 		}
-		if len(owned) == 0 {
+		if len(ownedForRead) == 0 && len(ownedForSync) == 0 {
 			drop = append(drop, tenantID)
 		}
 	}
 	return drop, nil
 }
 
-// IndexOwnershipWatcher reconciles the indexes an index gateway holds with the
-// ones it owns whenever the ring changes, rather than waiting for the next
-// resync. It does nothing until Activate is called, once the initial preload
-// has run.
+// IndexOwnershipWatcher preloads the indexes an index gateway owns before it
+// becomes ACTIVE, then, if RingCheckPeriod is set, reconciles the indexes it
+// holds with the ones it owns whenever the ring changes, rather than waiting
+// for the next resync.
 type IndexOwnershipWatcher struct {
-	r      ring.ReadRing
-	period time.Duration
-	store  index.QueryReadinessEnsurer
-	logger log.Logger
+	cfg             PerIndexOwnershipConfig
+	r               ring.ReadRing
+	store           index.QueryReadinessEnsurer
+	logger          log.Logger
+	preloadDuration *prometheus.HistogramVec
 
-	active     chan struct{}
-	activeOnce sync.Once
+	preloaded     chan struct{}
+	preloadedOnce sync.Once
 }
 
-// NewIndexOwnershipWatcher returns a watcher that checks r every period and,
-// when the instances, their tokens or their states have changed, calls
-// store.EnsureQueryReadiness, which loads newly owned indexes and evicts the
-// ones no longer owned.
-func NewIndexOwnershipWatcher(r ring.ReadRing, period time.Duration, store index.QueryReadinessEnsurer, logger log.Logger) *IndexOwnershipWatcher {
+// NewIndexOwnershipWatcher returns a watcher that preloads owned indexes with
+// store.EnsureQueryReadiness and, every cfg.RingCheckPeriod, checks r and calls
+// it again when the instances, their tokens or their states have changed,
+// which loads newly owned indexes and evicts the ones no longer owned.
+func NewIndexOwnershipWatcher(cfg PerIndexOwnershipConfig, r ring.ReadRing, store index.QueryReadinessEnsurer, logger log.Logger, reg prometheus.Registerer) *IndexOwnershipWatcher {
 	return &IndexOwnershipWatcher{
+		cfg:    cfg,
 		r:      r,
-		period: period,
 		store:  store,
 		logger: logger,
-		active: make(chan struct{}),
+		preloadDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "index_gateway",
+			Name:      "owned_index_preload_duration_seconds",
+			Help:      "Time (in seconds) an index gateway spent in each phase of preloading the indexes it owns before becoming ACTIVE, by outcome. A wait_stability timeout means the ring was not stable and the preload went ahead anyway.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 13),
+		}, []string{"phase", "status"}),
+		preloaded: make(chan struct{}),
 	}
 }
 
-// Activate starts reconciling on ring changes. Before it is called, ring
-// changes are ignored so that they cannot trigger query readiness before the
-// initial preload.
-func (w *IndexOwnershipWatcher) Activate() {
-	w.activeOnce.Do(func() { close(w.active) })
+// Preload loads the indexes this gateway owns. The ring manager runs it while
+// the gateway is JOINING, before it becomes ACTIVE. Run starts reconciling
+// once it succeeds, so that ring changes cannot trigger query readiness
+// before the initial preload.
+func (w *IndexOwnershipWatcher) Preload(ctx context.Context) error {
+	if err := w.preload(ctx); err != nil {
+		return err
+	}
+	w.preloadedOnce.Do(func() { close(w.preloaded) })
+	return nil
 }
 
-// Run checks the ring until ctx is done. The first check after Activate
-// always reconciles. A reconcile that fails is retried on the next check.
-func (w *IndexOwnershipWatcher) Run(ctx context.Context) {
+// Run checks the ring every RingCheckPeriod until ctx is done. The first check
+// after Preload always reconciles. A reconcile that fails is retried on the
+// next check. If RingCheckPeriod is 0, it only waits for ctx to be done:
+// returning early would stop the module, and the store with it.
+func (w *IndexOwnershipWatcher) Run(ctx context.Context) error {
+	if w.cfg.RingCheckPeriod <= 0 {
+		<-ctx.Done()
+		return nil
+	}
+
 	select {
 	case <-ctx.Done():
-		return
-	case <-w.active:
+		return nil
+	case <-w.preloaded:
 	}
 
-	ticker := time.NewTicker(w.period)
+	ticker := time.NewTicker(w.cfg.RingCheckPeriod)
 	defer ticker.Stop()
 
 	var last ring.ReplicationSet
@@ -122,7 +142,7 @@ func (w *IndexOwnershipWatcher) Run(ctx context.Context) {
 			level.Info(w.logger).Log("msg", "reconciling owned indexes", "reason", reason)
 			start := time.Now()
 			if err := w.store.EnsureQueryReadiness(ctx); ctx.Err() != nil {
-				return
+				return nil
 			} else if err != nil {
 				level.Error(w.logger).Log("msg", "failed to reconcile owned indexes, retrying on the next check", "duration", time.Since(start), "err", err)
 			} else {
@@ -134,7 +154,7 @@ func (w *IndexOwnershipWatcher) Run(ctx context.Context) {
 
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-ticker.C:
 		}
 	}

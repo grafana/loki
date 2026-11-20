@@ -11,18 +11,13 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // IndexOwnersRead is the operation used to find the instances that serve an
@@ -47,7 +42,7 @@ type PerIndexOwnershipConfig struct {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *PerIndexOwnershipConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
-		"Experimental. Give each (tenant, table) index -replication-factor owners in the index gateway ring. An index gateway preloads only the indexes it owns, after it joins the ring and before it becomes ACTIVE. Requires -index-gateway.mode=ring.")
+		"Experimental. For schema periods with a sharded_path_prefix, give each (tenant, table) index -replication-factor owners in the index gateway ring. Gateways preload the indexes they own after joining the ring and before becoming ACTIVE. Clients route requests for those periods to the table owners. Requires -index-gateway.mode=ring.")
 	f.DurationVar(&cfg.WaitStabilityMinDuration, prefix+"wait-stability-min-duration", 0,
 		"Experimental. Minimum time the ring must be stable before the index gateway preloads its owned indexes. Set it when many index gateways join at once, such as when the ring is created or scaled up, so that each one preloads what it owns once every new instance has registered its tokens. 0 disables the wait.")
 	f.DurationVar(&cfg.WaitStabilityMaxDuration, prefix+"wait-stability-max-duration", 5*time.Minute,
@@ -238,24 +233,26 @@ func (f *IndexOwnershipFilter) shardFactor(table, tenant string) int {
 	return 1
 }
 
-// requireInRing fails unless this instance is in the ring for op. As in
+// instanceStateForSync fails unless this instance is in the ring for sync. As in
 // ShuffleShardingStrategy, an instance that has dropped out would otherwise
 // conclude it owns nothing.
-func (f *IndexOwnershipFilter) requireInRing(op ring.Operation) error {
-	set, err := f.r.GetAllHealthy(op)
+func (f *IndexOwnershipFilter) instanceStateForSync() (ring.InstanceState, error) {
+	set, err := f.r.GetAllHealthy(IndexesSync)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if !set.Includes(f.instanceAddr) {
-		return errGatewayUnhealthy
+	for _, instance := range set.Instances {
+		if instance.Addr == f.instanceAddr {
+			return instance.State, nil
+		}
 	}
-	return nil
+	return 0, errGatewayUnhealthy
 }
 
 // FilterTenants returns the tenants of which this instance owns at least one
 // shard of the index in table, for loading. It matches downloads.TenantFilter.
 func (f *IndexOwnershipFilter) FilterTenants(table string, tenantIDs []string) ([]string, error) {
-	if err := f.requireInRing(IndexesSync); err != nil {
+	if _, err := f.instanceStateForSync(); err != nil {
 		return nil, err
 	}
 
@@ -279,7 +276,8 @@ func (f *IndexOwnershipFilter) FilterTenants(table string, tenantIDs []string) (
 // every fingerprint and so is kept whenever any shard is owned. It matches
 // downloads.FileFilter.
 func (f *IndexOwnershipFilter) FilterFiles(table, tenantID string, files []storage.IndexFile) ([]storage.IndexFile, error) {
-	if err := f.requireInRing(IndexesSync); err != nil {
+	state, err := f.instanceStateForSync()
+	if err != nil {
 		return nil, err
 	}
 
@@ -288,11 +286,15 @@ func (f *IndexOwnershipFilter) FilterFiles(table, tenantID string, files []stora
 	if err != nil {
 		return nil, err
 	}
-	serving, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexOwnersRead)
-	if err != nil {
-		return nil, err
+	// A JOINING gateway preloads before it can serve. On a cold start the
+	// ring can have no ACTIVE gateways, so a read lookup would fail.
+	if state == ring.ACTIVE {
+		serving, err := f.ownership.OwnedShards(f.instanceAddr, tenantID, table, k, IndexOwnersRead)
+		if err != nil {
+			return nil, err
+		}
+		owned = append(owned, serving...)
 	}
-	owned = append(owned, serving...)
 
 	kept := make([]storage.IndexFile, 0, len(files))
 	for _, file := range files {
@@ -320,63 +322,52 @@ const (
 	preloadStatusCanceled = "canceled"
 )
 
-// NewOwnedIndexPreload returns the function an index gateway runs while it is
-// JOINING the ring, before it becomes ACTIVE. This function is used to preload
-// data. If the ring does not settle before the preload timeout, it logs and
-// returns nil so the gateway still becomes ACTIVE. Any other error fails
-// startup.
-func NewOwnedIndexPreload(cfg PerIndexOwnershipConfig, r ring.ReadRing, store indexstore.QueryReadinessEnsurer, logger log.Logger, reg prometheus.Registerer) func(context.Context) error {
-	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Subsystem: "index_gateway",
-		Name:      "owned_index_preload_duration_seconds",
-		Help:      "Time (in seconds) an index gateway spent in each phase of preloading the indexes it owns before becoming ACTIVE, by outcome. A wait_stability timeout means the ring was not stable and the preload went ahead anyway.",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, 13),
-	}, []string{"phase", "status"})
-
-	return func(ctx context.Context) error {
-		if cfg.WaitStabilityMinDuration > 0 {
-			level.Info(logger).Log("msg", "waiting for the index gateway ring to be stable before preloading", "min_duration", cfg.WaitStabilityMinDuration, "max_duration", cfg.WaitStabilityMaxDuration)
-			start := time.Now()
-			err := ring.WaitRingTokensStability(ctx, r, IndexesSync, cfg.WaitStabilityMinDuration, cfg.WaitStabilityMaxDuration)
-			switch {
-			case err == nil:
-				duration.WithLabelValues(preloadPhaseWaitStability, preloadStatusSuccess).Observe(time.Since(start).Seconds())
-				level.Info(logger).Log("msg", "index gateway ring is stable", "waited", time.Since(start))
-			case ctx.Err() != nil:
-				duration.WithLabelValues(preloadPhaseWaitStability, preloadStatusCanceled).Observe(time.Since(start).Seconds())
-				return ctx.Err()
-			default:
-				duration.WithLabelValues(preloadPhaseWaitStability, preloadStatusTimeout).Observe(time.Since(start).Seconds())
-				level.Warn(logger).Log("msg", "index gateway ring is not stable, preloading anyway", "waited", time.Since(start), "err", err)
-			}
-		}
-
-		preloadCtx := ctx
-		if cfg.PreloadTimeout > 0 {
-			var cancel context.CancelFunc
-			preloadCtx, cancel = context.WithTimeout(ctx, cfg.PreloadTimeout)
-			defer cancel()
-		}
-
-		level.Info(logger).Log("msg", "preloading owned indexes")
+// preload waits for the ring to be stable, if configured, then loads the
+// indexes this gateway owns. If the ring does not settle before the preload
+// timeout, it logs and returns nil so the gateway still becomes ACTIVE. Any
+// other error fails startup.
+func (w *IndexOwnershipWatcher) preload(ctx context.Context) error {
+	if w.cfg.WaitStabilityMinDuration > 0 {
+		level.Info(w.logger).Log("msg", "waiting for the index gateway ring to be stable before preloading", "min_duration", w.cfg.WaitStabilityMinDuration, "max_duration", w.cfg.WaitStabilityMaxDuration)
 		start := time.Now()
-		err := store.EnsureQueryReadiness(preloadCtx)
+		err := ring.WaitRingTokensStability(ctx, w.r, IndexesSync, w.cfg.WaitStabilityMinDuration, w.cfg.WaitStabilityMaxDuration)
 		switch {
 		case err == nil:
-			duration.WithLabelValues(preloadPhasePreload, preloadStatusSuccess).Observe(time.Since(start).Seconds())
-			level.Info(logger).Log("msg", "preloaded owned indexes", "duration", time.Since(start))
-			return nil
+			w.preloadDuration.WithLabelValues(preloadPhaseWaitStability, preloadStatusSuccess).Observe(time.Since(start).Seconds())
+			level.Info(w.logger).Log("msg", "index gateway ring is stable", "waited", time.Since(start))
 		case ctx.Err() != nil:
-			duration.WithLabelValues(preloadPhasePreload, preloadStatusCanceled).Observe(time.Since(start).Seconds())
+			w.preloadDuration.WithLabelValues(preloadPhaseWaitStability, preloadStatusCanceled).Observe(time.Since(start).Seconds())
 			return ctx.Err()
-		case preloadCtx.Err() != nil:
-			duration.WithLabelValues(preloadPhasePreload, preloadStatusTimeout).Observe(time.Since(start).Seconds())
-			level.Warn(logger).Log("msg", "preloading owned indexes timed out, becoming ACTIVE anyway", "duration", time.Since(start), "timeout", cfg.PreloadTimeout, "err", err)
-			return nil
 		default:
-			duration.WithLabelValues(preloadPhasePreload, preloadStatusError).Observe(time.Since(start).Seconds())
-			return fmt.Errorf("preload owned indexes: %w", err)
+			w.preloadDuration.WithLabelValues(preloadPhaseWaitStability, preloadStatusTimeout).Observe(time.Since(start).Seconds())
+			level.Warn(w.logger).Log("msg", "index gateway ring is not stable, preloading anyway", "waited", time.Since(start), "err", err)
 		}
+	}
+
+	preloadCtx := ctx
+	if w.cfg.PreloadTimeout > 0 {
+		var cancel context.CancelFunc
+		preloadCtx, cancel = context.WithTimeout(ctx, w.cfg.PreloadTimeout)
+		defer cancel()
+	}
+
+	level.Info(w.logger).Log("msg", "preloading owned indexes")
+	start := time.Now()
+	err := w.store.EnsureQueryReadiness(preloadCtx)
+	switch {
+	case err == nil:
+		w.preloadDuration.WithLabelValues(preloadPhasePreload, preloadStatusSuccess).Observe(time.Since(start).Seconds())
+		level.Info(w.logger).Log("msg", "preloaded owned indexes", "duration", time.Since(start))
+		return nil
+	case ctx.Err() != nil:
+		w.preloadDuration.WithLabelValues(preloadPhasePreload, preloadStatusCanceled).Observe(time.Since(start).Seconds())
+		return ctx.Err()
+	case preloadCtx.Err() != nil:
+		w.preloadDuration.WithLabelValues(preloadPhasePreload, preloadStatusTimeout).Observe(time.Since(start).Seconds())
+		level.Warn(w.logger).Log("msg", "preloading owned indexes timed out, becoming ACTIVE anyway", "duration", time.Since(start), "timeout", w.cfg.PreloadTimeout, "err", err)
+		return nil
+	default:
+		w.preloadDuration.WithLabelValues(preloadPhasePreload, preloadStatusError).Observe(time.Since(start).Seconds())
+		return fmt.Errorf("preload owned indexes: %w", err)
 	}
 }

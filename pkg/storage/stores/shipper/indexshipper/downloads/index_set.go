@@ -304,14 +304,14 @@ func (t *indexSet) Evict() error {
 	}
 	defer t.indexMtx.unlock()
 
+	// Keep going on errors: the table forgets the set even if Evict fails.
 	t.evicted.Store(true)
+	var errs []error
 	for fileName := range t.index {
-		if err := t.cleanupDB(fileName); err != nil {
-			return err
-		}
+		errs = append(errs, t.cleanupDB(fileName))
 	}
-
-	return os.RemoveAll(t.cacheLocation)
+	errs = append(errs, os.RemoveAll(t.cacheLocation))
+	return errors.Join(errs...)
 }
 
 // QueryReady implements IndexSet.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -15,14 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-)
-
-const (
-	// ShardingDefault routes each request to one gateway of the tenant's shuffle shard.
-	ShardingDefault = "default"
-	// ShardingPerIndex splits each request by index table and routes each part
-	// to the owners of that (tenant, table) index. Requires ring mode.
-	ShardingPerIndex = "per_index"
 )
 
 // tablePart is the part of a request that reads one index table.
@@ -47,12 +40,10 @@ func splitByTable(from, through model.Time, tableRange config.TableRange) []tabl
 	return parts
 }
 
-// perIndex reports whether requests are split by index table: with per_index
-// sharding, for a schema period that has a sharded index copy. Requests for
-// any other period are routed as with default sharding.
-func (s *GatewayClient) perIndex() bool {
-	p := s.cfg.TableRange.PeriodConfig
-	return s.cfg.Sharding == ShardingPerIndex && p != nil && p.IndexTables.ShardedPathPrefix != ""
+// perIndex reports whether the client routes to table owners for its schema period.
+func (i *ClientConfig) perIndex() bool {
+	p := i.TableRange.PeriodConfig
+	return i.Mode == RingMode && i.PerIndexOwnership && p != nil && p.IndexTables.ShardedPathPrefix != ""
 }
 
 // indexOwnerAddrs returns the addresses of the gateways that own the index of
@@ -73,19 +64,13 @@ func (s *GatewayClient) indexOwnerAddrs(tenantID, table string) ([]string, error
 }
 
 // doOnIndexOwners sends one request to the owners of the index of tenantID in
-// table, trying them as poolDoWithMaxRetries tries the tenant's gateways. Each
-// call takes a slot of the in-flight gate.
+// table, trying them as poolDoWithMaxRetries tries the tenant's gateways. The
+// caller reserves the required RPC slots before calling this method.
 func (s *GatewayClient) doOnIndexOwners(
-	ctx context.Context,
 	tenantID, table string,
 	maxRetries int,
 	callback func(client logproto.IndexGatewayClient) error,
 ) error {
-	if err := s.inFlight.Start(ctx); err != nil {
-		return mapInFlightGateError(err)
-	}
-	defer s.inFlight.Done()
-
 	addrs, err := s.indexOwnerAddrs(tenantID, table)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to find index gateway owners", "tenant", tenantID, "table", table, "err", err)
@@ -95,20 +80,20 @@ func (s *GatewayClient) doOnIndexOwners(
 }
 
 // fanOut splits [from, through] by index table and calls call for each part
-// on the owners of its table, with at most PerIndexMaxConcurrency parts in
+// on the owners of its table, with at most PerIndexMaxConcurrentParts parts in
 // flight. It returns the results in table order. The first error cancels the
 // other parts and is returned; partial results are never returned.
 //
 // A request that reads a single table is passed to call unchanged. ok is false
 // when the range reads no table of this client's period; the caller should
-// then send the request the default way.
+// then use per-tenant routing.
 func fanOut[T any](
 	ctx context.Context,
 	s *GatewayClient,
 	op string,
 	from, through model.Time,
 	call func(ctx context.Context, client logproto.IndexGatewayClient, from, through model.Time) (T, error),
-) (results []T, ok bool, err error) {
+) ([]T, bool, error) {
 	parts := splitByTable(from, through, s.cfg.TableRange)
 	if len(parts) == 0 {
 		return nil, false, nil
@@ -126,31 +111,31 @@ func fanOut[T any](
 	}
 
 	if len(parts) == 1 {
-		var res T
-		err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, s.cfg.MaxRetries, func(client logproto.IndexGatewayClient) error {
-			r, err := call(ctx, client, from, through)
-			if err != nil {
-				return err
-			}
-			res = r
-			return nil
-		})
-		if err != nil {
-			return nil, true, err
-		}
-		return []T{res}, true, nil
+		// Preserve the RPC range even if the schema period clips the table lookup.
+		parts[0].From, parts[0].Through = from, through
 	}
 
-	results = make([]T, len(parts))
+	want := min(len(parts), s.cfg.PerIndexMaxConcurrentParts)
+	slots, err := s.inFlight.reserve(ctx, want)
+	if err != nil {
+		return nil, true, mapInFlightGateError(err)
+	}
+	defer s.inFlight.release(slots)
+	if slots < want {
+		s.fanoutMetrics.concurrencyLimitedRequests.Inc()
+		defer s.fanoutMetrics.concurrencyLimitedRequests.Dec()
+	}
+
+	results := make([]T, len(parts))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(s.cfg.PerIndexMaxConcurrency)
+	g.SetLimit(slots)
 	for i, p := range parts {
 		g.Go(func() error {
 			// Don't start parts once another one has failed.
 			if err := gctx.Err(); err != nil {
 				return err
 			}
-			return s.doOnIndexOwners(gctx, tenantID, p.Table, s.cfg.MaxRetries, func(client logproto.IndexGatewayClient) error {
+			return s.doOnIndexOwners(tenantID, p.Table, s.cfg.MaxRetries, func(client logproto.IndexGatewayClient) error {
 				r, err := call(gctx, client, p.From, p.Through)
 				if err != nil {
 					return err
@@ -183,16 +168,29 @@ func mergeChunkRefResponses(resps []*logproto.GetChunkRefResponse) *logproto.Get
 	}
 
 	out := &logproto.GetChunkRefResponse{Refs: make([]*logproto.ChunkRef, 0, total)}
-	seen := make(map[logproto.ChunkRef]struct{}, total)
+	const tablePeriod = model.Time(config.ObjectStorageIndexRequiredPeriod / time.Millisecond)
+	tableNumber := func(t model.Time) model.Time {
+		n := t / tablePeriod
+		if t%tablePeriod < 0 {
+			n-- // Round down for timestamps before the Unix epoch.
+		}
+		return n
+	}
+
+	seen := make(map[logproto.ChunkRef]struct{})
 	var duplicates int64
 	for _, r := range resps {
 		out.Stats.Merge(r.Stats)
 		for _, ref := range r.Refs {
-			if _, ok := seen[*ref]; ok {
-				duplicates++
-				continue
+			// TSDB deduplicates within each table. Only refs that cross an
+			// inclusive table boundary can also appear in another response.
+			if tableNumber(ref.From) != tableNumber(ref.Through) {
+				if _, ok := seen[*ref]; ok {
+					duplicates++
+					continue
+				}
+				seen[*ref] = struct{}{}
 			}
-			seen[*ref] = struct{}{}
 			out.Refs = append(out.Refs, ref)
 		}
 	}

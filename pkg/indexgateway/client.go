@@ -15,7 +15,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -85,25 +84,24 @@ type ClientConfig struct {
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
 
-	// MaxInFlightRequests caps how many requests this client may have in flight at once.
-	// Zero disables the cap.
+	// MaxInFlightRequests caps concurrent RPCs across all requests from this client.
+	// Requests reserve their RPC slots up front. Zero disables the cap.
 	MaxInFlightRequests int `yaml:"max_in_flight_requests" category:"experimental"`
 
 	// MaxRetries caps how many further index gateway instances a failed request is tried
 	// against. -1 preserves the legacy retry limits; zero disables retries.
 	MaxRetries int `yaml:"max_retries" category:"experimental"`
 
-	// Sharding selects how requests are routed in ring mode: to the tenant's
-	// shuffle shard (default), or, for schema periods with a sharded index
-	// copy, split by index table to each table's owners (per_index).
-	Sharding string `yaml:"sharding" category:"experimental" doc:"hidden"`
+	// PerIndexOwnership is copied from the index gateway config. The client
+	// routes to table owners for schema periods with a sharded index copy.
+	PerIndexOwnership bool `yaml:"-"`
 
-	// PerIndexMaxConcurrency caps how many parts of one request are in flight
-	// at once in per_index sharding.
-	PerIndexMaxConcurrency int `yaml:"per_index_max_concurrency" category:"experimental" doc:"hidden"`
+	// PerIndexMaxConcurrentParts caps how many parts of one request are in flight
+	// at once when routing to table owners.
+	PerIndexMaxConcurrentParts int `yaml:"per_index_max_concurrent_parts" category:"experimental" doc:"hidden"`
 
 	// TableRange is the range of index tables of the schema period this client
-	// serves. It is set by the store and used by per_index sharding.
+	// serves. It is set by the store and used when routing to table owners.
 	TableRange config.TableRange `yaml:"-"`
 }
 
@@ -115,17 +113,20 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 
-	// Experimental: Time-based client side query sharding
+	// Routing in simple mode.
 	f.Var(
 		(*flagext.StringSlice)(&i.TimeBasedShardingBuckets),
 		prefix+".time-based-sharding-buckets",
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
-	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
+
+	// Request limits in both modes.
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of concurrent RPCs this index gateway client can reserve across requests. Each request reserves available slots up front and reserves one slot for each part it can send in parallel. If no slots are available, the request is rejected immediately with HTTP 503. The limit applies per client, with one client per schema period. 0 disables the limit.")
 	f.IntVar(&i.MaxRetries, prefix+".max-retries", -1, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. -1 preserves the existing behavior: up to 2 retries for GetShards and all candidate instances for other requests. 0 disables retries.")
-	f.StringVar(&i.Sharding, prefix+".sharding", ShardingDefault, "Experimental: How requests are routed to index gateways in ring mode. 'default' sends each request to a gateway of the tenant's shuffle shard. 'per_index' splits each request for a schema period with a sharded_path_prefix by index table and sends each part to the gateways that own that table's index for the tenant, then merges the answers; requests for other periods are routed as with 'default'. 'per_index' requires -index-gateway.mode=ring and is meant to be used with -index-gateway.per-index-ownership.enabled.")
-	f.IntVar(&i.PerIndexMaxConcurrency, prefix+".per-index-max-concurrency", 8, "Experimental: Maximum number of parts of one request sent at once when -"+prefix+".sharding=per_index. Each part counts towards -"+prefix+".max-in-flight-requests.")
+
+	// Routing in ring mode.
+	f.IntVar(&i.PerIndexMaxConcurrentParts, prefix+".per-index-max-concurrent-parts", 8, "Experimental: Maximum number of parts of one request sent at once when routing to table owners. Applies to schema periods with a sharded_path_prefix when -index-gateway.per-index-ownership.enabled is set in ring mode. The request reserves up to this many RPC slots under -"+prefix+".max-in-flight-requests and reuses them until it finishes.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -140,35 +141,22 @@ func (i *ClientConfig) Validate() error {
 	if i.MaxRetries < -1 {
 		return errors.New("index gateway client max-retries must be greater than or equal to -1")
 	}
-	switch i.Sharding {
-	case ShardingDefault, ShardingPerIndex:
-	default:
-		return fmt.Errorf("index gateway client sharding %q not supported, supported values: %s, %s", i.Sharding, ShardingDefault, ShardingPerIndex)
-	}
-	if i.PerIndexMaxConcurrency < 1 {
-		return errors.New("index gateway client per-index-max-concurrency must be greater than or equal to 1")
+	if i.PerIndexMaxConcurrentParts < 1 {
+		return errors.New("index gateway client per-index-max-concurrent-parts must be greater than or equal to 1")
 	}
 	return nil
 }
 
-// validatePerIndex checks the settings that are only known once the client is
-// built: the mode is copied from the index gateway config and the table range
-// is set per schema period.
+// validatePerIndex checks the requirements for clients that route to table owners.
 func (i *ClientConfig) validatePerIndex() error {
-	if i.Sharding != ShardingPerIndex {
+	if !i.perIndex() {
 		return nil
 	}
-	if i.Mode != RingMode {
-		return errors.New("index gateway client sharding=per_index requires index-gateway.mode=ring")
-	}
-	if i.PerIndexMaxConcurrency < 1 {
-		return errors.New("index gateway client per-index-max-concurrency must be greater than or equal to 1")
-	}
-	if i.TableRange.PeriodConfig == nil {
-		return errors.New("index gateway client sharding=per_index requires the table range of the schema period")
+	if i.PerIndexMaxConcurrentParts < 1 {
+		return errors.New("index gateway client per-index-max-concurrent-parts must be greater than or equal to 1")
 	}
 	if p := i.TableRange.PeriodConfig.IndexTables.Period; p != config.ObjectStorageIndexRequiredPeriod {
-		return fmt.Errorf("index gateway client sharding=per_index requires an index period of %s, got %s", config.ObjectStorageIndexRequiredPeriod, p)
+		return fmt.Errorf("index gateway client per-index routing requires an index period of %s, got %s", config.ObjectStorageIndexRequiredPeriod, p)
 	}
 	return nil
 }
@@ -178,7 +166,7 @@ type GatewayClient struct {
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 	retriesHistogram                  *prometheus.HistogramVec
-	inFlight                          gate.Gate
+	inFlight                          *inFlightGate
 	ownership                         *IndexOwnership
 	fanoutMetrics                     *fanoutMetrics
 	dnsProvider                       discovery.DNS
@@ -257,7 +245,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		buckets:                           buckets,
 		done:                              make(chan struct{}),
 	}
-	if sgClient.perIndex() {
+	if cfg.perIndex() {
 		sgClient.ownership = NewIndexOwnership(cfg.Ring)
 		sgClient.fanoutMetrics = newFanoutMetrics(r)
 	}
@@ -383,9 +371,9 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 		})
 }
 
-// callIndexGateway sends a unary request in covering [from, through]. With
-// per_index sharding it is split by table, each part getting a copy of in with
-// its range set by setRange, and the answers are combined with merge.
+// callIndexGateway sends a unary gRPC request covering [from, through]. When
+// routing to table owners, each part gets a copy of in with its range set by
+// setRange, and the answers are combined with merge.
 // Otherwise, or when the range reads no table of this client's period, in is
 // sent to one gateway as it is.
 func callIndexGateway[Req, Resp any](
@@ -399,7 +387,7 @@ func callIndexGateway[Req, Resp any](
 	merge func([]Resp) Resp,
 ) (Resp, error) {
 	var zero Resp
-	if s.perIndex() {
+	if s.cfg.perIndex() {
 		resps, ok, err := fanOut(ctx, s, op, from, through, func(ctx context.Context, client logproto.IndexGatewayClient, partFrom, partThrough model.Time) (Resp, error) {
 			req := in
 			if partFrom != from || partThrough != through {
@@ -467,7 +455,7 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		return nil
 	}
 
-	if s.perIndex() {
+	if s.cfg.perIndex() {
 		if parts := splitByTable(in.From, in.Through, s.cfg.TableRange); len(parts) > 0 {
 			tenantID, err := tenant.TenantID(ctx)
 			if err != nil {
@@ -487,7 +475,11 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 				tables = "multi"
 			}
 			s.fanoutMetrics.getShardsRequests.WithLabelValues(tables).Inc()
-			if err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, maxRetries, callback); err != nil {
+			if _, err := s.inFlight.reserve(ctx, 1); err != nil {
+				return nil, mapInFlightGateError(err)
+			}
+			defer s.inFlight.release(1)
+			if err := s.doOnIndexOwners(tenantID, parts[0].Table, maxRetries, callback); err != nil {
 				return nil, err
 			}
 			return res, nil
@@ -522,10 +514,10 @@ func (s *GatewayClient) poolDoWithMaxRetries(
 	callback func(client logproto.IndexGatewayClient) error,
 	filterServerList func([]string) []string,
 ) error {
-	if err := s.inFlight.Start(ctx); err != nil {
+	if _, err := s.inFlight.reserve(ctx, 1); err != nil {
 		return mapInFlightGateError(err)
 	}
-	defer s.inFlight.Done()
+	defer s.inFlight.release(1)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -602,6 +594,10 @@ func (s *GatewayClient) do(addr string, callback func(client logproto.IndexGatew
 	genericClient, err := s.pool.GetClientFor(addr)
 	if err != nil {
 		return errors.Wrapf(err, "get client for index gateway %s", addr)
+	}
+	if s.fanoutMetrics != nil {
+		s.fanoutMetrics.activeRPCs.Inc()
+		defer s.fanoutMetrics.activeRPCs.Dec()
 	}
 	return callback(genericClient.(logproto.IndexGatewayClient))
 }
@@ -728,11 +724,13 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 	return addrs[start:end]
 }
 
-// fanoutMetrics are the metrics of per_index sharding.
+// fanoutMetrics are the metrics of per-index routing.
 type fanoutMetrics struct {
-	requestTables     *prometheus.HistogramVec
-	boundaryParts     *prometheus.CounterVec
-	getShardsRequests *prometheus.CounterVec
+	requestTables              *prometheus.HistogramVec
+	boundaryParts              *prometheus.CounterVec
+	getShardsRequests          *prometheus.CounterVec
+	activeRPCs                 prometheus.Gauge
+	concurrencyLimitedRequests prometheus.Gauge
 }
 
 func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
@@ -740,18 +738,32 @@ func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
 		requestTables: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_client_request_tables",
-			Help:      "Number of index tables a request is split into with per_index sharding. Each table is a separate index gateway request.",
+			Help:      "Number of index tables a request is split into with per-index routing. Each table is a separate index gateway request.",
 			Buckets:   []float64{1, 2, 3, 4, 7, 14, 31},
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operation"}),
 		boundaryParts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_client_boundary_parts_total",
-			Help:      "Index gateway requests sent with per_index sharding only because a request ends exactly at the start of an index table.",
+			Help:      "Index gateway requests sent with per-index routing only because a request ends exactly at the start of an index table.",
 		}, []string{"operation"}),
 		getShardsRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_client_get_shards_requests_total",
-			Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
+			Help:      "GetShards requests sent with per-index routing, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
 		}, []string{"tables"}),
+		activeRPCs: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_active_rpcs",
+			Help:      "Number of RPCs currently running on this per-index client, including requests routed without fan-out.",
+		}),
+		concurrencyLimitedRequests: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_fanout_concurrency_limited_requests",
+			Help:      "Number of in-flight fan-out requests that reserved fewer RPC slots than they asked for.",
+		}),
 	}
 }

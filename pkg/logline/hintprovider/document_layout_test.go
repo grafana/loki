@@ -83,7 +83,7 @@ func writeV5TestIndex(t *testing.T, indexStore *store.Store, hash, needle string
 
 // TestLoglineHintProvider_ProvideHints_V5Cells checks that v5 hints come from
 // the footer's layout and the matching cells, one range per document shard,
-// and that QueryHints sends their time union over the wire.
+// and that QueryHints sends them over the wire.
 func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	const needle = "9fA81cD2Ef0077aa"
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
@@ -91,7 +91,7 @@ func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	indexStore := newTestStore(t)
 	writeV5TestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, day, day, []uint32{v5Cell(2250, 3), v5Cell(2250, 17), v5Cell(2260, 3)})
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	t0 := day.Add(10 * time.Hour)
@@ -123,8 +123,9 @@ func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{
-		{Start: t0, End: t0.Add(16 * time.Second)},
-		{Start: t0.Add(160 * time.Second), End: t0.Add(176 * time.Second)},
+		{Start: t0, End: t0.Add(16 * time.Second), DocumentShard: 3, DocumentShardBits: v5TestShardBits},
+		{Start: t0.Add(160 * time.Second), End: t0.Add(176 * time.Second), DocumentShard: 3, DocumentShardBits: v5TestShardBits},
+		{Start: t0, End: t0.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: v5TestShardBits},
 	}, FromProtoRanges(resp.TimeRanges))
 }
 
@@ -137,7 +138,7 @@ func TestLoglineHintProvider_ProvideHints_V5DayMismatchFails(t *testing.T) {
 	indexStore := newTestStore(t)
 	writeV5TestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, day.AddDate(0, 0, 1), day, []uint32{v5Cell(2250, 3)})
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	t0 := day.Add(10 * time.Hour)
@@ -218,7 +219,7 @@ func TestLoglineHintProvider_ProvideHints_MixedV3AndV5(t *testing.T) {
 	v3Max := v3Min.Add(30 * time.Second)
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, v3Min, v3Max)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	hints, _, err := provider.ProvideHints(

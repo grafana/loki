@@ -343,7 +343,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		return []propagation.TextMapPropagator{
 			propagation.TraceContext{},
 			propagation.Baggage{},
-			jaegerpropagator.Jaeger{},
+			tracestatePreservingJaegerPropagator{},
 			JaegerDebuggingPropagator{},
 		}
 	}
@@ -358,7 +358,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		case "baggage":
 			result = append(result, propagation.Baggage{})
 		case "jaeger":
-			result = append(result, jaegerpropagator.Jaeger{}, JaegerDebuggingPropagator{})
+			result = append(result, tracestatePreservingJaegerPropagator{}, JaegerDebuggingPropagator{})
 		case "none":
 			return nil
 		default:
@@ -366,4 +366,23 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		}
 	}
 	return result
+}
+
+// tracestatePreservingJaegerPropagator wraps the Jaeger propagator so that
+// Extract keeps a previously extracted traceparent for the same span. The
+// uber-trace-id header carries no tracestate or W3C random flag, so without
+// this, extracting Jaeger after TraceContext would discard them.
+type tracestatePreservingJaegerPropagator struct {
+	jaegerpropagator.Jaeger
+}
+
+func (p tracestatePreservingJaegerPropagator) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+	prev := trace.SpanContextFromContext(ctx)
+	ctx = p.Jaeger.Extract(ctx, carrier)
+	sc := trace.SpanContextFromContext(ctx)
+	if prev.IsRemote() && prev.TraceID() == sc.TraceID() && prev.SpanID() == sc.SpanID() {
+		// Keep ctx, which holds the Jaeger debug flag, but restore the W3C span context.
+		return trace.ContextWithRemoteSpanContext(ctx, prev)
+	}
+	return ctx
 }

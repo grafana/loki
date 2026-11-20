@@ -6,15 +6,15 @@ weight:
 ---
 # Manage authentication
 
-Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services.
+Grafana Loki does not include a username/password authentication layer. For production deployments, place an authenticating reverse proxy in front of Loki to control access. Loki does support [mutual TLS](#mutual-tls) natively for transport-level client authentication.
 
-The simple scalable and microservices [deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) require a reverse proxy to be deployed in front of Loki, to direct client API requests to the various components.
+Depending on the [deployment mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/), you may also need a routing or load-balancing layer in front of Loki. In [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode), a single process serves all API endpoints, so no routing layer is required. [HA monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#ha-monolithic-mode) requires a load balancer to distribute traffic across instances. The [microservices deployment mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) requires a reverse proxy to direct client API requests to the correct components.
 
-By default the Loki Helm chart includes a default reverse proxy configuration, using an nginx container to handle routing traffic and authorization.
+By default the Loki Helm chart includes a reverse proxy configuration, using an nginx container to handle both routing and authorization.
 
 A list of open-source reverse proxies you can use:
 
-- [HAProxy](https://docs.haproxy.org/ )
+- [HAProxy](https://docs.haproxy.org/)
 - [nginx](https://docs.nginx.com/nginx/) using their [guide on restricting access with HTTP basic authentication](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-http-basic-authentication/)
 - [OAuth2 proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
 - [Pomerium](https://www.pomerium.com/docs), which has a [guide for securing Grafana](https://www.pomerium.com/docs/guides/grafana)
@@ -25,7 +25,9 @@ Loki runs in multi-tenant mode by default (`auth_enabled: true`). In this mode, 
 of populating this value should be handled by the authenticating reverse proxy.
 A request that does not include this header fails with an HTTP `401 Unauthorized` error and the message `no org id`.
 To learn how to troubleshoot this error, refer to [No org ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-operations/#error-no-org-id).
-For more information, read the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.{{< /admonition >}}
+For more information, read the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.
+
+When configured with `auth_enabled: false`, Loki uses a single tenant and the `X-Scope-OrgID` header is not required. The single tenant ID defaults to `fake` and can be changed with the `no_auth_tenant` configuration option.{{< /admonition >}}
 
 For information on configuring authentication for your log shipping agent, see the [Grafana Alloy documentation](https://grafana.com/docs/alloy/latest/).
 

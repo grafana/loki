@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap/xcaptest"
 )
 
 var regionLoaderCodec = metadata.CacheItemCodec{Zstd: true, MinRatio: 1.5}
@@ -95,13 +97,17 @@ func TestCachedRegionLoader(t *testing.T) {
 		_, err := l.Load(t.Context(), req)
 		require.NoError(t, err)
 		source(req).block = true
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, recorded := xcaptest.NewRegion(t)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		got, err := l.Load(ctx, req)
 
 		require.NoError(t, err)
 		require.Equal(t, region, got)
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToCache))
+		require.Equal(t, int64(len(region)), recorded(metadata.StatMetadataPrefetchBytesFromCache))
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromStorage), "the blocked read downloads nothing")
 		require.Equal(t, regionLoaderMetrics{
 			requests:         2,
 			storageSuccesses: 1,
@@ -202,7 +208,37 @@ func TestCachedRegionLoader(t *testing.T) {
 
 		require.ErrorIs(t, err, readErr)
 		require.Zero(t, backend.sets())
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"storage_error": 1}}, gatherRegionLoaderMetrics(t, reg))
+	})
+
+	storageTimeouts := map[string]error{
+		"a socket timeout":                       socketTimeoutError(),
+		"a deadline error of the storage client": fmt.Errorf("client timeout: %w", context.DeadlineExceeded),
+	}
+	for name, timeoutErr := range storageTimeouts {
+		t.Run("counts "+name+" as a storage timeout when the context is alive", func(t *testing.T) {
+			l, reg := newRegionLoader(t, newFakeCache(), obj.metadataRegionEnd)
+			req := obj.request(metadata.PrefetchSet{})
+			source(req).err = timeoutErr
+
+			_, err := l.Load(t.Context(), req)
+
+			require.ErrorIs(t, err, timeoutErr)
+			require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"storage_timeout": 1}}, gatherRegionLoaderMetrics(t, reg))
+		})
+	}
+
+	t.Run("counts the deadline of the context as a timeout, and not as a storage timeout", func(t *testing.T) {
+		l, reg := newRegionLoader(t, newFakeCache(), obj.metadataRegionEnd)
+		req := obj.request(metadata.PrefetchSet{})
+		source(req).block = true
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+
+		_, err := l.Load(ctx, req)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"timeout": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 
 	t.Run("fails the load when closing the object storage reader fails", func(t *testing.T) {
@@ -216,7 +252,7 @@ func TestCachedRegionLoader(t *testing.T) {
 
 		require.ErrorIs(t, err, closeErr)
 		require.Zero(t, backend.sets())
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"storage_error": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 
 	t.Run("skips an object whose region is above the limit with one head read and no cache write", func(t *testing.T) {
@@ -229,7 +265,7 @@ func TestCachedRegionLoader(t *testing.T) {
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Equal(t, []readCall{{0, headBytes}}, source(req).calls())
 		require.Zero(t, backend.sets())
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"too_large": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 
 	t.Run("skips an object whose known region size is above the limit without a read", func(t *testing.T) {
@@ -242,7 +278,7 @@ func TestCachedRegionLoader(t *testing.T) {
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Empty(t, source(req).calls())
 		require.Zero(t, backend.sets())
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"too_large": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 
 	t.Run("skips an object whose file metadata does not fit in the head with one head read and no cache write", func(t *testing.T) {
@@ -257,7 +293,7 @@ func TestCachedRegionLoader(t *testing.T) {
 		require.ErrorIs(t, err, metadata.ErrNotPrefetchable)
 		require.Equal(t, []readCall{{0, headBytes}}, source(req).calls())
 		require.Zero(t, backend.sets())
-		require.Equal(t, regionLoaderMetrics{requests: 1, failures: 1}, gatherRegionLoaderMetrics(t, reg))
+		require.Equal(t, regionLoaderMetrics{requests: 1, failures: map[string]float64{"head_too_small": 1}}, gatherRegionLoaderMetrics(t, reg))
 	})
 }
 
@@ -268,10 +304,13 @@ func source(req metadata.PrefetchRequest) *testSource {
 
 // regionLoaderMetrics holds the values of the metrics of a CachedRegionLoader.
 type regionLoaderMetrics struct {
-	requests, failures               float64
+	requests                         float64
 	storageSuccesses, cacheSuccesses float64
 	storageDurations, cacheDurations uint64
 	stores, storeFailures            float64
+
+	// failures holds the load failures by reason. It has no reason without a failure.
+	failures map[string]float64
 }
 
 func gatherRegionLoaderMetrics(t *testing.T, reg *prometheus.Registry) regionLoaderMetrics {
@@ -285,9 +324,21 @@ func gatherRegionLoaderMetrics(t *testing.T, reg *prometheus.Registry) regionLoa
 		require.NoError(t, err)
 		return h.GetSampleCount()
 	}
+
+	var failures map[string]float64
+	for _, reason := range []string{"canceled", "timeout", "too_large", "head_too_small", "corrupted", "storage_timeout", "storage_error"} {
+		n := counterWithLabels(t, mfm, prefix+"load_failures_total", "reason", reason)
+		if n == 0 {
+			continue
+		}
+		if failures == nil {
+			failures = map[string]float64{}
+		}
+		failures[reason] = n
+	}
 	return regionLoaderMetrics{
 		requests:         mfm.SumCounters(prefix + "load_requests_total"),
-		failures:         mfm.SumCounters(prefix + "load_failures_total"),
+		failures:         failures,
 		storageSuccesses: counterWithLabels(t, mfm, prefix+"load_successes_total", "source", "storage"),
 		cacheSuccesses:   counterWithLabels(t, mfm, prefix+"load_successes_total", "source", "cache"),
 		storageDurations: durations("storage"),

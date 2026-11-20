@@ -39,6 +39,7 @@ type httpResponse struct {
 
 type ingesterDesc struct {
 	ID                       string            `json:"id"`
+	Link                     string            `json:"-"`
 	State                    string            `json:"state"`
 	Address                  string            `json:"address"`
 	HeartbeatTimestamp       time.Time         `json:"timestamp"`
@@ -67,6 +68,10 @@ type StatusPageConfig struct {
 	// If a component in Versions has no name in ComponentNames, then the version will be shown on the status page
 	// without a name.
 	ComponentNames map[uint64]string `yaml:"-" json:"-"`
+
+	// InstanceLink returns the link of an instance on the status page.
+	// If InstanceLink is nil or returns an empty string, the instance has no link.
+	InstanceLink func(instanceID string, instance InstanceDesc) string `yaml:"-" json:"-"`
 }
 
 type ringAccess interface {
@@ -136,8 +141,14 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 
 		ro, rots := ing.GetReadOnlyState()
 
+		var link string
+		if h.config.InstanceLink != nil {
+			link = h.config.InstanceLink(id, ing)
+		}
+
 		ingesters = append(ingesters, ingesterDesc{
 			ID:                       id,
+			Link:                     link,
 			State:                    state,
 			Address:                  ing.Addr,
 			HeartbeatTimestamp:       time.Unix(ing.Timestamp, 0).UTC(),

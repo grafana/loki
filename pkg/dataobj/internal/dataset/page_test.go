@@ -1,9 +1,14 @@
 package dataset
 
 import (
+	"bytes"
 	"compress/gzip"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -11,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
@@ -182,6 +188,83 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		}
 	}
 	require.Equal(t, in, actual)
+}
+
+func TestMemPage_open(t *testing.T) {
+	// A page builder accepts the first value of a page whatever its size. One value makes a page that
+	// decompresses to more than maxDecompressedSizeHint.
+	values := []string{strings.Repeat("0123456789abcdef", maxDecompressedSizeHint/16+1024)}
+	newOptions := func(compression datasetmd.CompressionType) BuilderOptions {
+		return BuilderOptions{
+			PageSizeHint: 1 << 20,
+			Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+			Compression:  compression,
+			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		}
+	}
+
+	uncompressed, closer, err := buildPage(t, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
+	require.NoError(t, err)
+	require.NoError(t, closer.Close())
+
+	tests := []struct {
+		name             string
+		compression      datasetmd.CompressionType
+		uncompressedSize int
+	}{
+		{name: "decompresses a large snappy page whose descriptor claims a size too large for a buffer", compression: datasetmd.COMPRESSION_TYPE_SNAPPY, uncompressedSize: math.MaxInt},
+		{name: "decompresses a large snappy page whose descriptor claims a negative size", compression: datasetmd.COMPRESSION_TYPE_SNAPPY, uncompressedSize: -1},
+		{name: "decompresses a large zstd page whose descriptor claims a size too large for a buffer", compression: datasetmd.COMPRESSION_TYPE_ZSTD, uncompressedSize: math.MaxInt},
+		{name: "decompresses a large zstd page whose descriptor claims a negative size", compression: datasetmd.COMPRESSION_TYPE_ZSTD, uncompressedSize: -1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			page := buildPage(t, newOptions(tc.compression), values)
+			page.Desc.UncompressedSize = tc.uncompressedSize
+
+			got, closer, err := page.open(tc.compression)
+
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+			require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
+		})
+	}
+
+	t.Run("decompresses a zstd page whose frame checksum is wrong but whose page CRC32 is valid", func(t *testing.T) {
+		page := buildPage(t, newOptions(datasetmd.COMPRESSION_TYPE_ZSTD), values)
+		page.Data = bytes.Clone(page.Data)
+
+		// The page holds one zstd frame, so the frame checksum is the last 4 bytes of the page.
+		for i := len(page.Data) - 4; i < len(page.Data); i++ {
+			page.Data[i] ^= 0xff
+		}
+		page.Desc.CRC32 = crc32.Checksum(page.Data, checksumTable)
+
+		bitmapSize, n := binary.Uvarint(page.Data)
+		require.Positive(t, n)
+		decoder, err := zstd.NewReader(nil)
+		require.NoError(t, err)
+		t.Cleanup(decoder.Close)
+		_, err = decoder.DecodeAll(page.Data[n+int(bitmapSize):], nil)
+		require.EqualError(t, err, zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
+
+		got, closer, err := page.open(datasetmd.COMPRESSION_TYPE_ZSTD)
+
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
+	})
+
+	t.Run("returns an error for a zstd page whose bytes changed after its page CRC32 was computed", func(t *testing.T) {
+		page := buildPage(t, newOptions(datasetmd.COMPRESSION_TYPE_ZSTD), values)
+		page.Data = bytes.Clone(page.Data)
+		page.Data[len(page.Data)-1] ^= 0xff
+		want := fmt.Sprintf("invalid CRC32 checksum %x, expected %x", crc32.Checksum(page.Data, checksumTable), page.Desc.CRC32)
+
+		_, _, err := page.open(datasetmd.COMPRESSION_TYPE_ZSTD)
+
+		require.EqualError(t, err, want)
+	})
 }
 
 func Test_pageBuilder_Fill(t *testing.T) {

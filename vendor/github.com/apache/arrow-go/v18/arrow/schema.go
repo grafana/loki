@@ -123,6 +123,39 @@ func (md Metadata) clone() Metadata {
 	return o
 }
 
+const smallMetadataLimit = 12
+
+func sortSmallMetadataIndices(keys []string, idxes []int) {
+	for i := range idxes {
+		idxes[i] = i
+	}
+	for i := 1; i < len(idxes); i++ {
+		for j := i; j > 0 && keys[idxes[j]] < keys[idxes[j-1]]; j-- {
+			idxes[j], idxes[j-1] = idxes[j-1], idxes[j]
+		}
+	}
+}
+
+// Keep the small-sort arrays out of Equal's general frame.
+//
+//go:noinline
+func smallMetadataEqual(left, right Metadata) bool {
+	var leftStorage, rightStorage [smallMetadataLimit]int
+	leftIdxes := leftStorage[:len(left.keys)]
+	rightIdxes := rightStorage[:len(right.keys)]
+	sortSmallMetadataIndices(left.keys, leftIdxes)
+	sortSmallMetadataIndices(right.keys, rightIdxes)
+
+	for i := range leftIdxes {
+		j := leftIdxes[i]
+		k := rightIdxes[i]
+		if left.keys[j] != right.keys[k] || left.values[j] != right.values[k] {
+			return false
+		}
+	}
+	return true
+}
+
 func (md Metadata) sortedIndices() []int {
 	idxes := make([]int, len(md.keys))
 	for i := range idxes {
@@ -138,6 +171,9 @@ func (md Metadata) sortedIndices() []int {
 func (md Metadata) Equal(rhs Metadata) bool {
 	if md.Len() != rhs.Len() {
 		return false
+	}
+	if md.Len() <= smallMetadataLimit {
+		return smallMetadataEqual(md, rhs)
 	}
 
 	idxes := md.sortedIndices()

@@ -75,6 +75,14 @@ type Claims struct {
 	AdditionalClaims map[string]interface{} `json:"-"`
 }
 
+// Expiry returns Exp as a [time.Time], or the zero [time.Time] if Exp <= 0.
+func (c *Claims) Expiry() time.Time {
+	if c.Exp <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(c.Exp, 0)
+}
+
 func (c *Claims) encode() (string, error) {
 	// Compensate for skew
 	now := time.Now().Add(-10 * time.Second)
@@ -155,8 +163,8 @@ func EncodeJWS(header *Header, c *Claims, signer crypto.Signer) (string, error) 
 func DecodeJWS(payload string) (*Claims, error) {
 	// decode returned id token to get expiry
 	s := strings.Split(payload, ".")
-	if len(s) < 2 {
-		return nil, errors.New("invalid token received")
+	if len(s) != 3 {
+		return nil, errors.New("jwt: invalid token received, token must have 3 parts")
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(s[1])
 	if err != nil {
@@ -169,7 +177,7 @@ func DecodeJWS(payload string) (*Claims, error) {
 	if err := json.NewDecoder(bytes.NewBuffer(decoded)).Decode(&c.AdditionalClaims); err != nil {
 		return nil, err
 	}
-	return c, err
+	return c, nil
 }
 
 // VerifyJWS tests whether the provided JWT token's signature was produced by

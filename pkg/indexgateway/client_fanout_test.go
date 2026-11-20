@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -125,8 +126,9 @@ type fanoutCall struct {
 // recordingGateways fakes index gateways: it records every call and answers
 // with responses derived from the request's time range.
 type recordingGateways struct {
-	failing map[string]bool
-	block   chan struct{} // when set, calls wait on it
+	failing     map[string]bool
+	block       chan struct{} // when set, calls wait on it
+	sharedChunk *logproto.ChunkRef
 
 	mu          sync.Mutex
 	calls       []fanoutCall
@@ -179,14 +181,17 @@ func (c *recordingConn) GetChunkRef(_ context.Context, in *logproto.GetChunkRefR
 	if err := c.g.record(c.addr, "GetChunkRef", in.From, in.Through); err != nil {
 		return nil, err
 	}
-	// One chunk per part, plus one shared by every part.
-	return &logproto.GetChunkRefResponse{
+	resp := &logproto.GetChunkRefResponse{
 		Refs: []*logproto.ChunkRef{
 			{Fingerprint: uint64(in.From), UserID: "tenant", From: in.From, Through: in.Through},
-			{Fingerprint: 1, UserID: "tenant", From: 1, Through: 2},
 		},
-		Stats: stats.Index{TotalChunks: 2, PostFilterChunks: 2, TotalStreams: 2},
-	}, nil
+	}
+	if ref := c.g.sharedChunk; ref != nil && ref.From <= in.Through && ref.Through >= in.From {
+		resp.Refs = append(resp.Refs, ref)
+	}
+	count := int64(len(resp.Refs))
+	resp.Stats = stats.Index{TotalChunks: count, PostFilterChunks: count, TotalStreams: count}
+	return resp, nil
 }
 
 func (c *recordingConn) GetSeries(_ context.Context, in *logproto.GetSeriesRequest, _ ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
@@ -237,7 +242,7 @@ func newFanoutFixture(t *testing.T, mutate func(*ClientConfig)) *fanoutFixture {
 	flagext.DefaultValues(&cfg)
 	cfg.Mode = RingMode
 	cfg.Ring = r
-	cfg.Sharding = ShardingPerIndex
+	cfg.PerIndexOwnership = true
 	cfg.TableRange = testTableRange(0, 1<<20)
 	if mutate != nil {
 		mutate(&cfg)
@@ -276,6 +281,7 @@ func TestPerIndex_RoutesEachPartToItsTableOwners(t *testing.T) {
 	f := newFanoutFixture(t, nil)
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 	const n = 20000
+	f.gateways.sharedChunk = &logproto.ChunkRef{Fingerprint: 1, UserID: "tenant", From: dayStart(n+1) - 1000, Through: dayStart(n + 1)}
 
 	// Three whole days, ending exactly at midnight: four tables.
 	from, through := dayStart(n), dayStart(n+3)
@@ -296,16 +302,17 @@ func TestPerIndex_RoutesEachPartToItsTableOwners(t *testing.T) {
 		require.Equal(t, part.Through, byTable[part.Table].through, i)
 	}
 
-	// One ref per part, plus the one every part returned, deduplicated.
+	// One ref per part, plus the ref spanning midnight in the first two parts.
 	require.Len(t, resp.Refs, 5)
 	require.Equal(t, int64(5), resp.Stats.TotalChunks)
 	require.Equal(t, int64(5), resp.Stats.PostFilterChunks)
-	require.Equal(t, int64(8), resp.Stats.TotalStreams)
+	require.Equal(t, int64(6), resp.Stats.TotalStreams)
 
 	tables := findMetric(t, f.reg, "loki_index_gateway_client_request_tables", map[string]string{"operation": "GetChunkRef"})
 	require.NotNil(t, tables)
 	require.Equal(t, uint64(1), tables.GetHistogram().GetSampleCount())
 	require.Equal(t, float64(4), tables.GetHistogram().GetSampleSum())
+	require.NotEmpty(t, tables.GetHistogram().GetPositiveSpan())
 	boundary := findMetric(t, f.reg, "loki_index_gateway_client_boundary_parts_total", map[string]string{"operation": "GetChunkRef"})
 	require.NotNil(t, boundary)
 	require.Equal(t, float64(1), boundary.GetCounter().GetValue())
@@ -340,8 +347,8 @@ func TestPerIndex_OutsideThePeriodUsesDefaultRouting(t *testing.T) {
 	require.Nil(t, findMetric(t, f.reg, "loki_index_gateway_client_request_tables", nil))
 }
 
-func TestPerIndex_DefaultShardingIsUnchanged(t *testing.T) {
-	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.Sharding = ShardingDefault })
+func TestPerIndex_DisabledOwnershipSendsWholeRequest(t *testing.T) {
+	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.PerIndexOwnership = false })
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 
 	_, err := f.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{From: dayStart(20000), Through: dayStart(20003), Matchers: `{a="b"}`})
@@ -382,7 +389,7 @@ func TestPerIndex_PeriodWithoutShardedCopyUsesDefaultRouting(t *testing.T) {
 }
 
 func TestPerIndex_RetriesStayWithinOwners(t *testing.T) {
-	f := newFanoutFixture(t, nil)
+	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.MaxInFlightRequests = 2 })
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 	const n = 20000
 	owners := f.owners(t, "index_20000").GetAddresses()
@@ -419,11 +426,13 @@ func TestPerIndex_RetriesStayWithinOwners(t *testing.T) {
 		// Every owner of index_20000 is still down.
 		_, err := f.client.GetStats(ctx, &logproto.IndexStatsRequest{From: dayStart(n - 2), Through: dayStart(n+2) + 1000, Matchers: `{a="b"}`})
 		require.Error(t, err)
+		reserved := findMetric(t, f.reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
+		require.Zero(t, reserved.GetGauge().GetValue())
 	})
 }
 
 func TestPerIndex_ConcurrencyIsCapped(t *testing.T) {
-	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrency = 2 })
+	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrentParts = 2 })
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 	const n = 20000
 
@@ -446,26 +455,78 @@ func TestPerIndex_ConcurrencyIsCapped(t *testing.T) {
 	require.Equal(t, 2, f.gateways.maxInFlight)
 }
 
-func TestPerIndex_InFlightGateCountsParts(t *testing.T) {
+func TestPerIndex_ReservesSlotsAcrossFanoutWaves(t *testing.T) {
 	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.MaxInFlightRequests = 2 })
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 	const n = 20000
 
-	// Hold the first two parts in flight, so the gate rejects the others.
 	block := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(block) })
+	defer unblock()
 	f.gateways.block = block
-	done := make(chan error)
+	done := make(chan error, 1)
 	go func() {
 		_, err := f.client.GetStats(ctx, &logproto.IndexStatsRequest{From: dayStart(n), Through: dayStart(n+5) - 1, Matchers: `{a="b"}`})
 		done <- err
 	}()
 	require.Eventually(t, func() bool { return len(f.gateways.recorded()) == 2 }, 5*time.Second, time.Millisecond)
-	close(block)
 
-	err := <-done
-	require.Error(t, err)
-	require.True(t, isServiceUnavailable(err), err)
-	require.Len(t, f.gateways.recorded(), 2)
+	// Advance one part at a time until only the last RPC is left. The other
+	// slot should still be held for the first request even though it is idle.
+	for started := 3; started <= 5; started++ {
+		block <- struct{}{}
+		require.Eventually(t, func() bool { return len(f.gateways.recorded()) == started }, 5*time.Second, time.Millisecond)
+	}
+	block <- struct{}{}
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(f.client.fanoutMetrics.activeRPCs) == 1
+	}, 5*time.Second, time.Millisecond)
+	reserved := findMetric(t, f.reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
+	require.Equal(t, float64(2), reserved.GetGauge().GetValue())
+	_, err := f.client.GetStats(ctx, &logproto.IndexStatsRequest{From: dayStart(n), Through: dayStart(n) + 1000})
+	requireShedError(t, err)
+	require.Len(t, f.gateways.recorded(), 5)
+
+	unblock()
+	require.NoError(t, <-done)
+	reserved = findMetric(t, f.reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
+	require.Zero(t, reserved.GetGauge().GetValue())
+	active := findMetric(t, f.reg, "loki_index_gateway_client_active_rpcs", nil)
+	require.Zero(t, active.GetGauge().GetValue())
+}
+
+func TestPerIndex_KeepsReducedConcurrencyForRequest(t *testing.T) {
+	f := newFanoutFixture(t, func(cfg *ClientConfig) { cfg.MaxInFlightRequests = 2 })
+	ctx := user.InjectOrgID(context.Background(), "tenant")
+	const n = 20000
+
+	slots, err := f.client.inFlight.reserve(ctx, 1)
+	require.NoError(t, err)
+	release := sync.OnceFunc(func() { f.client.inFlight.release(slots) })
+	defer release()
+
+	block := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(block) })
+	defer unblock()
+	f.gateways.block = block
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.client.GetStats(ctx, &logproto.IndexStatsRequest{From: dayStart(n), Through: dayStart(n+3) - 1})
+		done <- err
+	}()
+	require.Eventually(t, func() bool { return len(f.gateways.recorded()) == 1 }, 5*time.Second, time.Millisecond)
+	release()
+	reserved := findMetric(t, f.reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
+	require.Equal(t, float64(1), reserved.GetGauge().GetValue())
+	limited := findMetric(t, f.reg, "loki_index_gateway_client_fanout_concurrency_limited_requests", nil)
+	require.Equal(t, float64(1), limited.GetGauge().GetValue())
+
+	unblock()
+	require.NoError(t, <-done)
+	require.Len(t, f.gateways.recorded(), 3)
+	require.Equal(t, 1, f.gateways.maxInFlight)
+	limited = findMetric(t, f.reg, "loki_index_gateway_client_fanout_concurrency_limited_requests", nil)
+	require.Zero(t, limited.GetGauge().GetValue())
 }
 
 func TestPerIndex_GetShardsGoesToFirstTableOwners(t *testing.T) {
@@ -486,28 +547,30 @@ func TestPerIndex_GetShardsGoesToFirstTableOwners(t *testing.T) {
 	require.Equal(t, float64(1), multi.GetCounter().GetValue())
 }
 
-func TestPerIndex_RequiresRingMode(t *testing.T) {
-	cfg := ClientConfig{}
-	flagext.DefaultValues(&cfg)
-	cfg.Mode = SimpleMode
-	cfg.Address = "index-gateway"
-	cfg.Sharding = ShardingPerIndex
-	cfg.TableRange = testTableRange(0, 10)
+func TestPerIndex_SimpleModeSendsWholeRequest(t *testing.T) {
+	f := newFanoutFixture(t, func(cfg *ClientConfig) {
+		cfg.Mode = SimpleMode
+		cfg.Address = "index-gateway"
+	})
+	ctx := user.InjectOrgID(context.Background(), "tenant")
+	from, through := dayStart(20000), dayStart(20003)
 
-	o, err := validation.NewOverrides(validation.Limits{}, nil)
+	_, err := f.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{From: from, Through: through})
 	require.NoError(t, err)
-	_, err = NewGatewayClient(cfg, nil, o, log.NewNopLogger(), constants.Loki)
-	require.ErrorContains(t, err, "requires index-gateway.mode=ring")
+	require.Equal(t, []fanoutCall{{addr: "index-gateway", op: "GetChunkRef", from: from, through: through}}, f.gateways.recorded())
+	require.Nil(t, findMetric(t, f.reg, "loki_index_gateway_client_request_tables", nil))
 }
 
 func TestMergeChunkRefResponses(t *testing.T) {
-	a := &logproto.ChunkRef{Fingerprint: 1, UserID: "t", From: 1, Through: 10, Checksum: 1}
-	b := &logproto.ChunkRef{Fingerprint: 2, UserID: "t", From: 1, Through: 10, Checksum: 2}
-	spanning := &logproto.ChunkRef{Fingerprint: 1, UserID: "t", From: 5, Through: 20, Checksum: 3}
+	midnight := dayStart(20000)
+	a := &logproto.ChunkRef{Fingerprint: 1, UserID: "t", From: midnight - 10, Through: midnight - 1, Checksum: 1}
+	b := &logproto.ChunkRef{Fingerprint: 2, UserID: "t", From: midnight, Through: midnight + 10, Checksum: 2}
+	spanning := &logproto.ChunkRef{Fingerprint: 1, UserID: "t", From: midnight - 5, Through: midnight, Checksum: 3}
+	duplicate := *spanning
 
 	got := mergeChunkRefResponses([]*logproto.GetChunkRefResponse{
 		{Refs: []*logproto.ChunkRef{a, spanning}, Stats: stats.Index{TotalChunks: 3, PostFilterChunks: 2, TotalStreams: 1, UsedBloomFilters: true}},
-		{Refs: []*logproto.ChunkRef{b, {Fingerprint: 1, UserID: "t", From: 5, Through: 20, Checksum: 3}}, Stats: stats.Index{TotalChunks: 2, PostFilterChunks: 2, TotalStreams: 2}},
+		{Refs: []*logproto.ChunkRef{b, &duplicate}, Stats: stats.Index{TotalChunks: 2, PostFilterChunks: 2, TotalStreams: 2}},
 	})
 	require.Equal(t, []*logproto.ChunkRef{a, spanning, b}, got.Refs)
 	require.Equal(t, int64(4), got.Stats.TotalChunks)

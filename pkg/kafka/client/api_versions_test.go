@@ -134,8 +134,14 @@ func TestAPIVersionsCapChangesNoOtherRequest(t *testing.T) {
 	capped := requestVersions(t, 3)
 	require.Equal(t, int16(3), capped[kmsg.ApiVersions.Int16()])
 
-	delete(uncapped, kmsg.ApiVersions.Int16())
-	delete(capped, kmsg.ApiVersions.Int16())
+	// franz-go sends the KIP-714 telemetry requests from a background goroutine
+	// after the first response. They can arrive before or after the test reads
+	// the map, so a run may or may not contain them. The writer client takes no
+	// options, so the test cannot disable them.
+	for _, key := range []kmsg.Key{kmsg.ApiVersions, kmsg.GetTelemetrySubscriptions, kmsg.PushTelemetry} {
+		delete(uncapped, key.Int16())
+		delete(capped, key.Int16())
+	}
 	require.NotEmpty(t, capped)
 	require.Equal(t, uncapped, capped)
 }

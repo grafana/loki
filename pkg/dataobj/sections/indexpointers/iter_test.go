@@ -20,6 +20,7 @@ func TestDecodeRow(t *testing.T) {
 		{Name: "min_posting_key", Type: ColumnTypeMinPostingKey},
 		{Name: "max_posting_key", Type: ColumnTypeMaxPostingKey},
 		{Name: "shard_buckets", Type: ColumnTypeShardBuckets},
+		{Name: "run_length", Type: ColumnTypeRunLength},
 	}
 	lowKey := postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}
 	highKey := postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "prod"}
@@ -152,7 +153,7 @@ func TestDecodeRow(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "decodes the run ID, posting keys and shard layout when all are present",
+			name:    "decodes the run ID, run length, posting keys and shard layout when all are present",
 			columns: optionalColumns,
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -163,6 +164,7 @@ func TestDecodeRow(t *testing.T) {
 					dataset.BinaryValue(minEncoded),
 					dataset.BinaryValue(maxEncoded),
 					dataset.Int64Value(64),
+					dataset.Int64Value(3),
 				},
 			},
 			expected: IndexPointer{
@@ -170,6 +172,7 @@ func TestDecodeRow(t *testing.T) {
 				StartTs:      time.Unix(0, 1234567890000000000),
 				EndTs:        time.Unix(0, 1234567890000000000),
 				RunID:        7,
+				RunLength:    3,
 				PostingKeys:  keyRange,
 				ShardBuckets: shardBuckets,
 			},
@@ -182,6 +185,7 @@ func TestDecodeRow(t *testing.T) {
 					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(1234567890000000000),
+					{},
 					{},
 					{},
 					{},
@@ -206,6 +210,7 @@ func TestDecodeRow(t *testing.T) {
 					dataset.BinaryValue(minEncoded),
 					{},
 					{},
+					{},
 				},
 			},
 			wantErr: true,
@@ -222,6 +227,41 @@ func TestDecodeRow(t *testing.T) {
 					{},
 					{},
 					dataset.Int64Value(3),
+					{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "returns an error when the run length is set without a run ID",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					{},
+					{},
+					{},
+					{},
+					dataset.Int64Value(2),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "returns an error when the run length is not positive",
+			columns: optionalColumns,
+			row: dataset.Row{
+				Values: []dataset.Value{
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(1234567890000000000),
+					dataset.Int64Value(7),
+					{},
+					{},
+					{},
+					dataset.Int64Value(0),
 				},
 			},
 			wantErr: true,

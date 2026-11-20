@@ -15,8 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -25,7 +27,36 @@ var (
 
 	// errRegionTooLarge means the metadata region is larger than the limit of the loader.
 	errRegionTooLarge = errors.New("the metadata region is above the limit")
+
+	// errStorageTimeout means the object storage client gave up waiting for a read. The load was still
+	// alive, so the deadline is not the one of the request or of the load.
+	errStorageTimeout = errors.New("the object storage read timed out")
 )
+
+// regionTooLargeError means the metadata region of an object is larger than the limit. It matches
+// ErrNotPrefetchable and errRegionTooLarge.
+type regionTooLargeError struct {
+	size, limit int64
+}
+
+func (e regionTooLargeError) Error() string {
+	return fmt.Sprintf("%v: %v: it has %d bytes, and the limit is %d", ErrNotPrefetchable, errRegionTooLarge, e.size, e.limit)
+}
+
+func (e regionTooLargeError) Unwrap() []error { return []error{ErrNotPrefetchable, errRegionTooLarge} }
+
+// regionLoadFailureReasons lists the values of the reason label of the load failures counter. A load
+// never fails because of the cache, and it does not read sections, so it has no cache reason and no
+// unsupported reason.
+var regionLoadFailureReasons = []string{
+	reasonCanceled,
+	reasonTimeout,
+	reasonTooLarge,
+	reasonHeadTooSmall,
+	reasonCorrupted,
+	reasonStorageTimeout,
+	reasonStorage,
+}
 
 // Values of the source label of the load successes counter and of the load duration histogram.
 const (
@@ -50,11 +81,12 @@ func newLoadOptions(opts []LoadOption) loadOptions {
 	return o
 }
 
-// WithRegionSizeHint tells the loader the size of the region, as the file metadata of the object
-// implies it. The region starts at offset 0, so the size is the whole range.
+// WithRegionSizeHint tells the loader the exact size of the region. The region starts at offset 0, so
+// the size is the whole range.
 //
-// With the size, the loader reads the region from object storage in one read, and not in two. The
-// loader ignores a size that is not positive, and then works as it does without a hint.
+// With the size, the loader reads the region from object storage in one read. Without it, the loader
+// reads the head first, and then a second read when the region is larger than the head. The loader
+// ignores a size that is not positive, and then works as it does without a hint.
 func WithRegionSizeHint(size int64) LoadOption {
 	return func(o *loadOptions) {
 		if size > 0 {
@@ -94,7 +126,7 @@ type CachedRegionLoader struct {
 	loadRequests       prometheus.Counter
 	loadSuccesses      *prometheus.CounterVec
 	loadDuration       *prometheus.HistogramVec
-	loadFailures       prometheus.Counter
+	loadFailures       *prometheus.CounterVec
 	cacheStores        prometheus.Counter
 	cacheStoreFailures prometheus.Counter
 }
@@ -146,10 +178,10 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"source"}),
-		loadFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		loadFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_region_load_failures_total",
-			Help: "Failed loads of the whole metadata region of a data object. A load that skips an object whose region is too large counts as failed.",
-		}),
+			Help: "Failed loads of the whole metadata region of a data object, by reason: canceled, timeout for the deadline of the request or of the load, too_large for a metadata region above the limit, head_too_small for a file metadata that does not fit in the head read, corrupted for metadata that is not valid, storage_timeout for an object storage read that the storage client gave up waiting for, and storage_error for another failed object storage read. A load that skips an object whose region is too large counts as failed.",
+		}, []string{"reason"}),
 		cacheStores: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_metadata_prefetcher_region_cache_stores_total",
 			Help: "Writes of the whole metadata region of a data object to the cache.",
@@ -165,6 +197,9 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 		l.loadSuccesses.WithLabelValues(source)
 		l.loadDuration.WithLabelValues(source)
 	}
+	for _, reason := range regionLoadFailureReasons {
+		l.loadFailures.WithLabelValues(reason)
+	}
 	return l, nil
 }
 
@@ -177,12 +212,18 @@ func NewCachedRegionLoader(backend cache.Cache, codec CacheItemCodec, maxRegionB
 //
 // The caller must not modify the region. When the cache answers with an item that is not compressed,
 // the region aliases a buffer that the cache owns.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [StatMetadataPrefetchRequestsToCache]
+//   - [StatMetadataPrefetchBytesFromCache]
+//   - [StatMetadataPrefetchRequestsToStorage]
+//   - [StatMetadataPrefetchBytesFromStorage]
 func (l *CachedRegionLoader) Load(ctx context.Context, req PrefetchRequest, opts ...LoadOption) (region []byte, err error) {
 	start := time.Now()
 	l.loadRequests.Inc()
 	defer func() {
 		if err != nil {
-			l.loadFailures.Inc()
+			l.loadFailures.WithLabelValues(failureReason(err)).Inc()
 		}
 	}()
 
@@ -226,7 +267,7 @@ func (l *CachedRegionLoader) storeRegion(ctx context.Context, path string, regio
 // time. It returns the first read that succeeds, or the object storage error when both fail.
 // fromCache is true when the cache answered.
 //
-// size is the size of the region when the caller knows it from the file metadata, and nil otherwise.
+// size is the size of the region when the caller knows it, and nil otherwise.
 func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req PrefetchRequest, size *int64) (region []byte, fromCache bool, err error) {
 	// A miss in the cache is not an answer, so the object storage read decides the result then.
 	// Both reads stop when this function returns.
@@ -245,7 +286,18 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 		answers <- answer{region, fromCache, err}
 	}
 	go read(true, func() ([]byte, error) { return l.loadFromCache(ctx, req.Path) })
-	go read(false, func() ([]byte, error) { return l.loadFromStorage(ctx, req, size) })
+	go read(false, func() ([]byte, error) {
+		// An isolated region holds only the storage reads of this load, and not those of concurrent work in the
+		// region of ctx. The instrumented bucket counts a request before it sends it, so the count includes
+		// the failed requests. The merge into the region of ctx runs when the read returns. A read that the
+		// cache answer cancels does not delay Load, so a query that ends first does not count its request.
+		return xcap.RunIsolated(ctx, "prefetch_load",
+			func(ctx context.Context) ([]byte, error) { return l.loadFromStorage(ctx, req, size) },
+			xcap.MergeDerived(
+				xcap.Derive(StatMetadataPrefetchRequestsToStorage, bucketstat.StatObjectRequestsGetRange),
+				xcap.Derive(StatMetadataPrefetchBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+			))
+	})
 
 	var storageErr error
 	for range 2 {
@@ -265,6 +317,7 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]byte, error) {
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
 	found, bufs, _, err := l.cache.Fetch(ctx, []string{hashedKey})
+	recordPrefetchCacheLookup(ctx)
 	if len(found) == 0 {
 		if err != nil {
 			// A cancelled context also fails the read, when the other read wins the race.
@@ -285,6 +338,7 @@ func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]
 		}
 		return nil, err
 	}
+	recordPrefetchCacheBytes(ctx, int64(len(region)))
 	return region, nil
 }
 
@@ -339,11 +393,11 @@ func (l *CachedRegionLoader) loadFromStorage(ctx context.Context, req PrefetchRe
 	return region, nil
 }
 
-// checkRegionSize returns an error that wraps ErrNotPrefetchable when a region of at least size
-// bytes is larger than the limit of the loader.
+// checkRegionSize returns a regionTooLargeError when a region of size bytes is larger than the limit
+// of the loader.
 func (l *CachedRegionLoader) checkRegionSize(size int64) error {
 	if size > l.maxRegionBytes {
-		return fmt.Errorf("%w: %w: it has at least %d bytes, and the limit is %d", ErrNotPrefetchable, errRegionTooLarge, size, l.maxRegionBytes)
+		return regionTooLargeError{size: size, limit: l.maxRegionBytes}
 	}
 	return nil
 }
@@ -358,14 +412,24 @@ func (l *CachedRegionLoader) warn(msg, path string, err error) {
 func readRange(ctx context.Context, src DataobjSourceReader, offset, length int64) (data []byte, err error) {
 	rc, err := src.ReadRange(ctx, offset, length)
 	if err != nil {
-		return nil, fmt.Errorf("reading the metadata region: %w", err)
+		return nil, readError(ctx, err)
 	}
 	defer util.CloseAndHandleError(rc, &err)
 
 	buf := make([]byte, length)
 	n, err := io.ReadFull(rc, buf)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, fmt.Errorf("reading the metadata region: %w", err)
+		return nil, readError(ctx, err)
 	}
 	return buf[:n], nil
+}
+
+// readError wraps the error of a read from object storage. When the storage client gave up waiting
+// while ctx was alive, the error also wraps errStorageTimeout. The mark tells that timeout from the
+// deadline of ctx, because an HTTP client reports its own timeout as a context deadline error.
+func readError(ctx context.Context, err error) error {
+	if ctx.Err() == nil && isTimeout(err) {
+		return fmt.Errorf("reading the metadata region: %w: %w", errStorageTimeout, err)
+	}
+	return fmt.Errorf("reading the metadata region: %w", err)
 }

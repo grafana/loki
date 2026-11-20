@@ -60,7 +60,7 @@ func (l *List) Validate() (err error) {
 	if err = l.scalar.Validate(); err != nil {
 		return
 	}
-	if err = validateOptional(&l.scalar, l.Value, "value"); err != nil {
+	if err = validateOptional(&l.scalar, l.Value != nil); err != nil {
 		return
 	}
 
@@ -178,6 +178,14 @@ type Vector []Scalar
 type Struct struct {
 	scalar
 	Value Vector
+}
+
+func (s *Struct) Retain() {
+	for _, v := range s.Value {
+		if v, ok := v.(Releasable); ok {
+			v.Retain()
+		}
+	}
 }
 
 func (s *Struct) Release() {
@@ -349,10 +357,12 @@ type Dictionary struct {
 	}
 }
 
+// NewNullDictScalar returns a null scalar of dictionary type dt. Its empty
+// dictionary is allocated from memory.DefaultAllocator and freed by Release.
 func NewNullDictScalar(dt arrow.DataType) *Dictionary {
 	ret := &Dictionary{scalar: scalar{dt, false}}
 	ret.Value.Index = MakeNullScalar(dt.(*arrow.DictionaryType).IndexType)
-	ret.Value.Dict = nil
+	ret.Value.Dict = array.MakeArrayOfNull(memory.DefaultAllocator, dt.(*arrow.DictionaryType).ValueType, 0)
 	return ret
 }
 
@@ -745,6 +755,12 @@ func NewRunEndEncodedScalar(v Scalar, dt *arrow.RunEndEncodedType) *RunEndEncode
 	return &RunEndEncoded{scalar: scalar{dt, v.IsValid()}, Value: v}
 }
 
+func (s *RunEndEncoded) Retain() {
+	if r, ok := s.Value.(Releasable); ok {
+		r.Retain()
+	}
+}
+
 func (s *RunEndEncoded) Release() {
 	if r, ok := s.Value.(Releasable); ok {
 		r.Release()
@@ -761,24 +777,28 @@ func (s *RunEndEncoded) Validate() (err error) {
 		return fmt.Errorf("%w: non-null run-end-encoded scalar has no value", arrow.ErrInvalid)
 	}
 
+	if err = s.scalar.Validate(); err != nil {
+		return
+	}
+
 	if err = s.Value.Validate(); err != nil {
 		return
 	}
 
-	if err = validateOptional(&s.scalar, s.value(), "value"); err != nil {
-		return
+	switch {
+	case !s.Valid && s.Value.IsValid():
+		return fmt.Errorf("%w: null %s scalar has non-null storage value", arrow.ErrInvalid, s.Type)
+	case s.Valid && !s.Value.IsValid():
+		return fmt.Errorf("%w: non-null %s scalar has null storage value", arrow.ErrInvalid, s.Type)
 	}
 
-	if !s.Valid {
-		return
-	}
-
-	if s.Type.ID() != arrow.RUN_END_ENCODED {
+	dt, ok := s.Type.(*arrow.RunEndEncodedType)
+	if !ok || dt == nil {
 		return fmt.Errorf("%w: run-end-encoded scalar should not have type %s",
 			arrow.ErrInvalid, s.Type)
 	}
 
-	if !arrow.TypeEqual(s.Value.DataType(), s.Type.(*arrow.RunEndEncodedType).Encoded()) {
+	if !arrow.TypeEqual(s.Value.DataType(), dt.Encoded()) {
 		return fmt.Errorf("%w: run-end-encoded scalar value type %s does not match type %s",
 			arrow.ErrInvalid, s.Value.DataType(), s.Type)
 	}

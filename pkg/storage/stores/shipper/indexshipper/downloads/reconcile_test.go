@@ -107,7 +107,7 @@ func TestTable_DropNotOwned(t *testing.T) {
 
 	// Only query ready user index sets are candidates: not the common index
 	// set, nor u3 downloaded on demand.
-	require.Equal(t, []string{"u1", "u2"}, candidates)
+	require.ElementsMatch(t, []string{"u1", "u2"}, candidates)
 	require.NotContains(t, tbl.indexSets, "u1")
 	require.Contains(t, tbl.indexSets, "u2")
 	require.Contains(t, tbl.indexSets, "u3")
@@ -125,6 +125,44 @@ func TestTable_DropNotOwned(t *testing.T) {
 	// A later query downloads it again, on demand.
 	require.Equal(t, []string{"0", "1", "u1-0", "u1-1"}, forEachNames(t, tbl, "u1"))
 	require.False(t, tbl.indexSets["u1"].QueryReady())
+}
+
+type failingCloseIndex struct {
+	*mockIndex
+	fail *atomic.Bool
+}
+
+func (i *failingCloseIndex) Close() error {
+	if i.fail.Load() {
+		return errors.New("close failed")
+	}
+	return i.mockIndex.Close()
+}
+
+// TestTable_DropNotOwned_FailedEvict checks that a set whose eviction fails
+// still leaves the table, so that if this instance owns it again before an
+// eviction retry, it is loaded afresh rather than failing every query.
+func TestTable_DropNotOwned_FailedEvict(t *testing.T) {
+	tempDir := t.TempDir()
+	setupReconcileTable(t, tempDir, "u1")
+	failClose := atomic.NewBool(false)
+	tbl := newTable(tableName, filepath.Join(tempDir, cacheDirName, tableName), buildTestStorageClient(t, tempDir),
+		func(path string) (index.Index, error) {
+			return &failingCloseIndex{mockIndex: openMockIndexFile(t, path), fail: failClose}, nil
+		}, newMetrics(nil), testDownloadTimeout, tableOptions{}).(*table)
+	t.Cleanup(tbl.Close)
+	ctx := context.Background()
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+
+	failClose.Store(true)
+	err := tbl.DropNotOwned(ctx, func(string, []string) ([]string, error) { return []string{"u1"}, nil })
+	require.Error(t, err)
+	require.NotContains(t, tbl.indexSets, "u1")
+	failClose.Store(false)
+
+	require.NoError(t, tbl.EnsureQueryReadiness(ctx, []string{"u1"}))
+	require.True(t, tbl.indexSets["u1"].QueryReady())
+	require.Equal(t, []string{"0", "1", "u1-0", "u1-1"}, forEachNames(t, tbl, "u1"))
 }
 
 func TestTableManager_DropFilter(t *testing.T) {
