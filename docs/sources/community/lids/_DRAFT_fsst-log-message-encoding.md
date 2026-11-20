@@ -1,20 +1,20 @@
 ---
-title: "Draft: FSST encoding for log message pages"
-description: "Explore FSST with a shared table per page and offsets for individual strings."
+title: "FSST encoding for log message pages"
+description: "Use FSST with a shared table per page and offsets for individual strings."
 draft: true
 ---
 
-# Draft: FSST encoding for log message pages
+# FSST encoding for log message pages
 
 **Author:** @dimitarvdimitrov
 
-**Date:** 10/2026
+**Date:** 11/2026
 
-**Sponsor(s):** TBD
+**Sponsor(s):** Marco Pracucci (@pracucci), Ben Clive (@benclive)
 
 **Type:** Feature
 
-**Status:** Draft
+**Status:** In discussion
 
 **Related issues/PRs:** TBD
 
@@ -25,7 +25,7 @@ draft: true
 Log message columns currently use plain, length-prefixed strings with Zstd compression.
 To decode individual strings the reader decompresses the complete values block.
 
-FSST uses a trained table of symbols to compress strings.
+[Fast Static Symbol Table (FSST)](https://www.vldb.org/pvldb/vol13/p2649-boncz.pdf) uses a trained table of symbols to compress strings.
 Each symbol represents up to eight bytes.
 Multiple strings can share one table and remain independently decodable.
 
@@ -36,7 +36,10 @@ It adapts `DecodeBatch` to the existing checked eight-symbol kernel.
 ## Problem Statement
 
 The current layout couples string access to whole-page decompression.
-We want to explore a layout that removes per-string varints and preserves independent access to compressed strings.
+Zstd decompression takes a noticeable part of the CPU time in the Loki querier.
+During one query surge, it accounted for 15% of CPU time (see the [querier CPU profile in the appendix](#querier-cpu-profile)).
+
+We want to explore a layout that provides independent access to compressed strings and reduces the decompression overhead.
 
 ## Goals
 
@@ -47,7 +50,7 @@ We want to explore a layout that removes per-string varints and preserves indepe
 
 ## Non-Goals
 
-Other columns retain their current encodings and compression.
+- Chnage compression of other column types.
 
 ## Proposals
 
@@ -61,13 +64,11 @@ It retains per-string varints and requires whole-page decompression.
 FSST acts as a value encoding.
 Message columns use `ENCODING_TYPE_FSST` with `COMPRESSION_TYPE_NONE`.
 
-Each page contains one trained table.
-The encoder compresses each non-NULL string independently with that table.
+Each page is independantly compressed.
 The page stores the resulting byte ranges in an offsets array next to the FSST table and the symbol sequences.
 Symbol sequences contain codes that reference table entries, plus literal escapes for bytes without a symbol match.
-The space savings come from codes that replace longer byte sequences in the table.
 
-Conceptually, the page contains:
+In practice, the page contains:
 
 ```text
 <presence bitmap size>
@@ -90,11 +91,10 @@ symbolSequences[offsets[i]:offsets[i+1]]
 ```
 
 The presence bitmap retains its existing page header.
-There are no per-string varints.
 
 #### String boundaries and decoded lengths
 
-The FSST table does not contain string boundaries.
+The FSST table does not contain string boundaries or lengths.
 It contains symbols and their byte lengths.
 Offsets identify the symbol sequence for each string.
 
@@ -315,3 +315,9 @@ This representation matches the offsets and bytes that `columnar.UTF8` uses.
 The library provides `EncodeBatch` and `DecodeBatch`.
 These APIs produce symbol offsets and reconstruct decoded offsets.
 The integration must serialize the symbol offsets itself.
+
+### Querier CPU profile
+
+The profile shows CPU use in the Loki querier during the query surge.
+
+![Loki querier CPU profile during a query surge](fsst-encoding-profile.png)
