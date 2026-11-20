@@ -191,7 +191,7 @@ type EngineOpts struct {
 	// A query that uses one fails while this is off. The functions are in development, so they are off by default.
 	EnableHistograms bool `yaml:"enable_histograms" category:"experimental"`
 
-	MaxQuerySeriesCutoffDryRun bool `yaml:"max_query_series_cutoff_dry_run" category:"experimental"`
+	MaxQuerySeriesCutoffDryRun bool `yaml:"max_query_series_cutoff_dry_run" category:"experimental" doc:"hidden"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
