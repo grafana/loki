@@ -2,6 +2,7 @@ package logql
 
 import (
 	"math"
+	"math/big"
 	"math/rand"
 	"testing"
 
@@ -278,6 +279,54 @@ func TestHistogramBuilder_bucketLimit(t *testing.T) {
 	})
 }
 
+// requireCompensatedSum fails unless got is the sum of n values that is want, which is the exact sum rounded to a
+// float, up to what a compensated sum can be off by. That is a couple of units in the last place of the sum, and
+// a term in the square of the precision for the values that cancel each other, which is the reason to compensate:
+// a plain sum is off by the precision times the sum of the magnitudes, and a tolerance for that does not tell
+// the two apart.
+func requireCompensatedSum(t *testing.T, want, absSum float64, n int, got float64) {
+	t.Helper()
+	ulp := math.Nextafter(math.Abs(want), math.Inf(1)) - math.Abs(want)
+	tolerance := 2*ulp + float64(n)*0x1p-106*absSum
+	require.LessOrEqual(t, math.Abs(want-got), tolerance, "the exact sum is %v, and it is %v", want, got)
+}
+
+// The sum of a histogram is compensated, as the one of sum_over_time and of the sum aggregation is. The sum of
+// 1e16, 1 and -1e16 is 1, and a plain sum of them is 0 in any order that has the 1 before the 1e16 is taken away.
+func TestHistogramBuilder_sumIsCompensated(t *testing.T) {
+	custom := &syntax.BucketSpec{Bounds: []float64{1, 10, 1e17}}
+	for name, spec := range map[string]*syntax.BucketSpec{"exponential": nil, "custom": custom} {
+		t.Run(name, func(t *testing.T) {
+			for _, tc := range []struct {
+				values []float64
+				want   float64
+			}{
+				{[]float64{1e16, 1, -1e16}, 1},
+				{[]float64{1, 1e16, -1e16}, 1},
+				{[]float64{1e16, -1e16, 1}, 1},
+				{[]float64{-1e16, 1, 1e16}, 1},
+				{[]float64{1e16, 1, 1, 1, -1e16}, 3},
+			} {
+				h := histogramObserved(t, spec, tc.values...)
+				require.Equal(t, tc.want, h.Sum, "%v", tc.values)
+
+				// It is also what sum_over_time returns for the same values.
+				var sum kahanSum
+				for _, v := range tc.values {
+					sum.addValue(v)
+				}
+				require.Equal(t, sum.result(), h.Sum, "%v", tc.values)
+			}
+		})
+	}
+
+	t.Run("the infinite sum of finite values is infinite", func(t *testing.T) {
+		h := histogramObserved(t, nil, math.MaxFloat64, math.MaxFloat64)
+		require.True(t, math.IsInf(h.Sum, 1), "%v", h.Sum)
+		require.NoError(t, h.Validate())
+	})
+}
+
 // For any observations the counts in the buckets add up to Count, and Count and Sum are
 // those of the finite observations.
 func TestHistogramBuilder_countsAddUp(t *testing.T) {
@@ -298,7 +347,8 @@ func TestHistogramBuilder_countsAddUp(t *testing.T) {
 				var (
 					values    []float64
 					wantCount float64
-					wantSum   float64
+					exactSum  big.Rat // the sum of the finite values, with no rounding
+					absSum    float64
 				)
 				for i, n := 0, r.Intn(300); i < n; i++ {
 					var v float64
@@ -316,13 +366,15 @@ func TestHistogramBuilder_countsAddUp(t *testing.T) {
 					values = append(values, v)
 					if !math.IsNaN(v) && !math.IsInf(v, 0) {
 						wantCount++
-						wantSum += v
+						exactSum.Add(&exactSum, new(big.Rat).SetFloat64(v))
+						absSum += math.Abs(v)
 					}
 				}
 
 				h := histogramObserved(t, spec, values...)
 				require.Equal(t, wantCount, h.Count)
-				require.InDelta(t, wantSum, h.Sum, 1e-6)
+				wantSum, _ := exactSum.Float64()
+				requireCompensatedSum(t, wantSum, absSum, len(values), h.Sum)
 
 				total := h.ZeroCount
 				for _, b := range histogramNonEmptyBucketsOf(h) {
