@@ -23,14 +23,17 @@ package metadata
 //	└───────────────────────────────────────────────┘
 //
 //   - version is cacheItemVersion. A reader counts a cache item of another version as a miss.
-//   - codec is 0 when the payload is the raw bytes. It is 1 when the payload is one zstd frame of
-//     the raw bytes. The frame records its content size, and that size must equal rawSize.
+//   - codec is 0 when the item stores the raw bytes as they are. It is 1 when the item stores them
+//     compressed with zstd.
 //   - rawSize is the number of raw bytes.
 //   - crc32 is the IEEE CRC32 of the payload as stored. It covers the compressed bytes when the codec
 //     is 1. A reader checks it before it decodes the payload.
 //   - key is the unhashed cache key of the item. The cache stores the item under a hash of the key,
 //     and two keys can have the same hash. A reader counts a cache item whose key differs from the key
 //     it asked for as a miss.
+//   - payload is the bytes that the item stores for the raw bytes. When the codec is 0, the payload is
+//     the raw bytes. When the codec is 1, the payload is one zstd frame of the raw bytes. The frame
+//     records its content size, and that size must equal rawSize.
 //
 // Prefetched ranges, the raw bytes of a group:
 //
