@@ -78,10 +78,6 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		"output_objects", stats.OutputObjects,
 		"output_bytes", stats.OutputBytesCompressed,
 		"output_uncompressed_bytes", stats.OutputBytesUncompressed,
-		"classify_duration", attempt.classifyDuration,
-		"postings_duration", attempt.postingsDuration,
-		"stats_duration", attempt.statsDuration,
-		"finish_duration", attempt.finishDuration,
 		"duration", duration,
 	)
 	return artifacts, nil
@@ -95,9 +91,7 @@ func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, a
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	phaseStart := time.Now()
 	objects, layout, err := c.classifyRuns(ctx, node)
-	attempt.classifyDuration = time.Since(phaseStart)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
@@ -109,10 +103,7 @@ func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, a
 	}
 	defer out.reset()
 
-	phaseStart = time.Now()
-	err = c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out, attempt.reads)
-	attempt.postingsDuration = time.Since(phaseStart)
-	if err != nil {
+	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out, attempt.reads); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
@@ -120,16 +111,11 @@ func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, a
 		return nil, err
 	}
 
-	phaseStart = time.Now()
-	err = c.mergeStatsInto(ctx, statsObjects, keepAll, out, attempt.reads)
-	attempt.statsDuration = time.Since(phaseStart)
-	if err != nil {
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out, attempt.reads); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	phaseStart = time.Now()
 	artifacts, sizes, err := out.finish(ctx)
-	attempt.finishDuration = time.Since(phaseStart)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
@@ -209,18 +195,12 @@ type IndexMergeObservedStats struct {
 	OutputBytesUncompressed int64
 }
 
-// indexMergeAttempt collects what one IndexMerge task attempt read and wrote,
-// and how long each phase took.
+// indexMergeAttempt collects what one IndexMerge task attempt read and wrote.
 type indexMergeAttempt struct {
 	sourceObjects int
 	reads         *indexReads
 	outputObjects int
 	output        outputSizes
-
-	classifyDuration time.Duration
-	postingsDuration time.Duration
-	statsDuration    time.Duration
-	finishDuration   time.Duration
 }
 
 func (a *indexMergeAttempt) observedStats(outcome string) IndexMergeObservedStats {
