@@ -46,20 +46,21 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 	})
 }
 
-// doIndexMerge runs one IndexMerge task attempt. It reports the attempt to the
-// observer whatever its outcome, and logs a summary when it succeeds.
+// doIndexMerge runs one IndexMerge task. When the task succeeds, it reports
+// the task to the observer and logs a summary. A failed task reports only the
+// input bytes that it read before it failed.
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
 	attempt := indexMergeAttempt{reads: newIndexReads(c.indexMergeObserver.ObserveIndexMergeInputBytes)}
 	artifacts, err := c.mergeIndexes(ctx, node, &attempt)
 	attempt.reads.flush()
-	duration := time.Since(start)
-
-	stats := attempt.observedStats(indexMergeOutcome(ctx, err))
-	c.indexMergeObserver.ObserveIndexMerge(node.Tenant, stats, duration)
 	if err != nil {
 		return nil, err
 	}
+	duration := time.Since(start)
+
+	stats := attempt.observedStats()
+	c.indexMergeObserver.ObserveIndexMerge(node.Tenant, stats, duration)
 
 	inputBytes := stats.PostingsInputBytes + stats.StatsInputBytes
 	var inputBytesPerSecond int64
@@ -84,8 +85,8 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 }
 
 // mergeIndexes classifies the source sections of node, merges their postings
-// and stats rows, and uploads the result. It records its progress in attempt,
-// so a failed attempt still reports what it read.
+// and stats rows, and uploads the result. It records what it read and wrote in
+// attempt.
 func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, attempt *indexMergeAttempt) ([]v2.ResultArtifact, error) {
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -154,34 +155,15 @@ func statsSources(node *physical.IndexMerge, objects []objectSections) ([]object
 	return kept, nil
 }
 
-const (
-	indexMergeOutcomeSuccess   = "success"
-	indexMergeOutcomeFailed    = "failed"
-	indexMergeOutcomeCancelled = "cancelled"
-)
+const indexMergeOutcomeSuccess = "success"
 
-// indexMergeOutcome returns the outcome of a task attempt that ended with err
-// under ctx. An error after ctx ended counts as cancelled, because the
-// scheduler or a shutdown stopped the attempt.
-func indexMergeOutcome(ctx context.Context, err error) string {
-	switch {
-	case err == nil:
-		return indexMergeOutcomeSuccess
-	case ctx.Err() != nil:
-		return indexMergeOutcomeCancelled
-	default:
-		return indexMergeOutcomeFailed
-	}
-}
-
-// IndexMergeObservedStats is the summary of one IndexMerge task attempt that
-// the executor reports to IndexMergeObserver. A failed attempt reports what it
-// read before it failed, and no output.
+// IndexMergeObservedStats is the summary of one successful IndexMerge task
+// that the executor reports to IndexMergeObserver.
 type IndexMergeObservedStats struct {
 	Outcome       string
 	SourceObjects int
 
-	// The input counts cover every row that the attempt read from its sources,
+	// The input counts cover every row that the task read from its sources,
 	// including the duplicates that it dropped. The bytes are the sizes of the
 	// variable-length values of the rows, as [postings.Row.Size] and
 	// [stats.Stat.Size] count them.
@@ -203,21 +185,18 @@ type indexMergeAttempt struct {
 	output        outputSizes
 }
 
-func (a *indexMergeAttempt) observedStats(outcome string) IndexMergeObservedStats {
-	stats := IndexMergeObservedStats{
-		Outcome:            outcome,
-		SourceObjects:      a.sourceObjects,
-		PostingsInputBytes: a.reads.postings.bytes,
-		StatsInputBytes:    a.reads.stats.bytes,
-		PostingsRows:       a.reads.postings.rows,
-		StatsRows:          a.reads.stats.rows,
+func (a *indexMergeAttempt) observedStats() IndexMergeObservedStats {
+	return IndexMergeObservedStats{
+		Outcome:                 indexMergeOutcomeSuccess,
+		SourceObjects:           a.sourceObjects,
+		PostingsInputBytes:      a.reads.postings.bytes,
+		StatsInputBytes:         a.reads.stats.bytes,
+		PostingsRows:            a.reads.postings.rows,
+		StatsRows:               a.reads.stats.rows,
+		OutputObjects:           a.outputObjects,
+		OutputBytesCompressed:   a.output.compressed,
+		OutputBytesUncompressed: a.output.uncompressed,
 	}
-	if outcome == indexMergeOutcomeSuccess {
-		stats.OutputObjects = a.outputObjects
-		stats.OutputBytesCompressed = a.output.compressed
-		stats.OutputBytesUncompressed = a.output.uncompressed
-	}
-	return stats
 }
 
 // indexReadRowsBatch is how many source rows indexReads counts before it

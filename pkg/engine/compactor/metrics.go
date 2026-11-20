@@ -346,11 +346,11 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	return &workerMetrics{
 		indexMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_index_merge_tasks_total",
-			Help: "IndexMerge task attempts by outcome: success, failed, or cancelled. An attempt that kills the worker process is not counted.",
+			Help: "IndexMerge tasks by outcome. success = index objects uploaded.",
 		}, []string{labelTenant, labelOutcome}),
 		indexMergeDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_merge_duration_seconds",
-			Help:    "Wall-clock duration of an IndexMerge task attempt on the worker, for every outcome.",
+			Help:    "Wall-clock duration of a successful IndexMerge task on the worker.",
 			Buckets: durationBuckets,
 
 			NativeHistogramBucketFactor:     1.1,
@@ -359,7 +359,7 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 		}, []string{labelTenant}),
 		indexMergeTaskInputBytes: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_merge_task_input_bytes",
-			Help:    "Bytes of the postings and stats rows that an IndexMerge task attempt read: strings, stream ID bitmaps, bloom filters and label values. One observation per attempt, for the same attempts as loki_dataobj_compaction_index_merge_duration_seconds.",
+			Help:    "Bytes of the postings and stats rows that a successful IndexMerge task read: strings, stream ID bitmaps, bloom filters and label values. One observation per task, for the same tasks as loki_dataobj_compaction_index_merge_duration_seconds.",
 			Buckets: byteBuckets,
 
 			NativeHistogramBucketFactor:     1.1,
@@ -441,7 +441,7 @@ func (m *threadIndexMergeMetrics) ObserveIndexMergeInputBytes(bytes int64) {
 }
 
 // ObserveIndexMerge satisfies executor.IndexMergeObserver. Called by the
-// IndexMerge executor on the worker after each task attempt.
+// IndexMerge executor on the worker after each successful task.
 func (m *workerMetrics) ObserveIndexMerge(tenant string, stats executor.IndexMergeObservedStats, duration time.Duration) {
 	outcome := stats.Outcome
 	if outcome == "" {

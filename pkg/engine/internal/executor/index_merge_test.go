@@ -2025,7 +2025,7 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 		require.Equal(t, observer.attempts[0].PostingsInputBytes, observer.inputBytes)
 	})
 
-	t.Run("reports a failed attempt with no output when a source index is missing", func(t *testing.T) {
+	t.Run("reports no summary when the task fails", func(t *testing.T) {
 		observer := &recordingIndexMergeObserver{}
 		execCtx := newTestExecutorContext(t, objstore.NewInMemBucket())
 		execCtx.indexMergeObserver = observer
@@ -2036,27 +2036,7 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 		})
 		require.Error(t, err)
 
-		require.Equal(t, []IndexMergeObservedStats{{Outcome: indexMergeOutcomeFailed}}, observer.attempts)
-	})
-
-	t.Run("reports a cancelled attempt when the context ends before the merge", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
-		observer := &recordingIndexMergeObserver{}
-		execCtx := newTestExecutorContext(t, bucket)
-		execCtx.indexMergeObserver = observer
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		_, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
-			NodeID: ulid.Make(), Tenant: "tenant-1",
-			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
-		})
-		require.Error(t, err)
-
-		require.Len(t, observer.attempts, 1)
-		require.Equal(t, indexMergeOutcomeCancelled, observer.attempts[0].Outcome)
-		require.Zero(t, observer.attempts[0].OutputObjects)
+		require.Empty(t, observer.attempts)
 	})
 }
 
