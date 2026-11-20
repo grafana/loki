@@ -69,3 +69,22 @@ func TestCompareRows(t *testing.T) {
 		})
 	}
 }
+
+func TestRowSize(t *testing.T) {
+	t.Run("counts the strings, bitmap and bloom filter of a bloom row", func(t *testing.T) {
+		row := Row{
+			Kind:             KindBloom,
+			ObjectPath:       "obj",
+			ColumnName:       "col",
+			StreamIDBitmap:   []byte{1, 2},
+			BloomFilter:      []byte{1, 2, 3, 4},
+			UncompressedSize: 1000,
+		}
+		require.Equal(t, int64(3+3+2+4), row.Size())
+	})
+
+	t.Run("counts the label value of a label row", func(t *testing.T) {
+		row := Row{Kind: KindLabel, ObjectPath: "obj", ColumnName: "service", LabelValue: "api", StreamIDBitmap: []byte{1}}
+		require.Equal(t, int64(3+7+3+1), row.Size())
+	})
+}

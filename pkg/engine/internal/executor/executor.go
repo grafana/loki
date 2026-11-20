@@ -60,18 +60,18 @@ type IndexMergeObserver interface {
 	// nothing.
 	ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, duration time.Duration)
 
-	// ObserveIndexMergeInputRows receives the number of source rows that the
-	// task read since the last call. It reports during the task, not once at
-	// the end, so that rate() shows the progress of a task that has not
+	// ObserveIndexMergeInputBytes receives the size of the source rows that
+	// the task read since the last call. It reports during the task, not once
+	// at the end, so that rate() shows the progress of a task that has not
 	// finished.
-	ObserveIndexMergeInputRows(rows int64)
+	ObserveIndexMergeInputBytes(bytes int64)
 }
 
 // nopIndexMergeObserver discards IndexMerge statistics.
 type nopIndexMergeObserver struct{}
 
 func (nopIndexMergeObserver) ObserveIndexMerge(string, IndexMergeObservedStats, time.Duration) {}
-func (nopIndexMergeObserver) ObserveIndexMergeInputRows(int64)                                 {}
+func (nopIndexMergeObserver) ObserveIndexMergeInputBytes(int64)                                {}
 
 // NewIndexMergeObserverFunc returns the IndexMergeObserver for the worker
 // thread with the given index.

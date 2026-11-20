@@ -91,11 +91,6 @@ func (s *Section) Layout() (layout streams.Layout, ok bool, err error) {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
-// UncompressedSize returns the size in bytes of the section data before
-// compression. It counts every column, including the columns that Columns
-// skips.
-func (s *Section) UncompressedSize() int64 { return s.inner.UncompressedSize() }
-
 // Empty reports whether the section has no physical columns, as a section
 // from a [LayoutSectionBuilder] has. An empty section has no rows. A section
 // whose columns are all of types that this code does not know is not empty.

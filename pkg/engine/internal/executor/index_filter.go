@@ -70,7 +70,7 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	// The filter discards the counts, because the observer counts the rows
+	// The filter discards the counts, because the observer counts the input
 	// of IndexMerge tasks only.
 	reads := newIndexReads(func(int64) {})
 

@@ -327,7 +327,7 @@ type workerMetrics struct {
 	indexMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
 	indexMergeDurationSeconds         *prometheus.HistogramVec // tenant
 	indexMergeTaskInputBytes          *prometheus.HistogramVec // tenant
-	indexMergeInputRowsTotal          *prometheus.CounterVec   // thread
+	indexMergeTaskInputBytesTotal     *prometheus.CounterVec   // thread
 	indexMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
 	indexMergeOutputBytesUncompressed *prometheus.HistogramVec // tenant
 
@@ -359,16 +359,16 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 		}, []string{labelTenant}),
 		indexMergeTaskInputBytes: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_merge_task_input_bytes",
-			Help:    "Uncompressed size of the postings and stats sections that an IndexMerge task attempt opened. One observation per attempt, for the same attempts as loki_dataobj_compaction_index_merge_duration_seconds.",
+			Help:    "Bytes of the postings and stats rows that an IndexMerge task attempt read: strings, stream ID bitmaps, bloom filters and label values. One observation per attempt, for the same attempts as loki_dataobj_compaction_index_merge_duration_seconds.",
 			Buckets: byteBuckets,
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}, []string{labelTenant}),
-		indexMergeInputRowsTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_compaction_index_merge_input_rows_total",
-			Help: "Postings and stats rows that IndexMerge tasks read from their sources, counted while tasks run. Includes tasks that later fail. A thread runs one task at a time, so rate() per thread gives the throughput of its running task.",
+		indexMergeTaskInputBytesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_index_merge_task_input_bytes_total",
+			Help: "Bytes of the postings and stats rows that IndexMerge tasks read, counted while tasks run. It tracks the same bytes as loki_dataobj_compaction_index_merge_task_input_bytes. Includes tasks that later fail. A thread runs one task at a time, so rate() per thread gives the throughput of its running task.",
 		}, []string{labelThread}),
 		indexMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_merge_output_bytes_compressed",
@@ -423,21 +423,21 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 func (m *workerMetrics) indexMergeObserver(thread int) executor.IndexMergeObserver {
 	return &threadIndexMergeMetrics{
 		workerMetrics: m,
-		inputRows:     m.indexMergeInputRowsTotal.WithLabelValues(strconv.Itoa(thread)),
+		inputBytes:    m.indexMergeTaskInputBytesTotal.WithLabelValues(strconv.Itoa(thread)),
 	}
 }
 
 // threadIndexMergeMetrics is the executor.IndexMergeObserver for one worker
-// thread. It holds the thread's input rows counter, so the per-row path does
+// thread. It holds the thread's input bytes counter, so the per-row path does
 // no label lookup.
 type threadIndexMergeMetrics struct {
 	*workerMetrics
-	inputRows prometheus.Counter
+	inputBytes prometheus.Counter
 }
 
-// ObserveIndexMergeInputRows satisfies executor.IndexMergeObserver.
-func (m *threadIndexMergeMetrics) ObserveIndexMergeInputRows(rows int64) {
-	m.inputRows.Add(float64(rows))
+// ObserveIndexMergeInputBytes satisfies executor.IndexMergeObserver.
+func (m *threadIndexMergeMetrics) ObserveIndexMergeInputBytes(bytes int64) {
+	m.inputBytes.Add(float64(bytes))
 }
 
 // ObserveIndexMerge satisfies executor.IndexMergeObserver. Called by the

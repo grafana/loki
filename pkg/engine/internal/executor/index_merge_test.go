@@ -1921,9 +1921,9 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 
 // recordingIndexMergeObserver records every call of an IndexMergeObserver.
 type recordingIndexMergeObserver struct {
-	tenants   []string
-	attempts  []IndexMergeObservedStats
-	inputRows int64
+	tenants    []string
+	attempts   []IndexMergeObservedStats
+	inputBytes int64
 }
 
 func (o *recordingIndexMergeObserver) ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, _ time.Duration) {
@@ -1931,8 +1931,8 @@ func (o *recordingIndexMergeObserver) ObserveIndexMerge(tenant string, stats Ind
 	o.attempts = append(o.attempts, stats)
 }
 
-func (o *recordingIndexMergeObserver) ObserveIndexMergeInputRows(rows int64) {
-	o.inputRows += rows
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInputBytes(bytes int64) {
+	o.inputBytes += bytes
 }
 
 func TestExecuteIndexMerge_Observer(t *testing.T) {
@@ -1960,7 +1960,7 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 		require.Positive(t, observer.attempts[0].OutputBytesUncompressed)
 	})
 
-	t.Run("reports the sections, sizes and rows that the merge read", func(t *testing.T) {
+	t.Run("reports the rows and bytes that the merge read", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
 		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
@@ -1981,13 +1981,11 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 		require.Len(t, observer.attempts, 1)
 		got := observer.attempts[0]
 		require.Equal(t, 2, got.SourceObjects)
-		require.Equal(t, 2, got.PostingsSections)
-		require.Equal(t, 2, got.StatsSections)
-		require.Positive(t, got.PostingsInputBytes)
-		require.Positive(t, got.StatsInputBytes)
 		require.Equal(t, int64(2), got.PostingsRows)
 		require.Equal(t, int64(2), got.StatsRows)
-		require.Equal(t, got.PostingsRows+got.StatsRows, observer.inputRows)
+		require.Positive(t, got.PostingsInputBytes)
+		require.Positive(t, got.StatsInputBytes)
+		require.Equal(t, got.PostingsInputBytes+got.StatsInputBytes, observer.inputBytes)
 	})
 
 	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
@@ -2024,7 +2022,7 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 		require.Equal(t, uploaded, observer.attempts[0].OutputBytesCompressed)
 		require.Greater(t, observer.attempts[0].OutputBytesUncompressed, int64(4096*(len(artifacts)-1)))
 		require.Equal(t, int64(300), observer.attempts[0].PostingsRows)
-		require.Equal(t, int64(300), observer.inputRows)
+		require.Equal(t, observer.attempts[0].PostingsInputBytes, observer.inputBytes)
 	})
 
 	t.Run("reports a failed attempt with no output when a source index is missing", func(t *testing.T) {
@@ -2063,21 +2061,23 @@ func TestExecuteIndexMerge_Observer(t *testing.T) {
 }
 
 func TestIndexReads(t *testing.T) {
-	t.Run("reports rows in batches and reports the rest on flush", func(t *testing.T) {
+	t.Run("reports bytes every batch of rows and reports the rest on flush", func(t *testing.T) {
 		var reported []int64
-		reads := newIndexReads(func(rows int64) { reported = append(reported, rows) })
+		reads := newIndexReads(func(bytes int64) { reported = append(reported, bytes) })
+		row := postings.Row{ObjectPath: "obj", ColumnName: "col", LabelValue: "v"}
+		stat := stats.Stat{ObjectPath: "obj"}
 
 		for range indexReadRowsBatch + 5 {
-			reads.readPostingsRow()
+			reads.readPostingsRow(row)
 		}
-		reads.readStatsRow()
-		require.Equal(t, []int64{indexReadRowsBatch}, reported)
+		reads.readStatsRow(stat)
+		require.Equal(t, []int64{indexReadRowsBatch * row.Size()}, reported)
 
 		reads.flush()
 		reads.flush()
-		require.Equal(t, []int64{indexReadRowsBatch, 6}, reported)
-		require.Equal(t, int64(indexReadRowsBatch+5), reads.postings.rows)
-		require.Equal(t, int64(1), reads.stats.rows)
+		require.Equal(t, []int64{indexReadRowsBatch * row.Size(), 5*row.Size() + stat.Size()}, reported)
+		require.Equal(t, rowReads{rows: indexReadRowsBatch + 5, bytes: (indexReadRowsBatch + 5) * row.Size()}, reads.postings)
+		require.Equal(t, rowReads{rows: 1, bytes: stat.Size()}, reads.stats)
 	})
 }
 
@@ -2157,37 +2157,15 @@ func TestSectionConcatSeq(t *testing.T) {
 			ctx:        context.Background(),
 			objectPath: "indexes/a",
 			sections:   []*dataobj.Section{nil, nil},
-			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], int64, error) {
-				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, 0, nil
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
 			},
-			opened: func(int64) {},
 		}
 
 		require.True(t, seq.Next())
 		require.Equal(t, 1, seq.At())
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
-	})
-
-	t.Run("reports the size of each section when it opens the section", func(t *testing.T) {
-		var opened []int64
-		seq := &sectionConcatSeq[int]{
-			ctx:        context.Background(),
-			objectPath: "indexes/a",
-			sections:   []*dataobj.Section{nil, nil},
-			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], int64, error) {
-				size := int64(10 * (len(opened) + 1))
-				return &closeErrIter{rows: []int{1}}, size, nil
-			},
-			opened: func(size int64) { opened = append(opened, size) },
-		}
-
-		require.True(t, seq.Next())
-		require.Equal(t, []int64{10}, opened)
-		require.True(t, seq.Next())
-		require.False(t, seq.Next())
-		require.NoError(t, seq.Err())
-		require.Equal(t, []int64{10, 20}, opened)
 	})
 }
 
