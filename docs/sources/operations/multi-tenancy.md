@@ -15,6 +15,8 @@ set of characters; see [Restrictions](#restrictions) below for the full rules.
 Operators are recommended to use a reasonable limit for uniquely identifying
 tenants; 20 bytes is usually enough.
 
+To restrict which log streams a tenant can query, rather than fully isolating tenants from each other, refer to [Use label-based access control with Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/lbac/).
+
 Loki defaults to running in multi-tenant mode.
 Multi-tenant mode is set in the configuration with `auth_enabled: true`, or with the equivalent command line flag `-auth.enabled` (default `true`).
 
@@ -39,6 +41,8 @@ For example, a query for tenants `A` and `B` requires the header `X-Scope-OrgID:
 
 Only query endpoints support multi-tenant calls.
 Calls to `GET /loki/api/v1/tail`, `POST /loki/api/v1/push`, and `POST /otlp/v1/logs` will return an HTTP 400 error if more than one tenant is defined in the HTTP header.
+
+The `/loki/api/v1/detected_fields` endpoint does not yet support multi-tenant queries. When more than one tenant is specified, the endpoint returns an empty result instead of an error.
 
 Instant and range queries support label filtering using tenant IDs.
 For example, the query
@@ -90,4 +94,5 @@ Do not include a colon (`:`) in the `X-Scope-OrgID` header.
 A colon is not a valid tenant ID character.
 Most Loki components stop reading the tenant ID at the first colon and ignore the rest of the value, and the ignored part is not checked against the rules on this page.
 Other components read the whole header value instead, so a header that contains a colon can produce inconsistent results.
+Label-based access control (LBAC) avoids this ambiguity by carrying its policy in a separate `X-Prom-Label-Policy` header instead of appending it to `X-Scope-OrgID` with a colon. For more information, refer to [Use label-based access control with Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/lbac/).
 {{< /admonition >}}
