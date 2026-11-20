@@ -154,7 +154,7 @@ func TestHistogramOverTime(t *testing.T) {
 		for i := range hist {
 			require.Equal(t, hist[i].ts, sums[i].ts)
 			require.Len(t, hist[i].vec, 1)
-			require.InDelta(t, sums[i].vec[0].F, hist[i].vec[0].H.Sum, 1e-9, "step %d", i)
+			require.Equal(t, sums[i].vec[0].F, hist[i].vec[0].H.Sum, "step %d", i)
 			require.Equal(t, counts[i].vec[0].F, hist[i].vec[0].H.Count, "step %d", i)
 		}
 		// The windows overlap, so a line is in more than one of them.
@@ -201,6 +201,15 @@ func TestHistogramOverTime_customBuckets(t *testing.T) {
 	}, histogramNonEmptyBucketsOf(h))
 }
 
+// requireSumWithinUlps fails unless got is want, up to ulps units in the last place. The sum of the sums of the
+// parts is rounded once more than the sum of all the values, so for values that are not whole numbers the two
+// can differ in the last digit. The values that cancel have a test of their own, which is exact.
+func requireSumWithinUlps(t *testing.T, want, got, ulps float64, msgAndArgs ...any) {
+	t.Helper()
+	ulp := math.Nextafter(math.Abs(want), math.Inf(1)) - math.Abs(want)
+	require.LessOrEqual(t, math.Abs(want-got), ulps*ulp, msgAndArgs...)
+}
+
 // A sum of histograms equals the histogram of the range aggregation grouped the same way: merging the
 // histograms of the series is the same as building one histogram of all their values.
 func TestHistogramOverTime_sum(t *testing.T) {
@@ -219,7 +228,7 @@ func TestHistogramOverTime_sum(t *testing.T) {
 			g, ok := gotBy[lbs]
 			require.True(t, ok, "series %s", lbs)
 			require.Equal(t, w.H.Count, g.H.Count, lbs)
-			require.InDelta(t, w.H.Sum, g.H.Sum, 1e-9, lbs)
+			requireSumWithinUlps(t, w.H.Sum, g.H.Sum, 2, lbs)
 			require.Equal(t, histogramNonEmptyBucketsOf(w.H), histogramNonEmptyBucketsOf(g.H), lbs)
 			require.NoError(t, g.H.Validate())
 		}
@@ -276,6 +285,36 @@ func TestHistogramOverTime_sum(t *testing.T) {
 		require.Equal(t, 2.0, sum.Count)
 		require.Equal(t, 1.0, a.Count, "the first histogram is copied before it is added to")
 		require.Equal(t, 1.0, b.Count)
+	})
+
+	// A plain sum of 1e16, 1 and -1e16 is 0 and the sum of the values with compensation is 1, so the forms are
+	// the same only when each of them sums with compensation. The values are in three series, so the range
+	// aggregation by app puts them in one histogram and the sum aggregation adds three.
+	t.Run("values that cancel give the same sum in every form", func(t *testing.T) {
+		cancelling := []logproto.Stream{
+			histogramStream(`{app="a", pod="1"}`, histogramTimedValue{histogramSeconds(10), "1e16"}),
+			histogramStream(`{app="a", pod="2"}`, histogramTimedValue{histogramSeconds(20), "1"}),
+			histogramStream(`{app="a", pod="3"}`, histogramTimedValue{histogramSeconds(30), "-1e16"}),
+		}
+		sumOf := func(query string) float64 {
+			vec := histogramMustEvaluate(t, cancelling, query, histogramAt(60), histogramAt(60), 0)[0].vec
+			require.Len(t, vec, 1, query)
+			require.NotNil(t, vec[0].H, query)
+			require.Equal(t, 3.0, vec[0].H.Count, query)
+			return vec[0].H.Sum
+		}
+
+		want := 1.0 // 1e16 + 1 - 1e16
+		require.Equal(t, want, sumOf(`histogram_over_time(`+rng+`) by (app)`), "the range aggregation by app")
+		require.Equal(t, want, sumOf(`sum by (app) (histogram_over_time(`+rng+`))`), "sum by")
+		require.Equal(t, want, sumOf(`sum without (pod) (histogram_over_time(`+rng+`))`), "sum without")
+		require.Equal(t, want, sumOf(`sum(histogram_over_time(`+rng+`))`), "sum")
+		require.Equal(t, want, sumOf(`sum(sum by (pod) (histogram_over_time(`+rng+`)))`), "a sum of sums")
+
+		// It is what the sum of the sum_over_time of the three series returns, as sum_over_time does not group.
+		vec := histogramMustEvaluate(t, cancelling, `sum by (app) (sum_over_time(`+rng+`))`, histogramAt(60), histogramAt(60), 0)[0].vec
+		require.Len(t, vec, 1)
+		require.Equal(t, want, vec[0].F)
 	})
 }
 
