@@ -136,3 +136,61 @@ func TestWorkerMetrics_ObserveLogMerge(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkerMetrics_IndexMergeObserver(t *testing.T) {
+	t.Run("adds input bytes to the series of the observer's thread only", func(t *testing.T) {
+		m := newWorkerMetrics(prometheus.NewRegistry())
+		thread0 := m.indexMergeObserver(0)
+		thread3 := m.indexMergeObserver(3)
+
+		thread0.ObserveIndexMergeInputBytes(10)
+		thread0.ObserveIndexMergeInputBytes(5)
+		thread3.ObserveIndexMergeInputBytes(7)
+
+		require.Equal(t, 2, testutil.CollectAndCount(m.indexMergeTaskInputBytesTotal))
+		require.Equal(t, 15.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("0")))
+		require.Equal(t, 7.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("3")))
+	})
+}
+
+func TestWorkerMetrics_ObserveIndexMerge(t *testing.T) {
+	t.Run("counts each task and observes its input bytes and duration", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newWorkerMetrics(reg)
+
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", PostingsInputBytes: 200, StatsInputBytes: 100}, 3*time.Second)
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", PostingsInputBytes: 50}, time.Second)
+
+		require.Equal(t, 2.0, testutil.ToFloat64(m.indexMergeTasksTotal.WithLabelValues("acme", "success")))
+
+		mfm, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		inputBytes, err := metrics.FindHistogramWithNameAndLabels(mfm, "loki_dataobj_compaction_index_merge_task_input_bytes", labelTenant, "acme")
+		require.NoError(t, err)
+		duration, err := metrics.FindHistogramWithNameAndLabels(mfm, "loki_dataobj_compaction_index_merge_duration_seconds", labelTenant, "acme")
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), inputBytes.GetSampleCount())
+		require.Equal(t, duration.GetSampleCount(), inputBytes.GetSampleCount())
+		require.Equal(t, 350.0, inputBytes.GetSampleSum())
+		require.Equal(t, 4.0, duration.GetSampleSum())
+	})
+
+	t.Run("observes output sizes only for tasks that report output", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newWorkerMetrics(reg)
+
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success", OutputBytesCompressed: 40, OutputBytesUncompressed: 90}, time.Second)
+		m.ObserveIndexMerge("acme", executor.IndexMergeObservedStats{Outcome: "success"}, time.Second)
+
+		mfm, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		compressed, err := metrics.FindHistogramWithNameAndLabels(mfm, "loki_dataobj_compaction_index_merge_output_bytes_compressed", labelTenant, "acme")
+		require.NoError(t, err)
+		uncompressed, err := metrics.FindHistogramWithNameAndLabels(mfm, "loki_dataobj_compaction_index_merge_output_bytes_uncompressed", labelTenant, "acme")
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), compressed.GetSampleCount())
+		require.Equal(t, 40.0, compressed.GetSampleSum())
+		require.Equal(t, uint64(1), uncompressed.GetSampleCount())
+		require.Equal(t, 90.0, uncompressed.GetSampleSum())
+	})
+}

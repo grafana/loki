@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
@@ -45,17 +46,57 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 	})
 }
 
+// doIndexMerge runs one IndexMerge task. When the task succeeds, it reports
+// the task to the observer and logs a summary. A failed task reports only the
+// input bytes that it read before it failed.
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
-	// Check prerequisites
+	start := time.Now()
+	attempt := indexMergeAttempt{reads: newIndexReads(c.indexMergeObserver.ObserveIndexMergeInputBytes)}
+	artifacts, err := c.mergeIndexes(ctx, node, &attempt)
+	attempt.reads.flush()
+	if err != nil {
+		return nil, err
+	}
+	duration := time.Since(start)
+
+	stats := attempt.observedStats()
+	c.indexMergeObserver.ObserveIndexMerge(node.Tenant, stats, duration)
+
+	inputBytes := stats.PostingsInputBytes + stats.StatsInputBytes
+	var inputBytesPerSecond int64
+	if duration > 0 {
+		inputBytesPerSecond = int64(float64(inputBytes) / duration.Seconds())
+	}
+	level.Info(c.logger).Log(
+		"msg", "IndexMerge: built index object(s)",
+		"tenant", node.Tenant,
+		"source_objects", stats.SourceObjects,
+		"postings_input_bytes", stats.PostingsInputBytes,
+		"stats_input_bytes", stats.StatsInputBytes,
+		"input_bytes_per_second", inputBytesPerSecond,
+		"postings_rows", stats.PostingsRows,
+		"stats_rows", stats.StatsRows,
+		"output_objects", stats.OutputObjects,
+		"output_bytes", stats.OutputBytesCompressed,
+		"output_uncompressed_bytes", stats.OutputBytesUncompressed,
+		"duration", duration,
+	)
+	return artifacts, nil
+}
+
+// mergeIndexes classifies the source sections of node, merges their postings
+// and stats rows, and uploads the result. It records what it read and wrote in
+// attempt.
+func (c *Context) mergeIndexes(ctx context.Context, node *physical.IndexMerge, attempt *indexMergeAttempt) ([]v2.ResultArtifact, error) {
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	// Classify sections from all runs, grouped by source object.
 	objects, layout, err := c.classifyRuns(ctx, node)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
+	attempt.sourceObjects = len(objects)
 
 	out, err := c.newIndexOutput(node.Tenant, layout)
 	if err != nil {
@@ -63,14 +104,15 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out); err != nil {
+	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out, attempt.reads); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
+
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out, attempt.reads); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
@@ -78,9 +120,8 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
-	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, sizes.compressed, sizes.uncompressed)
-	}
+	attempt.outputObjects = len(artifacts)
+	attempt.output = sizes
 	return artifacts, nil
 }
 
@@ -112,6 +153,104 @@ func statsSources(node *physical.IndexMerge, objects []objectSections) ([]object
 		}
 	}
 	return kept, nil
+}
+
+const indexMergeOutcomeSuccess = "success"
+
+// IndexMergeObservedStats is the summary of one successful IndexMerge task
+// that the executor reports to IndexMergeObserver.
+type IndexMergeObservedStats struct {
+	Outcome       string
+	SourceObjects int
+
+	// The input counts cover every row that the task read from its sources,
+	// including the duplicates that it dropped. The bytes are the sizes of the
+	// variable-length values of the rows, as [postings.Row.Size] and
+	// [stats.Stat.Size] count them.
+	PostingsInputBytes int64
+	StatsInputBytes    int64
+	PostingsRows       int64
+	StatsRows          int64
+
+	OutputObjects           int
+	OutputBytesCompressed   int64
+	OutputBytesUncompressed int64
+}
+
+// indexMergeAttempt collects what one IndexMerge task attempt read and wrote.
+type indexMergeAttempt struct {
+	sourceObjects int
+	reads         *indexReads
+	outputObjects int
+	output        outputSizes
+}
+
+func (a *indexMergeAttempt) observedStats() IndexMergeObservedStats {
+	return IndexMergeObservedStats{
+		Outcome:                 indexMergeOutcomeSuccess,
+		SourceObjects:           a.sourceObjects,
+		PostingsInputBytes:      a.reads.postings.bytes,
+		StatsInputBytes:         a.reads.stats.bytes,
+		PostingsRows:            a.reads.postings.rows,
+		StatsRows:               a.reads.stats.rows,
+		OutputObjects:           a.outputObjects,
+		OutputBytesCompressed:   a.output.compressed,
+		OutputBytesUncompressed: a.output.uncompressed,
+	}
+}
+
+// indexReadRowsBatch is how many source rows indexReads counts before it
+// reports their bytes.
+const indexReadRowsBatch = 1000
+
+// indexReads counts the rows and bytes that one index merge or filter reads
+// from its sources. It reports bytes every indexReadRowsBatch rows, so the
+// per-row path does no metric update. It is not safe for concurrent use.
+type indexReads struct {
+	postings, stats rowReads
+
+	report          func(bytes int64)
+	unreportedRows  int
+	unreportedBytes int64
+}
+
+// rowReads counts the rows of one section type that a merge read, and their
+// size in bytes.
+type rowReads struct {
+	rows  int64
+	bytes int64
+}
+
+// newIndexReads returns empty counts that report bytes to report.
+func newIndexReads(report func(bytes int64)) *indexReads {
+	return &indexReads{report: report}
+}
+
+func (r *indexReads) readPostingsRow(row postings.Row) {
+	r.read(&r.postings, row.Size())
+}
+
+func (r *indexReads) readStatsRow(row stats.Stat) {
+	r.read(&r.stats, row.Size())
+}
+
+func (r *indexReads) read(kind *rowReads, size int64) {
+	kind.rows++
+	kind.bytes += size
+	r.unreportedRows++
+	r.unreportedBytes += size
+	if r.unreportedRows >= indexReadRowsBatch {
+		r.flush()
+	}
+}
+
+// flush reports the bytes that r did not report yet.
+func (r *indexReads) flush() {
+	if r.unreportedRows == 0 {
+		return
+	}
+	r.report(r.unreportedBytes)
+	r.unreportedRows, r.unreportedBytes = 0, 0
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
@@ -267,11 +406,12 @@ func keepAll(string) bool { return true }
 
 // mergePostingsInto merges the postings rows of all source index objects
 // whose posting key is in keySpan, with a K-way loser-tree merge. It writes a
-// row to out only if keep returns true for the log object path of the row.
+// row to out only if keep returns true for the log object path of the row. It
+// counts the rows that it reads in reads.
 //
 // The readers skip the pages that hold no key of keySpan, so a task of a
 // merge split by key span reads little more than its own range.
-func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
+func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput, reads *indexReads) error {
 	readers := postingsSequences(ctx, objects, keySpan)
 	if len(readers) == 0 {
 		return nil
@@ -293,6 +433,7 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 		}
 
 		row := tree.Winner().At()
+		reads.readPostingsRow(row)
 		if !keep(row.ObjectPath) {
 			continue
 		}
@@ -355,8 +496,8 @@ func postingsSequences(ctx context.Context, objects []objectSections, keySpan po
 
 // mergeStatsInto merges the stats sections of all source index objects with a
 // K-way loser-tree merge. It writes a row to out only if keep returns true for
-// the log object path of the row.
-func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
+// the log object path of the row. It counts the rows that it reads in reads.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput, reads *indexReads) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -390,6 +531,7 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 		}
 
 		row := tree.Winner().At()
+		reads.readStatsRow(row)
 		if !keep(row.ObjectPath) {
 			continue
 		}

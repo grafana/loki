@@ -59,9 +59,9 @@ type WorkerParams struct {
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
-	// IndexMergeObserver is used  by compaction to populate output-size
-	// histograms. Optional; nil disables observation.
-	IndexMergeObserver executor.IndexMergeObserver
+	// NewIndexMergeObserver returns the IndexMerge observer for each worker
+	// thread. Optional; nil disables observation.
+	NewIndexMergeObserver executor.NewIndexMergeObserverFunc
 
 	// NewLogMergeObserver returns the LogMerge observer for each worker
 	// thread. Optional; nil disables observation.
@@ -128,8 +128,8 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		LogsobjCfg:     params.LogsobjCfg,
 		BuilderMetrics: builderMetrics,
 
-		IndexMergeObserver:  params.IndexMergeObserver,
-		NewLogMergeObserver: params.NewLogMergeObserver,
+		NewIndexMergeObserver: params.NewIndexMergeObserver,
+		NewLogMergeObserver:   params.NewLogMergeObserver,
 	})
 	if err != nil {
 		return nil, err
