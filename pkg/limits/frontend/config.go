@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	AcceptedStreamsCacheEnabled    bool                  `yaml:"accepted_streams_cache_enabled"`
 	AcceptedStreamsCacheTTL        time.Duration         `yaml:"accepted_streams_cache_ttl"`
 	AcceptedStreamsCacheTTLJitter  time.Duration         `yaml:"accepted_streams_cache_ttl_jitter"`
+	ShardCacheTTL                  time.Duration         `yaml:"shard_cache_ttl"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -55,7 +57,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.AcceptedStreamsCacheTTL,
 		"ingest-limits-frontend.accepted-streams-cache-ttl",
 		time.Minute,
-		"The TTL for the accepted streams cache.",
+		"The time to live (TTL) for the accepted streams cache.",
 	)
 	f.DurationVar(
 		&cfg.AcceptedStreamsCacheTTLJitter,
@@ -63,9 +65,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		15*time.Second,
 		"The jitter to add to the accepted streams cache.",
 	)
+	f.DurationVar(
+		&cfg.ShardCacheTTL,
+		"ingest-limits-frontend.shard-cache-ttl",
+		0,
+		"[Experimental]: The time to live (TTL) for caching CheckLimitsAndShard results per stream. 0 disables the cache.",
+	)
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(parent limits.Config) error {
 	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid gRPC client config: %w", err)
 	}
@@ -81,6 +89,12 @@ func (cfg *Config) Validate() error {
 		if cfg.AcceptedStreamsCacheTTLJitter <= 0 {
 			return errors.New("accepted streams cache TTL jitter must be a positive number, or the cache must be disabled")
 		}
+	}
+	if cfg.ShardCacheTTL < 0 {
+		return errors.New("shard cache ttl must not be negative")
+	}
+	if cfg.ShardCacheTTL >= parent.RateWindow {
+		return errors.New("shard cache ttl must not be longer or equal to rate window")
 	}
 	return nil
 }
