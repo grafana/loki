@@ -211,7 +211,9 @@ func requireSumWithinUlps(t *testing.T, want, got, ulps float64, msgAndArgs ...a
 }
 
 // A sum of histograms equals the histogram of the range aggregation grouped the same way: merging the
-// histograms of the series is the same as building one histogram of all their values.
+// histograms of the series is the same as building one histogram of all their values. The buckets and the count
+// are the same. The sum of the observations is a float in each histogram, so it is the same up to the rounding
+// of the sums of the series, see the last two tests.
 func TestHistogramOverTime_sum(t *testing.T) {
 	streams := []logproto.Stream{
 		histogramStream(`{app="a", pod="1"}`, histogramTimedValue{histogramSeconds(10), "0.1"}, histogramTimedValue{histogramSeconds(20), "0.3"}, histogramTimedValue{histogramSeconds(30), "5"}),
@@ -315,6 +317,30 @@ func TestHistogramOverTime_sum(t *testing.T) {
 		vec := histogramMustEvaluate(t, cancelling, `sum by (app) (sum_over_time(`+rng+`))`, histogramAt(60), histogramAt(60), 0)[0].vec
 		require.Len(t, vec, 1)
 		require.Equal(t, want, vec[0].F)
+	})
+
+	// The sum of a histogram is one float, so the compensation of the sum of the values of a series cannot be in it.
+	// The series of the pod 1 has the values 1e16 and 1, which are 1e16 as a float, so the sum aggregation adds
+	// 1e16 and -1e16 and has 0, while one histogram of all the values has 1. The forms differ by what rounding the
+	// sum of a series costs, which is a unit in the last place of the largest sum. That is what they can be off by,
+	// and the values do not need to cancel for it: they only need to be rounded.
+	t.Run("values that cancel inside a series are rounded in its histogram", func(t *testing.T) {
+		rounded := []logproto.Stream{
+			histogramStream(`{app="a", pod="1"}`, histogramTimedValue{histogramSeconds(10), "1e16"}, histogramTimedValue{histogramSeconds(20), "1"}),
+			histogramStream(`{app="a", pod="2"}`, histogramTimedValue{histogramSeconds(30), "-1e16"}),
+		}
+		sumOf := func(query string) float64 {
+			vec := histogramMustEvaluate(t, rounded, query, histogramAt(60), histogramAt(60), 0)[0].vec
+			require.Len(t, vec, 1, query)
+			return vec[0].H.Sum
+		}
+		grouped := sumOf(`histogram_over_time(` + rng + `) by (app)`)
+		summed := sumOf(`sum by (app) (histogram_over_time(` + rng + `))`)
+
+		require.Equal(t, 1.0, grouped, "one histogram of all the values")
+		largest := 1e16
+		require.LessOrEqual(t, math.Abs(grouped-summed), math.Nextafter(largest, math.Inf(1))-largest,
+			"the forms differ by the rounding of the sum of a series: %v and %v", grouped, summed)
 	})
 }
 
