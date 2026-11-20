@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -483,6 +484,7 @@ func (m *mockLimits) VolumeMaxSeries(_ string) int {
 type mockTable struct {
 	tableExpired               bool
 	queryReadinessDoneForUsers []string
+	syncErr                    error
 }
 
 func (m *mockTable) ForEach(_ context.Context, _ string, _ index.ForEachIndexCallback) error {
@@ -499,7 +501,7 @@ func (m *mockTable) DropUnusedIndex(_ time.Duration, _ time.Time) (bool, error) 
 }
 
 func (m *mockTable) Sync(_ context.Context) error {
-	return nil
+	return m.syncErr
 }
 
 func (m *mockTable) EnsureQueryReadiness(_ context.Context, userIDs []string) error {
@@ -648,3 +650,17 @@ func TestTableManager_StopEndsQueryReadiness(t *testing.T) {
 }
 
 func (m *mockTable) DropNotOwned(_ context.Context, _ TenantFilter) error { return nil }
+
+func TestTableManager_SyncFailureRecordsFailureMetric(t *testing.T) {
+	tm, stop := buildTestTableManager(t, t.TempDir(), nil)
+	defer stop()
+
+	tableName := "failing-table"
+	tm.tables[tableName] = &mockTable{syncErr: errors.New("simulated sync error")}
+
+	err := tm.syncTables(context.Background(), syncTriggerManual)
+	require.Error(t, err)
+
+	require.Equal(t, float64(1), testutil.ToFloat64(
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusFailure, syncTriggerManual)))
+}
