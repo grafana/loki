@@ -276,7 +276,8 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 	go read(false, func() ([]byte, error) {
 		// An isolated region holds only the storage reads of this load, and not those of concurrent work in the
 		// region of ctx. The instrumented bucket counts a request before it sends it, so the count includes
-		// the failed requests, and the request that the cache answer cancels.
+		// the failed requests. The merge into the region of ctx runs when the read returns. A read that the
+		// cache answer cancels does not delay Load, so a query that ends first does not count its request.
 		return xcap.RunIsolated(ctx, "prefetch_load",
 			func(ctx context.Context) ([]byte, error) { return l.loadFromStorage(ctx, req, size) },
 			xcap.MergeDerived(

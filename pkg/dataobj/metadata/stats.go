@@ -36,7 +36,8 @@ var (
 	// download more than the response holds, for example the whole region of an object.
 	//
 	// The region loader records these two stats, for the read that it sends to object storage. When the
-	// cache answers first, the loader cancels that read, and the request that it sent still counts.
+	// cache answers first, the loader cancels that read and does not wait for it. The read records its
+	// request when it returns, so a query that ends before that does not count the request.
 	StatMetadataPrefetchRequestsToStorage = xcap.NewStatisticInt64("dataobj.metadata.prefetch.requests.to_storage", xcap.AggregationTypeSum)
 	StatMetadataPrefetchBytesFromStorage  = xcap.NewStatisticInt64("dataobj.metadata.prefetch.bytes.from_storage", xcap.AggregationTypeSum)
 
