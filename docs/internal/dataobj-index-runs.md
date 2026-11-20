@@ -89,9 +89,8 @@ The ToC writer checks rules 1 to 3 when a change adds or removes a run.
 See `validateNewRuns`, `errPartialRun` and `errRunPathInToC` in `pkg/dataobj/metastore/toc_writer.go`.
 Compaction planning checks rules 3 to 5 on the index objects, and skips a run that breaks one of them
 as corrupt.
-See `indexRun.checkLength` in `pkg/engine/compactor/index_run.go`, `indexLayoutOfRun` in
-`pkg/engine/compactor/sections.go` and `dropRunsWithoutPostings` in
-`pkg/engine/compactor/coordinator.go`.
+See `indexRun.checkLength` in `pkg/engine/compactor/index_run.go`, and `indexLayoutOfRun` and
+`readIndexRun` in `pkg/engine/compactor/sections.go`.
 Only index merge planning checks rule 5.
 Nothing checks that the entries of a run have the same `shard_buckets`.
 A query fails on a mismatch.
