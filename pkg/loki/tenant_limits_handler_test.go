@@ -117,7 +117,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
-			req.Header.Set("X-Scope-OrgID", tt.tenantID)
+			req = req.WithContext(user.InjectOrgID(req.Context(), tt.tenantID))
 
 			loki := &Loki{
 				TenantLimits: mockTenantLimits,
@@ -171,7 +171,7 @@ func TestTenantLimitsHandlerWithContextTenant(t *testing.T) {
 		require.Equal(t, float64(10), res.Limits["ingestion_rate_mb"])
 	})
 
-	t.Run("returns unauthorized when tenant is absent from both context and header", func(t *testing.T) {
+	t.Run("returns unauthorized when tenant is absent from request context", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/loki/api/v1/drilldown-limits", nil)
 
 		handler := loki.tenantLimitsHandler(true)

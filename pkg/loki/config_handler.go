@@ -225,11 +225,8 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := tenant.TenantID(r.Context())
 		if err != nil {
-			user, _, err = tenant.ExtractTenantIDFromHTTPRequest(r)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnauthorized)
-				return
-			}
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
 		}
 
 		// Get tenant limits or defaults
