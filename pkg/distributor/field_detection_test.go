@@ -712,10 +712,15 @@ func Test_normalizeLogLevel_singleLetterSeverityText(t *testing.T) {
 	}{
 		{severityText: "I", want: constants.LogLevelInfo},
 		{severityText: "i", want: constants.LogLevelInfo},
+		{severityText: "D", want: constants.LogLevelDebug},
+		{severityText: "d", want: constants.LogLevelDebug},
 		{severityText: "W", want: constants.LogLevelWarn},
 		{severityText: "w", want: constants.LogLevelWarn},
 		{severityText: "E", want: constants.LogLevelError},
 		{severityText: "e", want: constants.LogLevelError},
+		{severityText: "C", want: constants.LogLevelCritical},
+		{severityText: "c", want: constants.LogLevelCritical},
+		{severityText: "custom-level", want: "custom-level"},
 	} {
 		t.Run(tc.severityText, func(t *testing.T) {
 			require.Equal(t, tc.want, normalizeLogLevel(tc.severityText))
@@ -730,8 +735,10 @@ func Test_extractLogLevel_normalizesSingleLetterOTLPSeverityText(t *testing.T) {
 		want           string
 	}{
 		{severityText: "I", severityNumber: plog.SeverityNumberInfo, want: constants.LogLevelInfo},
+		{severityText: "D", severityNumber: plog.SeverityNumberDebug, want: constants.LogLevelDebug},
 		{severityText: "W", severityNumber: plog.SeverityNumberWarn, want: constants.LogLevelWarn},
 		{severityText: "E", severityNumber: plog.SeverityNumberError, want: constants.LogLevelError},
+		{severityText: "C", severityNumber: plog.SeverityNumberFatal, want: constants.LogLevelCritical},
 	} {
 		t.Run(tc.severityText, func(t *testing.T) {
 			ld := newFieldDetector(validationContext{discoverLogLevels: true, allowStructuredMetadata: true})

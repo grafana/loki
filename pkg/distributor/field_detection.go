@@ -24,23 +24,25 @@ import (
 )
 
 var (
-	traceBytes = []byte("trace")
-	traceAbbrv = []byte("trc")
-	debug      = []byte("debug")
-	debugAbbrv = []byte("dbg")
-	info       = []byte("info")
-	infoAbbrv  = []byte("inf")
-	infoShort  = []byte("i")
-	infoFull   = []byte("information")
-	warn       = []byte("warn")
-	warnAbbrv  = []byte("wrn")
-	warnShort  = []byte("w")
-	warning    = []byte("warning")
-	errorStr   = []byte("error")
-	errorAbbrv = []byte("err")
-	errorShort = []byte("e")
-	critical   = []byte("critical")
-	fatal      = []byte("fatal")
+	traceBytes    = []byte("trace")
+	traceAbbrv    = []byte("trc")
+	debug         = []byte("debug")
+	debugAbbrv    = []byte("dbg")
+	debugShort    = []byte("d")
+	info          = []byte("info")
+	infoAbbrv     = []byte("inf")
+	infoShort     = []byte("i")
+	infoFull      = []byte("information")
+	warn          = []byte("warn")
+	warnAbbrv     = []byte("wrn")
+	warnShort     = []byte("w")
+	warning       = []byte("warning")
+	errorStr      = []byte("error")
+	errorAbbrv    = []byte("err")
+	errorShort    = []byte("e")
+	critical      = []byte("critical")
+	criticalShort = []byte("c")
+	fatal         = []byte("fatal")
 
 	errKeyFound = errors.New("key found")
 
@@ -214,7 +216,7 @@ func normalizeLogLevel(level string) string {
 	switch {
 	case bytes.EqualFold(levelBytes, traceBytes), bytes.EqualFold(levelBytes, traceAbbrv):
 		return constants.LogLevelTrace
-	case bytes.EqualFold(levelBytes, debug), bytes.EqualFold(levelBytes, debugAbbrv):
+	case bytes.EqualFold(levelBytes, debug), bytes.EqualFold(levelBytes, debugAbbrv), bytes.EqualFold(levelBytes, debugShort):
 		return constants.LogLevelDebug
 	case bytes.EqualFold(levelBytes, info), bytes.EqualFold(levelBytes, infoAbbrv), bytes.EqualFold(levelBytes, infoFull), bytes.EqualFold(levelBytes, infoShort):
 		return constants.LogLevelInfo
@@ -222,7 +224,7 @@ func normalizeLogLevel(level string) string {
 		return constants.LogLevelWarn
 	case bytes.EqualFold(levelBytes, errorStr), bytes.EqualFold(levelBytes, errorAbbrv), bytes.EqualFold(levelBytes, errorShort):
 		return constants.LogLevelError
-	case bytes.EqualFold(levelBytes, critical):
+	case bytes.EqualFold(levelBytes, critical), bytes.EqualFold(levelBytes, criticalShort):
 		return constants.LogLevelCritical
 	case bytes.EqualFold(levelBytes, fatal):
 		return constants.LogLevelFatal
