@@ -690,7 +690,20 @@ func (c *coordinator) planIndexMerge(tenant string, window time.Time, key layout
 		return indexMergePlan{}, fmt.Errorf("no index merge tasks to execute")
 	}
 
-	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	var inputBytes, largestTaskBytes int64
+	for _, task := range tasks {
+		taskBytes := indexTaskPostingsBytes(task)
+		inputBytes += taskBytes
+		largestTaskBytes = max(largestTaskBytes, taskBytes)
+	}
+	level.Info(windowLogger).Log(
+		"msg", "planned index compaction tasks",
+		"tenant", tenant,
+		"tasks", len(tasks),
+		"input_runs", len(runs),
+		"input_postings_bytes", inputBytes,
+		"largest_task_postings_bytes", largestTaskBytes,
+	)
 	logIndexTaskDetails(windowLogger, tasks)
 
 	var splitter indexTaskSplitter = noopIndexTaskSplitter{}
@@ -783,8 +796,20 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 			}
 		}
 		sb.WriteString("]")
-		level.Debug(logger).Log("msg", "index compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String())
+		level.Debug(logger).Log("msg", "index compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String(), "input_postings_bytes", indexTaskPostingsBytes(task))
 	}
+}
+
+// indexTaskPostingsBytes returns the uncompressed size of the postings
+// sections that task references.
+func indexTaskPostingsBytes(task *compactionv2pb.TaskSpec) int64 {
+	var size int64
+	for _, run := range task.Runs {
+		for _, section := range run.Sections {
+			size += section.UncompressedSize
+		}
+	}
+	return size
 }
 
 // runsTimeRange returns the time range of the sections of runs: from the

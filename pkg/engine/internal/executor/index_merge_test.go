@@ -1092,8 +1092,9 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 		logsobjCfg:     testBuilderCfg,
 		builderMetrics: logsobj.NewBuilderMetrics(),
 
-		logMergeObserver: nopLogMergeObserver{},
-		logger:           log.NewNopLogger(),
+		logMergeObserver:   nopLogMergeObserver{},
+		indexMergeObserver: nopIndexMergeObserver{},
+		logger:             log.NewNopLogger(),
 	}
 }
 
@@ -1934,19 +1935,23 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawStats, "output must contain a stats section")
 }
 
-// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+// recordingIndexMergeObserver records every call of an IndexMergeObserver.
 type recordingIndexMergeObserver struct {
-	tenants                            []string
-	compressedSizes, uncompressedSizes []int64
+	tenants   []string
+	attempts  []IndexMergeObservedStats
+	inputRows int64
 }
 
-func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
+func (o *recordingIndexMergeObserver) ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, _ time.Duration) {
 	o.tenants = append(o.tenants, tenant)
-	o.compressedSizes = append(o.compressedSizes, compressedBytes)
-	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
+	o.attempts = append(o.attempts, stats)
 }
 
-func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInputRows(rows int64) {
+	o.inputRows += rows
+}
+
+func TestExecuteIndexMerge_Observer(t *testing.T) {
 	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
@@ -1964,9 +1969,41 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		attrs, err := bucket.Attributes(ctx, artifact.Path)
 		require.NoError(t, err)
 		require.Equal(t, []string{"tenant-1"}, observer.tenants)
-		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
-		require.Len(t, observer.uncompressedSizes, 1)
-		require.Positive(t, observer.uncompressedSizes[0])
+		require.Len(t, observer.attempts, 1)
+		require.Equal(t, indexMergeOutcomeSuccess, observer.attempts[0].Outcome)
+		require.Equal(t, 1, observer.attempts[0].OutputObjects)
+		require.Equal(t, attrs.Size, observer.attempts[0].OutputBytesCompressed)
+		require.Positive(t, observer.attempts[0].OutputBytesUncompressed)
+	})
+
+	t.Run("reports the sections, sizes and rows that the merge read", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-1.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		_, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}},
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-1.dat"}}},
+			},
+		})
+		require.NoError(t, err)
+
+		require.Len(t, observer.attempts, 1)
+		got := observer.attempts[0]
+		require.Equal(t, 2, got.SourceObjects)
+		require.Equal(t, 2, got.PostingsSections)
+		require.Equal(t, 2, got.StatsSections)
+		require.Positive(t, got.PostingsInputBytes)
+		require.Positive(t, got.StatsInputBytes)
+		require.Equal(t, int64(2), got.PostingsRows)
+		require.Equal(t, int64(2), got.StatsRows)
+		require.Equal(t, got.PostingsRows+got.StatsRows, observer.inputRows)
 	})
 
 	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
@@ -1998,9 +2035,65 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 			require.NoError(t, err)
 			uploaded += attrs.Size
 		}
-		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
-		require.Len(t, observer.uncompressedSizes, 1)
-		require.Greater(t, observer.uncompressedSizes[0], int64(4096*(len(artifacts)-1)))
+		require.Len(t, observer.attempts, 1)
+		require.Equal(t, len(artifacts), observer.attempts[0].OutputObjects)
+		require.Equal(t, uploaded, observer.attempts[0].OutputBytesCompressed)
+		require.Greater(t, observer.attempts[0].OutputBytesUncompressed, int64(4096*(len(artifacts)-1)))
+		require.Equal(t, int64(300), observer.attempts[0].PostingsRows)
+		require.Equal(t, int64(300), observer.inputRows)
+	})
+
+	t.Run("reports a failed attempt with no output when a source index is missing", func(t *testing.T) {
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, objstore.NewInMemBucket())
+		execCtx.indexMergeObserver = observer
+
+		_, err := execCtx.doIndexMerge(context.Background(), &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/missing.dat"}}}},
+		})
+		require.Error(t, err)
+
+		require.Equal(t, []IndexMergeObservedStats{{Outcome: indexMergeOutcomeFailed}}, observer.attempts)
+	})
+
+	t.Run("reports a cancelled attempt when the context ends before the merge", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.Error(t, err)
+
+		require.Len(t, observer.attempts, 1)
+		require.Equal(t, indexMergeOutcomeCancelled, observer.attempts[0].Outcome)
+		require.Zero(t, observer.attempts[0].OutputObjects)
+	})
+}
+
+func TestIndexReads(t *testing.T) {
+	t.Run("reports rows in batches and reports the rest on flush", func(t *testing.T) {
+		var reported []int64
+		reads := newIndexReads(func(rows int64) { reported = append(reported, rows) })
+
+		for range indexReadRowsBatch + 5 {
+			reads.readPostingsRow()
+		}
+		reads.readStatsRow()
+		require.Equal(t, []int64{indexReadRowsBatch}, reported)
+
+		reads.flush()
+		reads.flush()
+		require.Equal(t, []int64{indexReadRowsBatch, 6}, reported)
+		require.Equal(t, int64(indexReadRowsBatch+5), reads.postings.rows)
+		require.Equal(t, int64(1), reads.stats.rows)
 	})
 }
 
@@ -2080,15 +2173,37 @@ func TestSectionConcatSeq(t *testing.T) {
 			ctx:        context.Background(),
 			objectPath: "indexes/a",
 			sections:   []*dataobj.Section{nil, nil},
-			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
-				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], int64, error) {
+				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, 0, nil
 			},
+			opened: func(int64) {},
 		}
 
 		require.True(t, seq.Next())
 		require.Equal(t, 1, seq.At())
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
+	})
+
+	t.Run("reports the size of each section when it opens the section", func(t *testing.T) {
+		var opened []int64
+		seq := &sectionConcatSeq[int]{
+			ctx:        context.Background(),
+			objectPath: "indexes/a",
+			sections:   []*dataobj.Section{nil, nil},
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], int64, error) {
+				size := int64(10 * (len(opened) + 1))
+				return &closeErrIter{rows: []int{1}}, size, nil
+			},
+			opened: func(size int64) { opened = append(opened, size) },
+		}
+
+		require.True(t, seq.Next())
+		require.Equal(t, []int64{10}, opened)
+		require.True(t, seq.Next())
+		require.False(t, seq.Next())
+		require.NoError(t, seq.Err())
+		require.Equal(t, []int64{10, 20}, opened)
 	})
 }
 
