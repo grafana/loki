@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -38,19 +39,19 @@ func TestFilterVolumeResponse(t *testing.T) {
 
 	policySingle := LabelPolicySet{
 		tenant: []*types.LabelPolicy{
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 			}},
 		},
 	}
 
 	policyMulti := LabelPolicySet{
 		tenant: []*types.LabelPolicy{
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 			}},
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "team", Value: "platform"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "team", "platform"),
 			}},
 		},
 	}
@@ -137,8 +138,8 @@ func TestFilterVolumeResponse(t *testing.T) {
 			orgID: tenant,
 			policies: LabelPolicySet{
 				"other_tenant": []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					}},
 				},
 			},
@@ -178,8 +179,8 @@ func TestFilterVolumeResponse_NonVolumeResponseIsUnchanged(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test_tenant")
 	policies := LabelPolicySet{
 		"test_tenant": []*types.LabelPolicy{
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 			}},
 		},
 	}
@@ -197,8 +198,8 @@ func TestNewMiddleware_FiltersVolumeResponse(t *testing.T) {
 	const tenant = "test_tenant"
 	policies := LabelPolicySet{
 		tenant: []*types.LabelPolicy{
-			{Selector: []*types.LabelMatcher{
-				{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+			{Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 			}},
 		},
 	}

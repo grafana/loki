@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -107,9 +108,9 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: `{job="varlog"}`,
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
-						{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "classification", Value: "secret"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchNotEqual, "classification", "secret"),
 					}},
 				},
 			},
@@ -122,8 +123,8 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: `{job="varlog"}`,
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_RE, Name: "namespace", Value: "team-.*"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchRegexp, "namespace", "team-.*"),
 					}},
 				},
 			},
@@ -136,11 +137,11 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: `{job="varlog"}`,
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					}},
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 					}},
 				},
 			},
@@ -154,8 +155,8 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: `{job="varlog"}`,
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					}},
 				},
 			},
@@ -176,7 +177,7 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: `{job="varlog"}`,
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{}},
+					{Selector: []*labels.Matcher{}},
 				},
 			},
 			expectedQuery: "",
@@ -188,8 +189,8 @@ func TestModifyVolumeQuery(t *testing.T) {
 			query: "not a valid logql selector",
 			policies: LabelPolicySet{
 				tenant: []*types.LabelPolicy{
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					}},
 				},
 			},

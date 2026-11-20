@@ -94,12 +94,8 @@ func TestWrapperLabelValuesForMetricName(t *testing.T) {
 			name: "dev-only",
 			labelPolicies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -112,17 +108,9 @@ func TestWrapperLabelValuesForMetricName(t *testing.T) {
 			name: "not-confidential-not-secret",
 			labelPolicies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NEQ,
-							Name:  "classification",
-							Value: "confidential",
-						},
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NEQ,
-							Name:  "classification",
-							Value: "secret",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchNotEqual, "classification", "confidential"),
+						labels.MustNewMatcher(labels.MatchNotEqual, "classification", "secret"),
 					},
 				},
 			},
@@ -135,12 +123,8 @@ func TestWrapperLabelValuesForMetricName(t *testing.T) {
 			name: "use all matchers",
 			labelPolicies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_RE,
-							Name:  "env",
-							Value: ".*",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchRegexp, "env", ".*"),
 					},
 				},
 			},

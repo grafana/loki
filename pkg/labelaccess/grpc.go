@@ -38,11 +38,7 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	var headerValues []string
 	for instanceName, policies := range labelPolicySet {
 		for _, policy := range policies {
-			encoded, err := policyToHeaderValue(instanceName, policy)
-			if err != nil {
-				return ctx, err
-			}
-			headerValues = append(headerValues, encoded)
+			headerValues = append(headerValues, policyToHeaderValue(instanceName, policy))
 		}
 	}
 	md.Set(lowerLBACHeaderName, headerValues...)

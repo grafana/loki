@@ -248,12 +248,7 @@ func buildPolicyFilter(policies []*types.LabelPolicy) (logql_log.LabelFilterer, 
 	for _, policy := range policies {
 		var labelFilterer logql_log.LabelFilterer
 
-		for i := range policy.Selector {
-			matcher, err := types.LabelMatcherToPromLabel(policy.Selector[i])
-			if err != nil {
-				return nil, err
-			}
-
+		for _, matcher := range policy.Selector {
 			if labelFilterer == nil {
 				labelFilterer = logql_log.NewStringLabelFilter(matcher)
 			} else {

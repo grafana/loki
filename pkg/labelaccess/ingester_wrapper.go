@@ -2,13 +2,13 @@ package labelaccess
 
 import (
 	"context"
+	"slices"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -71,17 +71,7 @@ func (i *WrappedIngester) Label(ctx context.Context, req *logproto.LabelRequest)
 
 	var result util.UniqueStrings
 	for _, p := range policies {
-		matchers := make([]*labels.Matcher, len(p.Selector))
-		for i, lm := range p.Selector {
-			matcher, err := types.LabelMatcherToPromLabel(lm)
-			matchers[i] = matcher
-			if err != nil {
-				// This shouldn't happen: log it and do not match
-				_ = level.Debug(util_log.Logger).Log("msg", "unable to encode matcher as Prometheus matcher", "orgID", instanceName, "err", err)
-				break
-			}
-		}
-		matchers = append(matchers, queryMatchers...)
+		matchers := slices.Concat(p.Selector, queryMatchers)
 		_ = level.Debug(util_log.Logger).Log("msg", "fetching label values", "orgID", instanceName, "label", req.Name, "matchers", len(matchers))
 
 		resp, err := instance.Label(ctx, req, matchers...)

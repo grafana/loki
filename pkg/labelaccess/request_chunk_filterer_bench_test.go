@@ -42,8 +42,8 @@ func benchExcludePolicy() []*types.LabelPolicy {
 		values = append(values, fmt.Sprintf("foo-%03d", j))
 	}
 	return []*types.LabelPolicy{{
-		Selector: []*types.LabelMatcher{
-			{Type: types.LABEL_MATCHER_TYPE_NRE, Name: "foo", Value: strings.Join(values, "|")},
+		Selector: []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchNotRegexp, "foo", strings.Join(values, "|")),
 		},
 	}}
 }

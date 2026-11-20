@@ -77,7 +77,6 @@ func filterVolumeResponse(ctx context.Context, resp queryrangebase.Response, pol
 	}
 
 	cf := &ChunkFilterer{policies: policies}
-	cf.loadMatchers()
 
 	filtered := make([]logproto.Volume, 0, len(volResp.Response.Volumes))
 	filteredCount := 0

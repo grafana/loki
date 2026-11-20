@@ -51,39 +51,13 @@ func filtererForRequest(ctx context.Context) *ChunkFilterer {
 		return nil
 	}
 
-	// Store in ChunkFilterer
-	cf := ChunkFilterer{
+	return &ChunkFilterer{
 		policies: policies,
 	}
-	cf.loadMatchers()
-
-	return &cf
 }
 
 type ChunkFilterer struct {
 	policies []*types.LabelPolicy
-	matchers [][]*labels.Matcher
-}
-
-// loadMatchers compiles the matchers of every policy once, so that ShouldFilter, which runs for
-// every series or stream of a request, only has to evaluate them.
-func (c *ChunkFilterer) loadMatchers() {
-	compiled := make([][]*labels.Matcher, 0, len(c.policies))
-policies:
-	for _, p := range c.policies {
-		matchers := make([]*labels.Matcher, 0, len(p.Selector))
-		for _, lm := range p.Selector {
-			matcher, err := types.LabelMatcherToPromLabel(lm)
-			if err != nil {
-				// This shouldn't happen: log it and do not match
-				_ = level.Debug(util_log.Logger).Log("msg", "unable to encode matcher as prometheus matcher", "name", lm.Name, "err", err)
-				continue policies
-			}
-			matchers = append(matchers, matcher)
-		}
-		compiled = append(compiled, matchers)
-	}
-	c.matchers = compiled
 }
 
 func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
@@ -91,14 +65,10 @@ func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 		return false
 	}
 
-	if c.matchers == nil {
-		c.loadMatchers()
-	}
-
-	for _, matchers := range c.matchers {
+	for _, p := range c.policies {
 		// For one selector all must match
 		matching := true
-		for _, m := range matchers {
+		for _, m := range p.Selector {
 			if !m.Matches(metric.Get(m.Name)) {
 				matching = false
 				break
@@ -119,18 +89,7 @@ func (c *ChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
 		return nil
 	}
 
-	selector := c.policies[0].Selector
-	matchers := make([]*labels.Matcher, 0, len(selector))
-	for _, lm := range selector {
-		matcher, err := types.LabelMatcherToPromLabel(lm)
-		if err != nil {
-			// ShouldFilter drops every stream for a policy it cannot convert, so push nothing and
-			// let it do so.
-			return nil
-		}
-		matchers = append(matchers, matcher)
-	}
-	return matchers
+	return c.policies[0].Selector
 }
 
 func (c *ChunkFilterer) RequiredLabelNames() []string {

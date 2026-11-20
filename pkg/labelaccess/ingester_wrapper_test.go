@@ -27,9 +27,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func CreateLabelMatchers(input *types.LabelPolicy) error {
-	policyMatchers := make([]*labels.Matcher, len(input.Selector))
-	for i, lm := range input.Selector {
+func CreateLabelMatchers(selector []*types.LabelMatcher) error {
+	policyMatchers := make([]*labels.Matcher, len(selector))
+	for i, lm := range selector {
 		matcher, err := types.LabelMatcherToPromLabel(lm)
 		policyMatchers[i] = matcher
 		if err != nil {
@@ -45,14 +45,12 @@ func BenchmarkTwoLabelMatchersNoRegex(b *testing.B) {
 
 	m1, _ := labels.NewMatcher(labels.MatchNotEqual, "risk_profile", "CRITICAL")
 	m2, _ := labels.NewMatcher(labels.MatchNotEqual, "risk_profile", "critical")
-	policy := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 2),
-	}
-	policy.Selector[0], _ = types.LabelMatcherFromPromLabel(m1)
-	policy.Selector[1], _ = types.LabelMatcherFromPromLabel(m2)
+	selector := make([]*types.LabelMatcher, 2)
+	selector[0], _ = types.LabelMatcherFromPromLabel(m1)
+	selector[1], _ = types.LabelMatcherFromPromLabel(m2)
 
 	for i := 0; i < b.N; i++ {
-		err := CreateLabelMatchers(policy)
+		err := CreateLabelMatchers(selector)
 		if err != nil {
 			b.Errorf("Unexpected error in benchmark: %v", err)
 		}
@@ -63,13 +61,11 @@ func BenchmarkOneLabelMatcherWithRegex(b *testing.B) {
 	b.ReportAllocs()
 
 	m1, _ := labels.NewMatcher(labels.MatchRegexp, "risk_profile", "CRITICAL|critical")
-	policy := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 1),
-	}
-	policy.Selector[0], _ = types.LabelMatcherFromPromLabel(m1)
+	selector := make([]*types.LabelMatcher, 1)
+	selector[0], _ = types.LabelMatcherFromPromLabel(m1)
 
 	for i := 0; i < b.N; i++ {
-		err := CreateLabelMatchers(policy)
+		err := CreateLabelMatchers(selector)
 		if err != nil {
 			b.Errorf("Unexpected error in benchmark: %v", err)
 		}
@@ -125,13 +121,7 @@ func TestLabel(t *testing.T) {
 	// A policy with multiple label matchers: must match env="dev" or level="info"
 	m1 := labels.MustNewMatcher(labels.MatchEqual, "env", "dev")
 	m2 := labels.MustNewMatcher(labels.MatchNotEqual, "level", "info")
-	policy := &types.LabelPolicy{
-		Selector: make([]*types.LabelMatcher, 2),
-	}
-	policy.Selector[0], err = types.LabelMatcherFromPromLabel(m1)
-	require.Nil(t, err)
-	policy.Selector[1], err = types.LabelMatcherFromPromLabel(m2)
-	require.Nil(t, err)
+	policy := &types.LabelPolicy{Selector: []*labels.Matcher{m1, m2}}
 	instancePolicyMap["tenant1"] = []*types.LabelPolicy{policy}
 
 	ctx := context.Background()

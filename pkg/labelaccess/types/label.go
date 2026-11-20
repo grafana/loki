@@ -1,9 +1,13 @@
 package types
 
 import (
-	fmt "fmt"
-	strconv "strconv"
-	strings "strings"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type LabelMatcherType int32
@@ -36,7 +40,62 @@ type LabelMatcher struct {
 }
 
 type LabelPolicy struct {
+	Selector []*labels.Matcher
+}
+
+// labelPolicyJSON is the JSON encoding of LabelPolicy. It keeps the encoding that was used when
+// Selector held LabelMatchers, so that components running different versions can exchange it.
+type labelPolicyJSON struct {
 	Selector []*LabelMatcher `json:"selector,omitempty"`
+}
+
+var errNilMatcher = errors.New("label policy has a nil matcher")
+
+// MarshalJSON encodes the policy using LabelMatcher's encoding of each matcher.
+func (p LabelPolicy) MarshalJSON() ([]byte, error) {
+	enc := labelPolicyJSON{Selector: make([]*LabelMatcher, len(p.Selector))}
+	for i, m := range p.Selector {
+		lm, err := toLabelMatcher(m)
+		if err != nil {
+			return nil, err
+		}
+		enc.Selector[i] = lm
+	}
+	return json.Marshal(enc)
+}
+
+// toLabelMatcher converts m to a LabelMatcher, so that it can be encoded as before Selector held
+// compiled matchers.
+func toLabelMatcher(m *labels.Matcher) (*LabelMatcher, error) {
+	if m == nil {
+		return nil, errNilMatcher
+	}
+	return LabelMatcherFromPromLabel(m)
+}
+
+// UnmarshalJSON decodes and compiles the policy's matchers. It returns an error if any matcher has
+// an unknown match type or an invalid regex.
+func (p *LabelPolicy) UnmarshalJSON(data []byte) error {
+	var dec labelPolicyJSON
+	if err := json.Unmarshal(data, &dec); err != nil {
+		return err
+	}
+	var selector []*labels.Matcher
+	if len(dec.Selector) > 0 {
+		selector = make([]*labels.Matcher, len(dec.Selector))
+	}
+	for i, lm := range dec.Selector {
+		if lm == nil {
+			return errNilMatcher
+		}
+		m, err := LabelMatcherToPromLabel(lm)
+		if err != nil {
+			return fmt.Errorf("invalid label policy matcher for label %q: %w", lm.Name, err)
+		}
+		selector[i] = m
+	}
+	p.Selector = selector
+	return nil
 }
 
 func (x LabelMatcherType) String() string {
@@ -73,14 +132,23 @@ func (m *LabelMatcher) GoString() string {
 	return strings.Join(s, "")
 }
 
+// String returns the same representation as when Selector held LabelMatchers. It is used to build
+// cache keys, so it must not change.
 func (p *LabelPolicy) String() string {
 	if p == nil {
 		return "nil"
 	}
 	var sb strings.Builder
 	sb.WriteString("&LabelPolicy{Selector:[]*LabelMatcher{")
-	for _, f := range p.Selector {
-		sb.WriteString(f.String())
+	for _, m := range p.Selector {
+		if lm, err := toLabelMatcher(m); err == nil {
+			sb.WriteString(lm.String())
+		} else if m == nil {
+			sb.WriteString("nil")
+		} else {
+			// A matcher with an unknown match type has no LabelMatcher form.
+			sb.WriteString(m.String())
+		}
 		sb.WriteByte(',')
 	}
 	sb.WriteString("},}")
