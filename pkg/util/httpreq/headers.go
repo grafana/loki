@@ -11,6 +11,10 @@ import (
 // LokiQueryBytesProcessedHeader is the response header for the processed byte count from query statistics.
 const LokiQueryBytesProcessedHeader = "X-Loki-Query-Bytes-Processed"
 
+// LokiQueryGroupEstimatedBytesHeader carries the index-stats bytes of a query that Grafana splits by time. The
+// query-frontend returns it on the first split, and Grafana sends it back on the later ones.
+const LokiQueryGroupEstimatedBytesHeader = "X-Loki-Query-Group-Estimated-Bytes"
+
 type headerContextKey struct{}
 
 var (

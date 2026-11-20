@@ -9,4 +9,7 @@ type Limits interface {
 	// LoglineQueryMinQueryBytesForIndex is the minimum index-stats bytes a
 	// query must cover before a hint lookup. 0 disables the check.
 	LoglineQueryMinQueryBytesForIndex(userID string) int64
+	// LoglineQueryGroupPlanning makes the splits of a query that Grafana
+	// splits by time share one size gate and one hint lookup.
+	LoglineQueryGroupPlanning(userID string) bool
 }

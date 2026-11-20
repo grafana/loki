@@ -96,6 +96,10 @@ Query-shape support and hint lookup for logline index lookups.
 11. **Snapshot drift is an accepted TTL trade-off**
    - Cached day payloads represent the delegate snapshot at fill time.
    - New indexes that appear later in the same day are visible after cache TTL expiry or when bypassing cache.
+   - `RefreshDays` stores cached days again without asking the delegate, so a snapshot
+     can outlive the TTL. Refresh only days that were fully indexed when they were
+     cached. The query frontend refreshes only the days of a query group that were
+     fully indexed a cache TTL before the group's ingester cutoff.
 12. **Mixed index versions are resolved per version**
    - The extractor belongs to the index version, so one needle can decompose into
      different terms per version, and those terms route to different shards.

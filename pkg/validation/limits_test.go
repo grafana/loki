@@ -1418,17 +1418,20 @@ func Test_LoglineQueryLimits(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal([]byte(`
 logline_query_mode: live
 logline_query_min_query_bytes_for_index: 0
+logline_query_group_planning: true
 `), &tenant))
 	overrides, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"live-tenant": &tenant}))
 	require.NoError(t, err)
 
 	require.Equal(t, "live", overrides.LoglineQueryMode("live-tenant"))
 	require.Equal(t, int64(0), overrides.LoglineQueryMinQueryBytesForIndex("live-tenant"), "an explicit 0 disables the check for that tenant")
+	require.True(t, overrides.LoglineQueryGroupPlanning("live-tenant"))
 
 	// A tenant without an entry, including a multi-tenant query, gets the defaults.
 	for _, other := range []string{"other", "live-tenant|other"} {
 		require.Equal(t, "", overrides.LoglineQueryMode(other))
 		require.Equal(t, int64(defaultLoglineQueryMinQueryBytesForIndex), overrides.LoglineQueryMinQueryBytesForIndex(other))
+		require.False(t, overrides.LoglineQueryGroupPlanning(other))
 	}
 
 	t.Run("validation", func(t *testing.T) {

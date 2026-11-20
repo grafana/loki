@@ -282,6 +282,23 @@ func (p *CachingHintProvider) ProvideHints(
 	return filterHintsByWindow(&Hints{TimeRanges: cachedRanges}, from, through), stats, nil
 }
 
+// RefreshDays stores the cached days that [from, through] touches again, so
+// their TTL starts over. It never calls the delegate, so days that are not
+// cached stay missing.
+func (p *CachingHintProvider) RefreshDays(ctx context.Context, tenant string, expr syntax.Expr, from, through time.Time) {
+	if p.cache == nil || SkipCache(ctx) || through.Before(from) {
+		return
+	}
+	days := buildDayWindows(tenant, cacheKeyQuery(p.delegate, expr), cacheKeyMinDate(p.delegate), from, through)
+	keys := make([]string, 0, len(days))
+	for _, day := range days {
+		keys = append(keys, day.hashedKey)
+	}
+	if found, bufs, _, err := p.cache.Fetch(ctx, keys); err == nil && len(found) > 0 {
+		_ = p.cache.Store(ctx, found, bufs)
+	}
+}
+
 func filterHintsByWindow(hints *Hints, from, through model.Time) *Hints {
 	if hints == nil {
 		return nil

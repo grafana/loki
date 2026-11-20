@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -76,6 +77,15 @@ const (
 )
 
 const LoglineSkipCacheHeader = "X-Logline-Skip-Cache"
+
+// Grafana's Loki datasource sends the query group headers with every split of
+// a query it splits by time. QueryGroupIDHeader is Grafana's id for the group.
+// The from and to headers are the group's range in Unix milliseconds.
+const (
+	QueryGroupIDHeader   = "X-Query-Group-Id"
+	QueryGroupFromHeader = "X-Loki-Query-Group-From"
+	QueryGroupToHeader   = "X-Loki-Query-Group-To"
+)
 
 type hintPrefetchKeyType struct{}
 
@@ -395,6 +405,7 @@ func newLoglinePrefetchHandler(
 		maxConjunctions:      cfg.MaxConjunctions,
 		hintTimeout:          cfg.HintTimeout,
 		queryIngestersWithin: cfg.QueryIngestersWithin,
+		hintCacheTTL:         cfg.HintCacheTTL,
 		limits:               limits,
 		metrics:              metrics,
 		logger:               logger,
@@ -412,6 +423,7 @@ type loglinePrefetchHandler struct {
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
 	queryIngestersWithin time.Duration
+	hintCacheTTL         time.Duration
 	limits               logline_query_limits.Limits
 	metrics              *Metrics
 	logger               log.Logger
@@ -925,7 +937,62 @@ func (h *loglinePrefetchHandler) doDryRun(
 	return resp, queryErr
 }
 
-func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+// queryGroup is the read window of a query that Grafana splits by time.
+type queryGroup struct {
+	readStart, readEnd time.Time
+	// indexedEnd is where the group's lookups and refreshes end. Later days were
+	// still being indexed within the hint cache TTL of the group's ingester
+	// cutoff, so their cache entries must not outlive the TTL. The cutoff is
+	// taken at the group's end, or at now when that is earlier.
+	indexedEnd time.Time
+	// estimated is set on the splits after the first, which carry the
+	// estimate that the first split returned.
+	estimated      bool
+	estimatedBytes uint64
+}
+
+// queryGroup returns the query group of a live request from a tenant with
+// group planning on, or nil when the request has no valid group headers.
+func (h *loglinePrefetchHandler) queryGroup(ctx context.Context, tenant string, mode Mode, req queryrangebase.Request, expr syntax.Expr, qt querybounds.QueryType) *queryGroup {
+	if mode != ModeLive || !h.limits.LoglineQueryGroupPlanning(tenant) || httpreq.ExtractHeader(ctx, QueryGroupIDHeader) == "" {
+		return nil
+	}
+	from, fromErr := strconv.ParseInt(httpreq.ExtractHeader(ctx, QueryGroupFromHeader), 10, 64)
+	to, toErr := strconv.ParseInt(httpreq.ExtractHeader(ctx, QueryGroupToHeader), 10, 64)
+	if fromErr != nil || toErr != nil || from >= to {
+		return nil
+	}
+	qb := querybounds.GetQueryBounds(time.UnixMilli(from), time.UnixMilli(to), req.GetStep(), expr, qt, h.alignQueriesWithStep)
+	group := &queryGroup{
+		readStart:  qb.ReadStart,
+		readEnd:    qb.ReadEnd,
+		indexedEnd: minTime(qb.ReadEnd, time.Now()).Add(-h.queryIngestersWithin - h.hintCacheTTL).Truncate(24 * time.Hour).Add(-time.Millisecond),
+	}
+	if v := httpreq.ExtractHeader(ctx, httpreq.LokiQueryGroupEstimatedBytesHeader); v != "" {
+		bytes, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return nil
+		}
+		group.estimated, group.estimatedBytes = true, bytes
+	}
+	return group
+}
+
+// gateBytes returns the index-stats bytes that the size gate compares. The
+// splits of a query group gate on the whole group: the first split estimates
+// it, and the later ones reuse the estimate that it returned.
+func (h *loglinePrefetchHandler) gateBytes(ctx context.Context, expr syntax.Expr, group *queryGroup, readStart, readEnd time.Time) (uint64, error) {
+	switch {
+	case group == nil:
+		return h.getQueryBytes(ctx, expr, readStart, readEnd)
+	case group.estimated:
+		return group.estimatedBytes, nil
+	default:
+		return h.getQueryBytes(ctx, expr, group.readStart, group.readEnd)
+	}
+}
+
+func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (resp queryrangebase.Response, err error) {
 	switch req.(type) {
 	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest, *queryrange.DetectedFieldsRequest:
 	default:
@@ -998,12 +1065,14 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	if mode == ModeDryRun {
 		recentOnly = dryRunScoresNoStep(cutoff, firstWindowEnd)
 	}
+	group := h.queryGroup(ctx, tenant, mode, req, expr, qt)
+	firstSplit := false
 	queryBytes := uint64(0)
 	// The live header is an explicit per-request opt-in. It skips the size
 	// gate so correctness tests can look up hints for small queries. Live
 	// mode from the tenant limit or the logline.query settings still applies it.
 	if minQueryBytes > 0 && !recentOnly && LoglineIndexHeaderValue(header) != LoglineIndexLive {
-		queryBytes, err = h.getQueryBytes(ctx, expr, readStart, readEnd)
+		queryBytes, err = h.gateBytes(ctx, expr, group, readStart, readEnd)
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",
@@ -1011,6 +1080,16 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"threshold_bytes", minQueryBytes,
 			)
 			return h.nextWithOutcome(ctx, req, mode, outcomeSizeEstimateFailed)
+		}
+		// The group's later splits gate on this estimate, so Grafana sends it
+		// back on them.
+		firstSplit = group != nil && !group.estimated
+		if firstSplit {
+			defer func() {
+				if resp != nil {
+					resp.SetHeader(httpreq.LokiQueryGroupEstimatedBytesHeader, strconv.FormatUint(queryBytes, 10))
+				}
+			}()
 		}
 		if queryBytes < uint64(minQueryBytes) {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
@@ -1060,10 +1139,16 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	// Pass-through sub-requests don't wait for the lookup, so the query can
 	// return before it finishes.
+	lookupStart, lookupEnd := readStart, ingesterCutoff
+	if firstSplit {
+		// Look up the whole group once, so its later splits find their days in
+		// the hint cache.
+		lookupStart, lookupEnd = minTime(readStart, group.readStart), maxTime(ingesterCutoff, group.indexedEnd)
+	}
 	prefetchCtx, cancelPrefetch := context.WithCancel(ctx)
 	defer cancelPrefetch()
-	if ingesterCutoff.After(maxTime(readStart, result.minDate)) {
-		go h.lookupHints(prefetchCtx, logger, tenant, expr, result)
+	if lookupEnd.After(maxTime(lookupStart, result.minDate)) {
+		go h.lookupHints(prefetchCtx, logger, tenant, expr, lookupStart, lookupEnd, result)
 	} else {
 		// Every sub-request passes through, so nothing reads the lookup. When
 		// the stored part of the query predates the index, report the range the
@@ -1076,10 +1161,14 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		}
 		close(result.done)
 	}
+	// Keep the days that the first split looked up cached for the later splits.
+	if p, ok := h.hintProvider.(*hintprovider.CachingHintProvider); ok && group != nil && group.estimated {
+		p.RefreshDays(ctx, tenant, expr, group.readStart, group.indexedEnd)
+	}
 
 	ctx = withHintPrefetch(ctx, result)
 	defer h.observeHintWait(result)
-	resp, err := h.next.Do(ctx, req)
+	resp, err = h.next.Do(ctx, req)
 	if err != nil {
 		return resp, err
 	}
@@ -1094,13 +1183,14 @@ func (h *loglinePrefetchHandler) observeHintWait(result *hintPrefetchResult) {
 	h.metrics.hintWaitDuration.WithLabelValues(result.status()).Observe(wait.Seconds())
 }
 
-// lookupHints looks up hint ranges for [result.queryStart, result.ingesterCutoff]
-// and closes result.done when it finishes.
+// lookupHints looks up hint ranges for [from, through] and closes result.done
+// when it finishes.
 func (h *loglinePrefetchHandler) lookupHints(
 	ctx context.Context,
 	logger log.Logger,
 	tenant string,
 	expr syntax.Expr,
+	from, through time.Time,
 	result *hintPrefetchResult,
 ) {
 	defer close(result.done)
@@ -1134,8 +1224,8 @@ func (h *loglinePrefetchHandler) lookupHints(
 		level.Debug(logger).Log(appendHintStats(logValues, result.stats)...)
 	}()
 
-	eligibleFrom := model.TimeFromUnixNano(result.queryStart.UnixNano())
-	eligibleThrough := model.TimeFromUnixNano(result.ingesterCutoff.UnixNano())
+	eligibleFrom := model.TimeFromUnixNano(from.UnixNano())
+	eligibleThrough := model.TimeFromUnixNano(through.UnixNano())
 
 	hints, stats, err := h.hintProvider.ProvideHints(ctx, tenant, expr, eligibleFrom, eligibleThrough)
 	if stats != nil {

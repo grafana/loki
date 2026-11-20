@@ -254,6 +254,7 @@ type Limits struct {
 	// reference while logline is experimental.
 	LoglineQueryMode                  string `yaml:"logline_query_mode" json:"logline_query_mode" doc:"hidden" category:"experimental"`
 	LoglineQueryMinQueryBytesForIndex int64  `yaml:"logline_query_min_query_bytes_for_index" json:"logline_query_min_query_bytes_for_index" doc:"hidden" category:"experimental"`
+	LoglineQueryGroupPlanning         bool   `yaml:"logline_query_group_planning" json:"logline_query_group_planning" doc:"hidden" category:"experimental"`
 
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"description=Default list of JSON fields to tokenize for pattern detection. It is recommend to append to or delete from the defaults rather than replacing them."`
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"description=List of additional JSON fields to tokenize for pattern detection."`
@@ -602,6 +603,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"Logline filtering mode for the tenant: off, dry_run or live. Empty leaves it to the logline.query settings and the X-Logline-Index request header.")
 	f.Int64Var(&l.LoglineQueryMinQueryBytesForIndex, "logline-query.min-query-bytes-for-index", defaultLoglineQueryMinQueryBytesForIndex,
 		"Minimum index-stats bytes a query must cover before logline looks up hints for it. 0 disables the check. The default is low, so anyone with serious amounts of data might want to raise it.")
+	f.BoolVar(&l.LoglineQueryGroupPlanning, "logline-query.group-planning", false,
+		"Gate and look up hints once for each query that Grafana splits by time, using the query group headers that Grafana sends with every split.")
 
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
@@ -1349,6 +1352,10 @@ func (o *Overrides) LoglineQueryMode(userID string) string {
 
 func (o *Overrides) LoglineQueryMinQueryBytesForIndex(userID string) int64 {
 	return o.getOverridesForUser(userID).LoglineQueryMinQueryBytesForIndex
+}
+
+func (o *Overrides) LoglineQueryGroupPlanning(userID string) bool {
+	return o.getOverridesForUser(userID).LoglineQueryGroupPlanning
 }
 
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {

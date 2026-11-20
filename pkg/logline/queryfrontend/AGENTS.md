@@ -92,6 +92,23 @@ limit or the `logline.query` settings, still make the call. A live-header query 
 only reads the ingester window still skips the lookup and records `recent_data_only`,
 because the check that starts the lookup doesn't depend on the byte threshold.
 
+### Query groups
+
+Grafana's Loki datasource splits a long query by time and sends the group's range
+with every split (`X-Query-Group-Id`, `X-Loki-Query-Group-From` and `-To`). With the
+`logline_query_group_planning` limit, live mode uses it:
+
+- The first split gates on the whole group's index-stats bytes and returns them in
+  `X-Loki-Query-Group-Estimated-Bytes`, which `Codec.EncodeResponse` copies to the
+  HTTP response. It looks up the whole group, which fills the hint cache, except the
+  days that were still being indexed within the hint cache TTL of the ingester cutoff
+  at the group's end. Only the splits that read those days look them up.
+- Later splits send the estimate back. They gate on it without an index-stats call,
+  look up their own window, and store the group's cached days again
+  (`CachingHintProvider.RefreshDays`), so the days outlive the cache TTL until the
+  last split reads them.
+- The filter still uses each split's own ingester cutoff.
+
 ### Pass-through intervals don't wait for the lookup
 
 Ingester-window and pre-min-date intervals pass through whatever the lookup returns,
