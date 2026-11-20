@@ -447,7 +447,7 @@ func TestReadIndexRun(t *testing.T) {
 		read.sections[0].Keys = nil
 		require.Equal(t, []v2.Section[indexSortKey]{
 			{
-				Ref:          &compactionv2pb.SectionRef{ObjectPath: path, UncompressedSize: postingsSectionSize(ctx, t, bucket, path, 0)},
+				Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
 				PlanningUnit: path,
 				Min:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
 				Max:          indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
@@ -702,20 +702,4 @@ func TestKeySamples(t *testing.T) {
 	t.Run("returns no sizes when it sampled no rows", func(t *testing.T) {
 		require.Nil(t, keySamples{}.sizes(100))
 	})
-}
-
-// postingsSectionSize returns the uncompressed size of the postings section at
-// sectionIndex of the index object at path. It fails the test if the section
-// is missing or is not a postings section.
-func postingsSectionSize(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, sectionIndex int) int64 {
-	t.Helper()
-	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
-	require.NoError(t, err)
-	sections := obj.Sections()
-	require.Less(t, sectionIndex, len(sections))
-	section, err := postings.Open(ctx, sections[sectionIndex])
-	require.NoError(t, err)
-	size := int64(section.UncompressedSize())
-	require.Positive(t, size)
-	return size
 }

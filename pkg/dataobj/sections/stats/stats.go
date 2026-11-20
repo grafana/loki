@@ -105,6 +105,19 @@ type Stat struct {
 	UncompressedSize int64
 }
 
+// Size returns the size in bytes of the variable-length values of s: its
+// object path, its sort schema and its label values. It does not count the
+// fixed-width fields. It does not count the label names, because the sort
+// schema already holds them. It is not the UncompressedSize field, which is
+// the size of the log records that s describes.
+func (s Stat) Size() int64 {
+	size := int64(len(s.ObjectPath) + len(s.SortSchema))
+	for _, value := range s.Labels {
+		size += int64(len(value))
+	}
+	return size
+}
+
 // SectionEncoder encodes a batch of sorted Stat rows of layout into a columnar
 // encoder, and records layout in the section metadata.
 type SectionEncoder func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error

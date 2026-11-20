@@ -138,18 +138,18 @@ func TestWorkerMetrics_ObserveLogMerge(t *testing.T) {
 }
 
 func TestWorkerMetrics_IndexMergeObserver(t *testing.T) {
-	t.Run("adds input rows to the series of the observer's thread only", func(t *testing.T) {
+	t.Run("adds input bytes to the series of the observer's thread only", func(t *testing.T) {
 		m := newWorkerMetrics(prometheus.NewRegistry())
 		thread0 := m.indexMergeObserver(0)
 		thread3 := m.indexMergeObserver(3)
 
-		thread0.ObserveIndexMergeInputRows(10)
-		thread0.ObserveIndexMergeInputRows(5)
-		thread3.ObserveIndexMergeInputRows(7)
+		thread0.ObserveIndexMergeInputBytes(10)
+		thread0.ObserveIndexMergeInputBytes(5)
+		thread3.ObserveIndexMergeInputBytes(7)
 
-		require.Equal(t, 2, testutil.CollectAndCount(m.indexMergeInputRowsTotal))
-		require.Equal(t, 15.0, testutil.ToFloat64(m.indexMergeInputRowsTotal.WithLabelValues("0")))
-		require.Equal(t, 7.0, testutil.ToFloat64(m.indexMergeInputRowsTotal.WithLabelValues("3")))
+		require.Equal(t, 2, testutil.CollectAndCount(m.indexMergeTaskInputBytesTotal))
+		require.Equal(t, 15.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("0")))
+		require.Equal(t, 7.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("3")))
 	})
 }
 

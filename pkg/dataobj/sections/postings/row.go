@@ -41,6 +41,14 @@ type Row struct {
 	MaxShardBucket   uint32
 }
 
+// Size returns the size in bytes of the variable-length values of r: its
+// strings, its stream ID bitmap and its bloom filter. It does not count the
+// fixed-width fields. It is not the UncompressedSize field, which is the size
+// of the log records that r indexes.
+func (r Row) Size() int64 {
+	return int64(len(r.ObjectPath) + len(r.ColumnName) + len(r.LabelValue) + len(r.StreamIDBitmap) + len(r.BloomFilter))
+}
+
 // LabelEntry converts the Row to a [LabelEntry]. The caller should only call
 // this when Row.Kind == KindLabel.
 func (r Row) LabelEntry() LabelEntry {
