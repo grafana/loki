@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
