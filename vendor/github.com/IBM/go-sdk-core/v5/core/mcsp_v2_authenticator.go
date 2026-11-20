@@ -432,7 +432,8 @@ func (authenticator *MCSPV2Authenticator) invokeRequestTokenData() error {
 		return err
 	}
 
-	GetLogger().Debug("invokeRequestTokenData(): RequestToken returned tokenResponse:\n%+v", *tokenResponse)
+	GetLogger().Debug("invokeRequestTokenData(): RequestToken returned: tokenType=%s, expiresIn=%d, expiration=%d",
+		tokenResponse.TokenType, tokenResponse.ExpiresIn, tokenResponse.Expiration)
 	tokenData, err := newMCSPV2TokenData(tokenResponse)
 	if err != nil {
 		tokenData = &mcspv2TokenData{}
