@@ -40,6 +40,24 @@ type Table interface {
 	DropNotOwned(ctx context.Context, dropFilter TenantFilter) error
 }
 
+// tableOptions are the table settings that come from the table manager's Config.
+type tableOptions struct {
+	// fileFilter limits the files of user index sets kept ready for queries
+	// (see Config.FileFilter).
+	fileFilter FileFilter
+}
+
+// userFileFilter binds the table's file filter to a user, for its index set.
+// It returns nil when there is no filter or for the common index set.
+func (t *table) userFileFilter(userID string) indexSetFileFilter {
+	if t.opts.fileFilter == nil || userID == "" {
+		return nil
+	}
+	return func(files []storage.IndexFile) ([]storage.IndexFile, error) {
+		return t.opts.fileFilter(t.name, userID, files)
+	}
+}
+
 // table is a collection of multiple files created for a same table by various ingesters.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type table struct {
@@ -50,6 +68,7 @@ type table struct {
 	metrics           *metrics
 	maxConcurrent     int
 	downloadTimeout   time.Duration
+	opts              tableOptions
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -58,9 +77,9 @@ type table struct {
 	indexSetsMtx sync.RWMutex
 }
 
-// NewTable just creates an instance of table without trying to load files from local storage or object store.
+// newTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration) Table {
+func newTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration, opts tableOptions) Table {
 	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 	return &table{
 		name:               name,
@@ -73,15 +92,16 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		metrics:            metrics,
 		maxConcurrent:      maxConcurrent,
 		downloadTimeout:    downloadTimeout,
+		opts:               opts,
 		indexSets:          map[string]IndexSet{},
 	}
 }
 
-// LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
+// loadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
 // Index sets found on local disk are not query ready: whether they still are is
 // decided by the next query readiness run, which marks them.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration) (Table, error) {
+func loadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration, opts tableOptions) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -106,6 +126,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		metrics:            metrics,
 		maxConcurrent:      maxConcurrent,
 		downloadTimeout:    downloadTimeout,
+		opts:               opts,
 	}
 
 	level.Debug(table.logger).Log("msg", "opening locally present files for table", "table", name, "files", fmt.Sprint(dirEntries))
@@ -118,11 +139,12 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
-		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout)
+		userIndexSet, err := newIndexSet(name, userID, filepath.Join(cacheLocation, userID),
+			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout, false)
 		if err != nil {
 			return nil, err
 		}
+		userIndexSet.fileFilter = table.userFileFilter(userID)
 
 		err = userIndexSet.Init(false, logger)
 		if err != nil {
@@ -418,6 +440,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	if err != nil {
 		return nil, err
 	}
+	newSet.fileFilter = t.userFileFilter(id)
 	indexSet = newSet
 	t.indexSets[id] = indexSet
 
@@ -490,9 +513,18 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 	}
 	t.indexSetsMtx.RUnlock()
 
-	// Existing sets are now kept ready for queries.
+	// Existing partial index sets must refresh their files before preload
+	// succeeds. Ownership can change within a tenant that is already loaded.
 	for _, indexSet := range notQueryReady {
 		indexSet.MarkQueryReady()
+		if t.opts.fileFilter != nil && indexSet != commonIndexSet {
+			if err := indexSet.AwaitReady(ctx, "refresh owned index files"); err != nil {
+				return err
+			}
+			if err := indexSet.Sync(ctx); err != nil {
+				return err
+			}
+		}
 	}
 
 	return t.downloadUserIndexes(ctx, missingUserIDs)
