@@ -1742,7 +1742,9 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 		reuseRowGroup = &w.rowGroups[rowGroupIndex] // Pointer to the last element
 	}
 
-	sortingColumns := w.sortingColumns
+	// Copy the writer's sorting columns: the stored row group is cleared in
+	// place by Reset, which must not zero w.sortingColumns.
+	sortingColumns := slices.Clone(w.sortingColumns)
 	if len(sortingColumns) == 0 && len(rowGroupSortingColumns) > 0 {
 		scLen := len(rowGroupSortingColumns)
 		if reuseRowGroup == nil {
@@ -1801,6 +1803,11 @@ func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Sch
 	}
 	for i := range columns {
 		c := &columns[i]
+		// Encoding and PathInSchema alias the column writer's encodings and
+		// columnPath; copy them so Reset clearing the stored row group does
+		// not corrupt the metadata of files written after it.
+		c.MetaData.Encoding = slices.Clone(rg.columnChunk[i].MetaData.Encoding)
+		c.MetaData.PathInSchema = slices.Clone(rg.columnChunk[i].MetaData.PathInSchema)
 		c.MetaData.EncodingStats = slices.Clone(rg.columnChunk[i].MetaData.EncodingStats)
 	}
 
@@ -2449,9 +2456,15 @@ func (c *ColumnWriter) writeDataPage(page Page) (int64, error) {
 		}
 	}
 
+	var minValue, maxValue Value
+	var pageHasBounds bool
+	if c.writePageStats || c.writePageBounds {
+		minValue, maxValue, pageHasBounds = page.Bounds()
+	}
+
 	statistics := format.Statistics{}
 	if c.writePageStats {
-		statistics = c.makePageStatistics(page)
+		statistics = c.makePageStatistics(page, minValue, maxValue)
 	}
 
 	c.header.page.UncompressedPageSize = int32(uncompressedPageSize)
@@ -2516,7 +2529,7 @@ func (c *ColumnWriter) writeDataPage(page Page) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		c.recordPageStats(plainHeaderLen, &c.header.page, page)
+		c.recordPageStats(plainHeaderLen, &c.header.page, page, minValue, maxValue, pageHasBounds)
 		c.patchEncryptedCompressedSize(encSize, plainHeaderLen, c.header.page.CompressedPageSize)
 		return numValues, nil
 	}
@@ -2545,7 +2558,7 @@ func (c *ColumnWriter) writeDataPage(page Page) (int64, error) {
 		return 0, err
 	}
 
-	c.recordPageStats(plainHeaderLen, &c.header.page, page)
+	c.recordPageStats(plainHeaderLen, &c.header.page, page, minValue, maxValue, pageHasBounds)
 	return numValues, nil
 }
 
@@ -2602,7 +2615,7 @@ func (c *ColumnWriter) writeDictionaryPage(output io.Writer, dict Dictionary) (e
 			return err
 		}
 		plainHeaderLen := int32(c.header.buffer.Len())
-		c.recordPageStats(plainHeaderLen, &c.header.dict, nil)
+		c.recordPageStats(plainHeaderLen, &c.header.dict, nil, Value{}, Value{}, false)
 		c.patchEncryptedCompressedSize(int64(len(encHdr)+len(encBody)), plainHeaderLen, c.header.dict.CompressedPageSize)
 		return nil
 	}
@@ -2613,7 +2626,7 @@ func (c *ColumnWriter) writeDictionaryPage(output io.Writer, dict Dictionary) (e
 	if _, err := output.Write(buf.page); err != nil {
 		return err
 	}
-	c.recordPageStats(int32(c.header.buffer.Len()), &c.header.dict, nil)
+	c.recordPageStats(int32(c.header.buffer.Len()), &c.header.dict, nil, Value{}, Value{}, false)
 	return nil
 }
 
@@ -2697,9 +2710,8 @@ func (c *ColumnWriter) fallbackDictionaryToPlain() error {
 	return nil
 }
 
-func (c *ColumnWriter) makePageStatistics(page Page) format.Statistics {
+func (c *ColumnWriter) makePageStatistics(page Page, minValue, maxValue Value) format.Statistics {
 	numNulls := page.NumNulls()
-	minValue, maxValue, _ := page.Bounds()
 	minValueBytes := minValue.Bytes()
 	maxValueBytes := maxValue.Bytes()
 	return format.Statistics{
@@ -2711,7 +2723,7 @@ func (c *ColumnWriter) makePageStatistics(page Page) format.Statistics {
 	}
 }
 
-func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHeader, page Page) {
+func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHeader, page Page, minValue, maxValue Value, pageHasBounds bool) {
 	uncompressedSize := headerSize + header.UncompressedPageSize
 	compressedSize := headerSize + header.CompressedPageSize
 
@@ -2719,10 +2731,8 @@ func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHead
 		numNulls := page.NumNulls()
 		numValues := page.NumValues()
 
-		var minValue, maxValue Value
-		var pageHasBounds bool
-		if c.writePageBounds {
-			minValue, maxValue, pageHasBounds = page.Bounds()
+		if !c.writePageBounds {
+			minValue, maxValue, pageHasBounds = Value{}, Value{}, false
 		}
 
 		c.columnIndex.IndexPage(numValues, numNulls, minValue, maxValue)

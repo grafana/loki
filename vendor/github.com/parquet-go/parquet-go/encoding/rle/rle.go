@@ -98,7 +98,8 @@ func encodeBits(dst, src []byte) ([]byte, error) {
 	if len(src) == 0 || isZero(src) || isOnes(src) {
 		dst = appendUvarint(dst, uint64(8*len(src))<<1)
 		if len(src) > 0 {
-			dst = append(dst, src[0])
+			// A repeated boolean is 0 or 1. The bitmap byte 0xFF is eight true bits.
+			dst = append(dst, src[0]&1)
 		}
 		return dst, nil
 	}
@@ -115,7 +116,7 @@ func encodeBits(dst, src []byte) ([]byte, error) {
 			}
 
 			if n := j - i; n > 1 {
-				dst = appendRunLengthBits(dst, 8*n, src[i])
+				dst = appendRunLengthBits(dst, 8*n, src[i]&1)
 				i = j
 				continue
 			}
@@ -249,6 +250,7 @@ func encodeInt32(dst []byte, src []int32, bitWidth uint) ([]byte, error) {
 }
 
 func decodeBits(dst, src []byte) ([]byte, error) {
+	var nbits int
 	for i := 0; i < len(src); {
 		u, n := binary.Uvarint(src[i:])
 		if n == 0 {
@@ -267,29 +269,99 @@ func decodeBits(dst, src []byte) ([]byte, error) {
 			return dst, fmt.Errorf("decoded run-length block cannot have more than %d values", maxSupportedValueCount)
 		}
 		if bitpacked {
-			n := int(count)
-			j := i + n
+			nbytes := int(count)
+			j := i + nbytes
 
 			if j > len(src) {
-				return dst, fmt.Errorf("decoding bit-packed block of %d values: %w", n, io.ErrUnexpectedEOF)
+				return dst, fmt.Errorf("decoding bit-packed block of %d values: %w", nbytes*8, io.ErrUnexpectedEOF)
 			}
 
-			dst = append(dst, src[i:j]...)
+			dst = appendBooleanPacked(dst, nbits, src[i:j])
+			nbits += nbytes * 8
 			i = j
 		} else {
-			word := byte(0)
-			if i < len(src) {
-				word = src[i]
-				i++
+			if i >= len(src) {
+				return dst, fmt.Errorf("decoding run-length block of %d values: no value byte: %w", count, io.ErrUnexpectedEOF)
 			}
+			word := src[i]
+			i++
 
-			offset := len(dst)
-			length := bitpack.ByteCount(count)
-			dst = resize(dst, offset+length)
-			bytealg.Broadcast(dst[offset:], word)
+			// Any non-zero byte is true, so a spec value of 1 and the 0xFF
+			// this encoder used to write both fill the run.
+			dst = appendBooleanRun(dst, nbits, int(count), word != 0)
+			nbits += int(count)
 		}
 	}
-	return dst, nil
+	if nbits == 0 {
+		return dst[:0], nil
+	}
+	return dst[:(nbits+7)/8], nil
+}
+
+func appendBooleanRun(dst []byte, nbits, count int, ones bool) []byte {
+	if count <= 0 {
+		return dst
+	}
+	end := nbits + count
+	nbytes := (end + 7) / 8
+	old := len(dst)
+	dst = resize(dst, nbytes)
+	// A run of ones that ends on a byte boundary overwrites every new byte.
+	// The tail byte of a run that ends mid-byte is only partly written, and a
+	// run of zeros writes nothing, so those bytes still have to be cleared.
+	if nbytes > old && !(ones && end%8 == 0) {
+		if ones {
+			dst[nbytes-1] = 0
+		} else {
+			clear(dst[old:])
+		}
+	}
+	if ones {
+		setBooleanBits(dst, nbits, count)
+	}
+	return dst
+}
+
+func setBooleanBits(dst []byte, off, count int) {
+	end := off + count
+	i := off
+	for i < end && i%8 != 0 {
+		dst[i/8] |= 1 << uint(i%8)
+		i++
+	}
+	if full := (end - i) / 8; full > 0 {
+		bytealg.Broadcast(dst[i/8:i/8+full], 0xFF)
+		i += full * 8
+	}
+	for i < end {
+		dst[i/8] |= 1 << uint(i%8)
+		i++
+	}
+}
+
+func appendBooleanPacked(dst []byte, nbits int, src []byte) []byte {
+	if len(src) == 0 {
+		return dst
+	}
+	end := nbits + len(src)*8
+	nbytes := (end + 7) / 8
+	old := len(dst)
+	dst = resize(dst, nbytes)
+	if nbits%8 == 0 {
+		copy(dst[nbits/8:], src)
+		return dst
+	}
+	if nbytes > old {
+		clear(dst[old:])
+	}
+	shift := uint(nbits % 8)
+	di := nbits / 8
+	for _, b := range src {
+		dst[di] |= b << shift
+		dst[di+1] |= b >> (8 - shift)
+		di++
+	}
+	return dst
 }
 
 func decodeBytes(dst, src []byte, bitWidth uint) ([]byte, error) {

@@ -1,4 +1,4 @@
-//go:build !purego
+//go:build !purego && !goexperiment.simd
 
 package parquet
 
@@ -46,9 +46,6 @@ const (
 )
 
 //go:noescape
-func combinedBoundsBool(data []bool) (min, max bool)
-
-//go:noescape
 func combinedBoundsInt32(data []int32) (min, max int32)
 
 //go:noescape
@@ -68,9 +65,6 @@ func combinedBoundsFloat32(data []float32) (min, max float32)
 
 //go:noescape
 func combinedBoundsFloat64(data []float64) (min, max float64)
-
-//go:noescape
-func combinedBoundsBE128(data [][16]byte) (min, max []byte)
 
 func boundsInt32(data []int32) (min, max int32) {
 	if 4*len(data) >= combinedBoundsThreshold {

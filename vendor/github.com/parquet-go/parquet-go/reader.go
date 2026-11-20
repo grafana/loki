@@ -36,7 +36,7 @@ func NewGenericReader[T any](input io.ReaderAt, options ...ReaderOption) *Generi
 
 	f, err := openFile(input)
 	if err != nil {
-		panic(err)
+		return &GenericReader[T]{base: Reader{openErr: err}}
 	}
 
 	rowGroup := fileRowGroupOf(f)
@@ -114,6 +114,9 @@ func (r *GenericReader[T]) Reset() {
 // The method returns the number of rows read and io.EOF when no more rows
 // can be read from the reader.
 func (r *GenericReader[T]) Read(rows []T) (int, error) {
+	if r.base.openErr != nil {
+		return 0, r.base.openErr
+	}
 	return r.read(r, rows)
 }
 
@@ -245,6 +248,9 @@ type Reader struct {
 	read     reader
 	rowIndex int64
 	rowbuf   []Row
+	// We don't error when creating a reader on malformed input,
+	// but carry the error here so the first read call can fail instead
+	openErr error
 }
 
 // NewReader constructs a parquet reader reading rows from the given
@@ -277,7 +283,7 @@ func NewReader(input io.ReaderAt, options ...ReaderOption) *Reader {
 
 	f, err := openFile(input)
 	if err != nil {
-		panic(err)
+		return &Reader{openErr: err}
 	}
 
 	r := &Reader{
@@ -304,7 +310,7 @@ func openFile(input io.ReaderAt) (*File, error) {
 	}
 	n, err := sizeOf(input)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	return OpenFile(input, n)
 }
@@ -392,6 +398,9 @@ func (r *Reader) Reset() {
 //
 // The method returns io.EOF when no more rows can be read from r.
 func (r *Reader) Read(row any) error {
+	if r.openErr != nil {
+		return r.openErr
+	}
 	if rowType := dereference(reflect.TypeOf(row)); rowType.Kind() == reflect.Struct {
 		if r.seen != rowType {
 			if err := r.updateReadSchema(rowType); err != nil {
@@ -446,6 +455,9 @@ func (r *Reader) updateReadSchema(rowType reflect.Type) error {
 //
 // The method returns io.EOF when no more rows can be read from r.
 func (r *Reader) ReadRows(rows []Row) (int, error) {
+	if r.openErr != nil {
+		return 0, r.openErr
+	}
 	if err := r.file.SeekToRow(r.rowIndex); err != nil {
 		return 0, err
 	}
@@ -455,13 +467,30 @@ func (r *Reader) ReadRows(rows []Row) (int, error) {
 }
 
 // Schema returns the schema of rows read by r.
-func (r *Reader) Schema() *Schema { return r.file.schema }
+func (r *Reader) Schema() *Schema {
+	r.panicOnOpenErr()
+	return r.file.schema
+}
 
 // NumRows returns the number of rows that can be read from r.
-func (r *Reader) NumRows() int64 { return r.file.rowGroup.NumRows() }
+func (r *Reader) NumRows() int64 {
+	r.panicOnOpenErr()
+	return r.file.rowGroup.NumRows()
+}
+
+// panicOnOpenErr panics with the deferred open error for methods that cannot
+// return an error.
+func (r *Reader) panicOnOpenErr() {
+	if r.openErr != nil {
+		panic(r.openErr)
+	}
+}
 
 // SeekToRow positions r at the given row index.
 func (r *Reader) SeekToRow(rowIndex int64) error {
+	if r.openErr != nil {
+		return r.openErr
+	}
 	if err := r.file.SeekToRow(rowIndex); err != nil {
 		return err
 	}
@@ -577,6 +606,7 @@ type readerFileView struct {
 // File returns a FileView of the parquet file being read.
 // Only available if Reader was created with a File.
 func (r *Reader) File() FileView {
+	r.panicOnOpenErr()
 	if r.file.schema == nil || r.file.file == nil {
 		return nil
 	}

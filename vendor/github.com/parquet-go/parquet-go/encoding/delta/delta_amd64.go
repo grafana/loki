@@ -1,4 +1,4 @@
-//go:build !purego
+//go:build !purego || goexperiment.simd
 
 package delta
 
