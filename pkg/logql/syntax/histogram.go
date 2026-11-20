@@ -78,6 +78,7 @@ func (b *BucketSpec) clone() *BucketSpec {
 	return &BucketSpec{Bounds: slices.Clone(b.Bounds)}
 }
 
+// String returns the spec in the form that the parser reads back: buckets(1,5,10).
 func (b *BucketSpec) String() string {
 	bounds := make([]string, 0, len(b.Bounds))
 	for _, v := range b.Bounds {
@@ -143,16 +144,27 @@ func (e *HistogramFuncExpr) validate() error {
 		if n := len(e.Params); n < 1 || n > MaxHistogramQuantiles {
 			return fmt.Errorf("%s requires between 1 and %d quantiles, got %d", e.Operation, MaxHistogramQuantiles, n)
 		}
+		// Each quantile is a series of the result, told apart by the label, so two of the same are two series with
+		// the same labels, which PromQL fails at evaluation.
+		for i, p := range e.Params {
+			if slices.Contains(e.Params[:i], p) { // NaN is rejected above, and -0 == 0
+				return fmt.Errorf("%s: quantile %s is given more than once", e.Operation, formatHistogramParam(p))
+			}
+		}
 	case OpHistogramFraction:
 		if len(e.Params) != 2 {
 			return fmt.Errorf("%s requires a lower and an upper bound, got %d arguments", e.Operation, len(e.Params))
 		}
 	case OpHistogramCount, OpHistogramSum, OpHistogramAvg:
-		if len(e.Params) != 0 || e.Label != "" {
+		if len(e.Params) != 0 {
 			return fmt.Errorf("%s takes no arguments besides the histogram", e.Operation)
 		}
 	default:
-		return fmt.Errorf(UnsupportedErr, e.Operation)
+		return fmt.Errorf("unsupported histogram function %q", e.Operation)
+	}
+	// The label is dropped when the expression is printed, so one that is not used would be silently lost.
+	if e.Operation != OpHistogramQuantiles && e.Label != "" {
+		return fmt.Errorf("%s takes no label name", e.Operation)
 	}
 	return nil
 }
@@ -166,7 +178,7 @@ func validateQuantileLabel(name string) error {
 	case !model.LegacyValidation.IsValidLabelName(name):
 		return fmt.Errorf("%q is not a valid label name", name)
 	case strings.HasPrefix(name, "__"):
-		return fmt.Errorf("label name %q is reserved, names starting with __ are", name)
+		return fmt.Errorf("label name %q is reserved, as are all the label names that start with __", name)
 	}
 	return nil
 }
@@ -297,9 +309,9 @@ func UsesHistograms(expr Expr) bool {
 		case *HistogramFuncExpr:
 			found = true
 		case *RangeAggregationExpr:
-			// Not found = ...: returning false from Walk does not end the walk. It skips the children of the
-			// node, and the next sibling is still visited, such as the rate in histogram_count(...) + rate(...).
-			found = found || e.Operation == OpRangeTypeHistogram
+			if e.Operation == OpRangeTypeHistogram {
+				found = true
+			}
 		}
 		return !found
 	})
