@@ -4,7 +4,7 @@ server:
   http_listen_port: 3100
 
 memberlist:
-  join_members: ["read", "write", "backend"]
+  join_members: ["loki"]
   dead_node_reclaim_time: 30s
   gossip_to_dead_nodes_time: 15s
   left_ingesters_timeout: 30s
@@ -27,7 +27,7 @@ storage_config:
 common:
   path_prefix: /loki
   replication_factor: 1
-  compactor_address: http://backend:3100
+  compactor_address: http://loki:3100
   storage:
     object_store:
       s3:

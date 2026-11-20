@@ -10,24 +10,23 @@ aliases:
 
 {{< youtube id="_hv4i84Z68s" >}}
 
-Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
-in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
-For more information see [Deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
+Loki is a modular system that contains many components that can either be run together (in monolithic mode with target `all`)
+or individually (in microservices mode). For more information see [Deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
 
-| Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
-|----------------------------------------------------|--------------| - | - | - | - |
-| [Distributor](#distributor)                        | x            | x |   | x |   |
-| [Ingester](#ingester)                              | x            | x |   | x |   |
-| [Query Frontend](#query-frontend)                  | x            | x | x |   |   |
-| [Query Scheduler](#query-scheduler)                | x            | x |   |   | x |
-| [Querier](#querier)                                | x            | x | x |   |   |
-| [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
-| [Compactor](#compactor)                            | x            | x |   |   | x |
-| [Ruler](#ruler)                                    | x            | x |   |   | x |
-| [Pattern ingester](#pattern-ingester)              | x            | x |   | x |   |
-| [Bloom Planner (Deprecated)](#bloom-planner)       | x            |   |   |   | x |
-| [Bloom Builder (Deprecated)](#bloom-builder)       | x            |   |   |   | x |
-| [Bloom Gateway (Deprecated)](#bloom-gateway)       | x            |   |   |   | x |
+| Component                                          | _individual_ | `all` |
+|----------------------------------------------------|--------------| - |
+| [Distributor](#distributor)                        | x            | x |
+| [Ingester](#ingester)                              | x            | x |
+| [Query Frontend](#query-frontend)                  | x            | x |
+| [Query Scheduler](#query-scheduler)                | x            | x |
+| [Querier](#querier)                                | x            | x |
+| [Index Gateway](#index-gateway)                    | x            |   |
+| [Compactor](#compactor)                            | x            | x |
+| [Ruler](#ruler)                                    | x            | x |
+| [Pattern ingester](#pattern-ingester)              | x            | x |
+| [Bloom Planner (Deprecated)](#bloom-planner)       | x            |   |
+| [Bloom Builder (Deprecated)](#bloom-builder)       | x            |   |
+| [Bloom Gateway (Deprecated)](#bloom-gateway)       | x            |   |
 
 This page describes the responsibilities of each of these components.
 
@@ -311,8 +310,8 @@ Query schedulers are **stateless**. However, due to the in-memory queue, it's re
 ## Querier
 
 The **querier** service is responsible for executing [Log Query Language (LogQL)](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) queries.
-The querier can handle HTTP requests from the client directly (in "single binary" mode, or as part of the read path in "simple scalable deployment")
-or pull subqueries from the query frontend or query scheduler (in "microservice" mode).
+The querier can handle HTTP requests from the client directly (in monolithic mode)
+or pull subqueries from the query frontend or query scheduler (in microservices mode).
 
 It fetches log data from both the ingesters and from long-term storage.
 Queriers query all ingesters for in-memory data before falling back to
