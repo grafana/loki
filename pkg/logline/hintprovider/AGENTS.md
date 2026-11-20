@@ -201,3 +201,11 @@ Query-shape support and hint lookup for logline index lookups.
       frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.
+19. **`MinDate` never falls before the index retention cutoff**
+    - After `SetRetention`, `MinDate` is the later of the store's `min_date`
+      and now minus `RetentionPeriod()`, rounded up to the next UTC day so the
+      hint cache key (invariant 6) changes once a day.
+    - The scheduler deletes indexes past that period, but Loki can still return
+      their data (backfilled chunks, longer per-stream retention). A lookup
+      would find no index and skip it, so it passes through as pre-min-date.
+    - Only the query-frontend sets it, because it plans lookups.

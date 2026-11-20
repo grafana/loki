@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
@@ -580,6 +581,69 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[1].Start)
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[1].End)
+}
+
+type fixedRetention time.Duration
+
+func (r fixedRetention) RetentionPeriod() time.Duration { return time.Duration(r) }
+
+func TestLoglineHintProvider_MinDate_Retention(t *testing.T) {
+	afternoon := time.Date(2026, 11, 17, 13, 30, 0, 0, time.UTC)
+	midnight := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	jan1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	days90 := fixedRetention(90 * 24 * time.Hour)
+
+	for _, tc := range []struct {
+		name      string
+		minDate   string
+		now       time.Time
+		retention loglinelimits.Limits
+		want      time.Time
+	}{
+		{"no retention keeps min_date", "2026-01-01", afternoon, nil, jan1},
+		{"zero retention keeps min_date", "2026-01-01", afternoon, fixedRetention(0), jan1},
+		// The cutoff is 2026-08-19T13:30, so indexes of that day may be gone.
+		{"cutoff rounds up to the next UTC day", "2026-01-01", afternoon, days90, time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)},
+		{"cutoff on a day boundary stays", "2026-01-01", midnight, days90, time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)},
+		{"later min_date wins", "2026-10-01", afternoon, days90, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider, err := NewLoglineHintProvider(newTestStoreWithMinDate(t, tc.minDate), 6, 0, 0, nil, log.NewNopLogger(), nil)
+			require.NoError(t, err)
+			provider.now = func() time.Time { return tc.now }
+			provider.SetRetention(tc.retention)
+			require.Equal(t, tc.want, provider.MinDate())
+		})
+	}
+}
+
+// A replay can write data whose index the scheduler already deleted. The part
+// of the query before the retention cutoff passes through; the rest narrows.
+func TestLoglineHintProvider_ProvideHints_PassesThroughPastRetention(t *testing.T) {
+	indexStore := newTestStoreWithMinDate(t, "2026-01-01")
+	liveMin := time.Date(2026, 10, 1, 10, 0, 50, 0, time.UTC)
+	liveMax := time.Date(2026, 10, 1, 10, 1, 10, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "9fA81cD2Ef0077aa", liveMin, liveMax)
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	provider.now = func() time.Time { return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC) }
+	provider.SetRetention(fixedRetention(90 * 24 * time.Hour))
+
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`),
+		model.TimeFromUnixNano(time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC).UnixNano()),
+		model.TimeFromUnixNano(liveMax.Add(time.Minute).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.Len(t, hints.TimeRanges, 2)
+	require.True(t, hints.TimeRanges[0].IsPassthrough())
+	require.Equal(t, HintSourcePreMinDate, hints.TimeRanges[0].Source)
+	require.Equal(t, time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC), hints.TimeRanges[0].End)
+	require.Equal(t, liveMin, hints.TimeRanges[1].Start)
+	require.Equal(t, liveMax, hints.TimeRanges[1].End)
 }
 
 func TestNormalizeRanges(t *testing.T) {
