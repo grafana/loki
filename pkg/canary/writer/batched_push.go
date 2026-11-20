@@ -17,6 +17,10 @@ const (
 	DefaultLogBatchTimeout = 30 // every 'n' seconds, force the batch to flush if it's not empty
 )
 
+// batchFlushInterval is how often a non-empty batch is flushed even if it is
+// not full. It is a variable so tests can shorten it.
+var batchFlushInterval = DefaultLogBatchTimeout * time.Second
+
 // BatchedPush is wrapper around the `Push` writer.  This writer delegates
 // the standard `EntryWriter` functions to the wrapped `Push` writer, but
 // reimplements the push mechanism:
@@ -72,12 +76,9 @@ func (p *BatchedPush) run() {
 		close(p.pusher.done)
 	}()
 
-	// use a channel to flush the logs array every "timeout" seconds at minimum
-	forceFlush := make(chan bool, 1)
-	go func() {
-		time.Sleep(DefaultLogBatchTimeout * time.Second)
-		forceFlush <- true
-	}()
+	// flush the logs array every "timeout" seconds at minimum
+	forceFlush := time.NewTicker(batchFlushInterval)
+	defer forceFlush.Stop()
 
 	logs := make([]entry, 0, p.logBatchSize)
 
@@ -152,7 +153,7 @@ func (p *BatchedPush) run() {
 			withLock(flush)
 			cancel()
 			return
-		case <-forceFlush:
+		case <-forceFlush.C:
 			// we don't want to keep logs for too long if the
 			// channel is open but not receiving new logs
 			withLock(flush)

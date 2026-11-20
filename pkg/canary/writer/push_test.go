@@ -261,6 +261,34 @@ func Test_ForceTimeoutBatchedPush(t *testing.T) {
 	require.Len(t, resp.pushReq.Streams, 5)
 }
 
+// test that the timeout flush keeps firing: a partial batch is sent after the
+// timeout, and a second partial batch is also sent after the next timeout.
+func Test_PeriodicTimeoutBatchedPush(t *testing.T) {
+	orig := batchFlushInterval
+	batchFlushInterval = 200 * time.Millisecond
+	defer func() { batchFlushInterval = orig }()
+
+	testCfg := newTestConfig(t)
+	defer testCfg.mock.Close()
+
+	push, err := newPush(testCfg, 20)
+	require.NoError(t, err)
+	defer push.Stop()
+
+	for round, n := range []int{2, 3} {
+		logBatch, _ := newLogBatch(1, n)
+		for _, l := range logBatch[0] {
+			push.WriteEntry(l.ts, l.entry)
+		}
+		select {
+		case resp := <-testCfg.responses:
+			require.Len(t, resp.pushReq.Streams, n, "round %d", round)
+		case <-time.After(3 * time.Second):
+			require.FailNow(t, "partial batch was not flushed", "round %d", round)
+		}
+	}
+}
+
 // test sending batches of logs and then terminating the client.  the last sent
 // logs should be sent before the client terminates.
 func Test_TerminateBatchedPush(t *testing.T) {
