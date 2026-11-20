@@ -223,7 +223,10 @@ func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
 
 func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		// Use the request context to resolve the tenant ID so that the fake
+		// tenant injected by the no-auth middleware (auth_enabled: false) is
+		// honoured without requiring an X-Scope-OrgID header.
+		user, err := tenant.TenantID(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
