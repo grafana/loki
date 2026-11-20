@@ -20,7 +20,12 @@ func LogError(message string, f func() error) {
 // LogError logs any error returned by f; useful when deferring Close etc.
 func LogErrorWithContext(ctx context.Context, message string, f func() error) {
 	if err := f(); err != nil {
-		level.Error(log.WithContext(ctx, log.Logger)).Log("message", message, "error", err)
+		logAt := level.Error
+		// close errors after a cancelled query are expected.
+		if ctx.Err() != nil {
+			logAt = level.Debug
+		}
+		logAt(log.WithContext(ctx, log.Logger)).Log("message", message, "error", err)
 	}
 }
 
