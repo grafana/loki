@@ -421,3 +421,53 @@ func Test_PushRetryStatusCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestPush_sendWithBackoff_failedBatchDoesNotStopNext(t *testing.T) {
+	lbls := labels.New(labels.Label{Name: "foo", Value: "bar"})
+	ts, err := time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
+	require.NoError(t, err)
+
+	var delivered []string
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		var req logproto.PushRequest
+		if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Fail the batch that has the first line.
+		if req.Streams[0].Entries[0].Line == "this is a line 1" {
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		for _, stream := range req.Streams {
+			for _, e := range stream.Entries {
+				delivered = append(delivered, e.Line)
+			}
+		}
+	}))
+	defer server.Close()
+
+	client, err := config.NewClientFromConfig(config.DefaultHTTPClientConfig, "test", config.WithHTTP2Disabled())
+	require.NoError(t, err)
+	client.Timeout = 2 * time.Second
+
+	// A maximum batch size that fits one entry per batch.
+	p := newBatchTestPush(50)
+	p.lokiURL = (&url.URL{Scheme: "http", Host: server.Listener.Addr().String(), Path: pushEndpoint}).String()
+	p.httpClient = client
+	p.userAgent = defaultUserAgent
+	p.contentType = defaultContentType
+
+	p.WriteEntry(ts, "this is a line 1", lbls, nil)
+	p.WriteEntry(ts, "this is a line 2", lbls, nil)
+
+	batches := p.buildBatches()
+	require.Len(t, batches, 2)
+
+	for _, b := range batches {
+		body, err := p.encode(b)
+		require.NoError(t, err)
+		p.sendWithBackoff(t.Context(), body)
+	}
+	require.Equal(t, []string{"this is a line 2"}, delivered)
+}
