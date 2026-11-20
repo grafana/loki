@@ -88,3 +88,19 @@ groups:
           for: 1h
           labels:
             severity: critical
+        - alert: LokiCompactorRetentionStalled
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} compactor has not successfully applied retention in the last 6 hours. This may cause expired data retention backlog.
+            summary: Loki compactor retention has not run in the last 6 hours.
+          expr: |
+            min (
+              time()
+              -
+              (loki_compactor_apply_retention_last_successful_run_timestamp_seconds{} > 0)
+            )
+            by (cluster, namespace)
+            > 60 * 60 * 6
+          for: 1h
+          labels:
+            severity: warning
