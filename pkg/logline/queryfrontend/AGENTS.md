@@ -120,11 +120,42 @@ does a query shard starting at or below `logline.MaxMappedFingerprint`: the
 ingester remaps colliding streams into that space, so they can belong to any
 document shard. Prefetched
 ranges are grouped by document shard, and ranges of different shards overlap
-in time, so `rangesOverlapping` searches each group on its own.
+in time, so `overlappingSpans` searches each group on its own.
 
 The hint range duration in the query stats and the dry-run report use the
 time union (`hintprovider.TimeUnion`). Dry-run verifies entries by time
 alone, and a per-shard sum would count the same time once per shard.
+
+### Hint range cap
+
+Every split and shard sub-request carries its own copy of the hint ranges in its
+window. With v3 and v4 hints, every shard sub-request of a split carries the same
+full list, so a lookup with many ranges is copied once per sub-request in the
+frontend, the scheduler and the querier. `max_hint_ranges_per_request` (default
+100,000, 0 disables it) caps the ranges the filter attaches to one sub-request. The
+cap is fixed rather than scaled by query parallelism: it bounds one sub-request,
+and the parallelism limit bounds how many are in flight.
+
+Over the cap, `coarsenHintRanges` merges the smallest gaps between a document
+shard's ranges. The wider ranges still cover every match, so a coarsened
+sub-request reads more chunks but doesn't miss lines.
+
+- Ranges of different document shards never merge, and every range keeps its
+  shard. `iter.NewHintTimeRanges` copies a range without a shard into every
+  shard's list, so dropping the shard would multiply the list on the querier.
+- Each overlapping document shard keeps at least one range, so a sub-request that
+  overlaps more document shards than the cap gets one range per shard.
+- The gaps equal to the smallest kept gap are kept evenly spread in time. v5
+  documents have a fixed width, so many gaps can be equal, and keeping the first
+  ones would merge the rest of the window into one range.
+- Memory is bounded by the cap, not by the lookup. `overlappingSpans` finds each
+  group's overlapping ranges by index without copying them, and `selectGaps` keeps
+  the largest gaps in a min-heap of at most cap entries. Picking the gaps takes two
+  passes over the ranges, and emitting the result a third.
+
+`logline_query_frontend_sub_request_hint_ranges` observes the ranges attached to
+each narrowed sub-request, after coarsening, and
+`logline_query_frontend_coarsened_sub_requests_total` counts the coarsened ones.
 
 ### Detected fields
 
@@ -220,11 +251,12 @@ why it didn't:
 
 | File | Purpose |
 |------|---------|
-| `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `rangesOverlapping` |
+| `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `clipHintRangesForInterval` |
+| `coarsen.go` | `overlappingSpans`, `hintRangesForSpans`: a sub-request's hint ranges, coarsened to `max_hint_ranges_per_request` |
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
-| `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings |
+| `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings, hint range cap |
 | `limits/definitions.go` | The per-tenant `Limits` interface |
-| `metrics.go` | Prometheus metrics for hint provider duration, canceled lookups, hint wait, ranges returned, passthrough/skip/narrow counts |
+| `metrics.go` | Prometheus metrics for hint provider duration, canceled lookups, hint wait, ranges returned, ranges per sub-request, coarsened sub-requests, passthrough/skip/narrow counts |
 
 ## Running tests
 
