@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/testutils"
@@ -58,8 +57,8 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 	}
 }
 
-// boundedKeySpan returns a key span with both bounds. A merge with stats
-// sources must have a bounded key span.
+// boundedKeySpan returns a key span with both bounds. The filler cannot set
+// the unexported fields of a KeySpan.
 func boundedKeySpan(t *testing.T) postings.KeySpan {
 	t.Helper()
 	start := postings.Key{Kind: postings.KindLabel, ColumnName: "app"}

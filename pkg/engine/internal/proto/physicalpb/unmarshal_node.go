@@ -1,7 +1,6 @@
 package physicalpb
 
 import (
-	"errors"
 	fmt "fmt"
 	"slices"
 
@@ -59,15 +58,12 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
 		StartPostingKey:         start,
 		EndPostingKey:           end,
+		StatsSourcePaths:        slices.Clone(indexMerge.StatsSources),
 	}
 	if indexMerge.KeySpan.IsAll() {
-		if len(indexMerge.StatsSources) > 0 {
-			return errors.New("IndexMerge without a key span has stats sources")
-		}
 		n.Runs = copyRunRefs(indexMerge.Runs)
 	} else {
 		n.BoundedRuns = copyRunRefs(indexMerge.Runs)
-		n.StatsSourcePaths = slices.Clone(indexMerge.StatsSources)
 	}
 	return nil
 }

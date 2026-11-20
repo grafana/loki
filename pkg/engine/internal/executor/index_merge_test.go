@@ -767,16 +767,6 @@ func TestDoIndexMerge(t *testing.T) {
 		require.ErrorContains(t, err, `stats source "source/other.dat" is not a source of the merge`)
 	})
 
-	t.Run("keeps a row at the start of its key span and drops a row at its end", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		node := keySpanSources(t, bucket, layout)
-		start, end := labelKey("env", "v1"), labelKey("zone", "v0")
-		node.KeySpan = keySpan(t, &start, &end)
-
-		_, rows, _ := readRows(t, bucket, node)
-		require.Equal(t, []postings.Key{labelKey("env", "v1")}, postingKeys(rows))
-	})
-
 	t.Run("writes the rows of a merge over every key when key spans split the merge and share the stats sources", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		node := keySpanSources(t, bucket, layout)

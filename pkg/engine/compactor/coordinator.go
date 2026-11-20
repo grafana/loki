@@ -719,9 +719,6 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 	plans := plan.physicalPlans(tenant, window)
-	if len(plans) > len(plan.merges) {
-		level.Info(windowLogger).Log("msg", "split index merges by posting key span", "merges", len(plan.merges), "tasks", len(plans))
-	}
 	taskArtifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)

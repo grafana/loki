@@ -13,14 +13,10 @@ import (
 func LogFields(node Node) []any {
 	switch n := node.(type) {
 	case *IndexMerge:
-		fields := []any{
+		return []any{
 			"window", time.Unix(0, n.ToCWindowStart).UTC(),
 			"input_objects", countObjects(n.Runs),
 		}
-		if !n.KeySpan.IsAll() {
-			fields = append(fields, "key_span", n.KeySpan.String(), "stats_sources", len(n.StatsSources))
-		}
-		return fields
 	case *LogMerge:
 		return []any{
 			"window", time.Unix(0, n.ToCWindowStart).UTC(),

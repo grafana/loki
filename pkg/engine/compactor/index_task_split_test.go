@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"testing"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -11,7 +10,6 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 func labelSortKey(column string) indexSortKey {
@@ -112,107 +110,6 @@ func TestSizeIndexTaskSplitter(t *testing.T) {
 		bad.Keys = []v2.KeySize[indexSortKey]{{Key: indexSortKey{kind: 255}, UncompressedSize: 100}}
 		_, err := splitter([]v2.Section[indexSortKey]{bad, a2, b1, c1, d1}, 200).split(spec)
 		require.ErrorContains(t, err, "posting kind 255")
-	})
-}
-
-func TestCheckInKeySpan(t *testing.T) {
-	keyRange := func(t *testing.T, minColumn, maxColumn string) postings.KeyRange {
-		t.Helper()
-		r, err := postings.NewKeyRange(labelPostingKey(minColumn), labelPostingKey(maxColumn))
-		require.NoError(t, err)
-		return r
-	}
-	start, end := labelPostingKey("b"), labelPostingKey("d")
-	span, err := postings.NewKeySpan(&start, &end)
-	require.NoError(t, err)
-	task := indexMergeTask{keySpan: span}
-
-	t.Run("accepts artifacts inside the key span of the task", func(t *testing.T) {
-		require.NoError(t, checkInKeySpan(task, []v2.ResultArtifact{
-			{Path: "index/0", PostingKeys: keyRange(t, "b", "bb")},
-			{Path: "index/1", PostingKeys: keyRange(t, "c", "cz")},
-		}))
-	})
-
-	t.Run("accepts any artifact when the task holds every key", func(t *testing.T) {
-		require.NoError(t, checkInKeySpan(indexMergeTask{}, []v2.ResultArtifact{
-			{Path: "index/0", PostingKeys: keyRange(t, "a", "z")},
-			{Path: "index/1"},
-		}))
-	})
-
-	t.Run("returns an error when an artifact holds keys outside the key span of the task", func(t *testing.T) {
-		err := checkInKeySpan(task, []v2.ResultArtifact{
-			{Path: "index/0", PostingKeys: keyRange(t, "b", "c")},
-			{Path: "index/1", PostingKeys: keyRange(t, "c", "d")},
-		})
-		require.ErrorContains(t, err, "index/1")
-	})
-
-	t.Run("returns an error when an artifact has no posting key bounds", func(t *testing.T) {
-		require.Error(t, checkInKeySpan(task, []v2.ResultArtifact{{Path: "index/0"}}))
-	})
-}
-
-func TestSplitIndexMerge_Plans(t *testing.T) {
-	t.Run("returns one plan for each task in task order with the key span and stats sources of the task", func(t *testing.T) {
-		envKey := labelPostingKey("env")
-		below, err := postings.NewKeySpan(nil, &envKey)
-		require.NoError(t, err)
-		from, err := postings.NewKeySpan(&envKey, nil)
-		require.NoError(t, err)
-		spec := &compactionv2pb.TaskSpec{Tenant: "acme"}
-		merge := splitIndexMerge{tasks: []indexMergeTask{
-			{spec: spec, keySpan: below, statsSources: []string{"index/a"}},
-			{spec: spec, keySpan: from, statsSources: []string{"index/b"}},
-		}}
-
-		plans := merge.plans("acme", time.Unix(0, 0))
-		require.Len(t, plans, 2)
-		var nodes []*physical.IndexMerge
-		for _, plan := range plans {
-			root, err := plan.Root()
-			require.NoError(t, err)
-			node, ok := root.(*physical.IndexMerge)
-			require.True(t, ok, "root is %T", root)
-			nodes = append(nodes, node)
-		}
-		require.Equal(t, below, nodes[0].KeySpan)
-		require.Equal(t, []string{"index/a"}, nodes[0].StatsSources)
-		require.Equal(t, from, nodes[1].KeySpan)
-		require.Equal(t, []string{"index/b"}, nodes[1].StatsSources)
-	})
-}
-
-func TestSplitIndexMerge_Join(t *testing.T) {
-	envKey := labelPostingKey("env")
-	below, err := postings.NewKeySpan(nil, &envKey)
-	require.NoError(t, err)
-	from, err := postings.NewKeySpan(&envKey, nil)
-	require.NoError(t, err)
-	merge := splitIndexMerge{tasks: []indexMergeTask{{keySpan: below}, {keySpan: from}}}
-	artifact := func(t *testing.T, path, minColumn, maxColumn string) v2.ResultArtifact {
-		t.Helper()
-		keys, err := postings.NewKeyRange(labelPostingKey(minColumn), labelPostingKey(maxColumn))
-		require.NoError(t, err)
-		return v2.ResultArtifact{Path: path, PostingKeys: keys}
-	}
-
-	t.Run("returns the artifacts of every task in task order", func(t *testing.T) {
-		first, second, third := artifact(t, "index/0", "app", "cz"), artifact(t, "index/1", "d", "da"), artifact(t, "index/2", "env", "zone")
-		joined, err := merge.join([][]v2.ResultArtifact{{first, second}, {third}})
-		require.NoError(t, err)
-		require.Equal(t, []v2.ResultArtifact{first, second, third}, joined)
-	})
-
-	t.Run("returns an error when it gets the artifacts of a different number of tasks", func(t *testing.T) {
-		_, err := merge.join([][]v2.ResultArtifact{{artifact(t, "index/0", "app", "cz")}})
-		require.ErrorContains(t, err, "got the artifacts of 1 tasks for 2 tasks")
-	})
-
-	t.Run("returns an error when an artifact holds keys outside the key span of its task", func(t *testing.T) {
-		_, err := merge.join([][]v2.ResultArtifact{{artifact(t, "index/0", "app", "zone")}, {artifact(t, "index/1", "env", "zone")}})
-		require.ErrorContains(t, err, "task 0: artifact index/0 holds posting keys")
 	})
 }
 

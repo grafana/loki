@@ -44,7 +44,9 @@ func (p indexMergePlan) taskCount() int {
 func (p indexMergePlan) physicalPlans(tenant string, window time.Time) []*physical.Plan {
 	plans := make([]*physical.Plan, 0, p.taskCount())
 	for _, merge := range p.merges {
-		plans = append(plans, merge.plans(tenant, window)...)
+		for _, task := range merge.tasks {
+			plans = append(plans, buildIndexMergePlan(tenant, window, task))
+		}
 	}
 	return plans
 }

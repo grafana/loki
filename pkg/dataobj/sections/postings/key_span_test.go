@@ -30,12 +30,7 @@ func TestNewKeySpan(t *testing.T) {
 
 	t.Run("returns a span with its bounds when start sorts below end", func(t *testing.T) {
 		span := mustKeySpan(t, &keyAppAPI, &keyEnvDev)
-		start, ok := span.Start()
-		require.True(t, ok)
-		require.Equal(t, keyAppAPI, start)
-		end, ok := span.End()
-		require.True(t, ok)
-		require.Equal(t, keyEnvDev, end)
+		require.Equal(t, "[{1 app api}, {1 env dev})", span.String())
 		require.False(t, span.IsAll())
 	})
 
@@ -78,28 +73,6 @@ func TestDecodeKeySpan(t *testing.T) {
 		_, err := postings.DecodeKeySpan([]byte{0xff}, nil)
 		require.Error(t, err)
 	})
-}
-
-func TestKeySpan_Contains(t *testing.T) {
-	span := mustKeySpan(t, &keyAppWeb, &keyEnvDev)
-	for _, tc := range []struct {
-		name string
-		span postings.KeySpan
-		key  postings.Key
-		want bool
-	}{
-		{name: "holds its start", span: span, key: keyAppWeb, want: true},
-		{name: "holds a key between its bounds", span: span, key: postings.Key{Kind: postings.KindLabel, ColumnName: "b"}, want: true},
-		{name: "excludes a key below its start", span: span, key: keyAppAPI},
-		{name: "excludes its end", span: span, key: keyEnvDev},
-		{name: "holds every key below its end when it has no start", span: mustKeySpan(t, nil, &keyAppWeb), key: postings.Key{Kind: postings.KindBloom}, want: true},
-		{name: "holds every key from its start when it has no end", span: mustKeySpan(t, &keyAppWeb, nil), key: postings.Key{Kind: 255}, want: true},
-		{name: "holds any key when it has no bounds", key: keyAppAPI, want: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, tc.span.Contains(tc.key))
-		})
-	}
 }
 
 func TestKeySpan_Overlaps(t *testing.T) {
@@ -226,7 +199,7 @@ func TestKeySpan_Predicate(t *testing.T) {
 			for _, section := range sections {
 				var want []postings.Key
 				for _, key := range readKeys(t, section, postings.KeySpan{}) {
-					if span.Contains(key) {
+					if (tc.start == nil || key.Compare(*tc.start) >= 0) && (tc.end == nil || key.Compare(*tc.end) < 0) {
 						want = append(want, key)
 					}
 				}

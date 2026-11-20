@@ -162,14 +162,6 @@ func TestIndexMerge_BoundedRuns(t *testing.T) {
 		require.Equal(t, []string{"index/0"}, got.StatsSources)
 	})
 
-	t.Run("returns an error when a merge without a key span has stats sources", func(t *testing.T) {
-		var pb physicalpb.IndexMerge
-		require.ErrorContains(t, pb.UnmarshalPhysical(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "acme", Runs: runs, StatsSources: []string{"index/0"}}), "has stats sources")
-
-		_, err := (&physicalpb.IndexMerge{Tenant: "acme", Runs: runs, StatsSourcePaths: []string{"index/0"}}).MarshalPhysical(ulid.Make())
-		require.ErrorContains(t, err, "has stats source paths")
-	})
-
 	t.Run("returns an error when a posting key bound does not decode", func(t *testing.T) {
 		pb := physicalpb.IndexMerge{Tenant: "acme", StartPostingKey: []byte{0xff}, BoundedRuns: runs}
 		_, err := pb.MarshalPhysical(ulid.Make())

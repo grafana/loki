@@ -86,19 +86,6 @@ func (s KeySpan) String() string {
 // IsAll reports whether s holds every key.
 func (s KeySpan) IsAll() bool { return !s.hasStart && !s.hasEnd }
 
-// Start returns the smallest key of s and true. It returns false if s has no
-// start.
-func (s KeySpan) Start() (Key, bool) { return s.start, s.hasStart }
-
-// End returns the smallest key above s and true. It returns false if s has no
-// end.
-func (s KeySpan) End() (Key, bool) { return s.end, s.hasEnd }
-
-// Contains reports whether key is in s.
-func (s KeySpan) Contains(key Key) bool {
-	return !s.startsAfter(key) && !s.endsAtOrBelow(key)
-}
-
 // Overlaps reports whether s holds a key of the closed range [minKey, maxKey].
 // minKey must not sort above maxKey.
 func (s KeySpan) Overlaps(minKey, maxKey Key) bool {
@@ -115,7 +102,7 @@ func (s KeySpan) HoldsRange(r KeyRange) bool {
 	if r.IsZero() {
 		return s.IsAll()
 	}
-	return s.Contains(r.Min()) && s.Contains(r.Max())
+	return !s.startsAfter(r.Min()) && !s.endsAtOrBelow(r.Max())
 }
 
 // Predicate returns a predicate over the kind, column_name and label_value

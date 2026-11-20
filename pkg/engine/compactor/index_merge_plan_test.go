@@ -48,8 +48,8 @@ func TestIndexMergePlan(t *testing.T) {
 	splitSpec := task("indexes/a", "indexes/b")
 	split := indexMergePlan{group: group, merges: []splitIndexMerge{
 		{spec: splitSpec, tasks: []indexMergeTask{
-			{spec: task("indexes/a"), keySpan: belowEnv},
-			{spec: task("indexes/b"), keySpan: fromEnv},
+			{spec: task("indexes/a"), keySpan: belowEnv, statsSources: []string{"indexes/a"}},
+			{spec: task("indexes/b"), keySpan: fromEnv, statsSources: []string{"indexes/b"}},
 		}},
 		whole(task("indexes/c")),
 	}}
@@ -68,11 +68,7 @@ func TestIndexMergePlan(t *testing.T) {
 		require.True(t, plan.hasWork())
 	})
 
-	t.Run("counts the tasks of every merge", func(t *testing.T) {
-		require.Equal(t, 3, split.taskCount())
-	})
-
-	t.Run("returns one physical plan per task that merges the sections and key span of the task, in merge and task order", func(t *testing.T) {
+	t.Run("returns one physical plan per task that merges the sections, key span and stats sources of the task, in merge and task order", func(t *testing.T) {
 		plans := split.physicalPlans("acme", window)
 		want := []indexMergeTask{split.merges[0].tasks[0], split.merges[0].tasks[1], split.merges[1].tasks[0]}
 		require.Len(t, plans, len(want))
@@ -84,6 +80,7 @@ func TestIndexMergePlan(t *testing.T) {
 			require.Len(t, node.Runs, 1)
 			require.Equal(t, want[i].spec.Runs[0].Sections, node.Runs[0].Sections)
 			require.Equal(t, want[i].keySpan, node.KeySpan)
+			require.Equal(t, want[i].statsSources, node.StatsSources)
 		}
 	})
 

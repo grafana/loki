@@ -34,7 +34,7 @@ type IndexMerge struct {
 	// StatsSources are the source index objects whose stats rows a merge with
 	// a bounded KeySpan merges. Each source of a split merge is a stats source
 	// of one task, so the run of the merge holds each stats row once. A merge
-	// over every key merges the stats rows of every source and has no
+	// over every key merges the stats rows of every source and ignores
 	// StatsSources.
 	StatsSources []string
 }

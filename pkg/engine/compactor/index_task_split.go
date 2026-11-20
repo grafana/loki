@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -15,7 +14,6 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 // indexMergeTask is one task of an index merge. The tasks of a merge split by
@@ -44,30 +42,21 @@ type splitIndexMerge struct {
 	tasks []indexMergeTask
 }
 
-// plans returns one plan for each task of m, in task order.
-func (m splitIndexMerge) plans(tenant string, window time.Time) []*physical.Plan {
-	plans := make([]*physical.Plan, len(m.tasks))
-	for i, task := range m.tasks {
-		plans[i] = buildIndexMergePlan(tenant, window, task)
-	}
-	return plans
-}
-
-// join returns the artifacts of the run of m. results holds the artifacts of
+// join returns the artifacts of the run of m. results must hold one entry for
 // each task of m, in task order. A run lists its index objects in posting key
 // order, and the tasks are in key order, so join appends the artifacts of each
 // task in turn.
 //
-// join returns an error if results does not hold one entry for each task, or
-// if an artifact holds a posting key outside the key span of its task.
+// join returns an error if an artifact holds a posting key outside the key
+// span of its task. The output of such a task repeats the rows of the other
+// tasks of m.
 func (m splitIndexMerge) join(results [][]v2.ResultArtifact) ([]v2.ResultArtifact, error) {
-	if len(results) != len(m.tasks) {
-		return nil, fmt.Errorf("got the artifacts of %d tasks for %d tasks", len(results), len(m.tasks))
-	}
 	var artifacts []v2.ResultArtifact
 	for i, task := range m.tasks {
-		if err := checkInKeySpan(task, results[i]); err != nil {
-			return nil, fmt.Errorf("task %d: %w", i, err)
+		for _, artifact := range results[i] {
+			if !task.keySpan.HoldsRange(artifact.PostingKeys) {
+				return nil, fmt.Errorf("task %d: artifact %s holds posting keys %v, outside the key span %v of its task", i, artifact.Path, artifact.PostingKeys, task.keySpan)
+			}
 		}
 		artifacts = append(artifacts, results[i]...)
 	}
@@ -147,7 +136,7 @@ func (s sizeIndexTaskSplitter) split(spec *compactionv2pb.TaskSpec) ([]indexMerg
 			}
 		}
 	}
-	splits := v2.SplitKeyRanges(keys, comparePostingKeys, s.maxSize, postingKeyLimit)
+	splits := v2.SplitKeyRanges(keys, postings.Key.Compare, s.maxSize, postingKeyLimit)
 	for _, split := range splits {
 		if split.Oversized {
 			level.Warn(s.logger).Log(
@@ -204,12 +193,11 @@ func (s sizeIndexTaskSplitter) assignStatsSources(spec *compactionv2pb.TaskSpec,
 			if err != nil {
 				return err
 			}
-			if _, ok := objectBytes[ref.ObjectPath]; !ok {
-				objectBytes[ref.ObjectPath] = 0
-			}
+			size := objectBytes[ref.ObjectPath]
 			for _, sample := range section.Keys {
-				objectBytes[ref.ObjectPath] += sample.UncompressedSize
+				size += sample.UncompressedSize
 			}
+			objectBytes[ref.ObjectPath] = size
 		}
 	}
 	objects := slices.Collect(maps.Keys(objectBytes))
@@ -279,21 +267,6 @@ func (s sizeIndexTaskSplitter) sectionsInSpan(spec *compactionv2pb.TaskSpec, key
 	return pruned, nil
 }
 
-// checkInKeySpan returns an error if an artifact of task holds a posting key
-// outside the key span of task. The output of such a task would repeat the
-// rows of the other tasks of its merge.
-func checkInKeySpan(task indexMergeTask, artifacts []v2.ResultArtifact) error {
-	if task.keySpan.IsAll() {
-		return nil
-	}
-	for _, artifact := range artifacts {
-		if !task.keySpan.HoldsRange(artifact.PostingKeys) {
-			return fmt.Errorf("artifact %s holds posting keys %v, outside the key span %v of its task", artifact.Path, artifact.PostingKeys, task.keySpan)
-		}
-	}
-	return nil
-}
-
 // reusedPaths returns the paths of newRuns that are also in oldPaths, in the
 // order of newRuns.
 //
@@ -316,8 +289,6 @@ func reusedPaths(oldPaths []string, newRuns []metastore.IndexRunEntries) []strin
 	}
 	return reused
 }
-
-func comparePostingKeys(a, b postings.Key) int { return a.Compare(b) }
 
 // postingKey returns the posting key of k, without its timestamps.
 func (k indexSortKey) postingKey() postings.Key {

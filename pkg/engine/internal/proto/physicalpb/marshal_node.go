@@ -45,13 +45,8 @@ func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 			return nil, errors.New("IndexMerge with a key span holds runs in runs instead of bounded_runs")
 		}
 		runs = n.BoundedRuns
-	} else {
-		if len(n.BoundedRuns) > 0 {
-			return nil, errors.New("IndexMerge without a key span holds runs in bounded_runs")
-		}
-		if len(n.StatsSourcePaths) > 0 {
-			return nil, errors.New("IndexMerge without a key span has stats source paths")
-		}
+	} else if len(n.BoundedRuns) > 0 {
+		return nil, errors.New("IndexMerge without a key span holds runs in bounded_runs")
 	}
 	return &physical.IndexMerge{
 		NodeID:         nodeID,
