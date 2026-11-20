@@ -458,8 +458,18 @@ func detectLevelFromLogLine(s string) string {
 				return level
 			} else if c == 'e' && hasFullWordPrefix(s[i:], "err") {
 				return constants.LogLevelError
-			} else if c == 'w' && hasFullWordPrefix(s[i:], "warning") {
+			} else if c == 'w' && (hasFullWordPrefix(s[i:], "warning") || hasFullWordPrefix(s[i:], "wrn")) {
 				return constants.LogLevelWarn
+			} else if c == 'i' && hasFullWordPrefix(s[i:], "inf") {
+				return constants.LogLevelInfo
+			} else if c == 'd' && hasFullWordPrefix(s[i:], "dbg") {
+				return constants.LogLevelDebug
+			} else if c == 't' && hasFullWordPrefix(s[i:], "trc") {
+				return constants.LogLevelTrace
+			} else if c == 'f' && hasFullWordPrefix(s[i:], "ftl") {
+				return constants.LogLevelFatal
+			} else if c == 'c' && hasFullWordPrefix(s[i:], "crit") {
+				return constants.LogLevelCritical
 			}
 		}
 	}
