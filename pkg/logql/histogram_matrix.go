@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -17,6 +18,11 @@ import (
 
 const (
 	HistogramMatrixType = "HistogramMatrix"
+
+	// maxHistogramCount is the most observations that a histogram of the wire format holds, and the most that one
+	// bucket does. The counts are added up as floats, which are whole numbers only up to it, so a count that is
+	// more is not the count of the observations after it has been through ToFloat.
+	maxHistogramCount = 1 << 53
 )
 
 // HistogramMatrix is the result of a query that returns histograms: the vector of each step, in order. It is
@@ -128,7 +134,8 @@ func histogramToProto(h *histogram.FloatHistogram) (*logproto.NativeHistogram, e
 // would otherwise sum whatever a response holds.
 //
 // The size of what it keeps is limited as well, see checkEncodedBuckets, and that is checked before the histogram
-// is copied.
+// is copied. Validate looks at the shape of a histogram and not at the values that the frontend relies on when it
+// adds histograms up, see checkHistogramValues and checkZeroBucket.
 func histogramFromProto(p *logproto.NativeHistogram) (*histogram.FloatHistogram, error) {
 	if p == nil {
 		return nil, fmt.Errorf("a sample has no histogram")
@@ -159,8 +166,14 @@ func histogramFromProto(p *logproto.NativeHistogram) (*histogram.FloatHistogram,
 	if err := h.Validate(); err != nil {
 		return nil, err
 	}
+	if err := checkHistogramValues(h); err != nil {
+		return nil, err
+	}
 
 	fh := h.ToFloat(nil)
+	if err := checkZeroBucket(fh); err != nil {
+		return nil, err
+	}
 	if err := checkHistogramBuckets(fh); err != nil {
 		return nil, err
 	}
@@ -190,10 +203,151 @@ func checkEncodedBuckets(p *logproto.NativeHistogram) error {
 	return nil
 }
 
-// wholeCount returns v as a count. It fails for a number that is not one: negative, with a fraction, or too
-// large for the integer of the wire.
+// checkHistogramValues fails for a histogram that Prometheus accepts, that a query does not build, and that adding
+// it to another can hang on, panic on, or silently get wrong. Validate has checked its shape: that the spans match
+// the buckets, and that no count is negative.
+//
+//   - A span holds a bucket. Validate lets a span have none, and the addition of histograms indexes the first bucket
+//     of a span that has the index of one that it adds, which panics. The builder does not make one, and the sum
+//     of histograms compacts them away.
+//   - The schema and the zero threshold are the ones that the builder uses. The frontend adds up the histograms of
+//     the shards of one query, which have the same schema and the same threshold, so it never has to bring two
+//     apart, and Prometheus does not do it well. A NaN threshold never equals another, so merging the zero buckets
+//     loops for ever. A negative one, or an infinite one, gives a sum that is not the histogram of the observations.
+//     So does a threshold that is inside a bucket, when the schemas of the two differ: observations are counted
+//     in the zero bucket and in the bucket, and the sum has more of them than the two.
+//   - The buckets of an exponential schema have an index that a float can have, see bucketIndexRange. The indexes
+//     are added in 32 bits when histograms are added up, and one near the limit of them wraps around and panics.
+//   - The custom bounds are finite, as the bounds of buckets(...) are. Validate lets the first one be -Inf.
+//   - The count is the number of observations in the buckets, whether the sum is a number or not. Validate lets
+//     a histogram with a NaN sum have more, which the producers of one do not make: a query does not observe NaN or
+//     the infinities, and a sum can be NaN only because infinities of the sums of finite values cancel. The
+//     count is at most maxHistogramCount, as histogramToProto has it.
+func checkHistogramValues(h *histogram.Histogram) error {
+	for _, side := range [...]struct {
+		name  string
+		spans []histogram.Span
+	}{{"positive", h.PositiveSpans}, {"negative", h.NegativeSpans}} {
+		for _, s := range side.spans {
+			if s.Length == 0 {
+				return fmt.Errorf("a span of the %s side holds no bucket", side.name)
+			}
+		}
+	}
+
+	if h.UsesCustomBuckets() {
+		for _, v := range h.CustomValues {
+			if math.IsInf(v, 0) {
+				return fmt.Errorf("custom bound %v is not finite", v)
+			}
+		}
+	} else {
+		if h.Schema != histogramSchema {
+			return fmt.Errorf("schema %d is not the schema %d of the histograms of a query", h.Schema, histogramSchema)
+		}
+		if h.ZeroThreshold != prometheus.DefNativeHistogramZeroThreshold {
+			return fmt.Errorf("zero threshold %v is not the %v of the histograms of a query", h.ZeroThreshold, prometheus.DefNativeHistogramZeroThreshold)
+		}
+		if err := checkBucketIndexes("positive", h.Schema, h.PositiveSpans); err != nil {
+			return err
+		}
+		if err := checkBucketIndexes("negative", h.Schema, h.NegativeSpans); err != nil {
+			return err
+		}
+	}
+
+	observations, ok := bucketObservations(h)
+	if !ok {
+		return fmt.Errorf("the buckets hold more observations than the wire format counts")
+	}
+	if observations != h.Count {
+		return fmt.Errorf("the buckets hold %d observations, and the count is %d", observations, h.Count)
+	}
+	return nil
+}
+
+// checkZeroBucket fails when a bucket that holds observations is inside the zero bucket, which is when its upper
+// bound is not above the zero threshold. Adding histograms up leaves out such a bucket, so its observations are
+// lost from the sum. The builder puts the values that the zero bucket covers in it, so a query does not make one.
+func checkZeroBucket(h *histogram.FloatHistogram) error {
+	if h.UsesCustomBuckets() {
+		return nil
+	}
+	for _, side := range [...]struct {
+		name string
+		it   histogram.BucketIterator[float64]
+	}{
+		{"positive", h.PositiveBucketIterator()},
+		{"negative", h.NegativeBucketIterator()},
+	} {
+		for side.it.Next() {
+			b := side.it.At()
+			// The bounds of the negative buckets are negative, and the one that is nearer to zero is the upper one.
+			nearest := b.Upper
+			if side.name == "negative" {
+				nearest = -b.Lower
+			}
+			if b.Count > 0 && nearest <= h.ZeroThreshold {
+				return fmt.Errorf("a bucket of the %s side holds %v observations, and it is inside the zero bucket, which has the threshold %v",
+					side.name, b.Count, h.ZeroThreshold)
+			}
+		}
+	}
+	return nil
+}
+
+// bucketObservations returns the number of observations in the buckets of h, the zero bucket included. It is false
+// when they are more than maxHistogramCount. h has passed Validate, which has checked that the count of a bucket is
+// not negative as it adds up the deltas, and that the sum of them does not wrap around, so neither does this.
+func bucketObservations(h *histogram.Histogram) (uint64, bool) {
+	total := h.ZeroCount
+	if total > maxHistogramCount {
+		return 0, false
+	}
+	for _, deltas := range [...][]int64{h.PositiveBuckets, h.NegativeBuckets} {
+		var count int64
+		for _, d := range deltas {
+			count += d
+			total += uint64(count)
+			if total > maxHistogramCount {
+				return 0, false
+			}
+		}
+	}
+	return total, true
+}
+
+// checkBucketIndexes fails when a span of a side holds a bucket that has an index that no float has. The first
+// span starts at an index and each of the others at an offset after the end of the one before. Every span holds a
+// bucket, see checkHistogramValues.
+func checkBucketIndexes(side string, schema int32, spans []histogram.Span) error {
+	lo, hi := bucketIndexRange(schema)
+	var next int64 // the index after the last bucket of the span before
+	for _, s := range spans {
+		start := next + int64(s.Offset)
+		next = start + int64(s.Length)
+		if start < lo || next-1 > hi {
+			return fmt.Errorf("a span of the %s side has the buckets %d to %d, and the indexes of schema %d are %d to %d",
+				side, start, next-1, schema, lo, hi)
+		}
+	}
+	return nil
+}
+
+// bucketIndexRange returns the lowest and the highest index of a bucket of an exponential schema that a float
+// can be in, with a little to spare. The bucket i has the upper bound 2^(i/2^schema), and the floats are from
+// 2^-1074 to just under 2^1024. A schema below 0 has a bucket for several exponents, so there are fewer.
+func bucketIndexRange(schema int32) (lo, hi int64) {
+	if schema >= 0 {
+		return -(1075 << schema), 1024 << schema
+	}
+	return -(1075 >> -schema) - 1, (1024 >> -schema) + 1
+}
+
+// wholeCount returns v as a count. It fails for a number that is not one: negative, with a fraction, or more than
+// maxHistogramCount.
 func wholeCount(v float64) (uint64, error) {
-	if v < 0 || v != math.Trunc(v) || v >= math.MaxInt64 {
+	if v < 0 || v != math.Trunc(v) || v > maxHistogramCount {
 		return 0, fmt.Errorf("%v is not a count the wire format can hold", v)
 	}
 	return uint64(v), nil

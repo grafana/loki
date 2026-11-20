@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -144,7 +145,7 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 			deltas[0] = 1 // the others hold one value as the one before them does
 			return []*logproto.BucketSpan{{Offset: 0, Length: uint32(n)}}, deltas
 		}
-		p := &logproto.NativeHistogram{Schema: 3, Count: uint64(pos + neg), Sum: 1}
+		p := &logproto.NativeHistogram{Schema: 3, ZeroThreshold: prometheus.DefNativeHistogramZeroThreshold, Count: uint64(pos + neg), Sum: 1}
 		p.PositiveSpans, p.PositiveDeltas = side(pos)
 		p.NegativeSpans, p.NegativeDeltas = side(neg)
 		return p
@@ -153,9 +154,9 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 	emptyBuckets := func(n int, negative bool) *logproto.NativeHistogram {
 		spans, deltas := []*logproto.BucketSpan{{Offset: 0, Length: uint32(n)}}, make([]int64, n)
 		if negative {
-			return &logproto.NativeHistogram{Schema: 3, NegativeSpans: spans, NegativeDeltas: deltas}
+			return &logproto.NativeHistogram{Schema: 3, ZeroThreshold: prometheus.DefNativeHistogramZeroThreshold, NegativeSpans: spans, NegativeDeltas: deltas}
 		}
-		return &logproto.NativeHistogram{Schema: 3, PositiveSpans: spans, PositiveDeltas: deltas}
+		return &logproto.NativeHistogram{Schema: 3, ZeroThreshold: prometheus.DefNativeHistogramZeroThreshold, PositiveSpans: spans, PositiveDeltas: deltas}
 	}
 	// emptySpans has n spans that hold no bucket.
 	emptySpans := func(n int) *logproto.NativeHistogram {
@@ -163,7 +164,7 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 		for i := range spans {
 			spans[i] = &logproto.BucketSpan{Offset: 1}
 		}
-		return &logproto.NativeHistogram{Schema: 3, PositiveSpans: spans}
+		return &logproto.NativeHistogram{Schema: 3, ZeroThreshold: prometheus.DefNativeHistogramZeroThreshold, PositiveSpans: spans}
 	}
 
 	for name, tc := range map[string]struct {
@@ -199,7 +200,8 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 		"a run of empty buckets on the negative side": {h: emptyBuckets(maxHistogramBuckets+1, true), wantErr: "negative side"},
 		"many spans that hold no bucket":              {h: emptySpans(maxHistogramBuckets + 1), wantErr: "positive side"},
 		"as many empty buckets as are allowed":        {h: emptyBuckets(maxHistogramBuckets, false)},
-		"as many empty spans as are allowed":          {h: emptySpans(maxHistogramBuckets)},
+		"a span that holds no bucket":                 {h: emptySpans(1), wantErr: "holds no bucket"},
+		"as many spans that hold none as are allowed": {h: emptySpans(maxHistogramBuckets), wantErr: "holds no bucket"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := HistogramMatrixFromProto(&logproto.HistogramMatrix{Values: []*logproto.HistogramVector{{
