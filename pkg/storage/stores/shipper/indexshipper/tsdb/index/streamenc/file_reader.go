@@ -168,6 +168,10 @@ func (f *FileReader) Peek(n int) ([]byte, error) {
 }
 
 func (f *FileReader) Read(n int) ([]byte, error) {
+	if n < 0 {
+		return nil, ErrInvalidSize
+	}
+
 	b := make([]byte, n)
 
 	err := f.ReadInto(b)
