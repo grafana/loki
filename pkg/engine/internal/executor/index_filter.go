@@ -73,7 +73,7 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	// A K-way merge keeps the rows in key order when they come from several
 	// index objects of one index run, so each output section stays sorted.
 	foundPostings := make(map[string]struct{}, len(keepSet))
-	if err := c.mergePostingsInto(ctx, sources, keep(foundPostings), out); err != nil {
+	if err := c.mergePostingsInto(ctx, sources, postings.KeySpan{}, keep(foundPostings), out); err != nil {
 		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
 	}
 	foundStats := make(map[string]struct{}, len(keepSet))

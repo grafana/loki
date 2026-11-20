@@ -1187,6 +1187,37 @@ func TestCompactTenantIndexes(t *testing.T) {
 		require.Equal(t, uint64(2), firstMerge.GetHistogram().GetSampleCount(), "both groups planned before the first merge")
 	})
 
+	t.Run("returns an error and publishes nothing when a task of a split merge returns keys outside its key span", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		start, end := window.Add(time.Hour), window.Add(2*time.Hour)
+		for path, value := range map[string]string{"indexes/a": "a", "indexes/b": "b"} {
+			var rows []postings.Row
+			for _, column := range []string{"app", "env"} {
+				rows = append(rows, postings.Row{Kind: postings.KindLabel, ObjectPath: "logs/" + value, ColumnName: column, LabelValue: value, MinTimestamp: start.UnixNano(), MaxTimestamp: start.UnixNano() + 10})
+			}
+			buildIndex(ctx, t, bucket, testIndexObject{tenant: "acme", path: path, sectionSize: 1 << 20, shardBuckets: 8, postings: rows})
+		}
+		writeToCWithPointers(ctx, t, bucket, "acme", window,
+			indexpointers.IndexPointer{Path: "indexes/a", StartTs: start, EndTs: end},
+			indexpointers.IndexPointer{Path: "indexes/b", StartTs: start, EndTs: end})
+		everyKey, err := postings.NewKeyRange(
+			postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "a"},
+			postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "b"},
+		)
+		require.NoError(t, err)
+		runner := &fakeRunner{respond: func(context.Context, workflow.Options, *physical.Plan) ([]v2.ResultArtifact, error) {
+			return []v2.ResultArtifact{{Path: "indexes/out", PostingKeys: everyKey}}, nil
+		}}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(start), newFakeLimits("acme"))
+		c.cfg.MaxTaskSize = 1
+
+		_, err = c.compactTenantIndexes(ctx, "acme", window, mustLoadTenantIndexes(ctx, t, bucket, window)["acme"])
+		require.ErrorContains(t, err, "outside the key span [open, {1 app b}) of its task")
+		require.Len(t, runner.snapshot(), 2)
+		require.Empty(t, replacer.snapshot())
+	})
+
 	t.Run("publishes the merged index when a task fails once and its retry succeeds", func(t *testing.T) {
 		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b")
 		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")

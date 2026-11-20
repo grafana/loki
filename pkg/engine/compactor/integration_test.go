@@ -853,7 +853,7 @@ func TestRunPlan(t *testing.T) {
 		}
 		specs := v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), "acme", c.cfg.MaxRunsPerTask)
 		require.Len(t, specs, 1)
-		plan := buildIndexMergePlan("acme", window, specs[0])
+		plan := buildIndexMergePlan("acme", window, indexMergeTask{spec: specs[0]})
 		opts := workflow.Options{Tenant: "acme", Actor: []string{"compaction", "index-merge"}}
 
 		first, err := c.indexDispatcher.runPlan(ctx, opts, plan)
@@ -1348,6 +1348,178 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 			}
 		}
 		require.Len(t, merged, 302, "the merge keeps the 300 postings rows of the run and the 2 of the other index")
+	})
+
+	// seedSplittableIndex writes the index of object, which is source n of a
+	// set of count sources. The postings of the sources interleave, 200 columns
+	// each, in small sections that give the planner many key samples. The
+	// index has 5 stats rows of object.
+	seedSplittableIndex := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, object string, n, count int) indexpointers.IndexPointer {
+		t.Helper()
+		var rows []postings.Row
+		for j := range 200 {
+			rows = append(rows, label(object, fmt.Sprintf("c%04d", count*j+n), "v"))
+		}
+		var statRows []stats.Stat
+		for section := range int64(5) {
+			statRows = append(statRows, statAt(object, "web", section))
+		}
+		path := "indexes/" + object
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 2048, shardBuckets: 8, postings: rows, stats: statRows})
+		return pointer(path, 0)
+	}
+	// seedLowIndex writes the index of logs/low. Its postings sort below the
+	// last key span of a split merge of splittable indexes.
+	seedLowIndex := func(ctx context.Context, t *testing.T, bucket objstore.Bucket) indexpointers.IndexPointer {
+		t.Helper()
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/logs/low", sectionSize: 2048, shardBuckets: 8,
+			postings: []postings.Row{label("logs/low", "b0000", "v"), label("logs/low", "c0000", "v")},
+			stats:    []stats.Stat{statAt("logs/low", "web", 0)}})
+		return pointer("indexes/logs/low", 0)
+	}
+	// readSplitRun checks that run is one index run of the merged time range
+	// with ordered, disjoint posting keys. It returns the postings rows of
+	// run, the stats rows of run, and the number of index objects of run with
+	// stats rows.
+	readSplitRun := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, run []indexpointers.IndexPointer) ([]postings.Row, []stats.Stat, int) {
+		t.Helper()
+		require.NotEmpty(t, run)
+		var (
+			postingRows      []postings.Row
+			statRows         []stats.Stat
+			objectsWithStats int
+		)
+		for i, entry := range run {
+			if len(run) > 1 {
+				require.NotZero(t, entry.RunID)
+				require.Equal(t, run[0].RunID, entry.RunID)
+				require.Equal(t, int32(len(run)), entry.RunLength)
+			}
+			require.Equal(t, start, entry.StartTs.UTC())
+			require.Equal(t, end, entry.EndTs.UTC())
+			if i > 0 {
+				require.Negative(t, run[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()), "the key ranges of a run are disjoint and in order")
+			}
+			requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
+			entryPostings, entryStats := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			if len(entryStats) > 0 {
+				objectsWithStats++
+			}
+			postingRows = append(postingRows, entryPostings...)
+			statRows = append(statRows, entryStats...)
+		}
+		return postingRows, statRows, objectsWithStats
+	}
+	// compactOnce compacts the window once with the given task size and
+	// returns the stats of the pass and the indexes of the window after it.
+	compactOnce := func(ctx context.Context, t *testing.T, c *coordinator, bucket objstore.Bucket, maxTaskSize flagext.Bytes) (compactionStats, []indexpointers.IndexPointer) {
+		t.Helper()
+		c.cfg.MaxTaskSize = maxTaskSize
+		compacted, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+		return compacted, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	}
+
+	t.Run("publishes the parallel tasks of a merge split by key span as one run that holds the rows of the unsplit merge", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		compact := func(t *testing.T, maxTaskSize flagext.Bytes) (compactionStats, []indexpointers.IndexPointer, []postings.Row, []stats.Stat, int) {
+			t.Helper()
+			bucket := objstore.NewInMemBucket()
+			var pointers []indexpointers.IndexPointer
+			for i, object := range []string{"logs/a", "logs/b", "logs/c"} {
+				pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, 3))
+			}
+			writeToCWithPointers(ctx, t, bucket, tenant, window, append(pointers, seedLowIndex(ctx, t, bucket))...)
+
+			compacted, run := compactOnce(ctx, t, newIntegrationCoordinator(ctx, t, bucket, start, nil), bucket, maxTaskSize)
+			postingRows, statRows, objectsWithStats := readSplitRun(ctx, t, bucket, run)
+			return compacted, run, postingRows, statRows, objectsWithStats
+		}
+
+		_, _, wantPostings, wantStats, _ := compact(t, 0)
+		compacted, run, gotPostings, gotStats, objectsWithStats := compact(t, 1)
+
+		require.Greater(t, compacted.dispatched, 2, "a tiny task size must split the merge into several tasks")
+		require.Equal(t, 1, compacted.added, "the tasks of one merge publish one run")
+		require.GreaterOrEqual(t, len(run), compacted.dispatched, "each task writes at least one index object of the run")
+		lastSpanStart := run[len(run)-1].PostingKeys.Min()
+		for _, row := range gotPostings {
+			if row.ObjectPath == "logs/low" {
+				require.Negative(t, row.Key().Compare(lastSpanStart), "the postings of logs/low sort below the last task")
+			}
+		}
+		require.Len(t, gotPostings, 602)
+		require.Equal(t, wantPostings, gotPostings)
+		require.Len(t, wantStats, 16, "the merge keeps the stats rows of every source")
+		require.ElementsMatch(t, wantStats, gotStats)
+		require.Greater(t, objectsWithStats, 1, "the tasks of the split share the stats work")
+	})
+
+	t.Run("publishes one run for each merge when several merges in one window are each split by key span", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b", "logs/c", "logs/d"}
+		var pointers []indexpointers.IndexPointer
+		for i, object := range objects {
+			pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, len(objects)))
+		}
+		writeToCWithPointers(ctx, t, bucket, tenant, window, pointers...)
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		c.cfg.MaxRunsPerTask = 2
+
+		compacted, after := compactOnce(ctx, t, c, bucket, 1)
+		runs := groupIndexRuns(after)
+		require.Len(t, runs, 2, "each merge of two of the four indexes publishes one run")
+		require.Equal(t, 2, compacted.added)
+		require.Greater(t, compacted.dispatched, 2*2, "a tiny task size must split each merge into several tasks")
+
+		var sources []string
+		for _, run := range runs {
+			require.Greater(t, len(run.entries), 1, "each merge must split into several tasks")
+			postingRows, statRows, _ := readSplitRun(ctx, t, bucket, run.entries)
+			var runSources []string
+			for _, row := range postingRows {
+				if !slices.Contains(runSources, row.ObjectPath) {
+					runSources = append(runSources, row.ObjectPath)
+				}
+			}
+			require.Len(t, runSources, 2, "a run holds the postings of the two indexes of its merge only")
+			require.Len(t, postingRows, 400)
+			require.Len(t, statRows, 10, "a run holds the stats rows of its two indexes")
+			sources = append(sources, runSources...)
+		}
+		require.ElementsMatch(t, objects, sources)
+	})
+
+	t.Run("logs the reused paths when a split merge writes a copy of an index object it replaces", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		var pointers []indexpointers.IndexPointer
+		for i, object := range []string{"logs/a", "logs/b", "logs/c"} {
+			pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, 3))
+		}
+		writeToCWithPointers(ctx, t, bucket, tenant, window, append(pointers, seedLowIndex(ctx, t, bucket))...)
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, run := compactOnce(ctx, t, c, bucket, 1)
+		require.Greater(t, len(run), 1)
+
+		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
+		var logs bytes.Buffer
+		c.logger = log.NewLogfmtLogger(log.NewSyncWriter(&logs))
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+
+		require.ErrorContains(t, err, "is an old path")
+		require.Contains(t, logs.String(), "index merge wrote a copy of an index object it replaces")
+		reused := false
+		for _, entry := range run {
+			reused = reused || strings.Contains(logs.String(), entry.Path)
+		}
+		require.True(t, reused, "the log names a reused path of the old run")
 	})
 
 	t.Run("merges every index object of a run with another index", func(t *testing.T) {

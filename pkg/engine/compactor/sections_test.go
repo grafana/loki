@@ -436,6 +436,13 @@ func TestReadIndexRun(t *testing.T) {
 
 		read, err := readIndexRun(ctx, bucket, "acme", runOfPath(path))
 		require.NoError(t, err)
+		require.Len(t, read.sections, 1)
+		keys := read.sections[0].Keys
+		require.Len(t, keys, 1)
+		require.Equal(t, indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api"}, keys[0].Key)
+		require.Positive(t, keys[0].UncompressedSize)
+
+		read.sections[0].Keys = nil
 		require.Equal(t, []v2.Section[indexSortKey]{
 			{
 				Ref:          &compactionv2pb.SectionRef{ObjectPath: path},
@@ -659,5 +666,38 @@ func TestLogSectionRefsFor(t *testing.T) {
 
 		_, _, err := logSectionRefsFor(ctx, bucket, "acme", runOf("indexes/run/a", "indexes/run/b"))
 		require.ErrorIs(t, err, errCorruptIndex)
+	})
+}
+
+func TestKeySamples(t *testing.T) {
+	row := func(column string) postings.Row {
+		return postings.Row{Kind: postings.KindLabel, ColumnName: column, LabelValue: "v"}
+	}
+
+	t.Run("samples the first row of each group of rows and shares the section size by rows", func(t *testing.T) {
+		samples := keySamples{interned: make(map[string]string)}
+		for i := range 2*indexKeySampleRows + 2 {
+			column := "a"
+			switch {
+			case i >= 2*indexKeySampleRows:
+				column = "c"
+			case i >= indexKeySampleRows:
+				column = "b"
+			}
+			samples.add(row(column))
+		}
+
+		sample := func(column string) indexSortKey {
+			return indexSortKey{kind: postings.KindLabel, columnName: column, labelValue: "v"}
+		}
+		require.Equal(t, []v2.KeySize[indexSortKey]{
+			{Key: sample("a"), UncompressedSize: indexKeySampleRows},
+			{Key: sample("b"), UncompressedSize: indexKeySampleRows},
+			{Key: sample("c"), UncompressedSize: 2},
+		}, samples.sizes(2*indexKeySampleRows+2))
+	})
+
+	t.Run("returns no sizes when it sampled no rows", func(t *testing.T) {
+		require.Nil(t, keySamples{}.sizes(100))
 	})
 }
