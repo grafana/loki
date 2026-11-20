@@ -25,5 +25,8 @@ A clear and concise description of what you expected to happen.
  - Infrastructure: [e.g., Kubernetes, bare-metal, laptop]
  - Deployment tool: [e.g., helm, jsonnet]
 
+**Profiling data**
+For performance-related issues (high CPU or memory usage, latency, hangs), please attach [pprof profiles](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-profiling/) from the affected component (CPU, heap, and/or goroutine profiles). See [Capture performance profiles](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-profiling/) for instructions.
+
 **Screenshots, Alloy config, or terminal output**
 If applicable, add any output to help explain your problem.
