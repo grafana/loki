@@ -15,6 +15,8 @@ var (
 	SupportedStorageClasses = []s3_types.ObjectStorageClass{
 		s3_types.ObjectStorageClassStandard,
 		s3_types.ObjectStorageClassStandardIa,
+		s3_types.ObjectStorageClassGlacierIr,
+		s3_types.ObjectStorageClassIntelligentTiering,
 		s3_types.ObjectStorageClassReducedRedundancy,
 	}
 )
