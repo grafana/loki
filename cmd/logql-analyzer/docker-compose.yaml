@@ -9,7 +9,7 @@ services:
       - "3001:3001"
 
   docs:
-    image: grafana/docs-base:latest
+    image: grafana/docs-base:latest@sha256:5785f71fa01acb019b19f59bdaf31ff38e0c8fcbfa5db43532360b6627df2f09
     volumes:
       - ../../docs/sources:/hugo/content/docs/loki/latest
     ports:

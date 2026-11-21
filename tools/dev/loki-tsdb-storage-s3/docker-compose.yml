@@ -6,7 +6,7 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "1"
-    image: hashicorp/consul
+    image: hashicorp/consul@sha256:259fd02f2544fe1aa03fa49efd3b105c8dd67106d710a72f5e898110266356f7
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
       - 8500:8500
@@ -203,7 +203,7 @@ services:
   grafana:
     logging:
       <<: *logging
-    image: grafana/grafana
+    image: grafana/grafana@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
     depends_on:
       - query-frontend
       - querier
@@ -219,7 +219,7 @@ services:
   log-gen:
     logging:
       <<: *logging
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor
@@ -231,7 +231,7 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "2"
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor

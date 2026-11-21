@@ -72,7 +72,7 @@ services:
 
   # for testing purposes only, disable in production
   log-generator:
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     platform: linux/amd64
     command:
       - --loop
@@ -87,7 +87,7 @@ services:
 
   # TODO: Replace with Alloy
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:latest@sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381
     volumes:
       - ./logs/:/var/log/
       - ./config:/etc/promtail/
@@ -120,7 +120,7 @@ services:
       - loki
 
   gateway:
-    image: nginx:latest
+    image: nginx:latest@sha256:5ab5b0b01097420873a3f3330f44248e34a3c2a3e8d5ee30658aeae8cb7435da
     restart: always
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf
