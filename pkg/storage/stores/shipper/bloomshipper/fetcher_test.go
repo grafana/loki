@@ -1,6 +1,7 @@
 package bloomshipper
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,10 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compression"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keyspaces []v1.FingerprintBounds) []Meta {
@@ -499,4 +502,85 @@ func requireCachedMetas(t *testing.T, expected []Meta, actual map[string][]byte)
 		_, contains := actual[meta.String()]
 		require.True(t, contains)
 	}
+}
+
+func TestFetcher_FetchBlocks_SyncReleasesCacheEntry(t *testing.T) {
+	for _, codec := range []compression.Codec{compression.None, compression.GZIP} {
+		t.Run(codec.String(), func(t *testing.T) {
+			ctx := context.Background()
+			client, dir := newMockBloomClient(t)
+
+			block := putValidBlock(t, client, codec)
+
+			blocksCache := NewFsBlocksCache(bloomshipperconfig.BlocksCacheConfig{
+				TTL:       time.Hour,
+				SoftLimit: 1 << 20,
+				HardLimit: 2 << 20,
+			}, nil, log.NewNopLogger())
+			t.Cleanup(blocksCache.Stop)
+
+			cfg := bloomStoreConfig{workingDirs: []string{dir}, numWorkers: 1}
+			fetcher, err := NewFetcher(cfg, client, nil, blocksCache, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+			require.NoError(t, err)
+			t.Cleanup(fetcher.Close)
+
+			refCount := func() int32 {
+				blocksCache.lock.RLock()
+				defer blocksCache.lock.RUnlock()
+				el, ok := blocksCache.entries[cacheKey(block)]
+				require.True(t, ok, "block not found in cache")
+				return el.Value.(*Entry).refCount.Load()
+			}
+
+			// cache miss, block is downloaded synchronously
+			bqs, err := fetcher.FetchBlocks(ctx, []BlockRef{block}, WithFetchAsync(false))
+			require.NoError(t, err)
+			require.Len(t, bqs, 1)
+			require.Equal(t, int32(1), refCount())
+			require.NoError(t, bqs[0].Close())
+			require.Equal(t, int32(0), refCount())
+
+			// cache hit
+			bqs, err = fetcher.FetchBlocks(ctx, []BlockRef{block}, WithFetchAsync(false))
+			require.NoError(t, err)
+			require.Len(t, bqs, 1)
+			require.Equal(t, int32(1), refCount())
+			require.NoError(t, bqs[0].Close())
+			require.Equal(t, int32(0), refCount())
+		})
+	}
+}
+
+func putValidBlock(t *testing.T, c *BloomClient, enc compression.Codec) BlockRef {
+	t.Helper()
+
+	dir := t.TempDir()
+	data, _ := v1.MkBasicSeriesWithBlooms(10, 0x0000, 0x0fff, 0, 10000)
+	builder, err := v1.NewBlockBuilder(
+		v1.BlockOptions{
+			Schema:         v1.NewSchema(v1.CurrentSchemaVersion, compression.None),
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		v1.NewDirectoryBlockWriter(dir),
+	)
+	require.NoError(t, err)
+	_, err = builder.BuildFrom(v2.NewSliceIter(data))
+	require.NoError(t, err)
+
+	buf := bytes.NewBuffer(nil)
+	require.NoError(t, v1.TarCompress(enc, buf, v1.NewDirectoryBlockReader(dir)))
+
+	ref := BlockRef{
+		Ref: Ref{
+			TenantID:       "tenant",
+			TableName:      "table_0",
+			Bounds:         v1.NewBounds(0x0000, 0x0fff),
+			StartTimestamp: 0,
+			EndTimestamp:   10000,
+		},
+		Codec: enc,
+	}
+	require.NoError(t, c.client.PutObject(context.Background(), c.Block(ref).Addr(), bytes.NewReader(buf.Bytes())))
+	return ref
 }
