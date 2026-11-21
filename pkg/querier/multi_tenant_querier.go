@@ -88,7 +88,11 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
 
-		tenantParams := params
+		// Give each tenant its own request. The downstream querier resolves deletes and
+		// clamps the time range in place, so a shared request would leak one tenant's
+		// values into the others and mutate it while their sends are still in flight.
+		tenantRequest := *params.QueryRequest
+		tenantParams := logql.SelectLogParams{QueryRequest: &tenantRequest}
 
 		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
 			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
@@ -151,7 +155,10 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		tenantParams := params
+
+		// See SelectLogs: each tenant needs its own request.
+		tenantRequest := *params.SampleQueryRequest
+		tenantParams := logql.SelectSampleParams{SampleQueryRequest: &tenantRequest}
 
 		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
 			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
