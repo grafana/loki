@@ -8,9 +8,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/buger/jsonparser"
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
-	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 

@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/jsonparser"
+	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/modern-go/reflect2"
 	"github.com/prometheus/prometheus/model/labels"
