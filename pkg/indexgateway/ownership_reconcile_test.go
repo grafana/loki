@@ -242,9 +242,11 @@ func TestIndexOwnershipWatcher(t *testing.T) {
 	time.Sleep(10 * period)
 	require.Zero(t, preloader.count())
 
-	// The first check after the preload reconciles.
+	// Preload loads indexes once, then unblocks Run. Run immediately
+	// performs the first check and always reconciles, so the call count
+	// reaches 2. The intermediate count of 1 is not synchronized with Run
+	// and must not be asserted.
 	require.NoError(t, w.Preload(context.Background()))
-	require.Equal(t, 1, preloader.count())
 	require.Eventually(t, func() bool { return preloader.count() == 2 }, time.Second, period)
 
 	// A heartbeat alone does not.
