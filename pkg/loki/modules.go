@@ -566,6 +566,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(t.dataObjLogsCache))
 		}
 
+		// The prefetcher serves the metadata of log objects. Index objects and ToCs use their own caches.
+		if t.dataObjMetadataPrefetcher != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataPrefetcher(t.dataObjMetadataPrefetcher))
+		}
+
 		dataObjStore, err = querier.NewDataObjStore(t.Store, t.dataObjBucket, t.dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
@@ -811,8 +816,9 @@ func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Serv
 	), nil
 }
 
-// initDataObjCache builds the metadata caches of the data objects. They share one backend. It returns no service when
-// data objects are disabled or no cache is configured.
+// initDataObjCache builds the metadata caches of the data objects and, when enabled, the metadata prefetcher. They share
+// one backend. The prefetcher serves the log objects when enabled. Otherwise the logs cache does. It returns no service
+// when data objects are disabled or no cache is configured.
 func (t *Loki) initDataObjCache() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
 		return nil, nil
@@ -825,16 +831,40 @@ func (t *Loki) initDataObjCache() (services.Service, error) {
 		return nil, fmt.Errorf("creating data object metadata cache: %w", err)
 	}
 
+	if t.Cfg.DataObj.MetadataPrefetcher.Enabled {
+		t.dataObjMetadataPrefetcher, err = metadata.NewCachedPrefetcher(backend, maxItemBytes, t.Cfg.DataObj.MetadataPrefetcher, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			backend.Stop()
+			return nil, err
+		}
+	}
+
+	// The prefetcher takes the limit of the backend as it is, where zero means no limit, because it bounds its items by
+	// max_region_bytes. The other caches need a limit: the decoder reads no more than the limit of a cache in bytes of
+	// metadata for an item, and the bound also stops a corrupt layout from driving a huge allocation. They use 8 MiB
+	// when the backend has none.
+	metadataCacheMaxItemBytes := maxItemBytes
+	if metadataCacheMaxItemBytes <= 0 {
+		metadataCacheMaxItemBytes = 8 << 20
+	}
+
 	cacheMetrics := metadata.NewCacheMetrics(prometheus.DefaultRegisterer)
-	t.dataObjLogsCache = metadata.NewCache(backend, maxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
-	t.dataObjIndexCache = metadata.NewCache(backend, maxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
-	t.dataObjTOCCache = metadata.NewCache(backend, maxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
+	t.dataObjIndexCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindIndexCache, cacheMetrics, logger)
+	t.dataObjTOCCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindTOCCache, cacheMetrics, logger)
+	if t.dataObjMetadataPrefetcher == nil {
+		t.dataObjLogsCache = metadata.NewCache(backend, metadataCacheMaxItemBytes, metadata.KindLogsCache, cacheMetrics, logger)
+	}
 
 	// The modules that use the caches depend on this one, so they stop before it. The backend ignores a repeated Stop.
 	return services.NewIdleService(nil, func(error) error {
-		t.dataObjLogsCache.Stop()
 		t.dataObjIndexCache.Stop()
 		t.dataObjTOCCache.Stop()
+		if t.dataObjLogsCache != nil {
+			t.dataObjLogsCache.Stop()
+		}
+		if t.dataObjMetadataPrefetcher != nil {
+			t.dataObjMetadataPrefetcher.Stop()
+		}
 		return nil
 	}), nil
 }
@@ -1001,6 +1031,19 @@ func (t *Loki) initStore() (services.Service, error) {
 		}
 	}
 
+	perIndexOwnership := t.usePerIndexOwnership()
+	if perIndexOwnership {
+		// Read the sharded index copy of the schema periods that have one, and
+		// preload only the indexes this gateway owns, after it has joined the
+		// ring and can tell which those are.
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		t.Cfg.StorageConfig.TSDBShipperConfig.PerIndexOwnership = true
+		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
+		t.Cfg.StorageConfig.TSDBShipperConfig.SkipInitialQueryReadiness = true
+		// Evict indexes this gateway no longer owns, judged from ACTIVE instances
+		t.Cfg.StorageConfig.TSDBShipperConfig.DropFilter = filter.FilterTenantsToDrop
+	}
+
 	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
@@ -1008,10 +1051,19 @@ func (t *Loki) initStore() (services.Service, error) {
 
 	t.Store = store
 
-	return services.NewIdleService(nil, func(_ error) error {
+	stopStore := func(_ error) error {
 		t.Store.Stop()
 		return nil
-	}), nil
+	}
+
+	if perIndexOwnership {
+		logger := log.With(util_log.Logger, "component", "index-gateway")
+		watcher := indexgateway.NewIndexOwnershipWatcher(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger, prometheus.DefaultRegisterer)
+		t.indexGatewayRingManager.SetBeforeActive(watcher.Preload)
+		return services.NewBasicService(nil, watcher.Run, stopStore), nil
+	}
+
+	return services.NewIdleService(nil, stopStore), nil
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {
@@ -1086,10 +1138,12 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
-	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg := &t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+	clientCfg.Mode = t.Cfg.IndexGateway.Mode
+	clientCfg.PerIndexOwnership = t.Cfg.IndexGateway.PerIndexOwnership.Enabled
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
-		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		clientCfg.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
@@ -1873,6 +1927,16 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	return t.indexGatewayRingManager, nil
+}
+
+// usePerIndexOwnership reports whether this process is an index gateway that
+// owns indexes per (tenant, table) in the ring.
+func (t *Loki) usePerIndexOwnership() bool {
+	return t.Cfg.IndexGateway.PerIndexOwnership.Enabled &&
+		t.Cfg.IndexGateway.Mode == indexgateway.RingMode &&
+		t.Cfg.isTarget(IndexGateway) &&
+		t.indexGatewayRingManager != nil &&
+		t.indexGatewayRingManager.Mode == lokiring.ServerMode
 }
 
 func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {

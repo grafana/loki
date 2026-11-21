@@ -16,14 +16,15 @@ package experimental
 
 // BufferPool is not supported at the moment.
 type BufferPool interface {
-	// Get retrieves a chunk of memory up to maxSize bytes, regardless of any
-	// pool constraints. It is non-blocking and returns an error only if
+	// Get retrieves a chunk of memory of at least min(maxSize, the pool's block
+	// size) bytes, regardless of any pool constraints; callers track how much of
+	// it they use. It is non-blocking and returns an error only if
 	// allocation fails. Callers should use Get for the first buffer of each
 	// upload to guarantee progress.
 	Get(maxSize int) ([]byte, error)
 
-	// TryGet retrieves a chunk of memory up to maxSize bytes, subject to the
-	// pool's constraints. It is non-blocking. It returns false if a buffer
+	// TryGet retrieves a chunk of memory like Get, subject to the pool's
+	// constraints. It is non-blocking. It returns false if a buffer
 	// cannot be provided at this time, and an error if allocation fails.
 	TryGet(maxSize int) ([]byte, bool, error)
 

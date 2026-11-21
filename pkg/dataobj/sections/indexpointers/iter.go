@@ -7,13 +7,11 @@ import (
 	"io"
 	"math"
 	"time"
-	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -63,8 +61,6 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 			return err
 		}
 
-		sym := symbolizer.New(128, 1024)
-
 		var rows [1024]dataset.Row
 		for {
 			n, err := r.Read(ctx, rows[:])
@@ -76,7 +72,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 			var pointer IndexPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(section.Columns(), row, &pointer, sym); err != nil {
+				if err := decodeRow(section.Columns(), row, &pointer); err != nil {
 					return err
 				}
 
@@ -103,9 +99,10 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 // determine the column type. The list of columns must match the columns used
 // to create the row.
 //
-// The sym argument is used for reusing label values between calls to
-// decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+// decodeRow copies the path, so the pointer does not point into the buffers of
+// row. A path is unique within a section, so a symbol table would not save
+// memory.
+func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error {
 	*pointer = IndexPointer{}
 	var minPostingKey, maxPostingKey []byte
 	for columnIndex, columnValue := range row.Values {
@@ -120,11 +117,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 				return fmt.Errorf("nil or zero value for %s", column.Type)
 			}
 
-			if sym != nil {
-				pointer.Path = sym.Get(unsafeString(columnValue.Binary()))
-			} else {
-				pointer.Path = string(columnValue.Binary())
-			}
+			pointer.Path = string(columnValue.Binary())
 
 		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
@@ -187,6 +180,19 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			}
 			pointer.ShardBuckets = buckets
 
+		case ColumnTypeRunLength:
+			if columnValue.IsNil() {
+				continue
+			}
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			size, err := RunLengthFromValue(columnValue.Int64())
+			if err != nil {
+				return err
+			}
+			pointer.RunLength = size
+
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
 			// columns because it breaks forward compatibility. Should we log
@@ -199,7 +205,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 		return err
 	}
 	pointer.PostingKeys = keys
-	return nil
+	return checkRunLength(*pointer)
 }
 
 // PostingKeysFromBounds returns the posting key range of a pointer from its
@@ -232,6 +238,17 @@ func RunIDFromValue(value int64) (RunID, error) {
 	return RunID(value), nil
 }
 
+// RunLengthFromValue returns the run length with the given value, as the
+// run_length column stores it. It returns an error if value is not positive,
+// because writers store no value for an unknown length, or if value does not
+// fit in an int32.
+func RunLengthFromValue(value int64) (int32, error) {
+	if value <= 0 || value > math.MaxInt32 {
+		return 0, fmt.Errorf("invalid %s value %d", ColumnTypeRunLength, value)
+	}
+	return int32(value), nil
+}
+
 // ShardBucketsFromCount returns the ShardBuckets with the given bucket count,
 // as the shard_buckets column stores it. It returns an error if buckets is not
 // a valid bucket count. A valid count is never zero, so the result is never
@@ -245,8 +262,4 @@ func ShardBucketsFromCount(buckets int64) (ShardBuckets, error) {
 		return ShardBuckets{}, fmt.Errorf("invalid %s value: %w", ColumnTypeShardBuckets, err)
 	}
 	return NewShardBuckets(layout), nil
-}
-
-func unsafeString(data []byte) string {
-	return unsafe.String(unsafe.SliceData(data), len(data))
 }

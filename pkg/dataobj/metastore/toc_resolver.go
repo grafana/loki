@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -23,8 +22,10 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -262,7 +263,7 @@ func NewTOCResolver(bucket objstore.BucketReader, cfg TOCResolverConfig, cache *
 // keep it.
 func (r *TOCResolver) ReadTOC(ctx context.Context, path string) ([]byte, error) {
 	if !r.cfg.Enabled {
-		v, err := r.readFromBucket(ctx, path)
+		v, err := r.readFromBucketWithStatsTracking(ctx, path)
 		if err != nil {
 			return nil, err
 		}
@@ -315,7 +316,7 @@ func (r *TOCResolver) readFromBucketSingleFlight(ctx context.Context, path strin
 		readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tocReadTimeout)
 		defer cancel()
 
-		v, err := r.readFromBucket(readCtx, path)
+		v, err := r.readFromBucketWithStatsTracking(readCtx, path)
 		if err != nil {
 			// The query API turns any error that wraps context.DeadlineExceeded into a 504. The message tells the user to
 			// shorten the query. A shorter query does not fix a slow ToC read. So the error names the read. It does not
@@ -347,26 +348,33 @@ func (r *TOCResolver) readFromBucket(ctx context.Context, path string) (*tocValu
 	// Take the time before the read, so it is never later than the moment object storage served the bytes.
 	readAt := r.now()
 
-	rc, err := r.bucket.Get(ctx, path)
+	data, err := readTableOfContents(ctx, r.bucket, path)
 	if err != nil {
 		if r.bucket.IsObjNotFoundErr(err) {
 			return &tocValue{readAt: readAt}, nil
 		}
 		return nil, err
 	}
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
-	}
-
-	// A ToC that exists is never empty. A store that truncates an object before it writes the new one can serve an
-	// empty read. That read must not count as a missing ToC.
-	if len(data) == 0 {
-		return nil, fmt.Errorf("metastore object %s is empty", path)
-	}
 	return &tocValue{data: data, readAt: readAt}, nil
+}
+
+// readFromBucketWithStatsTracking is readFromBucket, and it also records the metadata statistics of the read.
+// A refresh does not use it: it runs in the background, or its read runs inside the shared cache, which records
+// the read.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [metadata.StatMetadataRequestsToStorage]
+//   - [metadata.StatMetadataBytesFromStorage]
+func (r *TOCResolver) readFromBucketWithStatsTracking(ctx context.Context, path string) (*tocValue, error) {
+	// An isolated region holds only the requests and the bytes of this read, and not those of concurrent work in
+	// the region of ctx. The instrumented bucket counts a request before it sends it, so the count includes a
+	// failed request, and the request for a ToC that does not exist.
+	return xcap.RunIsolated(ctx, "toc_read",
+		func(ctx context.Context) (*tocValue, error) { return r.readFromBucket(ctx, path) },
+		xcap.MergeDerived(
+			xcap.Derive(metadata.StatMetadataRequestsToStorage, bucketstat.StatObjectRequestsGet),
+			xcap.Derive(metadata.StatMetadataBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+		))
 }
 
 // writeToLocalCache stores v for path and marks the ToC as requested at requestedAt. An entry that holds a newer value

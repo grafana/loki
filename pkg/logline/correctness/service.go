@@ -133,12 +133,12 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		return nil, fmt.Errorf("indexStore cannot be nil")
 	}
 
-	startedAt := time.Now().UTC()
-	if !cfg.StartedAt.IsZero() {
-		startedAt = cfg.StartedAt.UTC()
+	startedAt := time.Time(cfg.StartedAt).UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
 	}
 
-	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, nil, logger, reg)
+	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, 0, nil, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("create hint provider: %w", err)
 	}

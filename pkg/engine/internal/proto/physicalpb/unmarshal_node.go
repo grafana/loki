@@ -52,10 +52,18 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
+	start, end := indexMerge.KeySpan.Encode()
 	*n = IndexMerge{
 		Tenant:                  indexMerge.Tenant,
 		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
-		Runs:                    copyRunRefs(indexMerge.Runs),
+		StartPostingKey:         start,
+		EndPostingKey:           end,
+		StatsSourcePaths:        slices.Clone(indexMerge.StatsSources),
+	}
+	if indexMerge.KeySpan.IsAll() {
+		n.Runs = copyRunRefs(indexMerge.Runs)
+	} else {
+		n.BoundedRuns = copyRunRefs(indexMerge.Runs)
 	}
 	return nil
 }
@@ -102,9 +110,9 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = IndexFilter{
-		Tenant:          indexFilter.Tenant,
-		SourceIndexPath: indexFilter.SourceIndexPath,
-		ObjectPaths:     slices.Clone(indexFilter.ObjectPaths),
+		Tenant:           indexFilter.Tenant,
+		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
+		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
 	}
 	return nil
 }

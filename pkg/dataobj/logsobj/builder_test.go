@@ -304,9 +304,9 @@ func TestBuilder_DropDuplicates(t *testing.T) {
 	// The sort assigns stream IDs in sort key order. appendedFirst sorts after
 	// appendedSecond, so the sort swaps their IDs.
 	sortKey := func(ls labels.Labels) streams.SortKey {
-		key, err := emptyRankedSortKey(ls, nil, streams.DefaultShardLayout())
+		key, err := streamSortKey(ls, nil, streams.DefaultShardLayout())
 		require.NoError(t, err)
-		return key.SortKey
+		return key
 	}
 	appendedFirst, appendedSecond := labels.FromStrings("app", "x"), labels.FromStrings("app", "y")
 	if streams.CompareSortKey(sortKey(appendedFirst), sortKey(appendedSecond)) < 0 {
@@ -572,7 +572,7 @@ func testFlushAndSortOrder(t *testing.T) {
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
 	expectedRecords := make(map[copiedRecord]int)
 
-	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
+	for _, tenant := range []string{"tenant"} {
 		appendRecord := func(i int) {
 			timestamp := now.Add(time.Duration(i%8) * time.Second)
 			line := fmt.Sprintf("%s/%02d/", tenant, i) + strings.Repeat("a", 1024)
@@ -632,7 +632,7 @@ func testFlushAndSortOrder(t *testing.T) {
 
 	// Assert DESC timestamp ordering across sections of a tenant
 	actualRecords := make(map[copiedRecord]int)
-	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
+	for _, tenant := range []string{"tenant"} {
 		prevTs := time.Unix(0, math.MaxInt64)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == tenant
@@ -766,7 +766,7 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 768 << 10 // 786432 rows per tenant
 	sizeOfRow := 1024
-	tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
+	tenants := []string{"tenant-a"}
 	apps := []string{"alpha", "bravo", "charlie", "delta"}
 	instances := []string{"i-0", "i-1", "i-2"}
 
@@ -816,8 +816,6 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 			cfg:  benchBaseCfg,
 			overrides: tenantOverrides{
 				"tenant-a": {"label:app"},
-				"tenant-b": {"label:app"},
-				"tenant-c": {"label:app"},
 			},
 			labels: func(_ string, i int) string {
 				app := apps[i%len(apps)]
@@ -1020,14 +1018,20 @@ func testFlushAndSortSchema(t *testing.T) {
 		}
 	}
 
-	t.Run("sorts a tenant with a custom schema by app and a tenant without one by service_name", func(t *testing.T) {
-		cfg := makeCfg()
+	newOverrides := func(t *testing.T, byTenant limitsByTenant) TenantOverrides {
+		t.Helper()
 		var defaults validation.Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		overrides, err := validation.NewOverrides(defaults, limitsByTenant{
+		overrides, err := validation.NewOverrides(defaults, byTenant)
+		require.NoError(t, err)
+		return overrides
+	}
+
+	t.Run("sorts a tenant with a custom schema by app", func(t *testing.T) {
+		cfg := makeCfg()
+		overrides := newOverrides(t, limitsByTenant{
 			"schema-tenant": {SortSchema: validation.SortSchema{"label:app"}},
 		})
-		require.NoError(t, err)
 
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -1038,6 +1042,28 @@ func testFlushAndSortSchema(t *testing.T) {
 					Labels:  fmt.Sprintf(`{app=%q}`, name),
 					Entries: []push.Entry{{Timestamp: ts, Line: name}},
 				}, ts))
+			}
+		}
+		obj2, closer2, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		defer closer2.Close()
+
+		requireStreamsLayout(t, obj2, "schema-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
+		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
+		timestampsDescWithinGroups(t, obj2, "schema-tenant")
+	})
+
+	t.Run("sorts a tenant without an override by service_name", func(t *testing.T) {
+		cfg := makeCfg()
+		// The tenant has no override, so Overrides.SortSchemaLabels returns the
+		// limits default (label:service_name).
+		overrides := newOverrides(t, limitsByTenant{})
+
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+		for _, name := range []string{"zoo", "alpha", "middle"} {
+			for i := range 4 {
+				ts := now.Add(time.Duration(i) * time.Second)
 				require.NoError(t, b.Append("default-tenant", logproto.Stream{
 					Labels:  fmt.Sprintf(`{service_name=%q}`, name),
 					Entries: []push.Entry{{Timestamp: ts, Line: name}},
@@ -1048,13 +1074,8 @@ func testFlushAndSortSchema(t *testing.T) {
 		require.NoError(t, err)
 		defer closer2.Close()
 
-		requireStreamsLayout(t, obj2, "schema-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"}))
 		requireStreamsLayout(t, obj2, "default-tenant", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}))
-		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
-		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
-		// default-tenant has no per-tenant override, so Overrides.SortSchemaLabels
-		// returns the limits default (label:service_name).
 		streamToSvc := make(map[int64]string)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
 			return streams.CheckSection(s) && s.Tenant == "default-tenant"
@@ -1808,6 +1829,19 @@ func testFlushAndSortErrors(t *testing.T) {
 		require.Nil(t, closer)
 	})
 
+	t.Run("returns an error and resets the builder when the builder holds more than one tenant", func(t *testing.T) {
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		require.NoError(t, err)
+		require.NoError(t, b.Append("tenant-a", stream, time.Now()))
+		require.NoError(t, b.Append("tenant-b", stream, time.Now()))
+
+		obj, closer, err := b.FlushAndSort(t.Context())
+		require.ErrorContains(t, err, "a sorted object holds one tenant, but the builder holds 2")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.Zero(t, b.GetEstimatedSize())
+	})
+
 	t.Run("returns nothing, counts the failure, and resets the builder when the sort fails", func(t *testing.T) {
 		metrics := NewBuilderMetrics()
 		b, err := NewBuilder(testBuilderConfig, nil, metrics, log.NewNopLogger(), tenantOverrides{"tenant": {"label:app"}})
@@ -1900,11 +1934,14 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		"t1": streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:app"}),
 		"t2": streams.NewLayout(streams.MustShardLayoutFromBuckets(16), []string{"label:cluster"}),
 	}
-	newFilledBuilder := func(t *testing.T) *Builder {
+	newFilledBuilder := func(t *testing.T, tenants ...string) *Builder {
 		t.Helper()
+		if len(tenants) == 0 {
+			tenants = []string{"t1", "t2"}
+		}
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), layouts)
 		require.NoError(t, err)
-		for _, tenant := range []string{"t1", "t2"} {
+		for _, tenant := range tenants {
 			require.NoError(t, b.Append(tenant, logproto.Stream{
 				Labels:  `{app="a",cluster="c"}`,
 				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
@@ -1937,14 +1974,15 @@ func TestBuilder_FlushRecordsLayout(t *testing.T) {
 		requireStreamsLayout(t, obj, "t2", layouts["t2"])
 	})
 
-	t.Run("FlushAndSort records the shard layout and the schema labels of each tenant", func(t *testing.T) {
-		obj, closer, err := newFilledBuilder(t).FlushAndSort(t.Context())
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	for _, tenant := range []string{"t1", "t2"} {
+		t.Run("FlushAndSort records the shard layout and the schema labels of tenant "+tenant, func(t *testing.T) {
+			obj, closer, err := newFilledBuilder(t, tenant).FlushAndSort(t.Context())
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-		requireStreamsLayout(t, obj, "t1", layouts["t1"])
-		requireStreamsLayout(t, obj, "t2", layouts["t2"])
-	})
+			requireStreamsLayout(t, obj, tenant, layouts[tenant])
+		})
+	}
 
 	t.Run("Flush keeps the rows in stream ID order when the streams arrive in the sort key order of a non-default shard layout", func(t *testing.T) {
 		layout := layouts["t1"]
@@ -2082,12 +2120,12 @@ func TestBuilder_SectionOrder(t *testing.T) {
 		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
 	})
 
-	t.Run("FlushAndSort puts the streams sections of all tenants before all logs sections", func(t *testing.T) {
-		obj, closer, err := newFilledBuilder(t, "tenant-2", "tenant-10").FlushAndSort(t.Context())
+	t.Run("FlushAndSort puts the streams section before the logs sections", func(t *testing.T) {
+		obj, closer, err := newFilledBuilder(t, "tenant").FlushAndSort(t.Context())
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-		requireSectionOrder(t, obj, "tenant-2", "tenant-10")
+		requireSectionOrder(t, obj, "tenant")
 		requireCachedPrefixEndsAfterStreamsMetadata(t, obj)
 	})
 

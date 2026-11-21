@@ -40,7 +40,7 @@ func buildIndexPointersObject(ctx context.Context, t *testing.T, bucket objstore
 func TestInspectFile_IndexPointers(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
-	path := "index/v0/tocs/2026-06-03T12_00_00Z.toc"
+	path := "index/v0/tocs/2026-06-03T12_00_00Z/tenantID/toc.toc"
 
 	// Use a non-UTC location so the test proves UTC normalization happens.
 	loc, err := time.LoadLocation("America/New_York")

@@ -2,11 +2,16 @@ package querier
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"io"
 	stditer "iter"
 	"maps"
 	"math"
 	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"slices"
 	"sort"
 	"sync"
@@ -29,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	dataobjstreams "github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
@@ -41,6 +47,10 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 )
+
+// objectComponents are the components of the metadata metrics that open the log objects of a query.
+// The metastore component opens the index objects.
+var objectComponents = []string{"streams-reader", "logs-reader"}
 
 func TestNewDataObjStore(t *testing.T) {
 	builder := objtest.NewBuilder(t)
@@ -101,53 +111,146 @@ func TestWithDataObjMetadataCache(t *testing.T) {
 
 	t.Run("opening an object loads its metadata through the cache", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.callKeys(), 1, "the query opens the one object through the cache")
 		require.Equal(t, 1, spy.loadCount())
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 1.0, got.onDemandCacheRequests, "the open looks up the cache")
+		require.Zero(t, got.onDemandCacheBytes)
+		require.Positive(t, got.onDemandStorageBytes, "the miss loads the metadata from object storage")
+		require.Equal(t, 1.0, got.onDemandStorageRequests, "the cached region holds the metadata that the sections read, so they read nothing more")
+		require.Zero(t, got.prefetchStorageRequests+got.prefetchCacheRequests, "the metadata cache is not the prefetcher")
 	})
 
 	t.Run("a second query is served from the cache without loading again", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.callKeys(), 2, "each query opens the object through the cache")
 		require.Equal(t, 1, spy.loadCount(), "only the first query loads the metadata")
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 2.0, got.onDemandCacheRequests, "each query looks up the cache")
+		require.Positive(t, got.onDemandCacheBytes)
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the second query takes from the cache the bytes that the first query loaded")
+		require.Equal(t, 1.0, got.onDemandStorageRequests)
 	})
 
 	t.Run("each object loads its own metadata once", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.distinctKeys(), 2, "two objects have two cache keys")
 		require.Equal(t, 2, spy.loadCount())
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 4.0, got.onDemandCacheRequests, "two queries look up the cache for each of the two objects")
+		require.Equal(t, 2.0, got.onDemandStorageRequests, "each object loads once")
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the second query takes from the cache the bytes that the first query loaded")
 	})
 
 	t.Run("returns the same samples from a cached object as from a freshly loaded one", func(t *testing.T) {
-		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withMetadataCache(newMetadataCacheSpy()))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withMetadataCache(newMetadataCacheSpy()), withRegisterer(reg))
 
 		loaded := store.selectSamples(testCtx(t), query, at(0), at(10))
 		cached := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, loaded)
 		require.Equal(t, loaded, cached)
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Positive(t, got.onDemandCacheBytes)
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the cached query takes from the cache the bytes that the first query loaded")
 	})
 
 	t.Run("returns samples without a cache when none is configured", func(t *testing.T) {
-		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withRegisterer(reg))
 
 		got := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, got)
+		direct := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Zero(t, direct.onDemandCacheRequests)
+		require.Positive(t, direct.onDemandStorageBytes, "without a cache, the open reads the head of the object from object storage")
+		require.Equal(t, 1.0, direct.onDemandStorageRequests, "the head read holds the metadata that the sections read, so they read nothing more")
 	})
+}
+
+func TestWithDataObjMetadataPrefetcher(t *testing.T) {
+	appStream := logproto.Stream{
+		Labels:  `{app="a", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "level=info one", "level", "info"), entry(t, 2, "level=warn two", "level", "warn")},
+	}
+	otherStream := logproto.Stream{
+		Labels:  `{app="b", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "level=info beta", "level", "info", "trace_id", "t1")},
+	}
+	streams := []logproto.Stream{appStream, otherStream}
+
+	// metadataRegionEnd returns where the metadata regions of the data object that the store reads end.
+	// The store holds one object.
+	metadataRegionEnd := func(t *testing.T, store *testDataObjStore) int64 {
+		t.Helper()
+
+		resp, err := store.metastore.Sections(testCtx(t), metastore.SectionsRequest{
+			Start:    at(0),
+			End:      at(100),
+			Matchers: syntax.MustParseLogSelector(`{env="prod"}`, true).Matchers(),
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.Sections)
+
+		return objtest.MetadataRegionEnd(t, store.bucket, resp.Sections[0].ObjectPath)
+	}
+
+	queries := map[string]string{
+		"a count that reads no metadata column": `sum by (app) (count_over_time({env="prod"}[1m]))`,
+		"a grouping on one metadata column":     `sum by (level) (count_over_time({env="prod"}[1m]))`,
+		"a bytes count that reads the message":  `sum by (app) (bytes_over_time({env="prod"}[1m]))`,
+		"a line filter and a metadata filter":   `sum by (app) (count_over_time({env="prod"} |= "info" | level="info" [1m]))`,
+		"a count that keeps every label":        `count_over_time({env="prod"}[1m])`,
+	}
+	for name, query := range queries {
+		t.Run("returns the same samples as without the prefetcher, and reads no metadata from object storage once warm: "+name, func(t *testing.T) {
+			want := newTestDataObjStore(t, streams).selectSamples(testCtx(t), query, at(0), at(10))
+			require.NotEmpty(t, want)
+
+			reg := prometheus.NewRegistry()
+			recorder := &rangeRecorder{}
+			store := newTestDataObjStore(t, streams, withMetadataPrefetcher(newTestPrefetcher(t)), withBucketWrapper(recorder.wrap), withRegisterer(reg))
+
+			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "cold")
+			cold := gatherMetadataMetrics(t, reg, objectComponents...)
+			recorder.reset()
+			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "warm")
+			warm := gatherMetadataMetrics(t, reg, objectComponents...).minus(cold)
+			require.NotZero(t, recorder.total(), "the data pages still come from object storage")
+			require.Zero(t, recorder.readsBelow(metadataRegionEnd(t, store)), "reads inside the metadata region")
+
+			require.Positive(t, cold.prefetchStorageBytes, "the cold query loads the metadata from object storage")
+			require.Positive(t, cold.prefetchStorageRequests)
+			require.Zero(t, cold.onDemandStorageBytes, "the prefetch covers the metadata that the query reads")
+			require.Zero(t, cold.onDemandStorageRequests)
+			require.GreaterOrEqual(t, cold.prefetchStorageBytes, warm.prefetchCacheBytes, "the cold query downloads the whole head of the object, and the warm query takes the part of it that the response holds")
+			require.Positive(t, warm.prefetchCacheBytes)
+			require.Positive(t, warm.prefetchCacheRequests)
+			require.Zero(t, warm.prefetchStorageBytes)
+			require.Zero(t, warm.prefetchStorageRequests)
+			require.Zero(t, warm.onDemandStorageBytes)
+			require.Zero(t, warm.onDemandStorageRequests)
+		})
+	}
 }
 
 func TestDataObjStore_SelectSamples(t *testing.T) {
@@ -254,6 +357,13 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"))
 				require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
+				directReads := gatherMetadataMetrics(t, reg, objectComponents...)
+				require.Zero(t, directReads.onDemandCacheRequests)
+				require.Zero(t, directReads.prefetchStorageRequests+directReads.prefetchCacheRequests, "without a prefetcher, nothing counts in the prefetch phase")
+				require.Positive(t, directReads.onDemandStorageBytes, "without a cache, opening an object reads its head from object storage")
+				require.Positive(t, directReads.onDemandStorageRequests)
+				require.LessOrEqual(t, directReads.onDemandStorageBytes, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader")+seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"),
+					"the metadata that the opens read is part of the downloaded bytes")
 
 				got := statsCtx.Result(0, 0, 0).Querier.Store.Dataobj
 				require.Equal(t, layout.wantLogsCompacted, got.LogsCompactedObjectsCount)
@@ -910,6 +1020,70 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 	})
 }
 
+// TestDataObjStore_AccessControl runs the store with the label-based access control filter that
+// Loki installs, and checks the policies a gateway sends in the X-Prom-Label-Policy header.
+func TestDataObjStore_AccessControl(t *testing.T) {
+	const query = `sum by (app) (count_over_time({env=~".+"}[1m]))`
+
+	streams := []logproto.Stream{
+		{Labels: `{app="a", env="prod"}`, Entries: []push.Entry{entry(t, 1, "one")}},
+		{Labels: `{app="b", env="prod", secret="true"}`, Entries: []push.Entry{entry(t, 1, "two")}},
+		{Labels: `{app="c", env="dev", secret="true"}`, Entries: []push.Entry{entry(t, 1, "three")}},
+		{Labels: `{app="d", env="dev"}`, Entries: []push.Entry{entry(t, 1, "four")}},
+	}
+	store := newTestDataObjStore(t, streams, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+	readStreams := func(ctx context.Context) []string {
+		return sampleLabels(store.selectSamples(ctx, query, at(0), at(10)))
+	}
+
+	t.Run("returns every stream when the request carries no policy", func(t *testing.T) {
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(testCtx(t)))
+	})
+
+	t.Run("returns only the streams that match a single equality policy", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns the streams that match any of several policies", func(t *testing.T) {
+		ctx := accessControlContext(t, objtest.Tenant, `{secret!="true", env="prod"}`, `{env="dev"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("returns every stream when the policy belongs to another tenant", func(t *testing.T) {
+		ctx := accessControlContext(t, "another-tenant", `{env="prod"}`)
+		require.Equal(t, []string{`{app="a"}`, `{app="b"}`, `{app="c"}`, `{app="d"}`}, readStreams(ctx))
+	})
+
+	t.Run("counts only the lines that a rewritten aggregated-metrics query permits", func(t *testing.T) {
+		aggregated := logproto.Stream{
+			Labels: `{__aggregated_metric__="varlog_service"}`,
+			Entries: []push.Entry{
+				entry(t, 1, `service_name="varlog_service" env="dev" classification="confidential"`),
+				entry(t, 2, `service_name="varlog_service" env="dev" classification="secret"`),
+				entry(t, 3, `service_name="varlog_service" env="prod" classification="secret"`),
+				entry(t, 4, `service_name="varlog_service" env="prod" classification="notsecret"`),
+			},
+		}
+		aggregatedStore := newTestDataObjStore(t, []logproto.Stream{aggregated}, withStreamFilterer(&labelaccess.RequestChunkFilterer{}))
+
+		policies := policySet(t, objtest.Tenant, `{env!="dev", classification!="secret"}`, `{classification!="secret"}`)
+		request := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?"+url.Values{
+			"query": {`sum by (service_name) (count_over_time({__aggregated_metric__="varlog_service"}[1m]))`},
+		}.Encode(), nil)
+		request.Header.Set("X-Scope-OrgID", objtest.Tenant)
+		require.NoError(t, labelaccess.ModifyAggregatedMetricsQuery(request, policies))
+
+		ctx := labelaccess.InjectLabelMatchersContext(testCtx(t), policies)
+		got := aggregatedStore.selectSamples(ctx, request.URL.Query().Get("query"), at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
+			{Labels: `{service_name="varlog_service"}`, TimestampSec: 4, Value: 1, StreamHash: streamHashOf(aggregated.Labels)},
+		}, got)
+	})
+}
+
 // denyAppFilterer denies every stream whose app label has the given value.
 type denyAppFilterer struct{ app string }
 
@@ -987,6 +1161,11 @@ type testDataObjStore struct {
 	// chunkStore counts what the store delegated, so a test can tell a served query from a
 	// passed-through one.
 	chunkStore *chunkStoreSpy
+
+	// metastore and bucket hold the objects that the store reads. The bucket is the one that the objects
+	// were written to, without the wrapper that the store reads through.
+	metastore metastore.Metastore
+	bucket    objstore.BucketReader
 }
 
 type testStoreOptions struct {
@@ -995,6 +1174,8 @@ type testStoreOptions struct {
 	filterer         chunk.RequestChunkFilterer
 	maxConcurrency   int
 	metadataCache    dataobj.MetadataCache
+	prefetcher       metadata.Prefetcher
+	bucketWrapper    func(objstore.Bucket) objstore.Bucket
 	registerer       prometheus.Registerer
 	compactedLayout  bool
 }
@@ -1031,6 +1212,15 @@ func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
 
 func withMetadataCache(metadataCache dataobj.MetadataCache) testStoreOption {
 	return func(o *testStoreOptions) { o.metadataCache = metadataCache }
+}
+
+// withBucketWrapper wraps the bucket that the store reads.
+func withBucketWrapper(wrap func(objstore.Bucket) objstore.Bucket) testStoreOption {
+	return func(o *testStoreOptions) { o.bucketWrapper = wrap }
+}
+
+func withMetadataPrefetcher(prefetcher metadata.Prefetcher) testStoreOption {
+	return func(o *testStoreOptions) { o.prefetcher = prefetcher }
 }
 
 func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
@@ -1073,12 +1263,21 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 		storeOpts = append(storeOpts, WithDataObjMetadataCache(options.metadataCache))
 	}
 
-	location := builder.Location()
+	if options.prefetcher != nil {
+		storeOpts = append(storeOpts, WithDataObjMetadataPrefetcher(options.prefetcher))
+	}
+
+	bucket := builder.Location().Bucket
+	storeBucket := bucket
+	if options.bucketWrapper != nil {
+		storeBucket = options.bucketWrapper(bucket)
+	}
+	ms := builder.Metastore()
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
+	store, err := NewDataObjStore(chunkStore, storeBucket, ms, options.registerer, storeOpts...)
 	require.NoError(t, err)
 
-	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore, metastore: ms, bucket: bucket}
 }
 
 // selectSamples runs a stream-first metric query and returns its samples as a set.
@@ -1351,6 +1550,118 @@ func (s *metadataCacheSpy) loadCount() int {
 	return s.loads
 }
 
+// metadataMetrics holds the sum, over some components, of the series of the metadata metrics.
+type metadataMetrics struct {
+	prefetchCacheBytes, prefetchCacheRequests     float64
+	prefetchStorageBytes, prefetchStorageRequests float64
+	onDemandCacheBytes, onDemandCacheRequests     float64
+	onDemandStorageBytes, onDemandStorageRequests float64
+}
+
+// gatherMetadataMetrics returns the metadata metrics of the given components that reg holds. Without
+// components, it sums every component.
+func gatherMetadataMetrics(t *testing.T, reg prometheus.Gatherer, components ...string) metadataMetrics {
+	t.Helper()
+
+	families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+	require.NoError(t, err)
+	sum := func(name, source, phase string) float64 {
+		var total float64
+		for _, series := range metrics.FindMetricsInFamilyMatchingLabels(families[name], "source", source, "phase", phase) {
+			inComponents := slices.ContainsFunc(components, func(component string) bool {
+				return metrics.MatchesLabels(series, "component", component)
+			})
+			if len(components) == 0 || inComponents {
+				total += series.GetCounter().GetValue()
+			}
+		}
+		return total
+	}
+
+	const bytesName, requestsName = "loki_querier_dataobj_metadata_bytes_total", "loki_querier_dataobj_metadata_requests_total"
+	return metadataMetrics{
+		prefetchCacheBytes:      sum(bytesName, "cache", "prefetch"),
+		prefetchCacheRequests:   sum(requestsName, "cache", "prefetch"),
+		prefetchStorageBytes:    sum(bytesName, "storage", "prefetch"),
+		prefetchStorageRequests: sum(requestsName, "storage", "prefetch"),
+		onDemandCacheBytes:      sum(bytesName, "cache", "on_demand"),
+		onDemandCacheRequests:   sum(requestsName, "cache", "on_demand"),
+		onDemandStorageBytes:    sum(bytesName, "storage", "on_demand"),
+		onDemandStorageRequests: sum(requestsName, "storage", "on_demand"),
+	}
+}
+
+// minus returns the metrics that grew since earlier.
+func (m metadataMetrics) minus(earlier metadataMetrics) metadataMetrics {
+	return metadataMetrics{
+		prefetchCacheBytes:      m.prefetchCacheBytes - earlier.prefetchCacheBytes,
+		prefetchCacheRequests:   m.prefetchCacheRequests - earlier.prefetchCacheRequests,
+		prefetchStorageBytes:    m.prefetchStorageBytes - earlier.prefetchStorageBytes,
+		prefetchStorageRequests: m.prefetchStorageRequests - earlier.prefetchStorageRequests,
+		onDemandCacheBytes:      m.onDemandCacheBytes - earlier.onDemandCacheBytes,
+		onDemandCacheRequests:   m.onDemandCacheRequests - earlier.onDemandCacheRequests,
+		onDemandStorageBytes:    m.onDemandStorageBytes - earlier.onDemandStorageBytes,
+		onDemandStorageRequests: m.onDemandStorageRequests - earlier.onDemandStorageRequests,
+	}
+}
+
+// newTestPrefetcher returns a prefetcher with the default config over an in-memory store.
+func newTestPrefetcher(t *testing.T) *metadata.CachedPrefetcher {
+	t.Helper()
+
+	var cfg metadata.PrefetcherConfig
+	cfg.RegisterFlagsWithPrefix("test.", flag.NewFlagSet("test", flag.PanicOnError))
+
+	p, err := metadata.NewCachedPrefetcher(cache.NewMockCache(), 0, cfg, nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(p.Stop)
+	return p
+}
+
+// rangeRecorder records where the range reads of a bucket start.
+type rangeRecorder struct {
+	objstore.Bucket
+
+	mu      sync.Mutex
+	offsets []int64
+}
+
+func (r *rangeRecorder) wrap(bucket objstore.Bucket) objstore.Bucket {
+	r.Bucket = bucket
+	return r
+}
+
+func (r *rangeRecorder) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	r.mu.Lock()
+	r.offsets = append(r.offsets, off)
+	r.mu.Unlock()
+	return r.Bucket.GetRange(ctx, name, off, length)
+}
+
+func (r *rangeRecorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.offsets = nil
+}
+
+func (r *rangeRecorder) total() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.offsets)
+}
+
+// readsBelow counts the reads that start before end.
+func (r *rangeRecorder) readsBelow(end int64) (n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, off := range r.offsets {
+		if off < end {
+			n++
+		}
+	}
+	return n
+}
+
 // boundedShardsOfFingerprintSpace splits the fingerprint space into n adjacent bounded shards, and
 // returns them as the query-frontend encodes them. n must not be zero.
 func boundedShardsOfFingerprintSpace(n uint64) []string {
@@ -1391,11 +1702,13 @@ func newTestDataObjStoreOfObjects(t *testing.T, objects []testObject) *testDataO
 	}
 	builder.Close()
 
+	bucket := builder.Location().Bucket
+	ms := builder.Metastore()
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, builder.Location().Bucket, builder.Metastore(), nil)
+	store, err := NewDataObjStore(chunkStore, bucket, ms, nil)
 	require.NoError(t, err)
 
-	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}
+	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore, metastore: ms, bucket: bucket}
 }
 
 // shardLayoutOverrides gives every tenant the shard layout in its layout field and no schema labels.

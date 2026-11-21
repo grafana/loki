@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
@@ -199,12 +200,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		countSinks += len(streams)
 	}
 
-	level.Info(logger).Log(
+	startFields := []any{
 		"msg", "starting task",
 		"node_type", root.Type().String(),
+		"tenant", job.Task.TenantID,
 		"external_sources", countSources,
 		"external_sinks", countSinks,
-	)
+	}
+	startFields = append(startFields, physical.LogFields(root)...)
+	level.Info(logger).Log(startFields...)
 
 	cfg := executor.Config{
 		Bucket:         t.Bucket,
@@ -324,7 +328,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		xcap.Value[int64](capture, dataobj.StatDatasetSecondaryPagesDownloaded)
 	t.Metrics.pagesDownloadedTotal.Add(float64(pagesDownloaded))
 	t.Metrics.pagesPrunedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned)))
-	t.Metrics.bytesDownloadedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded)))
+	t.Metrics.bytesDownloadedTotal.Add(float64(xcap.Value[int64](capture, bucketstat.StatObjectBytesDownloaded)))
 
 	duration := time.Since(startTime)
 

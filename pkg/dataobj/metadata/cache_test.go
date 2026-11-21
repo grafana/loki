@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -16,18 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v3/pkg/xcap/xcaptest"
 )
 
-// assert the adapter satisfies the dataobj interface.
-var _ dataobj.MetadataCache = (*Cache)(nil)
-
 func TestCache_MaxItemBytes(t *testing.T) {
-	require.Equal(t, int64(DefaultMaxItemBytes), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value falls back to the default")
 	require.Equal(t, int64(1024), newTestCache(cache.NewMockCache(), 1024, nil).MaxItemBytes())
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), 0, nil).MaxItemBytes(), "a non-positive value means no limit")
+	require.Equal(t, int64(math.MaxInt64), newTestCache(cache.NewMockCache(), -1, nil).MaxItemBytes(), "a non-positive value means no limit")
 }
 
 func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
@@ -36,27 +37,37 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		c := newTestCache(mc, 0, nil)
 
 		var loads int
-		load := func(context.Context) ([]byte, error) {
+		load := func(ctx context.Context) ([]byte, error) {
 			loads++
+			recordStorageRead(ctx, bucketstat.StatObjectRequestsGetRange, len("metadata-blob"))
 			return []byte("metadata-blob"), nil
 		}
+		ctx, recorded := xcaptest.NewRegion(t)
 
 		// Miss: loads and stores.
-		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
+		got, err := c.GetOrLoadMetadataRegion(ctx, "obj", load)
 		require.NoError(t, err)
 		require.Equal(t, []byte("metadata-blob"), got)
 		require.Equal(t, 1, loads)
 		require.Contains(t, mc.GetInternal(), keyPrefix+"obj")
 		require.Equal(t, float64(1), testutil.ToFloat64(c.misses))
 		require.Zero(t, testutil.ToFloat64(c.hits))
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToCache))
+		require.Zero(t, recorded(StatMetadataBytesFromCache))
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToStorage))
+		require.Equal(t, int64(len("metadata-blob")), recorded(StatMetadataBytesFromStorage))
 
 		// Hit: served from the cache, no reload.
-		got, err = c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
+		got, err = c.GetOrLoadMetadataRegion(ctx, "obj", load)
 		require.NoError(t, err)
 		require.Equal(t, []byte("metadata-blob"), got)
 		require.Equal(t, 1, loads, "second call is a cache hit")
 		require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
 		require.Equal(t, float64(1), testutil.ToFloat64(c.misses), "the hit must not also count as a miss")
+		require.Equal(t, int64(2), recorded(StatMetadataRequestsToCache))
+		require.Equal(t, int64(len("metadata-blob")), recorded(StatMetadataBytesFromCache))
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToStorage), "the hit sends no request")
+		require.Equal(t, int64(len("metadata-blob")), recorded(StatMetadataBytesFromStorage))
 	})
 
 	t.Run("concurrent misses for the same key share a single load", func(t *testing.T) {
@@ -64,12 +75,14 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 			const n = 8
 
 			c := newTestCache(cache.NewMockCache(), 0, nil)
+			ctx, recorded := xcaptest.NewRegion(t)
 
 			var loads atomic.Int64
 			release := make(chan struct{})
-			load := func(context.Context) ([]byte, error) {
+			load := func(ctx context.Context) ([]byte, error) {
 				loads.Add(1)
 				<-release
+				recordStorageRead(ctx, bucketstat.StatObjectRequestsGetRange, len("blob"))
 				return []byte("blob"), nil
 			}
 
@@ -78,7 +91,7 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 			var wg sync.WaitGroup
 			for i := range n {
 				wg.Go(func() {
-					results[i], errs[i] = c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
+					results[i], errs[i] = c.GetOrLoadMetadataRegion(ctx, "obj", load)
 				})
 			}
 
@@ -92,6 +105,10 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 				require.NoError(t, errs[i])
 				require.Equal(t, []byte("blob"), r)
 			}
+			require.Equal(t, int64(n), recorded(StatMetadataRequestsToCache), "every caller looks up the cache")
+			require.Zero(t, recorded(StatMetadataBytesFromCache))
+			require.Equal(t, int64(1), recorded(StatMetadataRequestsToStorage), "the callers share the requests of one load")
+			require.Equal(t, int64(len("blob")), recorded(StatMetadataBytesFromStorage))
 		})
 	})
 
@@ -99,15 +116,21 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		mc := cache.NewMockCache()
 		mc.SetErr(nil, errors.New("fetch boom"))
 		c := newTestCache(mc, 0, nil)
+		ctx, recorded := xcaptest.NewRegion(t)
 
 		var loads int
-		got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", func(context.Context) ([]byte, error) {
+		got, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(ctx context.Context) ([]byte, error) {
 			loads++
+			recordStorageRead(ctx, bucketstat.StatObjectRequestsGetRange, len("blob"))
 			return []byte("blob"), nil
 		})
 		require.NoError(t, err, "a fetch error degrades to a load, it does not fail the call")
 		require.Equal(t, []byte("blob"), got)
 		require.Equal(t, 1, loads)
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToCache), "a failed lookup counts")
+		require.Zero(t, recorded(StatMetadataBytesFromCache))
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToStorage))
+		require.Equal(t, int64(len("blob")), recorded(StatMetadataBytesFromStorage))
 		require.Equal(t, float64(1), testutil.ToFloat64(c.errors.WithLabelValues("fetch")))
 		require.Zero(t, testutil.ToFloat64(c.misses), "a fetch error is not a fact about the key, so it must not also count as a miss")
 	})
@@ -134,7 +157,8 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.NoError(t, mc.Store(context.Background(), []string{keyPrefix + "obj"}, [][]byte{[]byte("blob")}))
 		c := newTestCache(mc, 0, nil)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		regionCtx, recorded := xcaptest.NewRegion(t)
+		ctx, cancel := context.WithCancel(regionCtx)
 		cancel()
 
 		_, err := c.GetOrLoadMetadataRegion(ctx, "obj", func(context.Context) ([]byte, error) {
@@ -143,6 +167,8 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		})
 		require.ErrorIs(t, err, context.Canceled, "the context wins even over a value Fetch already had ready")
 		require.Zero(t, testutil.ToFloat64(c.hits), "a hit discarded for the caller's own context must not count as a hit")
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToCache), "the lookup happened")
+		require.Zero(t, recorded(StatMetadataBytesFromCache), "the caller did not take the discarded hit")
 	})
 
 	t.Run("a caller's own canceled context takes precedence over a clean miss, and never triggers a load", func(t *testing.T) {
@@ -284,12 +310,16 @@ func TestCache_GetOrLoad(t *testing.T) {
 	t.Run("returns a hit that accept approves and does not load", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		c := newTestCache(mc, 0, nil)
+		ctx, recorded := xcaptest.NewRegion(t)
 
-		_, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return []byte("fresh-1"), nil })
+		_, err := c.GetOrLoad(ctx, "obj", nil, func(ctx context.Context) ([]byte, error) {
+			recordStorageRead(ctx, bucketstat.StatObjectRequestsGet, len("fresh-1"))
+			return []byte("fresh-1"), nil
+		})
 		require.NoError(t, err)
 
 		var loads int
-		got, err := c.GetOrLoad(t.Context(), "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
+		got, err := c.GetOrLoad(ctx, "obj", acceptPrefix("fresh"), func(context.Context) ([]byte, error) {
 			loads++
 			return []byte("fresh-2"), nil
 		})
@@ -297,6 +327,10 @@ func TestCache_GetOrLoad(t *testing.T) {
 		require.Equal(t, []byte("fresh-1"), got)
 		require.Zero(t, loads)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
+		require.Equal(t, int64(2), recorded(StatMetadataRequestsToCache), "GetOrLoad records the statistics of any value, such as a table of contents")
+		require.Equal(t, int64(len("fresh-1")), recorded(StatMetadataBytesFromCache))
+		require.Equal(t, int64(1), recorded(StatMetadataRequestsToStorage), "a request for a whole object counts")
+		require.Equal(t, int64(len("fresh-1")), recorded(StatMetadataBytesFromStorage))
 	})
 
 	t.Run("loads, stores over the old value and returns the new bytes when accept rejects the hit", func(t *testing.T) {
@@ -397,6 +431,18 @@ func TestCache_GetOrLoad(t *testing.T) {
 		require.Equal(t, []byte("stale"), mc.GetInternal()[keyPrefix+"obj"])
 	})
 
+	t.Run("stores a loaded value of any size when the cache has no limit", func(t *testing.T) {
+		mc := cache.NewMockCache()
+		c := newTestCache(mc, 0, nil)
+		large := make([]byte, 16<<20)
+
+		got, err := c.GetOrLoad(t.Context(), "obj", nil, func(context.Context) ([]byte, error) { return large, nil })
+
+		require.NoError(t, err)
+		require.Len(t, got, len(large))
+		require.Contains(t, mc.GetInternal(), keyPrefix+"obj")
+	})
+
 	t.Run("accepts every hit when accept is nil", func(t *testing.T) {
 		mc := cache.NewMockCache()
 		c := newTestCache(mc, 0, nil)
@@ -488,12 +534,12 @@ func TestNewBackend(t *testing.T) {
 		require.Equal(t, int64(1024), maxItemBytes)
 	})
 
-	t.Run("falls back to the default limit when the memcached max item size is zero", func(t *testing.T) {
+	t.Run("reports no limit when the memcached max item size is zero", func(t *testing.T) {
 		backend, maxItemBytes, err := NewBackend(memcachedConfig("test.metadata-cache.", 0), prometheus.NewRegistry(), log.NewNopLogger())
 		require.NoError(t, err)
 		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
+		require.Zero(t, maxItemBytes)
 	})
 
 	t.Run("ignores the memcached max item size when the backend is not memcached", func(t *testing.T) {
@@ -504,7 +550,7 @@ func TestNewBackend(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(backend.Stop)
 
-		require.Equal(t, int64(DefaultMaxItemBytes), maxItemBytes)
+		require.Zero(t, maxItemBytes)
 	})
 
 	t.Run("returns an error when memcached and redis are both set", func(t *testing.T) {
@@ -536,6 +582,14 @@ type stopCountingCache struct {
 }
 
 func (c *stopCountingCache) Stop() { c.stops.Inc() }
+
+// recordStorageRead records in the region of ctx the statistics of one object-store request that
+// downloads the given number of bytes, as the instrumented bucket does.
+func recordStorageRead(ctx context.Context, request *xcap.StatisticInt64, downloaded int) {
+	region := xcap.RegionFromContext(ctx)
+	region.Record(request.Observe(1))
+	region.Record(bucketstat.StatObjectBytesDownloaded.Observe(int64(downloaded)))
+}
 
 func newTestCache(backend cache.Cache, maxItemBytes int64, logger log.Logger) *Cache {
 	return NewCache(backend, maxItemBytes, KindLogsCache, NewCacheMetrics(nil), logger)

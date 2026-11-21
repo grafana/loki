@@ -1002,7 +1002,7 @@ is trying to produce records, for example during a broker rollout, a partition r
      write_timeout: 20s
    ```
 
-   Ensure that this remains less than the distributor's `-distributor.write-timeout` (default: 30s) to avoid distributor-level timeouts.
+   Ensure that this remains less than the server's `-server.http-write-timeout` (default: 30s), which applies to the distributor's HTTP server along with every other Loki component, to avoid the server timing out the request first.
 
 **Properties:**
 
@@ -1295,7 +1295,7 @@ Follow this workflow when investigating ingestion issues:
 
 ## Additional resources
 
-- [Loki Configuration Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/)
+- [Loki Configuration Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/)
 - [Request Validation and Rate Limits](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/request-validation-rate-limits/)
 - [Write-Ahead Log Documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/)
 - [Overrides exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/overrides-exporter/)

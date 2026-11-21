@@ -29,7 +29,8 @@ var (
 	ErrInvalidProducerMaxRecordSizeBytes           = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, MaxProducerRecordDataBytesLimit)
 	ErrInvalidProducerMaxInflightRequestsPerBroker = errors.New("the configured producer max inflight requests per broker must be greater than or equal to 1")
 	ErrInvalidProducerLinger                       = errors.New("the configured producer linger must be greater than or equal to 0")
-	ErrInvalidAPIVersionsMaxVersion                = fmt.Errorf("the configured ApiVersions max version must be between 0 and %d (0 uses the franz-go default)", DefaultAPIVersionsMaxVersion)
+	ErrInvalidAPIVersionsMaxVersion                = fmt.Errorf("the configured ApiVersions max version must be between 0 and %d (0 removes the cap)", DefaultAPIVersionsMaxVersion)
+	ErrInvalidMaxDecompressBatchBytes              = fmt.Errorf("the configured max decompress batch bytes must be between 0 and %d (0 uses the Kafka client default of 1 GiB)", DefaultMaxDecompressBatchBytes)
 )
 
 // Config holds the generic config for the Kafka backend.
@@ -67,6 +68,8 @@ type Config struct {
 	TracingEnabled        bool `yaml:"tracing_enabled"`
 
 	APIVersionsMaxVersion int `yaml:"api_versions_max_version"`
+
+	MaxDecompressBatchBytes int `yaml:"max_decompress_batch_bytes"`
 }
 
 type ClientConfig struct {
@@ -91,6 +94,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
 	f.DurationVar(&cfg.WriteTimeout, prefix+".write-timeout", 10*time.Second, "How long to wait for an incoming write request to be successfully committed to the Kafka backend.")
 	f.IntVar(&cfg.APIVersionsMaxVersion, prefix+".api-versions-max-version", DefaultAPIVersionsMaxVersion, apiVersionsMaxVersionUsage)
+	f.IntVar(&cfg.MaxDecompressBatchBytes, prefix+".max-decompress-batch-bytes", DefaultMaxDecompressBatchBytes, maxDecompressBatchBytesUsage)
 
 	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
 	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
@@ -153,6 +157,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.APIVersionsMaxVersion < 0 || cfg.APIVersionsMaxVersion > DefaultAPIVersionsMaxVersion {
 		return ErrInvalidAPIVersionsMaxVersion
+	}
+	if cfg.MaxDecompressBatchBytes < 0 || cfg.MaxDecompressBatchBytes > DefaultMaxDecompressBatchBytes {
+		return ErrInvalidMaxDecompressBatchBytes
 	}
 
 	return nil

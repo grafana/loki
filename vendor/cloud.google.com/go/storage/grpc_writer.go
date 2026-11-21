@@ -457,6 +457,8 @@ func (w *gRPCWriter) pickBufferSender() gRPCBidiWriteBufferSender {
 		return w.newGRPCOneshotBidiWriteBufferSender()
 	}
 	// Resumable write semantics
+	// Attach the aligned chunk size so attemptStatsHandler can record Storage.UploadChunk spans.
+	w.preRunCtx = withUploadChunkSize(w.preRunCtx, w.chunkSize)
 	return w.newGRPCResumableBidiWriteBufferSender()
 }
 
@@ -1604,6 +1606,8 @@ func (s *gRPCResumableBidiWriteBufferSender) connect(ctx context.Context, cs gRP
 		}
 		cs.completions <- gRPCBidiWriteCompletion{flushOffset: q.GetPersistedSize()}
 	}
+	// Record the upload ID for both new and resumed uploads.
+	recordUploadID(ctx, s.upid)
 
 	var rotate atomic.Bool
 

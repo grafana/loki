@@ -246,13 +246,17 @@ The `count_over_time` function doesn't use unwrapped values - it just counts log
 
 ## Query limit errors
 
-These errors occur when queries exceed configured resource limits. They return HTTP status code `400 Bad Request`.
+These errors occur when queries exceed configured resource limits. They return HTTP status code `400 Bad Request` unless otherwise noted.
 
 ### Error: Maximum series reached
 
 **Error message:**
 
 `maximum number of series (<limit>) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()`
+
+{{< admonition type="note" >}}
+This limit has two different enforcement behaviors depending on where it is hit. The Query Frontend enforces it up front and fails the query with the error above. In some execution paths, the querier instead returns the partial results computed so far along with a warning: `maximum number of series (<limit>) reached for a single query; returning partial results`. If you see results accompanied by this warning instead of a hard failure, the query succeeded but may be incomplete.
+{{< /admonition >}}
 
 **Cause:**
 
@@ -294,59 +298,6 @@ The query matches more unique label combinations (series) than the configured li
 **Properties:**
 
 - Enforced by: Query Frontend
-- Retryable: No (query must be modified)
-- HTTP status: 400 Bad Request
-- Configurable per tenant: Yes
-
-### Error: Cardinality issues
-
-**Error message:**
-
-`cardinality limit exceeded for {}; 100001 entries, more than limit of 100000`
-
-**Cause:**
-
-The query produces results with too many unique label combinations. This protects against queries that would generate excessive memory usage and slow performance.
-
-**Default configuration:**
-
-- `cardinality_limit`: 100000
-
-**Resolution:**
-
-* **Use more specific label selectors** to reduce the number of unique streams.
-* **Apply aggregation functions** to reduce cardinality:
-
-   ```logql
-   sum by (status) (rate({job="nginx"}[5m]))
-   ```
-
-* **Use `by()` or `without()` clauses** to group results and reduce dimensions:
-
-   ```logql
-   sum by (status, method) (rate({job="nginx"} | json [5m]))
-   ```
-
-   Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality:
-
-   ```logql
-   # Drop high-cardinality labels like request_id or trace_id
-   {job="nginx"} | json | drop request_id, trace_id, session_id
-   
-   # Keep only the labels you need
-   {job="nginx"} | json | keep status, method, path
-   ```
-
-* **Increase the limit** if needed:
-
-   ```yaml
-   limits_config:
-     cardinality_limit: 200000  #default is 100000
-   ```
-
-**Properties:**
-
-- Enforced by: Query Engine
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
@@ -473,6 +424,10 @@ Or for un-shardable queries:
 
 `un-shardable query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
 
+Or for a single shard of a shardable query:
+
+`shard query is too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
+
 **Cause:**
 
 Even after query splitting and sharding, individual query shards exceed the per-querier byte limit.
@@ -563,7 +518,12 @@ The range vector interval (in brackets like `[5m]`) exceeds configured limits.
    rate({app="foo"}[1h])
    ```
 
-* **Check your configuration** for `max_query_length` limits. The default is `30d1h`.
+* **Check your configuration** for `max_query_range` limits, which caps the size of the `[range]` interval inside a range or metric query. The default is `0` (disabled/unlimited):
+
+   ```yaml
+   limits_config:
+     max_query_range: 1h
+   ```
 
 **Properties:**
 
@@ -800,12 +760,6 @@ The query exceeded the configured timeout. This can happen due to:
      http_server_write_timeout: 5m
    ```
 
-* **Use sampling** for exploratory queries
-
-  ```logql
-   {job="app"} | line_format "{{__timestamp__}} {{.msg}}" | sample 0.1
-   ```
-
 * **Check for network issues** between components.
 
 **Properties:**
@@ -900,18 +854,18 @@ Query parallelism is set to 0, effectively disabling queries for the tenant.
 **Resolution:**
 
 * **Contact your Loki administrator** to enable querying.
-* **Check configuration** for `max_query_parallelism`:
+* **Check configuration** for `tsdb_max_query_parallelism`, which controls query parallelism for TSDB (the only supported index type). It must be greater than zero:
 
    ```yaml
    limits_config:
-     max_query_parallelism: 32     #(the default)
+     tsdb_max_query_parallelism: 128    #(the default)
    ```
 
 **Properties:**
 
 - Enforced by: Query Frontend
 - Retryable: No (until configuration is fixed)
-- HTTP status: 400 Bad Request
+- HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
 ### Error: Parse error on a `variants()` query
@@ -1137,15 +1091,11 @@ When tailing logs, the WebSocket connection was closed unexpectedly. This can ha
 
 These errors occur when requested data is not available.
 
-### Error: No data found
+### No data returned
 
-**Error message:**
+**Symptom:**
 
-```text
-no data found
-```
-
-Or an empty result set with no error message.
+The query returns an empty result set with no error message.
 
 **Cause:**
 
@@ -1187,19 +1137,11 @@ The query time range contains no matching log data. This can happen if:
 - HTTP status: 200 OK (with empty result)
 - Configurable per tenant: No
 
-### Error: Index not ready
+### Error: Index not yet available
 
-**Error message:**
+**Symptom:**
 
-```text
-index not ready
-```
-
-Or:
-
-```text
-index gateway not ready for time range
-```
+Queries over a given time range return no results, or fail, even though log data for that range was ingested. This doesn't always surface as a single consistent error message to the client; on the server side it can appear in ingester or index-gateway logs as a message similar to `skip sync since the index set is not ready`.
 
 **Cause:**
 
@@ -1225,7 +1167,7 @@ The index for the requested time range is not yet available for querying. This c
 1. **Check the configuration** for index readiness:
 
    ```yaml
-   query_range:
+   limits_config:
      query_ready_index_num_days: 7  #default is 0
    ```
 
@@ -1235,7 +1177,7 @@ The index for the requested time range is not yet available for querying. This c
 
 - Enforced by: Index Gateway/Querier
 - Retryable: Yes (wait and retry)
-- HTTP status: 503 Service Unavailable
+- HTTP status: Varies (no single dedicated client-facing error)
 - Configurable per tenant: No
 
 ### Error: Tenant limits
@@ -1276,7 +1218,7 @@ The tenant has exceeded the maximum number of concurrent streaming (tail) reques
 
 - Enforced by: Querier
 - Retryable: Yes (when connections are available)
-- HTTP status: 429 Too Many Requests
+- HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
 ## Storage errors
@@ -1348,7 +1290,7 @@ The requested chunk or object doesn't exist in storage. This might happen if:
 **Error message:**
 
 ```text
-failed to decode chunk '<chunk_key>' for tenant '<tenant>': <error>
+failed to decode chunk '<chunk_key>' for tenant `<tenant>`: <error>
 ```
 
 **Cause:**
@@ -1423,9 +1365,9 @@ Follow this workflow when investigating query issues:
 
 - Learn more about [LogQL Query Language](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)
 - Configure appropriate [query limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config)
-- Learn more about [Query performance tuning](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-acceleration/)
+- Learn more about [Query acceleration](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_acceleration/)
 - Review the [LogCLI documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/)
-- Learn more about [LogQL query optimization](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/)
-- Review [query performance best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/best-practices/)
-- Use [query debugging features](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_stats/) to analyze slow queries
+- Learn more about [Log queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/)
+- Review [query performance best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/query/bp-query/)
+- Use the [LogCLI `stats` command](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/#stats-command-reference) to analyze slow queries
 - Explore the [Grafana Loki GitHub repository](https://github.com/grafana/loki) for community support

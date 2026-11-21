@@ -6,8 +6,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func Test_staticLabelStage_Process(t *testing.T) {
@@ -48,7 +46,7 @@ func Test_staticLabelStage_Process(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			st, err := newStaticLabelsStage(util_log.Logger, test.config)
+			st, err := newStaticLabelsStage(test.config)
 			if err != nil {
 				t.Fatal(err)
 			}

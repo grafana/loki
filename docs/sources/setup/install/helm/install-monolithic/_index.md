@@ -48,16 +48,11 @@ Deploying the Helm chart with a single replica deploys the following components:
 - Loki Gateway (1 NGINX replica)
 - Chunks cache (1 StatefulSet)
 - Results cache (1 StatefulSet)
-- Minio (optional, deprecated — see warning below)
 
 Create the configuration file `values.yaml`:
 
 {{< admonition type="note" >}}
 You must specify `commonConfig.replication_factor: 1` if you are only using 1 replica, otherwise requests will fail.
-{{< /admonition >}}
-
-{{< admonition type="warning" >}}
-The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` without also setting `ignoreMinioDeprecation: true` causes chart rendering to fail with chart v17+. Use the workaround shown below only for temporary testing. For production, configure an external object storage backend instead.
 {{< /admonition >}}
 
 ```yaml
@@ -68,11 +63,13 @@ loki:
     configs:
       - from: "2024-04-01"
         store: tsdb
-        object_store: s3
+        object_store: filesystem
         schema: v13
         index:
           prefix: loki_index_
           period: 24h
+  storage:
+    type: filesystem
   pattern_ingester:
     enabled: true
   limits_config:
@@ -81,10 +78,6 @@ loki:
   rulerConfig:
     enable_api: true
 
-ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
-minio:
-  enabled: true
-      
 deploymentMode: Monolithic
 
 singleBinary:
@@ -120,7 +113,7 @@ bloomGateway:
   replicas: 0
 ```
 
-This configuration uses the built-in MinIO subchart for convenience, which is deprecated and will be removed on 2026-10-31. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
+This configuration uses filesystem storage for convenience. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
 
 ### Multiple Replicas  
 
@@ -131,16 +124,11 @@ Deploying the Helm chart with multiple replicas deploys the following components
 - Loki Gateway (1 NGINX replica)
 - Chunks cache (1 StatefulSet)
 - Results cache (1 StatefulSet)
-- Minio (optional, deprecated — see warning below)
 
 Create the configuration file `values.yaml`:
 
 {{< admonition type="note" >}}
 If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode. When running replicas of a single binary, you must configure object storage.
-{{< /admonition >}}
-
-{{< admonition type="warning" >}}
-The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` without also setting `ignoreMinioDeprecation: true` causes chart rendering to fail with chart v17+. Use the workaround shown below only for temporary testing. For production, configure an external object storage backend instead.
 {{< /admonition >}}
 
 ```yaml
@@ -156,6 +144,15 @@ loki:
         index:
           prefix: loki_index_
           period: 24h
+  storage:
+    type: s3
+    bucketNames:
+      chunks: <CHUNKS-BUCKET>
+      ruler: <RULER_BUCKET>
+    s3:
+      endpoint: <S3-ENDPOINT>
+      accessKeyId: <KEY-ID>
+      secretAccessKey: <ACCESS-KEY>
   pattern_ingester:
     enabled: true
   limits_config:
@@ -164,10 +161,6 @@ loki:
   rulerConfig:
     enable_api: true
 
-ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
-minio:
-  enabled: true
-      
 deploymentMode: Monolithic
 
 singleBinary:
@@ -203,7 +196,7 @@ bloomGateway:
   replicas: 0
 ```
 
-In this configuration, update `commonConfig.replication_factor` and `singleBinary.replicas` to your desired number of replicas. This configuration uses the built-in MinIO subchart for convenience, which is deprecated and will be removed on 2026-10-31. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
+In this configuration, update `commonConfig.replication_factor` and `singleBinary.replicas` to your desired number of replicas. This configuration uses S3-compatible object storage. Replace the placeholders with your own S3-compatible endpoint and credentials. For production deployments, configure an external object storage provider such as AWS S3, GCS, or Azure Blob Storage.
 
 ## Deploying the Helm chart for development and testing
 
@@ -250,14 +243,14 @@ If this is the first time you have deployed the Loki Helm chart since the move t
 
 ## Object Storage Configuration
 
-After testing Loki with MinIO, we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+We recommend configuring Loki with an object storage provider for production deployments. The following examples show how to configure Loki with different object storage providers:
 
 {{< admonition type="note" >}}
 As of chart 18.3.0, `singleBinary.persistence.enableStatefulSetAutoDeletePVC` defaults to `false` (it defaulted to `true` before). This means the persistent volume claims (PVCs) for the single binary StatefulSet are retained, not automatically deleted, when the StatefulSet is deleted or scaled down. Set `singleBinary.persistence.enableStatefulSetAutoDeletePVC: true` in your values file to restore the old auto-delete behavior.
 {{< /admonition >}}
 
 {{< admonition type="caution" >}}
-When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
+When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
 {{< /admonition >}}
 
 {{< collapse title="S3" >}}
@@ -312,10 +305,6 @@ loki:
       insecure: false
       # HTTP configuration settings
       http_config: {}
-
-# Disable minio storage
-minio:
-  enabled: false
 
 deploymentMode: Monolithic
 
@@ -398,10 +387,6 @@ loki:
       chunks: "chunks"
       ruler: "ruler"
       admin: "admin"
-
-# Disable minio storage
-minio:
-  enabled: false
 
 deploymentMode: Monolithic
 

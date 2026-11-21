@@ -23,6 +23,7 @@
   // sets force.enabled to true, and that overrides 'enabled: false' in every packageRule.
   ignoreDeps: [
     'github.com/grafana/loki/pkg/push',
+    'hashicorp/terraform',
   ],
   prHourlyLimit: 4,
   baseBranchPatterns: [

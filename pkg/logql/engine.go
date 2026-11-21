@@ -186,6 +186,12 @@ type EngineOpts struct {
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 
 	MaxQuerySeriesCutoff bool `yaml:"max_query_series_cutoff" category:"experimental"`
+
+	// EnableHistograms enables the histogram functions: histogram_over_time, and the functions that read it.
+	// A query that uses one fails while this is off. The functions are in development, so they are off by default.
+	EnableHistograms bool `yaml:"enable_histograms" category:"experimental"`
+
+	MaxQuerySeriesCutoffDryRun bool `yaml:"max_query_series_cutoff_dry_run" category:"experimental" doc:"hidden"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -196,9 +202,26 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
+	f.BoolVar(&opts.EnableHistograms, prefix+"enable-histograms", false, "Experimental: Enable the histogram functions, histogram_over_time and the functions that read its result, such as histogram_quantile. The functions are in development, so a query that uses one fails while this is disabled. Enable it on the queriers, on the query frontends, and on the rulers that evaluate rules themselves, because each of them refuses a query that uses histograms without it.")
+	f.BoolVar(&opts.MaxQuerySeriesCutoffDryRun, prefix+"max-query-series-cutoff-dry-run", false, "Experimental: Evaluate the max_query_series cut-off without failing queries early, and count the queries where it would have fired in loki_logql_series_cutoff_dry_run_total. Has no effect when max_query_series_cutoff is enabled.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
+}
+
+// CheckHistograms returns an error if expr uses the histogram functions and they are not enabled. The engine
+// makes the same check before it evaluates a query. A component that passes a query on without evaluating it,
+// such as the query frontend, calls this to refuse the query before it does any work for it.
+func (opts *EngineOpts) CheckHistograms(expr syntax.Expr) error {
+	return checkHistograms(opts.EnableHistograms, expr)
+}
+
+// checkHistograms returns errHistogramsDisabled for an expression that uses histograms when they are not enabled.
+func checkHistograms(enabled bool, expr syntax.Expr) error {
+	if !enabled && syntax.UsesHistograms(expr) {
+		return errHistogramsDisabled
+	}
+	return nil
 }
 
 // queryOpts is the subset of EngineOpts that a query reads at execution time. The remaining
@@ -208,15 +231,28 @@ type queryOpts struct {
 	logExecutingQuery bool
 	// maxQuerySeriesCutoff controls if max_query_series is enforced before the output is built.
 	maxQuerySeriesCutoff bool
+	// histogramsEnabled controls if the histogram functions are allowed. A query that uses them fails
+	// without it.
+	histogramsEnabled bool
+	// maxQuerySeriesCutoffDryRun controls if the early cut-off only reports that it would have fired.
+	maxQuerySeriesCutoffDryRun bool
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
 func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
-		logExecutingQuery:    opts.LogExecutingQuery,
-		maxQuerySeriesCutoff: opts.MaxQuerySeriesCutoff,
+		logExecutingQuery:          opts.LogExecutingQuery,
+		histogramsEnabled:          opts.EnableHistograms,
+		maxQuerySeriesCutoff:       opts.MaxQuerySeriesCutoff,
+		maxQuerySeriesCutoffDryRun: opts.MaxQuerySeriesCutoffDryRun,
 	}
 }
+
+// errHistogramsDisabled is returned for a query that uses histograms when they are not enabled. It wraps
+// ErrParse so that it is served as a client error: a server error is retried by the query frontend and
+// counts against the error rate.
+var errHistogramsDisabled = fmt.Errorf("%w: histogram functions are experimental and not enabled, "+
+	"set -querier.engine.enable-histograms to enable them", logqlerr.ErrParse)
 
 func (opts *EngineOpts) applyDefault() {
 	if opts.MaxLookBackPeriod == 0 {
@@ -331,7 +367,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
+	cutoffTracker, ctx := q.newCutoffTrackerWithContext(ctx)
+
 	data, err := q.Eval(ctx)
+
+	cutoffTracker.report(ctx, q.logger, q.params, err)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
@@ -411,6 +451,10 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
+	if err := checkHistograms(q.opts.histogramsEnabled, expr); err != nil {
+		return nil, err
+	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -444,7 +488,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)))
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withCutoffTracker(cutoffTrackerFromContext(ctx)))
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +538,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 		series, ok = sm[hash]
 
 		// create a new series if under the limit
-		if !ok && !limitExceeded {
+		if !ok {
 			// Check if adding a new series would exceed the limit
 			if maxSeries > 0 && len(sm) >= maxSeries {
 				// We've reached the series limit, skip adding new series
@@ -516,11 +560,23 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	return limitExceeded
 }
 
+// newCutoffTrackerWithContext returns the tracker that records where the early cut-off would have
+// fired, and a context that carries it. Unless the cut-off only runs as a dry run, the tracker is
+// nil and the context is returned unchanged.
+func (q *query) newCutoffTrackerWithContext(ctx context.Context) (*cutoffTracker, context.Context) {
+	if q.opts.maxQuerySeriesCutoff || !q.opts.maxQuerySeriesCutoffDryRun {
+		return nil, ctx
+	}
+	t := newCutoffTracker()
+	return t, contextWithCutoffTracker(ctx, t)
+}
+
 // maxQuerySeriesCutoffLimit returns the limit that preserving expressions may fail on before the
-// query's output is built, or zero when the early cut-off is off. Logs Drilldown requests are
+// query's output is built, or zero when the early cut-off is off. A dry run gets the limit too, and the cutoffTracker
+// stops it from failing the query. Logs Drilldown requests are
 // exempt, so they still get partial results and a warning from JoinSampleVector.
 func (q *query) maxQuerySeriesCutoffLimit(ctx context.Context, maxSeries int) int {
-	if !q.opts.maxQuerySeriesCutoff || httpreq.IsLogsDrilldownRequest(ctx) {
+	if !(q.opts.maxQuerySeriesCutoff || q.opts.maxQuerySeriesCutoffDryRun) || httpreq.IsLogsDrilldownRequest(ctx) {
 		return 0
 	}
 	// vector() steps in whole milliseconds and the range iterators in nanoseconds, so below a

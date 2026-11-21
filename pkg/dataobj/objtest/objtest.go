@@ -12,6 +12,7 @@ package objtest
 
 import (
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ import (
 	compactionv2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -484,4 +486,31 @@ func newTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *metast
 		metastore.NewTocWriterMetrics(nil),
 		indexobj.NewBuilderMetrics(nil),
 	)
+}
+
+// MetadataRegionEnd returns where the metadata regions of all sections of the data object at path end:
+// the size of the header and the file metadata, plus the metadata of every section. The object holds
+// no section data before that offset.
+//
+// It reads the object through the public API of package dataobj, so a test can use the result as the
+// expected end of the metadata region of an object, without trusting the code under test.
+func MetadataRegionEnd(t testing.TB, bucket objstore.BucketReader, path string) int64 {
+	t.Helper()
+
+	opened, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+	require.NoError(t, err)
+
+	// The header holds the size of the file metadata after the magic.
+	rc, err := bucket.GetRange(t.Context(), path, int64(len(format.FileMagic)), format.HeaderSize-int64(len(format.FileMagic)))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rc.Close()) }()
+	var size [format.HeaderSize - len(format.FileMagic)]byte
+	_, err = io.ReadFull(rc, size[:])
+	require.NoError(t, err)
+
+	end := format.HeaderSize + int64(binary.LittleEndian.Uint32(size[:]))
+	for _, sec := range opened.Sections() {
+		end += sec.Reader.MetadataSize()
+	}
+	return end
 }

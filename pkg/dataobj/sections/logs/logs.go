@@ -102,6 +102,14 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// NumRows returns the number of rows in the section.
+func (s *Section) NumRows() int {
+	if len(s.columns) == 0 {
+		return 0
+	}
+	return int(s.columns[0].inner.Metadata().RowsCount)
+}
+
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
@@ -203,10 +211,10 @@ const (
 
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:   "invalid",
-	ColumnTypeStreamID:  "stream_id",
-	ColumnTypeTimestamp: "timestamp",
-	ColumnTypeMetadata:  "metadata",
-	ColumnTypeMessage:   "message",
+	ColumnTypeStreamID:  format.LogsColumnStreamID,
+	ColumnTypeTimestamp: format.LogsColumnTimestamp,
+	ColumnTypeMetadata:  format.LogsColumnMetadata,
+	ColumnTypeMessage:   format.LogsColumnMessage,
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -215,13 +223,13 @@ func ParseColumnType(text string) (ColumnType, error) {
 	switch text {
 	case "invalid":
 		return ColumnTypeInvalid, nil
-	case "stream_id":
+	case format.LogsColumnStreamID:
 		return ColumnTypeStreamID, nil
-	case "timestamp":
+	case format.LogsColumnTimestamp:
 		return ColumnTypeTimestamp, nil
-	case "metadata":
+	case format.LogsColumnMetadata:
 		return ColumnTypeMetadata, nil
-	case "message":
+	case format.LogsColumnMessage:
 		return ColumnTypeMessage, nil
 	}
 

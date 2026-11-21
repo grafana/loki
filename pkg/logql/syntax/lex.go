@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -105,7 +106,17 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
+	OpRangeTypeHistogram:   HISTOGRAM_OVER_TIME,
 	OpTypeVector:           VECTOR,
+
+	// histograms
+	OpBuckets:            BUCKETS,
+	OpHistogramQuantile:  HISTOGRAM_QUANTILE,
+	OpHistogramQuantiles: HISTOGRAM_QUANTILES,
+	OpHistogramFraction:  HISTOGRAM_FRACTION,
+	OpHistogramCount:     HISTOGRAM_COUNT,
+	OpHistogramSum:       HISTOGRAM_SUM,
+	OpHistogramAvg:       HISTOGRAM_AVG,
 
 	// vec ops
 	OpTypeSum:      SUM,
@@ -248,6 +259,11 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 
 	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
+	}
+
+	if r != scanner.Ident {
+		l.Error(fmt.Sprintf("unexpected character %q", tokenText))
+		return 0
 	}
 
 	lval.str = tokenText

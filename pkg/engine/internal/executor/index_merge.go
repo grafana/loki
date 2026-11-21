@@ -20,19 +20,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// executeIndexMerge orchestrates the index merge: classify sections,
-// drive both merges, feed indexobj.Builder, upload the result, and emit a record
-// reporting the content-hash path.
+// indexPrefetchBytes is how many bytes the index merge and filter read from
+// the start of a source index object when they open it.
+//
+// The decoder keeps these bytes and serves later reads inside them from
+// memory. A window above the 16 KiB minimum of the decoder also holds more
+// section metadata, which saves a request per section.
+const indexPrefetchBytes = 64 * 1024
+
+// executeIndexMerge orchestrates the index merge: classify sections, drive
+// both merges, upload the result, and emit a result record that reports the
+// index objects of the new index run.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
-		artifact, err := c.doIndexMerge(ctx, node)
+		artifacts, err := c.doIndexMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		if artifact == nil {
-			return errorPipeline(ctx, errors.New("IndexMerge: missing result artifact"))
-		}
-		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		rec, err := v2.EncodeResultArtifacts(memory.DefaultAllocator, artifacts)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -40,7 +45,7 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 	})
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (*v2.ResultArtifact, error) {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -52,73 +57,61 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
-	// Create index object builder
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, node.Tenant, layout)
+	out, err := c.newIndexOutput(node.Tenant, layout)
 	if err != nil {
-		return nil, fmt.Errorf("creating index builder: %w", err)
+		return nil, err
 	}
-	defer builder.Reset()
+	defer out.reset()
 
-	// Merge postings sections
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
-
-	// Merge stats sections
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+	statsObjects, err := statsSources(node, objects)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	artifact, compressedBytes, uncompressedBytes, err := c.uploadIndex(ctx, node.Tenant, builder)
+	artifacts, sizes, err := out.finish(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
 	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, compressedBytes, uncompressedBytes)
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, sizes.compressed, sizes.uncompressed)
 	}
-	return artifact, nil
+	return artifacts, nil
 }
 
-// uploadIndex flushes builder and uploads the index object to a content-hash
-// path. It returns the artifact for the uploaded object and the object's
-// compressed and uncompressed sizes in bytes.
-func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *indexobj.MergeBuilder) (artifact *v2.ResultArtifact, compressedBytes, uncompressedBytes int64, err error) {
-	// Read the size before Flush, because Flush resets the builder.
-	uncompressedBytes = int64(builder.GetEstimatedSize())
-
-	obj, closer, err := builder.Flush()
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("flushing index: %w", err)
+// statsSources returns the objects whose stats rows node merges. A merge over
+// every key merges the stats rows of every object. A merge with a bounded key
+// span merges only those of its stats sources. statsSources returns an error
+// if a stats source is not a source of node.
+func statsSources(node *physical.IndexMerge, objects []objectSections) ([]objectSections, error) {
+	if node.KeySpan.IsAll() {
+		return objects, nil
 	}
-
-	pathReader, err := obj.Reader(ctx)
-	if err != nil {
-		return nil, 0, 0, errors.Join(err, closer.Close())
+	sources := make(map[string]struct{})
+	for _, run := range node.Runs {
+		for _, ref := range run.Sections {
+			sources[ref.ObjectPath] = struct{}{}
+		}
 	}
-	path, hashErr := v2.CompactedIndexPath(tenant, pathReader)
-	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
-		hashErr = cerr
+	wanted := make(map[string]struct{}, len(node.StatsSources))
+	for _, path := range node.StatsSources {
+		if _, ok := sources[path]; !ok {
+			return nil, fmt.Errorf("stats source %q is not a source of the merge", path)
+		}
+		wanted[path] = struct{}{}
 	}
-	if hashErr != nil {
-		return nil, 0, 0, errors.Join(hashErr, closer.Close())
+	var kept []objectSections
+	for _, obj := range objects {
+		if _, ok := wanted[obj.path]; ok {
+			kept = append(kept, obj)
+		}
 	}
-
-	compressedBytes = obj.Size()
-	uploadReader, err := obj.Reader(ctx)
-	if err != nil {
-		return nil, 0, 0, errors.Join(err, closer.Close())
-	}
-	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
-	}
-	if err := uploadReader.Close(); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
-	}
-
-	if err := closer.Close(); err != nil {
-		return nil, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
-	}
-	return &v2.ResultArtifact{Path: path}, compressedBytes, uncompressedBytes, nil
+	return kept, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable
@@ -126,20 +119,34 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 // object. Non-mergable section types (streams, indexPointers) are silently
 // ignored.
 //
-// classifyRuns also returns the stream layout of the source indexes, and an
-// error if they do not share one, because the output records one layout.
+// A merge with a bounded key span takes only the postings sections that its
+// runs reference, so a task of a split merge reads no section outside its
+// span. It returns an error if a referenced section is not a postings section
+// of the tenant. A merge over every key takes every postings section of each
+// object.
+//
+// classifyRuns also returns the stream layout of the source indexes. It
+// returns an error if they record different layouts, or if only some record
+// one.
 func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
 	objects := make(map[string]*dataobj.Object)
+	// referenced holds the referenced section indexes of each object. Only a
+	// merge with a bounded key span uses it.
+	referenced := make(map[string]map[int64]struct{})
 
 	for _, runRef := range node.Runs {
 		for _, sectionRef := range runRef.Sections {
+			if referenced[sectionRef.ObjectPath] == nil {
+				referenced[sectionRef.ObjectPath] = make(map[int64]struct{})
+			}
+			referenced[sectionRef.ObjectPath][sectionRef.SectionIndex] = struct{}{}
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
-			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
+			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, indexPrefetchBytes)
 			if openErr != nil {
 				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
@@ -156,17 +163,15 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	// For each unique source object, scan its sections and classify by type,
 	// preserving section order. Other section types (streams, indexPointers)
-	// are skipped silently. doIndexFilter also skips streams sections, but it
-	// rejects every other type.
+	// are skipped silently. openFilterSources also skips streams sections, but
+	// it rejects every other type.
 	grouped := make([]objectSections, 0, len(paths))
-	var (
-		layout       streams.Layout
-		layoutSource string
-	)
+	var layout sourceLayout
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
-		for _, sec := range obj.Sections() {
+		var found int
+		for i, sec := range obj.Sections() {
 			// Index objects are multi-tenant; only merge sections for the tenant
 			// being compacted, or other tenants' rows leak into this output.
 			if sec.Tenant != node.Tenant {
@@ -174,30 +179,76 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			switch {
 			case postings.CheckSection(sec):
+				if !node.KeySpan.IsAll() {
+					if _, ok := referenced[path][int64(i)]; !ok {
+						continue
+					}
+					found++
+				}
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
 				// default: skip silently (streams/indexPointers etc.)
 			}
 		}
-		// Only stats sections record a layout, so an object without them does
-		// not constrain the layout of the output.
-		if len(group.stats) > 0 {
-			objLayout, _, err := indexobj.TenantLayout(ctx, obj, node.Tenant)
-			if err != nil {
-				return nil, streams.Layout{}, fmt.Errorf("reading stream layout of index %q: %w", path, err)
-			}
-			if layoutSource != "" && !objLayout.Equal(layout) {
-				return nil, streams.Layout{}, fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, objLayout, layoutSource, layout)
-			}
-			layout, layoutSource = objLayout, path
+		if !node.KeySpan.IsAll() && found != len(referenced[path]) {
+			return nil, streams.Layout{}, fmt.Errorf("object %q: %d of the %d referenced sections are not postings sections of tenant %q", path, len(referenced[path])-found, len(referenced[path]), node.Tenant)
+		}
+		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
+			return nil, streams.Layout{}, err
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
 		}
 	}
 
-	return grouped, layout, nil
+	merged, err := layout.shared()
+	if err != nil {
+		return nil, streams.Layout{}, err
+	}
+	return grouped, merged, nil
+}
+
+// sourceLayout collects the stream layouts that the source index objects of
+// one task record for a tenant.
+//
+// The output index records one layout for all the log objects it indexes. So
+// all sources must record the same layout, or none must record one. The
+// planner groups index runs that way. A merge that mixes a source without a
+// layout with sources that have one would claim that layout for log objects
+// that were not written in it.
+type sourceLayout struct {
+	layout            streams.Layout
+	pathWithLayout    string
+	pathWithoutLayout string
+}
+
+// add reads the layout that obj, the source index object at path, records
+// for tenant. It returns an error if the layout differs from the layout of an
+// earlier source.
+func (s *sourceLayout) add(ctx context.Context, path string, obj *dataobj.Object, tenant string) error {
+	layout, ok, err := indexobj.TenantLayout(ctx, obj, tenant)
+	if err != nil {
+		return fmt.Errorf("reading stream layout of index %q: %w", path, err)
+	}
+	if !ok {
+		s.pathWithoutLayout = path
+		return nil
+	}
+	if s.pathWithLayout != "" && !layout.Equal(s.layout) {
+		return fmt.Errorf("index %q has stream layout %v, but index %q has %v", path, layout, s.pathWithLayout, s.layout)
+	}
+	s.layout, s.pathWithLayout = layout, path
+	return nil
+}
+
+// shared returns the layout of the sources. It is the zero layout if no source
+// records one. It returns an error if only some sources record a layout.
+func (s *sourceLayout) shared() (streams.Layout, error) {
+	if s.pathWithLayout != "" && s.pathWithoutLayout != "" {
+		return streams.Layout{}, fmt.Errorf("index %q records no stream layout, but index %q records %v", s.pathWithoutLayout, s.pathWithLayout, s.layout)
+	}
+	return s.layout, nil
 }
 
 // objectSections holds one source object's mergable sections, split by type and
@@ -211,10 +262,17 @@ type objectSections struct {
 	stats    []*dataobj.Section
 }
 
-// mergePostingsIntoBuilder merges the postings sections of all source objects
-// with a K-way loser-tree merge and feeds the result into the builder.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
-	readers := postingsSequences(ctx, objects)
+// keepAll keeps every row, whatever log object the row references.
+func keepAll(string) bool { return true }
+
+// mergePostingsInto merges the postings rows of all source index objects
+// whose posting key is in keySpan, with a K-way loser-tree merge. It writes a
+// row to out only if keep returns true for the log object path of the row.
+//
+// The readers skip the pages that hold no key of keySpan, so a task of a
+// merge split by key span reads little more than its own range.
+func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
+	readers := postingsSequences(ctx, objects, keySpan)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -235,16 +293,19 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
-		// ColumnName, LabelValue) means two source indexes reference the same
+		// ColumnName, LabelValue) means two source index objects reference the same
 		// physical section/column/label — this shouldn't happen, so log a
 		// warning. The data is logically equivalent, so keep the first row and
 		// drop the later duplicate.
 		if last != nil && samePostingsKey(*last, row) {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: postings full-key collision",
-				"tenant", tenant,
+				"tenant", out.tenant,
 				"kind", row.Kind,
 				"object_path", row.ObjectPath,
 				"section_index", row.SectionIndex,
@@ -255,7 +316,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 		}
 
 		last = &row
-		if err := c.writePostingsRow(builder, tenant, row); err != nil {
+		if err := out.appendPostingsRow(ctx, row); err != nil {
 			return err
 		}
 	}
@@ -270,8 +331,12 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 }
 
 // postingsSequences returns one sequence over the postings rows of each object
-// that has postings sections, for the K-way merge.
-func postingsSequences(ctx context.Context, objects []objectSections) []sequence[postings.Row] {
+// that has postings sections, for the K-way merge. The sequences return only
+// the rows whose posting key is in keySpan.
+func postingsSequences(ctx context.Context, objects []objectSections, keySpan postings.KeySpan) []sequence[postings.Row] {
+	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+		return openPostingsReader(ctx, sec, keySpan)
+	}
 	readers := make([]sequence[postings.Row], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.postings) == 0 {
@@ -282,27 +347,16 @@ func postingsSequences(ctx context.Context, objects []objectSections) []sequence
 			objectPath: obj.path,
 			sections:   obj.postings,
 			seqIdx:     len(readers),
-			open:       openPostingsReader,
+			open:       open,
 		})
 	}
 	return readers
 }
 
-func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {
-	switch row.Kind {
-	case postings.KindLabel:
-		return builder.AppendPostingsLabelEntry(tenant, row.LabelEntry())
-	case postings.KindBloom:
-		return builder.AppendPostingsBloomEntry(tenant, row.BloomEntry())
-	default:
-		return fmt.Errorf("unknown postings kind: %v", row.Kind)
-	}
-}
-
-// mergeStatsIntoBuilder merges the stats sections of all source objects with a
-// K-way loser-tree merge and feeds the result into the builder. Uses D3
-// aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+// mergeStatsInto merges the stats sections of all source index objects with a
+// K-way loser-tree merge. It writes a row to out only if keep returns true for
+// the log object path of the row.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -336,9 +390,12 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		row := tree.Winner().At()
+		if !keep(row.ObjectPath) {
+			continue
+		}
 
 		// stats.Compare includes (ObjectPath, SectionIndex) as final
-		// tiebreakers, so an equal-key collision here means two source indexes
+		// tiebreakers, so an equal-key collision here means two source index objects
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
@@ -346,7 +403,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		if last != nil && stats.Compare(*last, row) == 0 {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: stats full-key collision",
-				"tenant", tenant,
+				"tenant", out.tenant,
 				"object_path", row.ObjectPath,
 				"section_index", row.SectionIndex,
 				"min_timestamp", row.MinTimestamp,
@@ -356,7 +413,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		}
 
 		last = &row
-		if err := builder.AppendStat(tenant, row); err != nil {
+		if err := out.appendStat(row); err != nil {
 			return err
 		}
 	}
@@ -422,8 +479,7 @@ func (s *sectionConcatSeq[R]) Next() bool {
 			return true
 		}
 		// Current section drained or errored: capture any error, close, advance.
-		err := s.cur.Err()
-		_ = s.cur.Close()
+		err := errors.Join(s.cur.Err(), s.cur.Close())
 		s.cur = nil
 		if err != nil {
 			s.err = err
@@ -443,13 +499,22 @@ func (s *sectionConcatSeq[R]) Close() error {
 	return nil
 }
 
-// openPostingsReader opens a postings section and returns a row iterator over it.
-func openPostingsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+// openPostingsReader opens a postings section and returns an iterator over its
+// rows whose posting key is in keySpan.
+func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan) (iter.CloseIterator[postings.Row], error) {
 	ps, err := postings.Open(ctx, sec)
 	if err != nil {
 		return nil, err
 	}
-	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+	predicate, err := keySpan.Predicate(ps)
+	if err != nil {
+		return nil, fmt.Errorf("building key span predicate: %w", err)
+	}
+	var predicates []postings.Predicate
+	if predicate != nil {
+		predicates = []postings.Predicate{predicate}
+	}
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates})
 	if err := reader.Open(ctx); err != nil {
 		return nil, fmt.Errorf("opening postings reader: %w", err)
 	}
@@ -492,6 +557,10 @@ func heapAt[R any](s sequence[R]) heapVal[R] {
 }
 
 // closeSeq closes a sequence when the loser tree is done with it.
+//
+// It drops the close error. A drained sequence has no open reader, because
+// Next closes each reader and keeps its close error in Err. A sequence that
+// still has an open reader belongs to a merge that already failed.
 func closeSeq[R any](s sequence[R]) {
 	_ = s.Close()
 }

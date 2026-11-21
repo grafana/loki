@@ -76,6 +76,12 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
+	// MaxTaskSize is the maximum uncompressed postings size of one IndexMerge
+	// task. The planner splits a larger merge into tasks by posting key span,
+	// which run in parallel and together write one index run. 0 disables the
+	// split.
+	MaxTaskSize flagext.Bytes `yaml:"max_task_size"`
+
 	// LogMaxRunsPerTask (K for log compaction) is the number of runs in each
 	// planned log merge. Log compaction merges only groups of K runs from one
 	// size level, and keeps the other runs unmerged.
@@ -159,17 +165,24 @@ type SchedulerConfig struct {
 // DeletionSweepConfig holds the settings of the deletion sweep.
 //
 // When enabled, the planner sweeps each tenant once an hour, at a minute
-// that it derives from the tenant ID. A sweep records the objects of the
-// tenant in its file list. Only tenants with the dataobj_deletion_sweep_enabled
-// limit are swept.
+// that it derives from the tenant ID. A sweep scans the tenant directories at
+// most once every 23 hours. It stores the objects that no ToC can reach in
+// the file list of the tenant. Only tenants with the
+// dataobj_deletion_sweep_enabled limit are swept.
 type DeletionSweepConfig struct {
 	// Enabled starts the deletion sweep in the planner.
 	Enabled bool `yaml:"enabled"`
 
 	// MaxConcurrentSweeps caps the sweeps that run at the same time, across
-	// all tenants. Each sweep scans the uncompacted objects of the whole
-	// bucket, so the cap limits the load on object storage.
+	// all tenants. Each sweep lists the tenant directories and reads the ToCs
+	// and index objects of the tenant, so the cap limits the load on object
+	// storage.
 	MaxConcurrentSweeps int `yaml:"max_concurrent_sweeps"`
+
+	// DryRun must be true when the sweep is enabled, so that no operator
+	// expects deletes. Sweeps log a summary and examples of the deletion
+	// candidates and delete nothing.
+	DryRun bool `yaml:"dry_run"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
@@ -268,6 +281,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+	f.Var(&cfg.MaxTaskSize, prefix+"max-task-size",
+		"Experimental: Maximum uncompressed postings size of one IndexMerge task. The planner splits a larger merge into tasks by posting key. The tasks run in parallel and together write one index run. The planner estimates sizes from a sample of the posting keys and cuts only at sampled keys, so a task can exceed the maximum. The estimate shares the size of each postings section evenly over its rows, so a task over large bloom filters can exceed the maximum by more. Each task also merges the stats rows of some of the source indexes, which the maximum does not count. A worker that does not support the split fails its tasks, so upgrade every worker before you set it. 0 disables the split.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
 		"Experimental: Runs per planned log merge (K for log compaction), before logs.max-task-size splits it into tasks. Log compaction merges only groups of K runs from one size level, so a larger K leaves more overlapping runs per window. Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
@@ -290,9 +305,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 	f.BoolVar(&cfg.DeletionSweep.Enabled, prefix+"deletion-sweep.enabled", false,
-		"Experimental: Sweep each tenant once an hour and record its objects in its deletion file list. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
+		"Experimental: Check each tenant once an hour. Scan the tenant directories of a tenant at most once every 23 hours for objects that no table of contents (ToC) file can reach, and store them in the deletion file list of the tenant. The sweep ignores objects outside the tenant directories. Only tenants with the dataobj_deletion_sweep_enabled limit (-dataobj-compaction.deletion-sweep.enable) set to true are swept. Requires dataobj compaction to be enabled.")
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
-		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep scans the uncompacted objects of the whole bucket.")
+		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep lists the tenant directories and reads the table of contents (ToC) files and index objects of the tenant.")
+	f.BoolVar(&cfg.DeletionSweep.DryRun, prefix+"deletion-sweep.dry-run", true,
+		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. A candidate is an object that no table of contents (ToC) file could reach in two sweeps, at least 23 hours apart. Only true is supported.")
 
 	// These configs do not have defaults in the flagset so default values must be Set before registering
 	// the flags to be documented correctly.
@@ -383,6 +400,9 @@ func (cfg *Config) Validate() error {
 	if cfg.DeletionSweep.Enabled && cfg.DeletionSweep.MaxConcurrentSweeps < 1 {
 		return errInvalidMaxConcurrentSweeps
 	}
+	if cfg.DeletionSweep.Enabled && !cfg.DeletionSweep.DryRun {
+		return errDeletionSweepDryRunRequired
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -412,4 +432,5 @@ var (
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 	errInvalidMaxConcurrentSweeps          = errors.New("dataobj.compaction.deletion_sweep.max_concurrent_sweeps must be >= 1 when the deletion sweep is enabled")
 	errDeletionSweepRequiresCompaction     = errors.New("dataobj.compaction.deletion_sweep.enabled requires dataobj.compaction.enabled")
+	errDeletionSweepDryRunRequired         = errors.New("dataobj.compaction.deletion_sweep.dry_run must be true, because deletion sweeps do not delete objects")
 )

@@ -231,6 +231,84 @@ func TestPeriodConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestIndexPeriodicTableConfig_ValidateSharded(t *testing.T) {
+	for _, tc := range []struct {
+		desc          string
+		shardedPrefix string
+		err           string
+	}{
+		{desc: "no sharded copy"},
+		{desc: "sharded copy", shardedPrefix: "index_sharded/"},
+		{desc: "invalid sharded prefix", shardedPrefix: "index_sharded", err: "sharded_path_prefix"},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			cfg := IndexPeriodicTableConfig{
+				PathPrefix:          "index/",
+				ShardedPathPrefix:   tc.shardedPrefix,
+				PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour},
+			}
+			if tc.err == "" {
+				require.NoError(t, cfg.Validate())
+			} else {
+				require.ErrorContains(t, cfg.Validate(), tc.err)
+			}
+		})
+	}
+}
+
+func TestSchemaConfig_ValidateShardedPathPrefix(t *testing.T) {
+	period := func(from, pathPrefix, shardedPrefix string) PeriodConfig {
+		var d DayTime
+		require.NoError(t, d.Set(from))
+		return PeriodConfig{
+			From:      d,
+			IndexType: "tsdb",
+			Schema:    "v13",
+			IndexTables: IndexPeriodicTableConfig{
+				PathPrefix:          pathPrefix,
+				ShardedPathPrefix:   shardedPrefix,
+				PeriodicTableConfig: PeriodicTableConfig{Prefix: "index_", Period: 24 * time.Hour},
+			},
+		}
+	}
+
+	cfg := SchemaConfig{Configs: []PeriodConfig{
+		period("2024-01-01", "index/", ""),
+		period("2025-01-01", "index/", "index_sharded/"),
+	}}
+	require.NoError(t, cfg.Validate())
+
+	cfg = SchemaConfig{Configs: []PeriodConfig{
+		period("2024-01-01", "index_sharded/", ""),
+		period("2025-01-01", "index/", "index_sharded/"),
+	}}
+	require.ErrorContains(t, cfg.Validate(), "is the path_prefix of the period starting at 2024-01-01")
+}
+
+func TestIndexPeriodicTableConfig_YAMLSharded(t *testing.T) {
+	in := `path_prefix: index/
+sharded_path_prefix: index_sharded/
+prefix: index_
+period: 1d
+`
+	var cfg IndexPeriodicTableConfig
+	require.NoError(t, yaml.Unmarshal([]byte(in), &cfg))
+	require.Equal(t, IndexPeriodicTableConfig{
+		PathPrefix:          "index/",
+		ShardedPathPrefix:   "index_sharded/",
+		PeriodicTableConfig: PeriodicTableConfig{Prefix: "index_", Period: 24 * time.Hour},
+	}, cfg)
+
+	out, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+	require.Equal(t, in, string(out))
+
+	// A period without a sharded copy marshals as before.
+	out, err = yaml.Marshal(IndexPeriodicTableConfig{PathPrefix: "index/", PeriodicTableConfig: PeriodicTableConfig{Prefix: "index_", Period: 24 * time.Hour}})
+	require.NoError(t, err)
+	require.Equal(t, "path_prefix: index/\nprefix: index_\nperiod: 1d\n", string(out))
+}
+
 func TestDayTime_UnmarshalYAML(t *testing.T) {
 	// Regression test for go yaml v4: an unquoted date such as `2023-01-01`
 	// is resolved to the `!!timestamp` tag. Decoding such a node into a
@@ -620,6 +698,58 @@ func TestTableRange_TableInRange(t *testing.T) {
 			ok, err := nonPeriodicTableRange.TableInRange(tc.tableName)
 			require.Equal(t, tc.expResp, ok)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestTableRanges_IndexTablesFor(t *testing.T) {
+	day := model.Time(ObjectStorageIndexRequiredPeriod / time.Millisecond)
+	period := func(prefix string) *PeriodConfig {
+		return &PeriodConfig{IndexTables: IndexPeriodicTableConfig{
+			PeriodicTableConfig: PeriodicTableConfig{Prefix: prefix, Period: ObjectStorageIndexRequiredPeriod},
+		}}
+	}
+	older, newer := period("old_"), period("new_")
+	ranges := TableRanges{
+		{Start: 10, End: 11, PeriodConfig: older},
+		{Start: 12, End: 20, PeriodConfig: newer},
+	}
+	table := func(name string, n int64, cfg *PeriodConfig) IndexTable {
+		return IndexTable{Name: name, Start: model.Time(n) * day, End: model.Time(n+1)*day - 1, Config: cfg}
+	}
+
+	for _, tc := range []struct {
+		name          string
+		from, through model.Time
+		want          []IndexTable
+	}{
+		{
+			name: "within one table",
+			from: 12*day + 1, through: 13*day - 1,
+			want: []IndexTable{table("new_12", 12, newer)},
+		},
+		{
+			name: "through at midnight reads the next table",
+			from: 12 * day, through: 13 * day,
+			want: []IndexTable{table("new_12", 12, newer), table("new_13", 13, newer)},
+		},
+		{
+			name: "across periods",
+			from: 11*day + 1, through: 12*day + 1,
+			want: []IndexTable{table("old_11", 11, older), table("new_12", 12, newer)},
+		},
+		{
+			name: "clipped to the ranges",
+			from: 9 * day, through: 10*day + 1,
+			want: []IndexTable{table("old_10", 10, older)},
+		},
+		{
+			name: "outside the ranges",
+			from: 30 * day, through: 31 * day,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ranges.IndexTablesFor(tc.from, tc.through))
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"flag"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,15 +9,16 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
@@ -165,22 +167,38 @@ func TestMultiKVSetup(t *testing.T) {
 }
 
 func TestIndexGatewayClientConfig(t *testing.T) {
-	dir := t.TempDir()
-	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Querier)
-		c, err := New(cfg)
-		require.NoError(t, err)
+	for _, tc := range []struct {
+		name              string
+		mode              indexgateway.Mode
+		perIndexOwnership bool
+	}{
+		{name: "simple mode", mode: indexgateway.SimpleMode},
+		{name: "ring mode with per-index ownership", mode: indexgateway.RingMode, perIndexOwnership: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := minimalWorkingConfig(t, t.TempDir(), Querier)
+			cfg.IndexGateway.Mode = tc.mode
+			cfg.IndexGateway.Ring.KVStore.Store = "inmemory"
+			cfg.IndexGateway.PerIndexOwnership.Enabled = tc.perIndexOwnership
+			cfg.SchemaConfig.Configs[0].IndexTables.ShardedPathPrefix = "index_sharded/"
+			flagext.DefaultValues(&cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig)
 
-		services, err := c.ModuleManager.InitModuleServices(Querier)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
+			c, err := New(cfg)
+			require.NoError(t, err)
 
-		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
-	})
+			services, err := c.ModuleManager.InitModuleServices(Querier)
+			defer func() {
+				for _, service := range services {
+					service.StopAsync()
+				}
+			}()
+			require.NoError(t, err)
+
+			clientCfg := c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+			require.False(t, clientCfg.Disabled)
+			require.Equal(t, tc.perIndexOwnership, clientCfg.PerIndexOwnership)
+		})
+	}
 }
 
 const localhost = "localhost"
@@ -421,4 +439,34 @@ func TestCompactorAddress(t *testing.T) {
 			require.Equal(t, tc.wantGRPC, isGRPC)
 		})
 	}
+}
+
+func TestInitDataObjCache(t *testing.T) {
+	t.Run("the caches are limited to 8 MiB and the prefetcher is not limited when the backend has no limit", func(t *testing.T) {
+		const defaultMetadataCacheMaxItemBytes = 8 << 20
+		prepareGlobalMetricsRegistry(t)
+
+		var prefetcher metadata.PrefetcherConfig
+		prefetcher.RegisterFlagsWithPrefix("", flag.NewFlagSet("test", flag.PanicOnError))
+		prefetcher.Enabled = true
+		prefetcher.MaxRegionBytes = 2 * defaultMetadataCacheMaxItemBytes
+
+		l := &Loki{}
+		l.Cfg.DataObj.Enabled = true
+		l.Cfg.DataObj.MetadataCache = cache.Config{
+			Prefix:        "dataobj.metadata-cache.",
+			EmbeddedCache: cache.EmbeddedCacheConfig{Enabled: true, MaxSizeMB: 1, TTL: time.Minute},
+		}
+		l.Cfg.DataObj.MetadataPrefetcher = prefetcher
+
+		svc, err := l.initDataObjCache()
+		require.NoError(t, err, "the prefetcher accepts a max region above the limit of the other caches")
+		require.NoError(t, services.StartAndAwaitRunning(t.Context(), svc))
+		defer func() {
+			require.NoError(t, services.StopAndAwaitTerminated(t.Context(), svc))
+		}()
+
+		require.Equal(t, int64(defaultMetadataCacheMaxItemBytes), l.dataObjIndexCache.MaxItemBytes())
+		require.Equal(t, int64(defaultMetadataCacheMaxItemBytes), l.dataObjTOCCache.MaxItemBytes())
+	})
 }

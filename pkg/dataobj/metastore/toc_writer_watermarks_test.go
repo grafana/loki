@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -86,8 +85,7 @@ func seedOldOrderToC(t *testing.T, bucket objstore.Bucket, indexPaths []string, 
 func sectionKinds(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []string {
 	t.Helper()
 
-	raw := readRawToC(ctx, t, bucket, path)
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	obj, err := OpenTableOfContents(ctx, bucket, path)
 	require.NoError(t, err)
 	var kinds []string
 	for _, sec := range obj.Sections() {
@@ -99,8 +97,7 @@ func sectionKinds(ctx context.Context, t *testing.T, bucket objstore.Bucket, pat
 func readWatermarks(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []watermarks.Watermark {
 	t.Helper()
 
-	raw := readRawToC(ctx, t, bucket, path)
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	obj, err := OpenTableOfContents(ctx, bucket, path)
 	require.NoError(t, err)
 
 	var rows []watermarks.Watermark

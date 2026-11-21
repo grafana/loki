@@ -44,7 +44,7 @@ var errInvalidKeyEncoding = errors.New("invalid posting key encoding")
 // The byte order of two encodings is not the order of their keys. Compare
 // decoded keys with [Key.Compare].
 //
-// The kind of k must fit in one byte. [NewKeyRange] checks it.
+// The kind of k must fit in one byte. [NewKeyRange] and [NewKeySpan] check it.
 func (k Key) appendEncoding(buf []byte) []byte {
 	buf = append(buf, byte(k.Kind))
 	buf = binary.AppendUvarint(buf, uint64(len(k.ColumnName)))
