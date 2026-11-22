@@ -89,9 +89,8 @@ The ToC writer checks rules 1 to 3 when a change adds or removes a run.
 See `validateNewRuns`, `errPartialRun` and `errRunPathInToC` in `pkg/dataobj/metastore/toc_writer.go`.
 Compaction planning checks rules 3 to 5 on the index objects, and skips a run that breaks one of them
 as corrupt.
-See `indexRun.checkLength` in `pkg/engine/compactor/index_run.go`, `indexLayoutOfRun` in
-`pkg/engine/compactor/sections.go` and `dropRunsWithoutPostings` in
-`pkg/engine/compactor/coordinator.go`.
+See `indexRun.checkLength` in `pkg/engine/compactor/index_run.go`, and `indexLayoutOfRun` and
+`readIndexRun` in `pkg/engine/compactor/sections.go`.
 Only index merge planning checks rule 5.
 Nothing checks that the entries of a run have the same `shard_buckets`.
 A query fails on a mismatch.
@@ -124,13 +123,13 @@ They cut a new index object when the current one reaches the target object size 
 builder and the posting key changes.
 So no posting key spans two index objects, and every index object holds postings.
 
-The stats rows come after the postings in the merge.
-All of them go into the last index object of the run, which is still open when the postings end.
-The earlier index objects get an empty stats section, which records only the layout.
+The stats rows come after the postings in each task.
+All stats rows of a task go into its last index object, which is still open when the postings end.
+The earlier index objects of the task get an empty stats section, which records only the layout.
 The last index object can exceed the target size by the size of the stats, which is small next to
 the postings.
 
-Each index object is uploaded when it is cut, so the merge holds only one index object open.
+Each index object is uploaded when it is cut, so the task holds only one index object open.
 The task reports one artifact for each index object.
 
 ## How compaction handles a run
@@ -138,7 +137,8 @@ The task reports one artifact for each index object.
 Planning reads the entries of a ToC and groups them into runs.
 See `groupIndexRuns` in `pkg/engine/compactor/index_run.go`.
 
-- **Index merge** plans each run as one planning unit, so one task merges the whole run.
+- **Index merge** plans each run as one planning unit, so one merge takes the whole run.
+  A large merge can split into parallel tasks by posting key span, which together write one run.
 - **Log merge** plans one source run at a time.
   It folds the stats rows of every index object of the run into one reference for each log section.
   Before it dispatches the tasks, it checks that the ToC still lists every index object of the run.
@@ -148,10 +148,10 @@ See `groupIndexRuns` in `pkg/engine/compactor/index_run.go`.
 
 A task reports the index objects that it wrote: the path and the posting key bounds of each.
 These are the only facts that the task decides while it runs.
-Planning already knows the time range of the task, which is the time range of its inputs.
+Planning already knows the time range of the merge, which is the time range of its inputs.
 It also knows the shard layout, which is the layout of its inputs.
-The coordinator gives every entry of the run of the task those values.
-It replaces the source runs with one new run for each task in one conditional write.
+The coordinator gives every entry of the run of the merge those values.
+It replaces the source runs with one new run for each merge in one conditional write.
 See `plannedRun` in `pkg/engine/compactor/coordinator.go` and `DecodeResultArtifacts` in
 `pkg/dataobj/compaction/v2/result_record.go`.
 
@@ -163,7 +163,8 @@ Only the compactor and the deletion sweep read stats rows.
 Each of them combines the rows of the whole run:
 
 - Log merge planning folds the rows by log section.
-- The index merge and the index filter merge the rows of all index objects with a K-way merge.
+- The index filter merges the rows of all index objects with a K-way merge.
+  An index merge task does the same for the index objects that planning gives it.
 - The deletion sweep takes the union of the log object paths in all rows.
 
 Within one index object, the stats sections still form one sorted stream.
@@ -186,3 +187,7 @@ See `stats.LayoutSectionBuilder`, `Section.Empty` and `Section.ObjectPathColumn`
 - What target size to choose.
   A query pays for each index object that it opens, so many small index objects can cost more than
   one large one.
+- What to do when a task of a split merge writes a copy of an input index object.
+  This happens when its span holds rows of only that object.
+  The copy has the same content-hash path, so the ToC swap rejects the new run under rule 3.
+  The coordinator logs this case.

@@ -1,8 +1,10 @@
 package syntax
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -33,6 +35,7 @@ func EncodeJSON(e Expr, w io.Writer) error {
 const (
 	Bin                 = "bin"
 	Binary              = "binary"
+	Buckets             = "buckets"
 	Bytes               = "bytes"
 	And                 = "and"
 	Card                = "cardinality"
@@ -40,6 +43,7 @@ const (
 	Duration            = "duration"
 	Groups              = "groups"
 	GroupingField       = "grouping"
+	HistogramFunc       = "histogram_func"
 	Include             = "include"
 	Identifier          = "identifier"
 	Inner               = "inner"
@@ -102,6 +106,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeVector(iter)
 	case LabelReplace:
 		return decodeLabelReplace(iter)
+	case HistogramFunc:
+		return decodeHistogramFunc(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
 	default:
@@ -199,6 +205,19 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 		v.WriteMore()
 		v.WriteObjectField(Params)
 		v.WriteFloat64(*e.Params)
+	}
+
+	if e.Buckets != nil {
+		v.WriteMore()
+		v.WriteObjectField(Buckets)
+		v.WriteArrayStart()
+		for i, bound := range e.Buckets.Bounds {
+			if i > 0 {
+				v.WriteMore()
+			}
+			v.WriteFloat64(bound)
+		}
+		v.WriteArrayEnd()
 	}
 
 	v.WriteMore()
@@ -310,6 +329,45 @@ func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.WriteMore()
 	v.WriteObjectField(RegexField)
 	v.WriteString(e.Regex)
+
+	v.WriteObjectEnd()
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+// VisitHistogramFunc writes the numeric arguments as strings, because JSON has
+// no spelling for the infinities that histogram_fraction accepts as bounds.
+func (v *JSONSerializer) VisitHistogramFunc(e *HistogramFuncExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(HistogramFunc)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Op)
+	v.WriteString(e.Operation)
+
+	if e.Label != "" {
+		v.WriteMore()
+		v.WriteObjectField(Label)
+		v.WriteString(e.Label)
+	}
+
+	if len(e.Params) > 0 {
+		v.WriteMore()
+		v.WriteObjectField(Params)
+		v.WriteArrayStart()
+		for i, p := range e.Params {
+			if i > 0 {
+				v.WriteMore()
+			}
+			v.WriteString(formatHistogramParam(p))
+		}
+		v.WriteArrayEnd()
+	}
+
+	v.WriteMore()
+	v.WriteObjectField(Inner)
+	e.Left.Accept(v)
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -779,8 +837,14 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 			expr, err = decodeVector(iter)
 		case LabelReplace:
 			expr, err = decodeLabelReplace(iter)
+		case HistogramFunc:
+			expr, err = decodeHistogramFunc(iter)
 		default:
 			return nil, fmt.Errorf("unknown sample expression type: %s", key)
+		}
+		// Not going on: the iterator is not where the plan goes on, and the next key would be reported instead.
+		if err != nil {
+			return nil, err
 		}
 	}
 	return expr, err
@@ -901,7 +965,10 @@ func decodeVectorAgg(iter *jsoniter.Iterator) (*VectorAggregationExpr, error) {
 
 func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 	expr := &RangeAggregationExpr{}
-	var err error
+	var (
+		err         error
+		failedField string // the field that the iterator first failed to read
+	)
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
@@ -910,14 +977,44 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 		case Params:
 			tmp := iter.ReadFloat64()
 			expr.Params = &tmp
+		case Buckets:
+			buckets := &BucketSpec{}
+			for iter.ReadArray() {
+				buckets.Bounds = append(buckets.Bounds, iter.ReadFloat64())
+			}
+			expr.Buckets = buckets
 		case Range:
 			expr.Left, err = decodeLogRange(iter)
 		case GroupingField:
 			expr.Grouping, err = decodeGrouping(iter)
 		}
+		if failedField == "" && decodeError(iter) != nil {
+			failedField = f
+		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return expr, err
+	// A querier receives the sub-queries of a sharded query through this path, so check what the
+	// grammar checks for a histogram: the bucket bounds are what the bucketing relies on. Other
+	// operations are not validated, they never were, and an in-flight query that was built by
+	// the shard mapper must not start failing.
+	if expr.Operation == OpRangeTypeHistogram || expr.Buckets != nil {
+		// This is checked first: after an error the iterator is not where the plan goes on, so what it
+		// read next is not what the plan holds, and the checks below would blame something else.
+		if failedField != "" {
+			return nil, fmt.Errorf("decoding the %s of %s: %w", failedField, expr.Operation, iter.Error)
+		}
+		if expr.Left == nil {
+			return nil, fmt.Errorf("%s has no range", expr.Operation)
+		}
+		if err := expr.Validate(); err != nil {
+			return nil, err
+		}
+	}
+
+	return expr, nil
 }
 
 func decodeLabelAgg(iter *jsoniter.Iterator) (*LabelAggregationExpr, error) {
@@ -1002,6 +1099,67 @@ func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
 	}
 
 	return mustNewLabelReplaceExpr(left, dst, replacement, src, regex), nil
+}
+
+// decodeError returns the error that the iterator ran into, if it did. jsoniter does not stop at one: it returns
+// zero values from then on and leaves its position wrong, so it is up to the decoder to look. io.EOF is what a read
+// at the end of the input leaves, which is not an error of the plan.
+func decodeError(iter *jsoniter.Iterator) error {
+	if err := iter.Error; err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+func decodeHistogramFunc(iter *jsoniter.Iterator) (*HistogramFuncExpr, error) {
+	var (
+		left      SampleExpr
+		operation string
+		label     string
+		params    []float64
+		err       error
+	)
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Op:
+			operation = iter.ReadString()
+		case Label:
+			label = iter.ReadString()
+		case Params:
+			for iter.ReadArray() {
+				s := iter.ReadString()
+				if decodeError(iter) != nil {
+					break
+				}
+				p, parseErr := strconv.ParseFloat(s, 64)
+				if parseErr != nil {
+					return nil, fmt.Errorf("decoding the %s of %s: %w", Params, operation, parseErr)
+				}
+				params = append(params, p)
+			}
+		case Inner:
+			left, err = decodeSample(iter)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// See decodeRangeAgg: what is checked below is what was read, which is not the plan after an error.
+		if err := decodeError(iter); err != nil {
+			return nil, fmt.Errorf("decoding the %s of %s: %w", f, operation, err)
+		}
+	}
+
+	expr := mustNewHistogramFuncExpr(left, operation, label, params)
+	if expr.err != nil {
+		return nil, expr.err
+	}
+	// The same rule as for a parsed query, otherwise the expression prints as something the
+	// parser rejects.
+	if err := validateHistogramFunc(expr); err != nil {
+		return nil, err
+	}
+	return expr, nil
 }
 
 func decodeLiteral(iter *jsoniter.Iterator) (*LiteralExpr, error) {

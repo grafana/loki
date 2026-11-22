@@ -1327,6 +1327,64 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 			}, 64)
 		})
 	})
+
+	t.Run("uses memory in proportion to the record batch when a page holds many more rows", func(t *testing.T) {
+		const (
+			batchSize    = 32
+			pageSizeHint = 256 * 1024
+		)
+
+		generator := DatasetGenerator{
+			RowCount:     20_000,
+			PageSizeHint: pageSizeHint,
+			Columns: []generatorColumnConfig{
+				{
+					Tag:               "ts",
+					Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+					Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+					Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+					CardinalityTarget: 100_000,
+				},
+				{
+					Tag:               "msg",
+					Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"},
+					Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
+					Compression:       datasetmd.COMPRESSION_TYPE_ZSTD,
+					AvgSize:           200,
+					CardinalityTarget: 1000,
+				},
+			},
+		}
+		dset, columns := generator.Build(t, 1)
+		ts, msg := columns[0], columns[1]
+
+		pages, err := result.Collect(msg.ListPages(t.Context()))
+		require.NoError(t, err)
+		require.Greater(t, pages[0].PageDesc().RowCount, 10*batchSize)
+
+		for name, predicates := range map[string][]Predicate{
+			"without predicates":               nil,
+			"with a predicate on the messages": {containsNeedle(msg, "1x")},
+		} {
+			t.Run(name, func(t *testing.T) {
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{ts, msg}, Predicates: predicates})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+				require.NoError(t, r.Open(t.Context()))
+
+				var alloc memory.Allocator
+				for range 3 {
+					alloc.Reclaim()
+					_, err := r.ReadRecordBatch(t.Context(), &alloc, batchSize)
+					require.NoError(t, err)
+				}
+
+				// Memory sized from the page would be far above the limit.
+				const limit = pageSizeHint / 4
+				require.Less(t, alloc.AllocatedBytes(), limit, "memory of the record batches")
+				require.Less(t, r.recordBatchScratch.AllocatedBytes(), limit, "scratch memory")
+			})
+		}
+	})
 }
 
 func TestRecordBatch_columnArray(t *testing.T) {

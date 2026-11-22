@@ -1013,6 +1013,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
+			NewHistogramGateMiddleware(engineOpts),
 		}
 
 		if cfg.AlignQueriesWithStep {
@@ -1148,6 +1149,7 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
+			NewHistogramGateMiddleware(engineOpts),
 			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			NewSplitByRangeMiddleware(log, cfg, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}

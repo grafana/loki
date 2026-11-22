@@ -126,7 +126,7 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 		},
 	}
 
-	plan := buildIndexMergePlan("t1", window, task)
+	plan := buildIndexMergePlan("t1", window, indexMergeTask{spec: task})
 
 	root, err := plan.Root()
 	require.NoError(t, err, "plan must have exactly one root node")
@@ -149,8 +149,8 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}}},
 	}
 
-	p1 := buildIndexMergePlan("t1", window, task)
-	p2 := buildIndexMergePlan("t1", window, task)
+	p1 := buildIndexMergePlan("t1", window, indexMergeTask{spec: task})
+	p2 := buildIndexMergePlan("t1", window, indexMergeTask{spec: task})
 
 	n1, err := p1.Root()
 	require.NoError(t, err)

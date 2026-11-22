@@ -63,10 +63,14 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, objects, keepAll, out); err != nil {
+	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
-	if err := c.mergeStatsInto(ctx, objects, keepAll, out); err != nil {
+	statsObjects, err := statsSources(node, objects)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
@@ -80,10 +84,46 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	return artifacts, nil
 }
 
+// statsSources returns the objects whose stats rows node merges. A merge over
+// every key merges the stats rows of every object. A merge with a bounded key
+// span merges only those of its stats sources. statsSources returns an error
+// if a stats source is not a source of node.
+func statsSources(node *physical.IndexMerge, objects []objectSections) ([]objectSections, error) {
+	if node.KeySpan.IsAll() {
+		return objects, nil
+	}
+	sources := make(map[string]struct{})
+	for _, run := range node.Runs {
+		for _, ref := range run.Sections {
+			sources[ref.ObjectPath] = struct{}{}
+		}
+	}
+	wanted := make(map[string]struct{}, len(node.StatsSources))
+	for _, path := range node.StatsSources {
+		if _, ok := sources[path]; !ok {
+			return nil, fmt.Errorf("stats source %q is not a source of the merge", path)
+		}
+		wanted[path] = struct{}{}
+	}
+	var kept []objectSections
+	for _, obj := range objects {
+		if _, ok := wanted[obj.path]; ok {
+			kept = append(kept, obj)
+		}
+	}
+	return kept, nil
+}
+
 // classifyRuns opens each unique source object once and groups its mergable
 // sections by type (postings, stats), preserving section order within each
 // object. Non-mergable section types (streams, indexPointers) are silently
 // ignored.
+//
+// A merge with a bounded key span takes only the postings sections that its
+// runs reference, so a task of a split merge reads no section outside its
+// span. It returns an error if a referenced section is not a postings section
+// of the tenant. A merge over every key takes every postings section of each
+// object.
 //
 // classifyRuns also returns the stream layout of the source indexes. It
 // returns an error if they record different layouts, or if only some record
@@ -93,9 +133,16 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
 	objects := make(map[string]*dataobj.Object)
+	// referenced holds the referenced section indexes of each object. Only a
+	// merge with a bounded key span uses it.
+	referenced := make(map[string]map[int64]struct{})
 
 	for _, runRef := range node.Runs {
 		for _, sectionRef := range runRef.Sections {
+			if referenced[sectionRef.ObjectPath] == nil {
+				referenced[sectionRef.ObjectPath] = make(map[int64]struct{})
+			}
+			referenced[sectionRef.ObjectPath][sectionRef.SectionIndex] = struct{}{}
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
@@ -123,7 +170,8 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	for _, path := range paths {
 		obj := objects[path]
 		group := objectSections{path: path}
-		for _, sec := range obj.Sections() {
+		var found int
+		for i, sec := range obj.Sections() {
 			// Index objects are multi-tenant; only merge sections for the tenant
 			// being compacted, or other tenants' rows leak into this output.
 			if sec.Tenant != node.Tenant {
@@ -131,11 +179,20 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			switch {
 			case postings.CheckSection(sec):
+				if !node.KeySpan.IsAll() {
+					if _, ok := referenced[path][int64(i)]; !ok {
+						continue
+					}
+					found++
+				}
 				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				group.stats = append(group.stats, sec)
 				// default: skip silently (streams/indexPointers etc.)
 			}
+		}
+		if !node.KeySpan.IsAll() && found != len(referenced[path]) {
+			return nil, streams.Layout{}, fmt.Errorf("object %q: %d of the %d referenced sections are not postings sections of tenant %q", path, len(referenced[path])-found, len(referenced[path]), node.Tenant)
 		}
 		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
 			return nil, streams.Layout{}, err
@@ -208,11 +265,14 @@ type objectSections struct {
 // keepAll keeps every row, whatever log object the row references.
 func keepAll(string) bool { return true }
 
-// mergePostingsInto merges the postings sections of all source index objects
-// with a K-way loser-tree merge. It writes a row to out only if keep returns
-// true for the log object path of the row.
-func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
-	readers := postingsSequences(ctx, objects)
+// mergePostingsInto merges the postings rows of all source index objects
+// whose posting key is in keySpan, with a K-way loser-tree merge. It writes a
+// row to out only if keep returns true for the log object path of the row.
+//
+// The readers skip the pages that hold no key of keySpan, so a task of a
+// merge split by key span reads little more than its own range.
+func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
+	readers := postingsSequences(ctx, objects, keySpan)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -271,8 +331,12 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 }
 
 // postingsSequences returns one sequence over the postings rows of each object
-// that has postings sections, for the K-way merge.
-func postingsSequences(ctx context.Context, objects []objectSections) []sequence[postings.Row] {
+// that has postings sections, for the K-way merge. The sequences return only
+// the rows whose posting key is in keySpan.
+func postingsSequences(ctx context.Context, objects []objectSections, keySpan postings.KeySpan) []sequence[postings.Row] {
+	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+		return openPostingsReader(ctx, sec, keySpan)
+	}
 	readers := make([]sequence[postings.Row], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.postings) == 0 {
@@ -283,7 +347,7 @@ func postingsSequences(ctx context.Context, objects []objectSections) []sequence
 			objectPath: obj.path,
 			sections:   obj.postings,
 			seqIdx:     len(readers),
-			open:       openPostingsReader,
+			open:       open,
 		})
 	}
 	return readers
@@ -435,13 +499,22 @@ func (s *sectionConcatSeq[R]) Close() error {
 	return nil
 }
 
-// openPostingsReader opens a postings section and returns a row iterator over it.
-func openPostingsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+// openPostingsReader opens a postings section and returns an iterator over its
+// rows whose posting key is in keySpan.
+func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan) (iter.CloseIterator[postings.Row], error) {
 	ps, err := postings.Open(ctx, sec)
 	if err != nil {
 		return nil, err
 	}
-	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+	predicate, err := keySpan.Predicate(ps)
+	if err != nil {
+		return nil, fmt.Errorf("building key span predicate: %w", err)
+	}
+	var predicates []postings.Predicate
+	if predicate != nil {
+		predicates = []postings.Predicate{predicate}
+	}
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates})
 	if err := reader.Open(ctx); err != nil {
 		return nil, fmt.Errorf("opening postings reader: %w", err)
 	}

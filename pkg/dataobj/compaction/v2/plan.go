@@ -24,7 +24,8 @@ type Section[K any] struct {
 	// a unit as converged when its objects overlap.
 	PlanningUnit string
 
-	// Keys holds the size of each key in the section, in any order. An empty
+	// Keys holds the size of each key in the section, or of sampled keys that
+	// each stand for the keys up to the next sample, in any order. An empty
 	// Keys means the sizes are unknown, not that the section holds no key.
 	Keys []KeySize[K]
 }

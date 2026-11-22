@@ -113,6 +113,19 @@ func (m *PartitionRingDesc) activePartitionsCount() int {
 	return count
 }
 
+// nonPendingPartitionsCount counts every partition a shard can include. It excludes only Pending
+// partitions rather than counting Active and Inactive ones, because the shard walk treats a partition
+// in any other state like an Inactive one.
+func (m *PartitionRingDesc) nonPendingPartitionsCount() int {
+	count := 0
+	for _, partition := range m.Partitions {
+		if !partition.IsPending() {
+			count++
+		}
+	}
+	return count
+}
+
 func (m *PartitionRingDesc) maxPartitionID() int32 {
 	var max int32 = -1
 	for id := range m.Partitions {
