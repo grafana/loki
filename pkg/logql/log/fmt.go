@@ -159,7 +159,7 @@ func unixToTime(epoch string) (time.Time, error) {
 		// nanoseconds 1673798889902000000
 		return time.Unix(0, i), nil
 	default:
-		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
+		return ct, fmt.Errorf("unable to parse time '%v': unsupported epoch length %d, expected 5, 10, 13, 16 or 19 characters", epoch, l)
 	}
 }
 
