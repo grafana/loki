@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 // ErrNotPrefetchable means the caller must read the metadata of an object directly. The layout is
@@ -112,11 +114,12 @@ type Prefetcher interface {
 type PrefetcherConfig struct {
 	Enabled bool `yaml:"enabled" category:"experimental"`
 
-	Compression         string        `yaml:"compression"`
-	MinCompressionRatio float64       `yaml:"min_compression_ratio"`
-	HeadBytes           int           `yaml:"head_bytes"`
-	MaxRegionBytes      int           `yaml:"max_region_bytes"`
-	LoadTimeout         time.Duration `yaml:"load_timeout"`
+	Compression             string           `yaml:"compression"`
+	MinCompressionRatio     float64          `yaml:"min_compression_ratio"`
+	HeadBytes               int              `yaml:"head_bytes"`
+	MaxRegionBytes          int              `yaml:"max_region_bytes"`
+	MaxRegionSizeCacheBytes flagext.ByteSize `yaml:"max_region_size_cache_bytes"`
+	LoadTimeout             time.Duration    `yaml:"load_timeout"`
 }
 
 const (
@@ -134,6 +137,8 @@ func (c *PrefetcherConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.Float64Var(&c.MinCompressionRatio, prefix+"min-compression-ratio", 1.5, "A cache item stays uncompressed when compression shrinks it by less than this ratio.")
 	f.IntVar(&c.HeadBytes, prefix+"head-bytes", 256*1024, "Size in bytes of the first object storage read of an object whose metadata is not cached. The header and the file metadata of the object must fit in it, or the prefetcher skips the object. The minimum is 16 KiB.")
 	f.IntVar(&c.MaxRegionBytes, prefix+"max-region-bytes", 4*1024*1024, fmt.Sprintf("The largest metadata region, in bytes, that the prefetcher handles. The metadata region of an object is the part of the object from its start to the end of the metadata of all sections. The prefetcher skips an object with a larger region, and a query reads the metadata of that object directly. When the metadata cache has a maximum item size (-dataobj.metadata-cache.memcached.max-item-size, where 0 means no maximum), this value plus %s must not exceed it.", humanize.IBytes(cacheItemOverheadBytes)))
+	_ = c.MaxRegionSizeCacheBytes.Set("50MB")
+	f.Var(&c.MaxRegionSizeCacheBytes, prefix+"max-region-size-cache-bytes", "The largest memory, in bytes, that the metadata prefetcher uses to remember the size of the metadata region of each data object that has been opened.")
 	f.DurationVar(&c.LoadTimeout, prefix+"load-timeout", 5*time.Second, "The time limit of the load that follows a cache miss.")
 }
 

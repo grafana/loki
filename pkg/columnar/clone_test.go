@@ -126,6 +126,27 @@ func TestClone_Struct_WithValidity(t *testing.T) {
 	require.True(t, cs.IsNull(1))
 }
 
+func TestCloneArray(t *testing.T) {
+	var srcAlloc, dstAlloc memory.Allocator
+
+	for _, tc := range []struct {
+		name string
+		src  columnar.Array
+	}{
+		{"returns a copy of an int64 array with nulls that shares no memory with it", columnartest.Array(t, types.KindInt64, &srcAlloc, 1, nil, 3)},
+		{"returns a copy of a binary array with nulls that shares no memory with it", columnartest.Array(t, types.KindUTF8, &srcAlloc, "hello", nil, "world")},
+		{"returns a copy of a struct array", columnartest.Struct(t, &srcAlloc, columnartest.Field("x", types.KindInt64, int64(1), int64(2)))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := columnar.CloneArray(&dstAlloc, tc.src)
+			require.NoError(t, err)
+
+			columnartest.RequireArraysEqual(t, tc.src, got, memory.Bitmap{})
+			requireDistinctMemory(t, tc.src, got)
+		})
+	}
+}
+
 // requireDistinctMemory asserts that two arrays do not share backing memory.
 func requireDistinctMemory(t *testing.T, a, b columnar.Array) {
 	t.Helper()

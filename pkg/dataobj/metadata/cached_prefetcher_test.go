@@ -54,7 +54,7 @@ func TestFailureReason(t *testing.T) {
 		"a failed cache lookup is cache unavailable":                   {fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, errCacheUnavailable, errors.New("cache is down")), reasonCacheUnavailable},
 		"a cache lookup that timed out is a cache timeout":             {fmt.Errorf("%w: %w: %w", ErrNotPrefetchable, errCacheTimeout, context.DeadlineExceeded), reasonCacheTimeout},
 		"an object storage read that timed out is a storage timeout":   {fmt.Errorf("reading the metadata region: %w: %w", errStorageTimeout, context.DeadlineExceeded), reasonStorageTimeout},
-		"a region above the limit is too large":                        {fmt.Errorf("%w: %w: it has at least 2 bytes", ErrNotPrefetchable, errRegionTooLarge), reasonTooLarge},
+		"a region above the limit is too large":                        {regionTooLargeError{size: 2, limit: 1}, reasonTooLarge},
 		"a head without the file metadata is a head too small":         {fmt.Errorf("%w: %w: it has 4 bytes", ErrNotPrefetchable, errHeadTooShort), reasonHeadTooSmall},
 		"a column type that this version does not know is unsupported": {fmt.Errorf("%w: section 0: %w", ErrNotPrefetchable, unsupportedError("column 0 has an unknown type")), reasonUnsupported},
 		"another not prefetchable error is corrupted":                  {fmt.Errorf("%w: unexpected magic %q", ErrNotPrefetchable, "XXXX"), reasonCorrupted},

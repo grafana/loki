@@ -109,6 +109,9 @@ type stackOptions struct {
 	// maxQuerySeriesCutoff turns on MaxQuerySeriesCutoff in every engine the stack
 	// runs, in the querier and in the query-frontend.
 	maxQuerySeriesCutoff bool
+	// maxQuerySeriesCutoffDryRun turns on MaxQuerySeriesCutoffDryRun in every engine the stack
+	// builds.
+	maxQuerySeriesCutoffDryRun bool
 
 	// queryShardingEnabled turns query sharding on in the query-frontend. The direct stacks ignore it.
 	queryShardingEnabled bool
@@ -141,11 +144,18 @@ func withLogline() stackOption {
 	return func(o *stackOptions) { o.loglineEnabled = true }
 }
 
+// withMaxQuerySeriesCutoffDryRun returns the stackOption that turns on MaxQuerySeriesCutoffDryRun
+// in every engine the stack builds.
+func withMaxQuerySeriesCutoffDryRun() stackOption {
+	return func(o *stackOptions) { o.maxQuerySeriesCutoffDryRun = true }
+}
+
 // newEngineOpts returns the default engine options, changed by o.
 func newEngineOpts(o stackOptions) logql.EngineOpts {
 	var engineOpts logql.EngineOpts
 	flagext.DefaultValues(&engineOpts)
 	engineOpts.MaxQuerySeriesCutoff = o.maxQuerySeriesCutoff
+	engineOpts.MaxQuerySeriesCutoffDryRun = o.maxQuerySeriesCutoffDryRun
 	return engineOpts
 }
 

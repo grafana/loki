@@ -2,12 +2,14 @@ package rangeio_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"math/rand"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -191,7 +193,98 @@ func TestReadRanges(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("returns no error when a read of all the bytes returns an error", func(t *testing.T) {
+		tests := []struct {
+			name string
+			err  error
+		}{
+			{name: "the reader returns io.EOF", err: io.EOF},
+			{name: "the reader returns another error", err: errors.New("close failed")},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				reader := readerFunc(func(_ context.Context, r rangeio.Range) (int, error) { return len(r.Data), tc.err })
+				ranges := []rangeio.Range{{Offset: 100, Data: make([]byte, 20)}}
+
+				require.NoError(t, rangeio.ReadRanges(t.Context(), reader, ranges))
+			})
+		}
+	})
+
+	t.Run("returns an unexpected EOF error when a read ends before the end of its range", func(t *testing.T) {
+		tests := []struct {
+			name string
+			n    int
+			err  error
+		}{
+			{name: "the reader reads no byte and returns io.EOF", n: 0, err: io.EOF},
+			{name: "the reader reads all bytes but one and returns io.EOF", n: 19, err: io.EOF},
+			{name: "the reader reads some bytes and returns io.ErrUnexpectedEOF", n: 10, err: io.ErrUnexpectedEOF},
+			{name: "the reader reads some bytes and returns an error that wraps io.EOF", n: 10, err: fmt.Errorf("get range: %w", io.EOF)},
+			{name: "the reader reads some bytes and returns no error", n: 10, err: nil},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				reader := readerFunc(func(context.Context, rangeio.Range) (int, error) { return tc.n, tc.err })
+				ranges := []rangeio.Range{{Offset: 100, Data: make([]byte, 20)}}
+
+				err := rangeio.ReadRanges(t.Context(), reader, ranges)
+
+				require.EqualError(t, err, fmt.Sprintf("read %d of 20 bytes at offset 100: unexpected EOF", tc.n))
+				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			})
+		}
+	})
+
+	t.Run("cancels the reads in flight when a range ends after the end of the input", func(t *testing.T) {
+		// The timeout makes the test fail, instead of hang, when ReadRanges does not cancel the second read.
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		ctx = rangeio.WithConfig(ctx, &rangeio.Config{MaxParallelism: 2, MaxRangeSize: 1 << 20, MinRangeSize: 1 << 20})
+
+		// The first read waits for the second read to start, so the second read is in flight when the
+		// first read fails.
+		var (
+			started   = make(chan struct{})
+			stoppedBy error
+		)
+		reader := readerFunc(func(ctx context.Context, r rangeio.Range) (int, error) {
+			if r.Offset == 0 {
+				<-started
+				return 0, io.EOF
+			}
+			close(started)
+			<-ctx.Done()
+			stoppedBy = ctx.Err()
+			return 0, stoppedBy
+		})
+		ranges := []rangeio.Range{
+			{Offset: 0, Data: make([]byte, 10)},
+			{Offset: 100, Data: make([]byte, 10)},
+		}
+
+		err := rangeio.ReadRanges(ctx, reader, ranges)
+
+		require.EqualError(t, err, "read 0 of 10 bytes at offset 0: unexpected EOF")
+		require.ErrorIs(t, stoppedBy, context.Canceled)
+	})
+
+	t.Run("returns the error of the reader when it is not an EOF", func(t *testing.T) {
+		storageErr := errors.New("storage failed")
+		reader := readerFunc(func(context.Context, rangeio.Range) (int, error) { return 0, storageErr })
+		ranges := []rangeio.Range{{Offset: 100, Data: make([]byte, 20)}}
+
+		err := rangeio.ReadRanges(t.Context(), reader, ranges)
+
+		require.EqualError(t, err, "storage failed")
+		require.ErrorIs(t, err, storageErr)
+	})
 }
+
+type readerFunc func(ctx context.Context, r rangeio.Range) (int, error)
+
+func (f readerFunc) ReadRange(ctx context.Context, r rangeio.Range) (int, error) { return f(ctx, r) }
 
 type byteRangeReader []byte
 

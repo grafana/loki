@@ -76,7 +76,7 @@ type ACLHandle struct {
 
 // Delete permanently deletes the ACL entry for the given entity.
 func (a *ACLHandle) Delete(ctx context.Context, entity ACLEntity) (err error) {
-	ctx, _ = startSpanWithBucket(ctx, a.c, a.bucket, "ACL.Delete")
+	ctx, _ = startSpanWithObject(ctx, a.c, a.bucket, a.object, "ACL.Delete")
 	defer func() { endSpan(ctx, err) }()
 
 	if a.object != "" {
@@ -90,7 +90,7 @@ func (a *ACLHandle) Delete(ctx context.Context, entity ACLEntity) (err error) {
 
 // Set sets the role for the given entity.
 func (a *ACLHandle) Set(ctx context.Context, entity ACLEntity, role ACLRole) (err error) {
-	ctx, _ = startSpanWithBucket(ctx, a.c, a.bucket, "ACL.Set")
+	ctx, _ = startSpanWithObject(ctx, a.c, a.bucket, a.object, "ACL.Set")
 	defer func() { endSpan(ctx, err) }()
 
 	if a.object != "" {
@@ -104,7 +104,7 @@ func (a *ACLHandle) Set(ctx context.Context, entity ACLEntity, role ACLRole) (er
 
 // List retrieves ACL entries.
 func (a *ACLHandle) List(ctx context.Context) (rules []ACLRule, err error) {
-	ctx, _ = startSpanWithBucket(ctx, a.c, a.bucket, "ACL.List")
+	ctx, _ = startSpanWithObject(ctx, a.c, a.bucket, a.object, "ACL.List")
 	defer func() { endSpan(ctx, err) }()
 
 	if a.object != "" {
