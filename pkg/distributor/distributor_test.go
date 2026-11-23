@@ -3083,6 +3083,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 		expectError        bool
 		expectedStatusCode int
 		expectBlocked      bool
+		expectFailureLog   bool
 	}{
 		{
 			name:               "not configured",
@@ -3100,6 +3101,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			expectError:        true,
 			expectedStatusCode: 456,
 			expectBlocked:      true,
+			expectFailureLog:   true,
 		},
 		{
 			name:               "blocked with status code 200",
@@ -3116,6 +3118,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			expectError:        true,
 			expectedStatusCode: 260,
 			expectBlocked:      true,
+			expectFailureLog:   true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3151,10 +3154,14 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			}
 
 			if tc.expectBlocked {
-				// A configured block is counted as discarded but is not a write
-				// failure, whatever status code it answers.
+				// A configured block is counted as discarded either way; only
+				// an error-status answer is also logged as a write failure.
 				require.Greater(t, testutil.ToFloat64(discarded), before)
-				require.NotContains(t, buf.String(), "write operation failed")
+				if tc.expectFailureLog {
+					require.Contains(t, buf.String(), "write operation failed")
+				} else {
+					require.NotContains(t, buf.String(), "write operation failed")
+				}
 			}
 		})
 	}

@@ -811,10 +811,11 @@ func (d *Distributor) validateStreams(
 		if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(vCtx, now, parsed.policy); block {
 			// A configured block is a deliberate drop, not a write failure:
 			// count the discard but skip the error log.
-			reportDiscarded(reason)
 			if statusCode == http.StatusOK {
+				reportDiscarded(reason)
 				continue
 			}
+			discard(reason, err)
 			// Kept out of validationErrors, so the client gets the block's
 			// status code rather than a 400.
 			ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
