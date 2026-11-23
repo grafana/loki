@@ -281,29 +281,6 @@ func (s sizeIndexTaskSplitter) sectionsInSpan(spec *compactionv2pb.TaskSpec, key
 	return pruned, nil
 }
 
-// reusedPaths returns the paths of newRuns that are also in oldPaths, in the
-// order of newRuns.
-//
-// Index object paths are content hashes. A task of a split merge can write
-// the same rows as one source index object, for example an index object of a
-// run from an earlier split. Its output then has the path of that source. The
-// ToC swap rejects such new runs.
-func reusedPaths(oldPaths []string, newRuns []metastore.IndexRunEntries) []string {
-	old := make(map[string]struct{}, len(oldPaths))
-	for _, path := range oldPaths {
-		old[path] = struct{}{}
-	}
-	var reused []string
-	for _, run := range newRuns {
-		for _, entry := range run {
-			if _, ok := old[entry.Path]; ok {
-				reused = append(reused, entry.Path)
-			}
-		}
-	}
-	return reused
-}
-
 // postingKey returns the posting key of k, without its timestamps.
 func (k indexSortKey) postingKey() postings.Key {
 	return postings.Key{Kind: k.kind, ColumnName: k.columnName, LabelValue: k.labelValue}
