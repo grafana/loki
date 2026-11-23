@@ -5726,7 +5726,8 @@ results_cache:
 
 # A comma-separated list of LogQL vector and range aggregations that should be
 # sharded. Possible values 'quantile_over_time', 'last_over_time',
-# 'first_over_time'.
+# 'first_over_time', 'histogram_over_time'. Experimental: 'histogram_over_time'
+# needs -querier.engine.enable-histograms and -frontend.encoding=protobuf.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 
