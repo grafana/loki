@@ -17,6 +17,7 @@ import (
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 const histogramShardRange = `{app="api"} | json | unwrap duration_seconds(duration)`
@@ -566,7 +567,12 @@ func TestShardedHistograms_theLimitOfBucketsAppliesToTheSumOfTheShards(t *testin
 
 	t.Run("the buckets of the shards add up to more than the limit", func(t *testing.T) {
 		_, err := run(histogramOfBuckets(t, 0, 100), histogramOfBuckets(t, 100, 200))
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
 		require.ErrorContains(t, err, "non-empty buckets")
+
+		// The frontend is where it fails, so this is what it reports: the limit of buckets and not a limit of series.
+		category, reason := server.ClassifyFailure(err)
+		require.Equal(t, server.FailureLimit, category)
+		require.Equal(t, "histogram_bucket_limit", reason)
 	})
 }
