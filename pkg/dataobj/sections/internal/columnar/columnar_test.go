@@ -141,29 +141,11 @@ func TestDecoder_ReadPages(t *testing.T) {
 }
 
 func TestMakeDatasetPage(t *testing.T) {
-	tests := []struct {
-		name string
-		desc *datasetmd.PageDesc
-		want int
-	}{
-		{
-			name: "takes the compressed size from the data size when compressed_size is unset",
-			desc: &datasetmd.PageDesc{DataSize: 1234},
-			want: 1234,
-		},
-		{
-			name: "takes the compressed size from the data size when compressed_size is different",
-			desc: &datasetmd.PageDesc{DataSize: 1234, CompressedSize: 1230},
-			want: 1234,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			page := columnar.MakeDatasetPage(nil, tc.desc)
+	t.Run("takes the compressed size from the data size", func(t *testing.T) {
+		page := columnar.MakeDatasetPage(nil, &datasetmd.PageDesc{DataSize: 1234})
 
-			require.Equal(t, tc.want, page.PageDesc().CompressedSize)
-		})
-	}
+		require.Equal(t, 1234, page.PageDesc().CompressedSize)
+	})
 }
 
 func buildColumn(t *testing.T, tag string, opts dataset.BuilderOptions, values []dataset.Value) *dataset.MemColumn {

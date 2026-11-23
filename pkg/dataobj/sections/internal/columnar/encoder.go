@@ -287,7 +287,6 @@ func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	// these don't impact encoding so we don't provide any validation.
 	enc.pageDescs = append(enc.pageDescs, &datasetmd.PageDesc{
 		UncompressedSize: uint64(page.Desc.UncompressedSize),
-		CompressedSize:   uint64(page.Desc.CompressedSize),
 		Crc32:            page.Desc.CRC32,
 		RowsCount:        uint64(page.Desc.RowCount),
 		ValuesCount:      uint64(page.Desc.ValuesCount),
