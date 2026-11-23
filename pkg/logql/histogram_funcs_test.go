@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 // histogramRunQuery runs a query like the engine of a querier does, with the histograms enabled: the query is parsed
@@ -373,7 +375,14 @@ func TestHistogramFuncs_errors(t *testing.T) {
 		streams := []logproto.Stream{histogramStream(`{app="a"}`, values...)}
 
 		_, err := histogramRunQuery(t, streams, `histogram_count(histogram_over_time({app="a"} | logfmt | unwrap duration [1m]))`, histogramAt(60), histogramAt(60), 0)
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
+
+		// It is a limit that the client hit, and it is reported as the limit of buckets and not as the limit of series.
+		category, reason := server.ClassifyFailure(err)
+		require.Equal(t, server.FailureLimit, category)
+		require.Equal(t, "histogram_bucket_limit", reason)
+		status, _ := server.ClientHTTPStatusAndError(err)
+		require.Equal(t, http.StatusBadRequest, status)
 
 		// The bounds are the way out, as the error says.
 		_, err = histogramRunQuery(t, streams, `histogram_count(histogram_over_time(buckets(1, 10, 100), {app="a"} | logfmt | unwrap duration [1m]))`, histogramAt(60), histogramAt(60), 0)

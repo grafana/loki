@@ -475,7 +475,8 @@ func TestHistogramOverTime_bucketLimit(t *testing.T) {
 
 	t.Run("a histogram over the limit fails the query", func(t *testing.T) {
 		_, err := histogramEvaluate(t, []logproto.Stream{manyBuckets(`{app="a"}`, 0, maxHistogramBuckets+1)}, `histogram_over_time(`+rng+`)`, histogramAt(60), histogramAt(60), 0)
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
+		require.NotErrorIs(t, err, logqlerr.ErrLimit, "it is not the limit of series")
 
 		steps, err := histogramEvaluate(t, []logproto.Stream{manyBuckets(`{app="a"}`, 0, maxHistogramBuckets)}, `histogram_over_time(`+rng+`)`, histogramAt(60), histogramAt(60), 0)
 		require.NoError(t, err)
@@ -493,12 +494,12 @@ func TestHistogramOverTime_bucketLimit(t *testing.T) {
 		require.Len(t, steps[0].vec, 2)
 
 		_, err = histogramEvaluate(t, streams, `sum by (app) (histogram_over_time(`+rng+`))`, histogramAt(60), histogramAt(60), 0)
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
 		_, err = histogramEvaluate(t, streams, `sum(histogram_over_time(`+rng+`))`, histogramAt(60), histogramAt(60), 0)
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
 		// The same series are grouped inside the range aggregation, and fail there.
 		_, err = histogramEvaluate(t, streams, `histogram_over_time(`+rng+`) by (app)`, histogramAt(60), histogramAt(60), 0)
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
 	})
 
 	t.Run("overlapping parts under the limit add to a sum under it", func(t *testing.T) {
@@ -634,9 +635,9 @@ func TestHistogramRangeVectorIterator_failingStep(t *testing.T) {
 	require.NoError(t, it.Error())
 
 	require.False(t, it.Next(), "the step that goes over the bucket limit is not returned")
-	require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
+	require.ErrorIs(t, it.Error(), logqlerr.ErrHistogramBucketLimit)
 	require.False(t, it.Next(), "a failed iterator stays failed")
-	require.ErrorIs(t, it.Error(), logqlerr.ErrLimit)
+	require.ErrorIs(t, it.Error(), logqlerr.ErrHistogramBucketLimit)
 }
 
 // The vector of a step is reused by the next one, as it is for every range aggregation, but the histograms in it
