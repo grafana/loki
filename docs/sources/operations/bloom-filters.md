@@ -40,8 +40,8 @@ The reason is that bloom filters also come with a relatively high cost for both 
 
 To start building and using blooms you need to:
 
-- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the components in the [Bloom Build config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
-- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the component in the [Bloom Gateway config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
+- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode)) and enable the components in the [Bloom Build config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
+- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode)) and enable the component in the [Bloom Gateway config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
 - Enable blooms building and filtering for each tenant individually, or for all of them by default.
 
 ```yaml
@@ -199,7 +199,7 @@ For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we appen
 
 ## Query sharding
 
-Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://lokidex.com/posts/tsdb/#sharding).
+Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#dynamic-query-sharding).
 Loki 3.0 introduces a new [per-tenant configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) flag `tsdb_sharding_strategy` which defaults to computing shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would optimistically divide the data to process in shards of roughly the same size.
 Unfortunately, the amount of data each stream has is often unbalanced with the rest, therefore, some shards end up processing more data than others.
 
