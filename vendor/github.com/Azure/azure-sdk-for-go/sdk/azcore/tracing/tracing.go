@@ -59,6 +59,33 @@ func NewTracer(newSpanFn func(ctx context.Context, spanName string, options *Spa
 	}
 }
 
+// WrapTracer decorates tracer using wrap while preserving its attributes.
+// The tracer passed to wrap has no attributes, so its Start method can be called
+// without applying them twice. The returned tracer applies the original attributes
+// before any attributes added by wrap or subsequent calls to SetAttributes.
+// The original tracer is not modified. wrap must not be nil.
+//
+// wrap is responsible for forwarding span creation and providing span lookup
+// behavior on the returned tracer using [TracerOptions.SpanFromContext]. If wrap decorates
+// spans, it should also decorate spans retrieved from the underlying tracer's
+// SpanFromContext method so callers cannot bypass the decorator.
+// If the original tracer has no span lookup implementation, the returned tracer's
+// lookup implementation is cleared so SpanFromContext continues to return a zero-value span.
+//
+// To preserve disabled-tracer behavior, return tracer unchanged when its Enabled
+// method returns false. Constructing a tracer with a non-nil span creation function
+// makes it report enabled, even if that function delegates to a disabled tracer.
+func WrapTracer(tracer Tracer, wrap func(Tracer) Tracer) Tracer {
+	attrs := tracer.attrs
+	tracer.attrs = nil
+	wrapped := wrap(tracer)
+	if tracer.spanFromContextFn == nil {
+		wrapped.spanFromContextFn = nil
+	}
+	wrapped.attrs = append(append([]Attribute(nil), attrs...), wrapped.attrs...)
+	return wrapped
+}
+
 // Tracer is the factory that creates Span instances.
 type Tracer struct {
 	attrs             []Attribute

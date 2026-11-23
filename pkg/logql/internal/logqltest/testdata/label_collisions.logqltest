@@ -13,7 +13,9 @@
 #    replaces a label. A key that is called `foo_extracted` in the line becomes
 #    `foo_extracted_extracted` when a label has the name `foo_extracted`.
 # 4. Among parsed keys the first writer wins, in every parser: of two equal keys in one line, and
-#    between stages. In one stage, a literal `foo_extracted` key beats a renamed `foo` key.
+#    between stages. A renamed `foo` key and a literal `foo_extracted` key write the same name, and
+#    the first of them in the line wins. The expression forms (`json a`, `logfmt a`) are the
+#    exception: they name their keys, so the literal key wins, in both orders.
 # 5. In json, a null and an array give no label. In logfmt, an empty value gives no label, unless
 #    `--keep-empty` is set. An empty JSON string is a real value.
 # 6. An expression form (`json a`, `logfmt a`) asks for names. A name that the line lacks, or a JSON
@@ -218,44 +220,58 @@ eval select from 0 to 30s forward {app="e8"} | json | line_format "{\"foo\":\"j2
   {app="e8"} `{"foo":"j2"}` @ 10s [parsed foo="j1"]
 
 # A line has the key `foo` and a literal `foo_extracted` key, and the stream has the label `foo`.
-# Both keys target `foo_extracted`. The literal key wins, and the key order in the line does not
-# matter. JSON does not define a key order.
+# Both keys target `foo_extracted`. A line parser keeps the first key of the line, as it does for
+# two keys with the same name. JSON does not define a key order, so a line that the same writer
+# produces can come in either order. The expression parsers name their keys, so the literal key
+# wins there, in both orders.
 clear
 load
   {app="f1a", foo="l"}   `{"foo":"p","foo_extracted":"lit"}` @ 10s # the renamed key comes first
   {app="f1b", foo="l"}   `{"foo_extracted":"lit","foo":"p"}` @ 10s # the literal key comes first
   {app="noise", foo="l"} `{"foo":"noise"}`                   @ 10s
 
-# The literal key wins when the renamed key comes first.
 eval select from 0 to 30s forward {app="f1a"} | json
-  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
-# The literal key wins when it comes first.
+  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="p"]
 eval select from 0 to 30s forward {app="f1b"} | json
   {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
-# A filter after the parser must see the final value too. A parser may stop on a line early, when a
-# value that it just wrote fails a later filter (#24565). That check must not use the renamed value
-# `p`, which the literal key replaces. Otherwise the parser drops the line with the renamed key
-# first, before it reads the literal key. The queries below must agree with the `| json` queries
-# above. This filter keeps both lines.
-eval select from 0 to 30s forward {app=~"f1[ab]"} | json | foo_extracted="lit"
-  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
-  {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
-# The renamed value `p` does not exist in the result, so no line passes.
+# A filter after the parser must agree with the queries above. A parser may stop on a line early,
+# when a value that it just wrote fails a later filter (#24565). That value is the final one, so
+# each filter keeps the line that has its value.
 eval select from 0 to 30s forward {app=~"f1[ab]"} | json | foo_extracted="p"
-  expect empty
+  {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="p"]
+eval select from 0 to 30s forward {app=~"f1[ab]"} | json | foo_extracted="lit"
+  {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
 # The same filter in a metric query.
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json | foo_extracted="lit" [1m]))
-  {foo_extracted="lit"} 2
-# The grouped form without a filter reads the same value. The grouping makes the parser extract only
-# `foo` and `foo_extracted`.
+  {foo_extracted="lit"} 1
+# The grouped form without a filter reads the same values. The grouping makes the parser extract
+# only `foo` and `foo_extracted`.
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json [1m]))
-  {foo_extracted="lit"} 2
+  {foo_extracted="lit"} 1
+  {foo_extracted="p"} 1
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"f1[ab]"} | json [1m])) # overlapping
-  {foo_extracted="lit"} 2 2
-# The expression form names the keys, and the order does not matter there either.
+  {foo_extracted="lit"} 1 1
+  {foo_extracted="p"} 1 1
+# The expression form names the keys, so the literal key wins in both orders.
 eval select from 0 to 30s forward {app=~"f1[ab]"} | json foo, foo_extracted
   {app="f1a", foo="l"} `{"foo":"p","foo_extracted":"lit"}` @ 10s [parsed foo_extracted="lit"]
   {app="f1b", foo="l"} `{"foo_extracted":"lit","foo":"p"}` @ 10s [parsed foo_extracted="lit"]
+
+# The same lines in a packed entry. The parser keeps the first key. It must not judge a later key
+# with the same final name, so a filter on the final value keeps the line.
+clear
+load
+  {app="f2a", foo="l"}   `{"foo":"p","foo_extracted":"lit","_entry":"x"}` @ 10s # the renamed key comes first
+  {app="f2b", foo="l"}   `{"foo_extracted":"lit","foo":"p","_entry":"x"}` @ 10s # the literal key comes first
+  {app="noise", foo="l"} `{"foo":"noise","_entry":"x"}`                   @ 10s
+
+eval instant at 60s sum by (app, foo_extracted) (count_over_time({app=~"f2[ab]"} | unpack [1m]))
+  {app="f2a", foo_extracted="p"} 1
+  {app="f2b", foo_extracted="lit"} 1
+eval instant at 60s sum by (app, foo_extracted) (count_over_time({app=~"f2[ab]"} | unpack | foo_extracted="p" [1m]))
+  {app="f2a", foo_extracted="p"} 1
+eval instant at 60s sum by (app, foo_extracted) (count_over_time({app=~"f2[ab]"} | unpack | foo_extracted="lit" [1m]))
+  {app="f2b", foo_extracted="lit"} 1
 
 # A literal `foo_extracted` key without a stream label `foo`. Nothing is renamed, so the literal key
 # keeps its name, also next to a `foo` key. A query that also reads a stream with the label `foo`
@@ -346,6 +362,22 @@ eval instant at 60s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m
   {a="1", b="2"} 1
 eval range from 40s to 60s step 20s sum by (a, b) (count_over_time({app="f9d"} | logfmt a, b [1m])) # overlapping
   {a="1", b="2"} 1 1
+
+# A name that a stage extracted and a later stage deleted is missing again, so the parser gives it
+# an empty label, as it does when no stage extracted the name.
+clear
+load
+  {app="a"} "bar=2" @ 10s
+
+# Control: no stage extracted `foo`.
+eval select from 0 to 30s forward {app="a"} | logfmt foo, bar
+  {app="a"} "bar=2" @ 10s [parsed bar="2" foo=""]
+# `label_format` extracted `foo` and `drop` deleted it. The result matches the control.
+eval select from 0 to 30s forward {app="a"} | label_format foo="old" | drop foo | logfmt foo, bar
+  {app="a"} "bar=2" @ 10s [parsed bar="2" foo=""]
+# Without the `drop`, the extracted `foo` stays.
+eval select from 0 to 30s forward {app="a"} | label_format foo="old" | logfmt foo, bar
+  {app="a"} "bar=2" @ 10s [parsed bar="2" foo="old"]
 
 # The shape of a value. An empty JSON string is a real value, so it moves like any other value, and
 # it keeps its name without a clash. A JSON null is not extracted at all. A logfmt key with no value

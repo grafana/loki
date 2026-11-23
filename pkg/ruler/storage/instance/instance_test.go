@@ -20,10 +20,8 @@ import (
 	common_config "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/assert"
@@ -193,12 +191,12 @@ func TestInstance(t *testing.T) {
 		return inst.Ready()
 	})
 
-	app := inst.Appender(context.TODO())
+	app := inst.AppenderV2(context.TODO())
 	refTime := time.Now().UnixNano()
 
 	count := 3
 	for i := 0; i < count; i++ {
-		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), refTime-int64(i), float64(i))
+		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), 0, refTime-int64(i), float64(i), nil, nil, storage.AppendV2Options{})
 
 		require.NoError(t, err)
 	}
@@ -248,37 +246,20 @@ func (s *mockWalStorage) SetWriteNotified(_ wlog.WriteNotified)      {}
 func (s *mockWalStorage) Close() error                               { return nil }
 func (s *mockWalStorage) Truncate(_ int64) error                     { return nil }
 
+// Appender is only needed to satisfy storage.Storage; the V1 API is unused.
 func (s *mockWalStorage) Appender(context.Context) storage.Appender {
+	panic("V1 Appender is not supported by mockWalStorage")
+}
+
+func (s *mockWalStorage) AppenderV2(context.Context) storage.AppenderV2 {
 	return &mockAppender{s: s}
 }
-
-func (s *mockWalStorage) AppenderV2(ctx context.Context) storage.AppenderV2 {
-	return &mockAppenderV2{inner: s.Appender(ctx)}
-}
-
-type mockAppenderV2 struct {
-	inner storage.Appender
-}
-
-func (a *mockAppenderV2) Append(ref storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
-	switch {
-	case fh != nil:
-		return a.inner.AppendHistogram(ref, ls, t, nil, fh)
-	case h != nil:
-		return a.inner.AppendHistogram(ref, ls, t, h, nil)
-	default:
-		return a.inner.Append(ref, ls, t, v)
-	}
-}
-
-func (a *mockAppenderV2) Commit() error   { return a.inner.Commit() }
-func (a *mockAppenderV2) Rollback() error { return a.inner.Rollback() }
 
 type mockAppender struct {
 	s *mockWalStorage
 }
 
-func (a *mockAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+func (a *mockAppender) Append(ref storage.SeriesRef, l labels.Labels, _, t int64, v float64, _ *histogram.Histogram, _ *histogram.FloatHistogram, _ storage.AppendV2Options) (storage.SeriesRef, error) {
 	if ref == 0 {
 		return a.Add(l, t, v)
 	}
@@ -307,36 +288,6 @@ func (a *mockAppender) AddFast(ref storage.SeriesRef, _ int64, _ float64) error 
 	a.s.series[ref]++
 	return nil
 }
-
-func (a *mockAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	return 0, nil
-}
-
-func (a *mockAppender) SetOptions(_ *storage.AppendOptions) {}
 
 func (a *mockAppender) Commit() error {
 	return nil

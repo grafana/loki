@@ -51,6 +51,61 @@ const UTIME_NOW = -1
 
 const UTIME_OMIT = -2
 
+// C documentation
+//
+//	/* Make the return value of the SQL function or virtual table pCtx
+//	** be the content of the sqlite3_str object pStr.  The eOwn flag
+//	** determines ownership of the sqlite3_str object and its content.
+//	**
+//	**    eOwn             Ownership transfer
+//	**    -------------    ------------------------------------------------
+//	**
+//	**    SQLITE_COPY      The SQL function returns a copy the sqlite3_str
+//	**                     content and leaves the sqlite3_str object itself
+//	**                     unchanged.
+//	**
+//	**    SQLITE_XFER      The content of the sqlite3_str is transferred to
+//	**                     the SQL function and the SQL function takes
+//	**                     responsibility for freeing that content when it is
+//	**                     no longer needed.  The sqlite3_str object is reset
+//	**                     to an empty string.
+//	**
+//	**    SQLITE_FINISH    Like SQLITE_XFER except that the pStr is also
+//	**                     freed using sqlite3_str_free().
+//	*/
+func Xsqlite3_result_str(tls *libc.TLS, pCtx uintptr, pStr uintptr, eOwn int32) {
+	var zText uintptr
+	_ = zText
+	if libc.Int32FromUint8((*Tsqlite3_str)(unsafe.Pointer(pStr)).FaccError) == 0 {
+		if (*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar == uint32(0) {
+			_setResultStrOrError(tls, pCtx, __ccgo_ts+1730, 0, uint8(SQLITE_UTF8_ZT), libc.UintptrFromInt32(0))
+			Xsqlite3_str_reset(tls, pStr)
+		} else {
+			zText = Xsqlite3_str_value(tls, pStr)
+			/* Only internal code has the ability to capture a pointer to
+			 ** an sqlite3_str object that uses static buffer.  And none of
+			 ** those internal use cases every invoke the sqlite3_result_str()
+			 ** interface on a static-buffer sqlite3_str.  Should this change
+			 ** in the future, the following assert() will let us know. */
+			if eOwn == SQLITE_COPY {
+				_setResultStrOrError(tls, pCtx, zText, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar), uint8(SQLITE_UTF8), uintptr(-libc.Int32FromInt32(1)))
+			} else {
+				_setResultStrOrError(tls, pCtx, zText, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar), uint8(SQLITE_UTF8_ZT), __ccgo_fp(_sqlite3RowSetClear))
+				_sqlite3StrAccumInit(tls, pStr, (*Tsqlite3_str)(unsafe.Pointer(pStr)).Fdb, uintptr(0), 0, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FmxAlloc))
+			}
+		}
+	} else {
+		if libc.Int32FromUint8((*Tsqlite3_str)(unsafe.Pointer(pStr)).FaccError) == int32(SQLITE_NOMEM) {
+			Xsqlite3_result_error_nomem(tls, pCtx)
+		} else {
+			Xsqlite3_result_error_toobig(tls, pCtx)
+		}
+	}
+	if eOwn == int32(SQLITE_FINISH) {
+		Xsqlite3_str_free(tls, pStr)
+	}
+}
+
 const _CACHED_RUNES = 256
 
 const _CRMASK = -256
@@ -282,55 +337,55 @@ var _aDateTimeFuncs = [10]TFuncDef{
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1289,
+		FzName:     __ccgo_ts + 1332,
 	},
 	1: {
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1309,
+		FzName:     __ccgo_ts + 1352,
 	},
 	2: {
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1517,
+		FzName:     __ccgo_ts + 1545,
 	},
 	3: {
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1522,
+		FzName:     __ccgo_ts + 1550,
 	},
 	4: {
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1527,
+		FzName:     __ccgo_ts + 1555,
 	},
 	5: {
 		FnArg:      int16(-int32(1)),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1536,
+		FzName:     __ccgo_ts + 1564,
 	},
 	6: {
 		FnArg:      int16(2),
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8) | libc.Int32FromInt32(SQLITE_FUNC_CONSTANT)),
 		FpUserData: uintptr(unsafe.Pointer(&_sqlite3Config)),
-		FzName:     __ccgo_ts + 1545,
+		FzName:     __ccgo_ts + 1573,
 	},
 	7: {
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8)),
-		FzName:     __ccgo_ts + 1554,
+		FzName:     __ccgo_ts + 1582,
 	},
 	8: {
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8)),
-		FzName:     __ccgo_ts + 1567,
+		FzName:     __ccgo_ts + 1595,
 	},
 	9: {
 		FfuncFlags: libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FUNC_BUILTIN) | libc.Int32FromInt32(SQLITE_FUNC_SLOCHNG) | libc.Int32FromInt32(SQLITE_UTF8)),
-		FzName:     __ccgo_ts + 1585,
+		FzName:     __ccgo_ts + 1613,
 	},
 }
 
@@ -344,287 +399,286 @@ var _aDateTimeFuncs = [10]TFuncDef{
 //	*/
 var _aSyscall = [29]Tunix_syscall{
 	0: {
-		FzName: __ccgo_ts + 3540,
+		FzName: __ccgo_ts + 3554,
 	},
 	1: {
-		FzName: __ccgo_ts + 3545,
+		FzName: __ccgo_ts + 3559,
 	},
 	2: {
-		FzName: __ccgo_ts + 3551,
-	},
-	3: {
-		FzName: __ccgo_ts + 3558,
-	},
-	4: {
 		FzName: __ccgo_ts + 3565,
 	},
+	3: {
+		FzName: __ccgo_ts + 3572,
+	},
+	4: {
+		FzName: __ccgo_ts + 3579,
+	},
 	5: {
-		FzName: __ccgo_ts + 3570,
+		FzName: __ccgo_ts + 3584,
 	},
 	6: {
-		FzName: __ccgo_ts + 3576,
+		FzName: __ccgo_ts + 3590,
 	},
 	7: {
-		FzName: __ccgo_ts + 3586,
+		FzName: __ccgo_ts + 3600,
 	},
 	8: {
-		FzName: __ccgo_ts + 3592,
+		FzName: __ccgo_ts + 3606,
 	},
 	9: {
-		FzName: __ccgo_ts + 3597,
-	},
-	10: {
-		FzName: __ccgo_ts + 3603,
-	},
-	11: {
 		FzName: __ccgo_ts + 3611,
 	},
-	12: {
+	10: {
 		FzName: __ccgo_ts + 3617,
 	},
+	11: {
+		FzName: __ccgo_ts + 3625,
+	},
+	12: {
+		FzName: __ccgo_ts + 3631,
+	},
 	13: {
-		FzName: __ccgo_ts + 3624,
+		FzName: __ccgo_ts + 3638,
 	},
 	14: {
-		FzName: __ccgo_ts + 3633,
+		FzName: __ccgo_ts + 3647,
 	},
 	15: {
-		FzName: __ccgo_ts + 3640,
+		FzName: __ccgo_ts + 3654,
 	},
 	16: {
-		FzName: __ccgo_ts + 3650,
+		FzName: __ccgo_ts + 3664,
 	},
 	17: {
-		FzName: __ccgo_ts + 3657,
-	},
-	18: {
 		FzName: __ccgo_ts + 3671,
 	},
+	18: {
+		FzName: __ccgo_ts + 3685,
+	},
 	19: {
-		FzName: __ccgo_ts + 3677,
+		FzName: __ccgo_ts + 3691,
 	},
 	20: {
-		FzName: __ccgo_ts + 3683,
+		FzName: __ccgo_ts + 3697,
 	},
 	21: {
-		FzName: __ccgo_ts + 3690,
+		FzName: __ccgo_ts + 3704,
 	},
 	22: {
-		FzName: __ccgo_ts + 3698,
+		FzName: __ccgo_ts + 3712,
 	},
 	23: {
-		FzName: __ccgo_ts + 3703,
-	},
-	24: {
-		FzName: __ccgo_ts + 3710,
-	},
-	25: {
 		FzName: __ccgo_ts + 3717,
 	},
+	24: {
+		FzName: __ccgo_ts + 3724,
+	},
+	25: {
+		FzName: __ccgo_ts + 3731,
+	},
 	26: {
-		FzName: __ccgo_ts + 3729,
+		FzName: __ccgo_ts + 3743,
 	},
 	27: {
-		FzName: __ccgo_ts + 3738,
+		FzName: __ccgo_ts + 3752,
 	},
 	28: {
-		FzName: __ccgo_ts + 3744,
+		FzName: __ccgo_ts + 3758,
 	},
 }
 
-var _azName = [192]uintptr{
-	0:   __ccgo_ts + 1912,
-	1:   __ccgo_ts + 1922,
-	2:   __ccgo_ts + 1933,
-	3:   __ccgo_ts + 1945,
-	4:   __ccgo_ts + 1956,
-	5:   __ccgo_ts + 1968,
-	6:   __ccgo_ts + 1975,
-	7:   __ccgo_ts + 1983,
-	8:   __ccgo_ts + 1991,
-	9:   __ccgo_ts + 1996,
-	10:  __ccgo_ts + 2001,
-	11:  __ccgo_ts + 2007,
-	12:  __ccgo_ts + 2021,
-	13:  __ccgo_ts + 2027,
-	14:  __ccgo_ts + 2037,
-	15:  __ccgo_ts + 2042,
-	16:  __ccgo_ts + 2047,
-	17:  __ccgo_ts + 2050,
-	18:  __ccgo_ts + 2056,
-	19:  __ccgo_ts + 2063,
-	20:  __ccgo_ts + 2067,
-	21:  __ccgo_ts + 2077,
-	22:  __ccgo_ts + 2084,
-	23:  __ccgo_ts + 2091,
-	24:  __ccgo_ts + 2098,
-	25:  __ccgo_ts + 2105,
-	26:  __ccgo_ts + 2115,
-	27:  __ccgo_ts + 2124,
-	28:  __ccgo_ts + 2135,
-	29:  __ccgo_ts + 2144,
-	30:  __ccgo_ts + 2150,
-	31:  __ccgo_ts + 2160,
-	32:  __ccgo_ts + 2170,
-	33:  __ccgo_ts + 2175,
-	34:  __ccgo_ts + 2189,
-	35:  __ccgo_ts + 2200,
-	36:  __ccgo_ts + 2205,
-	37:  __ccgo_ts + 2212,
-	38:  __ccgo_ts + 2220,
-	39:  __ccgo_ts + 2231,
-	40:  __ccgo_ts + 2236,
-	41:  __ccgo_ts + 2241,
-	42:  __ccgo_ts + 2247,
-	43:  __ccgo_ts + 2253,
-	44:  __ccgo_ts + 2256,
-	45:  __ccgo_ts + 2260,
-	46:  __ccgo_ts + 2266,
-	47:  __ccgo_ts + 2272,
-	48:  __ccgo_ts + 2281,
-	49:  __ccgo_ts + 2292,
-	50:  __ccgo_ts + 2303,
-	51:  __ccgo_ts + 2311,
-	52:  __ccgo_ts + 2318,
-	53:  __ccgo_ts + 2326,
-	54:  __ccgo_ts + 2329,
-	55:  __ccgo_ts + 2332,
-	56:  __ccgo_ts + 2335,
-	57:  __ccgo_ts + 2338,
-	58:  __ccgo_ts + 2341,
-	59:  __ccgo_ts + 2344,
-	60:  __ccgo_ts + 2351,
-	61:  __ccgo_ts + 2360,
-	62:  __ccgo_ts + 2366,
-	63:  __ccgo_ts + 2376,
-	64:  __ccgo_ts + 2389,
-	65:  __ccgo_ts + 2400,
-	66:  __ccgo_ts + 2406,
-	67:  __ccgo_ts + 2413,
-	68:  __ccgo_ts + 2422,
-	69:  __ccgo_ts + 2431,
-	70:  __ccgo_ts + 2438,
-	71:  __ccgo_ts + 2451,
-	72:  __ccgo_ts + 2462,
-	73:  __ccgo_ts + 2467,
-	74:  __ccgo_ts + 2475,
-	75:  __ccgo_ts + 2481,
-	76:  __ccgo_ts + 2488,
-	77:  __ccgo_ts + 2500,
-	78:  __ccgo_ts + 2505,
-	79:  __ccgo_ts + 2514,
-	80:  __ccgo_ts + 2519,
-	81:  __ccgo_ts + 2528,
-	82:  __ccgo_ts + 2533,
-	83:  __ccgo_ts + 2538,
-	84:  __ccgo_ts + 2544,
-	85:  __ccgo_ts + 2552,
-	86:  __ccgo_ts + 2560,
-	87:  __ccgo_ts + 2570,
-	88:  __ccgo_ts + 2578,
-	89:  __ccgo_ts + 2585,
-	90:  __ccgo_ts + 2598,
-	91:  __ccgo_ts + 2603,
-	92:  __ccgo_ts + 2615,
-	93:  __ccgo_ts + 2623,
-	94:  __ccgo_ts + 2630,
-	95:  __ccgo_ts + 2641,
-	96:  __ccgo_ts + 2648,
-	97:  __ccgo_ts + 2655,
-	98:  __ccgo_ts + 2665,
-	99:  __ccgo_ts + 2674,
-	100: __ccgo_ts + 2685,
-	101: __ccgo_ts + 2691,
-	102: __ccgo_ts + 2702,
-	103: __ccgo_ts + 2712,
-	104: __ccgo_ts + 2719,
-	105: __ccgo_ts + 2725,
-	106: __ccgo_ts + 2735,
-	107: __ccgo_ts + 2746,
-	108: __ccgo_ts + 2750,
-	109: __ccgo_ts + 2759,
-	110: __ccgo_ts + 2768,
-	111: __ccgo_ts + 2775,
-	112: __ccgo_ts + 2785,
-	113: __ccgo_ts + 2792,
-	114: __ccgo_ts + 2802,
-	115: __ccgo_ts + 2811,
-	116: __ccgo_ts + 2818,
-	117: __ccgo_ts + 2828,
-	118: __ccgo_ts + 2836,
-	119: __ccgo_ts + 2844,
-	120: __ccgo_ts + 2858,
-	121: __ccgo_ts + 2872,
-	122: __ccgo_ts + 2883,
-	123: __ccgo_ts + 2896,
-	124: __ccgo_ts + 2907,
-	125: __ccgo_ts + 2913,
-	126: __ccgo_ts + 2925,
-	127: __ccgo_ts + 2934,
-	128: __ccgo_ts + 2942,
-	129: __ccgo_ts + 2951,
-	130: __ccgo_ts + 2960,
-	131: __ccgo_ts + 2967,
-	132: __ccgo_ts + 2975,
-	133: __ccgo_ts + 2982,
-	134: __ccgo_ts + 2993,
-	135: __ccgo_ts + 3007,
-	136: __ccgo_ts + 3018,
-	137: __ccgo_ts + 3026,
-	138: __ccgo_ts + 3032,
-	139: __ccgo_ts + 3040,
-	140: __ccgo_ts + 3048,
-	141: __ccgo_ts + 3058,
-	142: __ccgo_ts + 3071,
-	143: __ccgo_ts + 3081,
-	144: __ccgo_ts + 3094,
-	145: __ccgo_ts + 3103,
-	146: __ccgo_ts + 3114,
-	147: __ccgo_ts + 3122,
-	148: __ccgo_ts + 3128,
-	149: __ccgo_ts + 3140,
-	150: __ccgo_ts + 3152,
-	151: __ccgo_ts + 3160,
-	152: __ccgo_ts + 3172,
-	153: __ccgo_ts + 3185,
-	154: __ccgo_ts + 3195,
-	155: __ccgo_ts + 3200,
-	156: __ccgo_ts + 3210,
-	157: __ccgo_ts + 3222,
-	158: __ccgo_ts + 3234,
-	159: __ccgo_ts + 3244,
-	160: __ccgo_ts + 3250,
-	161: __ccgo_ts + 3260,
-	162: __ccgo_ts + 3267,
-	163: __ccgo_ts + 3279,
-	164: __ccgo_ts + 3290,
-	165: __ccgo_ts + 3298,
-	166: __ccgo_ts + 3307,
-	167: __ccgo_ts + 3316,
-	168: __ccgo_ts + 3325,
-	169: __ccgo_ts + 3332,
-	170: __ccgo_ts + 3343,
-	171: __ccgo_ts + 3356,
-	172: __ccgo_ts + 3366,
-	173: __ccgo_ts + 3373,
-	174: __ccgo_ts + 3381,
-	175: __ccgo_ts + 3390,
-	176: __ccgo_ts + 3396,
-	177: __ccgo_ts + 3403,
-	178: __ccgo_ts + 3411,
-	179: __ccgo_ts + 3419,
-	180: __ccgo_ts + 3427,
-	181: __ccgo_ts + 3437,
-	182: __ccgo_ts + 3446,
-	183: __ccgo_ts + 3457,
-	184: __ccgo_ts + 3468,
-	185: __ccgo_ts + 3479,
-	186: __ccgo_ts + 3489,
-	187: __ccgo_ts + 3495,
-	188: __ccgo_ts + 3506,
-	189: __ccgo_ts + 3517,
-	190: __ccgo_ts + 3522,
-	191: __ccgo_ts + 3530,
+var _azName = [191]uintptr{
+	0:   __ccgo_ts + 1936,
+	1:   __ccgo_ts + 1946,
+	2:   __ccgo_ts + 1957,
+	3:   __ccgo_ts + 1969,
+	4:   __ccgo_ts + 1980,
+	5:   __ccgo_ts + 1992,
+	6:   __ccgo_ts + 1999,
+	7:   __ccgo_ts + 2007,
+	8:   __ccgo_ts + 2015,
+	9:   __ccgo_ts + 2020,
+	10:  __ccgo_ts + 2025,
+	11:  __ccgo_ts + 2031,
+	12:  __ccgo_ts + 2045,
+	13:  __ccgo_ts + 2051,
+	14:  __ccgo_ts + 2061,
+	15:  __ccgo_ts + 2066,
+	16:  __ccgo_ts + 2071,
+	17:  __ccgo_ts + 2074,
+	18:  __ccgo_ts + 2080,
+	19:  __ccgo_ts + 2087,
+	20:  __ccgo_ts + 2091,
+	21:  __ccgo_ts + 2101,
+	22:  __ccgo_ts + 2108,
+	23:  __ccgo_ts + 2115,
+	24:  __ccgo_ts + 2122,
+	25:  __ccgo_ts + 2129,
+	26:  __ccgo_ts + 2138,
+	27:  __ccgo_ts + 2149,
+	28:  __ccgo_ts + 2158,
+	29:  __ccgo_ts + 2164,
+	30:  __ccgo_ts + 2174,
+	31:  __ccgo_ts + 2184,
+	32:  __ccgo_ts + 2189,
+	33:  __ccgo_ts + 2203,
+	34:  __ccgo_ts + 2214,
+	35:  __ccgo_ts + 2219,
+	36:  __ccgo_ts + 2226,
+	37:  __ccgo_ts + 2234,
+	38:  __ccgo_ts + 2245,
+	39:  __ccgo_ts + 2250,
+	40:  __ccgo_ts + 2255,
+	41:  __ccgo_ts + 2261,
+	42:  __ccgo_ts + 2267,
+	43:  __ccgo_ts + 2273,
+	44:  __ccgo_ts + 2276,
+	45:  __ccgo_ts + 2280,
+	46:  __ccgo_ts + 2286,
+	47:  __ccgo_ts + 2295,
+	48:  __ccgo_ts + 2306,
+	49:  __ccgo_ts + 2317,
+	50:  __ccgo_ts + 2325,
+	51:  __ccgo_ts + 2334,
+	52:  __ccgo_ts + 2341,
+	53:  __ccgo_ts + 2349,
+	54:  __ccgo_ts + 2352,
+	55:  __ccgo_ts + 2355,
+	56:  __ccgo_ts + 2358,
+	57:  __ccgo_ts + 2361,
+	58:  __ccgo_ts + 2364,
+	59:  __ccgo_ts + 2367,
+	60:  __ccgo_ts + 2374,
+	61:  __ccgo_ts + 2380,
+	62:  __ccgo_ts + 2390,
+	63:  __ccgo_ts + 2403,
+	64:  __ccgo_ts + 2414,
+	65:  __ccgo_ts + 2420,
+	66:  __ccgo_ts + 2427,
+	67:  __ccgo_ts + 2436,
+	68:  __ccgo_ts + 2445,
+	69:  __ccgo_ts + 2452,
+	70:  __ccgo_ts + 2465,
+	71:  __ccgo_ts + 2476,
+	72:  __ccgo_ts + 2481,
+	73:  __ccgo_ts + 2489,
+	74:  __ccgo_ts + 2495,
+	75:  __ccgo_ts + 2502,
+	76:  __ccgo_ts + 2514,
+	77:  __ccgo_ts + 2519,
+	78:  __ccgo_ts + 2528,
+	79:  __ccgo_ts + 2533,
+	80:  __ccgo_ts + 2542,
+	81:  __ccgo_ts + 2547,
+	82:  __ccgo_ts + 2552,
+	83:  __ccgo_ts + 2558,
+	84:  __ccgo_ts + 2566,
+	85:  __ccgo_ts + 2574,
+	86:  __ccgo_ts + 2584,
+	87:  __ccgo_ts + 2592,
+	88:  __ccgo_ts + 2599,
+	89:  __ccgo_ts + 2612,
+	90:  __ccgo_ts + 2617,
+	91:  __ccgo_ts + 2629,
+	92:  __ccgo_ts + 2637,
+	93:  __ccgo_ts + 2644,
+	94:  __ccgo_ts + 2655,
+	95:  __ccgo_ts + 2662,
+	96:  __ccgo_ts + 2669,
+	97:  __ccgo_ts + 2679,
+	98:  __ccgo_ts + 2688,
+	99:  __ccgo_ts + 2699,
+	100: __ccgo_ts + 2705,
+	101: __ccgo_ts + 2716,
+	102: __ccgo_ts + 2726,
+	103: __ccgo_ts + 2736,
+	104: __ccgo_ts + 2743,
+	105: __ccgo_ts + 2749,
+	106: __ccgo_ts + 2759,
+	107: __ccgo_ts + 2770,
+	108: __ccgo_ts + 2774,
+	109: __ccgo_ts + 2783,
+	110: __ccgo_ts + 2792,
+	111: __ccgo_ts + 2799,
+	112: __ccgo_ts + 2809,
+	113: __ccgo_ts + 2816,
+	114: __ccgo_ts + 2825,
+	115: __ccgo_ts + 2835,
+	116: __ccgo_ts + 2842,
+	117: __ccgo_ts + 2850,
+	118: __ccgo_ts + 2864,
+	119: __ccgo_ts + 2872,
+	120: __ccgo_ts + 2886,
+	121: __ccgo_ts + 2897,
+	122: __ccgo_ts + 2910,
+	123: __ccgo_ts + 2921,
+	124: __ccgo_ts + 2927,
+	125: __ccgo_ts + 2939,
+	126: __ccgo_ts + 2948,
+	127: __ccgo_ts + 2956,
+	128: __ccgo_ts + 2965,
+	129: __ccgo_ts + 2974,
+	130: __ccgo_ts + 2981,
+	131: __ccgo_ts + 2989,
+	132: __ccgo_ts + 2996,
+	133: __ccgo_ts + 3007,
+	134: __ccgo_ts + 3021,
+	135: __ccgo_ts + 3032,
+	136: __ccgo_ts + 3040,
+	137: __ccgo_ts + 3046,
+	138: __ccgo_ts + 3054,
+	139: __ccgo_ts + 3062,
+	140: __ccgo_ts + 3072,
+	141: __ccgo_ts + 3085,
+	142: __ccgo_ts + 3095,
+	143: __ccgo_ts + 3108,
+	144: __ccgo_ts + 3117,
+	145: __ccgo_ts + 3128,
+	146: __ccgo_ts + 3136,
+	147: __ccgo_ts + 3142,
+	148: __ccgo_ts + 3154,
+	149: __ccgo_ts + 3166,
+	150: __ccgo_ts + 3174,
+	151: __ccgo_ts + 3186,
+	152: __ccgo_ts + 3199,
+	153: __ccgo_ts + 3209,
+	154: __ccgo_ts + 3219,
+	155: __ccgo_ts + 3224,
+	156: __ccgo_ts + 3236,
+	157: __ccgo_ts + 3248,
+	158: __ccgo_ts + 3258,
+	159: __ccgo_ts + 3264,
+	160: __ccgo_ts + 3274,
+	161: __ccgo_ts + 3281,
+	162: __ccgo_ts + 3293,
+	163: __ccgo_ts + 3304,
+	164: __ccgo_ts + 3312,
+	165: __ccgo_ts + 3321,
+	166: __ccgo_ts + 3330,
+	167: __ccgo_ts + 3339,
+	168: __ccgo_ts + 3346,
+	169: __ccgo_ts + 3357,
+	170: __ccgo_ts + 3370,
+	171: __ccgo_ts + 3380,
+	172: __ccgo_ts + 3387,
+	173: __ccgo_ts + 3395,
+	174: __ccgo_ts + 3404,
+	175: __ccgo_ts + 3410,
+	176: __ccgo_ts + 3417,
+	177: __ccgo_ts + 3425,
+	178: __ccgo_ts + 3433,
+	179: __ccgo_ts + 3441,
+	180: __ccgo_ts + 3451,
+	181: __ccgo_ts + 3460,
+	182: __ccgo_ts + 3471,
+	183: __ccgo_ts + 3482,
+	184: __ccgo_ts + 3493,
+	185: __ccgo_ts + 3503,
+	186: __ccgo_ts + 3509,
+	187: __ccgo_ts + 3520,
+	188: __ccgo_ts + 3531,
+	189: __ccgo_ts + 3536,
+	190: __ccgo_ts + 3544,
 }
 
 // C documentation
@@ -736,29 +790,6 @@ func _dotlockUnlock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 	return SQLITE_OK
 }
 
-func _groupConcatValue(tls *libc.TLS, context uintptr) {
-	var pAccum, pGCC, zText uintptr
-	_, _, _ = pAccum, pGCC, zText
-	pGCC = Xsqlite3_aggregate_context(tls, context, 0)
-	if pGCC != 0 {
-		pAccum = pGCC
-		if libc.Int32FromUint8((*TStrAccum)(unsafe.Pointer(pAccum)).FaccError) == int32(SQLITE_TOOBIG) {
-			Xsqlite3_result_error_toobig(tls, context)
-		} else {
-			if libc.Int32FromUint8((*TStrAccum)(unsafe.Pointer(pAccum)).FaccError) == int32(SQLITE_NOMEM) {
-				Xsqlite3_result_error_nomem(tls, context)
-			} else {
-				if (*TGroupConcatCtx)(unsafe.Pointer(pGCC)).FnAccum > 0 && (*TStrAccum)(unsafe.Pointer(pAccum)).FnChar == uint32(0) {
-					Xsqlite3_result_text(tls, context, __ccgo_ts+1702, int32(1), libc.UintptrFromInt32(0))
-				} else {
-					zText = Xsqlite3_str_value(tls, pAccum)
-					Xsqlite3_result_text(tls, context, zText, libc.Int32FromUint32((*TStrAccum)(unsafe.Pointer(pAccum)).FnChar), uintptr(-libc.Int32FromInt32(1)))
-				}
-			}
-		}
-	}
-}
-
 // C documentation
 //
 //	/*
@@ -783,7 +814,7 @@ func _robust_close(tls *libc.TLS, pFile uintptr, h int32, lineno int32) {
 		} else {
 			v1 = uintptr(0)
 		}
-		_unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(16)<<libc.Int32FromInt32(8), __ccgo_ts+3545, v1, lineno)
+		_unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(16)<<libc.Int32FromInt32(8), __ccgo_ts+3559, v1, lineno)
 	}
 }
 
@@ -808,26 +839,6 @@ func _robust_ftruncate(tls *libc.TLS, h int32, sz Tsqlite3_int64) (r int32) {
 // C documentation
 //
 //	/*
-//	** Use the content of the StrAccum passed as the second argument
-//	** as the result of an SQL function.
-//	*/
-func _sqlite3ResultStrAccum(tls *libc.TLS, pCtx uintptr, p uintptr) {
-	if (*TStrAccum)(unsafe.Pointer(p)).FaccError != 0 {
-		Xsqlite3_result_error_code(tls, pCtx, libc.Int32FromUint8((*TStrAccum)(unsafe.Pointer(p)).FaccError))
-		Xsqlite3_str_reset(tls, p)
-	} else {
-		if libc.Int32FromUint8((*TStrAccum)(unsafe.Pointer(p)).FprintfFlags)&int32(SQLITE_PRINTF_MALLOCED) != 0 {
-			Xsqlite3_result_text(tls, pCtx, (*TStrAccum)(unsafe.Pointer(p)).FzText, libc.Int32FromUint32((*TStrAccum)(unsafe.Pointer(p)).FnChar), __ccgo_fp(_sqlite3RowSetClear))
-		} else {
-			Xsqlite3_result_text(tls, pCtx, __ccgo_ts+1702, 0, libc.UintptrFromInt32(0))
-			Xsqlite3_str_reset(tls, p)
-		}
-	}
-}
-
-// C documentation
-//
-//	/*
 //	** Check to make sure we have a valid db pointer.  This test is not
 //	** foolproof but it does provide some measure of protection against
 //	** misuse of the interface such as passing in db pointers that are
@@ -845,13 +856,13 @@ func _sqlite3SafetyCheckOk(tls *libc.TLS, db uintptr) (r int32) {
 	var eOpenState Tu8
 	_ = eOpenState
 	if db == uintptr(0) {
-		_logBadConnection(tls, __ccgo_ts+1703)
+		_logBadConnection(tls, __ccgo_ts+1744)
 		return 0
 	}
 	eOpenState = (*Tsqlite3)(unsafe.Pointer(db)).FeOpenState
 	if libc.Int32FromUint8(eOpenState) != int32(SQLITE_STATE_OPEN) {
 		if _sqlite3SafetyCheckSickOrOk(tls, db) != 0 {
-			_logBadConnection(tls, __ccgo_ts+1895)
+			_logBadConnection(tls, __ccgo_ts+1919)
 		}
 		return 0
 	} else {
@@ -865,7 +876,7 @@ func _sqlite3SafetyCheckSickOrOk(tls *libc.TLS, db uintptr) (r int32) {
 	_ = eOpenState
 	eOpenState = (*Tsqlite3)(unsafe.Pointer(db)).FeOpenState
 	if libc.Int32FromUint8(eOpenState) != int32(SQLITE_STATE_SICK) && libc.Int32FromUint8(eOpenState) != int32(SQLITE_STATE_OPEN) && libc.Int32FromUint8(eOpenState) != int32(SQLITE_STATE_BUSY) {
-		_logBadConnection(tls, __ccgo_ts+1904)
+		_logBadConnection(tls, __ccgo_ts+1928)
 		return 0
 	} else {
 		return int32(1)
@@ -1123,11 +1134,11 @@ func _unixLogErrorAtLine(tls *libc.TLS, errcode int32, zFunc uintptr, zPath uint
 	 ** equivalent to errno. Otherwise, use strerror_r().
 	 */
 	/* This is a threadsafe build, but strerror_r() is not available. */
-	zErr = __ccgo_ts + 1702
+	zErr = __ccgo_ts + 1730
 	if zPath == uintptr(0) {
-		zPath = __ccgo_ts + 1702
+		zPath = __ccgo_ts + 1730
 	}
-	Xsqlite3_log(tls, errcode, __ccgo_ts+3803, libc.VaList(bp+8, iLine, iErrno, zFunc, zPath, zErr))
+	Xsqlite3_log(tls, errcode, __ccgo_ts+3817, libc.VaList(bp+8, iLine, iErrno, zFunc, zPath, zErr))
 	return errcode
 }
 
@@ -1152,7 +1163,7 @@ func _unixTruncate(tls *libc.TLS, id uintptr, nByte Ti64) (r int32) {
 	rc = _robust_ftruncate(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, nByte)
 	if rc != 0 {
 		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__error(tls))))
-		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3576, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44325))
+		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3590, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44782))
 	} else {
 		/* If the file was just truncated to a size smaller than the currently
 		 ** mapped region, reduce the effective mapping size as well. SQLite will
@@ -1184,7 +1195,7 @@ func _windowCheckValue(tls *libc.TLS, pParse uintptr, reg int32, eCond int32) {
 	_sqlite3VdbeAddOp2(tls, v, int32(OP_Integer), 0, regZero)
 	if eCond >= int32(WINDOW_STARTING_NUM) {
 		regString = _sqlite3GetTempReg(tls, pParse)
-		_sqlite3VdbeAddOp4(tls, v, int32(OP_String8), 0, regString, 0, __ccgo_ts+1702, -int32(1))
+		_sqlite3VdbeAddOp4(tls, v, int32(OP_String8), 0, regString, 0, __ccgo_ts+1730, -int32(1))
 		_sqlite3VdbeAddOp3(tls, v, int32(OP_Ge), regString, _sqlite3VdbeCurrentAddr(tls, v)+int32(2), reg)
 		_sqlite3VdbeChangeP5(tls, v, libc.Uint16FromInt32(libc.Int32FromInt32(SQLITE_AFF_NUMERIC)|libc.Int32FromInt32(SQLITE_JUMPIFNULL)))
 	} else {

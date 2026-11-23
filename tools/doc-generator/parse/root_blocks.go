@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -97,6 +98,11 @@ var (
 			Name:       "ingester",
 			StructType: []reflect.Type{reflect.TypeFor[ingester.Config]()},
 			Desc:       "The ingester block configures the ingester and how the ingester will register itself to a key value store.",
+		},
+		{
+			Name:       "logline",
+			StructType: []reflect.Type{reflect.TypeFor[loglineconfig.Config]()},
+			Desc:       "The logline block configures experimental logline indexing and query filtering.",
 		},
 		{
 			Name:       "index_gateway",

@@ -28,16 +28,6 @@ func newPtrDecoder(dec Decoder, typ reflect.Type, structName, fieldName string) 
 	return &d
 }
 
-func (d *ptrDecoder) contentDecoder() Decoder {
-	switch dec := d.dec.(type) {
-	case *ptrDecoder:
-		return dec.contentDecoder()
-	case *basicPtrDecoder:
-		return dec.contentDecoder()
-	}
-	return d.dec
-}
-
 func (d *ptrDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
 	buf := ctx.Buf
 	cursor = skipWhiteSpace(buf, cursor)
@@ -58,13 +48,9 @@ func (d *ptrDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.P
 	} else {
 		newptr = *(*unsafe.Pointer)(p)
 	}
-	c, err := d.dec.Decode(ctx, cursor, depth, newptr)
-	if err != nil {
-		*(*unsafe.Pointer)(p) = nil
-		return 0, err
-	}
-	cursor = c
-	return cursor, nil
+	// after an error, the pointer is left as it is, as encoding/json leaves it; the cursor is the one of the decoder:
+	// after a key of a map of another type, the map goes on from it ( see errMapKeyType )
+	return d.dec.Decode(ctx, cursor, depth, newptr)
 }
 
 // basicPtrDecoder is the decoder of a pointer to a type which has an allocator of its own ( see allocatorOf ),
@@ -92,12 +78,8 @@ func (d *basicPtrDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p uns
 		newptr = d.alloc()
 		*(*unsafe.Pointer)(p) = newptr
 	}
-	c, err := d.dec.Decode(ctx, cursor, depth, newptr)
-	if err != nil {
-		*(*unsafe.Pointer)(p) = nil
-		return 0, err
-	}
-	return c, nil
+	// as ptrDecoder.Decode
+	return d.dec.Decode(ctx, cursor, depth, newptr)
 }
 
 func (d *ptrDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {

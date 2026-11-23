@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -36,7 +36,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: defaultQuery,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"exact match all types with surrounding whitespace trimmed",
@@ -44,7 +44,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: fmt.Sprintf("       %s  ", defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"exact match filter type only",
@@ -53,7 +53,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
 					Types:   []string{QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"match from multiple patterns",
@@ -68,7 +68,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
 					Types:   []string{QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no block: exact match not matching filter type",
@@ -86,7 +86,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: ".*foo.*",
 					Regex:   true,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"regex match multiple types",
@@ -96,7 +96,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Regex:   true,
 					Types:   []string{QueryTypeFilter, QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"match all queries by type",
@@ -104,7 +104,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Types: []string{QueryTypeFilter, QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no block: match all queries by type",
@@ -130,7 +130,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"incorrect FNV32 hash does not match",
@@ -149,7 +149,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: defaultQuery, // should still be evaluated
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"second hash in list matches when first does not",
@@ -160,7 +160,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery), // matches
 				},
-			}, logqlmodel.ErrBlocked,
+			}, logqlerr.ErrBlocked,
 		},
 		{
 			"no blocked queries",
@@ -306,7 +306,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 					Tags: map[string]string{"source": "grafana", "feature": "beta"},
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			expectedErr: logqlerr.ErrBlocked,
 		},
 		{
 			name:       "do not block when tags value mismatches",
@@ -333,7 +333,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 					Tags:    map[string]string{"source": "GRAFANA", "feature": "BETA"}, // case-insensitive
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			expectedErr: logqlerr.ErrBlocked,
 		},
 		{
 			name:       "do not block when types match but required tag key missing",

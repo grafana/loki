@@ -22,9 +22,12 @@ func TestReadCompactionResult(t *testing.T) {
 	readErr := errors.New("worker failed after upload")
 	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
-	want := v2.ResultArtifact{Path: "indexes/result"}
+	want := []v2.ResultArtifact{
+		{Path: "indexes/result-a"},
+		{Path: "indexes/result-b"},
+	}
 	resultRecord := func() arrow.RecordBatch {
-		rec, err := want.ToRecordBatch(mem)
+		rec, err := v2.EncodeResultArtifacts(mem, want)
 		require.NoError(t, err)
 		return rec
 	}
@@ -43,7 +46,7 @@ func TestReadCompactionResult(t *testing.T) {
 		{name: "success", records: []arrow.RecordBatch{resultRecord()}},
 		{name: "missing", wantErr: "produced no result record"},
 		{name: "nil record", records: []arrow.RecordBatch{nil}, wantErr: "missing record"},
-		{name: "empty batch", records: []arrow.RecordBatch{emptyRecord()}, wantErr: "got 0 rows, want 1"},
+		{name: "empty batch", records: []arrow.RecordBatch{emptyRecord()}, wantErr: "no rows"},
 		{name: "multiple records", records: []arrow.RecordBatch{resultRecord(), resultRecord()}, wantErr: "more than one result record"},
 		{name: "open failure", openErr: readErr, wantErr: "pipeline.Open"},
 		{name: "read failure", readErr: readErr, wantErr: "pipeline.Read"},
@@ -63,7 +66,7 @@ func TestReadCompactionResult(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, &want, got)
+			require.Equal(t, want, got)
 			require.Equal(t, 2, pipeline.reads, "a result alone is not successful completion")
 		})
 	}
@@ -164,6 +167,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
+		OutputLevel: 2,
 	}
 
 	plan := buildLogMergePlan("t1", window, task)
@@ -176,6 +180,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
+	require.Equal(t, uint32(2), node.OutputLevel)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
@@ -186,4 +191,21 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.NoError(t, err, "plan must have exactly one root node")
 
 	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
+}
+
+func TestBuildDeletionSweepPlan(t *testing.T) {
+	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
+		root, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.IsType(t, &physical.DeletionSweep{}, root)
+		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
+	})
+
+	t.Run("mints a fresh NodeID for every build", func(t *testing.T) {
+		n1, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		n2, err := buildDeletionSweepPlan("t1").Root()
+		require.NoError(t, err)
+		require.NotEqual(t, n1.ID(), n2.ID())
+	})
 }

@@ -3,6 +3,8 @@ package encoder
 import (
 	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/runtime"
@@ -72,6 +74,8 @@ func (c *IntCode) Kind() CodeKind {
 func (c *IntCode) ToOpcode(ctx *compileContext) Opcodes {
 	var code *Opcode
 	switch {
+	case c.isPtr && c.isString:
+		code = newOpCode(ctx, c.typ, OpIntPtrString)
 	case c.isPtr:
 		code = newOpCode(ctx, c.typ, OpIntPtr)
 	case c.isString:
@@ -102,6 +106,8 @@ func (c *UintCode) Kind() CodeKind {
 func (c *UintCode) ToOpcode(ctx *compileContext) Opcodes {
 	var code *Opcode
 	switch {
+	case c.isPtr && c.isString:
+		code = newOpCode(ctx, c.typ, OpUintPtrString)
 	case c.isPtr:
 		code = newOpCode(ctx, c.typ, OpUintPtr)
 	case c.isString:
@@ -122,6 +128,8 @@ type FloatCode struct {
 	typ     reflect.Type
 	bitSize uint8
 	isPtr   bool
+	// isString is whether the number is a JSON string ( see Compiler.stringifyNumbers ).
+	isString bool
 }
 
 func (c *FloatCode) Kind() CodeKind {
@@ -129,23 +137,17 @@ func (c *FloatCode) Kind() CodeKind {
 }
 
 func (c *FloatCode) ToOpcode(ctx *compileContext) Opcodes {
-	var code *Opcode
-	switch {
-	case c.isPtr:
-		switch c.bitSize {
-		case 32:
-			code = newOpCode(ctx, c.typ, OpFloat32Ptr)
-		default:
-			code = newOpCode(ctx, c.typ, OpFloat64Ptr)
-		}
-	default:
-		switch c.bitSize {
-		case 32:
-			code = newOpCode(ctx, c.typ, OpFloat32)
-		default:
-			code = newOpCode(ctx, c.typ, OpFloat64)
-		}
+	op := OpFloat64
+	if c.bitSize == 32 {
+		op = OpFloat32
 	}
+	if c.isPtr {
+		op = convertPtrOp(&Opcode{Op: op})
+	}
+	if c.isString {
+		op = op.ToStringOp()
+	}
+	code := newOpCode(ctx, c.typ, op)
 	ctx.incIndex()
 	return Opcodes{code}
 }
@@ -157,6 +159,9 @@ func (c *FloatCode) Filter(_ *FieldQuery) Code {
 type StringCode struct {
 	typ   reflect.Type
 	isPtr bool
+	// isJSONNumberString is whether the value is a json.Number written as a JSON string ( see
+	// Compiler.stringifyNumbers ).
+	isJSONNumberString bool
 }
 
 func (c *StringCode) Kind() CodeKind {
@@ -178,6 +183,9 @@ func (c *StringCode) ToOpcode(ctx *compileContext) Opcodes {
 		} else {
 			code = newOpCode(ctx, c.typ, OpString)
 		}
+	}
+	if c.isJSONNumberString {
+		code.Op = code.Op.ToStringOp()
 	}
 	ctx.incIndex()
 	return Opcodes{code}
@@ -326,6 +334,9 @@ type MapCode struct {
 	typ   reflect.Type
 	key   Code
 	value Code
+	// mayRepeatNames is whether the names of the keys may be the same, which OpMapKey checks as it writes the
+	// entries of a sorted map: the opcode of the end is OpMapEndMayRepeatNames then.
+	mayRepeatNames bool
 }
 
 func (c *MapCode) Kind() CodeKind {
@@ -350,8 +361,7 @@ func (c *MapCode) ToOpcode(ctx *compileContext) Opcodes {
 		valueCodes := c.value.ToOpcode(ctx)
 		ctx.decIndent()
 		valueCodes.First().Flags |= IndirectFlags
-		header.Map.ScalarValue = len(valueCodes) == 1 && isScalarOp(valueCodes.First().Op) &&
-			header.Map.ValueWords >= 0 && header.Map.ValueWords <= MapScalarValueWords
+		header.Map.ScalarValue = len(valueCodes) == 1 && isScalarOp(valueCodes.First().Op)
 
 		key := newMapKeyCode(ctx, c.typ.Key(), header)
 		key.Flags |= MapStringKeyFlags
@@ -400,14 +410,22 @@ func (c *MapCode) ToOpcode(ctx *compileContext) Opcodes {
 	header.End = end
 	key.End = end
 	value.End = end
+	// the keys of a sorted map are encoded first, and the entries in the order of their names after: OpMapValue goes
+	// back to the key opcode after a key, and the key opcode goes to the opcodes of the value of an entry.
+	key.NextField = value
+	value.NextField = key
+	if c.mayRepeatNames {
+		end.Op = OpMapEndMayRepeatNames
+	}
 	return Opcodes{header}.Add(keyCodes...).Add(value).Add(valueCodes...).Add(key).Add(end)
 }
 
-// isStringKey is whether the key of the map is a plain string, which OpMapKey writes itself: not a pointer,
-// not json.Number, and not a type with a marshaler, whose code is not a StringCode.
+// isStringKey is whether the key of the map is a plain string, which OpMapKey writes itself: not a pointer, and
+// not a type with a marshaler, whose code is not a StringCode. A json.Number is named by its string or by a function
+// ( see Compiler.mapKeyCode and Compiler.v2MapKeyCode ).
 func (c *MapCode) isStringKey() bool {
 	key, ok := c.key.(*StringCode)
-	return ok && !key.isPtr && key.typ != jsonNumberType
+	return ok && !key.isPtr
 }
 
 func (c *MapCode) Filter(_ *FieldQuery) Code {
@@ -415,7 +433,11 @@ func (c *MapCode) Filter(_ *FieldQuery) Code {
 }
 
 type StructCode struct {
-	typ                       reflect.Type
+	typ reflect.Type
+	// key is what the code is kept by while it is compiled and linked: the address of its type, with
+	// addressableStructMark set for an addressable struct with CallMethodsWithLegacySemantics ( see
+	// Compiler.structKey ).
+	key                       uintptr
 	fields                    []*StructFieldCode
 	isPtr                     bool
 	disableIndirectConversion bool
@@ -426,6 +448,10 @@ type StructCode struct {
 	// fieldQuery is the query which the fields of a recursive struct are filtered by: the code which is jumped
 	// to is filtered by it when the recursive codes are linked.
 	fieldQuery *FieldQuery
+	// hiddenNames are the names of the fields of a recursive struct embedded in another which the fields of that
+	// one hide ( see Compiler.hiddenFields ): the code which is jumped to is compiled when the recursive codes are
+	// linked, apart from the struct it is embedded in, so the names are kept for it ( see compileContext ).
+	hiddenNames []string
 }
 
 func (c *StructCode) Kind() CodeKind {
@@ -434,7 +460,7 @@ func (c *StructCode) Kind() CodeKind {
 
 func (c *StructCode) lastFieldCode(field *StructFieldCode, firstField *Opcode) *Opcode {
 	if isEmbeddedStruct(field) {
-		return c.lastAnonymousFieldCode(firstField)
+		return lastFieldOpcode(firstField)
 	}
 	lastField := firstField
 	for lastField.NextField != nil {
@@ -443,24 +469,23 @@ func (c *StructCode) lastFieldCode(field *StructFieldCode, firstField *Opcode) *
 	return lastField
 }
 
-func (c *StructCode) lastAnonymousFieldCode(firstField *Opcode) *Opcode {
-	// firstField is special StructHead operation for anonymous structure.
-	// So, StructHead's next operation is truly struct head operation.
-	for firstField.Op == OpStructHead || firstField.Op == OpStructField {
-		firstField = firstField.Next
+// skipEmbeddedHeads returns the first field of the fields which field starts with: the head and the key of an
+// embedded struct, which have no value of their own, are followed by the fields of the struct. The other fields of
+// an embedded struct are marked with AnonymousHeadFlags too, but they are not its key.
+func skipEmbeddedHeads(field *Opcode) *Opcode {
+	for (field.Op == OpStructField && field.Flags&AnonymousKeyFlags != 0) ||
+		(field.Op == OpStructHead && field.Flags&AnonymousHeadFlags != 0) {
+		field = field.Next
 	}
-	return lastFieldOpcode(firstField)
+	return field
 }
 
-// lastFieldOpcode returns the last field of the chain of the fields which starts from field.
-// If a field of the chain is an embedded struct, which is a head without a value followed by
-// the fields of the struct, the chain continues with those fields.
+// lastFieldOpcode returns the last field of the chain of the fields which starts from field, whose fields of an
+// embedded struct are its fields ( see skipEmbeddedHeads ).
 func lastFieldOpcode(field *Opcode) *Opcode {
+	field = skipEmbeddedHeads(field)
 	for field.NextField != nil {
-		field = field.NextField
-		for field.Flags&AnonymousHeadFlags != 0 && (field.Op == OpStructField || field.Op == OpStructHead) {
-			field = field.Next
-		}
+		field = skipEmbeddedHeads(field.NextField)
 	}
 	return field
 }
@@ -496,6 +521,7 @@ func (c *StructCode) ToOpcode(ctx *compileContext) Opcodes {
 		recursive := newRecursiveCode(ctx, c.typ, &CompiledCode{})
 		recursive.Type = runtime.TypePtr(c.typ)
 		recursive.FieldQuery = c.fieldQuery
+		c.recordRecursiveKey(ctx, recursive)
 		ctx.incIndex()
 		*ctx.recursiveCodes = append(*ctx.recursiveCodes, recursive)
 		return Opcodes{recursive}
@@ -558,8 +584,19 @@ func (c *StructCode) ToOpcode(ctx *compileContext) Opcodes {
 	}
 	ctx.decIndent()
 	markFieldRuns(codes)
-	ctx.structTypeToCodes[uintptr(runtime.TypePtr(c.typ))] = codes
+	ctx.structTypeToCodes[c.key] = codes
 	return codes
+}
+
+// recordRecursiveKey records the key of the struct of the recursive code, if it is not the address of its type ( see
+// linkRecursiveCode ).
+func (c *StructCode) recordRecursiveKey(ctx *compileContext, recursive *Opcode) {
+	if c.key&addressableStructMark != 0 {
+		if ctx.recursiveKeys == nil {
+			ctx.recursiveKeys = map[*Opcode]uintptr{}
+		}
+		ctx.recursiveKeys[recursive] = c.key
+	}
 }
 
 // fieldRunOps are, for the opcode of a field, the opcodes of a run of two and of three such fields in a row.
@@ -601,8 +638,12 @@ func (c *StructCode) ToAnonymousOpcode(ctx *compileContext) Opcodes {
 	//                        |__________|
 	if c.isRecursive {
 		recursive := newRecursiveCode(ctx, c.typ, &CompiledCode{Embedded: true})
+		if len(c.hiddenNames) > 0 {
+			ctx.hiddenNames[recursive] = slices.Sorted(slices.Values(c.hiddenNames))
+		}
 		recursive.Type = runtime.TypePtr(c.typ)
 		recursive.FieldQuery = c.fieldQuery
+		c.recordRecursiveKey(ctx, recursive)
 		ctx.incIndex()
 		*ctx.recursiveCodes = append(*ctx.recursiveCodes, recursive)
 		return Opcodes{recursive}
@@ -614,7 +655,7 @@ func (c *StructCode) ToAnonymousOpcode(ctx *compileContext) Opcodes {
 		isFirstField := idx == 0
 		isEndField := idx == len(c.fields)-1
 		fieldSlots.reuse(ctx)
-		fieldCodes := field.ToAnonymousOpcode(ctx, isFirstField, isEndField)
+		fieldCodes := field.ToAnonymousOpcode(ctx, isFirstField)
 		for _, code := range fieldCodes {
 			if c.isIndirect {
 				code.Flags |= IndirectFlags
@@ -719,6 +760,7 @@ func (c *StructCode) Filter(query *FieldQuery) Code {
 	}
 	return &StructCode{
 		typ:                       c.typ,
+		key:                       c.key,
 		fields:                    fields,
 		isPtr:                     c.isPtr,
 		disableIndirectConversion: c.disableIndirectConversion,
@@ -739,7 +781,19 @@ type StructFieldCode struct {
 	isNilCheck         bool
 	isAddrForMarshaler bool
 	isNextOpPtrType    bool
-	isMarshalerContext bool
+	// unwriteEmpty is whether the member is unwritten after its value if the value is empty, for omitempty of the
+	// v2 semantics, which omits a value that would be null, "", {} or [].
+	unwriteEmpty bool
+	// omitEmptyString is whether omitempty omits the empty string which the pointer of the field points to, as
+	// well as a nil pointer, for the v2 semantics: the field is written by an opcode which checks both, or is
+	// unwritten after its value if its opcode is another one.
+	omitEmptyString bool
+	// emptyNil is whether omitempty omits the value of the field, a slice, if it is nil only ( EmptyNil ): an
+	// empty one is written by its method, as the v2 semantics do.
+	emptyNil bool
+	// isFallback is whether the field is the embedded fallback of the struct, which writes no key ( see
+	// v2FallbackField ).
+	isFallback bool
 }
 
 // runKind returns the kind of the field if it is one which has the opcodes of a run ( fieldRunOps ): a field of
@@ -827,6 +881,17 @@ func withHead(head *Opcode, codes Opcodes) Opcodes {
 	return append(Opcodes{head}, codes...)
 }
 
+// decidesEmptyAtAddr is whether the opcode of the field decides omitempty by EmptyKind from the address of the
+// field: the generic field opcode, and the opcodes of a field written by a marshaler, whose value may be of any
+// kind, as encoding/json decides it by the kind of the field whether or not it has a marshaler.
+func decidesEmptyAtAddr(op OpType) bool {
+	switch op {
+	case OpStructFieldOmitEmpty, OpStructFieldOmitEmptyMarshalJSON, OpStructFieldOmitEmptyMarshalText:
+		return true
+	}
+	return false
+}
+
 // isLongKey is whether the key of the field is longer than a chunk: then the field is not encoded by one opcode
 // with its value, but by the generic field opcode, which writes a key of any length, and the opcode of the value.
 func (c *StructFieldCode) isLongKey(field *Opcode) bool {
@@ -834,9 +899,15 @@ func (c *StructFieldCode) isLongKey(field *Opcode) bool {
 }
 
 // isGenericField is whether the field is encoded by the generic field opcode and the opcode of the value: a
-// field of a long key, or of omitzero, whose check the generic opcode makes for a value of any type.
+// field of a long key, or of omitzero, whose check the generic opcode makes for a value of any type, or a field
+// whose value is encoded by its type at run time ( see Compiler.recursiveValueCode ), which is empty by the
+// kind of the field, not as an interface value is, the embedded fallback, or a field of omitempty of a pointer to
+// a pointer or to a map: the opcodes of a kind follow every pointer to the value and would omit the field for a
+// nil one after the first, while only a nil pointer of the field is empty.
 func (c *StructFieldCode) isGenericField(field *Opcode) bool {
-	return c.isLongKey(field) || c.tag.IsOmitZero
+	return c.isLongKey(field) || c.tag.IsOmitZero || isStaticInterface(c.value) || c.isFallback ||
+		c.tag.IsOmitEmpty && c.typ.Kind() == reflect.Ptr &&
+			(c.typ.Elem().Kind() == reflect.Ptr || c.typ.Elem().Kind() == reflect.Map)
 }
 
 func (c *StructFieldCode) fieldOpcodes(ctx *compileContext, field *Opcode, valueCodes Opcodes) Opcodes {
@@ -862,23 +933,38 @@ func (c *StructFieldCode) fieldOpcodes(ctx *compileContext, field *Opcode, value
 	} else {
 		op = optimizeStructField(value, c.tag)
 	}
+	if c.omitEmptyString {
+		if op == OpStructFieldOmitEmptyStringPtr {
+			op = OpStructFieldOmitEmptyStringPtrOrEmpty
+		} else {
+			c.unwriteEmpty = true
+		}
+	}
 	field.Op = op
-	if op == OpStructFieldOmitEmpty {
-		if c.tag.IsOmitEmpty {
-			field.EmptyKind = emptyKindOf(c.typ)
-		}
-		if c.tag.IsOmitZero {
-			field.ZeroKind = zeroKindOf(c.typ)
-		}
+	if op == OpStructFieldOmitEmpty && c.tag.IsOmitZero {
+		field.ZeroKind = zeroKindOf(c.typ)
 	}
 	if value.Flags&MarshalerContextFlags != 0 {
 		field.Flags |= MarshalerContextFlags
+	}
+	if value.Flags&MarshalerFuncFlags != 0 {
+		field.Flags |= MarshalerFuncFlags
 	}
 	// the field of interface{} enters the value as the opcode of the value does: it needs to know the interface.
 	if value.Flags&NonEmptyInterfaceFlags != 0 {
 		field.Flags |= NonEmptyInterfaceFlags
 	}
 	field.NumBitSize = value.NumBitSize
+	if c.tag.IsOmitEmpty && decidesEmptyAtAddr(op) {
+		field.EmptyKind = emptyKindOf(c.typ)
+		if c.emptyNil {
+			field.EmptyKind = EmptyNil
+		}
+		if field.EmptyKind == EmptyInt {
+			// the opcode of the value of a marshaler has no size: the integer checked is the field.
+			field.NumBitSize = uint8(c.typ.Size() * 8)
+		}
+	}
 	field.PtrNum = value.PtrNum
 	field.FieldQuery = value.FieldQuery
 	field.Marshaler = value.Marshaler
@@ -901,11 +987,7 @@ func (c *StructFieldCode) addStructEndCode(ctx *compileContext, codes Opcodes) O
 		Indent:     ctx.indent,
 	}
 	codes.Last().Next = end
-	code := codes.First()
-	for code.Op == OpStructField || code.Op == OpStructHead {
-		code = code.Next
-	}
-	lastFieldOpcode(code).NextField = end
+	lastFieldOpcode(codes.First()).NextField = end
 
 	codes = codes.Add(end)
 	ctx.incOpcodeIndex()
@@ -941,9 +1023,10 @@ const (
 	EmptyInt // an integer of NumBitSize bits which is 0
 	EmptyFloat32
 	EmptyFloat64
-	EmptyLen    // a string or a slice whose length is zero
-	EmptyMapLen // a map whose length is zero
-	EmptyAlways // an array of no element
+	EmptyStringLen // a string whose length is zero
+	EmptySliceLen  // a slice whose length is zero
+	EmptyMapLen    // a map whose length is zero
+	EmptyAlways    // an array of no element
 )
 
 // emptyKindOf returns what makes a value of the type empty.
@@ -960,8 +1043,10 @@ func emptyKindOf(typ reflect.Type) EmptyKind {
 		return EmptyFloat32
 	case reflect.Float64:
 		return EmptyFloat64
-	case reflect.String, reflect.Slice:
-		return EmptyLen
+	case reflect.String:
+		return EmptyStringLen
+	case reflect.Slice:
+		return EmptySliceLen
 	case reflect.Map:
 		return EmptyMapLen
 	case reflect.Array:
@@ -993,7 +1078,10 @@ func IsEmptyField(kind EmptyKind, bitSize uint8, p unsafe.Pointer) bool {
 		return *(*float32)(p) == 0
 	case EmptyFloat64:
 		return *(*float64)(p) == 0
-	case EmptyLen:
+	case EmptyStringLen:
+		// read as a string, not as a slice header, which is longer: the string may end its allocation.
+		return len(*(*string)(p)) == 0
+	case EmptySliceLen:
 		return (*runtime.SliceHeader)(p).Len == 0
 	case EmptyMapLen:
 		return MapLen(*(*unsafe.Pointer)(p)) == 0
@@ -1004,11 +1092,41 @@ func IsEmptyField(kind EmptyKind, bitSize uint8, p unsafe.Pointer) bool {
 }
 
 func (c *StructFieldCode) structKey(ctx *compileContext) string {
-	if ctx.escapeKey {
-		rctx := &RuntimeContext{Option: &Option{Flag: HTMLEscapeOption}}
+	if strings.ContainsAny(c.key, "\u2028\u2029") {
+		ctx.jsKey = true
+	}
+	if ctx.escapeKey || ctx.escapeJSKey {
+		var flag OptionFlag
+		if ctx.escapeKey {
+			flag |= HTMLEscapeOption
+		}
+		if ctx.escapeJSKey {
+			flag |= NormalizeUTF8Option
+		}
+		rctx := &RuntimeContext{Option: &Option{Flag: flag}}
+		rctx.SetEscaper()
 		return PaddedKey(fmt.Sprintf(`%s:`, string(AppendString(rctx, []byte{}, c.key))))
 	}
+	if c.tag.QuotedKey != "" {
+		return PaddedKey(c.tag.QuotedKey + ":")
+	}
 	return PaddedKey(fmt.Sprintf(`"%s":`, c.key))
+}
+
+// callsMarshalerWithAddr is whether the value of the field is written by a marshaler whose method is on the
+// pointer, which is called with the address of the field: the value is not loaded from the address, also for a
+// type which is stored directly in an interface value.
+func (c *StructFieldCode) callsMarshalerWithAddr() bool {
+	if c.isAddrForMarshaler {
+		return true
+	}
+	switch value := c.value.(type) {
+	case *MarshalJSONCode:
+		return value.isAddrForMarshaler
+	case *MarshalTextCode:
+		return value.isAddrForMarshaler
+	}
+	return false
 }
 
 func (c *StructFieldCode) flags() OpFlags {
@@ -1016,7 +1134,7 @@ func (c *StructFieldCode) flags() OpFlags {
 	if c.isTaggedKey {
 		flags |= IsTaggedKeyFlags
 	}
-	if c.isNilableType {
+	if c.isNilableType && !c.callsMarshalerWithAddr() {
 		flags |= IsNilableTypeFlags
 	}
 	if c.isNilCheck {
@@ -1028,11 +1146,8 @@ func (c *StructFieldCode) flags() OpFlags {
 	if c.isNextOpPtrType {
 		flags |= IsNextOpPtrTypeFlags
 	}
-	if c.isAnonymous {
+	if c.isAnonymous || c.isFallback {
 		flags |= AnonymousKeyFlags
-	}
-	if c.isMarshalerContext {
-		flags |= MarshalerContextFlags
 	}
 	return flags
 }
@@ -1066,8 +1181,14 @@ func (c *StructFieldCode) ToOpcode(ctx *compileContext, isFirstField, isEndField
 	ctx.incIndex()
 	valueCodes := c.toValueOpcodes(ctx)
 	codes := c.fieldOpcodes(ctx, field, valueCodes)
+	if c.unwriteEmpty {
+		// the member is unwritten after its value if the value is empty.
+		after := newUnwriteEmptyCode(ctx, key)
+		codes.Last().Next = after
+		codes = codes.Add(after)
+	}
 	if isEndField {
-		if isEnableStructEndOptimization(c.value) && !c.isGenericField(field) {
+		if isEnableStructEndOptimization(c.value) && !c.isGenericField(field) && !c.unwriteEmpty && !c.omitEmptyString {
 			field.Op = field.Op.FieldToEnd()
 		} else {
 			codes = c.addStructEndCode(ctx, codes)
@@ -1079,7 +1200,7 @@ func (c *StructFieldCode) ToOpcode(ctx *compileContext, isFirstField, isEndField
 	return codes
 }
 
-func (c *StructFieldCode) ToAnonymousOpcode(ctx *compileContext, isFirstField, isEndField bool) Opcodes {
+func (c *StructFieldCode) ToAnonymousOpcode(ctx *compileContext, isFirstField bool) Opcodes {
 	var head *Opcode
 	if isFirstField {
 		head = c.headOpcode(ctx, c.flags()|AnonymousHeadFlags)
@@ -1098,6 +1219,11 @@ func (c *StructFieldCode) ToAnonymousOpcode(ctx *compileContext, isFirstField, i
 	ctx.incIndex()
 	valueCodes := c.toValueOpcodes(ctx)
 	codes := c.fieldOpcodes(ctx, field, valueCodes)
+	if c.unwriteEmpty {
+		after := newUnwriteEmptyCode(ctx, key)
+		codes.Last().Next = after
+		codes = codes.Add(after)
+	}
 	if head != nil {
 		codes = withHead(head, codes)
 	}
@@ -1124,6 +1250,10 @@ type InterfaceCode struct {
 	typ        reflect.Type
 	fieldQuery *FieldQuery
 	isPtr      bool
+	// static is whether the code encodes a value by the opcodes of typ, as a value of interface{} of typ would be.
+	// The opcodes are given what they take: the address of the value, or, for a pointer type compiled to the value
+	// it points to, the pointer ( see Compiler.recursiveValueCode ).
+	static bool
 }
 
 func (c *InterfaceCode) Kind() CodeKind {
@@ -1139,7 +1269,10 @@ func (c *InterfaceCode) ToOpcode(ctx *compileContext) Opcodes {
 		code = newOpCode(ctx, c.typ, OpInterface)
 	}
 	code.FieldQuery = c.fieldQuery
-	if c.typ.NumMethod() > 0 {
+	switch {
+	case c.static:
+		code.Flags |= StaticTypeFlags
+	case c.typ.NumMethod() > 0:
 		code.Flags |= NonEmptyInterfaceFlags
 	}
 	ctx.incIndex()
@@ -1151,7 +1284,14 @@ func (c *InterfaceCode) Filter(query *FieldQuery) Code {
 		typ:        c.typ,
 		fieldQuery: query,
 		isPtr:      c.isPtr,
+		static:     c.static,
 	}
+}
+
+// isStaticInterface is whether the code is an InterfaceCode of a static type.
+func isStaticInterface(code Code) bool {
+	iface, ok := code.(*InterfaceCode)
+	return ok && iface.static
 }
 
 type MarshalJSONCode struct {
@@ -1160,6 +1300,10 @@ type MarshalJSONCode struct {
 	isAddrForMarshaler bool
 	isNilableType      bool
 	isMarshalerContext bool
+	// appendValue writes the value instead of MarshalJSON, if it is set ( see Compiler.appendFuncCode ).
+	appendValue AppendFunc
+	// call is the call of the method, if the compiler gives it ( see Compiler.v2MethodCode ).
+	call *MarshalerCall
 }
 
 func (c *MarshalJSONCode) Kind() CodeKind {
@@ -1176,7 +1320,11 @@ func (c *MarshalJSONCode) ToOpcode(ctx *compileContext) Opcodes {
 	if c.isMarshalerContext {
 		code.Flags |= MarshalerContextFlags
 	}
-	if c.isNilableType {
+	if code.Marshaler != nil && (code.Marshaler.appendValue != nil || code.Marshaler.marshalTo != nil) {
+		code.Flags |= MarshalerFuncFlags
+	}
+	// a method on the pointer is called with the address of the value, which is not loaded from it.
+	if c.isNilableType && !c.isAddrForMarshaler {
 		code.Flags |= IsNilableTypeFlags
 	} else {
 		code.Flags &= ^IsNilableTypeFlags
@@ -1185,14 +1333,18 @@ func (c *MarshalJSONCode) ToOpcode(ctx *compileContext) Opcodes {
 	return Opcodes{code}
 }
 
-// marshalerCall returns the direct call of the method, or nil if the method is called through the interface:
-// a value of the size of a pointer whose method is on the pointer is copied first, see addrForMarshaler.
+// marshalerCall returns the direct call of the method, or nil if the method is called through the interface.
+// A method on the pointer is called with the address of the value, which the opcode is given, as encoding/json
+// calls it with the address of an addressable value.
 func (c *MarshalJSONCode) marshalerCall() *MarshalerCall {
+	if c.call != nil {
+		return c.call
+	}
+	if c.appendValue != nil {
+		return &MarshalerCall{appendValue: c.appendValue, recv: c.typ}
+	}
 	recv := c.typ
 	if c.isAddrForMarshaler {
-		if c.typ.Size() == unsafe.Sizeof(unsafe.Pointer(nil)) {
-			return nil
-		}
 		recv = reflect.PointerTo(c.typ)
 	}
 	iface := marshalJSONInterface
@@ -1209,6 +1361,8 @@ func (c *MarshalJSONCode) Filter(query *FieldQuery) Code {
 		isAddrForMarshaler: c.isAddrForMarshaler,
 		isNilableType:      c.isNilableType,
 		isMarshalerContext: c.isMarshalerContext,
+		appendValue:        c.appendValue,
+		call:               c.call,
 	}
 }
 
@@ -1218,7 +1372,8 @@ type MarshalTextCode struct {
 	isAddrForMarshaler bool
 	isNilableType      bool
 	// isInterfaceMapKey is whether the code is the one of the key of a map of an interface type, whose name is
-	// of the dynamic value of the key ( see appendInterfaceMapKey ).
+	// of the dynamic value of the key, or of a type of pointers which points to itself, whose name is of what
+	// they lead to ( see appendInterfaceMapKey ).
 	isInterfaceMapKey bool
 	// isMapKey is whether the code is the one of the key of a map, whose name is "" for a nil pointer.
 	isMapKey bool
@@ -1245,7 +1400,8 @@ func (c *MarshalTextCode) ToOpcode(ctx *compileContext) Opcodes {
 	if c.isMapKey {
 		code.Flags |= MapKeyFlags
 	}
-	if c.isNilableType {
+	// a method on the pointer is called with the address of the value, which is not loaded from it.
+	if c.isNilableType && !c.isAddrForMarshaler {
 		code.Flags |= IsNilableTypeFlags
 	} else {
 		code.Flags &= ^IsNilableTypeFlags
@@ -1259,9 +1415,6 @@ func (c *MarshalTextCode) ToOpcode(ctx *compileContext) Opcodes {
 func (c *MarshalTextCode) marshalerCall() *MarshalerCall {
 	recv := c.typ
 	if c.isAddrForMarshaler {
-		if c.typ.Size() == unsafe.Sizeof(unsafe.Pointer(nil)) {
-			return nil
-		}
 		recv = reflect.PointerTo(c.typ)
 	}
 	return newMarshalerCall(recv, marshalTextInterface)
@@ -1282,6 +1435,8 @@ type PtrCode struct {
 	typ    reflect.Type
 	value  Code
 	ptrNum uint8
+	// isMapKey is whether the code is the one of the key of a map, which a nil pointer can't name.
+	isMapKey bool
 }
 
 func (c *PtrCode) Kind() CodeKind {
@@ -1292,6 +1447,13 @@ func (c *PtrCode) ToOpcode(ctx *compileContext) Opcodes {
 	codes := c.value.ToOpcode(ctx)
 	codes.First().Op = convertPtrOp(codes.First())
 	codes.First().PtrNum = c.ptrNum
+	if c.isMapKey {
+		codes.First().Flags |= MapKeyFlags
+		if _, text := c.value.(*MarshalTextCode); text {
+			// the pointers of a key which lead to a text have no name if one of them is nil.
+			codes.First().Flags |= InterfaceMapKeyFlags
+		}
+	}
 	return codes
 }
 
@@ -1310,9 +1472,10 @@ func (c *PtrCode) ToAnonymousOpcode(ctx *compileContext) Opcodes {
 
 func (c *PtrCode) Filter(query *FieldQuery) Code {
 	return &PtrCode{
-		typ:    c.typ,
-		value:  c.value.Filter(query),
-		ptrNum: c.ptrNum,
+		typ:      c.typ,
+		value:    c.value.Filter(query),
+		ptrNum:   c.ptrNum,
+		isMapKey: c.isMapKey,
 	}
 }
 
@@ -1356,6 +1519,16 @@ func convertPtrOp(code *Opcode) OpType {
 		return OpInterfacePtr
 	case OpRecursive:
 		return OpRecursivePtr
+	case OpIntString:
+		return OpIntPtrString
+	case OpUintString:
+		return OpUintPtrString
+	case OpFloat32String:
+		return OpFloat32PtrString
+	case OpFloat64String:
+		return OpFloat64PtrString
+	case OpNumberString:
+		return OpNumberPtrString
 	}
 	return code.Op
 }

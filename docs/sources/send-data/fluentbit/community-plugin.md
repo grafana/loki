@@ -30,11 +30,11 @@ docker run -v /var/log:/var/log \
     grafana/fluent-bit-plugin-loki:latest
 ```
 
-Or, an alternative is to run the fluent-bit container using [Docker Hub](https://hub.docker.com/r/fluent/fluent-bit) image:
+Or, you can run the standard [Fluent Bit image](https://hub.docker.com/r/fluent/fluent-bit) and provide the plugin binary separately, as described in the [Local](#local) section below.
 
 ### Docker container logs
 
-To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can use the Fluent Bit Docker image and configure it to forward logs directly to Grafana Loki. Below is a step-by-step guide on setting up Fluent Bit for this purpose.
+To ship logs from Docker containers to Loki using Fluent Bit, you can use the Fluent Bit Docker image and configure it to forward logs directly to Loki. Below is a step-by-step guide on setting up Fluent Bit for this purpose.
 
 #### Prerequisites
 
@@ -43,7 +43,7 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
 
 #### Configuration
 
-1. Create a Fluent Bit configuration file named `fluent-bit.conf` with the following content, which defines the input from Docker container logs and sets up the output to send logs to your Grafana Cloud Loki instance:
+1. Create a Fluent Bit configuration file named `fluent-bit.conf` with the following content, which defines the input from Docker container logs and sets up the output to send logs to your Loki instance:
 
    ```ini
    [SERVICE]
@@ -61,6 +61,7 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
        Match        *
        Url          http://localhost:3100/loki/api/v1/push
        Labels       {job="fluentbit"}
+   ```
 
 ### Kubernetes
 
@@ -72,7 +73,7 @@ To do so you can use the [Fluent Bit Helm chart](https://github.com/fluent/helm-
 image:
   # Here we use the Docker image which has the plugin installed
   repository: grafana/fluent-bit-plugin-loki
-  tag: main-e2ed1c0
+  tag: latest
 
 args:
   - "-e"
@@ -91,7 +92,7 @@ config:
         Name tail
         Tag kube.*
         Path /var/log/containers/*.log
-        # Be aware that local clusters like docker-desktop or kind use the docker log format and not the cri (https://docs.fluentbit.io/manual/installation/kubernetes#container-runtime-interface-cri-parser)
+        # Be aware that local clusters like docker-desktop or kind use the docker log format and not the cri. For more information, refer to the Fluent Bit Kubernetes installation documentation (https://docs.fluentbit.io/manual/installation/downloads/kubernetes).
         multiline.parser docker, cri
         Mem_Buf_Limit 5MB
         Skip_Long_Lines On
@@ -102,9 +103,9 @@ config:
         Match kube.*
         Url ${FLUENT_LOKI_URL}
         Labels {job="fluent-bit"}
-        LabelKeys level,app # this sets the values for actual Loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/
+        LabelKeys level,app # this sets the values for the actual Loki stream labels; all other keys remain in the log line
         BatchWait 1
-        BatchSize 1001024
+        BatchSize 1048576
         LineFormat json
         LogLevel info
         AutoKubernetesLabels true
@@ -149,7 +150,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 | Url                  | Url of Loki server API endpoint.                                                                                                                                                                                                                                                                                                                                                        | http://localhost:3100/loki/api/v1/push |
 | TenantID             | The tenant ID used by default to push logs to Loki. If omitted or empty it assumes Loki is running in single-tenant mode and no `X-Scope-OrgID` header is sent.                                                                                                                                                                                                                         | ""                                     |
 | BatchWait            | Time to wait before send a log batch to Loki, full or not.                                                                                                                                                                                                                                                                                                                              | 1s                                     |
-| BatchSize            | Log batch size to send a log batch to Loki (unit: Bytes).                                                                                                                                                                                                                                                                                                                               | 10 KiB (10 * 1024 Bytes)               |
+| BatchSize            | Log batch size to send a log batch to Loki (unit: Bytes).                                                                                                                                                                                                                                                                                                                               | 1 MiB (1024 * 1024 Bytes)               |
 | Timeout              | Maximum time to wait for Loki server to respond to a request.                                                                                                                                                                                                                                                                                                                           | 10s                                    |
 | MinBackoff           | Initial backoff time between retries.                                                                                                                                                                                                                                                                                                                                                   | 500ms                                  |
 | MaxBackoff           | Maximum backoff time between retries.                                                                                                                                                                                                                                                                                                                                                   | 5m                                     |
@@ -168,6 +169,10 @@ You can also adapt your plugins.conf, removing the need to change the command li
 | DqueSegmentSize      | Segment size in terms of number of records per segment.                                                                                                                                                                                                                                                                                                                                  | 500                                    |
 | DqueSync             | Whether to fsync each queue change. Specify no fsync with `normal`, and fsync with `full`.                                                                                                                                                                                                                                                                                                                                                      | `normal`                                  |
 | DqueName             | Queue name, must be unique per output.                                                                                                                                                                                                                                                                                                                                                     | dque                                   |
+| ca_file              | Path to a CA certificate file to use when verifying the Loki server's TLS certificate.                                                                                                                                                                                                                                                                                                    | none                                    |
+| cert_file            | Path to a TLS client certificate file to use for mutual TLS authentication with the Loki server.                                                                                                                                                                                                                                                                                          | none                                    |
+| key_file             | Path to the TLS private key file that corresponds to `cert_file`.                                                                                                                                                                                                                                                                                                                          | none                                    |
+| insecure_skip_verify | If set to `true`, skip verification of the Loki server's TLS certificate. Not recommended for production use.                                                                                                                                                                                                                                                                             | false                                   |
 
 ### Labels
 
@@ -247,7 +252,7 @@ The blocking state with some of the input plugins is not acceptable, because it 
 
 ### Configuration examples
 
-To configure the Loki output plugin add this section to your luent-bit.conf file.
+To configure the Loki output plugin add this section to your fluent-bit.conf file.
 
 ```properties
 [Output]

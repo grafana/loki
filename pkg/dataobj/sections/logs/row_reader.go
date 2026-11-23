@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // RowReader reads the set of logs from an [Object].
@@ -39,8 +38,6 @@ type RowReader struct {
 	// given to the reader. Read decodes a row by position, so the two must stay aligned. It
 	// holds every recognized column when no projection is set.
 	projSectionColumns []*Column
-
-	symbols *symbolizer.Symbolizer
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
@@ -167,7 +164,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := DecodeRow(r.projSectionColumns, r.buf[i], &s[i], r.symbols)
+		err := DecodeRow(r.projSectionColumns, r.buf[i], &s[i])
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
@@ -248,12 +245,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("opening row reader: %w", err)
 	}
 
-	if r.symbols == nil {
-		r.symbols = symbolizer.New(128, 100_000)
-	} else {
-		r.symbols.Reset()
-	}
-
 	r.projSectionColumns = projectedSectionColumns
 	r.ready = true
 	return nil
@@ -299,10 +290,6 @@ func (r *RowReader) Reset(sec *Section) {
 	clear(r.projTypes)
 	clear(r.projMetadata)
 	r.projSectionColumns = nil
-
-	if r.symbols != nil {
-		r.symbols.Reset()
-	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Open.
@@ -438,32 +425,18 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 }
 
 func convertLogsTimePredicate(p TimeRangeRowPredicate, column dataset.Column) dataset.Predicate {
-	var start dataset.Predicate = dataset.GreaterThanPredicate{
-		Column: column,
-		Value:  dataset.Int64Value(p.StartTime.UnixNano()),
-	}
-	if p.IncludeStart {
-		start = dataset.OrPredicate{
-			Left: start,
-			Right: dataset.EqualPredicate{
-				Column: column,
-				Value:  dataset.Int64Value(p.StartTime.UnixNano()),
-			},
-		}
-	}
+	var (
+		startTime = dataset.Int64Value(p.StartTime.UnixNano())
+		endTime   = dataset.Int64Value(p.EndTime.UnixNano())
 
-	var end dataset.Predicate = dataset.LessThanPredicate{
-		Column: column,
-		Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+		start dataset.Predicate = dataset.GreaterThanPredicate{Column: column, Value: startTime}
+		end   dataset.Predicate = dataset.LessThanPredicate{Column: column, Value: endTime}
+	)
+	if p.IncludeStart {
+		start = dataset.GreaterThanOrEqualPredicate{Column: column, Value: startTime}
 	}
 	if p.IncludeEnd {
-		end = dataset.OrPredicate{
-			Left: end,
-			Right: dataset.EqualPredicate{
-				Column: column,
-				Value:  dataset.Int64Value(p.EndTime.UnixNano()),
-			},
-		}
+		end = dataset.LessThanOrEqualPredicate{Column: column, Value: endTime}
 	}
 
 	return dataset.AndPredicate{

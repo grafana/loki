@@ -62,24 +62,28 @@ func filtererForRequest(ctx context.Context) *ChunkFilterer {
 
 type ChunkFilterer struct {
 	policies []*types.LabelPolicy
-	matchers map[string]*labels.Matcher
+	matchers [][]*labels.Matcher
 }
 
+// loadMatchers compiles the matchers of every policy once, so that ShouldFilter, which runs for
+// every series or stream of a request, only has to evaluate them.
 func (c *ChunkFilterer) loadMatchers() {
-	matchers := make(map[string]*labels.Matcher)
+	compiled := make([][]*labels.Matcher, 0, len(c.policies))
+policies:
 	for _, p := range c.policies {
+		matchers := make([]*labels.Matcher, 0, len(p.Selector))
 		for _, lm := range p.Selector {
 			matcher, err := types.LabelMatcherToPromLabel(lm)
 			if err != nil {
 				// This shouldn't happen: log it and do not match
-				_ = level.Debug(util_log.Logger).Log("msg", "unable to encode matcher as prometheus matcher", "err", err)
-				break
+				_ = level.Debug(util_log.Logger).Log("msg", "unable to encode matcher as prometheus matcher", "name", lm.Name, "err", err)
+				continue policies
 			}
-
-			matchers[lm.GoString()] = matcher
+			matchers = append(matchers, matcher)
 		}
+		compiled = append(compiled, matchers)
 	}
-	c.matchers = matchers
+	c.matchers = compiled
 }
 
 func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
@@ -87,25 +91,15 @@ func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 		return false
 	}
 
-	if len(c.matchers) == 0 {
+	if c.matchers == nil {
 		c.loadMatchers()
 	}
 
-	for _, p := range c.policies {
+	for _, matchers := range c.matchers {
 		// For one selector all must match
 		matching := true
-		for _, lm := range p.Selector {
-			labelValue := metric.Get(lm.Name)
-
-			matcher, ok := c.matchers[lm.GoString()]
-			if !ok {
-				// This shouldn't happen: log it and do not match
-				_ = level.Debug(util_log.Logger).Log("msg", "unable to find matcher as prometheus matcher", "name", lm.Name)
-				matching = false
-				break
-			}
-
-			if !matcher.Matches(labelValue) {
+		for _, m := range matchers {
+			if !m.Matches(metric.Get(m.Name)) {
 				matching = false
 				break
 			}
@@ -116,6 +110,27 @@ func (c *ChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 		}
 	}
 	return true
+}
+
+func (c *ChunkFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Policies combine with OR, but the label matchers of one policy combine with AND. We can push
+	// down label matchers only when the request has a single policy.
+	if len(c.policies) != 1 {
+		return nil
+	}
+
+	selector := c.policies[0].Selector
+	matchers := make([]*labels.Matcher, 0, len(selector))
+	for _, lm := range selector {
+		matcher, err := types.LabelMatcherToPromLabel(lm)
+		if err != nil {
+			// ShouldFilter drops every stream for a policy it cannot convert, so push nothing and
+			// let it do so.
+			return nil
+		}
+		matchers = append(matchers, matcher)
+	}
+	return matchers
 }
 
 func (c *ChunkFilterer) RequiredLabelNames() []string {

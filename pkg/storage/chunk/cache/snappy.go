@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 )
 
 type snappyCache struct {

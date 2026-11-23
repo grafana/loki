@@ -95,7 +95,7 @@ func buildBenchSection(b *testing.B, numPointers int) *indexpointers.Section {
 		path := "path/" + strconv.Itoa(i%benchPathVariants)
 		startTs := unixTime(int64(i * 2))
 		endTs := unixTime(int64(i*2 + 1))
-		sectionBuilder.Append(path, startTs, endTs)
+		sectionBuilder.Append(indexpointers.IndexPointer{Path: path, StartTs: startTs, EndTs: endTs})
 	}
 
 	objectBuilder := dataobj.NewBuilder(nil)

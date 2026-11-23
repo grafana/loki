@@ -39,10 +39,16 @@ type objectsFixture struct {
 //
 // It builds a real index, so the descriptors carry the section indexes and stream IDs a query
 // would resolve. Use [createTestStoredObject] for a test that only needs an object in a bucket.
-func newObjectsFixture(t *testing.T, tenantStreams ...logproto.Stream) objectsFixture {
+func newObjectsFixture(t testing.TB, tenantStreams ...logproto.Stream) objectsFixture {
+	t.Helper()
+	return newObjectsFixtureWithOptions(t, nil, tenantStreams...)
+}
+
+// newObjectsFixtureWithOptions is [newObjectsFixture] with options for the object builder.
+func newObjectsFixtureWithOptions(t testing.TB, opts []objtest.Option, tenantStreams ...logproto.Stream) objectsFixture {
 	t.Helper()
 
-	builder := objtest.NewBuilder(t)
+	builder := objtest.NewBuilder(t, opts...)
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
 
 	builder.Append(ctx, tenantStreams...)
@@ -68,6 +74,11 @@ func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { ret
 func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+func (f denyEverythingFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
 
 // epoch anchors every test timestamp, so a query range reads as plain seconds and the metastore's
 // time filter has something stable to match.

@@ -51,7 +51,8 @@ func buildBenchIndex(b *testing.B, version string, docCount, termCount int) benc
 		}
 	}
 
-	w, err := NewWriter(version, path, docs, nil)
+	writerDocs, cfg := writerArgs(version, docs, nil)
+	w, err := NewWriter(version, path, writerDocs, cfg)
 	require.NoError(b, err)
 
 	bm := roaring.New()
@@ -123,12 +124,13 @@ func BenchmarkWriter(b *testing.B) {
 					}
 				}
 
+				writerDocs, cfg := writerArgs(version, docs, nil)
 				dir := b.TempDir()
 				b.ResetTimer()
 
 				for b.Loop() {
 					path := filepath.Join(dir, fmt.Sprintf("bench-%d.lidx", b.N))
-					w, err := NewWriter(version, path, docs, nil)
+					w, err := NewWriter(version, path, writerDocs, cfg)
 					if err != nil {
 						b.Fatal(err)
 					}

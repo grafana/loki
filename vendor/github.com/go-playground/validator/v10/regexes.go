@@ -33,12 +33,13 @@ const (
 	uUID3RegexString                 = "^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$"
 	uUID4RegexString                 = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 	uUID5RegexString                 = "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+	uUID7RegexString                 = "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 	uUIDRegexString                  = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 	uUID3RFC4122RegexString          = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-3[0-9a-fA-F]{3}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 	uUID4RFC4122RegexString          = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
 	uUID5RFC4122RegexString          = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-5[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
 	uUIDRFC4122RegexString           = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-	uLIDRegexString                  = "^(?i)[A-HJKMNP-TV-Z0-9]{26}$"
+	uLIDRegexString                  = "^(?i)[0-7][A-HJKMNP-TV-Z0-9]{25}$"
 	md4RegexString                   = "^[0-9a-f]{32}$"
 	md5RegexString                   = "^[0-9a-f]{32}$"
 	sha256RegexString                = "^[0-9a-f]{64}$"
@@ -123,6 +124,7 @@ var (
 	uUID3Regex                 = lazyRegexCompile(uUID3RegexString)
 	uUID4Regex                 = lazyRegexCompile(uUID4RegexString)
 	uUID5Regex                 = lazyRegexCompile(uUID5RegexString)
+	uUID7Regex                 = lazyRegexCompile(uUID7RegexString)
 	uUIDRegex                  = lazyRegexCompile(uUIDRegexString)
 	uUID3RFC4122Regex          = lazyRegexCompile(uUID3RFC4122RegexString)
 	uUID4RFC4122Regex          = lazyRegexCompile(uUID4RFC4122RegexString)

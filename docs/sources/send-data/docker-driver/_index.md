@@ -13,7 +13,7 @@ containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or Grafana Cloud.
 
 {{< admonition type="note" >}}
-The Docker driver is maintained as part of the Loki project, but is listed among Loki's [third-party clients](../#third-party-clients) and does not carry the same support commitment as [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+The Docker driver is maintained as part of the Loki project, but is listed among Loki's [third-party clients](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/#third-party-clients) and does not carry the same support commitment as [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
@@ -31,7 +31,7 @@ The Docker plugin must be installed on each Docker host that will be running con
 Run the following command to install the plugin, updating the release version, or changing the architecture (`arm64` and `amd64` are currently supported), if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:3.6.0-amd64 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.7.9-amd64 --alias loki --grant-all-permissions
 ```
 
 {{< admonition type="note" >}}
@@ -61,7 +61,7 @@ re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:3.6.0-arm64 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:3.7.9-arm64 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
@@ -88,3 +88,7 @@ The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800m
 Also you can use non-blocking mode by setting `services.logger.logging.options.mode=non-blocking` in your `docker-compose` file. Non-blocking means that the process of writing logs to Loki will not block the main flow of an application or service if Loki is temporarily unavailable or unable to process log messages. In non-blocking mode, log messages will be buffered and sent to Loki asynchronously, which allows the main thread to continue working without delay. If Loki is unavailable, log messages will be stored in a buffer and sent when Loki becomes available again. However, this setting is useful to prevent blocking the main flow of an application or service due to logging issues, but it can also lead to loss of log messages if the buffer overflows or if Loki is unavailable for a long time.
 
 To avoid this issue, use the Alloy [`loki.source.docker`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.docker/) component or [`discovery.docker`](https://grafana.com/docs/alloy/latest/reference/components/discovery/discovery.docker/) for Docker service discovery.
+
+## Known issue: Long log lines are split
+
+Docker splits log lines larger than 16 KiB into multiple frames before passing them to logging driver plugins. The Docker driver does not reassemble these frames before sending them to Loki, so a single long log line can appear in Loki as multiple separate entries. See [issue #12262](https://github.com/grafana/loki/issues/12262) for details and status. If you need long lines to arrive in Loki as a single entry, consider Grafana Alloy's [`loki.source.docker`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.docker/) component instead.

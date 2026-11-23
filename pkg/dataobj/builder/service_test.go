@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -24,8 +23,26 @@ func TestNew(t *testing.T) {
 		cfg.Topic = "test"
 		cfg.FlushConcurrency = 0
 
-		_, err := New(kafka.Config{}, cfg, dataobj_uploader.Config{}, metastore.Config{}, nil, nil, prometheus.NewRegistry(), log.NewNopLogger(), nil)
+		_, err := New(kafka.Config{}, cfg, dataobj_uploader.Config{}, nil, nil, prometheus.NewRegistry(), log.NewNopLogger(), nil)
 		require.ErrorContains(t, err, "flush concurrency must be at least 1")
+	})
+}
+
+func TestLogsobjBuilderConfig(t *testing.T) {
+	t.Run("copies the sort parallelism into the logsobj config, which has no flag for it", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.SortParallelism = 4
+
+		require.Equal(t, 4, logsobjBuilderConfig(cfg).SortParallelism)
+	})
+
+	t.Run("always drops duplicates", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		require.True(t, logsobjBuilderConfig(cfg).DropDuplicates)
+		require.False(t, cfg.LogsobjBuilder.DropDuplicates, "the helper must not change the config that it receives")
 	})
 }
 

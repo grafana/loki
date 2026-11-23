@@ -134,8 +134,54 @@ func rename(p *pipe, k string) (string, bool) {
 }
 
 // plainApply is the first-writer rule of json, logfmt, regexp and pattern. The keys are in line
-// order. It returns the names that it wrote.
+// order, and the first key that writes a name keeps it. A renamed key and a literal key with the
+// same final name follow this rule too, so the key order decides which of them wins. It returns the
+// names that it wrote.
 func plainApply(p *pipe, items []item) []string {
+	var written []string
+	for _, it := range items {
+		k, renamed := rename(p, it.key)
+		if renamed && p.holdsName(k) {
+			continue
+		}
+		if p.ext[k] {
+			continue
+		}
+		p.setParsed(k, it.val)
+		written = append(written, k)
+	}
+	return written
+}
+
+// plainApplyUpfront is plainApply for unpack: it decides the rename of every key before the stage
+// writes anything. The generator checks that both give the same labels for every shape.
+func plainApplyUpfront(p *pipe, items []item) {
+	type decided struct {
+		key     string
+		renamed bool
+		val     string
+	}
+	var all []decided
+	for _, it := range items {
+		k, renamed := rename(p, it.key)
+		all = append(all, decided{k, renamed, it.val})
+	}
+	for _, d := range all {
+		if d.renamed && p.holdsName(d.key) {
+			continue
+		}
+		if p.ext[d.key] {
+			continue
+		}
+		p.setParsed(d.key, d.val)
+	}
+}
+
+// exprApply is the first-writer rule of the expression forms. It is plainApply with one exception:
+// an expression names its keys, so a literal key replaces the value that a renamed key wrote in the
+// same stage, whatever the order of the keys. It never replaces a value of an earlier stage or of an
+// earlier literal key.
+func exprApply(p *pipe, items []item) []string {
 	renamedHere := map[string]bool{}
 	var written []string
 	for _, it := range items {
@@ -157,36 +203,6 @@ func plainApply(p *pipe, items []item) []string {
 	return written
 }
 
-// plainApplyUpfront is plainApply for unpack: it decides the rename of every key before the stage
-// writes anything. The generator checks that both give the same labels for every shape.
-func plainApplyUpfront(p *pipe, items []item) {
-	type decided struct {
-		key     string
-		renamed bool
-		val     string
-	}
-	var all []decided
-	for _, it := range items {
-		k, renamed := rename(p, it.key)
-		all = append(all, decided{k, renamed, it.val})
-	}
-	renamedHere := map[string]bool{}
-	for _, d := range all {
-		if d.renamed && p.holdsName(d.key) {
-			continue
-		}
-		if p.ext[d.key] && (d.renamed || !renamedHere[d.key]) {
-			continue
-		}
-		p.setParsed(d.key, d.val)
-		if d.renamed {
-			renamedHere[d.key] = true
-		} else {
-			delete(renamedHere, d.key)
-		}
-	}
-}
-
 func contains(ids []string, k string) bool {
 	for _, id := range ids {
 		if id == k {
@@ -196,8 +212,8 @@ func contains(ids []string, k string) bool {
 	return false
 }
 
-// jsonExprApply is `json a, b`. The first occurrence of a key counts, then the first-writer rule
-// applies. A JSON null is an empty value. A name that no key wrote gets an empty label, unless a
+// jsonExprApply is `json a, b`. The first occurrence of a key counts, then the first-writer rule of
+// the expression forms applies (see exprApply). A JSON null is an empty value. A name that no key wrote gets an empty label, unless a
 // label has the name.
 func jsonExprApply(p *pipe, ids []string, items []item) {
 	seen := map[string]bool{}
@@ -208,7 +224,7 @@ func jsonExprApply(p *pipe, ids []string, items []item) {
 			pairs = append(pairs, item{key: it.key, val: it.val})
 		}
 	}
-	written := plainApply(p, pairs)
+	written := exprApply(p, pairs)
 	if len(written) < len(ids) {
 		for _, id := range ids {
 			if !p.exists(id) {
@@ -218,7 +234,8 @@ func jsonExprApply(p *pipe, ids []string, items []item) {
 	}
 }
 
-// logfmtExprApply is `logfmt a, b`. The first-writer rule applies. A name that no key wrote gets an
+// logfmtExprApply is `logfmt a, b`. The first-writer rule of the expression forms applies (see
+// exprApply). A name that no key wrote gets an
 // empty label, unless a label has the name or an earlier stage extracted it.
 func logfmtExprApply(p *pipe, ids []string, items []item) {
 	var asked []item
@@ -228,7 +245,7 @@ func logfmtExprApply(p *pipe, ids []string, items []item) {
 		}
 	}
 	written := map[string]bool{}
-	for _, k := range plainApply(p, asked) {
+	for _, k := range exprApply(p, asked) {
 		written[k] = true
 	}
 	for _, id := range ids {

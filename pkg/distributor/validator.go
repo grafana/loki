@@ -135,29 +135,16 @@ func (v Validator) ValidateEntry(vCtx validationContext, labels labels.Labels, e
 	return "", nil
 }
 
-func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
-	return ls.Has(constants.AggregatedMetricLabel)
-}
-
-func (v Validator) IsPatternStream(ls labels.Labels) bool {
-	return ls.Has(constants.PatternLabel)
-}
-
-func (v Validator) IsInternalStream(ls labels.Labels) bool {
-	return v.IsAggregatedMetricStream(ls) || v.IsPatternStream(ls)
-}
-
-// Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
-func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter, retentionHours, policy, format string) error {
+// ValidateLabels returns the discard reason and an error if the stream's labels are invalid. Like
+// ValidateEntry, it reports nothing; the caller does. Aggregated metric and pattern streams are not
+// validated, as Loki creates those for internal use.
+func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.InternalStreamAdapter) (string, error) {
 	if ls.IsEmpty() {
-		// TODO: is this one correct?
-		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, vCtx.userID, retentionHours, policy, format).Inc()
-		return fmt.Errorf(validation.MissingLabelsErrorMsg)
+		return validation.MissingLabels, fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
-	// Skip validation for aggregated metric and pattern streams, as we create those for internal use
-	if v.IsInternalStream(ls) {
-		return nil
+	if constants.IsInternalStream(ls.Has) {
+		return "", nil
 	}
 
 	numLabelNames := ls.Len()
@@ -167,39 +154,35 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := nestedStreamSize(stream)
-	entryCount := stream.EntryCount()
-
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {
-		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, entryCount, format)
-		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
+		return validation.MaxLabelNamesPerSeries, fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
 	}
 
+	var reason string
 	lastLabelName := ""
-
-	return ls.Validate(func(l labels.Label) error {
+	err := ls.Validate(func(l labels.Label) error {
 		if len(l.Name) > vCtx.maxLabelNameLength {
-			v.reportDiscardedData(validation.LabelNameTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.LabelNameTooLong
 			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > vCtx.maxLabelValueLength {
-			v.reportDiscardedData(validation.LabelValueTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.LabelValueTooLong
 			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
-			v.reportDiscardedData(validation.DuplicateLabelNames, vCtx, retentionHours, policy, entriesSize, entryCount, format)
+			reason = validation.DuplicateLabelNames
 			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
 		return nil
 	})
+	return reason, err
 }
 
-func (v Validator) reportDiscardedData(reason string, vCtx validationContext, retentionHours string, policy string, entrySize, entryCount int, format string) {
+// reportDiscardedData reports entryCount samples totaling entrySize bytes of a stream with labels as
+// discarded for reason, in the discarded samples and bytes metrics and to the usage tracker. Every
+// discard pushWithResolver makes is reported through here.
+func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize, entryCount int, format string) {
 	validation.DiscardedSamples.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entryCount))
 	validation.DiscardedBytes.WithLabelValues(reason, vCtx.userID, retentionHours, policy, format).Add(float64(entrySize))
-}
-
-func (v Validator) reportDiscardedDataWithTracker(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize, entryCount int, format string) {
-	v.reportDiscardedData(reason, vCtx, retentionHours, policy, entrySize, entryCount, format)
 	if v.usageTracker != nil {
 		v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, reason, labels, float64(entrySize), format)
 	}

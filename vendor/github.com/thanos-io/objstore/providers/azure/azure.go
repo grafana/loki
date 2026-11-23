@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
@@ -147,6 +148,8 @@ func parseConfig(conf []byte) (Config, error) {
 
 	return config, nil
 }
+
+var errConditionInvalid = errors.New("invalid condition: azure supports Etag object versions")
 
 // Bucket implements the store.Bucket interface against Azure APIs.
 type Bucket struct {
@@ -304,6 +307,13 @@ func (b *Bucket) IsAccessDeniedErr(err error) bool {
 	return bloberror.HasCode(err, bloberror.AuthorizationPermissionMismatch) || bloberror.HasCode(err, bloberror.InsufficientAccountPermissions)
 }
 
+// IsConditionNotMetErr returns true if the given conditions (e.g. the given ETag matches) were not met.
+func (b *Bucket) IsConditionNotMetErr(err error) bool {
+	return errors.Is(err, errConditionInvalid) ||
+		bloberror.HasCode(err, bloberror.BlobAlreadyExists) ||
+		bloberror.HasCode(err, bloberror.ConditionNotMet)
+}
+
 func (b *Bucket) getBlobReader(ctx context.Context, name string, httpRange blob.HTTPRange) (io.ReadCloser, error) {
 	level.Debug(b.logger).Log("msg", "getting blob", "blob", name, "offset", httpRange.Offset, "length", httpRange.Count)
 	if name == "" {
@@ -345,9 +355,17 @@ func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAt
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
 	}
+	var version *objstore.ObjectVersion
+	if resp.ETag != nil {
+		version = &objstore.ObjectVersion{
+			Type:  objstore.ETag,
+			Value: string(*resp.ETag),
+		}
+	}
 	return objstore.ObjectAttributes{
 		Size:         *resp.ContentLength,
 		LastModified: *resp.LastModified,
+		Version:      version,
 	}, nil
 }
 
@@ -365,17 +383,58 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, uploadOpts ...objstore.ObjectUploadOption) error {
+	if err := objstore.ValidateUploadOptions(b.SupportedObjectUploadOptions(), uploadOpts...); err != nil {
+		return err
+	}
+
 	level.Debug(b.logger).Log("msg", "uploading blob", "blob", name)
 	blobClient := b.containerClient.NewBlockBlobClient(name)
+
+	uploadOptions := objstore.ApplyObjectUploadOptions(uploadOpts...)
+
+	var conds *blob.ModifiedAccessConditions = nil
+	if uploadOptions.Condition != nil {
+		if uploadOptions.Condition.Type != objstore.ETag {
+			return errConditionInvalid
+		}
+		eTag := azcore.ETag(uploadOptions.Condition.Value)
+		if uploadOptions.IfNotMatch {
+			conds = &blob.ModifiedAccessConditions{
+				IfNoneMatch: &eTag,
+			}
+		} else {
+			conds = &blob.ModifiedAccessConditions{
+				IfMatch: &eTag,
+			}
+		}
+	} else if uploadOptions.IfNotExists {
+		eTag := azcore.ETag("*")
+		conds = &blob.ModifiedAccessConditions{
+			IfNoneMatch: &eTag,
+		}
+	}
+
 	opts := &blockblob.UploadStreamOptions{
 		BlockSize:   3 * 1024 * 1024,
 		Concurrency: 4,
+		HTTPHeaders: &blob.HTTPHeaders{
+			BlobContentType: &uploadOptions.ContentType,
+		},
+	}
+	if conds != nil {
+		opts.AccessConditions = &blob.AccessConditions{
+			ModifiedAccessConditions: conds,
+		}
 	}
 	if _, err := blobClient.UploadStream(ctx, r, opts); err != nil {
 		return errors.Wrapf(err, "cannot upload Azure blob, address: %s", name)
 	}
 	return nil
+}
+
+func (b *Bucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return []objstore.ObjectUploadOptionType{objstore.ContentType, objstore.IfMatch, objstore.IfNotMatch, objstore.IfNotExists}
 }
 
 // Delete removes the object with the given name.

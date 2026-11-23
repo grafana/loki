@@ -341,9 +341,9 @@ func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
 	const user = "tenant1"
 	ls := mustParseLabels(`{foo="bar", __backfill__="true"}`)
 	chks := index.ChunkMetas{
-		// A backfilled chunk, stamped at flush time.
+		// A backfilled chunk with an IngestedAt.
 		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
-		// A live chunk in the same record keeps the zero value.
+		// A non-backfill chunk in the same record keeps the zero value.
 		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
 	}
 
@@ -1040,7 +1040,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
@@ -1230,7 +1230,7 @@ func TestStore_BackToBackFlushesShipDistinctIndexes(t *testing.T) {
 		cfg.CacheLocation = filepath.Join(dir, name, "cache")
 		cfg.IngesterName = name
 		cfg.IngesterDBRetainPeriod = 15 * time.Minute
-		rw, stop, err := NewStore("tsdb", "index/", cfg, schemaCfg, nil, objClient, &zeroValueLimits{}, tableRange, nil, nil, log.NewNopLogger())
+		rw, stop, err := NewStore("tsdb", "index/", cfg, schemaCfg, objClient, &zeroValueLimits{}, tableRange, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		t.Cleanup(stop)
 		return rw.(*store)

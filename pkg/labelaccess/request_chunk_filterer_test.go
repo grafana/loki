@@ -171,6 +171,48 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			labels.FromStrings("host", "host1", "env", "prod"),
 			true,
 		},
+		{
+			"invalid regex",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+			},
+			labels.FromStrings("host", "(", "env", "prod"),
+			true,
+		},
+		{
+			"invalid matcher after a matching one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}, {Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			true,
+		},
+		{
+			"matching selector after an invalid one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
+		{
+			"matcher of an invalid selector repeated in a valid one",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}, {Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
+		{
+			"selector with no matchers",
+			[]*types.LabelPolicy{
+				{Selector: []*types.LabelMatcher{}},
+			},
+			labels.FromStrings("host", "host1", "env", "prod"),
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -316,6 +358,82 @@ func TestChunkFilterer_RequiredLabelNames(t *testing.T) {
 			}
 			got := c.RequiredLabelNames()
 			require.ElementsMatch(t, got, tt.want)
+		})
+	}
+}
+
+func TestChunkFilterer_PushableLabelMatchers(t *testing.T) {
+	policy := func(matchers ...*types.LabelMatcher) *types.LabelPolicy {
+		return &types.LabelPolicy{Selector: matchers}
+	}
+	envDev := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"}
+	secretNotTrue := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "secret", Value: "true"}
+	appRegexp := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_RE, Name: "app", Value: "a|d"}
+	teamAny := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_RE, Name: "team", Value: ".*"}
+	invalid := &types.LabelMatcher{Type: types.LabelMatcherType(1000), Name: "env", Value: "dev"}
+
+	testCases := []struct {
+		name     string
+		policies []*types.LabelPolicy
+		want     []string
+	}{
+		{
+			name:     "returns no matcher when the request has no policy",
+			policies: nil,
+		},
+		{
+			name:     "returns the matchers of the only policy",
+			policies: []*types.LabelPolicy{policy(envDev, secretNotTrue, appRegexp)},
+			want:     []string{`env="dev"`, `secret!="true"`, `app=~"a|d"`},
+		},
+		{
+			name:     "returns no matcher when the request has several policies",
+			policies: []*types.LabelPolicy{policy(envDev), policy(secretNotTrue)},
+		},
+		{
+			name:     "returns a matcher that matches every value",
+			policies: []*types.LabelPolicy{policy(teamAny, envDev)},
+			want:     []string{`team=~".*"`, `env="dev"`},
+		},
+		{
+			name:     "returns no matcher when a matcher of the policy cannot be converted",
+			policies: []*types.LabelPolicy{policy(envDev, invalid)},
+		},
+		{
+			name:     "returns no matcher when the only policy has no matcher",
+			policies: []*types.LabelPolicy{policy()},
+		},
+	}
+
+	streams := []labels.Labels{
+		labels.FromStrings("app", "a", "env", "dev"),
+		labels.FromStrings("app", "b", "env", "dev", "secret", "true"),
+		labels.FromStrings("app", "d", "env", "prod"),
+		labels.FromStrings("app", "d", "team", "payments"),
+		labels.FromStrings("env", "dev", "team", "payments"),
+		labels.EmptyLabels(),
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			filterer := &ChunkFilterer{policies: testCase.policies}
+			filterer.loadMatchers()
+
+			matchers := filterer.PushableLabelMatchers()
+			var got []string
+			for _, matcher := range matchers {
+				got = append(got, matcher.String())
+			}
+			require.Equal(t, testCase.want, got)
+
+			for _, stream := range streams {
+				if filterer.ShouldFilter(stream) {
+					continue
+				}
+				for _, matcher := range matchers {
+					require.True(t, matcher.Matches(stream.Get(matcher.Name)), "the filter admits %s, but it does not match %s", stream, matcher)
+				}
+			}
 		})
 	}
 }

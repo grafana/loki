@@ -21,8 +21,10 @@
 #
 # The sections at the end run two parsers in a row, for every pair, with `line_format` between them.
 #
-# Every parser gives the same labels for the same sources of a name. The key order does not change
-# the result either.
+# Every parser gives the same labels for the same sources of a name, with one exception: a renamed
+# key and a literal key that write the same name. Then the first one in the line wins, so the key
+# order `a` or `b` decides, except in the expression forms, where the literal key wins in both
+# orders.
 #
 
 # json
@@ -79,13 +81,13 @@ load
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json
   {app="json_00a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_00b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_01b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_02a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="json_02b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="json_03a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_03b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_10b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="json_11a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_11b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -130,9 +132,7 @@ eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo_extracted="l
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo_extracted="lit"
   {app="json_00a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_00b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_01b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="json_10b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo_extracted="m"
   {app="json_11a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -146,8 +146,11 @@ eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo_extracted="m
   {app="json_12b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_13a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_13b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
+eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo_extracted="p"
+  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo="l"
-  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_10b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="json_11a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_11b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -164,7 +167,7 @@ eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo="l"
   {app="json_33a", foo="l", foo_extracted="le"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
   {app="json_33b", foo="l", foo_extracted="le"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo="m"
-  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_01b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_03a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_03b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -184,10 +187,12 @@ eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | foo="p"
 # json: grouped metric queries.
 eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"json_..[ab]"} | json [1m]))
   {foo="p", foo_extracted="lit"} 2
-  {foo="m", foo_extracted="lit"} 2
+  {foo="m", foo_extracted="p"} 1
+  {foo="m", foo_extracted="lit"} 1
   {foo="p", foo_extracted="me"} 2
   {foo="m", foo_extracted="me"} 2
-  {foo="l", foo_extracted="lit"} 2
+  {foo="l", foo_extracted="p"} 1
+  {foo="l", foo_extracted="lit"} 1
   {foo="l", foo_extracted="m"} 2
   {foo="l", foo_extracted="me"} 4
   {foo="p", foo_extracted="le"} 4
@@ -195,22 +200,26 @@ eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"json_..[
   {foo="l", foo_extracted="le"} 8
 eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"json_..[ab]"} | json [1m])) # overlapping
   {foo="p", foo_extracted="lit"} 2 2
-  {foo="m", foo_extracted="lit"} 2 2
+  {foo="m", foo_extracted="p"} 1 1
+  {foo="m", foo_extracted="lit"} 1 1
   {foo="p", foo_extracted="me"} 2 2
   {foo="m", foo_extracted="me"} 2 2
-  {foo="l", foo_extracted="lit"} 2 2
+  {foo="l", foo_extracted="p"} 1 1
+  {foo="l", foo_extracted="lit"} 1 1
   {foo="l", foo_extracted="m"} 2 2
   {foo="l", foo_extracted="me"} 4 4
   {foo="p", foo_extracted="le"} 4 4
   {foo="m", foo_extracted="le"} 4 4
   {foo="l", foo_extracted="le"} 8 8
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"json_..[ab]"} | json [1m]))
-  {foo_extracted="lit"} 6
+  {foo_extracted="lit"} 4
+  {foo_extracted="p"} 2
   {foo_extracted="me"} 8
   {foo_extracted="m"} 2
   {foo_extracted="le"} 16
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"json_..[ab]"} | json [1m])) # overlapping
-  {foo_extracted="lit"} 6 6
+  {foo_extracted="lit"} 4 4
+  {foo_extracted="p"} 2 2
   {foo_extracted="me"} 8 8
   {foo_extracted="m"} 2 2
   {foo_extracted="le"} 16 16
@@ -251,46 +260,46 @@ eval select from 0 to 30s forward {app=~"json_..[ab]"} | drop foo | json
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | drop foo_extracted | json
   {app="json_00a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_00b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_01a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_01b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_02a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_02b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_03a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_03a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_03b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_10a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_10b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="json_11a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_11a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_11b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="json_12a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_12a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_12b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="json_13a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_13a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_13b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="json_20a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_20b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_21a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_21a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_21b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_22a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_22b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_23a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_23a"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="json_23b"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="json_30a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_30a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_30b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="json_31a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_31a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_31b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="json_32a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_32a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="json_32b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="json_33a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_33a", foo="l"} `{"foo":"p","foo_extracted":"lit","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="json_33b", foo="l"} `{"foo_extracted":"lit","foo":"p","bar":"b"}` @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"json_..[ab]"} | json | line_format "{{.foo}}|{{.foo_extracted}}"
   {app="json_00a"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="json_00b"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="json_01a"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="json_01a"} "m|p" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="json_01b"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="json_02a"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="json_02b"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="json_03a"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_03b"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="json_10a", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="json_10a", foo="l"} "l|p" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="json_10b", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="json_11a", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="json_11b", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -384,13 +393,13 @@ load
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt
   {app="logfmt_00a"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_00b"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_01b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_02a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="logfmt_02b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="logfmt_03a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_03b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_10b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_11a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_11b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -435,9 +444,7 @@ eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo_extracte
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo_extracted="lit"
   {app="logfmt_00a"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_00b"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_01b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_10b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo_extracted="m"
   {app="logfmt_11a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -451,8 +458,11 @@ eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo_extracte
   {app="logfmt_12b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_13a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_13b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
+eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo_extracted="p"
+  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo="l"
-  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_10b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_11a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_11b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -469,7 +479,7 @@ eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo="l"
   {app="logfmt_33a", foo="l", foo_extracted="le"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
   {app="logfmt_33b", foo="l", foo_extracted="le"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo="m"
-  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_01b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_03a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_03b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -489,10 +499,12 @@ eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | foo="p"
 # logfmt: grouped metric queries.
 eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"logfmt_..[ab]"} | logfmt [1m]))
   {foo="p", foo_extracted="lit"} 2
-  {foo="m", foo_extracted="lit"} 2
+  {foo="m", foo_extracted="p"} 1
+  {foo="m", foo_extracted="lit"} 1
   {foo="p", foo_extracted="me"} 2
   {foo="m", foo_extracted="me"} 2
-  {foo="l", foo_extracted="lit"} 2
+  {foo="l", foo_extracted="p"} 1
+  {foo="l", foo_extracted="lit"} 1
   {foo="l", foo_extracted="m"} 2
   {foo="l", foo_extracted="me"} 4
   {foo="p", foo_extracted="le"} 4
@@ -500,22 +512,26 @@ eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"logfmt_.
   {foo="l", foo_extracted="le"} 8
 eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"logfmt_..[ab]"} | logfmt [1m])) # overlapping
   {foo="p", foo_extracted="lit"} 2 2
-  {foo="m", foo_extracted="lit"} 2 2
+  {foo="m", foo_extracted="p"} 1 1
+  {foo="m", foo_extracted="lit"} 1 1
   {foo="p", foo_extracted="me"} 2 2
   {foo="m", foo_extracted="me"} 2 2
-  {foo="l", foo_extracted="lit"} 2 2
+  {foo="l", foo_extracted="p"} 1 1
+  {foo="l", foo_extracted="lit"} 1 1
   {foo="l", foo_extracted="m"} 2 2
   {foo="l", foo_extracted="me"} 4 4
   {foo="p", foo_extracted="le"} 4 4
   {foo="m", foo_extracted="le"} 4 4
   {foo="l", foo_extracted="le"} 8 8
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"logfmt_..[ab]"} | logfmt [1m]))
-  {foo_extracted="lit"} 6
+  {foo_extracted="lit"} 4
+  {foo_extracted="p"} 2
   {foo_extracted="me"} 8
   {foo_extracted="m"} 2
   {foo_extracted="le"} 16
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"logfmt_..[ab]"} | logfmt [1m])) # overlapping
-  {foo_extracted="lit"} 6 6
+  {foo_extracted="lit"} 4 4
+  {foo_extracted="p"} 2 2
   {foo_extracted="me"} 8 8
   {foo_extracted="m"} 2 2
   {foo_extracted="le"} 16 16
@@ -556,46 +572,46 @@ eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | drop foo | logfmt
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | drop foo_extracted | logfmt
   {app="logfmt_00a"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_00b"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_01a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_01b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_02a"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_02b"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_03a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_03a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_03b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_10a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_10b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_11a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_11a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_11b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_12a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_12a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_12b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_13a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_13a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_13b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_20a"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_20b"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_21a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_21a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_21b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_22a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_22b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_23a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_23a"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_23b"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_30a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_30a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_30b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_31a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_31a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_31b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_32a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_32a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_32b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="logfmt_33a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_33a", foo="l"} "foo=p foo_extracted=lit bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_33b", foo="l"} "foo_extracted=lit foo=p bar=b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"logfmt_..[ab]"} | logfmt | line_format "{{.foo}}|{{.foo_extracted}}"
   {app="logfmt_00a"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="logfmt_00b"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="logfmt_01a"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_01a"} "m|p" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="logfmt_01b"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_02a"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="logfmt_02b"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="logfmt_03a"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_03b"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="logfmt_10a", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="logfmt_10a", foo="l"} "l|p" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="logfmt_10b", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="logfmt_11a", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="logfmt_11b", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -695,10 +711,10 @@ load
 # regexp: every set of stream labels x every set of metadata x both key orders. Key order a.
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)`
   {app="regexp_00a"} "p|lit|b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="regexp_02a"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="regexp_03a"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="regexp_11a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_12a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_13a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -722,8 +738,6 @@ eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?
   {app="regexp_33a", foo="l", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo_extracted="lit"
   {app="regexp_00a"} "p|lit|b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo_extracted="m"
   {app="regexp_11a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo_extracted="me"
@@ -731,8 +745,11 @@ eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?
   {app="regexp_03a"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_12a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_13a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
+eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo_extracted="p"
+  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo="l"
-  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="regexp_11a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_12a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_13a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -741,7 +758,7 @@ eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?
   {app="regexp_32a", foo="l", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
   {app="regexp_33a", foo="l", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | foo="m"
-  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="regexp_03a"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_21a", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_23a", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b"]
@@ -753,10 +770,10 @@ eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?
 # regexp: grouped metric queries. Key order a.
 eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` [1m]))
   {foo="p", foo_extracted="lit"} 1
-  {foo="m", foo_extracted="lit"} 1
+  {foo="m", foo_extracted="p"} 1
   {foo="p", foo_extracted="me"} 1
   {foo="m", foo_extracted="me"} 1
-  {foo="l", foo_extracted="lit"} 1
+  {foo="l", foo_extracted="p"} 1
   {foo="l", foo_extracted="m"} 1
   {foo="l", foo_extracted="me"} 2
   {foo="p", foo_extracted="le"} 2
@@ -764,22 +781,24 @@ eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"regexp_.
   {foo="l", foo_extracted="le"} 4
 eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` [1m])) # overlapping
   {foo="p", foo_extracted="lit"} 1 1
-  {foo="m", foo_extracted="lit"} 1 1
+  {foo="m", foo_extracted="p"} 1 1
   {foo="p", foo_extracted="me"} 1 1
   {foo="m", foo_extracted="me"} 1 1
-  {foo="l", foo_extracted="lit"} 1 1
+  {foo="l", foo_extracted="p"} 1 1
   {foo="l", foo_extracted="m"} 1 1
   {foo="l", foo_extracted="me"} 2 2
   {foo="p", foo_extracted="le"} 2 2
   {foo="m", foo_extracted="le"} 2 2
   {foo="l", foo_extracted="le"} 4 4
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` [1m]))
-  {foo_extracted="lit"} 3
+  {foo_extracted="lit"} 1
+  {foo_extracted="p"} 2
   {foo_extracted="me"} 4
   {foo_extracted="m"} 1
   {foo_extracted="le"} 8
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` [1m])) # overlapping
-  {foo_extracted="lit"} 3 3
+  {foo_extracted="lit"} 1 1
+  {foo_extracted="p"} 2 2
   {foo_extracted="me"} 4 4
   {foo_extracted="m"} 1 1
   {foo_extracted="le"} 8 8
@@ -803,27 +822,27 @@ eval select from 0 to 30s forward {app=~"regexp_..a"} | drop foo | regexp `(?P<f
   {app="regexp_33a", foo_extracted="le"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | drop foo_extracted | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)`
   {app="regexp_00a"} "p|lit|b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_01a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="regexp_02a"} "p|lit|b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_03a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_11a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_12a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_13a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_03a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="regexp_10a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="regexp_11a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="regexp_12a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="regexp_13a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="regexp_20a"} "p|lit|b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_21a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_21a"} "p|lit|b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="regexp_22a"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_23a"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_30a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_31a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_32a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="regexp_33a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_23a"} "p|lit|b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
+  {app="regexp_30a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="regexp_31a", foo="l"} "p|lit|b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="regexp_32a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
+  {app="regexp_33a", foo="l"} "p|lit|b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"regexp_..a"} | regexp `(?P<foo>\w+)\|(?P<foo_extracted>\w+)\|(?P<bar>\w+)` | line_format "{{.foo}}|{{.foo_extracted}}"
   {app="regexp_00a"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="regexp_01a"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_01a"} "m|p" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="regexp_02a"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="regexp_03a"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="regexp_10a", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="regexp_10a", foo="l"} "l|p" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="regexp_11a", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_12a", foo="l"} "l|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="regexp_13a", foo="l"} "l|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1042,10 +1061,10 @@ load
 # pattern: every set of stream labels x every set of metadata x both key orders. Key order a.
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>`
   {app="pattern_00a"} "p lit b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="pattern_02a"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="pattern_03a"} "p lit b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="pattern_11a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_12a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_13a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1069,8 +1088,6 @@ eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_ext
   {app="pattern_33a", foo="l", foo_extracted="le"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo_extracted="lit"
   {app="pattern_00a"} "p lit b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo_extracted="m"
   {app="pattern_11a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo_extracted="me"
@@ -1078,8 +1095,11 @@ eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_ext
   {app="pattern_03a"} "p lit b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_12a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_13a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
+eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo_extracted="p"
+  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo="l"
-  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="pattern_11a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_12a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_13a", foo="l"} "p lit b" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1088,7 +1108,7 @@ eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_ext
   {app="pattern_32a", foo="l", foo_extracted="le"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
   {app="pattern_33a", foo="l", foo_extracted="le"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | foo="m"
-  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="pattern_03a"} "p lit b" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_21a", foo_extracted="le"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_23a", foo_extracted="le"} "p lit b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b"]
@@ -1100,10 +1120,10 @@ eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_ext
 # pattern: grouped metric queries. Key order a.
 eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` [1m]))
   {foo="p", foo_extracted="lit"} 1
-  {foo="m", foo_extracted="lit"} 1
+  {foo="m", foo_extracted="p"} 1
   {foo="p", foo_extracted="me"} 1
   {foo="m", foo_extracted="me"} 1
-  {foo="l", foo_extracted="lit"} 1
+  {foo="l", foo_extracted="p"} 1
   {foo="l", foo_extracted="m"} 1
   {foo="l", foo_extracted="me"} 2
   {foo="p", foo_extracted="le"} 2
@@ -1111,22 +1131,24 @@ eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"pattern_
   {foo="l", foo_extracted="le"} 4
 eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` [1m])) # overlapping
   {foo="p", foo_extracted="lit"} 1 1
-  {foo="m", foo_extracted="lit"} 1 1
+  {foo="m", foo_extracted="p"} 1 1
   {foo="p", foo_extracted="me"} 1 1
   {foo="m", foo_extracted="me"} 1 1
-  {foo="l", foo_extracted="lit"} 1 1
+  {foo="l", foo_extracted="p"} 1 1
   {foo="l", foo_extracted="m"} 1 1
   {foo="l", foo_extracted="me"} 2 2
   {foo="p", foo_extracted="le"} 2 2
   {foo="m", foo_extracted="le"} 2 2
   {foo="l", foo_extracted="le"} 4 4
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` [1m]))
-  {foo_extracted="lit"} 3
+  {foo_extracted="lit"} 1
+  {foo_extracted="p"} 2
   {foo_extracted="me"} 4
   {foo_extracted="m"} 1
   {foo_extracted="le"} 8
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` [1m])) # overlapping
-  {foo_extracted="lit"} 3 3
+  {foo_extracted="lit"} 1 1
+  {foo_extracted="p"} 2 2
   {foo_extracted="me"} 4 4
   {foo_extracted="m"} 1 1
   {foo_extracted="le"} 8 8
@@ -1150,27 +1172,27 @@ eval select from 0 to 30s forward {app=~"pattern_..a"} | drop foo | pattern `<fo
   {app="pattern_33a", foo_extracted="le"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | drop foo_extracted | pattern `<foo> <foo_extracted> <bar>`
   {app="pattern_00a"} "p lit b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_01a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="pattern_02a"} "p lit b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_03a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_11a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_12a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_13a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_03a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="pattern_10a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="pattern_11a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="pattern_12a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="pattern_13a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="pattern_20a"} "p lit b" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_21a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_21a"} "p lit b" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="pattern_22a"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_23a"} "p lit b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_30a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_31a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_32a", foo="l"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="pattern_33a", foo="l"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_23a"} "p lit b" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
+  {app="pattern_30a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="pattern_31a", foo="l"} "p lit b" @ 10s [parsed bar="b" foo_extracted="p"]
+  {app="pattern_32a", foo="l"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
+  {app="pattern_33a", foo="l"} "p lit b" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"pattern_..a"} | pattern `<foo> <foo_extracted> <bar>` | line_format "{{.foo}}|{{.foo_extracted}}"
   {app="pattern_00a"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="pattern_01a"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_01a"} "m|p" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="pattern_02a"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="pattern_03a"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="pattern_10a", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="pattern_10a", foo="l"} "l|p" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="pattern_11a", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_12a", foo="l"} "l|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="pattern_13a", foo="l"} "l|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1397,13 +1419,13 @@ load
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack
   {app="unpack_00a"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_00b"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_01b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_02a"} "x" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="unpack_02b"} "x" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="unpack_03a"} "x" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_03b"} "x" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_10b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="unpack_11a", foo="l"} "x" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_11b", foo="l"} "x" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1448,9 +1470,7 @@ eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo_extracte
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo_extracted="lit"
   {app="unpack_00a"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_00b"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_01b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="unpack_10b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo_extracted="m"
   {app="unpack_11a", foo="l"} "x" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1464,8 +1484,11 @@ eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo_extracte
   {app="unpack_12b", foo="l"} "x" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_13a", foo="l"} "x" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_13b", foo="l"} "x" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
+eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo_extracted="p"
+  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
+  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo="l"
-  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_10b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="unpack_11a", foo="l"} "x" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_11b", foo="l"} "x" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1482,7 +1505,7 @@ eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo="l"
   {app="unpack_33a", foo="l", foo_extracted="le"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
   {app="unpack_33b", foo="l", foo_extracted="le"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b"]
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo="m"
-  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_01b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_03a"} "x" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_03b"} "x" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
@@ -1502,10 +1525,12 @@ eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | foo="p"
 # unpack: grouped metric queries.
 eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"unpack_..[ab]"} | unpack [1m]))
   {foo="p", foo_extracted="lit"} 2
-  {foo="m", foo_extracted="lit"} 2
+  {foo="m", foo_extracted="p"} 1
+  {foo="m", foo_extracted="lit"} 1
   {foo="p", foo_extracted="me"} 2
   {foo="m", foo_extracted="me"} 2
-  {foo="l", foo_extracted="lit"} 2
+  {foo="l", foo_extracted="p"} 1
+  {foo="l", foo_extracted="lit"} 1
   {foo="l", foo_extracted="m"} 2
   {foo="l", foo_extracted="me"} 4
   {foo="p", foo_extracted="le"} 4
@@ -1513,22 +1538,26 @@ eval instant at 60s sum by (foo, foo_extracted) (count_over_time({app=~"unpack_.
   {foo="l", foo_extracted="le"} 8
 eval range from 40s to 60s step 20s sum by (foo, foo_extracted) (count_over_time({app=~"unpack_..[ab]"} | unpack [1m])) # overlapping
   {foo="p", foo_extracted="lit"} 2 2
-  {foo="m", foo_extracted="lit"} 2 2
+  {foo="m", foo_extracted="p"} 1 1
+  {foo="m", foo_extracted="lit"} 1 1
   {foo="p", foo_extracted="me"} 2 2
   {foo="m", foo_extracted="me"} 2 2
-  {foo="l", foo_extracted="lit"} 2 2
+  {foo="l", foo_extracted="p"} 1 1
+  {foo="l", foo_extracted="lit"} 1 1
   {foo="l", foo_extracted="m"} 2 2
   {foo="l", foo_extracted="me"} 4 4
   {foo="p", foo_extracted="le"} 4 4
   {foo="m", foo_extracted="le"} 4 4
   {foo="l", foo_extracted="le"} 8 8
 eval instant at 60s sum by (foo_extracted) (count_over_time({app=~"unpack_..[ab]"} | unpack [1m]))
-  {foo_extracted="lit"} 6
+  {foo_extracted="lit"} 4
+  {foo_extracted="p"} 2
   {foo_extracted="me"} 8
   {foo_extracted="m"} 2
   {foo_extracted="le"} 16
 eval range from 40s to 60s step 20s sum by (foo_extracted) (count_over_time({app=~"unpack_..[ab]"} | unpack [1m])) # overlapping
-  {foo_extracted="lit"} 6 6
+  {foo_extracted="lit"} 4 4
+  {foo_extracted="p"} 2 2
   {foo_extracted="me"} 8 8
   {foo_extracted="m"} 2 2
   {foo_extracted="le"} 16 16
@@ -1569,46 +1598,46 @@ eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | drop foo | unpack
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | drop foo_extracted | unpack
   {app="unpack_00a"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_00b"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_01a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_01b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_02a"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_02b"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_03a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_03a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_03b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_10a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_10b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_11a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_11a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_11b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_12a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_12a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_12b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_13a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_13a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_13b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="unpack_20a"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_20b"} "x" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_21a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_21a"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_21b"} "x" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_22a"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_22b"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_23a"} "x" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_23a"} "x" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_23b"} "x" @ 10s [metadata foo="m" foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_30a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_30a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_30b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_31a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_31a", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_31b", foo="l"} "x" @ 10s [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_32a", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_32a", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_32b", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
-  {app="unpack_33a", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_33a", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_33b", foo="l"} "x" @ 10s [metadata foo_extracted_extracted="me"] [parsed bar="b" foo_extracted="lit"]
 eval select from 0 to 30s forward {app=~"unpack_..[ab]"} | unpack | line_format "{{.foo}}|{{.foo_extracted}}"
   {app="unpack_00a"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
   {app="unpack_00b"} "p|lit" @ 10s [parsed bar="b" foo="p" foo_extracted="lit"]
-  {app="unpack_01a"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_01a"} "m|p" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="p"]
   {app="unpack_01b"} "m|lit" @ 10s [metadata foo="m"] [parsed bar="b" foo_extracted="lit"]
   {app="unpack_02a"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="unpack_02b"} "p|me" @ 10s [metadata foo_extracted="me"] [parsed bar="b" foo="p" foo_extracted_extracted="lit"]
   {app="unpack_03a"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_03b"} "m|me" @ 10s [metadata foo="m" foo_extracted="me"] [parsed bar="b" foo_extracted_extracted="lit"]
-  {app="unpack_10a", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
+  {app="unpack_10a", foo="l"} "l|p" @ 10s [parsed bar="b" foo_extracted="p"]
   {app="unpack_10b", foo="l"} "l|lit" @ 10s [parsed bar="b" foo_extracted="lit"]
   {app="unpack_11a", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]
   {app="unpack_11b", foo="l"} "l|m" @ 10s [metadata foo_extracted="m"] [parsed bar="b" foo_extracted_extracted="lit"]

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 func TestLogCompactionPlanLogTaskStats(t *testing.T) {
@@ -33,7 +32,7 @@ func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 
 	t.Run("skips an IndexFilter task", func(t *testing.T) {
 		plan := logCompactionPlan{tasks: []logCompactionTask{
-			indexFilterTask{entry: metastore.TableOfContentsEntry{StartTime: now.Add(-48 * time.Hour)}},
+			indexFilterTask{inputRange: newTimeRange(now.Add(-48*time.Hour), now)},
 		}}
 
 		require.Empty(t, slices.Collect(plan.logTaskStats()))
@@ -66,5 +65,14 @@ func TestLogMergeTaskLogStats(t *testing.T) {
 		}})
 
 		require.Equal(t, logTaskStats{inputBytes: 60, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logStats())
+	})
+
+	t.Run("reports the input bytes of the spec instead of the section sizes when it has them", func(t *testing.T) {
+		task := newLogMergeTask(&compactionv2pb.TaskSpec{
+			Runs:       []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section("logs/a", 500, 100), section("logs/b", 100, 50)}}},
+			InputBytes: 70,
+		})
+
+		require.Equal(t, logTaskStats{inputBytes: 70, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logStats())
 	})
 }

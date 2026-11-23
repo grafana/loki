@@ -63,13 +63,16 @@ func (m Map) EnsureCapacity(capacity int) {
 // If the key does not exist, returns a zero-initialized KeyValue and false.
 // Calling any functions on the returned invalid instance may cause a panic.
 func (m Map) Get(key string) (Value, bool) {
-	for i := range *m.getOrig() {
-		akv := &(*m.getOrig())[i]
+	orig := *m.getOrig()
+	var value *internal.AnyValue
+	for i := range orig {
+		akv := &orig[i]
 		if akv.Key == key {
-			return newValue(&akv.Value, m.getState()), true
+			value = &akv.Value
+			break
 		}
 	}
-	return newValue(nil, m.getState()), false
+	return newValue(value, m.getState()), value != nil
 }
 
 // Remove removes the entry associated with the key and returns true if the key
@@ -142,7 +145,7 @@ func (m Map) PutStr(k, v string) {
 		av.SetStr(v)
 		return
 	}
-	ov := internal.NewAnyValueStringValue()
+	ov := internal.NewAnyValue_StringValue()
 	ov.StringValue = v
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 }
@@ -156,7 +159,7 @@ func (m Map) PutInt(k string, v int64) {
 		av.SetInt(v)
 		return
 	}
-	ov := internal.NewAnyValueIntValue()
+	ov := internal.NewAnyValue_IntValue()
 	ov.IntValue = v
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 }
@@ -170,7 +173,7 @@ func (m Map) PutDouble(k string, v float64) {
 		av.SetDouble(v)
 		return
 	}
-	ov := internal.NewAnyValueDoubleValue()
+	ov := internal.NewAnyValue_DoubleValue()
 	ov.DoubleValue = v
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 }
@@ -184,7 +187,7 @@ func (m Map) PutBool(k string, v bool) {
 		av.SetBool(v)
 		return
 	}
-	ov := internal.NewAnyValueBoolValue()
+	ov := internal.NewAnyValue_BoolValue()
 	ov.BoolValue = v
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 }
@@ -195,7 +198,7 @@ func (m Map) PutEmptyBytes(k string) ByteSlice {
 	if av, existing := m.Get(k); existing {
 		return av.SetEmptyBytes()
 	}
-	ov := internal.NewAnyValueBytesValue()
+	ov := internal.NewAnyValue_BytesValue()
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 	return ByteSlice(internal.NewByteSliceWrapper(&ov.BytesValue, m.getState()))
 }
@@ -206,7 +209,7 @@ func (m Map) PutEmptyMap(k string) Map {
 	if av, existing := m.Get(k); existing {
 		return av.SetEmptyMap()
 	}
-	ov := internal.NewAnyValueKvlistValue()
+	ov := internal.NewAnyValue_KvlistValue()
 	ov.KvlistValue = internal.NewKeyValueList()
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 	return Map(internal.NewMapWrapper(&ov.KvlistValue.Values, m.getState()))
@@ -218,7 +221,7 @@ func (m Map) PutEmptySlice(k string) Slice {
 	if av, existing := m.Get(k); existing {
 		return av.SetEmptySlice()
 	}
-	ov := internal.NewAnyValueArrayValue()
+	ov := internal.NewAnyValue_ArrayValue()
 	ov.ArrayValue = internal.NewArrayValue()
 	*m.getOrig() = append(*m.getOrig(), internal.KeyValue{Key: k, Value: internal.AnyValue{Value: ov}})
 	return Slice(internal.NewSliceWrapper(&ov.ArrayValue.Values, m.getState()))
@@ -240,9 +243,11 @@ func (m Map) Len() int {
 //	    ...
 //	})
 func (m Map) Range(f func(k string, v Value) bool) {
-	for i := range *m.getOrig() {
-		kv := &(*m.getOrig())[i]
-		if !f(kv.Key, Value(internal.NewValueWrapper(&kv.Value, m.getState()))) {
+	orig := *m.getOrig()
+	state := m.getState()
+	for i := range orig {
+		kv := &orig[i]
+		if !f(kv.Key, Value(internal.NewValueWrapper(&kv.Value, state))) {
 			break
 		}
 	}
@@ -255,9 +260,11 @@ func (m Map) Range(f func(k string, v Value) bool) {
 //	}
 func (m Map) All() iter.Seq2[string, Value] {
 	return func(yield func(string, Value) bool) {
-		for i := range *m.getOrig() {
-			kv := &(*m.getOrig())[i]
-			if !yield(kv.Key, Value(internal.NewValueWrapper(&kv.Value, m.getState()))) {
+		orig := *m.getOrig()
+		state := m.getState()
+		for i := range orig {
+			kv := &orig[i]
+			if !yield(kv.Key, Value(internal.NewValueWrapper(&kv.Value, state))) {
 				return
 			}
 		}

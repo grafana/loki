@@ -10,6 +10,8 @@
 package columnar
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -68,6 +70,16 @@ type Array interface {
 	// A value of 1 in the Validity bitmap indicates that the corresponding
 	// element at that position is valid (not null).
 	Validity() memory.Bitmap
+}
+
+// AsArray returns datum as an [Array]. It returns an error if datum is not an
+// Array, for example if it is a [Scalar].
+func AsArray(datum Datum) (Array, error) {
+	arr, ok := datum.(Array)
+	if !ok {
+		return nil, fmt.Errorf("AsArray: %T is not an array", datum)
+	}
+	return arr, nil
 }
 
 // A Scalar is a single element of a specific data type.

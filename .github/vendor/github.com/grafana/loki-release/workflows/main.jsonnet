@@ -27,9 +27,12 @@
     skipArm=false,
     skipValidation=false,
     versioningStrategy='always-bump-patch',
+    goVersion='',
                     ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
     local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
+
+    assert goVersion != '' : 'goVersion required for Docker builds but not provided',
 
     name: 'create release PR',
     on: {
@@ -56,6 +59,7 @@
       SKIP_VALIDATION: skipValidation,
       VERSIONING_STRATEGY: versioningStrategy,
       GITHUB_APP: githubApp,
+      GO_VERSION: goVersion,
     } + if releaseAs != null then {
       RELEASE_AS: releaseAs,
     } else {},

@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -456,7 +456,7 @@ func TestBuildHintCacheLogicalKey_HashRoundTrip(t *testing.T) {
 	day := "2026-03-10"
 	logical := buildHintCacheLogicalKey(tenant, query, minDate, day)
 
-	require.Equal(t, "logline:1:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", logical)
+	require.Equal(t, "logline:2:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", logical)
 	require.Equal(t, cache.HashKey(logical), buildDayWindows(tenant, query,
 		minDate,
 		time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC),

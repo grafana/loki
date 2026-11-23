@@ -7,6 +7,7 @@ package sortmerge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 
@@ -18,13 +19,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// SchemaSortedIterator returns an iterator that performs a k-way merge of records
-// from multiple schema-sorted logs sections.
+// SchemaSortedIterator returns an iterator that performs a k-way merge of the
+// records of the streams in keepStreamIDs from multiple schema-sorted logs
+// sections. The section readers filter the rows with a stream ID predicate, and
+// they skip the rows of all other streams. It returns an error if keepStreamIDs
+// is empty. A record of a stream that is not in keepStreamIDs does not reach the
+// merge, and the merge reports nothing about it.
 // The input sections must belong to the same object and must therefore have the same StreamID key space.
 // The input sections must be sorted by the schema method: [shard ASC, schema key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
 // An additional ordering input is required to map StreamID to the corresponding external sort tuple ([0] unused).
-func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey) (result.Seq[logs.Record], error) {
+func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, keepStreamIDs []int64) (result.Seq[logs.Record], error) {
+	if len(keepStreamIDs) == 0 {
+		return nil, errors.New("sort merge: no stream IDs to keep")
+	}
+
 	sequences := make([]*sectionSequence, 0, len(sections))
 	ready := false
 	defer func() {
@@ -42,7 +51,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 			return nil, fmt.Errorf("failed to open logs section: %w", err)
 		}
 
-		seq, err := openSectionSequence(ctx, sec, bufferSize)
+		seq, err := openSectionSequence(ctx, sec, bufferSize, keepStreamIDs, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +81,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 				}
 
 				var record logs.Record
-				if err := logs.DecodeRow(seq.section.Columns(), row, &record, nil); err != nil {
+				if err := logs.DecodeRow(seq.section.Columns(), row, &record); err != nil {
 					return err
 				}
 				if !yield(record) {
@@ -83,7 +92,16 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 		}), nil
 }
 
-func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int) (*sectionSequence, error) {
+// openSectionSequence opens a cursor over the rows of sec. A non-nil
+// keepStreamIDs reads only the rows of those streams, and a non-nil empty slice
+// reads none. A nil keepStreamIDs reads every row. A non-empty dropStreamIDs
+// skips the rows of those streams, as [RemappedSection.DropStreamIDs] does. The
+// caller sets at most one of them. openSectionSequence returns an error if both
+// are set.
+func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, keepStreamIDs, dropStreamIDs []int64) (*sectionSequence, error) {
+	if keepStreamIDs != nil && len(dropStreamIDs) > 0 {
+		return nil, fmt.Errorf("a section sequence takes either streams to keep or streams to drop, not both")
+	}
 	ds, err := logs.MakeColumnarDataset(sec)
 	if err != nil {
 		return nil, fmt.Errorf("creating columnar dataset: %w", err)
@@ -92,12 +110,53 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int)
 	if err != nil {
 		return nil, err
 	}
-	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false})
+	opts := dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false}
+	switch {
+	case keepStreamIDs != nil:
+		predicate, err := streamIDsPredicate(sec, columns, keepStreamIDs, false)
+		if err != nil {
+			return nil, err
+		}
+		opts.Predicates = []dataset.Predicate{predicate}
+	case len(dropStreamIDs) > 0:
+		predicate, err := streamIDsPredicate(sec, columns, dropStreamIDs, true)
+		if err != nil {
+			return nil, err
+		}
+		opts.Predicates = []dataset.Predicate{predicate}
+	}
+	r := dataset.NewRowReader(opts)
 	if err := r.Open(ctx); err != nil {
 		_ = r.Close()
 		return nil, fmt.Errorf("opening dataset row reader: %w", err)
 	}
 	return &sectionSequence{section: sec, DatasetSequence: logs.NewDatasetSequence(r, bufferSize)}, nil
+}
+
+// streamIDsPredicate returns a predicate that keeps the rows of streamIDs, or
+// skips them if exclude is set. columns must be the dataset columns of sec, in
+// the order of sec.Columns().
+//
+// Dropping streams excludes them instead of listing the kept ones. A row of a
+// stream that the streams section does not hold then still reaches the remap
+// and fails the merge, as it does without a filter.
+func streamIDsPredicate(sec *logs.Section, columns []dataset.Column, streamIDs []int64, exclude bool) (dataset.Predicate, error) {
+	for i, column := range sec.Columns() {
+		if column.Type == logs.ColumnTypeStreamID {
+			// Rows of one stream are adjacent, so the memoized set skips most
+			// map lookups. The set is not safe for concurrent use, and only
+			// this sequence's reader uses it.
+			in := dataset.InPredicate{
+				Column: columns[i],
+				Values: dataset.NewMemoizedInt64ValueSetOf(streamIDs...),
+			}
+			if exclude {
+				return dataset.NotPredicate{Inner: in}, nil
+			}
+			return in, nil
+		}
+	}
+	return nil, fmt.Errorf("logs section has no stream ID column")
 }
 
 // sectionSequence wraps a section cursor. When remap is non-nil it rewrites the

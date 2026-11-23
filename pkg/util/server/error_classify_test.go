@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -33,30 +33,30 @@ func TestClassifyFailure(t *testing.T) {
 		{"deadline", context.DeadlineExceeded, FailureTimeout, "query_timeout"},
 		{
 			"max_query_bytes_read",
-			wrapLimit(logqlmodel.ErrMaxQueryBytesRead, http.StatusBadRequest, "the query would read too many bytes (query: 5GB, limit: 1GB)"),
+			wrapLimit(logqlerr.ErrMaxQueryBytesRead, http.StatusBadRequest, "the query would read too many bytes (query: 5GB, limit: 1GB)"),
 			FailureLimit, "max_query_bytes_read",
 		},
 		{
 			"querier_too_large",
-			wrapLimit(logqlmodel.ErrQuerierTooManyBytes, http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"),
+			wrapLimit(logqlerr.ErrQuerierTooManyBytes, http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"),
 			FailureLimit, "querier_too_large",
 		},
-		{"interval_limit", logqlmodel.ErrIntervalLimit, FailureLimit, "interval_limit"},
-		{"series_limit", logqlmodel.NewSeriesLimitError(100), FailureLimit, "series_limit"},
-		{"blocked", logqlmodel.ErrBlocked, FailureBlocked, "blocked_by_policy"},
-		{"parse", logqlmodel.ErrParse, FailureSyntax, "parse"},
-		{"pipeline", logqlmodel.ErrPipeline, FailureSyntax, "pipeline"},
+		{"interval_limit", logqlerr.ErrIntervalLimit, FailureLimit, "interval_limit"},
+		{"series_limit", logqlerr.NewSeriesLimitError(100), FailureLimit, "series_limit"},
+		{"blocked", logqlerr.ErrBlocked, FailureBlocked, "blocked_by_policy"},
+		{"parse", logqlerr.ErrParse, FailureSyntax, "parse"},
+		{"pipeline", logqlerr.ErrPipeline, FailureSyntax, "pipeline"},
 		{"no_org_id", user.ErrNoOrgID, FailureUserError, "no_org_id"},
 		{
 			// Raised in-process, so it is matched by sentinel.
 			"max_entries",
-			wrapLimit(logqlmodel.ErrMaxEntriesLimit, http.StatusBadRequest, fmt.Sprintf(validation.ErrMaxEntriesLimit, 10000, 5000)),
+			wrapLimit(logqlerr.ErrMaxEntriesLimit, http.StatusBadRequest, fmt.Sprintf(validation.ErrMaxEntriesLimit, 10000, 5000)),
 			FailureLimit, "max_entries",
 		},
 		{
 			// Raised in-process, so it is matched by sentinel.
 			"max_query_length",
-			wrapLimit(logqlmodel.ErrMaxQueryLength, http.StatusBadRequest, fmt.Sprintf(validation.ErrQueryTooLong, "800h", "721h")),
+			wrapLimit(logqlerr.ErrMaxQueryLength, http.StatusBadRequest, fmt.Sprintf(validation.ErrQueryTooLong, "800h", "721h")),
 			FailureLimit, "max_query_length",
 		},
 		{
@@ -87,13 +87,13 @@ func TestClassifyFailure(t *testing.T) {
 			// A 429 whose sentinel did not survive the wire is bucketed
 			// generically: the message is deliberately not matched.
 			"max_query_parallelism_message_only",
-			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlmodel.ErrMaxQueryParallelism.Error()),
+			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlerr.ErrMaxQueryParallelism.Error()),
 			FailureThrottled, "too_many_requests",
 		},
 		{
 			// Raised in-process, so it is matched by sentinel.
 			"max_query_parallelism",
-			wrapLimit(logqlmodel.ErrMaxQueryParallelism, http.StatusTooManyRequests, logqlmodel.ErrMaxQueryParallelism.Error()),
+			wrapLimit(logqlerr.ErrMaxQueryParallelism, http.StatusTooManyRequests, logqlerr.ErrMaxQueryParallelism.Error()),
 			FailureThrottled, "max_query_parallelism",
 		},
 		{
@@ -128,19 +128,19 @@ func TestWrappedLimitErrorStatusPreserved(t *testing.T) {
 	}{
 		{
 			"max_query_bytes_read",
-			logqlmodel.ErrMaxQueryBytesRead,
+			logqlerr.ErrMaxQueryBytesRead,
 			http.StatusBadRequest,
 			"the query would read too many bytes (query: 5GB, limit: 1GB)",
 		},
 		{
 			"max_query_length",
-			logqlmodel.ErrMaxQueryLength,
+			logqlerr.ErrMaxQueryLength,
 			http.StatusBadRequest,
 			fmt.Sprintf(validation.ErrQueryTooLong, "800h", "721h"),
 		},
 		{
 			"max_entries",
-			logqlmodel.ErrMaxEntriesLimit,
+			logqlerr.ErrMaxEntriesLimit,
 			http.StatusBadRequest,
 			fmt.Sprintf(validation.ErrMaxEntriesLimit, 10000, 5000),
 		},

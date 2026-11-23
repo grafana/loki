@@ -28,7 +28,7 @@ func TestBuilder(t *testing.T) {
 	ib := indexpointers.NewBuilder(nil, 1024, 0)
 	ib.SetTenant(tenantID)
 	for _, p := range pp {
-		ib.Append(p.path, p.start, p.end)
+		ib.Append(indexpointers.IndexPointer{Path: p.path, StartTs: p.start, EndTs: p.end})
 	}
 
 	b := dataobj.NewBuilder(nil)
@@ -65,4 +65,29 @@ func TestBuilder(t *testing.T) {
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func TestBuilder_RunLength(t *testing.T) {
+	encode := func(pointer indexpointers.IndexPointer) error {
+		ib := indexpointers.NewBuilder(nil, 1024, 0)
+		ib.SetTenant(tenantID)
+		ib.Append(pointer)
+		return dataobj.NewBuilder(nil).Append(ib)
+	}
+	pointer := func(runID indexpointers.RunID, runLength int32) indexpointers.IndexPointer {
+		return indexpointers.IndexPointer{Path: "foo", StartTs: unixTime(10), EndTs: unixTime(20), RunID: runID, RunLength: runLength}
+	}
+
+	t.Run("encodes a positive run length of a pointer with a run ID", func(t *testing.T) {
+		require.NoError(t, encode(pointer(1, 2)))
+	})
+
+	t.Run("returns an error when the run length is set without a run ID", func(t *testing.T) {
+		require.ErrorContains(t, encode(pointer(0, 2)), "without a run ID")
+	})
+
+	t.Run("returns an error when the run length is negative", func(t *testing.T) {
+		require.ErrorContains(t, encode(pointer(1, -1)), "invalid run length")
+	})
+
 }

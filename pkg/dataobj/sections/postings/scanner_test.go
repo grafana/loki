@@ -498,14 +498,9 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 	for _, lp := range labelsIn {
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0,
+			StreamID: lp.streamID, UncompressedSize: 0,
+			Time: postings.At(time.Unix(0, lp.minTs).UTC()).Extend(time.Unix(0, lp.maxTs).UTC()),
 		})
-		if lp.maxTs > lp.minTs {
-			b.ObserveLabelPosting(postings.LabelObservation{
-				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0,
-			})
-		}
 	}
 	for _, bp := range bloomsIn {
 		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000, 0)

@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"testing"
@@ -15,12 +16,17 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
+
+// filterSourceLayout is the layout of the stats sections that the filter
+// tests build, with the sort schema of filterStatRow.
+var filterSourceLayout = streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"})
 
 // buildFilterSourceIndex uploads an index with one postings row and one stats
 // row per log object, for each tenant. A small postingsSectionSize splits the
@@ -34,7 +40,7 @@ func buildFilterSourceIndex(t *testing.T, bucket objstore.Bucket, path string, p
 		for _, object := range objects {
 			rows = append(rows, filterStatRow(object, 0))
 		}
-		appendFilterStats(t, objBuilder, tenant, rows)
+		appendFilterStats(t, objBuilder, tenant, filterSourceLayout, rows)
 	}
 	uploadFilterSourceIndex(t, bucket, path, objBuilder)
 }
@@ -49,7 +55,7 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 		ts := time.Unix(0, int64(1_000+i))
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: object, ColumnName: "service_name", LabelValue: object,
-			StreamID: 1, Timestamp: ts, UncompressedSize: 100,
+			StreamID: 1, Time: postings.At(ts), UncompressedSize: 100,
 		})
 		if withBlooms {
 			postingsBuilder.PrepareBloomColumn(object, 0, "trace_id", 1, 1)
@@ -62,10 +68,11 @@ func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant stri
 	require.NoError(t, objBuilder.Append(postingsBuilder))
 }
 
-// appendFilterStats appends one stats section with rows.
-func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, rows []stats.Stat) {
+// appendFilterStats appends one stats section that holds rows and records
+// layout.
+func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, layout streams.Layout, rows []stats.Stat) {
 	t.Helper()
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layoutOfStats(rows))
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
 	statsBuilder.SetTenant(tenant)
 	for _, row := range rows {
 		statsBuilder.Append(row)
@@ -136,13 +143,13 @@ type sizeRecordingBucket struct {
 	sizeErr error
 }
 
-func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		b.sizeErr = err
 	}
 	b.sizes[name] = size
-	return b.Bucket.Upload(ctx, name, r)
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func TestDoIndexFilter(t *testing.T) {
@@ -155,16 +162,179 @@ func TestDoIndexFilter(t *testing.T) {
 			"acme": {"logs/a", "logs/b", "logs/c"},
 		})
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a", "logs/c"},
-		})
+		}))
 		require.NoError(t, err)
 
 		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
 		require.Equal(t, []string{"logs/a", "logs/c"}, postingsPaths)
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
+
+	// runSource writes an index object of a run over objects: label postings
+	// of column for every object, and the stats rows of statObjects only.
+	runSource := func(t *testing.T, bucket objstore.Bucket, path, column string, objects, statObjects []string) {
+		t.Helper()
+		objBuilder := dataobj.NewBuilder(nil)
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
+		postingsBuilder.SetTenant("acme")
+		for i, object := range objects {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: object, ColumnName: column, LabelValue: object,
+				StreamID: 1, Time: postings.At(time.Unix(0, int64(1_000+i))), UncompressedSize: 100,
+			})
+		}
+		require.NoError(t, objBuilder.Append(postingsBuilder))
+		var rows []stats.Stat
+		for _, object := range statObjects {
+			rows = append(rows, filterStatRow(object, 0))
+		}
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, rows)
+		uploadFilterSourceIndex(t, bucket, path, objBuilder)
+	}
+
+	t.Run("keeps the rows of the listed objects from every index object of a run, in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b", "logs/c"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			ObjectPaths: []string{"logs/a", "logs/c"},
+		}))
+		require.NoError(t, err)
+
+		rows := readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path)
+		var keys []string
+		for _, row := range rows {
+			keys = append(keys, row.ColumnName+"="+row.LabelValue)
+		}
+		require.Equal(t, []string{"app=logs/a", "app=logs/c", "zone=logs/a", "zone=logs/c"}, keys)
+		require.True(t, slices.IsSortedFunc(rows, postings.CompareRows))
+
+		_, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
+		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
+	})
+
+	t.Run("reports the posting key bounds of the kept postings rows only", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b", "logs/c"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			ObjectPaths: []string{"logs/a", "logs/b"},
+		}))
+		require.NoError(t, err)
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "logs/a"}, artifact.PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "logs/b"}, artifact.PostingKeys.Max())
+	})
+
+	t.Run("writes a run of several index objects whose rows together are the kept rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		var objects []string
+		for i := range 300 {
+			objects = append(objects, fmt.Sprintf("logs/%04d", i))
+		}
+		runSource(t, bucket, "indexes/run/a", "app", objects, objects)
+		kept := objects[:200]
+
+		artifacts, err := newSplittingContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a"}, ObjectPaths: kept,
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+		var postingsPaths, statsPaths []string
+		for _, artifact := range artifacts {
+			for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path) {
+				postingsPaths = append(postingsPaths, row.ObjectPath)
+			}
+			for _, row := range readAllStatsRowsFromBucket(t, bucket, artifact.Path) {
+				statsPaths = append(statsPaths, row.ObjectPath)
+			}
+		}
+		slices.Sort(statsPaths)
+		require.Equal(t, kept, postingsPaths)
+		require.Equal(t, kept, statsPaths)
+	})
+
+	t.Run("returns an error when no index object of a run has stats rows of a listed object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b"}
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/a"})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"},
+			ObjectPaths: []string{"logs/b"},
+		})
+		require.ErrorContains(t, err, "no stats rows for object \"logs/b\"")
+	})
+
+	t.Run("returns an error when only some index objects of the source record a layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		runSource(t, bucket, "indexes/run/a", "app", []string{"logs/a"}, []string{"logs/a"})
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
+		uploadFilterSourceIndex(t, bucket, "indexes/run/b", objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/b"},
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "records no stream layout")
+	})
+
+	t.Run("returns an error when the index objects of the source record different layouts", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		runSource(t, bucket, "indexes/run/a", "app", []string{"logs/a"}, []string{"logs/a"})
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
+		appendFilterStats(t, objBuilder, "acme", streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:service_name"}), []stats.Stat{filterStatRow("logs/a", 1)})
+		uploadFilterSourceIndex(t, bucket, "indexes/run/b", objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/b"},
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "stream layout")
+	})
+
+	for _, buckets := range []uint32{1, 8, 256} {
+		t.Run(fmt.Sprintf("records the layout of the source index and keeps the shard buckets of the rows with a shard bucket count of %d", buckets), func(t *testing.T) {
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(buckets), []string{"label:service_name"})
+			bucket := objstore.NewInMemBucket()
+			objects := []string{"logs/a", "logs/b"}
+			objBuilder := dataobj.NewBuilder(nil)
+			appendFilterPostings(t, objBuilder, "acme", 1<<20, objects, false)
+			var rows []stats.Stat
+			for _, object := range objects {
+				row := filterStatRow(object, 0)
+				row.ShardBucket = buckets - 1
+				rows = append(rows, row)
+			}
+			appendFilterStats(t, objBuilder, "acme", layout, rows)
+			uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+			artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(t.Context(), &physical.IndexFilter{
+				NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
+				ObjectPaths: []string{"logs/a"},
+			}))
+			require.NoError(t, err)
+
+			got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), "acme")
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, layout, got)
+			keptRows := readAllStatsRowsFromBucket(t, bucket, artifact.Path)
+			require.Len(t, keptRows, 1)
+			require.Equal(t, buckets-1, keptRows[0].ShardBucket)
+		})
+	}
 
 	t.Run("reads every postings section of the source index", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
@@ -178,10 +348,10 @@ func TestDoIndexFilter(t *testing.T) {
 		}
 		require.Greater(t, sourcePostings, 1, "the source index must hold several postings sections")
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a", "logs/f"},
-		})
+		}))
 		require.NoError(t, err)
 
 		postingsPaths, _ := indexObjectPaths(t, bucket, artifact.Path)
@@ -192,13 +362,13 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 
 		var blooms []string
@@ -214,8 +384,8 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 1), filterStatRow("logs/b", 1)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 1), filterStatRow("logs/b", 1)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 		sourceStats := 0
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, sourcePath).Sections() {
@@ -225,10 +395,10 @@ func TestDoIndexFilter(t *testing.T) {
 		}
 		require.Equal(t, 2, sourceStats, "the source index must hold two stats sections")
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 
 		type key struct {
@@ -246,13 +416,13 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/a", 1), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/a", 1), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 
 		var wantPostings []postings.Row
@@ -275,7 +445,7 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 
 		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout())
 		streamsBuilder.SetTenant("acme")
@@ -284,10 +454,10 @@ func TestDoIndexFilter(t *testing.T) {
 
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
@@ -302,17 +472,17 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0)})
 
 		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
 		indexPointersBuilder.SetTenant("acme")
-		indexPointersBuilder.Append("indexes/other", time.Unix(0, 1_000), time.Unix(0, 2_000))
+		indexPointersBuilder.Append(indexpointers.IndexPointer{Path: "indexes/other", StartTs: time.Unix(0, 1_000), EndTs: time.Unix(0, 2_000)})
 		require.NoError(t, objBuilder.Append(indexPointersBuilder))
 
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
 		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v2"`)
@@ -325,10 +495,10 @@ func TestDoIndexFilter(t *testing.T) {
 			"other": {"logs/a", "logs/other"},
 		})
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 
 		output := openObjectFromBucket(ctx, t, bucket, artifact.Path)
@@ -345,7 +515,7 @@ func TestDoIndexFilter(t *testing.T) {
 		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{"acme": {"logs/a"}})
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a", "logs/missing"},
 		})
 		require.ErrorContains(t, err, "logs/missing")
@@ -355,11 +525,11 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
 		require.ErrorContains(t, err, `no postings rows for object "logs/a"`)
@@ -369,11 +539,11 @@ func TestDoIndexFilter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", filterSourceLayout, []stats.Stat{filterStatRow("logs/b", 0)})
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
 		require.ErrorContains(t, err, `no stats rows for object "logs/a"`)
@@ -385,7 +555,7 @@ func TestDoIndexFilter(t *testing.T) {
 		execCtx := newTestExecutorContext(t, bucket)
 
 		_, err := execCtx.doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), SourceIndexPath: sourcePath, ObjectPaths: []string{"logs/a"},
+			NodeID: ulid.Make(), SourceIndexPaths: []string{sourcePath}, ObjectPaths: []string{"logs/a"},
 		})
 		require.ErrorContains(t, err, "malformed plan")
 
@@ -400,7 +570,7 @@ func TestDoIndexFilter(t *testing.T) {
 		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{"acme": {"logs/a"}})
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 		})
 		require.ErrorContains(t, err, "no object paths")
 	})
@@ -410,10 +580,10 @@ func TestDoIndexFilter(t *testing.T) {
 		buildFilterSourceIndex(t, inner, sourcePath, 1<<20, map[string][]string{"acme": {"logs/a", "logs/b"}})
 		bucket := &sizeRecordingBucket{Bucket: inner, sizes: map[string]int64{}}
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
-		})
+		}))
 		require.NoError(t, err)
 		require.NoError(t, bucket.sizeErr)
 
@@ -424,7 +594,7 @@ func TestDoIndexFilter(t *testing.T) {
 
 	t.Run("returns an error when the source index does not exist", func(t *testing.T) {
 		_, err := newTestExecutorContext(t, objstore.NewInMemBucket()).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
 		require.ErrorContains(t, err, sourcePath)
@@ -438,7 +608,7 @@ func TestExecuteIndexFilter(t *testing.T) {
 		buildFilterSourceIndex(t, bucket, "indexes/source", 1<<20, map[string][]string{"acme": {"logs/a", "logs/b"}})
 
 		pipeline := newTestExecutorContext(t, bucket).executeIndexFilter(&physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: "indexes/source",
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/source"},
 			ObjectPaths: []string{"logs/a"},
 		})
 		reader := TranslateEOF(pipeline)
@@ -455,8 +625,8 @@ func TestExecuteIndexFilter(t *testing.T) {
 		}
 		require.Len(t, records, 1)
 
-		var artifact v2.ResultArtifact
-		require.NoError(t, artifact.FromRecordBatch(records[0]))
+		artifact, err := oneArtifact(t)(v2.DecodeResultArtifacts(records[0]))
+		require.NoError(t, err)
 		exists, err := bucket.Exists(ctx, artifact.Path)
 		require.NoError(t, err)
 		require.True(t, exists)

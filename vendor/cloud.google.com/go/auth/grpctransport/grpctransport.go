@@ -227,6 +227,10 @@ type InternalOptions struct {
 	EnableDirectPathXds bool
 	// EnableDirectPathXdsOverInterconnect enables DirectPath over Google Cloud
 	// Interconnect (on-premises xDS name resolution via google-c2p with force-xds).
+	// The channel negotiates TLS rather than ALTS, which is unavailable outside
+	// Google Cloud. Application Default Credentials must still be configured
+	// because the google-c2p resolver uses them for its connection to the control
+	// plane.
 	EnableDirectPathXdsOverInterconnect bool
 	// EnableJWTWithScope specifies if scope can be used with self-signed JWT.
 	EnableJWTWithScope bool

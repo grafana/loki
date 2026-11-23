@@ -15,10 +15,11 @@ import (
 // without an allocation: reflect.MapIter copies a key and a value with a call of ten nanoseconds each, and
 // go-json read them through linknames of the runtime for years. Instead, a map with keys of a string kind is
 // ranged over as a map of the same layout: the layout of a map depends only on the size and the alignment of
-// the key and of the value, and the hash depends only on the key. So map[K]V, with K of a string kind and
-// V of up to 256 bytes, is read as map[string][n]uint64 by the code the compiler makes for a range: no
-// allocation, no call for an entry, and no dependence on the runtime beyond the layout of a map being what
-// its type says. A map of another key is read by reflect.MapIter, which is slower but is the public way.
+// the key and of the value, and the hash depends only on the key. So map[K]V, with K of a string kind, is
+// read as a map[string] of a value of the size of V ( see stringKeyCollector ) by the code the compiler makes
+// for a range: no allocation, no call for an entry, and no dependence on the runtime beyond the layout of a
+// map being what its type says. A map of another key, or of a value of another size, is read by
+// reflect.MapIter, which is slower but is the public way.
 
 // MapLayout is how the VM reads the entries of a map of a type, decided when the type is compiled.
 type MapLayout struct {
@@ -28,56 +29,101 @@ type MapLayout struct {
 	StringKey bool
 	// A map whose entries are not sorted is written by the VM as it reads the map, when its keys are of a
 	// string kind and the values are written by one opcode of a scalar ( ScalarValue: the map is ranged over
-	// as a map of a value of ValueWords words, appendMapScalarValues ), or when the values are of interface{},
-	// the map of a JSON object as a value of interface{} ( InterfaceValue: the values which hold a scalar are
-	// written, and the others are read into the context, appendMapAsRead ).
+	// as a map of the values of the basic type of ValueKind, appendMapScalarValues ), or when the values are of
+	// interface{}, the map of a JSON object as a value of interface{} ( InterfaceValue: the values which hold a
+	// scalar are written, and the others are read into the context, appendMapAsRead ).
 	ScalarValue    bool
 	InterfaceValue bool
-	// ValueWords is the number of the words of a value when the map is ranged over as a map of the same layout,
-	// or -1 when it is read by reflect.
-	ValueWords int
-	keySize    uintptr
-	valueSize  uintptr
-	// KeysMayEscape is whether an encoded key may have an escape, which puts it out of the order of its name
-	// ( see Mapslice.Sort ): the keys of a kind other than a string or an integer are texts.
-	KeysMayEscape bool
+	// ValueKind is the kind of the values.
+	ValueKind reflect.Kind
+	keySize   uintptr
+	valueSize uintptr
+	// Cyclic is whether an entry may hold the map again, which is recorded for the detection of cycles then ( see
+	// RuntimeContext.RecordMap ): the type of a key or a value reaches the type of the map, or an interface.
+	Cyclic bool
 }
 
-// MapScalarValueWords is the largest ValueWords of a value written by one opcode of a scalar: a slice of bytes.
-const MapScalarValueWords = 3
+// wordSize is the size of a word, of a pointer, by which a value is read when its size is a multiple of it.
+const wordSize = unsafe.Sizeof(uintptr(0))
 
 // mapValueWords is the number of the words of a value up to which a map is ranged over as a map of the same
-// layout. A value of more than 128 bytes is stored out of the map by the runtime, but so is the value of the
-// map[string][n]uint64 of its size, so the layouts are still the same. Each size is a function of about a
-// kilobyte of code, so the sizes stop at twice that one of the runtime; a larger value is read by reflect.
+// layout: 256 bytes on 64-bit platforms and 128 bytes on 32-bit ones. A value of more than 128 bytes is stored
+// out of the map by the runtime, but so is the value of the map[string][n]uintptr of its size, so the layouts
+// are still the same. Each size is a function of about a kilobyte of code, so the sizes stop there; a larger
+// value is read by reflect.
 const mapValueWords = 32
 
 // NewMapLayout returns how the VM reads a map of the type.
 func NewMapLayout(typ reflect.Type) *MapLayout {
 	l := &MapLayout{
 		StringKey: typ.Key().Kind() == reflect.String,
-		keySize:   typ.Key().Size(),
+		keySize:   rawKeySize(typ.Key()),
 		valueSize: typ.Elem().Size(),
+		ValueKind: typ.Elem().Kind(),
+		Cyclic:    reaches(typ.Key(), typ, map[reflect.Type]bool{}) || reaches(typ.Elem(), typ, map[reflect.Type]bool{}),
 	}
-	switch typ.Key().Kind() {
-	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		// a key of a string kind is sorted by its string, unless it has MarshalText, and an integer has no escape.
-		l.KeysMayEscape = typ.Key().Implements(marshalTextType) || reflect.PointerTo(typ.Key()).Implements(marshalTextType)
-	default:
-		l.KeysMayEscape = true
-	}
-	words := (l.valueSize + 7) / 8
-	if l.StringKey && words <= mapValueWords && (mapValueIsWords || l.valueSize%8 == 0) {
-		l.collect = stringKeyCollectors[words]
-		l.valueSize = words * 8
-		l.ValueWords = int(words)
+	if collect := stringKeyCollector(l.valueSize); l.StringKey && collect != nil {
+		l.collect = collect
 		l.InterfaceValue = typ.Elem().Kind() == reflect.Interface && typ.Elem().NumMethod() == 0
 	} else {
-		l.collect = newReflectCollector(typ)
-		l.ValueWords = -1
+		l.collect = withMethodValues(typ.Elem(), newReflectCollector(typ))
 	}
 	return l
+}
+
+// stringKeyCollector returns the function which reads a map with keys of a string kind and values of size bytes
+// as a map of a value of the same size, or nil when there is none. A value of a size and of an alignment up to
+// the ones of the key is at the same place in a map of every layout ( the Swiss tables of Go 1.24, the split
+// groups of Go 1.28, the buckets before ), whatever its type.
+func stringKeyCollector(size uintptr) func(unsafe.Pointer, *MapContext) {
+	switch {
+	case size%wordSize == 0 && size/wordSize <= mapValueWords:
+		return stringKeyCollectors[size/wordSize]
+	case size < uintptr(len(byteValueCollectors)):
+		return byteValueCollectors[size]
+	}
+	return nil
+}
+
+// byteValueCollectors are the functions which read a map with keys of a string kind, by the bytes of a value
+// smaller than 32 bytes whose size is not a multiple of a word ( see stringKeyCollectors ): the sizes which are
+// multiples of 8 bytes are left out, as they are of words on every platform.
+var byteValueCollectors = [32]func(unsafe.Pointer, *MapContext){
+	1:  collectStringKeys[[1]byte],
+	2:  collectStringKeys[[2]byte],
+	3:  collectStringKeys[[3]byte],
+	4:  collectStringKeys[[4]byte],
+	5:  collectStringKeys[[5]byte],
+	6:  collectStringKeys[[6]byte],
+	7:  collectStringKeys[[7]byte],
+	9:  collectStringKeys[[9]byte],
+	10: collectStringKeys[[10]byte],
+	11: collectStringKeys[[11]byte],
+	12: collectStringKeys[[12]byte],
+	13: collectStringKeys[[13]byte],
+	14: collectStringKeys[[14]byte],
+	15: collectStringKeys[[15]byte],
+	17: collectStringKeys[[17]byte],
+	18: collectStringKeys[[18]byte],
+	19: collectStringKeys[[19]byte],
+	20: collectStringKeys[[20]byte],
+	21: collectStringKeys[[21]byte],
+	22: collectStringKeys[[22]byte],
+	23: collectStringKeys[[23]byte],
+	25: collectStringKeys[[25]byte],
+	26: collectStringKeys[[26]byte],
+	27: collectStringKeys[[27]byte],
+	28: collectStringKeys[[28]byte],
+	29: collectStringKeys[[29]byte],
+	30: collectStringKeys[[30]byte],
+	31: collectStringKeys[[31]byte],
+}
+
+// rawKeySize is the number of the bytes of RawKeys which a key of typ takes: its size, or one byte for a key of
+// no size, so that a map of it has as many keys in RawKeys as it has. The byte is never used: such a key is read at
+// its address only.
+func rawKeySize(typ reflect.Type) uintptr {
+	return max(typ.Size(), 1)
 }
 
 // collectStringKeys reads the map at p, as a map[string]V, into the context.
@@ -90,39 +136,39 @@ func collectStringKeys[V any](p unsafe.Pointer, c *MapContext) {
 
 // stringKeyCollectors are the functions which read a map with keys of a string kind, by the words of a value.
 var stringKeyCollectors = [mapValueWords + 1]func(unsafe.Pointer, *MapContext){
-	collectStringKeys[[0]uint64],
-	collectStringKeys[[1]uint64],
-	collectStringKeys[[2]uint64],
-	collectStringKeys[[3]uint64],
-	collectStringKeys[[4]uint64],
-	collectStringKeys[[5]uint64],
-	collectStringKeys[[6]uint64],
-	collectStringKeys[[7]uint64],
-	collectStringKeys[[8]uint64],
-	collectStringKeys[[9]uint64],
-	collectStringKeys[[10]uint64],
-	collectStringKeys[[11]uint64],
-	collectStringKeys[[12]uint64],
-	collectStringKeys[[13]uint64],
-	collectStringKeys[[14]uint64],
-	collectStringKeys[[15]uint64],
-	collectStringKeys[[16]uint64],
-	collectStringKeys[[17]uint64],
-	collectStringKeys[[18]uint64],
-	collectStringKeys[[19]uint64],
-	collectStringKeys[[20]uint64],
-	collectStringKeys[[21]uint64],
-	collectStringKeys[[22]uint64],
-	collectStringKeys[[23]uint64],
-	collectStringKeys[[24]uint64],
-	collectStringKeys[[25]uint64],
-	collectStringKeys[[26]uint64],
-	collectStringKeys[[27]uint64],
-	collectStringKeys[[28]uint64],
-	collectStringKeys[[29]uint64],
-	collectStringKeys[[30]uint64],
-	collectStringKeys[[31]uint64],
-	collectStringKeys[[32]uint64],
+	collectStringKeys[[0]uintptr],
+	collectStringKeys[[1]uintptr],
+	collectStringKeys[[2]uintptr],
+	collectStringKeys[[3]uintptr],
+	collectStringKeys[[4]uintptr],
+	collectStringKeys[[5]uintptr],
+	collectStringKeys[[6]uintptr],
+	collectStringKeys[[7]uintptr],
+	collectStringKeys[[8]uintptr],
+	collectStringKeys[[9]uintptr],
+	collectStringKeys[[10]uintptr],
+	collectStringKeys[[11]uintptr],
+	collectStringKeys[[12]uintptr],
+	collectStringKeys[[13]uintptr],
+	collectStringKeys[[14]uintptr],
+	collectStringKeys[[15]uintptr],
+	collectStringKeys[[16]uintptr],
+	collectStringKeys[[17]uintptr],
+	collectStringKeys[[18]uintptr],
+	collectStringKeys[[19]uintptr],
+	collectStringKeys[[20]uintptr],
+	collectStringKeys[[21]uintptr],
+	collectStringKeys[[22]uintptr],
+	collectStringKeys[[23]uintptr],
+	collectStringKeys[[24]uintptr],
+	collectStringKeys[[25]uintptr],
+	collectStringKeys[[26]uintptr],
+	collectStringKeys[[27]uintptr],
+	collectStringKeys[[28]uintptr],
+	collectStringKeys[[29]uintptr],
+	collectStringKeys[[30]uintptr],
+	collectStringKeys[[31]uintptr],
+	collectStringKeys[[32]uintptr],
 }
 
 // newReflectCollector returns the function which reads a map of the type by reflect.MapIter: the key and the
@@ -134,7 +180,7 @@ func newReflectCollector(typ reflect.Type) func(unsafe.Pointer, *MapContext) {
 		return newInterfaceKeyCollector(typ)
 	}
 	stringKey := keyType.Kind() == reflect.String
-	keySize, valueSize := keyType.Size(), valueType.Size()
+	keySize, valueSize := rawKeySize(keyType), valueType.Size()
 	keyDirect, valueDirect := !runtime.IfaceIndir(keyType), !runtime.IfaceIndir(valueType)
 	// a value which is an interface value is copied to the interface value as it is: the value is the words.
 	valueIsIface := valueType.Kind() == reflect.Interface
@@ -165,6 +211,24 @@ func newReflectCollector(typ reflect.Type) func(unsafe.Pointer, *MapContext) {
 		}
 		it.Reset(reflect.Value{})
 		c.keyIface, c.valueIface = nil, nil
+	}
+}
+
+// withMethodValues returns collect, which reads the values as the words of an interface{}, for values of valueType,
+// with the values made the words of valueType when it is an interface type with methods: an interface{} has the
+// type of the value where such a type has its itab.
+func withMethodValues(valueType reflect.Type, collect func(unsafe.Pointer, *MapContext)) func(unsafe.Pointer, *MapContext) {
+	if valueType.Kind() != reflect.Interface || valueType.NumMethod() == 0 {
+		return collect
+	}
+	return func(p unsafe.Pointer, c *MapContext) {
+		collect(p, c)
+		for i := 0; i < len(c.Values); i += int(unsafe.Sizeof(any(nil))) {
+			value := unsafe.Pointer(&c.Values[i])
+			if v := *(*any)(value); v != nil {
+				reflect.NewAt(valueType, value).Elem().Set(reflect.ValueOf(v))
+			}
+		}
 	}
 }
 
@@ -356,4 +420,30 @@ func keyPrefix(key string) uint64 {
 	var b [8]byte
 	copy(b[:], key)
 	return binary.BigEndian.Uint64(b[:])
+}
+
+// reaches reports whether a value of typ may hold a value of target: typ is target, or an interface, or has one of
+// them through its pointers, elements, keys and fields. seen are the types walked, which a recursive type reaches
+// again.
+func reaches(typ, target reflect.Type, seen map[reflect.Type]bool) bool {
+	if typ == target || typ.Kind() == reflect.Interface {
+		return true
+	}
+	if seen[typ] {
+		return false
+	}
+	seen[typ] = true
+	switch typ.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array:
+		return reaches(typ.Elem(), target, seen)
+	case reflect.Map:
+		return reaches(typ.Key(), target, seen) || reaches(typ.Elem(), target, seen)
+	case reflect.Struct:
+		for i := range typ.NumField() {
+			if reaches(typ.Field(i).Type, target, seen) {
+				return true
+			}
+		}
+	}
+	return false
 }

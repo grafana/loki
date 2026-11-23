@@ -8,13 +8,14 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // sectionType identifies postings sections in a data object.
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "postings",
+	Namespace: format.SectionNamespace,
+	Kind:      format.PostingsSectionKind,
 	Version:   columnar.FormatVersion,
 }
 

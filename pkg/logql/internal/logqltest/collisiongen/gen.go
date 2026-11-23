@@ -40,8 +40,10 @@ var headerLines = []string{
 	"#",
 	"# The sections at the end run two parsers in a row, for every pair, with `line_format` between them.",
 	"#",
-	"# Every parser gives the same labels for the same sources of a name. The key order does not change",
-	"# the result either.",
+	"# Every parser gives the same labels for the same sources of a name, with one exception: a renamed",
+	"# key and a literal key that write the same name. Then the first one in the line wins, so the key",
+	"# order `a` or `b` decides, except in the expression forms, where the literal key wins in both",
+	"# orders.",
 	"#",
 }
 
@@ -478,7 +480,7 @@ func streamsFor(name string, one parser) (grid, singleStreams []*stream, err err
 				plainApply(a, lineOrders[o])
 				plainApplyUpfront(b, lineOrders[o])
 				if !sameLabels(a, b) {
-					return nil, nil, fmt.Errorf("%s: the key order or the stage decides the labels for stream %d, metadata %d, order %s", name, si, mi, o)
+					return nil, nil, fmt.Errorf("%s: testing the keys one by one or all before the first write gives other labels for stream %d, metadata %d, order %s", name, si, mi, o)
 				}
 				grid = append(grid, &stream{app: fmt.Sprintf("%s_%d%d%s", name, si, mi, o), stream: s, meta: m, items: lineOrders[o]})
 			}
@@ -636,7 +638,7 @@ func pairSection(first namedParser) []string {
 }
 
 // Generate returns the text of the script. It fails when the model gives different labels for the
-// same shape, depending on the order of the keys or on the parser stage.
+// same shape, depending on whether it tests the keys one by one or all before the first write.
 func Generate() (string, error) {
 	body := append([]string{}, headerLines...)
 	body = append(body, "")

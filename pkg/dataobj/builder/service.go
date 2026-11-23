@@ -33,6 +33,10 @@ type partitionConsumer interface {
 	SetInitialOffset(offset int64) error
 }
 
+// builderConsumerGroup is the Kafka consumer group of every builder. Each builder
+// commits only the offset of its own partition to it.
+const builderConsumerGroup = "dataobj-builder"
+
 // A resumeOffsetReader allows mocking of [kafkav2.OffsetReader] in tests.
 type resumeOffsetReader interface {
 	ResumeOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error)
@@ -50,7 +54,18 @@ type Service struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+// logsobjBuilderConfig returns the config of the logsobj builder that builds
+// the data objects of the dataobj-builder. It sets the options that have no
+// YAML key or flag in the logsobj config.
+func logsobjBuilderConfig(cfg Config) logsobj.BuilderBaseConfig {
+	logsCfg := cfg.LogsobjBuilder
+	// The dataobj-builder always drops duplicates for new objects
+	logsCfg.DropDuplicates = true
+	logsCfg.SortParallelism = cfg.SortParallelism
+	return logsCfg
+}
+
+func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	const componentName = "dataobj-builder"
 	logger = log.With(logger, "component", componentName)
 
@@ -63,8 +78,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 
 	// Each instance consumes exactly one partition, taken from the ordinal
 	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3),
-	// unless cfg.PartitionID overrides it. The hostname is also used as the
-	// Kafka consumer group.
+	// unless cfg.PartitionID overrides it.
 	instanceID, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hostname: %w", err)
@@ -86,9 +100,8 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	consumerGroup := instanceID
 	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic)
-	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, consumerGroup)
+	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, builderConsumerGroup)
 	records := make(chan *kgo.Record)
 	consumer := kafkav2.NewSinglePartitionConsumer(
 		readerClient,
@@ -117,15 +130,14 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
 
-	// The dataobj-builder always drops duplicates for new objects
-	cfg.LogsobjBuilder.DropDuplicates = true
+	cfg.LogsobjBuilder = logsobjBuilderConfig(cfg)
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
 	}
 	flusher := newFlusher(uploader, logger, reg)
 
-	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+	idxBucket := metastore.NewIndexBucket(bucket)
 	indexer, err := index.NewSimpleIndexer(
 		cfg.IndexobjBuilder,
 		scratchStore,
@@ -153,13 +165,15 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		committer,
 		indexer,
 		tocWriter,
+		cfg.Topic,
 		partitionID,
 		cfg.FlushConcurrency,
 		logger,
 		reg,
 	)
+	watermarks := newWatermarkCache(cfg.Topic, partitionID, idxBucket, NewWatermarkMetrics(reg))
 	processor := newProcessor(
-		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize), watermarks),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,
@@ -169,28 +183,18 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	)
 
 	// Partition 0 always has a builder, so its builder reports how many
-	// builders the other partitions need. It derives the consumer groups of
-	// the other builders from its own hostname. A partition override breaks
-	// that mapping, so a builder with an override does not report.
+	// builders the other partitions need.
 	var reporter services.Service
 	if partitionID == 0 {
-		if cfg.PartitionID >= 0 {
-			level.Info(logger).Log("msg", "not reporting required replicas, because the partition ID is set in the config")
-		} else {
-			partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc(instanceID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
-			}
-			reporter = newRequiredReplicasReporter(
-				offsetReader,
-				partitionToConsumerGroup,
-				cfg.RequiredReplicasRefreshInterval,
-				logger,
-				reg,
-			)
-		}
+		reporter = newRequiredReplicasReporter(
+			offsetReader,
+			builderConsumerGroup,
+			cfg.RequiredReplicasRefreshInterval,
+			logger,
+			reg,
+		)
 	}
-	return newService(consumer, offsetReader, processor, reporter, partitionID, consumerGroup, logger), nil
+	return newService(consumer, offsetReader, processor, reporter, partitionID, builderConsumerGroup, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
