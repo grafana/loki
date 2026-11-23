@@ -27,21 +27,17 @@ func comparePostingsRow(a, b postings.Row) int {
 //
 // The zero value is ready to use.
 type postingsDedup struct {
-	key    postings.Key
-	hasKey bool
+	currRunKey    postings.Key
+	hasCurrRunKey bool
 
-	// timeRanges holds the time range of each logs section in the current
-	// posting key run.
-	timeRanges map[postingsSectionRef]postingsTimeRange
+	// currRunTimeRanges holds the time range of each logs section in the
+	// current posting key run.
+	currRunTimeRanges map[postings.SectionRef]postingsTimeRange
 
-	// peakLen is the largest length of timeRanges since startRun made it. The
-	// map keeps the capacity of its peak after clear.
-	peakLen int
-}
-
-type postingsSectionRef struct {
-	objectPath   string
-	sectionIndex int64
+	// estimatedTimeRangesCapacity estimates the capacity of currRunTimeRanges:
+	// its largest length since startRun made the map. A map keeps the capacity
+	// of its peak after clear, and Go has no cap for maps.
+	estimatedTimeRangesCapacity int
 }
 
 // postingsTimeRange is the time range of a postings row, in unix nanoseconds.
@@ -51,7 +47,7 @@ type postingsTimeRange struct {
 
 // postingsDedupShrinkFactor sets when [postingsDedup] replaces its map instead
 // of clearing it. It replaces the map when a run uses less than
-// 1/postingsDedupShrinkFactor of the peak length.
+// 1/postingsDedupShrinkFactor of the estimated capacity of the map.
 //
 // clear costs time in proportion to the capacity of the map. Without a limit,
 // one long run would make each later short run slow. Growing a new map for
@@ -65,15 +61,15 @@ const postingsDedupShrinkFactor = 8
 // different time range. The source index objects then disagree about one logs
 // section, and the merge cannot pick the correct row.
 func (d *postingsDedup) add(row postings.Row) (bool, error) {
-	if key := row.Key(); !d.hasKey || key.Compare(d.key) != 0 {
+	if key := row.Key(); !d.hasCurrRunKey || key.Compare(d.currRunKey) != 0 {
 		d.startRun(key)
 	}
 
-	ref := postingsSectionRef{objectPath: row.ObjectPath, sectionIndex: row.SectionIndex}
+	ref := postings.SectionRef{ObjectPath: row.ObjectPath, SectionIndex: row.SectionIndex}
 	rowRange := postingsTimeRange{min: row.MinTimestamp, max: row.MaxTimestamp}
-	earlier, ok := d.timeRanges[ref]
+	earlier, ok := d.currRunTimeRanges[ref]
 	if !ok {
-		d.timeRanges[ref] = rowRange
+		d.currRunTimeRanges[ref] = rowRange
 		return false, nil
 	}
 	if earlier != rowRange {
@@ -84,14 +80,15 @@ func (d *postingsDedup) add(row postings.Row) (bool, error) {
 }
 
 func (d *postingsDedup) startRun(key postings.Key) {
-	d.key, d.hasKey = key, true
+	d.currRunKey, d.hasCurrRunKey = key, true
 
-	runLen := len(d.timeRanges)
-	d.peakLen = max(d.peakLen, runLen)
-	if d.timeRanges == nil || runLen*postingsDedupShrinkFactor < d.peakLen {
-		d.timeRanges = make(map[postingsSectionRef]postingsTimeRange, runLen)
-		d.peakLen = runLen
+	// The map still holds the run that just ended.
+	prevRunLen := len(d.currRunTimeRanges)
+	d.estimatedTimeRangesCapacity = max(d.estimatedTimeRangesCapacity, prevRunLen)
+	if d.currRunTimeRanges == nil || prevRunLen*postingsDedupShrinkFactor < d.estimatedTimeRangesCapacity {
+		d.currRunTimeRanges = make(map[postings.SectionRef]postingsTimeRange, prevRunLen)
+		d.estimatedTimeRangesCapacity = prevRunLen
 		return
 	}
-	clear(d.timeRanges)
+	clear(d.currRunTimeRanges)
 }
