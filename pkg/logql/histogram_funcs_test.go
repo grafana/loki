@@ -237,6 +237,34 @@ func TestHistogramFuncs_nonFiniteValues(t *testing.T) {
 		require.True(t, math.IsInf(histogramScalar(t, streams, `histogram_quantile(0, `+neg+`)`), -1))
 	})
 
+	// A NaN is above every number, as it is for Prometheus: it is in the count and in no exponential bucket, so a
+	// quantile that is below its share of the observations is the one of the numbers, and the others are NaN. A
+	// version of Prometheus that is older than #19973 interpolates in the last bucket whatever the quantile is.
+	t.Run("a quantile of a window that has a NaN", func(t *testing.T) {
+		nan := []logproto.Stream{stream(`{app="a"}`, "1", "2", "NaN", "3")}
+		const exponential = `histogram_over_time({app="a"} | logfmt | unwrap duration [1m])`
+		inBucketOf := func(q float64, number float64) {
+			t.Helper()
+			// The bucket i of schema 3 is above 2^((i-1)/8) up to 2^(i/8), including that bound.
+			i := math.Ceil(math.Log2(number) * 8)
+			got := histogramScalar(t, nan, fmt.Sprintf(`histogram_quantile(%v, %s)`, q, exponential))
+			require.Greater(t, got, math.Exp2((i-1)/8), "q=%v", q)
+			require.LessOrEqual(t, got, math.Exp2(i/8), "q=%v", q)
+		}
+		// Three of the four observations are numbers.
+		inBucketOf(0.25, 1)
+		inBucketOf(0.5, 2)
+		inBucketOf(0.75, 3)
+		for _, q := range []string{"0.76", "0.9", "1"} {
+			require.True(t, math.IsNaN(histogramScalar(t, nan, `histogram_quantile(`+q+`, `+exponential+`)`)), "q=%s", q)
+		}
+
+		// A NaN is in the last custom bucket, which has no upper bound, so the median of 1, NaN and 3 is in the
+		// bucket of 3: (2, 4].
+		custom := []logproto.Stream{stream(`{app="a"}`, "1", "NaN", "3")}
+		require.Equal(t, 3.0, histogramScalar(t, custom, `histogram_quantile(0.5, histogram_over_time(buckets(1, 2, 4), {app="a"} | logfmt | unwrap duration [1m]))`))
+	})
+
 	t.Run("a window without a line has no series", func(t *testing.T) {
 		require.Empty(t, histogramInstant(t, histogramSevenValues, `histogram_count(histogram_over_time({app="a"} | logfmt | unwrap duration [1m] offset 10m))`))
 	})
