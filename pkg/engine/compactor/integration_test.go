@@ -76,8 +76,14 @@ func newCompactionScenario(ctx context.Context, t *testing.T, input scenarioInpu
 	return s
 }
 
+// compactUntilIdle compacts tenant with the planner of the plan version of
+// the coordinator, until the planner has no work.
 func (s *compactionScenario) compactUntilIdle(tenant string) {
 	s.t.Helper()
+	if s.coordinator.cfg.PlanVersion == planVersionCoupled {
+		s.compactPairsUntilIdle(tenant)
+		return
+	}
 	for cycle := range 10 {
 		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window, 0)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
@@ -205,20 +211,15 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 	appLayout8 := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), appSchema)
 	appLayout256 := streams.NewLayout(streams.MustShardLayoutFromBuckets(256), appSchema)
 
-	type indexGroup struct {
-		schema     []string
-		shardCount int64
-		layouts    []streams.Layout
-	}
 	tests := []struct {
 		name            string
-		indexGroups     []indexGroup
+		indexGroups     []sortSchemaIndexGroup
 		expectedIndexes int
 		expectedLayouts []streams.Layout
 	}{
 		{
 			name: "an index compacts to one index in its sort schema",
-			indexGroups: []indexGroup{{
+			indexGroups: []sortSchemaIndexGroup{{
 				schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout},
 			}},
 			expectedIndexes: 1,
@@ -226,7 +227,7 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 		},
 		{
 			name: "indexes with different sort schemas compact separately and never merge",
-			indexGroups: []indexGroup{
+			indexGroups: []sortSchemaIndexGroup{
 				{schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout}},
 				{schema: clusterSchema, shardCount: defaultShardCount, layouts: []streams.Layout{clusterLayout, clusterLayout}},
 			},
@@ -235,7 +236,7 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 		},
 		{
 			name: "indexes with different shard layouts compact separately and never merge",
-			indexGroups: []indexGroup{
+			indexGroups: []sortSchemaIndexGroup{
 				{schema: appSchema, shardCount: int64(appLayout8.ShardLayout().Buckets()), layouts: []streams.Layout{appLayout8, appLayout8}},
 				{schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout}},
 				{schema: appSchema, shardCount: int64(appLayout256.ShardLayout().Buckets()), layouts: []streams.Layout{appLayout256, appLayout256}},
@@ -245,71 +246,92 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			const tenant = "acme"
-			window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-			base := window.Add(time.Hour)
-
-			bucket := objstore.NewInMemBucket()
-			var sourceLines []string
-			var tocIndexes []testIndex
-			for i, group := range test.indexGroups {
-				groupSources := make([]string, len(group.layouts))
-				for j, layout := range group.layouts {
-					sourcePath := fmt.Sprintf("objects/group-%d-source-%d", i, j)
-					groupSources[j] = sourcePath
-					first, second := sourcePath+"/first", sourcePath+"/second"
-					sourceLines = append(sourceLines, first, second)
-
-					entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
-					entries.ForStream(`{app="api",cluster="prod"}`).
-						Entry(int(base.Add(time.Second).Unix()), "{}", second).
-						Entry(int(base.Unix()), "{}", first)
-
-					source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
-					reader, err := source.Object.Reader(ctx)
-					require.NoError(t, err)
-					require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
-				}
-				indexPath := fmt.Sprintf("indexes/%02d/log-sources", i)
-				tocIndexes = append(tocIndexes, seedLogCompactionIndex(ctx, t, bucket, indexPath, tenant, groupSources, group.schema, group.shardCount, base))
-			}
-			writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: tocIndexes})
-			c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
-			c.limits = integrationLimits{}
-
-			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
-			require.Len(t, before, len(test.indexGroups))
-
-			stored := &compactortest.Scenario{Bucket: bucket, Window: window}
-			scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
-			scenario.compactUntilIdle(tenant)
-
-			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
-			require.Len(t, after, test.expectedIndexes)
-			contents := stored.ReadReachableContents(ctx, t, tenant)
-			requireLogContents(t, contents, sourceLines, test.expectedLayouts...)
-			var indexLayouts []streams.Layout
-			for _, entry := range after {
-				require.True(t, entry.StartTs.Equal(base))
-				require.True(t, entry.EndTs.Equal(base.Add(time.Second)))
-				exists, err := bucket.Exists(ctx, entry.Path)
-				require.NoError(t, err)
-				require.True(t, exists, "replacement index %q must exist", entry.Path)
-
-				indexLayout, ok, err := indexLayoutAt(ctx, bucket, tenant, entry.Path)
-				require.NoError(t, err)
-				require.True(t, ok, "replacement index %q must record a layout", entry.Path)
-				indexLayouts = append(indexLayouts, indexLayout)
-				requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
-			}
-			require.ElementsMatch(t, test.expectedLayouts, indexLayouts)
-		})
+	for _, planVersion := range planVersions {
+		for _, test := range tests {
+			t.Run(fmt.Sprintf("plan version %d: %s", planVersion, test.name), func(t *testing.T) {
+				testLogCompactionSortSchemaGroup(t, planVersion, test.indexGroups, test.expectedIndexes, test.expectedLayouts)
+			})
+		}
 	}
+}
+
+// sortSchemaIndexGroup is one index over log objects of one sort schema and
+// shard layout.
+type sortSchemaIndexGroup struct {
+	schema     []string
+	shardCount int64
+	layouts    []streams.Layout
+}
+
+// testLogCompactionSortSchemaGroup seeds one index per group, compacts until
+// idle with the planner of planVersion, and checks that the window ends with
+// expectedIndexes indexes of expectedLayouts.
+func testLogCompactionSortSchemaGroup(t *testing.T, planVersion uint, indexGroups []sortSchemaIndexGroup, expectedIndexes int, expectedLayouts []streams.Layout) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+
+	bucket := compactortest.NewBucket()
+	var sourceLines []string
+	var tocIndexes []testIndex
+	for i, group := range indexGroups {
+		groupSources := make([]string, len(group.layouts))
+		for j, layout := range group.layouts {
+			sourcePath := fmt.Sprintf("objects/group-%d-source-%d", i, j)
+			groupSources[j] = sourcePath
+			first, second := sourcePath+"/first", sourcePath+"/second"
+			sourceLines = append(sourceLines, first, second)
+
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+			entries.ForStream(`{app="api",cluster="prod"}`).
+				Entry(int(base.Add(time.Second).Unix()), "{}", second).
+				Entry(int(base.Unix()), "{}", first)
+
+			source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
+			reader, err := source.Object.Reader(ctx)
+			require.NoError(t, err)
+			require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
+		}
+		indexPath := fmt.Sprintf("indexes/%02d/log-sources", i)
+		tocIndexes = append(tocIndexes, seedLogCompactionIndex(ctx, t, bucket, indexPath, tenant, groupSources, group.schema, group.shardCount, base))
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: tocIndexes})
+	c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
+	c.limits = integrationLimits{}
+	c.cfg.PlanVersion = planVersion
+
+	before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	require.Len(t, before, len(indexGroups))
+
+	stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+	scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+	scenario.compactUntilIdle(tenant)
+
+	after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	require.Len(t, after, expectedIndexes)
+	for _, entry := range after {
+		require.NotContains(t, pathsOf(before), entry.Path, "compaction must replace every source index")
+	}
+	contents := stored.ReadReachableContents(ctx, t, tenant)
+	requireLogContents(t, contents, sourceLines, expectedLayouts...)
+	var indexLayouts []streams.Layout
+	for _, entry := range after {
+		require.True(t, entry.StartTs.Equal(base))
+		require.True(t, entry.EndTs.Equal(base.Add(time.Second)))
+		exists, err := bucket.Exists(ctx, entry.Path)
+		require.NoError(t, err)
+		require.True(t, exists, "replacement index %q must exist", entry.Path)
+
+		indexLayout, ok, err := indexLayoutAt(ctx, bucket, tenant, entry.Path)
+		require.NoError(t, err)
+		require.True(t, ok, "replacement index %q must record a layout", entry.Path)
+		indexLayouts = append(indexLayouts, indexLayout)
+		requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
+	}
+	require.ElementsMatch(t, expectedLayouts, indexLayouts)
 }
 
 // seedLogCompactionRunIndex writes one index object of a run over the log
@@ -439,71 +461,95 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
 }
 
+// planVersions are the plan versions that the end-to-end tests run with.
+var planVersions = []uint{planVersionPhased, planVersionCoupled}
+
 func TestE2ECompactionConvergence(t *testing.T) {
 	fiveSourceLayouts := func(shardLayout streams.ShardLayout) []streams.Layout {
 		layout := streams.NewLayout(shardLayout, []string{"label:app"})
 		return []streams.Layout{layout, layout, layout, layout, layout}
 	}
+	// Five level 1 runs give two merges and a filter. The two level 2
+	// outputs then merge into level 3, and the lone level 1 run is filtered
+	// again. The coupled planner needs no filters.
+	levelTasks := map[uint]map[string]int{
+		planVersionPhased:  {"log-merge": 3, "index-filter": 2},
+		planVersionCoupled: {"log-merge": 3},
+	}
+	// The coupled planner merges five pairs in four merges. Each merge runs
+	// as several LogMerge tasks, so each also runs one IndexMerge.
+	splitTasks := map[uint]map[string]int{
+		planVersionPhased:  {"log-merge": 13, "index-filter": 2},
+		planVersionCoupled: {"log-merge": 12, "index-merge": 4},
+	}
 
-	t.Run("equal sort layouts converge to one sorted run", func(t *testing.T) {
-		runConvergenceTest(t, convergenceCase{layouts: fiveSourceLayouts(streams.DefaultShardLayout())})
-	})
-
-	t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
-		// A fresh source run holds about 80KB. A 100KB base with a ratio of 2
-		// puts fresh runs in level 1, a merge of two in level 2, and a merge
-		// of two level 2 runs in level 3.
-		runConvergenceTest(t, convergenceCase{
-			layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
-			levelBase:   100_000,
-			levelRatio:  2,
-			wantRunsEnd: 2,
-			// Five level 1 runs give two merges and a filter. The two level 2
-			// outputs then merge into level 3, and the lone level 1 run is
-			// filtered again.
-			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
-		})
-	})
-
-	t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
-		// A 100KB maximum splits the merges into many tasks. Their disjoint
-		// outputs still converge to one sorted run.
-		runConvergenceTest(t, convergenceCase{
-			layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
-			maxTaskSize: 100_000,
-			wantTasks:   map[string]int{"log-merge": 13, "index-filter": 2},
-		})
-	})
-
-	for _, buckets := range []uint32{8, 256} {
-		shardLayout := streams.MustShardLayoutFromBuckets(buckets)
-
-		t.Run(fmt.Sprintf("equal sort layouts with %d shard buckets converge to one sorted run", buckets), func(t *testing.T) {
-			runConvergenceTest(t, convergenceCase{layouts: fiveSourceLayouts(shardLayout)})
-		})
-
-		t.Run(fmt.Sprintf("runs spread across size levels converge with %d shard buckets", buckets), func(t *testing.T) {
-			runConvergenceTest(t, convergenceCase{
-				layouts:     fiveSourceLayouts(shardLayout),
-				levelBase:   100_000,
-				levelRatio:  2,
-				wantRunsEnd: 2,
-				wantTasks:   map[string]int{"log-merge": 3, "index-filter": 2},
+	for _, planVersion := range planVersions {
+		t.Run(fmt.Sprintf("plan version %d", planVersion), func(t *testing.T) {
+			t.Run("equal sort layouts converge to one sorted run", func(t *testing.T) {
+				runConvergenceTest(t, convergenceCase{planVersion: planVersion, layouts: fiveSourceLayouts(streams.DefaultShardLayout())})
 			})
-		})
 
-		t.Run(fmt.Sprintf("a merge above the maximum task size splits into key range tasks that keep every record once with %d shard buckets", buckets), func(t *testing.T) {
-			runConvergenceTest(t, convergenceCase{
-				layouts:     fiveSourceLayouts(shardLayout),
-				maxTaskSize: 100_000,
-				wantTasks:   map[string]int{"log-merge": 13, "index-filter": 2},
+			t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
+				// A fresh source run holds about 80KB. A 100KB base with a
+				// ratio of 2 puts fresh runs in level 1, a merge of two in
+				// level 2, and a merge of two level 2 runs in level 3.
+				runConvergenceTest(t, convergenceCase{
+					planVersion: planVersion,
+					layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
+					levelBase:   100_000,
+					levelRatio:  2,
+					wantRunsEnd: 2,
+					wantTasks:   levelTasks[planVersion],
+				})
 			})
+
+			t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
+				// A 100KB maximum splits the merges into many tasks. Their
+				// disjoint outputs still converge to one sorted run.
+				runConvergenceTest(t, convergenceCase{
+					planVersion: planVersion,
+					layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
+					maxTaskSize: 100_000,
+					wantTasks:   splitTasks[planVersion],
+				})
+			})
+
+			for _, buckets := range []uint32{8, 256} {
+				shardLayout := streams.MustShardLayoutFromBuckets(buckets)
+
+				t.Run(fmt.Sprintf("equal sort layouts with %d shard buckets converge to one sorted run", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{planVersion: planVersion, layouts: fiveSourceLayouts(shardLayout)})
+				})
+
+				t.Run(fmt.Sprintf("runs spread across size levels converge with %d shard buckets", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{
+						planVersion: planVersion,
+						layouts:     fiveSourceLayouts(shardLayout),
+						levelBase:   100_000,
+						levelRatio:  2,
+						wantRunsEnd: 2,
+						wantTasks:   levelTasks[planVersion],
+					})
+				})
+
+				t.Run(fmt.Sprintf("a merge above the maximum task size splits into key range tasks that keep every record once with %d shard buckets", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{
+						planVersion: planVersion,
+						layouts:     fiveSourceLayouts(shardLayout),
+						maxTaskSize: 100_000,
+						wantTasks:   splitTasks[planVersion],
+					})
+				})
+			}
 		})
 	}
 }
 
 // convergenceCase configures runConvergenceTest.
 type convergenceCase struct {
+	// planVersion selects the planner.
+	planVersion uint
+
 	layouts []streams.Layout
 
 	// levelBase and levelRatio replace the default size levels when
@@ -557,6 +603,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	}
 
 	scenario := newCompactionScenario(ctx, t, input)
+	scenario.coordinator.cfg.PlanVersion = test.planVersion
 	if test.levelBase != 0 {
 		strategy, err := v2.NewSizeLeveledStrategy(test.levelBase, test.levelRatio, scenario.coordinator.cfg.LogMaxRunsPerTask)
 		require.NoError(t, err)
@@ -564,6 +611,9 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	}
 	scenario.coordinator.cfg.LogMaxTaskSize = flagext.Bytes(test.maxTaskSize)
 	actors := recordLogActors(scenario.coordinator)
+	if test.planVersion == planVersionCoupled {
+		actors = recordActors(scenario.coordinator.pairDispatcher)
+	}
 	indexes := scenario.stored.Indexes(ctx, t, tenant)
 	require.Len(t, indexes, len(test.layouts))
 	var sourceLines []string
@@ -615,6 +665,12 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	finalIndexes := scenario.stored.Indexes(ctx, t, tenant)
 	if test.levelBase == 0 {
 		requireSingleSortedRun(t, scenario, finalIndexes, tenant, test.layouts[0], len(sourceLines))
+		return
+	}
+	if test.planVersion == planVersionCoupled {
+		logRuns := scenario.requirePairs(tenant)
+		require.Len(t, logRuns, test.wantRunsEnd)
+		require.False(t, scenario.coordinator.logMergePlanningStrategy.NeedsCompaction(logRuns), "every size level must hold fewer than k pairs")
 		return
 	}
 	requireConvergedLevels(t, scenario, finalIndexes, tenant, test.wantRunsEnd)
@@ -1019,58 +1075,65 @@ func storeIntegrationObject(ctx context.Context, t *testing.T, bucket objstore.B
 }
 
 func TestE2ECompactionLegacyObjects(t *testing.T) {
-	t.Run("compacts legacy objects with a new object of the same layout until idle", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+	for _, planVersion := range planVersions {
+		t.Run(fmt.Sprintf("plan version %d compacts legacy objects with a new object of the same layout until idle", planVersion), func(t *testing.T) {
+			testCompactLegacyObjects(t, planVersion)
+		})
+	}
+}
 
-		const tenant = "T"
-		schema := []string{"label:cluster"}
-		base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		window := base.Truncate(metastore.MetastoreWindowSize)
-		bucket := objstore.NewInMemBucket()
+func testCompactLegacyObjects(t *testing.T, planVersion uint) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-		var (
-			sourcePaths []string
-			sourceLines []string
-		)
-		upload := func(path string, obj *dataobj.Object) {
-			reader, err := obj.Reader(ctx)
-			require.NoError(t, err)
-			require.NoError(t, errors.Join(bucket.Upload(ctx, path, reader), reader.Close()))
-			for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
-				sourceLines = append(sourceLines, string(record.Line))
-			}
-			sourcePaths = append(sourcePaths, path)
+	const tenant = "T"
+	schema := []string{"label:cluster"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	window := base.Truncate(metastore.MetastoreWindowSize)
+	bucket := compactortest.NewBucket()
+
+	var (
+		sourcePaths []string
+		sourceLines []string
+	)
+	upload := func(path string, obj *dataobj.Object) {
+		reader, err := obj.Reader(ctx)
+		require.NoError(t, err)
+		require.NoError(t, errors.Join(bucket.Upload(ctx, path, reader), reader.Close()))
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			sourceLines = append(sourceLines, string(record.Line))
 		}
-		for _, name := range []string{"legacy-cluster-a", "legacy-cluster-b"} {
-			data, err := os.ReadFile(filepath.Join("..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
-			require.NoError(t, err)
-			obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
-			require.NoError(t, err)
-			upload("objects/"+name, obj)
-		}
-		entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(schema...))
-		entries.ForStream(`{app="z",cluster="c-z"}`).
-			Entry(int(base.Unix()), "{}", "new/z/0").
-			Entry(int(base.Unix())+1, "{}", "new/z/1")
-		upload("objects/new", newScenarioLogSource(t, "objects/new", tenant, entries, streams.NewLayout(streams.DefaultShardLayout(), schema)).Object)
-		require.Len(t, sourceLines, 10)
+		sourcePaths = append(sourcePaths, path)
+	}
+	for _, name := range []string{"legacy-cluster-a", "legacy-cluster-b"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
+		require.NoError(t, err)
+		obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+		require.NoError(t, err)
+		upload("objects/"+name, obj)
+	}
+	entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(schema...))
+	entries.ForStream(`{app="z",cluster="c-z"}`).
+		Entry(int(base.Unix()), "{}", "new/z/0").
+		Entry(int(base.Unix())+1, "{}", "new/z/1")
+	upload("objects/new", newScenarioLogSource(t, "objects/new", tenant, entries, streams.NewLayout(streams.DefaultShardLayout(), schema)).Object)
+	require.Len(t, sourceLines, 10)
 
-		// The legacy objects were indexed by the writer that built them, so the
-		// index is seeded by hand rather than with the current calculator.
-		index := seedLogCompactionIndex(ctx, t, bucket, "indexes/00/sources", tenant, sourcePaths, schema, int64(streams.DefaultShardLayout().Buckets()), base)
-		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: {index}})
-		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
-		c.limits = integrationLimits{}
-		stored := &compactortest.Scenario{Bucket: bucket, Window: window}
-		scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
-		scenario.compactUntilIdle(tenant)
+	// The legacy objects were indexed by the writer that built them, so the
+	// index is seeded by hand rather than with the current calculator.
+	index := seedLogCompactionIndex(ctx, t, bucket, "indexes/00/sources", tenant, sourcePaths, schema, int64(streams.DefaultShardLayout().Buckets()), base)
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: {index}})
+	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+	c.limits = integrationLimits{}
+	c.cfg.PlanVersion = planVersion
+	stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+	scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+	scenario.compactUntilIdle(tenant)
 
-		contents := stored.ReadReachableContents(ctx, t, tenant)
-		requireLogContents(t, contents, sourceLines, streams.NewLayout(streams.DefaultShardLayout(), schema))
-		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-a", "compaction must rewrite the legacy objects")
-		require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
-	})
+	contents := stored.ReadReachableContents(ctx, t, tenant)
+	requireLogContents(t, contents, sourceLines, streams.NewLayout(streams.DefaultShardLayout(), schema))
+	require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-a", "compaction must rewrite the legacy objects")
+	require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
 }
 
 // TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes pins the planner side of

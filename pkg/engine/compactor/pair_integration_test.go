@@ -114,30 +114,7 @@ func TestE2EPairCompaction(t *testing.T) {
 			defer cancel()
 			const tenant = "acme"
 
-			window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-			base := window.Add(time.Hour)
-			outputConfig := logsobj.BuilderBaseConfig{
-				TargetPageSize: 2048, TargetSectionSize: 8 * 1024,
-				TargetObjectSize: 16 * 1024, BufferSize: 2048,
-				SectionStripeMergeLimit: 2, EstimatedCompressionRatio: 1,
-			}
-			input := scenarioInput{window: window, logsobjConfig: &outputConfig}
-			payload := strings.Repeat("A", 1024)
-			var sourceLines []string
-			for file := range 5 {
-				entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
-				for app := 'a'; app <= 'z'; app++ {
-					stream := entries.ForStream(fmt.Sprintf(`{app=%q}`, string(app)))
-					for record := range 3 {
-						line := fmt.Sprintf("file-%d/app-%c/record-%d:%s", file, app, record, payload)
-						stream.Entry(int(base.Unix())+record, "{}", line)
-						sourceLines = append(sourceLines, line)
-					}
-				}
-				input.logs = append(input.logs, newScenarioLogSource(t, fmt.Sprintf("objects/source-%d", file), tenant, entries, layout))
-			}
-
-			scenario := newCompactionScenario(ctx, t, input)
+			scenario, sourceLines := newFiveSourceScenario(ctx, t, tenant, layout)
 			c := scenario.coordinator
 			c.cfg.PlanVersion = planVersionCoupled
 			c.cfg.LogMaxTaskSize = flagext.Bytes(test.logMaxTaskSize)
@@ -149,7 +126,7 @@ func TestE2EPairCompaction(t *testing.T) {
 			}
 			actors := recordActors(c.pairDispatcher)
 			if test.mergeFirst {
-				require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, tenant, window, 0))
+				require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, tenant, scenario.stored.Window, 0))
 				require.Len(t, groupIndexRuns(scenario.stored.Indexes(ctx, t, tenant)), 1)
 			}
 
@@ -169,4 +146,64 @@ func TestE2EPairCompaction(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newFiveSourceScenario seeds five overlapping log objects of layout for
+// tenant, each with its own index, and returns the scenario and the log lines
+// of the sources. Each source holds about 80KB of log data.
+func newFiveSourceScenario(ctx context.Context, t *testing.T, tenant string, layout streams.Layout) (*compactionScenario, []string) {
+	t.Helper()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+	outputConfig := logsobj.BuilderBaseConfig{
+		TargetPageSize: 2048, TargetSectionSize: 8 * 1024,
+		TargetObjectSize: 16 * 1024, BufferSize: 2048,
+		SectionStripeMergeLimit: 2, EstimatedCompressionRatio: 1,
+	}
+	input := scenarioInput{window: window, logsobjConfig: &outputConfig}
+	payload := strings.Repeat("A", 1024)
+	var sourceLines []string
+	for file := range 5 {
+		entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		for app := 'a'; app <= 'z'; app++ {
+			stream := entries.ForStream(fmt.Sprintf(`{app=%q}`, string(app)))
+			for record := range 3 {
+				line := fmt.Sprintf("file-%d/app-%c/record-%d:%s", file, app, record, payload)
+				stream.Entry(int(base.Unix())+record, "{}", line)
+				sourceLines = append(sourceLines, line)
+			}
+		}
+		input.logs = append(input.logs, newScenarioLogSource(t, fmt.Sprintf("objects/source-%d", file), tenant, entries, layout))
+	}
+	return newCompactionScenario(ctx, t, input), sourceLines
+}
+
+func TestE2EPairCompactionRun(t *testing.T) {
+	t.Run("coordinator Run with plan version 2 converges five pairs to one pair on a real worker", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		const tenant = "acme"
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})
+		scenario, sourceLines := newFiveSourceScenario(ctx, t, tenant, layout)
+		c := scenario.coordinator
+		c.cfg.PlanVersion = planVersionCoupled
+		c.cfg.RescanInterval = 10 * time.Millisecond
+		c.cfg.PollingInterval = time.Hour
+		c.sleep = sleepUntil
+		c.sweeps = nil
+		window := scenario.stored.Window
+
+		runCtx, stop := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() { done <- c.Run(runCtx) }()
+		require.Eventually(t, func() bool {
+			entries, err := loadTenantIndexes(ctx, scenario.stored.Bucket, window, tenant)
+			return err == nil && len(groupIndexRuns(entries)) == 1
+		}, 30*time.Second, 10*time.Millisecond)
+		stop()
+		require.ErrorIs(t, <-done, context.Canceled)
+
+		requireLogContents(t, scenario.stored.ReadReachableContents(ctx, t, tenant), sourceLines, layout)
+		require.Len(t, scenario.requirePairs(tenant), 1)
+	})
 }
