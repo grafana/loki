@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
-	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,9 +40,6 @@ type LoglineHintProvider struct {
 	// wrapReader, when set, wraps every reader opened for a query. Tests use
 	// it to count lookups.
 	wrapReader func(logline.Reader) logline.Reader
-	// retention, when set, is the retention the scheduler deletes indexes by.
-	retention loglinelimits.Limits
-	now       func() time.Time
 }
 
 func NewLoglineHintProvider(
@@ -73,7 +69,6 @@ func NewLoglineHintProvider(
 		maxConjunctions:       max(maxConjunctions, 1),
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
-		now:                   time.Now,
 	}
 	// Only create a metadata cache on queriers
 	if cacheReg != nil {
@@ -241,43 +236,13 @@ func loglineIndexRequest(
 	}
 }
 
-// SetRetention makes MinDate no earlier than the retention cutoff, so queries
-// pass through data whose index the scheduler may have deleted. Call it before
-// the provider is used.
-func (p *LoglineHintProvider) SetRetention(retention loglinelimits.Limits) {
-	p.retention = retention
-}
-
 // MinDate returns the configured minimum trusted date boundary used by the
-// underlying store, or the retention cutoff when it is later. A zero value
-// means no boundary is available.
+// underlying store. A zero value means no boundary is available.
 func (p *LoglineHintProvider) MinDate() time.Time {
 	if p == nil || p.store == nil {
 		return time.Time{}
 	}
-	minDate := p.store.MinDate()
-	if cutoff := p.retentionCutoff(); cutoff.After(minDate) {
-		return cutoff
-	}
-	return minDate
-}
-
-// retentionCutoff returns now minus the retention period, rounded up to the
-// next UTC day for clock skew, or zero when indexes are kept forever.
-func (p *LoglineHintProvider) retentionCutoff() time.Time {
-	if p.retention == nil {
-		return time.Time{}
-	}
-	period := p.retention.RetentionPeriod()
-	if period <= 0 {
-		return time.Time{}
-	}
-	cutoff := p.now().UTC().Add(-period)
-	day := truncateToUTCDay(cutoff)
-	if day.Before(cutoff) {
-		day = day.Add(24 * time.Hour)
-	}
-	return day
+	return p.store.MinDate()
 }
 
 // Needles returns the needles a lookup for expr uses and the n-gram length. The

@@ -59,7 +59,7 @@ the querier rejects it.
   the tenant limit or the `logline.query` settings, still apply it.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Index retention**: with `Deps.IndexRetention`, data past the scheduler's
-  retention passes through as pre-min-date (hintprovider invariant 19).
+  retention passes through (hintprovider invariant 19).
 - **`max_conjunctions`** (default 1) bounds the needle sets a query is planned
   into. The frontend uses it for the eligibility check, the hint cache key and
   the plan, and sends the planned needles to the querier in

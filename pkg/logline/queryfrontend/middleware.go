@@ -33,6 +33,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
 )
 
@@ -357,12 +358,15 @@ func intervalDuration(start, end time.Time) time.Duration {
 }
 
 // NewLoglinePrefetchMiddleware starts an async logline index lookup before
-// SplitByInterval generates intervals.
+// SplitByInterval generates intervals. Data older than retention, the period
+// the scheduler deletes indexes by, passes through. A nil retention keeps
+// every index.
 func NewLoglinePrefetchMiddleware(
 	inner *hintprovider.LoglineHintProvider,
 	hintCache cache.Cache,
 	cfg Config,
 	limits logline_query_limits.Limits,
+	retention loglinelimits.Limits,
 	metrics *Metrics,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -370,6 +374,8 @@ func NewLoglinePrefetchMiddleware(
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		hp := hintprovider.QueryHintProvider(&frontendHintAdapter{inner: inner, next: next})
 		hp = hintprovider.NewCachingHintProvider(hp, hintCache, reg)
+		// Outside the cache, so the moving cutoff does not change its keys.
+		hp = hintprovider.NewRetentionHintProvider(hp, retention)
 		return newLoglinePrefetchHandler(next, hp, cfg, limits, metrics, logger)
 	})
 }
