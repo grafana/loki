@@ -149,6 +149,31 @@ func newfakePeekingSampleIterator(samples []logproto.Sample) iter.PeekingSampleI
 	return iter.NewPeekingSampleIterator(newSampleIterator(samples))
 }
 
+func Test_newBatchRangeVectorIterator(t *testing.T) {
+	t.Run("the first step is at the start", func(t *testing.T) {
+		it := newBatchRangeVectorIterator(newfakePeekingSampleIterator(nil), 10, 5, 100, 200, 0, iteratorLimits{})
+		require.Equal(t, int64(5), it.step)
+		require.Equal(t, int64(100-5), it.current, "the first Next moves it to the start")
+		require.Equal(t, int64(200), it.end)
+		require.Equal(t, int64(10), it.selRange)
+		require.Nil(t, it.agg, "the iterator that wraps it aggregates the window")
+		require.Empty(t, it.window)
+	})
+
+	t.Run("a step of zero is forced to one", func(t *testing.T) {
+		it := newBatchRangeVectorIterator(newfakePeekingSampleIterator(nil), 10, 0, 100, 100, 0, iteratorLimits{})
+		require.Equal(t, int64(1), it.step)
+		require.Equal(t, int64(100-1), it.current)
+	})
+
+	t.Run("an offset moves the range, and is kept to convert the timestamps back", func(t *testing.T) {
+		it := newBatchRangeVectorIterator(newfakePeekingSampleIterator(nil), 10, 5, 100, 200, 30, iteratorLimits{})
+		require.Equal(t, int64(200-30), it.end)
+		require.Equal(t, int64(100-30-5), it.current)
+		require.Equal(t, int64(30), it.offset)
+	})
+}
+
 func newSample(t time.Time, v float64, metric labels.Labels) promql.Sample {
 	return promql.Sample{Metric: metric, T: t.UnixMilli(), F: v}
 }
