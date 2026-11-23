@@ -17,6 +17,7 @@
 package scalar
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -37,6 +38,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/float16"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/utils"
 )
 
 // Scalar represents a single value of a specific DataType as opposed to
@@ -69,12 +71,12 @@ type Releasable interface {
 	Retain()
 }
 
-func validateOptional(s *scalar, value interface{}, valueDesc string) error {
-	if s.Valid && value == nil {
-		return fmt.Errorf("%s scalar is marked valid but doesn't have a %s", s.Type, valueDesc)
+func validateOptional(s *scalar, hasValue bool) error {
+	if s.Valid && !hasValue {
+		return fmt.Errorf("%s scalar is marked valid but doesn't have a value", s.Type)
 	}
-	if !s.Valid && value != nil && !reflect.ValueOf(value).IsNil() {
-		return fmt.Errorf("%s scalar is marked null but has a %s", s.Type, valueDesc)
+	if !s.Valid && hasValue {
+		return fmt.Errorf("%s scalar is marked null but has a value", s.Type)
 	}
 	return nil
 }
@@ -327,8 +329,11 @@ func (s *Decimal128) CastTo(to arrow.DataType) (Scalar, error) {
 		}
 		return NewDecimal256Scalar(newVal, to), nil
 	case arrow.STRING:
-		dt := s.Type.(*arrow.Decimal128Type)
-		return NewStringScalar(s.Value.ToBigFloat(dt.Scale).Text('g', int(dt.Precision))), nil
+		str, err := utils.FormatDecimalG(s.Value, dt)
+		if err != nil {
+			return nil, err
+		}
+		return NewStringScalar(str), nil
 	}
 
 	return nil, fmt.Errorf("cannot cast non-nil decimal128 scalar to type %s", to)
@@ -383,7 +388,11 @@ func (s *Decimal256) CastTo(to arrow.DataType) (Scalar, error) {
 		}
 		return NewDecimal256Scalar(newVal, to), nil
 	case arrow.STRING:
-		return NewStringScalar(s.Value.ToBigFloat(dt.Scale).Text('g', int(dt.Precision))), nil
+		str, err := utils.FormatDecimalG(s.Value, dt)
+		if err != nil {
+			return nil, err
+		}
+		return NewStringScalar(str), nil
 	}
 
 	return nil, fmt.Errorf("cannot cast non-nil decimal256 scalar to type %s", to)
@@ -525,6 +534,8 @@ func init() {
 		arrow.INTERVAL_MONTHS:         func(dt arrow.DataType) Scalar { return &MonthInterval{scalar: scalar{dt, false}} },
 		arrow.INTERVAL_DAY_TIME:       func(dt arrow.DataType) Scalar { return &DayTimeInterval{scalar: scalar{dt, false}} },
 		arrow.INTERVAL_MONTH_DAY_NANO: func(dt arrow.DataType) Scalar { return &MonthDayNanoInterval{scalar: scalar{dt, false}} },
+		arrow.DECIMAL32:               func(dt arrow.DataType) Scalar { return &Decimal32{scalar: scalar{dt, false}} },
+		arrow.DECIMAL64:               func(dt arrow.DataType) Scalar { return &Decimal64{scalar: scalar{dt, false}} },
 		arrow.DECIMAL128:              func(dt arrow.DataType) Scalar { return &Decimal128{scalar: scalar{dt, false}} },
 		arrow.LIST:                    func(dt arrow.DataType) Scalar { return &List{scalar: scalar{dt, false}} },
 		arrow.STRUCT: func(dt arrow.DataType) Scalar {
@@ -565,6 +576,8 @@ func init() {
 		arrow.FIXED_SIZE_LIST: func(dt arrow.DataType) Scalar { return &FixedSizeList{&List{scalar: scalar{dt, false}}} },
 		arrow.DURATION:        func(dt arrow.DataType) Scalar { return &Duration{scalar: scalar{dt, false}} },
 		arrow.RUN_END_ENCODED: func(dt arrow.DataType) Scalar { return &RunEndEncoded{scalar: scalar{dt, false}} },
+		arrow.BINARY_VIEW:     func(dt arrow.DataType) Scalar { return &BinaryView{&Binary{scalar: scalar{dt, false}}} },
+		arrow.STRING_VIEW:     func(dt arrow.DataType) Scalar { return &StringView{&String{&Binary{scalar: scalar{dt, false}}}} },
 		// invalid data types to fill out array size 2^6 - 1
 		63: invalidScalarType,
 	}
@@ -604,6 +617,10 @@ func GetScalar(arr arrow.Array, idx int) (Scalar, error) {
 		return NewDate64Scalar(arr.Value(idx)), nil
 	case *array.DayTimeInterval:
 		return NewDayTimeIntervalScalar(arr.Value(idx)), nil
+	case *array.Decimal32:
+		return NewDecimal32Scalar(arr.Value(idx), arr.DataType()), nil
+	case *array.Decimal64:
+		return NewDecimal64Scalar(arr.Value(idx), arr.DataType()), nil
 	case *array.Decimal128:
 		return NewDecimal128Scalar(arr.Value(idx), arr.DataType()), nil
 	case *array.Decimal256:
@@ -675,6 +692,14 @@ func GetScalar(arr arrow.Array, idx int) (Scalar, error) {
 		return NewStringScalar(arr.Value(idx)), nil
 	case *array.LargeString:
 		return NewLargeStringScalar(arr.Value(idx)), nil
+	case *array.StringView:
+		return NewStringViewScalar(arr.Value(idx)), nil
+	case *array.BinaryView:
+		// Copy so the scalar shares neither the header nor the data buffers
+		// of the array.
+		buf := memory.NewBufferBytes(bytes.Clone(arr.Value(idx)))
+		defer buf.Release()
+		return NewBinaryViewScalar(buf), nil
 	case *array.Struct:
 		children := make(Vector, arr.NumField())
 		for i := range children {
@@ -781,27 +806,7 @@ func MakeArrayFromScalar(sc Scalar, length int, mem memory.Allocator) (arrow.Arr
 		return nil, fmt.Errorf("%w: array length must be non-negative, got %d", arrow.ErrInvalid, length)
 	}
 
-	if length == 0 {
-		if dt, ok := sc.DataType().(*arrow.RunEndEncodedType); ok {
-			runEndsBuilder := array.NewBuilder(mem, dt.RunEnds())
-			defer runEndsBuilder.Release()
-			runEnds := runEndsBuilder.NewArray()
-			defer runEnds.Release()
-
-			valuesBuilder := array.NewBuilder(mem, dt.Encoded())
-			defer valuesBuilder.Release()
-			values := valuesBuilder.NewArray()
-			defer values.Release()
-
-			return array.NewRunEndEncodedArray(runEnds, values, 0, 0), nil
-		}
-
-		builder := array.NewBuilder(mem, sc.DataType())
-		defer builder.Release()
-		return builder.NewArray(), nil
-	}
-
-	if !sc.IsValid() {
+	if length == 0 || !sc.IsValid() {
 		return MakeArrayOfNull(sc.DataType(), length, mem), nil
 	}
 
@@ -854,8 +859,29 @@ func MakeArrayFromScalar(sc Scalar, length int, mem memory.Allocator) (arrow.Arr
 		memory.Set(data.Bytes(), c)
 		return array.NewBoolean(length, data, nil, 0), nil
 	case BinaryScalar:
-		if s.DataType().ID() == arrow.FIXED_SIZE_BINARY {
+		switch s.DataType().ID() {
+		case arrow.FIXED_SIZE_BINARY:
 			data := finishFixedWidth(s.Data())
+			defer data.Release()
+			return array.MakeFromData(data), nil
+		case arrow.BINARY_VIEW, arrow.STRING_VIEW:
+			if err := s.Validate(); err != nil {
+				return nil, err
+			}
+			value := s.Data()
+			var header arrow.ViewHeader
+			header.SetBytes(value)
+			headers := createBuffer(arrow.ViewHeaderTraits.CastToBytes([]arrow.ViewHeader{header}))
+			defer headers.Release()
+			buffers := []*memory.Buffer{nil, headers}
+			if !header.IsInline() {
+				values := memory.NewResizableBuffer(mem)
+				defer values.Release()
+				values.Resize(len(value))
+				copy(values.Bytes(), value)
+				buffers = append(buffers, values)
+			}
+			data := array.NewData(s.DataType(), length, buffers, nil, 0, 0)
 			defer data.Release()
 			return array.MakeFromData(data), nil
 		}

@@ -60,6 +60,8 @@ func TestWalkPredicateColumn(t *testing.T) {
 		{"visits the column of an in predicate", dataset.InPredicate{Column: a}, []dataset.Column{a}},
 		{"visits the column of a greater than predicate", dataset.GreaterThanPredicate{Column: a}, []dataset.Column{a}},
 		{"visits the column of a less than predicate", dataset.LessThanPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a greater than or equal predicate", dataset.GreaterThanOrEqualPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a less than or equal predicate", dataset.LessThanOrEqualPredicate{Column: a}, []dataset.Column{a}},
 		{"visits both sides of an and and the inside of a not in depth-first order", dataset.AndPredicate{Left: onA, Right: dataset.NotPredicate{Inner: onB}}, []dataset.Column{a, b}},
 		{"visits both sides of an or", dataset.OrPredicate{Left: onB, Right: onA}, []dataset.Column{b, a}},
 		{"visits a column once for each leaf that reads it", dataset.AndPredicate{Left: onA, Right: onA}, []dataset.Column{a, a}},
@@ -115,6 +117,16 @@ func TestInt64ValueSet(t *testing.T) {
 				set := impl.newSet(1, 3, 7)
 				for _, value := range []int64{math.MinInt64, -1, 0, 2, 4, 8, math.MaxInt64} {
 					require.False(t, set.Contains(dataset.Int64Value(value)), "non-member %d", value)
+				}
+			})
+
+			t.Run("ContainsInt64() gives the same answer as Contains() for members, non-members and the extreme values", func(t *testing.T) {
+				set := impl.newSet(math.MinInt64, 0, 3, math.MaxInt64)
+				lookup, ok := set.(interface{ ContainsInt64(v int64) bool })
+				require.True(t, ok)
+
+				for _, key := range []int64{math.MinInt64, -1, 0, 0, 3, 4, 4, math.MaxInt64, 3} {
+					require.Equal(t, set.Contains(dataset.Int64Value(key)), lookup.ContainsInt64(key), "key %d", key)
 				}
 			})
 

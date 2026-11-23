@@ -37,6 +37,8 @@ type Validator interface {
 
 // Validate performs a basic O(1) consistency check on arr, returning an error
 // if the array's internal buffers or nested child data are inconsistent.
+// Run-end encoded arrays may omit the always-nil buffer placeholder used by
+// some constructors.
 //
 // Use this to detect corrupted data from untrusted sources such as Arrow Flight
 // or Flight SQL servers before accessing values, which may otherwise panic.
@@ -88,7 +90,8 @@ func validateArray(arr arrow.Array, full bool, path string) error {
 		}
 	}
 
-	if full && data.DataType().Layout().HasDict {
+	// an extension array's indices are checked with its storage below
+	if full && data.DataType().ID() == arrow.DICTIONARY {
 		dictData := data.dictionary
 		if dictData != nil {
 			dt := data.DataType().(*arrow.DictionaryType)
@@ -141,7 +144,7 @@ func validateNullCount(data *Data) error {
 	}
 
 	var actualNulls int
-	switch data.dtype.ID() {
+	switch storageType(data.dtype).ID() {
 	case arrow.NULL:
 		actualNulls = data.length
 	case arrow.SPARSE_UNION, arrow.DENSE_UNION, arrow.RUN_END_ENCODED:
@@ -156,6 +159,13 @@ func validateNullCount(data *Data) error {
 		return fmt.Errorf("arrow/array: null count value (%d) does not match actual number of nulls in array (%d)", data.nulls, actualNulls)
 	}
 	return nil
+}
+
+func storageType(dt arrow.DataType) arrow.DataType {
+	if ext, ok := dt.(arrow.ExtensionType); ok {
+		return ext.StorageType()
+	}
+	return dt
 }
 
 func validateArrayData(data *Data) error {
@@ -177,11 +187,18 @@ func validateArrayData(data *Data) error {
 		return fmt.Errorf("arrow/array: array offset and length overflow")
 	}
 
+	// REE arrays have no physical buffers. Constructors and IPC may include a
+	// nil placeholder, but builders and C Data imports omit it.
+	id := storageType(data.dtype).ID()
+	if len(data.buffers) == 0 && id == arrow.RUN_END_ENCODED {
+		return nil
+	}
+
 	layout := data.dtype.Layout()
 	// Union arrays reserve the first buffer slot for a validity bitmap, even
 	// though that slot must be nil and is not part of their type layout.
 	bufferOffset := 0
-	if data.dtype.ID() == arrow.SPARSE_UNION || data.dtype.ID() == arrow.DENSE_UNION {
+	if id == arrow.SPARSE_UNION || id == arrow.DENSE_UNION {
 		bufferOffset = 1
 	}
 	bufferCount := len(data.buffers) - bufferOffset
@@ -264,7 +281,7 @@ func validateArrayStructure(data *Data) error {
 	}
 
 	if data.DataType().Layout().HasDict {
-		dt, ok := data.DataType().(*arrow.DictionaryType)
+		dt, ok := storageType(data.DataType()).(*arrow.DictionaryType)
 		if !ok {
 			return fmt.Errorf("arrow/array: datatype %s declares dictionary storage but is not a dictionary type", data.DataType())
 		}
@@ -403,10 +420,10 @@ func validateFixedSizeListArray(a *FixedSizeList) error {
 	}
 	childLength := int64(a.data.offset) + int64(a.data.length)
 	itemCount := int64(dt.Len())
-	if itemCount <= 0 {
+	if itemCount < 0 {
 		return fmt.Errorf("arrow/array: fixed-size list has invalid item count %d", itemCount)
 	}
-	if childLength > int64(a.data.childData[0].Len())/itemCount {
+	if itemCount > 0 && childLength > int64(a.data.childData[0].Len())/itemCount {
 		return fmt.Errorf("arrow/array: fixed-size list child length %d is too small for offset %d and length %d",
 			a.data.childData[0].Len(), a.data.offset, a.data.length)
 	}

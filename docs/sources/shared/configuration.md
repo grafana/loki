@@ -1085,6 +1085,11 @@ dataobj:
     # CLI flag: -dataobj.builder.flush-concurrency
     [flush_concurrency: <int> | default = 1]
 
+    # The maximum number of goroutines that sort the logs of one tenant on
+    # flush.
+    # CLI flag: -dataobj.builder.sort-parallelism
+    [sort_parallelism: <int> | default = 2]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
@@ -1179,6 +1184,12 @@ dataobj:
     # CLI flag: -dataobj.metadata-prefetcher.max-region-bytes
     [max_region_bytes: <int> | default = 4194304]
 
+    # The largest memory, in bytes, that the metadata prefetcher uses to
+    # remember the size of the metadata region of each data object that has been
+    # opened.
+    # CLI flag: -dataobj.metadata-prefetcher.max-region-size-cache-bytes
+    [max_region_size_cache_bytes: <int> | default = 50MB]
+
     # The time limit of the load that follows a cache miss.
     # CLI flag: -dataobj.metadata-prefetcher.load-timeout
     [load_timeout: <duration> | default = 5s]
@@ -1241,6 +1252,19 @@ dataobj:
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Maximum uncompressed postings size of one IndexMerge task.
+    # The planner splits a larger merge into tasks by posting key. The tasks run
+    # in parallel and together write one index run. The planner estimates sizes
+    # from a sample of the posting keys and cuts only at sampled keys, so a task
+    # can exceed the maximum. The estimate shares the size of each postings
+    # section evenly over its rows, so a task over large bloom filters can
+    # exceed the maximum by more. Each task also merges the stats rows of some
+    # of the source indexes, which the maximum does not count. A worker that
+    # does not support the split fails its tasks, so upgrade every worker before
+    # you set it. 0 disables the split.
+    # CLI flag: -dataobj.compaction.max-task-size
+    [max_task_size: <int> | default = 0B]
 
     # Experimental: Runs per planned log merge (K for log compaction), before
     # logs.max-task-size splits it into tasks. Log compaction merges only groups
@@ -1437,6 +1461,10 @@ dataobj:
   # Delay after which data objects hold all the data.
   # CLI flag: -dataobj.storage-lag
   [storage_lag: <duration> | default = 3h]
+
+# The logline block configures experimental logline indexing and query
+# filtering.
+[logline: <logline>]
 
 ingest_limits:
   # Enable the ingest limits service.
@@ -4877,6 +4905,315 @@ The `local_storage_config` block configures the usage of local file system as ob
 [directory: <string> | default = ""]
 ```
 
+### logline
+
+The `logline` block configures experimental logline indexing and query filtering.
+
+```yaml
+index:
+  # Index format version written to meta.json. Defaults to the current version.
+  # CLI flag: -logline-index.version
+  [version: <string> | default = ""]
+
+  # N-gram length used to build and to query the index. It is not recorded in
+  # the index, so every component must use the same value.
+  # CLI flag: -logline-index.ngram-length
+  [ngram_length: <int> | default = 6]
+
+  # Time range each document covers, for example 1s or 16s.
+  # CLI flag: -logline-index.document-interval
+  [document_interval: <duration> | default = 16s]
+
+  # Number of high stream-fingerprint bits that select a document shard (index
+  # version v5 only). Each document interval is split into 2^bits shards, and a
+  # document covers one interval of the streams in one shard. From 0 to 7; 0
+  # disables document sharding. v3 and v4 ignore it.
+  # CLI flag: -logline-index.document-shard-bits
+  [document_shard_bits: <int> | default = 5]
+
+  # Store n-grams covering more than this fraction of a full day's documents as
+  # match-all. 0 uses the format default (v3: 0.20).
+  # CLI flag: -logline-index.density-threshold
+  [density_threshold: <float> | default = 0]
+
+  # Number of n-gram shards per date. Either 0 or 1 disables sharding (one file
+  # per date).
+  # CLI flag: -logline-index.shard-count
+  [shard_count: <int> | default = 0]
+
+  # Shard algorithm for n-gram routing. Valid values: first_byte, murmur3_mix.
+  # CLI flag: -logline-index.shard-algorithm
+  [shard_algorithm: <string> | default = "murmur3_mix"]
+
+store:
+  # Path prefix for all objects in the bucket
+  # CLI flag: -logline-store.bucket-prefix
+  [bucket_prefix: <string> | default = "logline/"]
+
+  # How often to poll object storage for new indexes. The logline-scheduler
+  # target also plans compaction and deletes indexes at this interval.
+  # CLI flag: -logline-store.poll-interval
+  [poll_interval: <duration> | default = 15m]
+
+  # Number of concurrent meta.json fetches during poll
+  # CLI flag: -logline-store.poll-concurrency
+  [poll_concurrency: <int> | default = 50]
+
+  # Earliest trusted index date partition (YYYY-MM-DD) for query-path reads;
+  # required when logline is enabled
+  # CLI flag: -logline-store.min-date
+  [min_date: <string> | default = ""]
+
+builder:
+  kafka:
+    # Comma-separated Kafka broker list. Defaults to the root kafka_config
+    # address.
+    # CLI flag: -logline-builder.kafka.address
+    [address: <string> | default = ""]
+
+    # Kafka topic to consume. Defaults to the root kafka_config topic.
+    # CLI flag: -logline-builder.kafka.topic
+    [topic: <string> | default = ""]
+
+    # Kafka client ID. Defaults to the root kafka_config client ID, then to
+    # logline-index-builder.
+    # CLI flag: -logline-builder.kafka.client-id
+    [client_id: <string> | default = ""]
+
+    # Kafka dial timeout. Defaults to the root kafka_config dial timeout.
+    # CLI flag: -logline-builder.kafka.dial-timeout
+    [dial_timeout: <duration> | default = 0s]
+
+    # Kafka SASL username. Defaults to the root kafka_config username.
+    # CLI flag: -logline-builder.kafka.sasl-username
+    [sasl_username: <string> | default = ""]
+
+    # Kafka SASL password. Defaults to the root kafka_config password.
+    # CLI flag: -logline-builder.kafka.sasl-password
+    [sasl_password: <string> | default = ""]
+
+    # Kafka consumer group every builder replica joins. Deliberately not
+    # inherited from kafka_config.consumer_group: that is the ingesters'
+    # per-zone offset namespace, and sharing it makes the two sides overwrite
+    # each other's committed offsets.
+    # CLI flag: -logline-builder.kafka.consumer-group-name
+    [consumer_group_name: <string> | default = "logline-index-builder"]
+
+    # Kafka consumer-group session timeout. A pod absent for longer than this is
+    # evicted from the group and its partitions rebalanced. Must not exceed the
+    # broker's group.max.session.timeout.ms.
+    # CLI flag: -logline-builder.kafka.session-timeout
+    [session_timeout: <duration> | default = 2m]
+
+    # Kafka static-membership ID (defaults to os.Hostname() if empty). Pod
+    # restarts within session-timeout rejoin without rebalance.
+    # CLI flag: -logline-builder.kafka.instance-id
+    [instance_id: <string> | default = ""]
+
+    # Kafka ApiVersions max version. Defaults to the root kafka_config value.
+    # See -kafka.api-versions-max-version.
+    # CLI flag: -logline-builder.kafka.api-versions-max-version
+    [api_versions_max_version: <int> | default = -1]
+
+    # Kafka max decompress batch bytes. Defaults to the root kafka_config value.
+    # See -kafka.max-decompress-batch-bytes.
+    # CLI flag: -logline-builder.kafka.max-decompress-batch-bytes
+    [max_decompress_batch_bytes: <int> | default = -1]
+
+  # Duration of inactivity before flushing
+  # CLI flag: -logline-builder.flush-on-idle
+  [flush_on_idle: <duration> | default = 5m]
+
+  # Maximum age of the builder before flushing
+  # CLI flag: -logline-builder.flush-on-max-age
+  [flush_on_max_age: <duration> | default = 30m]
+
+  # Full-flush trigger based on cumulative bytes of run files spilled to scratch
+  # disk by the active builder. Peak scratch usage reaches 2-3x this value
+  # during a flush (retiring builder's runs + its merged .lidx output + the
+  # fresh builder's runs), so size the scratch volume with that headroom.
+  # CLI flag: -logline-builder.flush-on-max-bytes
+  [flush_on_max_bytes: <int> | default = 21474836480]
+
+  # Interval for periodic flush checks independent of the poll loop
+  # CLI flag: -logline-builder.flush-check-interval
+  [flush_check_interval: <duration> | default = 5m]
+
+  # Capacity of the in-memory postings buffer in (ngram, docID) pairs. Resident
+  # memory is ~24 bytes per pair, allocated up front (~460 MiB at the default),
+  # and a builder swap briefly holds two buffers — budget GOMEMLIMIT
+  # accordingly. Minimum 65536.
+  # CLI flag: -logline-builder.postings-buffer-pairs
+  [postings_buffer_pairs: <int> | default = 20000000]
+
+  # Fraction of the postings buffer the sorted, deduped head must reach before a
+  # run is spilled to scratch disk. Higher packs runs denser (fewer, larger runs
+  # feed the merge). Must be > 0 and <= 0.95.
+  # CLI flag: -logline-builder.postings-spill-watermark
+  [postings_spill_watermark: <float> | default = 0.7]
+
+  # Number of parallel n-gram extract goroutines (1-4). Incident/catchup mode
+  # only: values above 1 multiply the resident sort-buffer floor (~480 MiB per
+  # goroutine at the default postings_buffer_pairs) and CPU demand for higher
+  # ingest throughput. Default 1 is the serial production path.
+  # CLI flag: -logline-builder.extract-threads
+  [extract_threads: <int> | default = 1]
+
+  # Maximum number of shards merged concurrently during flush (default 1 =
+  # serial). Must be between 1 and the shard count (unsharded indexes have one
+  # shard). Each concurrent shard holds its own rank maps and a 1 MiB read
+  # buffer per run, so memory and file descriptors scale with this value.
+  # CLI flag: -logline-builder.merge-threads
+  [merge_threads: <int> | default = 1]
+
+  # Directory where intermediate .lidx files are written
+  # CLI flag: -logline-builder.scratch-dir
+  [scratch_dir: <string> | default = "./data/partial-indexes"]
+
+  # Maximum time to wait at startup for the partition ring to be populated.
+  # Service startup fails if the ring is still empty after this — there is no
+  # silent fallback.
+  # CLI flag: -logline-builder.wait-ring-populated-timeout
+  [wait_ring_populated_timeout: <duration> | default = 1m]
+
+query:
+  # Enable logline filtering in the query path.
+  # CLI flag: -logline-query.enabled
+  [enabled: <boolean> | default = false]
+
+  # Run logline hint lookups passively for verification without modifying query
+  # execution
+  # CLI flag: -logline-query.dry-run
+  [dry_run: <boolean> | default = false]
+
+  # Require X-Logline-Index header to activate hint narrowing
+  # CLI flag: -logline-query.require-opt-in-header
+  [require_opt_in_header: <boolean> | default = true]
+
+  # Maximum concurrent hint index workers per query (default 64)
+  # CLI flag: -logline-query.max-hint-parallel
+  [max_hint_parallel: <int> | default = 0]
+
+  # Maximum needle sets a query is planned into. Filters with or and regexes
+  # with alternation give one set per branch. 1 keeps only the needles every
+  # branch shares.
+  # CLI flag: -logline-query.max-conjunctions
+  [max_conjunctions: <int> | default = 1]
+
+  # Maximum time to wait for logline index hint lookup (default 15s)
+  # CLI flag: -logline-query.hint-timeout
+  [hint_timeout: <duration> | default = 0s]
+
+  # TTL for cached hint results. Uses Loki results cache backend; set to 0 to
+  # disable.
+  # CLI flag: -logline-query.hint-cache-ttl
+  [hint_cache_ttl: <duration> | default = 2m]
+
+  # Max size in MB for embedded hint cache when no external backend is
+  # configured (default 100)
+  # CLI flag: -logline-query.hint-cache-max-size-mb
+  [hint_cache_max_size_mb: <int> | default = 0]
+
+correctness:
+  # Comma-separated Loki query endpoint base URLs
+  # CLI flag: -logline-correctness.loki-query-endpoints
+  [loki_query_endpoints: <list of strings>]
+
+  # Tenant ID to send via X-Scope-OrgID
+  # CLI flag: -logline-correctness.tenant-id
+  [tenant_id: <string> | default = ""]
+
+  # Delay between correctness verification cycles
+  # CLI flag: -logline-correctness.query-interval
+  [query_interval: <duration> | default = 5s]
+
+  # Minimum randomized query range duration
+  # CLI flag: -logline-correctness.query-range-min
+  [query_range_min: <duration> | default = 5m]
+
+  # Maximum randomized query range duration
+  # CLI flag: -logline-correctness.query-range-max
+  [query_range_max: <duration> | default = 30m]
+
+  # Maximum lookback from now for randomized query ranges. Combined with
+  # started_at as max(started_at, now-max_lookback).
+  # CLI flag: -logline-correctness.max-lookback
+  [max_lookback: <duration> | default = 720h]
+
+  # HTTP timeout for each Loki request
+  # CLI flag: -logline-correctness.request-timeout
+  [request_timeout: <duration> | default = 15s]
+
+  # Timeout for a full correctness cycle
+  # CLI flag: -logline-correctness.cycle-timeout
+  [cycle_timeout: <duration> | default = 2m]
+
+  # Minimum backoff delay after cycle failures
+  # CLI flag: -logline-correctness.error-backoff-min
+  [error_backoff_min: <duration> | default = 5s]
+
+  # Maximum backoff delay after cycle failures
+  # CLI flag: -logline-correctness.error-backoff-max
+  [error_backoff_max: <duration> | default = 1m]
+
+  # Maximum log lines requested from Loki when selecting a test needle
+  # CLI flag: -logline-correctness.log-query-limit
+  [log_query_limit: <int> | default = 200]
+
+  # Override the service start time (RFC3339). When set, query ranges may begin
+  # at this time instead of now.
+  # CLI flag: -logline-correctness.started-at
+  [started_at: <time> | default = 0]
+
+compaction:
+  # Maximum total size of the indexes merged by one compaction job. Indexes
+  # larger than this are never compacted.
+  # CLI flag: -logline-compaction.max-job-size
+  [max_job_size: <int> | default = 2GiB]
+
+  # How long a compaction job may run before it is considered failed and
+  # reassigned.
+  # CLI flag: -logline-compaction.job-timeout
+  [job_timeout: <duration> | default = 2h]
+
+  # Directory holding the state of in-flight compaction jobs. Required by the
+  # logline-scheduler target. It must be on durable storage, otherwise a restart
+  # can merge the same indexes twice.
+  # CLI flag: -logline-compaction.job-state-dir
+  [job_state_dir: <string> | default = ""]
+
+  # Base URL compaction jobs are requested from, for example
+  # http://logline-scheduler:3100. Required by the logline-compactor target.
+  # CLI flag: -logline-compaction.scheduler-address
+  [scheduler_address: <string> | default = ""]
+
+  # Identifier of this compactor. Defaults to the hostname.
+  # CLI flag: -logline-compaction.compactor-id
+  [compactor_id: <string> | default = ""]
+
+  # Number of source indexes a compaction job opens in parallel.
+  # CLI flag: -logline-compaction.download-concurrency
+  [download_concurrency: <int> | default = 4]
+
+  # Postings encoding of merged indexes, delta-varint or elias-fano. Every
+  # component that reads indexes must support elias-fano before it is enabled.
+  # Sources are read in whatever encoding they were written with, so the setting
+  # can be changed at any time.
+  # CLI flag: -logline-compaction.postings-encoding
+  [postings_encoding: <string> | default = "delta-varint"]
+
+retention:
+  # How long an index is kept after compaction merged it into a larger index.
+  # Readers holding an older view of the store can still open it during this
+  # window.
+  # CLI flag: -logline-retention.compacted-source-delete-delay
+  [compacted_source_delete_delay: <duration> | default = 1h]
+
+  # Number of indexes deleted in parallel.
+  # CLI flag: -logline-retention.delete-concurrency
+  [delete_concurrency: <int> | default = 20]
+```
+
 ### memberlist
 
 Configuration for `memberlist` client. Only applies if the selected kvstore is memberlist.
@@ -6232,6 +6569,13 @@ grpc_tls_config:
 # CLI flag: -server.register-instrumentation
 [register_instrumentation: <boolean> | default = true]
 
+# Cache successful /metrics responses for this duration. Zero disables caching.
+# Cached metrics may lag behind live values by up to this duration; consider
+# scrape intervals and alerts. Only applies when
+# -server.register-instrumentation is true.
+# CLI flag: -server.metrics-cache-duration
+[metrics_cache_duration: <duration> | default = 0s]
+
 # If set to true, gRPC statuses will be reported in instrumentation labels with
 # their string representations. Otherwise, they will be reported as "error".
 # CLI flag: -server.report-grpc-codes-in-instrumentation-label-enabled
@@ -6682,13 +7026,11 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
-    # Experimental: Maximum number of requests this index gateway client may
-    # have in flight at once. Requests arriving when the limit is reached are
-    # rejected immediately with an HTTP 503 status instead of waiting, which
-    # bounds the resources this process commits to an index gateway that is
-    # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, so the process-wide number of in-flight
-    # requests can reach this value multiplied by the number of clients. 0
+    # Experimental: Maximum number of concurrent RPCs this index gateway client
+    # can reserve across requests. Each request reserves available slots up
+    # front and reserves one slot for each part it can send in parallel. If no
+    # slots are available, the request is rejected immediately with HTTP 503.
+    # The limit applies per client, with one client per schema period. 0
     # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]

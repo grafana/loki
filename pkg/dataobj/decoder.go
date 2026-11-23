@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -11,10 +12,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // errCannotCacheMetadata signals that extendedMetadataRegionEnd could not size a region to cache: it
@@ -93,14 +95,33 @@ func (d *decoder) metadataViaPrefetcher(ctx context.Context) (*filemd.Metadata, 
 // metadataDirect reads and decodes the file metadata straight from the range reader. It keeps the
 // whole prefetch buffer as the prefetched window, so an over-sized prefetch also serves the first data
 // reads.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [metadata.StatMetadataRequestsToStorage]
+//   - [metadata.StatMetadataBytesFromStorage]
 func (d *decoder) metadataDirect(ctx context.Context) (*filemd.Metadata, error) {
-	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
+	type result struct {
+		md           *filemd.Metadata
+		buf          []byte
+		metadataSize uint64
+	}
+
+	// A read that the prefetcher does not send is an on demand read.
+	res, err := xcap.RunIsolated(ctx, "direct_metadata",
+		func(ctx context.Context) (result, error) {
+			md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
+			return result{md, buf, metadataSize}, err
+		},
+		xcap.MergeDerived(
+			xcap.Derive(metadata.StatMetadataRequestsToStorage, bucketstat.StatObjectRequestsGetRange),
+			xcap.Derive(metadata.StatMetadataBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+		))
 	if err != nil {
 		return nil, err
 	}
-	d.setPrefetchedBytes(0, buf)
-	d.startOff = format.HeaderSize + int64(metadataSize)
-	return md, nil
+	d.setPrefetchedBytes(0, res.buf)
+	d.startOff = format.HeaderSize + int64(res.metadataSize)
+	return res.md, nil
 }
 
 // metadataViaCache serves the metadata region from the cache (loading it on a miss), then decodes the
@@ -308,10 +329,7 @@ func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata,
 		}
 		defer rc.Close()
 
-		br := bufpool.GetReader(rc)
-		defer bufpool.PutReader(br)
-
-		md, err = decodeFileMetadata(br)
+		md, err = decodeFileMetadata(bufio.NewReader(rc))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 		}

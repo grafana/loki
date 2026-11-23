@@ -11,9 +11,11 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // keyPrefix namespaces entries and versions the on-wire format. Bump the version to invalidate old
@@ -125,10 +127,19 @@ func (c *Cache) GetOrLoadMetadataRegion(ctx context.Context, key string, load fu
 // Each caller returns on its own context cancellation. The shared load itself runs on a context detached from any
 // single caller: it keeps request-scoped values, drops cancellation, and is bounded by loadTimeout. One caller giving
 // up neither aborts the load nor fails the others waiting on it.
+//
+// It records these statistics in the xcap region of ctx:
+//   - [StatMetadataRequestsToCache]
+//   - [StatMetadataBytesFromCache]
+//   - [StatMetadataRequestsToStorage]
+//   - [StatMetadataBytesFromStorage]
+//
+// Only the caller that starts a shared load records the storage statistics of the load.
 func (c *Cache) GetOrLoad(ctx context.Context, key string, accept func([]byte) bool, load func(context.Context) ([]byte, error)) ([]byte, error) {
 	k := keyPrefix + key
 
 	_, bufs, _, err := c.cache.Fetch(ctx, []string{k})
+	recordCacheLookup(ctx)
 	switch {
 	case ctx.Err() != nil:
 		// A context canceled / timed out always takes precedence.
@@ -142,6 +153,7 @@ func (c *Cache) GetOrLoad(ctx context.Context, key string, accept func([]byte) b
 		})
 	case len(bufs) == 1 && (accept == nil || accept(bufs[0])):
 		c.hits.Inc()
+		recordCacheBytes(ctx, int64(len(bufs[0])))
 		return bufs[0], nil
 	default:
 		c.misses.Inc()
@@ -154,7 +166,16 @@ func (c *Cache) GetOrLoad(ctx context.Context, key string, accept func([]byte) b
 		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), loadTimeout)
 		defer cancel()
 
-		md, err := load(loadCtx)
+		// An isolated region holds only the storage reads of this load. The load can read object storage
+		// with any request, so the count adds the range requests and the whole object requests. The
+		// instrumented bucket counts a request before it sends it, so the count includes the failed
+		// requests.
+		md, err := xcap.RunIsolated(loadCtx, "metadata_cache_load", load,
+			xcap.MergeDerived(
+				xcap.Derive(StatMetadataRequestsToStorage, bucketstat.StatObjectRequestsGetRange),
+				xcap.Derive(StatMetadataRequestsToStorage, bucketstat.StatObjectRequestsGet),
+				xcap.Derive(StatMetadataBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+			))
 		if err != nil {
 			return nil, err
 		}

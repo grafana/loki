@@ -18,7 +18,9 @@ package array
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"iter"
 	"strings"
 	"sync/atomic"
@@ -607,6 +609,11 @@ func (b *RecordBuilder) unmarshalOne(dec *json.Decoder) (err error) {
 	if delim, ok := t.(json.Delim); !ok || delim != '{' {
 		return fmt.Errorf("record should start with '{', not %s", t)
 	}
+	defer func() {
+		if errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
+	}()
 
 	keylist := make(map[string]bool)
 	for dec.More() {

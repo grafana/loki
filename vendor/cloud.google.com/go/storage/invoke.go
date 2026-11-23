@@ -131,7 +131,7 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 	}
 	if (retry.policy == RetryIdempotent && !isIdempotent) || retry.policy == RetryNever {
 		ctxWithHeaders := setInvocationHeaders(ctx, invocationID, attempts)
-		return call(ctxWithHeaders)
+		return call(withRetryAttempt(ctxWithHeaders, attempts))
 	}
 	initialBo := gax.Backoff{}
 	if retry.backoff != nil {
@@ -161,7 +161,7 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 		}
 
 		ctxWithHeaders := setInvocationHeaders(ctx, invocationID, attempts)
-		lastErr = call(ctxWithHeaders)
+		lastErr = call(withRetryAttempt(ctxWithHeaders, attempts))
 		if lastErr == nil {
 			return nil
 		}
@@ -187,7 +187,12 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 		}
 
 		attempts++
-		if ctxErr := gax.Sleep(ctx, bo.Pause()); ctxErr != nil {
+		backoffStart := time.Now()
+		ctxErr := gax.Sleep(ctx, bo.Pause())
+		// The backoff is recorded even if ctx ended during the sleep so that the
+		// trace shows the time spent waiting before giving up.
+		recordRetryBackoff(ctx, backoffStart)
+		if ctxErr != nil {
 			return wrappedCallErr{ctxErr: ctxErr, wrappedErr: lastErr}
 		}
 	}

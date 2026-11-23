@@ -230,6 +230,16 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// UncompressedSize returns the uncompressed size of all columns of the
+// section, from the section metadata. It reads no pages.
+func (s *Section) UncompressedSize() uint64 {
+	var size uint64
+	for _, column := range s.inner.Columns() {
+		size += column.Metadata().UncompressedSize
+	}
+	return size
+}
+
 // A Column represents one of the columns in the postings section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //

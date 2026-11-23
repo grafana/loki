@@ -30,6 +30,7 @@ import (
 	"cloud.google.com/go/auth/internal/compute"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	grpccreds "google.golang.org/grpc/credentials"
 	grpcgoogle "google.golang.org/grpc/credentials/google"
 )
 
@@ -256,6 +257,68 @@ func canUseDirectPath(endpoint string, opts *Options, creds *auth.Credentials) b
 	return isTokenProviderDirectPathCompatible(creds, opts)
 }
 
+// interconnectCredentials is a grpccreds.Bundle that negotiates TLS in every
+// mode.
+//
+// The Google Default bundle selects ALTS for every xDS cluster whose name is
+// not prefixed "google_cfe_", which includes the regional DirectPath over
+// Interconnect clusters, and ALTS is unavailable outside Google Cloud. A
+// bundle, rather than grpc.WithTransportCredentials plus
+// grpc.WithPerRPCCredentials, keeps the per-RPC credentials on the channel
+// credentials, which are the only credentials gRPC's RLS control channel
+// inherits from the parent channel.
+type interconnectCredentials struct {
+	transportCreds grpccreds.TransportCredentials
+	perRPCCreds    grpccreds.PerRPCCredentials
+}
+
+func newInterconnectCredentials(perRPCCreds grpccreds.PerRPCCredentials) *interconnectCredentials {
+	return &interconnectCredentials{
+		transportCreds: grpccreds.NewTLS(nil),
+		perRPCCreds:    perRPCCreds,
+	}
+}
+
+func (c *interconnectCredentials) TransportCredentials() grpccreds.TransportCredentials {
+	return c.transportCreds
+}
+
+func (c *interconnectCredentials) PerRPCCredentials() grpccreds.PerRPCCredentials {
+	return c.perRPCCreds
+}
+
+// NewWithMode returns a bundle with cloned TLS transport credentials and the
+// same per-RPC credentials regardless of mode. The RLS control channel requests
+// fallback mode, and grpclb modes are unused with the google-c2p resolver.
+func (c *interconnectCredentials) NewWithMode(string) (grpccreds.Bundle, error) {
+	return &interconnectCredentials{
+		transportCreds: c.transportCreds.Clone(),
+		perRPCCreds:    c.perRPCCreds,
+	}, nil
+}
+
+// directPathCredentialsBundle returns the credentials bundle for a DirectPath
+// channel: TLS-only credentials over Interconnect, or the Google Default bundle
+// (with ALTS hard-bound tokens when enabled) otherwise.
+func directPathCredentialsBundle(interconnect bool, opts *Options, endpoint string, creds *auth.Credentials, perRPCCreds grpccreds.PerRPCCredentials) (grpccreds.Bundle, error) {
+	if interconnect {
+		return newInterconnectCredentials(perRPCCreds), nil
+	}
+	defaultCredentialsOptions := grpcgoogle.DefaultCredentialsOptions{
+		PerRPCCreds: perRPCCreds,
+	}
+	if opts != nil && isDirectPathBoundTokenEnabled(opts.InternalOptions) && isTokenProviderComputeEngine(creds) {
+		optsClone := opts.resolveDetectOptions()
+		optsClone.TokenBindingType = credentials.ALTSHardBinding
+		altsCreds, err := credentials.DetectDefault(optsClone)
+		if err != nil {
+			return nil, err
+		}
+		defaultCredentialsOptions.ALTSPerRPCCreds = &grpcCredentialsProvider{creds: altsCreds, endpoint: endpoint}
+	}
+	return grpcgoogle.NewDefaultCredentialsWithOptions(defaultCredentialsOptions), nil
+}
+
 // configureDirectPath returns some dial options and an endpoint to use if the
 // configuration allows the use of direct path. If it does not the provided
 // grpcOpts and endpoint are returned.
@@ -274,20 +337,11 @@ func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint str
 		if opts != nil {
 			perRPCCreds.clientUniverseDomain = opts.UniverseDomain
 		}
-		defaultCredetialsOptions := grpcgoogle.DefaultCredentialsOptions{
-			PerRPCCreds: perRPCCreds,
+		bundle, err := directPathCredentialsBundle(interconnect, opts, endpoint, creds, perRPCCreds)
+		if err != nil {
+			return nil, "", err
 		}
-		if !interconnect && opts != nil && isDirectPathBoundTokenEnabled(opts.InternalOptions) && isTokenProviderComputeEngine(creds) {
-			optsClone := opts.resolveDetectOptions()
-			optsClone.TokenBindingType = credentials.ALTSHardBinding
-			altsCreds, err := credentials.DetectDefault(optsClone)
-			if err != nil {
-				return nil, "", err
-			}
-			defaultCredetialsOptions.ALTSPerRPCCreds = &grpcCredentialsProvider{creds: altsCreds, endpoint: endpoint}
-		}
-		grpcOpts = []grpc.DialOption{
-			grpc.WithCredentialsBundle(grpcgoogle.NewDefaultCredentialsWithOptions(defaultCredetialsOptions))}
+		grpcOpts = []grpc.DialOption{grpc.WithCredentialsBundle(bundle)}
 		if timeoutDialerOption != nil {
 			grpcOpts = append(grpcOpts, timeoutDialerOption)
 		}
