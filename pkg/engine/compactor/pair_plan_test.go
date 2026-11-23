@@ -55,6 +55,20 @@ func TestPlanPairs(t *testing.T) {
 		require.Equal(t, 2, plan.Merges[0].LogTasks)
 	})
 
+	t.Run("reports each index run that shares a log object with the other index runs that hold it", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/shared", "a", "z"})
+		seedPairIndex(t.Context(), t, bucket, "indexes/b", pairTestSchema, testLogObject{"logs/shared", "a", "z"})
+
+		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), cfg)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []SkippedIndex{
+			{IndexPaths: []string{"indexes/a"}, Reason: pairSkipReasonSharedLogObject, SharedLogObject: "logs/shared", OtherIndexRuns: [][]string{{"indexes/b"}}},
+			{IndexPaths: []string{"indexes/b"}, Reason: pairSkipReasonSharedLogObject, SharedLogObject: "logs/shared", OtherIndexRuns: [][]string{{"indexes/a"}}},
+		}, plan.Skipped)
+		require.Empty(t, plan.Pairs)
+	})
+
 	t.Run("returns an error when K is below 2", func(t *testing.T) {
 		_, err := PlanPairs(t.Context(), log.NewNopLogger(), objstore.NewInMemBucket(), "acme", imWindow(), PairPlanConfig{LogMaxRunsPerTask: 1})
 		require.Error(t, err)

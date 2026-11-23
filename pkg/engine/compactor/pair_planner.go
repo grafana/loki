@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -52,6 +53,10 @@ type pairWindowPlan struct {
 
 	// pairs are the pairs that planning found, in merges or not.
 	pairs []pair
+
+	// skipped are the index runs that planning skipped, because they have
+	// no stats rows or share a log object.
+	skipped []skippedIndex
 
 	jobs []pairJob
 }
@@ -131,8 +136,8 @@ func (p *pairPlanner) planWindow(ctx context.Context, tenant string, window time
 		return plan, nil
 	}
 
-	pairs, splits := p.classifyCandidates(logger, tenant, window, candidates, leased)
-	plan.pairs = pairs
+	pairs, splits, skipped := p.classifyCandidates(logger, tenant, window, candidates, leased)
+	plan.pairs, plan.skipped = pairs, skipped
 	for _, split := range splits {
 		plan.jobs = append(plan.jobs, split)
 	}
@@ -213,28 +218,27 @@ func (p *pairPlanner) readCandidates(ctx context.Context, logger log.Logger, ten
 //
 // The check sees only the log objects in stats rows. It can't see the log
 // objects of a corrupt index run, or of an index run without stats rows.
-func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, window time.Time, candidates []pairCandidate, leased leaseSnapshot) (pairs []pair, splits []*pairSplit) {
-	owners := make(map[string]int)
+func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, window time.Time, candidates []pairCandidate, leased leaseSnapshot) (pairs []pair, splits []*pairSplit, skipped []skippedIndex) {
+	owners := make(map[string][]indexRun)
 	for _, candidate := range candidates {
 		for _, path := range candidate.logObjects() {
-			owners[path]++
+			owners[path] = append(owners[path], candidate.indexRun)
 		}
 	}
-	skip := func(candidate pairCandidate, reason, msg string) {
-		level.Error(logger).Log("msg", msg, "index", candidate.indexRun.String())
-		p.metrics.pairSkippedIndexesTotal.WithLabelValues(tenant, reason).Inc()
+	skip := func(skip skippedIndex, msg string) {
+		level.Error(logger).Log(append([]any{"msg", msg}, skip.logFields()...)...)
+		p.metrics.pairSkippedIndexesTotal.WithLabelValues(tenant, skip.reason).Inc()
+		skipped = append(skipped, skip)
 	}
 
 	for _, candidate := range candidates {
 		logSections := candidate.discoveredLogSections
 		if len(logSections.sections) == 0 {
-			skip(candidate, pairSkipReasonNoStats, "pair-compaction: skipping index without stats rows")
+			skip(skippedIndex{indexRun: candidate.indexRun, reason: pairSkipReasonNoStats}, "pair-compaction: skipping index without stats rows")
 			continue
 		}
-		if slices.ContainsFunc(candidate.logObjects(), func(path string) bool {
-			return owners[path] > 1 || leased.holdsLogObject(path)
-		}) {
-			skip(candidate, pairSkipReasonSharedLogObject, "pair-compaction: skipping index that shares a log object with another index")
+		if shared, ok := sharedLogObject(candidate, owners, leased); ok {
+			skip(shared, "pair-compaction: skipping index that shares a log object with another index")
 			continue
 		}
 
@@ -255,7 +259,71 @@ func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, windo
 			logSections: logSections.sections,
 		})
 	}
-	return pairs, splits
+	return pairs, splits, skipped
+}
+
+// skippedIndex is an index run that classifyCandidates skipped.
+type skippedIndex struct {
+	indexRun indexRun
+
+	// reason is a value of the reason label of pairSkippedIndexesTotal.
+	reason string
+
+	// sharedLogObject is the first log object of indexRun that another
+	// index run also holds. It is empty unless reason is
+	// pairSkipReasonSharedLogObject.
+	sharedLogObject string
+
+	// otherIndexRuns are the other candidates that hold sharedLogObject.
+	otherIndexRuns []indexRun
+
+	// leased reports whether a planned job holds sharedLogObject.
+	leased bool
+}
+
+// maxLoggedOtherIndexRuns caps the other index runs that a skip log line
+// names.
+const maxLoggedOtherIndexRuns = 4
+
+func (s skippedIndex) logFields() []any {
+	fields := []any{"index", s.indexRun.String(), "reason", s.reason}
+	if s.sharedLogObject == "" {
+		return fields
+	}
+	others := make([]string, 0, min(len(s.otherIndexRuns), maxLoggedOtherIndexRuns))
+	for _, other := range s.otherIndexRuns[:min(len(s.otherIndexRuns), maxLoggedOtherIndexRuns)] {
+		others = append(others, other.String())
+	}
+	return append(fields,
+		"log_object", s.sharedLogObject,
+		"other_indexes", strings.Join(others, ","),
+		"other_index_count", len(s.otherIndexRuns),
+		"planned_job_holds_log_object", s.leased,
+	)
+}
+
+// sharedLogObject returns the skip of candidate if one of its log objects
+// belongs to another candidate in owners, or to a planned job in leased.
+func sharedLogObject(candidate pairCandidate, owners map[string][]indexRun, leased leaseSnapshot) (skippedIndex, bool) {
+	for _, path := range candidate.logObjects() {
+		var others []indexRun
+		for _, owner := range owners[path] {
+			if owner.planningUnit() != candidate.indexRun.planningUnit() {
+				others = append(others, owner)
+			}
+		}
+		if len(others) == 0 && !leased.holdsLogObject(path) {
+			continue
+		}
+		return skippedIndex{
+			indexRun:        candidate.indexRun,
+			reason:          pairSkipReasonSharedLogObject,
+			sharedLogObject: path,
+			otherIndexRuns:  others,
+			leased:          leased.holdsLogObject(path),
+		}, true
+	}
+	return skippedIndex{}, false
 }
 
 // logObjects returns the paths of the log objects of c, sorted and without

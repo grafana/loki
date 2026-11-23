@@ -61,6 +61,27 @@ type PairPlan struct {
 	// Splits are the index runs over more than one log run, which the
 	// planner splits into pairs.
 	Splits []PlannedSplit
+
+	// Skipped are the index runs that the planner skipped, because they
+	// have no stats rows or share a log object with another index run.
+	Skipped []SkippedIndex
+}
+
+// SkippedIndex is an index run that the planner skipped.
+type SkippedIndex struct {
+	// IndexPaths are the paths of the index objects of the index run.
+	IndexPaths []string
+
+	// Reason is no_stats or shared_log_object.
+	Reason string
+
+	// SharedLogObject is the first log object of the index run that another
+	// index run also holds. It is empty for other reasons.
+	SharedLogObject string
+
+	// OtherIndexRuns holds the index object paths of each other index run
+	// that holds SharedLogObject.
+	OtherIndexRuns [][]string
 }
 
 // PlannedPair is one pair that the planner found.
@@ -156,6 +177,13 @@ func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, t
 			Level:            strategy.Level(source.logRun.Size()),
 			Layout:           newLayoutKey(source.layout).String(),
 		})
+	}
+	for _, skip := range plan.skipped {
+		planned := SkippedIndex{IndexPaths: skip.indexRun.paths(), Reason: skip.reason, SharedLogObject: skip.sharedLogObject}
+		for _, other := range skip.otherIndexRuns {
+			planned.OtherIndexRuns = append(planned.OtherIndexRuns, other.paths())
+		}
+		out.Skipped = append(out.Skipped, planned)
 	}
 	for _, job := range plan.jobs {
 		switch job := job.(type) {
