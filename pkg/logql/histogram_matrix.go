@@ -219,10 +219,12 @@ func checkEncodedBuckets(p *logproto.NativeHistogram) error {
 //   - The buckets of an exponential schema have an index that a float can have, see bucketIndexRange. The indexes
 //     are added in 32 bits when histograms are added up, and one near the limit of them wraps around and panics.
 //   - The custom bounds are finite, as the bounds of buckets(...) are. Validate lets the first one be -Inf.
-//   - The count is the number of observations in the buckets, whether the sum is a number or not. Validate lets
-//     a histogram with a NaN sum have more, which the producers of one do not make: a query does not observe NaN or
-//     the infinities, and a sum can be NaN only because infinities of the sums of finite values cancel. The
-//     count is at most maxHistogramCount, as histogramToProto has it.
+//   - The count is the number of observations in the buckets, with one exception. The builder puts a NaN in no
+//     exponential bucket, so the count of a histogram of those is more than its buckets hold, by the NaNs, and its
+//     sum is NaN. Validate lets any histogram with a NaN sum have more than its buckets hold, and a NaN is in the
+//     last custom bucket, so for custom buckets the count is always what the buckets hold. A sum that is NaN
+//     without a NaN observation, which the infinities of the two signs make, has the count of its buckets.
+//     The count is at most maxHistogramCount, as histogramToProto has it.
 func checkHistogramValues(h *histogram.Histogram) error {
 	for _, side := range [...]struct {
 		name  string
@@ -260,7 +262,15 @@ func checkHistogramValues(h *histogram.Histogram) error {
 	if !ok {
 		return fmt.Errorf("the buckets hold more observations than the wire format counts")
 	}
-	if observations != h.Count {
+	// What the buckets hold is at most that, so a count that is the same is too. The NaNs are in no bucket, and the
+	// count is all that limits them.
+	if h.Count > maxHistogramCount {
+		return fmt.Errorf("the count %d is more than the wire format counts", h.Count)
+	}
+	// Validate has checked that the count is not less than what the buckets hold. What it has more are the NaNs,
+	// and only exponential buckets have them.
+	nansPossible := !h.UsesCustomBuckets() && math.IsNaN(h.Sum)
+	if observations < h.Count && !nansPossible {
 		return fmt.Errorf("the buckets hold %d observations, and the count is %d", observations, h.Count)
 	}
 	return nil
@@ -334,12 +344,13 @@ func checkBucketIndexes(side string, schema int32, spans []histogram.Span) error
 	return nil
 }
 
-// bucketIndexRange returns the lowest and the highest index of a bucket of an exponential schema that a float
+// bucketIndexRange returns the lowest and the highest index of a bucket of an exponential schema that a value
 // can be in, with a little to spare. The bucket i has the upper bound 2^(i/2^schema), and the floats are from
-// 2^-1074 to just under 2^1024. A schema below 0 has a bucket for several exponents, so there are fewer.
+// 2^-1074 to just under 2^1024, which are the buckets up to 1024<<schema. The infinities are in the bucket above
+// it, see exponentialBucketIndex. A schema below 0 has a bucket for several exponents, so there are fewer.
 func bucketIndexRange(schema int32) (lo, hi int64) {
 	if schema >= 0 {
-		return -(1075 << schema), 1024 << schema
+		return -(1075 << schema), 1024<<schema + 1
 	}
 	return -(1075 >> -schema) - 1, (1024 >> -schema) + 1
 }

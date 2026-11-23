@@ -372,9 +372,25 @@ func histogramFuzzSeeds() []histogramFuzzSeed {
 			b: good(), refused: [2]bool{true},
 		},
 
-		// The count is the observations in the buckets, and it is a count that a float holds.
-		{name: "NaN sum and a count that is more than the buckets", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = 99 }), b: good(), refused: [2]bool{true}},
+		// The count is the observations in the buckets, and it is a count that a float holds. The NaNs of exponential
+		// buckets are the exception: they are in no bucket, and the sum is NaN.
+		{name: "NaN sum and a count that is more than the buckets", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = 99 }), b: good(), summed: true},
+		{name: "NaNs added to a histogram that has some", a: histogramSeedProto(nil, 1, math.NaN()), b: histogramSeedProto(nil, 2, math.NaN(), math.NaN()), summed: true},
+		{name: "what a query makes of NaN and the infinities", a: histogramSeedProto(nil, 1, math.NaN(), math.Inf(1), math.Inf(-1)), b: good(), summed: true},
+		{name: "custom buckets that have a NaN", a: custom(5, math.NaN(), math.Inf(1), math.Inf(-1)), b: custom(5, 5, 7), summed: true},
+		{
+			name: "custom buckets, a NaN sum and a count that is more than the buckets",
+			a:    func() *logproto.NativeHistogram { p := custom(5, math.NaN()); p.Count += 3; return p }(), b: custom(5), refused: [2]bool{true},
+		},
+		// The NaNs are not in the buckets, so nothing but the count limits them. A fuzz test found a count that the
+		// wire format does not hold, which the shard that sent it could not have sent.
+		{name: "NaN sum and a count that a float does not hold", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = 1<<53 + 1 }), b: good(), refused: [2]bool{true}},
+		{name: "NaN sum and the most that a float holds", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = 1 << 53 }), b: good(), summed: true},
+		{name: "NaN sum and a count over the integers", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = math.MaxUint64 }), b: good(), refused: [2]bool{true}},
 		{name: "NaN sum and a count that is less", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN(); p.Count = 1 }), b: good(), refused: [2]bool{true}},
+		// The bucket of the largest number is 8192, and the infinities are in the one above it.
+		{name: "the bucket of the infinities", a: one(setOffset(8193)), b: one(setOffset(8192)), summed: true},
+		{name: "the bucket above the one of the infinities", a: one(setOffset(8194)), b: good(), refused: [2]bool{true}},
 		{name: "NaN sum and the count of the buckets", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.NaN() }), b: good(), summed: true},
 		{name: "infinite sums", a: one(func(p *logproto.NativeHistogram) { p.Sum = math.Inf(1) }), b: one(func(p *logproto.NativeHistogram) { p.Sum = math.Inf(-1) }), summed: true},
 		{name: "a count that is more than the buckets", a: with(func(p *logproto.NativeHistogram) { p.Count += 5 }), b: good(), refused: [2]bool{true}},
