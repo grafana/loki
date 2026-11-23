@@ -101,8 +101,8 @@ github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible h1:8psS8a+wKfiLt1iVDX79F
 github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible/go.mod h1:T/Aws4fEfogEE9v+HPhhw+CntffsBHJ8nXQCwKr0/g8=
 github.com/aliyun/credentials-go v1.4.14 h1:1gyVmYSCUjiAhB8xKZVFCwztx2l7iHAJmdHR+U+C0ZU=
 github.com/aliyun/credentials-go v1.4.14/go.mod h1:G8iT166kPGHQUmO86LyIC+Qeb7Wak9SzTNO9isIHZbs=
-github.com/andybalholm/brotli v1.2.8 h1:H9F6r7RNwzSRsx/lytpIYkbjNFMt2yNBwsJ2+0gpx78=
-github.com/andybalholm/brotli v1.2.8/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
+github.com/andybalholm/brotli v1.3.0 h1:IdkhjSe/+34U+fP7FSR2Q6Poj1hnHUa2GoWmzXJd6qY=
+github.com/andybalholm/brotli v1.3.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/apache/arrow-go/v18 v18.9.0 h1:o+CdPvv7G7tXRc3UCq7sAkMOEEzvPFhunnWPMtIDZeQ=
 github.com/apache/arrow-go/v18 v18.9.0/go.mod h1:QbEIuSG88lfEwkBfq1OKoZ5/aFXLObsS2awz9F5OKak=
 github.com/apache/thrift v0.25.0 h1:6LLlvoPjy8Cc/0b5TYRcTR3RZa2W0at3WQRcOkDwVGs=
@@ -670,8 +670,8 @@ github.com/parquet-go/bitpack v1.1.0 h1:b80hfKZwIJ3Ku684xJSEj/9G0tywQPKOtmTV8si3
 github.com/parquet-go/bitpack v1.1.0/go.mod h1:XnVk9TH+O40eOOmvpAVZ7K2ocQFrQwysLMnc6M/8lgs=
 github.com/parquet-go/jsonlite v1.5.5 h1:TIqJ+b+mYoTvvEt1/ICS4fBacQO0xWwAbvtcrKjEcC8=
 github.com/parquet-go/jsonlite v1.5.5/go.mod h1:hN57TVzxtr04kaax5XwNgCCsh1KE7BT6dvY6X/zNH90=
-github.com/parquet-go/parquet-go v0.32.0 h1:NWDqTUHfrCS4cJP/Fj2HlxvqsrVedWG3sayMkf+znzM=
-github.com/parquet-go/parquet-go v0.32.0/go.mod h1:navtkAYr2LGoJVp141oXPlO/sxLvaOe3la2JEoD8+rg=
+github.com/parquet-go/parquet-go v0.32.1 h1:y4SRRrRa7fiz8LjShJAWIIuQp7U12M5kAxrloyhX2qE=
+github.com/parquet-go/parquet-go v0.32.1/go.mod h1:Emi5ai7YeTXZftimNQKSPqOTlaJTOcUgdsOQL8TcIbs=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/philhofer/fwd v1.1.1/go.mod h1:gk3iGcWd9+svBvR0sR+KPcfE+RNWozjowpeBVG3ZVNU=
 github.com/philhofer/fwd v1.2.1 h1:UtpS73q8bFgy/yH3gCq8LSNvj5gv/FowNOiWZa7uKwQ=
