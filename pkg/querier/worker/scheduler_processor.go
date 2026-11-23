@@ -13,6 +13,7 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/multierror"
@@ -106,6 +107,14 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 		}
 
 		if err := sp.querierLoop(c, address, inflightQuery, workerID); err != nil {
+			if grpcutil.IsCanceled(err) {
+				// The query-scheduler closes the stream to cancel the query this worker is running, for example when
+				// the query-frontend cancels it. That is routine, so reconnect at once instead of backing off.
+				level.Debug(sp.log).Log("msg", "query-scheduler closed the stream to cancel a query, reconnecting", "addr", address)
+				backoff.Reset()
+				continue
+			}
+
 			// Do not log an error if the query-scheduler is shutting down.
 			if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
 				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
