@@ -1,10 +1,10 @@
-//go:build purego || !amd64
+//go:build !amd64 || (purego && !goexperiment.simd)
 
 package delta
 
 func decodeByteArray(dst, src []byte, prefix, suffix []int32, offsets []uint32) ([]byte, []uint32, error) {
-	_ = prefix[:len(suffix)]
-	_ = suffix[:len(prefix)]
+	prefix = prefix[:len(suffix)]
+	suffix = suffix[:len(prefix)]
 
 	var lastValue []byte
 	for i := range suffix {
@@ -34,8 +34,8 @@ func decodeByteArray(dst, src []byte, prefix, suffix []int32, offsets []uint32) 
 }
 
 func decodeFixedLenByteArray(dst, src []byte, size int, prefix, suffix []int32) ([]byte, error) {
-	_ = prefix[:len(suffix)]
-	_ = suffix[:len(prefix)]
+	prefix = prefix[:len(suffix)]
+	suffix = suffix[:len(prefix)]
 
 	var lastValue []byte
 	for i := range suffix {

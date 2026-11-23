@@ -121,6 +121,13 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 	if footerSize <= optimisticFooterSize {
 		footerData = optimisticFooterData[optimisticFooterSize-footerSize : optimisticFooterSize]
 	} else {
+		// The footer and its eight byte trailer have to fit in the file. The
+		// length comes from the file, so a small file can claim a footer of
+		// up to 4 GB; checking it here keeps a damaged file from making the
+		// process allocate that much memory before the read fails.
+		if footerSize > size-8 {
+			return nil, fmt.Errorf("parquet file footer of %d bytes does not fit in a file of %d bytes", footerSize, size)
+		}
 		footerData = make([]byte, footerSize)
 		if cast, ok := f.reader.(interface{ SetFooterSection(offset, length int64) }); ok {
 			cast.SetFooterSection(size-(footerSize+8), footerSize)
@@ -344,7 +351,7 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 // this case the page index is not cached within the file, programs are expected
 // to make use of independently from the parquet package.
 func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, error) {
-	if len(f.metadata.RowGroups) == 0 {
+	if len(f.metadata.RowGroups) == 0 || len(f.metadata.RowGroups[0].Columns) == 0 {
 		return nil, nil, nil
 	}
 
@@ -1349,7 +1356,6 @@ func (f *FilePages) readDictionary() error {
 		}
 		page = buffers.get(len(bodyPlain))
 		copy(page.data.Slice(), bodyPlain)
-		page.ref()
 	} else {
 		decoder := thrift.NewDecoder(f.protocol.NewReader(rbuf))
 		if err := decoder.Decode(header); err != nil {
@@ -1359,7 +1365,6 @@ func (f *FilePages) readDictionary() error {
 			return err
 		}
 		page = buffers.get(int(header.CompressedPageSize))
-		page.ref()
 		if _, err := io.ReadFull(rbuf, page.data.Slice()); err != nil {
 			page.unref()
 			return err
@@ -1536,7 +1541,6 @@ func (f *FilePages) readEncryptedPage() (*format.PageHeader, *buffer[byte], erro
 
 	page := buffers.get(len(bodyPlain))
 	copy(page.data.Slice(), bodyPlain)
-	page.ref()
 
 	if isDictPage {
 		d.dictPagePending = false

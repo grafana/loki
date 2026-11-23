@@ -20,6 +20,7 @@
         "api_op_GetCallerIdentity.go",
         "api_op_GetDelegatedAccessToken.go",
         "api_op_GetFederationToken.go",
+        "api_op_GetScopedCredentials.go",
         "api_op_GetSessionToken.go",
         "api_op_GetWebIdentityToken.go",
         "auth.go",
@@ -40,6 +41,7 @@
         "sra_operation_order_test.go",
         "type_registry.go",
         "types/common_serde.go",
+        "types/enums.go",
         "types/errors.go",
         "types/types.go",
         "validators.go"

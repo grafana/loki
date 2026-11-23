@@ -89,13 +89,6 @@ import (
 // 128 characters and the values can’t exceed 256 characters. For these and
 // additional limits, see [IAM and STS Character Limits]in the IAM User Guide.
 //
-// An Amazon Web Services conversion compresses the passed inline session policy,
-// managed policy ARNs, and session tags into a packed binary format that has a
-// separate limit. Your request can fail for this limit even if your plaintext
-// meets the other requirements. The PackedPolicySize response element indicates
-// by percentage how close the policies and tags for your request are to the upper
-// size limit.
-//
 // You can pass a session tag with the same key as a tag that is attached to the
 // role. When you do, session tags override the role's tags with the same key.
 //
@@ -229,13 +222,6 @@ type AssumeRoleWithSAMLInput struct {
 	//
 	// For more information about role session permissions, see [Session policies].
 	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has a
-	// separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the upper
-	// size limit.
-	//
 	// [Session Policies]: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session
 	// [Session policies]: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session
 	Policy *string
@@ -248,13 +234,6 @@ type AssumeRoleWithSAMLInput struct {
 	// However, the plaintext that you use for both inline and managed session policies
 	// can't exceed 2,048 characters. For more information about ARNs, see [Amazon Resource Names (ARNs) and Amazon Web Services Service Namespaces]in the
 	// Amazon Web Services General Reference.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has a
-	// separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the upper
-	// size limit.
 	//
 	// Passing policies to this operation returns new temporary credentials. The
 	// resulting session's permissions are the intersection of the role's
@@ -321,6 +300,10 @@ type AssumeRoleWithSAMLOutput struct {
 	Credentials *types.Credentials
 
 	// The value of the Issuer element of the SAML assertion.
+	//
+	// This is not the trusted identity propagation issuer ( aws:OriginIdentity/Issuer
+	// ). When the session carries trusted identity propagation context, that value is
+	// returned in TrustedIdentityPropagationContext .
 	Issuer *string
 
 	// A hash value based on the concatenation of the following:
@@ -339,10 +322,10 @@ type AssumeRoleWithSAMLOutput struct {
 	//     BASE64 ( SHA1 ( "https://example.com/saml" + "123456789012" + "/MySAMLIdP" ) )
 	NameQualifier *string
 
-	// A percentage value that indicates the packed size of the session policies and
-	// session tags combined passed in the request. The request fails if the packed
-	// size is greater than 100 percent, which means the policies and tags exceeded the
-	// allowed space.
+	// The percentage (0-100) of the maximum allowed session token size that the
+	// returned session token consumes.
+	//
+	// This field is deprecated. Use SessionTokenUtilization instead.
 	//
 	// Deprecated: Deprecated. Replaced by SessionTokenUtilization.
 	PackedPolicySize *int32
@@ -378,6 +361,10 @@ type AssumeRoleWithSAMLOutput struct {
 	SourceIdentity *string
 
 	// The value of the NameID element in the Subject element of the SAML assertion.
+	//
+	// This is not the trusted identity propagation subject ( aws:OriginIdentity/Subject
+	// ). When the session carries trusted identity propagation context, that value is
+	// returned in TrustedIdentityPropagationContext .
 	Subject *string
 
 	//  The format of the name ID, as defined by the Format attribute in the NameID
@@ -389,7 +376,33 @@ type AssumeRoleWithSAMLOutput struct {
 	// urn:oasis:names:tc:SAML:2.0:nameid-format:transient is returned as transient .
 	// If the format includes any other prefix, the format is returned with no
 	// modifications.
+	//
+	// This is not the trusted identity propagation subject type (
+	// aws:OriginIdentity/SubjectType ). When the session carries trusted identity
+	// propagation context, that value is returned in TrustedIdentityPropagationContext
+	// .
 	SubjectType *string
+
+	// The trusted identity propagation context that Amazon Web Services STS set in
+	// the session from the SAML assertion, through the context provider attached to
+	// the SAML identity provider. It is present only when Amazon Web Services STS set
+	// such context in the session. It contains the aws:OriginIdentity/Subject ,
+	// aws:OriginIdentity/SubjectType , aws:OriginIdentity/Issuer and
+	// aws:OriginIdentity/FederatedProviderArn keys and the
+	// aws:TransactionContext/IdentityProvider/* keys that Amazon Web Services STS set
+	// in the session. Other keys in the session, such as aws:IdentityCenterInstanceArn
+	// and aws:IdentityStoreArn for an identity provider with an Identity Center
+	// instance attached, are not returned.
+	//
+	// Its OriginIdentity members share the names Subject , SubjectType and Issuer
+	// with members of this response but carry the trusted identity propagation values,
+	// which differ from the SAML assertion values.
+	//
+	// It is not returned when the SAML assertion is encrypted, even though the
+	// session carries the context.
+	//
+	// This element contains information about the end user. Do not log it.
+	TrustedIdentityPropagationContext *types.TrustedIdentityPropagationContext
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -441,6 +454,11 @@ func (v *AssumeRoleWithSAMLOutput) SerializeMembers(s smithy.ShapeSerializer) {
 	if v.SubjectType != nil {
 		s.WriteString(schemas.AssumeRoleWithSAMLResponse_SubjectType, *v.SubjectType)
 	}
+	if v.TrustedIdentityPropagationContext != nil {
+		s.WriteStruct(schemas.AssumeRoleWithSAMLResponse_TrustedIdentityPropagationContext)
+		v.TrustedIdentityPropagationContext.SerializeMembers(s)
+		s.CloseStruct()
+	}
 }
 func (v *AssumeRoleWithSAMLOutput) Deserialize(d smithy.ShapeDeserializer) error {
 	return smithy.ReadStruct(d, schemas.AssumeRoleWithSAMLResponse, func(s *smithy.Schema) error {
@@ -478,6 +496,9 @@ func (v *AssumeRoleWithSAMLOutput) Deserialize(d smithy.ShapeDeserializer) error
 		case schemas.AssumeRoleWithSAMLResponse_SubjectType:
 			v.SubjectType = new(string)
 			return d.ReadString(schemas.AssumeRoleWithSAMLResponse_SubjectType, v.SubjectType)
+		case schemas.AssumeRoleWithSAMLResponse_TrustedIdentityPropagationContext:
+			v.TrustedIdentityPropagationContext = &types.TrustedIdentityPropagationContext{}
+			return v.TrustedIdentityPropagationContext.Deserialize(d)
 		}
 		return nil
 	})

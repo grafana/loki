@@ -1494,7 +1494,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		require.ElementsMatch(t, objects, sources)
 	})
 
-	t.Run("logs the reused paths when a split merge writes a copy of an index object it replaces", func(t *testing.T) {
+	t.Run("merges a run of a split merge again with another index, writes some index objects again at the same path and keeps every row once", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		bucket := objstore.NewInMemBucket()
@@ -1509,17 +1509,23 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 
 		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
 		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
-		var logs bytes.Buffer
-		c.logger = log.NewLogfmtLogger(log.NewSyncWriter(&logs))
-		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		compacted, after := compactOnce(ctx, t, c, bucket, 1)
 
-		require.ErrorContains(t, err, "is an old path")
-		require.Contains(t, logs.String(), "index merge wrote a copy of an index object it replaces")
-		reused := false
-		for _, entry := range run {
-			reused = reused || strings.Contains(logs.String(), entry.Path)
+		require.Equal(t, 1, compacted.added, "the swap publishes the new run")
+		require.Len(t, groupIndexRuns(after), 1, "the run and the other index merge into one run")
+		again, _ := compactOnce(ctx, t, c, bucket, 1)
+		require.Zero(t, again.dispatched, "the window is converged, so the next pass merges nothing")
+		reused := 0
+		for _, entry := range after {
+			require.NotEqual(t, "indexes/plain", entry.Path)
+			if slices.ContainsFunc(run, func(old indexpointers.IndexPointer) bool { return old.Path == entry.Path }) {
+				reused++
+			}
 		}
-		require.True(t, reused, "the log names a reused path of the old run")
+		require.Positive(t, reused, "the merge writes some index objects of the old run again, at the same path")
+		postingRows, statRows, _ := readSplitRun(ctx, t, bucket, after)
+		require.Len(t, postingRows, 604, "the merge keeps the 602 postings rows of the run and the 2 of the other index")
+		require.Len(t, statRows, 17, "the merge keeps the 16 stats rows of the run and the 1 of the other index")
 	})
 
 	t.Run("merges every index object of a run with another index", func(t *testing.T) {

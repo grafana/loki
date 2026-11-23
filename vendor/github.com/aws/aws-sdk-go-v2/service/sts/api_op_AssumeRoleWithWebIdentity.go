@@ -80,13 +80,6 @@ import (
 // 128 characters and the values can’t exceed 256 characters. For these and
 // additional limits, see [IAM and STS Character Limits]in the IAM User Guide.
 //
-// An Amazon Web Services conversion compresses the passed inline session policy,
-// managed policy ARNs, and session tags into a packed binary format that has a
-// separate limit. Your request can fail for this limit even if your plaintext
-// meets the other requirements. The PackedPolicySize response element indicates
-// by percentage how close the policies and tags for your request are to the upper
-// size limit.
-//
 // You can pass a session tag with the same key as a tag that is attached to the
 // role. When you do, the session tag overrides the role tag with the same key.
 //
@@ -249,13 +242,6 @@ type AssumeRoleWithWebIdentityInput struct {
 	//
 	// For more information about role session permissions, see [Session policies].
 	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has a
-	// separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the upper
-	// size limit.
-	//
 	// [Session Policies]: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session
 	// [Session policies]: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#policies_session
 	Policy *string
@@ -268,13 +254,6 @@ type AssumeRoleWithWebIdentityInput struct {
 	// However, the plaintext that you use for both inline and managed session policies
 	// can't exceed 2,048 characters. For more information about ARNs, see [Amazon Resource Names (ARNs) and Amazon Web Services Service Namespaces]in the
 	// Amazon Web Services General Reference.
-	//
-	// An Amazon Web Services conversion compresses the passed inline session policy,
-	// managed policy ARNs, and session tags into a packed binary format that has a
-	// separate limit. Your request can fail for this limit even if your plaintext
-	// meets the other requirements. The PackedPolicySize response element indicates
-	// by percentage how close the policies and tags for your request are to the upper
-	// size limit.
 	//
 	// Passing policies to this operation returns new temporary credentials. The
 	// resulting session's permissions are the intersection of the role's
@@ -357,10 +336,10 @@ type AssumeRoleWithWebIdentityOutput struct {
 	// strongly recommend that you make no assumptions about the maximum size.
 	Credentials *types.Credentials
 
-	// A percentage value that indicates the packed size of the session policies and
-	// session tags combined passed in the request. The request fails if the packed
-	// size is greater than 100 percent, which means the policies and tags exceeded the
-	// allowed space.
+	// The percentage (0-100) of the maximum allowed session token size that the
+	// returned session token consumes.
+	//
+	// This field is deprecated. Use SessionTokenUtilization instead.
 	//
 	// Deprecated: Deprecated. Replaced by SessionTokenUtilization.
 	PackedPolicySize *int32
@@ -411,6 +390,20 @@ type AssumeRoleWithWebIdentityOutput struct {
 	// identity provider as the token's sub (Subject) claim.
 	SubjectFromWebIdentityToken *string
 
+	// The trusted identity propagation context that Amazon Web Services STS set in
+	// the session from the web identity token, through the context provider attached
+	// to the OpenID Connect identity provider. It is present only when Amazon Web
+	// Services STS set such context in the session. It contains the
+	// aws:OriginIdentity/Subject , aws:OriginIdentity/SubjectType ,
+	// aws:OriginIdentity/Issuer and aws:OriginIdentity/FederatedProviderArn keys and
+	// the aws:TransactionContext/IdentityProvider/* keys that Amazon Web Services STS
+	// set in the session. Other keys in the session, such as
+	// aws:IdentityCenterInstanceArn and aws:IdentityStoreArn for an identity provider
+	// with an Identity Center instance attached, are not returned.
+	//
+	// This element contains information about the end user. Do not log it.
+	TrustedIdentityPropagationContext *types.TrustedIdentityPropagationContext
+
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
 
@@ -455,6 +448,11 @@ func (v *AssumeRoleWithWebIdentityOutput) SerializeMembers(s smithy.ShapeSeriali
 	if v.SubjectFromWebIdentityToken != nil {
 		s.WriteString(schemas.AssumeRoleWithWebIdentityResponse_SubjectFromWebIdentityToken, *v.SubjectFromWebIdentityToken)
 	}
+	if v.TrustedIdentityPropagationContext != nil {
+		s.WriteStruct(schemas.AssumeRoleWithWebIdentityResponse_TrustedIdentityPropagationContext)
+		v.TrustedIdentityPropagationContext.SerializeMembers(s)
+		s.CloseStruct()
+	}
 }
 func (v *AssumeRoleWithWebIdentityOutput) Deserialize(d smithy.ShapeDeserializer) error {
 	return smithy.ReadStruct(d, schemas.AssumeRoleWithWebIdentityResponse, func(s *smithy.Schema) error {
@@ -486,6 +484,9 @@ func (v *AssumeRoleWithWebIdentityOutput) Deserialize(d smithy.ShapeDeserializer
 		case schemas.AssumeRoleWithWebIdentityResponse_SubjectFromWebIdentityToken:
 			v.SubjectFromWebIdentityToken = new(string)
 			return d.ReadString(schemas.AssumeRoleWithWebIdentityResponse_SubjectFromWebIdentityToken, v.SubjectFromWebIdentityToken)
+		case schemas.AssumeRoleWithWebIdentityResponse_TrustedIdentityPropagationContext:
+			v.TrustedIdentityPropagationContext = &types.TrustedIdentityPropagationContext{}
+			return v.TrustedIdentityPropagationContext.Deserialize(d)
 		}
 		return nil
 	})

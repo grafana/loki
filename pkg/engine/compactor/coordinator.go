@@ -744,9 +744,6 @@ func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, wind
 	if err != nil {
 		return compactionStats{}, err
 	}
-	if reused := reusedPaths(oldPaths, newRuns); len(reused) > 0 {
-		level.Error(windowLogger).Log("msg", "index merge wrote a copy of an index object it replaces, so the ToC swap rejects the new runs", "paths", strings.Join(reused, ","), "merges", len(plan.merges), "tasks", len(plans))
-	}
 
 	swapped, err := c.publisher.Replace(ctx, tenant, window, oldPaths, newRuns)
 	if err != nil {
