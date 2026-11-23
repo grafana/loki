@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
@@ -57,6 +58,62 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	test.Poll(t, time.Second, false, func() interface{} {
 		return running.Load()
 	})
+}
+
+func TestFrontendProcessor_ReconnectsWithoutBackoffWhenStreamIsCanceled(t *testing.T) {
+	frontend := &cancelingFrontend{cancellations: 5}
+	server := grpc.NewServer()
+	frontendv1pb.RegisterFrontendServer(server, frontend)
+	listener := bufconn.Listen(bufConnSize)
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	t.Cleanup(server.Stop)
+
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
+	conn, err := grpc.DialContext(context.Background(), "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	cfg := Config{QuerierID: "test-querier-id"}
+	fp := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fp.processQueriesOnSingleStream(ctx, conn, "bufnet", "")
+	}()
+
+	// A single backoff would take at least processorBackoffConfig.MinBackoff.
+	test.Poll(t, processorBackoffConfig.MinBackoff, int64(frontend.cancellations+1), func() interface{} {
+		return frontend.streams.Load()
+	})
+
+	cancel()
+	<-done
+}
+
+// cancelingFrontend closes the first streams with the error the query-frontend returns when it cancels the query
+// a querier is running, and keeps the stream that follows open until the querier closes it.
+type cancelingFrontend struct {
+	frontendv1pb.UnimplementedFrontendServer
+
+	cancellations int
+	streams       atomic.Int64
+}
+
+func (f *cancelingFrontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
+	if f.streams.Inc() <= int64(f.cancellations) {
+		return context.Canceled
+	}
+
+	<-server.Context().Done()
+	return nil
 }
 
 func TestContextCancelStopsProcess(t *testing.T) {

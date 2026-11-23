@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -71,6 +72,14 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 		}
 
 		if err := fp.process(c); err != nil {
+			if grpcutil.IsCanceled(err) {
+				// The query-frontend closes the stream to cancel the query this worker is running. That is routine,
+				// so reconnect at once instead of backing off.
+				level.Debug(fp.log).Log("msg", "query-frontend closed the stream to cancel a query, reconnecting", "address", address)
+				backoff.Reset()
+				continue
+			}
+
 			level.Error(fp.log).Log("msg", "error processing requests", "address", address, "err", err)
 			backoff.Wait()
 			continue
