@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -314,8 +315,11 @@ func TestHistogramBuilder_bucketLimit(t *testing.T) {
 		}
 		_, err := b.build()
 		require.Error(t, err)
-		require.ErrorIs(t, err, logqlerr.ErrLimit, "it is a limit, so it is served as a client error")
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit, "it is a limit, so it is served as a client error")
+		require.NotErrorIs(t, err, logqlerr.ErrLimit, "and it is not the limit of series, which is what ErrLimit is")
 		require.ErrorContains(t, err, "160")
+		// The message is what is left of it when it comes from a querier, and it has to say which limit it is.
+		require.True(t, strings.HasPrefix(err.Error(), logqlerr.ErrHistogramBucketLimit.Error()), err.Error())
 	})
 
 	t.Run("the zero bucket and both signs count", func(t *testing.T) {
@@ -327,7 +331,7 @@ func TestHistogramBuilder_bucketLimit(t *testing.T) {
 			b.observe(v)
 		}
 		_, err := b.build()
-		require.ErrorIs(t, err, logqlerr.ErrLimit)
+		require.ErrorIs(t, err, logqlerr.ErrHistogramBucketLimit)
 	})
 
 	t.Run("repeated values in a bucket count once", func(t *testing.T) {
@@ -350,7 +354,7 @@ func TestHistogramBuilder_bucketLimit(t *testing.T) {
 		b := histogramObserved(t, nil, other...)
 		merged, _, _, err := a.Copy().Add(b)
 		require.NoError(t, err)
-		require.ErrorIs(t, checkHistogramBuckets(merged), logqlerr.ErrLimit)
+		require.ErrorIs(t, checkHistogramBuckets(merged), logqlerr.ErrHistogramBucketLimit)
 	})
 
 	t.Run("custom buckets have the bounds, so they are not limited", func(t *testing.T) {

@@ -56,6 +56,9 @@ func ClassifyFailure(err error) (category, reason string) {
 		return FailureLimit, "querier_too_large"
 	case errors.Is(err, logqlerr.ErrIntervalLimit):
 		return FailureLimit, "interval_limit"
+	// Also matched by message in reasonForBadRequest, which must return the same category and reason.
+	case errors.Is(err, logqlerr.ErrHistogramBucketLimit):
+		return FailureLimit, "histogram_bucket_limit"
 	case errors.Is(err, logqlerr.ErrLimit):
 		return FailureLimit, "series_limit"
 	case errors.Is(err, logqlerr.ErrBlocked):
@@ -113,6 +116,10 @@ func reasonForBadRequest(err error) (category, reason string) {
 		return FailureLimit, "max_entries"
 	case matchesTemplate(msg, validation.ErrQueryTooLong):
 		return FailureLimit, "max_query_length"
+	// A histogram that goes over the bucket limit on a querier, as a shard of a sharded query does, arrives as the
+	// message of the error: it starts with the text of the sentinel, which has no format verb.
+	case matchesTemplate(msg, logqlerr.ErrHistogramBucketLimit.Error()):
+		return FailureLimit, "histogram_bucket_limit"
 	default:
 		return FailureUserError, "bad_request"
 	}
@@ -242,6 +249,7 @@ func isClientError(err error, queryErr *storage_errors.QueryError, userErr *User
 	return errors.As(err, queryErr) ||
 		errors.As(err, userErr) ||
 		errors.Is(err, logqlerr.ErrLimit) ||
+		errors.Is(err, logqlerr.ErrHistogramBucketLimit) ||
 		errors.Is(err, logqlerr.ErrParse) ||
 		errors.Is(err, logqlerr.ErrPipeline) ||
 		errors.Is(err, logqlerr.ErrBlocked) ||

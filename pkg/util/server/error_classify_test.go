@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -43,6 +44,19 @@ func TestClassifyFailure(t *testing.T) {
 		},
 		{"interval_limit", logqlerr.ErrIntervalLimit, FailureLimit, "interval_limit"},
 		{"series_limit", logqlerr.NewSeriesLimitError(100), FailureLimit, "series_limit"},
+		{
+			// The limit of the buckets of a histogram is not the limit of series, and is not reported as one.
+			"histogram_bucket_limit",
+			fmt.Errorf("%w: a histogram has 200 non-empty buckets, and at most 160 are allowed", logqlerr.ErrHistogramBucketLimit),
+			FailureLimit, "histogram_bucket_limit",
+		},
+		{
+			// The part of a sharded query that goes over it runs on a querier, so the frontend only gets the
+			// message, which starts with the text of the sentinel.
+			"histogram_bucket_limit_400_message_only",
+			httpgrpc.Errorf(http.StatusBadRequest, "%s: a histogram has 200 non-empty buckets, and at most 160 are allowed", logqlerr.ErrHistogramBucketLimit),
+			FailureLimit, "histogram_bucket_limit",
+		},
 		{"blocked", logqlerr.ErrBlocked, FailureBlocked, "blocked_by_policy"},
 		{"parse", logqlerr.ErrParse, FailureSyntax, "parse"},
 		{"pipeline", logqlerr.ErrPipeline, FailureSyntax, "pipeline"},
@@ -157,6 +171,25 @@ func TestWrappedLimitErrorStatusPreserved(t *testing.T) {
 			require.ErrorIs(t, wrapped, tc.sentinel)
 		})
 	}
+}
+
+// The limit of the buckets of a histogram is a client error, as the limit of series is, so it is served as a 400 that
+// is not retried. It is not an ErrLimit, which is what keeps it apart from the limit of series.
+func TestHistogramBucketLimitIsAClientError(t *testing.T) {
+	err := fmt.Errorf("%w: a histogram has 200 non-empty buckets, and at most 160 are allowed", logqlerr.ErrHistogramBucketLimit)
+
+	status, clientErr := ClientHTTPStatusAndError(err)
+	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, err.Error(), clientErr.Error())
+
+	var (
+		queryErr storage_errors.QueryError
+		userErr  UserError
+	)
+	require.True(t, isClientError(err, &queryErr, &userErr), "WrapError does not retry a client error")
+
+	require.NotErrorIs(t, err, logqlerr.ErrLimit)
+	require.NotErrorIs(t, logqlerr.NewSeriesLimitError(1), logqlerr.ErrHistogramBucketLimit)
 }
 
 // TestPrefixBeforeFormat guards the assumption reasonForBadRequest relies on:
