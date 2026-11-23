@@ -127,8 +127,9 @@ func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexFilter{
 		NodeID:           nodeID,
 		Tenant:           n.Tenant,
-		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
-		ObjectPaths:      slices.Clone(n.ObjectPaths),
+		SourceIndexPaths:  slices.Clone(n.SourceIndexPaths),
+		SourcesInKeyOrder: n.SourceIndexPathsInKeyOrder,
+		ObjectPaths:       slices.Clone(n.ObjectPaths),
 	}, nil
 }
 

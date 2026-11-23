@@ -111,8 +111,9 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 
 	*n = IndexFilter{
 		Tenant:           indexFilter.Tenant,
-		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
-		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
+		SourceIndexPaths:           slices.Clone(indexFilter.SourceIndexPaths),
+		SourceIndexPathsInKeyOrder: indexFilter.SourcesInKeyOrder,
+		ObjectPaths:                slices.Clone(indexFilter.ObjectPaths),
 	}
 	return nil
 }

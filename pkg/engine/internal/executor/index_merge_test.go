@@ -857,16 +857,37 @@ func TestDoIndexMerge(t *testing.T) {
 		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("env", "v"), labelKey("zone", "v")}, postingKeys(rows))
 	})
 
+	t.Run("returns an error when the index objects of one run overlap in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		for _, path := range []string{"source/wide-a.dat", "source/wide-b.dat"} {
+			var observations []postings.LabelObservation
+			for _, column := range []string{"app", "zone"} {
+				observations = append(observations, postings.LabelObservation{
+					ObjectPath: path + "/log", ColumnName: column, LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			buildSourcePostingsObject(t, bucket, tenant, path, observations)
+		}
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "source/wide-a.dat"}, {ObjectPath: "source/wide-b.dat"},
+		}}}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `a row of object "source/wide-b.dat" (section 2 of 2 of the run) sorts below the row before it, of object "source/wide-a.dat"`)
+	})
+
 	t.Run("returns an error when an index object is in two runs", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		run := disjointRun(t, bucket)
+		require.Len(t, run, 2)
 		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
 			{Sections: run[:1]},
 			{Sections: run},
 		}}
 
 		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
-		require.ErrorContains(t, err, `object "source/run-a.dat" appears in more than one place of the runs of the merge`)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 1 appears in more than one place of the runs of the merge, also in run 0`)
 	})
 
 	t.Run("returns an error when the sections of an index object are not next to each other in its run", func(t *testing.T) {
@@ -877,7 +898,7 @@ func TestDoIndexMerge(t *testing.T) {
 		}}
 
 		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
-		require.ErrorContains(t, err, `object "source/run-a.dat" appears in more than one place of the runs of the merge`)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 0 appears in more than one place of the runs of the merge, also in run 0`)
 	})
 
 	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
@@ -2125,6 +2146,28 @@ func (it *closeErrIter) At() int      { return it.rows[it.next-1] }
 func (it *closeErrIter) Err() error   { return nil }
 func (it *closeErrIter) Close() error { return it.closeErr }
 
+// countingIter returns rows and calls onClose when it closes.
+type countingIter struct {
+	rows    []int
+	next    int
+	onClose func()
+}
+
+func (it *countingIter) Next() bool {
+	if it.next >= len(it.rows) {
+		return false
+	}
+	it.next++
+	return true
+}
+
+func (it *countingIter) At() int    { return it.rows[it.next-1] }
+func (it *countingIter) Err() error { return nil }
+func (it *countingIter) Close() error {
+	it.onClose()
+	return nil
+}
+
 func TestSectionConcatSeq(t *testing.T) {
 	t.Run("stops with the close error of a drained section reader", func(t *testing.T) {
 		closeErr := errors.New("close failed")
@@ -2153,6 +2196,9 @@ func TestSectionConcatSeq(t *testing.T) {
 			sections: refs,
 			compare:  func(a, b int) int { return a - b },
 			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				if next >= len(sections) {
+					return nil, errors.New("opened more sections than the sequence holds")
+				}
 				rows := sections[next]
 				next++
 				return &closeErrIter{rows: rows}, nil
@@ -2173,10 +2219,30 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.NoError(t, seq.Err())
 	})
 
+	t.Run("keeps at most one section reader open while it reads the sections of several objects", func(t *testing.T) {
+		var open, maxOpen int
+		seq := &sectionConcatSeq[int]{
+			ctx: context.Background(),
+			sections: []sourceSection{
+				{objectPath: "indexes/a"}, {objectPath: "indexes/a"}, {objectPath: "indexes/b"},
+			},
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				open++
+				maxOpen = max(maxOpen, open)
+				return &countingIter{rows: []int{1, 2}, onClose: func() { open-- }}, nil
+			},
+		}
+
+		require.Len(t, drain(seq), 6)
+		require.NoError(t, seq.Err())
+		require.Equal(t, 1, maxOpen)
+		require.Zero(t, open)
+	})
+
 	t.Run("stops with an error that names the object when a section starts below the end of the section before it", func(t *testing.T) {
 		seq := inOrderSeq([]int{1, 4}, []int{3})
 		require.Equal(t, []int{1, 4}, drain(seq))
-		require.ErrorContains(t, seq.Err(), `section 1/2 of the sequence, of object "indexes/1", holds a row that sorts below the row before it`)
+		require.ErrorContains(t, seq.Err(), `run 0: a row of object "indexes/1" (section 2 of 2 of the run) sorts below the row before it, of object "indexes/0"`)
 	})
 }
 

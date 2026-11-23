@@ -357,7 +357,11 @@ func (c *coordinator) planLogMerge(
 		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
 	}
 	if len(unmergedRuns) > 0 {
-		plan.tasks = append(plan.tasks, indexFilterForUnmerged(sourceIndexRun, unmergedRuns))
+		filter, err := indexFilterForUnmerged(sourceIndexRun, unmergedRuns)
+		if err != nil {
+			return logCompactionPlan{}, err
+		}
+		plan.tasks = append(plan.tasks, filter)
 	}
 	return plan, nil
 }
@@ -487,7 +491,7 @@ func countSingleObjectRuns(runs []v2.Run) int {
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
 // unmerged runs from sourceIndexRun. Its run takes the time range of the
 // unmerged runs.
-func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.RunRef) indexFilterTask {
+func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.RunRef) (indexFilterTask, error) {
 	var objectPaths []string
 	for _, run := range unmerged {
 		for _, section := range run.Sections {
@@ -496,11 +500,15 @@ func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.
 	}
 	slices.Sort(objectPaths)
 	objectPaths = slices.Compact(objectPaths)
+	sourceIndexPaths, err := sourceIndexRun.pathsInKeyOrder()
+	if err != nil {
+		return indexFilterTask{}, err
+	}
 	return indexFilterTask{
-		sourceIndexPaths: sourceIndexRun.pathsInKeyOrder(),
+		sourceIndexPaths: sourceIndexPaths,
 		objectPaths:      objectPaths,
 		inputRange:       runsTimeRange(unmerged),
-	}
+	}, nil
 }
 
 func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {

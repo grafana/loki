@@ -51,7 +51,6 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	// Classify sections from all runs, grouped by source object.
 	objects, runs, layout, err := c.classifyRuns(ctx, node)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
@@ -154,7 +153,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if owner, seen := runOf[path]; seen {
 				last := runPaths[owner][len(runPaths[owner])-1]
 				if owner != runIdx || last != path {
-					return nil, nil, streams.Layout{}, fmt.Errorf("object %q appears in more than one place of the runs of the merge", path)
+					return nil, nil, streams.Layout{}, fmt.Errorf("object %q of run %d appears in more than one place of the runs of the merge, also in run %d", path, runIdx, owner)
 				}
 			} else {
 				runOf[path] = runIdx
@@ -285,11 +284,10 @@ func (s *sourceLayout) shared() (streams.Layout, error) {
 }
 
 // objectSections holds one source object's mergable sections, split by type and
-// kept in section order. A single object's same-type sections are contiguous,
-// non-overlapping slices of that object's sorted row stream (the section
-// builders write every row in sorted order, then split into sections at size
-// boundaries), so they can be concatenated in section order — see
-// [sectionConcatSeq].
+// kept in section order. The section builders write every row in sorted order
+// and then split it into sections by size. So the same-type sections of one
+// object are slices of one sorted row stream, and a [sectionConcatSeq] can
+// read them in section order.
 type objectSections struct {
 	path     string
 	postings []*dataobj.Section
@@ -472,7 +470,8 @@ type sourceSection struct {
 	section    *dataobj.Section
 }
 
-// sectionsOf returns the sections of the source index object at path.
+// sectionsOf tags each of sections with path, the path of the source index
+// object that holds them.
 func sectionsOf(path string, sections []*dataobj.Section) []sourceSection {
 	out := make([]sourceSection, len(sections))
 	for i, section := range sections {
@@ -495,8 +494,9 @@ type sectionConcatSeq[R any] struct {
 	seqIdx   int
 
 	// compare, if set, makes the sequence fail on a row that sorts below the
-	// row before it. A merge of rows out of order would write unsorted
-	// sections.
+	// row before it. The output builders also reject rows out of order, but
+	// only this check can name the source objects. It also sees the rows that
+	// the merge does not keep.
 	compare func(a, b R) int
 
 	idx int                   // index of the section currently being read
@@ -504,7 +504,8 @@ type sectionConcatSeq[R any] struct {
 	row R                     // current row, valid after Next returns true
 	err error
 
-	hasRow bool // hasRow is true once the sequence returned a row.
+	hasRow     bool
+	rowSection int // index of the section of row
 }
 
 // Index returns this sequence's stable index in the merge, for tiebreak ordering.
@@ -539,10 +540,10 @@ func (s *sectionConcatSeq[R]) Next() bool {
 		if s.cur.Next() {
 			row := s.cur.At()
 			if s.compare != nil && s.hasRow && s.compare(row, s.row) < 0 {
-				s.err = fmt.Errorf("section %d/%d of the sequence, of object %q, holds a row that sorts below the row before it", s.idx, len(s.sections), s.sections[s.idx].objectPath)
+				s.err = fmt.Errorf("run %d: a row of object %q (section %d of %d of the run) sorts below the row before it, of object %q", s.seqIdx, s.sections[s.idx].objectPath, s.idx+1, len(s.sections), s.sections[s.rowSection].objectPath)
 				return false
 			}
-			s.row, s.hasRow = row, true
+			s.row, s.hasRow, s.rowSection = row, true, s.idx
 			return true
 		}
 		// Current section drained or errored: capture any error, close, advance.

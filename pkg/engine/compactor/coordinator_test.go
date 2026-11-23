@@ -3905,35 +3905,49 @@ func TestCoordinator_SkipsCorruptIndexes(t *testing.T) {
 }
 
 func TestIndexFilterForUnmerged(t *testing.T) {
+	keysOf := func(t *testing.T, minColumn, maxColumn string) postings.KeyRange {
+		t.Helper()
+		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: minColumn}, postings.Key{Kind: postings.KindLabel, ColumnName: maxColumn})
+		require.NoError(t, err)
+		return keys
+	}
+
 	t.Run("filters every index object of the source run and keeps the distinct log objects of the unmerged runs", func(t *testing.T) {
 		run := indexRun{entries: []indexpointers.IndexPointer{
-			{Path: "indexes/run/a", RunID: 1},
-			{Path: "indexes/run/b", RunID: 1},
+			{Path: "indexes/run/a", RunID: 1, PostingKeys: keysOf(t, "app", "app")},
+			{Path: "indexes/run/b", RunID: 1, PostingKeys: keysOf(t, "env", "env")},
 		}}
 		unmerged := []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b", MinTimestamp: 20, MaxTimestamp: 30}, {ObjectPath: "logs/a", MinTimestamp: 10, MaxTimestamp: 15}}},
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/b", SectionIndex: 1, MinTimestamp: 25, MaxTimestamp: 40}}},
 		}
 
-		task := indexFilterForUnmerged(run, unmerged)
+		task, err := indexFilterForUnmerged(run, unmerged)
+		require.NoError(t, err)
 		require.Equal(t, []string{"indexes/run/a", "indexes/run/b"}, task.sourceIndexPaths)
 		require.Equal(t, []string{"logs/a", "logs/b"}, task.objectPaths)
 		require.Equal(t, newTimeRange(time.Unix(0, 10), time.Unix(0, 40)), task.inputRange)
 	})
 
 	t.Run("lists the index objects of the source run in posting key order when the ToC lists them in another order", func(t *testing.T) {
-		keysOf := func(column string) postings.KeyRange {
-			keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column})
-			require.NoError(t, err)
-			return keys
-		}
 		run := indexRun{entries: []indexpointers.IndexPointer{
-			{Path: "indexes/run/z", RunID: 1, PostingKeys: keysOf("zone")},
-			{Path: "indexes/run/a", RunID: 1, PostingKeys: keysOf("app")},
+			{Path: "indexes/run/z", RunID: 1, PostingKeys: keysOf(t, "zone", "zone")},
+			{Path: "indexes/run/a", RunID: 1, PostingKeys: keysOf(t, "app", "app")},
 		}}
 
-		task := indexFilterForUnmerged(run, nil)
+		task, err := indexFilterForUnmerged(run, nil)
+		require.NoError(t, err)
 		require.Equal(t, []string{"indexes/run/a", "indexes/run/z"}, task.sourceIndexPaths)
+	})
+
+	t.Run("returns a corrupt index error when the index objects of the source run overlap", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{
+			{Path: "indexes/run/a", RunID: 1, PostingKeys: keysOf(t, "app", "env")},
+			{Path: "indexes/run/b", RunID: 1, PostingKeys: keysOf(t, "cat", "zone")},
+		}}
+
+		_, err := indexFilterForUnmerged(run, nil)
+		require.ErrorIs(t, err, errCorruptIndex)
 	})
 }
 

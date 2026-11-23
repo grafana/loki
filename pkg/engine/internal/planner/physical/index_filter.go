@@ -20,6 +20,13 @@ type IndexFilter struct {
 	// a filter over part of a run loses postings.
 	SourceIndexPaths []string
 
+	// SourcesInKeyOrder is true if SourceIndexPaths lists the index objects in
+	// posting key order, with key ranges that do not overlap. The filter then
+	// reads them as one sequence, with one postings section reader at a time.
+	// Otherwise it merges one sequence for each index object, which accepts
+	// any order. A coordinator that predates the field sends false.
+	SourcesInKeyOrder bool
+
 	// ObjectPaths are the log objects whose rows the new index keeps.
 	ObjectPaths []string
 }

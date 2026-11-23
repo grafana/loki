@@ -69,22 +69,38 @@ func TestIndexRun_String(t *testing.T) {
 }
 
 func TestIndexRun_PathsInKeyOrder(t *testing.T) {
-	entry := func(t *testing.T, path, column string) indexpointers.IndexPointer {
+	entry := func(t *testing.T, path, minColumn, maxColumn string) indexpointers.IndexPointer {
 		t.Helper()
-		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column + "z"})
+		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: minColumn}, postings.Key{Kind: postings.KindLabel, ColumnName: maxColumn})
 		require.NoError(t, err)
 		return indexpointers.IndexPointer{Path: path, RunID: 1, PostingKeys: keys}
 	}
 
-	t.Run("returns the paths in the order of the smallest posting key of each index object", func(t *testing.T) {
-		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/z", "zone"), entry(t, "indexes/a", "app"), entry(t, "indexes/e", "env")}}
-		require.Equal(t, []string{"indexes/a", "indexes/e", "indexes/z"}, run.pathsInKeyOrder())
-		require.Equal(t, []string{"indexes/z", "indexes/a", "indexes/e"}, run.paths(), "paths keeps the order of the ToC")
+	t.Run("returns the paths in the order of the posting keys of the index objects", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/z", "zone", "zz"), entry(t, "indexes/a", "app", "az"), entry(t, "indexes/e", "env", "ez")}}
+		paths, err := run.pathsInKeyOrder()
+		require.NoError(t, err)
+		require.Equal(t, []string{"indexes/a", "indexes/e", "indexes/z"}, paths)
 	})
 
 	t.Run("returns the path of a run of one index object without posting key bounds", func(t *testing.T) {
-		run := indexRun{entries: []indexpointers.IndexPointer{{Path: "indexes/only"}}}
-		require.Equal(t, []string{"indexes/only"}, run.pathsInKeyOrder())
+		paths, err := indexRun{entries: []indexpointers.IndexPointer{{Path: "indexes/only"}}}.pathsInKeyOrder()
+		require.NoError(t, err)
+		require.Equal(t, []string{"indexes/only"}, paths)
+	})
+
+	t.Run("returns a corrupt index error when an index object of a run of several has no posting key bounds", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/a", "app", "az"), {Path: "indexes/b", RunID: 1}}}
+		_, err := run.pathsInKeyOrder()
+		require.ErrorIs(t, err, errCorruptIndex)
+		require.ErrorContains(t, err, "indexes/b")
+	})
+
+	t.Run("returns a corrupt index error when the key ranges of two index objects overlap", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/a", "app", "env"), entry(t, "indexes/e", "env", "zone")}}
+		_, err := run.pathsInKeyOrder()
+		require.ErrorIs(t, err, errCorruptIndex)
+		require.ErrorContains(t, err, "overlapping posting key ranges")
 	})
 }
 
