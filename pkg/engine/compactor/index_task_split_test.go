@@ -8,7 +8,6 @@ import (
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
@@ -110,20 +109,6 @@ func TestSizeIndexTaskSplitter(t *testing.T) {
 		bad.Keys = []v2.KeySize[indexSortKey]{{Key: indexSortKey{kind: 255}, UncompressedSize: 100}}
 		_, err := splitter([]v2.Section[indexSortKey]{bad, a2, b1, c1, d1}, 200).split(spec)
 		require.ErrorContains(t, err, "posting kind 255")
-	})
-}
-
-func TestReusedPaths(t *testing.T) {
-	t.Run("returns the paths of new runs that are also old paths in new run order", func(t *testing.T) {
-		newRuns := []metastore.IndexRunEntries{
-			{{Path: "index/new-0"}, {Path: "index/old-1"}},
-			{{Path: "index/old-0"}},
-		}
-		require.Equal(t, []string{"index/old-1", "index/old-0"}, reusedPaths([]string{"index/old-0", "index/old-1"}, newRuns))
-	})
-
-	t.Run("returns no paths when every path of the new runs is new", func(t *testing.T) {
-		require.Empty(t, reusedPaths([]string{"index/old-0"}, []metastore.IndexRunEntries{{{Path: "index/new-0"}}}))
 	})
 }
 
