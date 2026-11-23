@@ -126,6 +126,9 @@ func WithOtelDebugMetrics() option.ClientOption {
 // [cloud.google.com/go/storage.NewGRPCClient].
 // It sets the buffer pool used to allocate memory for parallel uploads.
 //
+// The caller owns the pool's lifecycle; Client.Close does not close a
+// user-provided pool.
+//
 // This option is not supported at the moment.
 func WithBufferPool(pool BufferPool) option.ClientOption {
 	return internal.WithBufferPool.(func(BufferPool) option.ClientOption)(pool)

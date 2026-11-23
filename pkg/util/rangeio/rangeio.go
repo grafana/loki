@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"runtime"
 	"slices"
@@ -20,7 +21,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -29,7 +29,7 @@ var tracer = otel.Tracer("pkg/util/rangeio")
 // Range represents a range of data to be read.
 type Range struct {
 	// Data to read into; exactly len(Data) bytes will be read, or an error will
-	// be returned.
+	// be returned. The content of Data is undefined after an error.
 	Data []byte
 
 	// Offset to start reading from.
@@ -50,8 +50,9 @@ type Reader interface {
 	// encountered.
 	//
 	// When ReadRange returns n < len(r.Data), it returns a non-nil error
-	// explaining why more bytes were not returned. The error must be [io.EOF]
-	// when reading beyond the end of the input source.
+	// explaining why more bytes were not returned. When reading beyond the end
+	// of the input source, the error must match [io.EOF] or
+	// [io.ErrUnexpectedEOF] with [errors.Is].
 	//
 	// ReadRange may use all of r.Data as scratch space during the call, even if
 	// less than len(r.Data) bytes are read. If some data is available but not
@@ -127,20 +128,18 @@ func (cfg *Config) effectiveParallelism() int {
 
 // DefaultConfig holds the default values for [Config].
 var DefaultConfig = Config{
-	// Benchmarks of GCS and S3 revealed that more parallelism is always better.
-	// However, too much parallelism (especially parallel [ReadRanges] calls)
-	// can eventually saturate the network. MaxParallelism of 10 appears to
-	// provide a good balance of throughput without saturating the network.
-	MaxParallelism: 10,
+	// ReadRanges splits ranges until it has MaxParallelism of them, so the parallelism must grow with
+	// MaxRangeSize. A lower parallelism leaves large requests, and large requests raise the tail
+	// latency. Too much parallelism, across many parallel ReadRanges calls, can saturate the network.
+	MaxParallelism: 16,
 
-	// Coalesce ranges no further than 1 MiB apart. 1 MiB is a good balance
-	// between combining ranges without introducing too many "wasted" bytes.
-	CoalesceSize: 1 << 20, // 1 MiB
+	// Coalesce ranges no further than 128 KiB apart. A larger gap reads more bytes than the caller
+	// asks for, and gives no lower latency.
+	CoalesceSize: 128 << 10, // 128 KiB
 
-	// Constrain ranges to be no longer than 8 MiB. Benchmarks of GCS and S3
-	// revealed that 8 MiB typically offers the best throughput when there's
-	// enough ranges to fill MaxParallelism.
-	MaxRangeSize: 8 * (1 << 20), // 8 MiB
+	// Constrain ranges to be no longer than 32 MiB. Large ranges make fewer requests per call, which
+	// offsets the extra requests that a small CoalesceSize makes.
+	MaxRangeSize: 32 << 20, // 32 MiB
 
 	// Constrain split ranges to be no smaller than 1 MiB.
 	MinRangeSize: 1 << 20, // 1 MiB
@@ -163,9 +162,14 @@ var bytesBufferPool = &sync.Pool{
 // context injected with custom configuration by [WithConfig]. If there is no
 // custom configuration in the context, [DefaultConfig] is used.
 //
-// ReadRanges returns an error if any call to r.ReadRange returns an error.
-// ReadRanges only returns [io.EOF] if one of the ranges is beyond the end of
-// the input source.
+// ReadRanges returns an error if a call to r.ReadRange reads fewer bytes than
+// requested. It ignores the error of a call that reads all the requested
+// bytes. The Data of the ranges is undefined after an error.
+//
+// A short read that ends at the end of the input source, or that reports no
+// error, makes ReadRanges return an error that wraps [io.ErrUnexpectedEOF].
+// ReadRanges never returns [io.EOF]. A caller that reads until [io.EOF] would
+// take a truncated input for a clean end.
 func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	// We store our own start time so we can calculate read throughput at the
 	// end.
@@ -191,8 +195,6 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(cfg.effectiveParallelism())
 
-	var gotEOF atomic.Bool
-
 	for _, targetRange := range optimized {
 		// Ignore ranges that happened to be empty.
 		if len(targetRange.Data) == 0 {
@@ -203,21 +205,27 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 			tr := tracedReader{inner: r}
 			n, err := tr.ReadRange(ctx, targetRange)
 
-			// ReadRange must return a non-nil error if it read fewer than the
-			// requested amount of bytes.
-			//
-			// In the case of io.EOF (because we tried reading beyond the end of
-			// the input source), we don't want to cancel the other goroutines,
-			// so we store the EOF marker for later.
-			if n < len(targetRange.Data) {
-				if errors.Is(err, io.EOF) {
-					gotEOF.Store(true)
-					return nil
-				}
-				return err
+			// A read of all the bytes succeeds, whatever its error. A reader can
+			// report the end of the input, or a Close error, on the read that
+			// ends there.
+			if n >= len(targetRange.Data) {
+				return nil
 			}
 
-			return nil
+			// A short read is an error. Report the end of the input as
+			// io.ErrUnexpectedEOF, so that the caller never takes it for the end
+			// of its data.
+			//
+			// A reader that returns a short read with a nil error breaks the
+			// Reader contract. Without this error, the range keeps stale bytes
+			// from the buffer pool.
+			//
+			// The offset and sizes in the message are those of the optimized
+			// range. They can differ from the ranges of the caller.
+			if err == nil || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return fmt.Errorf("read %d of %d bytes at offset %d: %w", n, len(targetRange.Data), targetRange.Offset, io.ErrUnexpectedEOF)
+			}
+			return err
 		})
 	}
 
@@ -264,11 +272,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	}
 
 	span.AddEvent("copied data to inputs")
-	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
-
-	if gotEOF.Load() {
-		return io.EOF
-	}
+	span.SetStatus(codes.Ok, "")
 	return nil
 }
 
