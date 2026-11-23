@@ -203,7 +203,7 @@ func splitLogsSectionMetadataToGroups(out *prefetchedRangesGroups, sec *filemd.S
 }
 
 // decodeProto decodes a message that protocodec encoded at the start of b. It first checks that the
-// size prefix fits in b, because protocodec.Decode allocates the size that the prefix names.
+// size prefix fits in b, so a corrupt prefix returns a clear error before protocodec.Decode reads.
 func decodeProto(b []byte, pb proto.Message) error {
 	size, n := binary.Uvarint(b)
 	if n <= 0 || size > uint64(len(b)-n) {

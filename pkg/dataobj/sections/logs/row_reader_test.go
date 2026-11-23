@@ -520,6 +520,42 @@ func TestRowReader_SetPredicates(t *testing.T) {
 		require.Zero(t, rowCalls)
 	})
 
+	t.Run("a time range keeps the rows on an inclusive bound and drops the rows on an exclusive bound", func(t *testing.T) {
+		for _, tc := range []struct {
+			name                     string
+			start, end               int64
+			includeStart, includeEnd bool
+			wantLines                []string
+		}{
+			{"with an inclusive start", 10, 30, true, false, []string{"line-1", "line-2"}},
+			{"with an exclusive start and end", 10, 30, false, false, []string{"line-2"}},
+			{"with an inclusive end", 10, 30, false, true, []string{"line-2", "line-3"}},
+			{"with an inclusive start and end", 10, 30, true, true, []string{"line-1", "line-2", "line-3"}},
+			{"with an inclusive point range", 20, 20, true, true, []string{"line-2"}},
+			{"with an exclusive start on a point range", 20, 20, false, true, nil},
+			{"with an exclusive end on a point range", 20, 20, true, false, nil},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				reader := NewRowReader(section)
+				require.NoError(t, reader.SetProjectedColumns([]ColumnType{ColumnTypeStreamID, ColumnTypeMessage}, nil))
+				require.NoError(t, reader.SetPredicates([]RowPredicate{TimeRangeRowPredicate{
+					StartTime:    unixSecond(tc.start),
+					EndTime:      unixSecond(tc.end),
+					IncludeStart: tc.includeStart,
+					IncludeEnd:   tc.includeEnd,
+				}}))
+				require.NoError(t, reader.Open(t.Context()))
+				t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+				var lines []string
+				for _, rec := range readAllRecords(t, reader) {
+					lines = append(lines, string(rec.Line))
+				}
+				require.ElementsMatch(t, tc.wantLines, lines)
+			})
+		}
+	})
+
 	t.Run("a message predicate listed last runs only on the rows the earlier predicates keep", func(t *testing.T) {
 		var seen []string
 		reader := NewRowReader(section)

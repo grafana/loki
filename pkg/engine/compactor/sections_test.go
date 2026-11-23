@@ -130,6 +130,10 @@ type testIndexObject struct {
 	// shardBuckets is the bucket count of the shard layout that the stats
 	// section records. It must not be zero.
 	shardBuckets uint32
+
+	// layoutWithoutStats makes an index without stats rows record its layout
+	// in an empty stats section, as an index object of a run does.
+	layoutWithoutStats streams.Layout
 }
 
 func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
@@ -153,7 +157,11 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}
-	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layoutOfStats(object.shardBuckets, object.stats))
+	layout := layoutOfStats(object.shardBuckets, object.stats)
+	if len(object.stats) == 0 {
+		layout = object.layoutWithoutStats
+	}
+	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layout)
 	require.NoError(t, err)
 	for _, stat := range object.stats {
 		require.NoError(t, builder.AppendStat(object.tenant, stat))
@@ -182,10 +190,15 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 }
 
 // layoutOfStats returns the layout with shardBuckets shard buckets and the
-// sort schema of the first of rows as schema labels.
+// sort schema of the first of rows as schema labels. It returns the zero
+// layout if rows is empty, so an index without stats rows has no stats
+// section.
 func layoutOfStats(shardBuckets uint32, rows []stats.Stat) streams.Layout {
+	if len(rows) == 0 {
+		return streams.Layout{}
+	}
 	var schemaLabels []string
-	if len(rows) > 0 && rows[0].SortSchema != "" {
+	if rows[0].SortSchema != "" {
 		schemaLabels = strings.Split(rows[0].SortSchema, ",")
 	}
 	return streams.NewLayout(streams.MustShardLayoutFromBuckets(shardBuckets), schemaLabels)
@@ -567,6 +580,24 @@ func TestLogSectionRefsFor(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, refs, 1)
 		require.Equal(t, "logs/acme", refs[0].Ref.ObjectPath)
+	})
+
+	t.Run("folds the stats rows of a run whose other index object has an empty stats section that records the layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStats(ctx, t, bucket, "acme", "indexes/run/a", []stats.Stat{stat("auth", 300)})
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant: "acme", path: "indexes/run/b", sectionSize: 1 << 20, shardBuckets: streams.DefaultShardBuckets,
+			postings:           []postings.Row{{Kind: postings.KindLabel, ObjectPath: "logs/log-0", ColumnName: "app", LabelValue: "api"}},
+			layoutWithoutStats: streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service_name"}),
+		})
+
+		refs, buckets, err := logSectionRefsFor(ctx, bucket, "acme", runOf("indexes/run/a", "indexes/run/b"))
+		require.NoError(t, err)
+		require.Len(t, refs, 1)
+		require.Equal(t, int64(300), refs[0].Ref.UncompressedSize)
+		layout, ok := buckets.Layout()
+		require.True(t, ok)
+		require.Equal(t, streams.DefaultShardLayout(), layout)
 	})
 
 	t.Run("returns a corrupt index error when an index object of a run records no layout and another does", func(t *testing.T) {

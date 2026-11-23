@@ -38,6 +38,19 @@ func Clone(alloc *memory.Allocator, input Datum) (Datum, error) {
 	}
 }
 
+// CloneArray returns a deep copy of arr, allocating all new memory from alloc.
+// It is like [Clone], but takes and returns an [Array]. The returned Array does
+// not share any memory with arr.
+func CloneArray(alloc *memory.Allocator, arr Array) (Array, error) {
+	cloned, err := Clone(alloc, arr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clone returns an Array for an Array input.
+	return cloned.(Array), nil
+}
+
 func cloneNull(alloc *memory.Allocator, src *Null) *Null {
 	validity := cloneValidity(alloc, src.Validity())
 	return NewNull(validity)

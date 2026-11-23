@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -21,6 +22,10 @@ type frontendHintAdapter struct {
 
 func (a *frontendHintAdapter) MinDate() time.Time { return a.inner.MinDate() }
 
+func (a *frontendHintAdapter) Needles(expr syntax.Expr) (needle.Conjunctions, int) {
+	return a.inner.Needles(expr)
+}
+
 func (a *frontendHintAdapter) ProvideHints(
 	ctx context.Context,
 	tenant string,
@@ -33,13 +38,13 @@ func (a *frontendHintAdapter) ProvideHints(
 	}
 
 	resp, err := a.next.Do(ctx, &logproto.LoglineIndexRequest{
-		From:            from,
-		Through:         through,
-		Expr:            expr.String(),
-		Indexes:         hintprovider.ToProtoIndexMetas(plan.Indexes), // export or keep toProto in this pkg via a helper on HintPlan
-		NgramLength:     plan.NgramLength,                             // or pass from cfg
-		MaxParallel:     plan.MaxParallel,
-		MaxConjunctions: plan.MaxConjunctions,
+		From:         from,
+		Through:      through,
+		Expr:         expr.String(),
+		Indexes:      hintprovider.ToProtoIndexMetas(plan.Indexes), // export or keep toProto in this pkg via a helper on HintPlan
+		NgramLength:  plan.NgramLength,                             // or pass from cfg
+		MaxParallel:  plan.MaxParallel,
+		Conjunctions: hintprovider.ToProtoConjunctions(plan.Filters),
 	})
 
 	if err != nil {

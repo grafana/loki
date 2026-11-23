@@ -465,6 +465,10 @@ func useScalarVariableWidthEquality(values arrow.Array) bool {
 	if values.NullN() == 0 {
 		return false
 	}
+	return useScalarEqualityForValidityRuns(values)
+}
+
+func useScalarEqualityForValidityRuns(values arrow.Array) bool {
 	if values.Len() <= 64 || len(values.NullBitmapBytes()) == 0 {
 		return true
 	}
