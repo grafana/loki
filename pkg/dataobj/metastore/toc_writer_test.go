@@ -696,6 +696,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 
 		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", reusedOldPaths, reusedRun(t))
 		require.ErrorIs(t, err, errChangeSuperseded)
+		require.ErrorContains(t, err, "1 of 2")
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
 	})
@@ -717,6 +718,53 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readRawToC(t.Context(), t, bucket, tocPath)
 
 		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/new-a", "idx/reused"}, reusedRun(t))
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
+	t.Run("writes a reused path of a new run of one entry with no run ID, removes the other old paths, and returns false when it repeats the swap", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/old", 1), runPointer("idx/reused", 1))
+		writer := newTableOfContentsWriter(t, bucket)
+		newRuns := []IndexRunEntries{{runEntry(t, "idx/new-a")}, {runEntry(t, "idx/reused")}}
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", reusedOldPaths, newRuns)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		single := func(path string) indexpointers.IndexPointer {
+			pointer := runPointer(path, 0)
+			pointer.PostingKeys = columnKeys(t, path)
+			return pointer
+		}
+		require.ElementsMatch(t, []indexpointers.IndexPointer{single("idx/new-a"), single("idx/reused")}, readToCPointers(t, bucket, tocPath))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+
+		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", reusedOldPaths, newRuns)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
+	t.Run("splits a run into runs of one entry when every old path is reused, and returns false when it repeats the swap", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/a", 3), runPointer("idx/b", 3))
+		writer := newTableOfContentsWriter(t, bucket)
+		newRuns := []IndexRunEntries{{runEntry(t, "idx/a")}, {runEntry(t, "idx/b")}}
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/a", "idx/b"}, newRuns)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		for _, pointer := range readToCPointers(t, bucket, tocPath) {
+			require.Zero(t, pointer.RunID, "pointer %s", pointer.Path)
+		}
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+
+		swapped, err = writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/a", "idx/b"}, newRuns)
 		require.NoError(t, err)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))

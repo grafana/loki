@@ -1494,7 +1494,7 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 		require.ElementsMatch(t, objects, sources)
 	})
 
-	t.Run("merges a run of a split merge again with another index, keeps the index objects it writes again and keeps every row once", func(t *testing.T) {
+	t.Run("merges a run of a split merge again with another index, writes some index objects again at the same path and keeps every row once", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		bucket := objstore.NewInMemBucket()
@@ -1509,9 +1509,12 @@ func TestCoordinator_IndexMergeRuns(t *testing.T) {
 
 		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
 		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
-		_, after := compactOnce(ctx, t, c, bucket, 1)
+		compacted, after := compactOnce(ctx, t, c, bucket, 1)
 
+		require.Equal(t, 1, compacted.added, "the swap publishes the new run")
 		require.Len(t, groupIndexRuns(after), 1, "the run and the other index merge into one run")
+		again, _ := compactOnce(ctx, t, c, bucket, 1)
+		require.Zero(t, again.dispatched, "the window is converged, so the next pass merges nothing")
 		reused := 0
 		for _, entry := range after {
 			require.NotEqual(t, "indexes/plain", entry.Path)

@@ -74,9 +74,11 @@ These rules hold for every run of more than one index object.
    A new run must not reuse a path that the ToC keeps.
    The kept entry would keep its own run ID, and the new run would miss it.
    A new run can reuse a path that the change removes.
-   Paths are content hashes, so the change keeps that index object and moves it into the new run.
-   This happens when a merge writes a copy of one of its sources, for example when the key span of
-   a task of a split merge holds the rows of only one source index object.
+   Paths are content hashes, so the reused path names the same index object.
+   The change moves its pointer into the new run.
+   This happens when a merge writes a copy of one of its sources.
+   For example, a task of a split merge can write exactly the rows of one index object of an
+   earlier split run.
 4. **One layout, recorded by every index object.**
    Every index object of a run records the stream layout of the run in a stats section, even if it
    holds no stats rows.

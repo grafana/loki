@@ -262,9 +262,9 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 // and the call skips it if the ToC already holds its path. Paths are content
 // hashes, so the same path means the same pointer.
 //
-// A path can be both in oldPaths and in newRuns, for example when a merge
-// writes a copy of one of its sources. The swap keeps that index object and
-// gives it the run ID of its new run. A retry after a lost response still sees
+// A path can be in oldPaths and in newRuns, for example when a merge writes a
+// copy of one of its sources. The swap replaces the old pointer of that path
+// with the pointer of its new entry. A retry after a lost response still sees
 // the swap as applied.
 //
 // It returns true if it wrote the swap. It returns false and no error if
@@ -282,6 +282,7 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 //     appears twice in newRuns,
 //   - the ToC does not exist, holds another tenant, or lacks a path in
 //     oldPaths,
+//   - the change removes only some index objects of a run,
 //   - the ToC keeps a path of a run of more than one entry.
 //
 // It retries other errors until its backoff ends or ctx is done.
@@ -352,8 +353,8 @@ func runLengthOf(entries int) (int32, error) {
 // objects whose key bounds hold the columns that they need. An entry without
 // bounds shows that the writer of the run did not record where it split.
 //
-// A path of a new run can also be in oldPaths. Paths are content hashes, so
-// the change keeps that index object and moves it into the new run.
+// It does not compare newRuns with the paths that the change removes, because
+// a new run can reuse one of them.
 func validateNewRuns(window time.Time, newRuns []IndexRunEntries) error {
 	pathCounts := make(map[string]int)
 	for _, run := range newRuns {
@@ -585,12 +586,13 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		// paths.
 		removed = make(map[string]struct{}, len(change.remove))
 		// reused holds the paths that change removes and adds again, and
-		// reusedPresent maps each reused path in existing to its run ID.
+		// reusedPresent maps each reused path in existing to the run ID of
+		// its first pointer.
 		//
-		// The ToC holds a reused path both before the change and after it,
-		// so its presence shows neither. The other old paths show whether
-		// the change is still to apply, or applied before a lost response. If
-		// every old path is reused, only the run structure shows it.
+		// The other old paths show whether an earlier attempt applied the
+		// change. A reused path does not show it, because the ToC holds that
+		// path before and after the change. If every old path is reused, only
+		// the run structure shows it.
 		reused        = change.reusedPaths()
 		reusedPresent = make(map[string]indexpointers.RunID, len(reused))
 		// current is the watermark in existing that change.watermark raises.
@@ -667,19 +669,29 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	// hold a run of several entries only as one whole run, so a retry after a
 	// lost response sees the change as applied, but the same paths in another
 	// run structure do not count.
+	//
+	// A kept pointer holds a run of one entry in any run, because a run of one
+	// entry skips a path that the ToC keeps. A reused pointer holds it only as
+	// a run of its own, so a change that splits a run into runs of one entry
+	// still applies.
 	holdsRun := func(run IndexRunEntries) bool {
 		var runID indexpointers.RunID
 		for i, entry := range run {
-			keptRunID, ok := kept[entry.Path]
+			existingRunID, ok := kept[entry.Path]
+			reusedPath := false
 			if !ok {
-				keptRunID, ok = reusedPresent[entry.Path]
+				existingRunID, ok = reusedPresent[entry.Path]
+				reusedPath = ok
 			}
 			if !ok {
 				return false
 			}
+			if len(run) == 1 && reusedPath && existingRunID != 0 {
+				return false
+			}
 			if i == 0 {
-				runID = keptRunID
-			} else if keptRunID != runID {
+				runID = existingRunID
+			} else if existingRunID != runID {
 				return false
 			}
 		}
@@ -695,8 +707,9 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	// A reused path must still be in existing, or another writer removed its
-	// pointer.
+	// The change applies only if existing holds every old path, reused paths
+	// included. A missing path means that another writer removed its pointer
+	// first.
 	missingOld := len(change.remove) - len(reused) - len(removed)
 	missingReused := len(reused) - len(reusedPresent)
 	if missingOld > 0 || missingReused > 0 {
