@@ -255,6 +255,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		bucket:          bucket,
 		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher:       &tocPublisher{writer: replacer, timeout: 30 * time.Second},
 		clock:           clock,
 		sleep:           sleepUntil,
@@ -367,6 +368,14 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 // for imWindow.
 func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
+	buildIndexWithStatsAndPostings(ctx, t, bucket, tenant, path, rows)
+	writeToCReferencing(ctx, t, bucket, tenant, imWindow(), path)
+}
+
+// buildIndexWithStatsAndPostings writes an index at path with rows and one
+// postings row for each log section of rows.
+func buildIndexWithStatsAndPostings(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
+	t.Helper()
 	seen := make(map[string]bool)
 	var postingRows []postings.Row
 	for _, row := range rows {
@@ -392,7 +401,6 @@ func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objsto
 		stats:        rows,
 		postings:     postingRows,
 	})
-	writeToCReferencing(ctx, t, bucket, tenant, imWindow(), path)
 }
 
 func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
@@ -3019,6 +3027,26 @@ func TestRunTenant(t *testing.T) {
 		require.Zero(t, testutil.CollectAndCount(c.metrics.pendingLogBytes))
 		require.Zero(t, testutil.CollectAndCount(c.metrics.lastPlanTimestampSeconds))
 		require.Zero(t, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
+	})
+
+	t.Run("runs the coupled planner under plan version 2 and deletes its metrics when it stops", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a", "indexes/b")
+		c := newPairTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true})
+		ctx, cancel := context.WithCancel(t.Context())
+		var failedJobs float64
+		c.sleep = func(context.Context, time.Duration) {
+			require.Eventually(t, func() bool {
+				failedJobs = pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed)
+				return failedJobs > 0
+			}, 5*time.Second, time.Millisecond)
+			cancel()
+		}
+
+		c.runTenant(ctx, "acme")
+
+		require.Equal(t, float64(1), failedJobs, "the merge fails, because the fake log merge writes no index")
+		require.Zero(t, testutil.CollectAndCount(c.metrics.pairJobsTotal))
 	})
 }
 

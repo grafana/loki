@@ -106,7 +106,19 @@ type planRun struct {
 //
 // No-work decisions belong to planning, before dispatch.
 func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
-	return d.run(ctx, context.WithoutCancel(ctx), tenant, plans)
+	return d.run(ctx, context.WithoutCancel(ctx), tenant, plans, nil)
+}
+
+// admitFunc blocks until a plan may start, or until ctx is done. The plan
+// calls release when it finishes, after its last attempt.
+type admitFunc func(ctx context.Context) (release func(), err error)
+
+// RunAdmitted is like RunToCompletion, but each plan waits for admit before
+// its first attempt. Cancelling ctx does not stop the wait, so every plan of
+// the call still runs. A failed plan stops the waits of the plans that did not
+// start.
+func (d *planDispatcher) RunAdmitted(ctx context.Context, tenant string, plans []*physical.Plan, admit admitFunc) ([][]v2.ResultArtifact, error) {
+	return d.run(ctx, context.WithoutCancel(ctx), tenant, plans, admit)
 }
 
 // RunCancellable is like RunToCompletion, but cancelling ctx also stops the
@@ -116,12 +128,13 @@ func (d *planDispatcher) RunToCompletion(ctx context.Context, tenant string, pla
 // Use RunCancellable for plans that are safe to stop at any time and cheap
 // to run again.
 func (d *planDispatcher) RunCancellable(ctx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
-	return d.run(ctx, ctx, tenant, plans)
+	return d.run(ctx, ctx, tenant, plans, nil)
 }
 
 // run executes plans under planCtx. The run stops when planCtx is done or a
-// plan fails. Retries stop when ctx is done.
-func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans []*physical.Plan) ([][]v2.ResultArtifact, error) {
+// plan fails. Retries stop when ctx is done. A nil admit adds no wait beyond
+// d.limit.
+func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans []*physical.Plan, admit admitFunc) ([][]v2.ResultArtifact, error) {
 	artifacts := make([][]v2.ResultArtifact, len(plans))
 	g, siblingCtx := errgroup.WithContext(planCtx)
 	if d.limit > 0 {
@@ -130,6 +143,13 @@ func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans 
 	run := planRun{tenant: tenant, siblingCtx: siblingCtx, retryCtx: ctx}
 	for i, plan := range plans {
 		g.Go(func() error {
+			if admit != nil {
+				release, err := admit(siblingCtx)
+				if err != nil {
+					return err
+				}
+				defer release()
+			}
 			logger := log.With(d.logger, "tenant", tenant, "plan", i, "plans", len(plans))
 			planArtifacts, err := d.runPlanWithRetries(run, logger, plan)
 			if err != nil {

@@ -387,3 +387,80 @@ func TestPlanDispatcherRunPlanWithRetries(t *testing.T) {
 		require.Equal(t, 0.0, testutil.ToFloat64(counter.WithLabelValues("index-merge", attemptOutcomeFailed)))
 	})
 }
+
+func TestPlanDispatcherRunAdmitted(t *testing.T) {
+	plans := []*physical.Plan{
+		buildIndexMergePlan("acme", time.Unix(0, 0), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
+		buildIndexMergePlan("acme", time.Unix(0, 1), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
+	}
+	newDispatcher := func(run runFunc, maxRetries int) *planDispatcher {
+		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
+		retryBackoff := backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, counter)
+	}
+	succeed := func(context.Context, workflow.Options, *physical.Plan) ([]v2.ResultArtifact, error) {
+		return []v2.ResultArtifact{{Path: "indexes/out"}}, nil
+	}
+	slotAdmit := func(slots *taskSlots) admitFunc {
+		return func(ctx context.Context) (func(), error) { return slots.acquire(ctx, logMergePriority(1)) }
+	}
+
+	t.Run("returns the admission error and runs no plan", func(t *testing.T) {
+		var runs atomic.Int32
+		d := newDispatcher(func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			runs.Inc()
+			return succeed(ctx, opts, plan)
+		}, 0)
+		admitErr := errors.New("no slot")
+
+		_, err := d.RunAdmitted(t.Context(), "acme", plans, func(context.Context) (func(), error) { return nil, admitErr })
+		require.ErrorIs(t, err, admitErr)
+		require.Zero(t, runs.Load())
+	})
+
+	t.Run("releases each slot once after the last attempt of its plan", func(t *testing.T) {
+		var attempts atomic.Int32
+		d := newDispatcher(func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			if attempts.Inc()%2 == 1 {
+				return nil, errors.New("attempt failed")
+			}
+			return succeed(ctx, opts, plan)
+		}, 1)
+		slots := newTaskSlots(1)
+
+		_, err := d.RunAdmitted(t.Context(), "acme", plans, slotAdmit(slots))
+		require.NoError(t, err)
+		require.Equal(t, int32(4), attempts.Load())
+		requireFreeSlots(t, slots, 1)
+	})
+
+	t.Run("a failed plan fails the run and leaks no slot", func(t *testing.T) {
+		d := newDispatcher(func(context.Context, workflow.Options, *physical.Plan) ([]v2.ResultArtifact, error) {
+			return nil, errors.New("worker failed")
+		}, 0)
+		slots := newTaskSlots(1)
+
+		_, err := d.RunAdmitted(t.Context(), "acme", plans, slotAdmit(slots))
+		require.Error(t, err)
+		requireFreeSlots(t, slots, 1)
+	})
+
+	t.Run("runs every plan when ctx is cancelled during an admission wait", func(t *testing.T) {
+		slots := newTaskSlots(1)
+		release, err := slots.acquire(t.Context(), logMergePriority(1))
+		require.NoError(t, err)
+		ctx, cancel := context.WithCancel(t.Context())
+		d := newDispatcher(succeed, 0)
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := d.RunAdmitted(ctx, "acme", plans, slotAdmit(slots))
+			done <- err
+		}()
+		requireQueuedWaits(t, slots, len(plans))
+		cancel()
+		release()
+		require.NoError(t, <-done)
+		requireFreeSlots(t, slots, 1)
+	})
+}

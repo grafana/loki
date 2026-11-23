@@ -137,7 +137,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
@@ -147,7 +147,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.False(t, exists)
 	})

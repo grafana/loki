@@ -20,6 +20,7 @@ const (
 	labelReason  = "reason"
 	labelPhase   = "phase"
 	labelActor   = "actor"
+	labelKind    = "kind"
 
 	// labelWindowLookback is the position of a ToC window in a pass: 0 for
 	// the current window, 1 for the window before it, and so on up to the
@@ -31,6 +32,7 @@ const (
 const (
 	phaseLabelIndexMerge = "index_merge"
 	phaseLabelLogMerge   = "log_merge"
+	phaseLabelPairMerge  = "pair_merge"
 )
 
 // Values of the reason label of logMergeFailedIndexesTotal.
@@ -117,6 +119,14 @@ type coordinatorMetrics struct {
 	// exactly one object. It is summed over every index in every window, as of
 	// the last LogMerge phase that planned without an error.
 	singleObjectLogRuns *prometheus.GaugeVec // tenant
+
+	// pairJobsTotal counts the jobs of the coupled planner by kind and
+	// outcome.
+	pairJobsTotal *prometheus.CounterVec // tenant, kind, outcome
+
+	// pairSkippedIndexesTotal counts the index runs that the coupled planner
+	// skipped, by reason.
+	pairSkippedIndexesTotal *prometheus.CounterVec // tenant, reason
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -212,6 +222,14 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_single_object_log_runs",
 			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
 		}, []string{labelTenant}),
+		pairJobsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_pair_jobs_total",
+			Help: "Jobs of the coupled planner (plan-version 2) by kind and outcome. kind = merge (K pairs into one pair) or split (one index run into one pair per log run). outcome = committed (the ToC swap applied), noop (dry run, or the ToC already held the swap), stale (the ToC no longer listed every source index when the job started), or failed. A job that a shutdown or disabled log compaction stops before its first task records no outcome.",
+		}, []string{labelTenant, labelKind, labelOutcome}),
+		pairSkippedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_pair_skipped_indexes_total",
+			Help: "Index runs that the coupled planner (plan-version 2) skipped in a scan, by reason. read_failed = the read of its stats failed, no_stats = it has no stats rows, shared_log_object = it shares a log object with another index run, unknown_pair = a planned merge held a log object of no pair. Each scan counts the index run again, so a nonzero rate means an index run that stays uncompacted. Corrupt index runs count in loki_dataobj_compaction_corrupt_indexes_total instead.",
+		}, []string{labelTenant, labelReason}),
 	}
 }
 
@@ -319,6 +337,8 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.tasksTotal.DeleteLabelValues(tenant)
 	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairJobsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairSkippedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

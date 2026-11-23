@@ -32,6 +32,9 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 		{"deletion sweep enabled with zero max concurrent sweeps", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.MaxConcurrentSweeps = 0 }, errInvalidMaxConcurrentSweeps},
 		{"deletion sweep enabled without dry run", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.DryRun = false }, errDeletionSweepDryRunRequired},
+		{"plan version zero", func(c *Config) { c.PlanVersion = 0 }, errInvalidPlanVersion},
+		{"plan version above the coupled planner", func(c *Config) { c.PlanVersion = 3 }, errInvalidPlanVersion},
+		{"coupled planner with zero rescan interval", func(c *Config) { c.PlanVersion = planVersionCoupled; c.RescanInterval = 0 }, errInvalidRescanInterval},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

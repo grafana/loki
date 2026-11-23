@@ -62,7 +62,7 @@ func TestSizeLeveledStrategyLevel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.want, s.level(test.size))
+			require.Equal(t, test.want, s.Level(test.size))
 		})
 	}
 }

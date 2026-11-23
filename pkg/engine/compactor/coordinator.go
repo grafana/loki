@@ -40,7 +40,11 @@ type coordinator struct {
 	// IndexFilter plans. They have separate concurrency limits.
 	indexDispatcher *planDispatcher
 	logDispatcher   *planDispatcher
-	publisher       *tocPublisher
+	// pairDispatcher runs the tasks of the coupled planner. It has no
+	// concurrency limit of its own, because the task slots of each tenant
+	// admit the tasks.
+	pairDispatcher *planDispatcher
+	publisher      *tocPublisher
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
 	clock func() time.Time
@@ -85,6 +89,7 @@ func newCoordinator(
 		bucket:          bucket,
 		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(logger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -165,10 +170,15 @@ func (c *coordinator) compactionEnabled(tenant string) bool {
 	return runIndex
 }
 
-// runTenant runs tenant's compaction loop until ctx is cancelled. It deletes
-// the tenant's per-tenant metric series when the loop exits.
+// runTenant runs the compaction loop of cfg.PlanVersion for tenant until ctx
+// is cancelled. It deletes the tenant's per-tenant metric series when the loop
+// exits.
 func (c *coordinator) runTenant(ctx context.Context, tenant string) {
 	defer c.metrics.deleteTenant(tenant)
+	if c.cfg.PlanVersion == planVersionCoupled {
+		c.newPairCompactor(tenant).run(ctx)
+		return
+	}
 	c.runTenantLoop(ctx, tenant)
 }
 
@@ -325,7 +335,7 @@ func (c *coordinator) planLogMerge(
 	}
 
 	keys := newSectionKeySizes(sections)
-	merges, skipped := c.skipOversizedMerges(entryLogger, tenant, keys, merges)
+	merges, skipped := skipOversizedMerges(entryLogger, c.metrics, uint64(c.cfg.LogMaxKeySize), tenant, keys, merges)
 	if len(merges) == 0 {
 		return logCompactionPlan{}, nil
 	}
@@ -363,7 +373,8 @@ func (c *coordinator) planLogMerge(
 }
 
 // skipOversizedMerges removes the merges whose largest sort prefix is above
-// cfg.LogMaxKeySize, and returns the runs of the removed merges.
+// maxKeySize bytes, and returns the runs of the removed merges. A maxKeySize
+// of 0 disables the check.
 //
 // A merge writes all records of one sort prefix into one object, and the task
 // splitter cannot cut a sort prefix. Such a merge makes an object too large
@@ -371,13 +382,13 @@ func (c *coordinator) planLogMerge(
 // the other tasks of the plan, so the whole index never compacts.
 //
 // The returned runs must stay unmerged, because no task rewrites their data.
-func (c *coordinator) skipOversizedMerges(logger log.Logger, tenant string, keys sectionKeySizes, merges []*compactionv2pb.TaskSpec) (kept []*compactionv2pb.TaskSpec, skipped []*compactionv2pb.RunRef) {
-	if c.cfg.LogMaxKeySize == 0 {
+func skipOversizedMerges(logger log.Logger, metrics *coordinatorMetrics, maxKeySize uint64, tenant string, keys sectionKeySizes, merges []*compactionv2pb.TaskSpec) (kept []*compactionv2pb.TaskSpec, skipped []*compactionv2pb.RunRef) {
+	if maxKeySize == 0 {
 		return merges, nil
 	}
 	for _, merge := range merges {
 		key, size := keys.largestKey(merge.Runs)
-		if size <= uint64(c.cfg.LogMaxKeySize) {
+		if size <= maxKeySize {
 			kept = append(kept, merge)
 			continue
 		}
@@ -387,9 +398,9 @@ func (c *coordinator) skipOversizedMerges(logger log.Logger, tenant string, keys
 			"shard_bucket", key.prefix.ShardBucket,
 			"sort_prefix", strings.Join(key.labels, ","),
 			"size", size,
-			"max_key_size", uint64(c.cfg.LogMaxKeySize),
+			"max_key_size", maxKeySize,
 		)
-		c.metrics.logMergeSkippedMergesTotal.WithLabelValues(tenant).Inc()
+		metrics.logMergeSkippedMergesTotal.WithLabelValues(tenant).Inc()
 		skipped = append(skipped, merge.Runs...)
 	}
 	return kept, skipped
@@ -414,7 +425,7 @@ func (c *coordinator) executeLogCompaction(
 	// A swap leaves the old index objects in storage, so only the ToC shows
 	// that the plan is stale. A swap by another writer while the tasks run is
 	// still safe, because our swap then fails and writes nothing.
-	exists, err := c.existsInToC(ctx, tenant, plan.window, plan.sourceIndexRun)
+	exists, err := existsInToC(ctx, c.bucket, tenant, plan.window, plan.sourceIndexRun.paths())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndexRun, err)
 	}
@@ -448,9 +459,9 @@ func (c *coordinator) executeLogCompaction(
 }
 
 // existsInToC reports whether the latest ToC of the tenant's window lists every
-// index object of run. A missing ToC is an error, because planning read it.
-func (c *coordinator) existsInToC(ctx context.Context, tenant string, window time.Time, run indexRun) (bool, error) {
-	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
+// index object in paths. A missing ToC is an error, because planning read it.
+func existsInToC(ctx context.Context, bucket objstore.Bucket, tenant string, window time.Time, paths []string) (bool, error) {
+	entries, err := loadTenantIndexes(ctx, bucket, window, tenant)
 	if err != nil {
 		return false, err
 	}
@@ -458,7 +469,7 @@ func (c *coordinator) existsInToC(ctx context.Context, tenant string, window tim
 	for _, e := range entries {
 		listed[e.Path] = struct{}{}
 	}
-	for _, path := range run.paths() {
+	for _, path := range paths {
 		if _, ok := listed[path]; !ok {
 			return false, nil
 		}
@@ -638,7 +649,7 @@ func (c *coordinator) readIndexRuns(ctx context.Context, tenant string, window t
 			}
 			read, err := readIndexRun(groupCtx, c.bucket, tenant, run)
 			if errors.Is(err, errCorruptIndex) {
-				c.skipCorruptIndex(tenant, window, run.String(), phaseLabelIndexMerge, err)
+				skipCorruptIndex(c.logger, c.metrics, tenant, window, run.String(), phaseLabelIndexMerge, err)
 				corrupt[i] = true
 				return nil
 			}
@@ -664,10 +675,10 @@ func (c *coordinator) readIndexRuns(ctx context.Context, tenant string, window t
 
 // skipCorruptIndex logs and counts a corrupt index that phase skipped. index
 // names it in the log: an index path or an index run description.
-func (c *coordinator) skipCorruptIndex(tenant string, window time.Time, index, phase string, err error) {
-	level.Error(c.logger).Log("msg", "skipping corrupt index",
+func skipCorruptIndex(logger log.Logger, metrics *coordinatorMetrics, tenant string, window time.Time, index, phase string, err error) {
+	level.Error(logger).Log("msg", "skipping corrupt index",
 		"tenant", tenant, "window", window, "index", index, "phase", phase, "err", err)
-	c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
+	metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
 }
 
 // planIndexMerge plans the merges of group. The plan has no work when the
@@ -1125,7 +1136,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 			}
 			plan, err := c.planLogCompaction(ctx, tenant, window, run)
 			if errors.Is(err, errCorruptIndex) {
-				c.skipCorruptIndex(tenant, window, run.String(), phaseLabelLogMerge, err)
+				skipCorruptIndex(c.logger, c.metrics, tenant, window, run.String(), phaseLabelLogMerge, err)
 				continue
 			}
 			if err != nil {

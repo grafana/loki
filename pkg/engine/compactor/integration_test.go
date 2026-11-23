@@ -801,6 +801,7 @@ func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T,
 		bucket:          bucket,
 		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(log.NewNopLogger(), run, 0, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,
@@ -871,12 +872,18 @@ func TestRunPlan(t *testing.T) {
 // recordLogActors wraps c's log dispatcher and returns a function that
 // reports the actors of every log task run so far.
 func recordLogActors(c *coordinator) func() []string {
+	return recordActors(c.logDispatcher)
+}
+
+// recordActors wraps dispatcher and returns a function that reports the
+// actors of every task it ran so far.
+func recordActors(dispatcher *planDispatcher) func() []string {
 	var (
 		mu     sync.Mutex
 		actors []string
 	)
-	inner := c.logDispatcher.runPlan
-	c.logDispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+	inner := dispatcher.runPlan
+	dispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 		mu.Lock()
 		actors = append(actors, opts.Actor[len(opts.Actor)-1])
 		mu.Unlock()
