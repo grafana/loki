@@ -286,6 +286,8 @@ func (t *timeType) ConvertValue(val Value, typ Type) (Value, error) {
 		tz := t.tz()
 		if isMicros(t.Unit) {
 			return convertStringToTimeMicros(val, tz)
+		} else if isNanos(t.Unit) {
+			return convertStringToTimeNanos(val, tz)
 		} else {
 			return convertStringToTimeMillis(val, tz)
 		}
@@ -293,6 +295,8 @@ func (t *timeType) ConvertValue(val Value, typ Type) (Value, error) {
 		tz := t.tz()
 		if isMicros(t.Unit) {
 			return convertTimestampToTimeMicros(val, src.Unit, src.tz(), tz)
+		} else if isNanos(t.Unit) {
+			return convertTimestampToTimeNanos(val, src.Unit, src.tz(), tz)
 		} else {
 			return convertTimestampToTimeMillis(val, src.Unit, src.tz(), tz)
 		}

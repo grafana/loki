@@ -46,7 +46,8 @@ import (
 //   - You cannot call any IAM API operations unless MFA authentication
 //     information is included in the request.
 //
-//   - You cannot call any STS API except AssumeRole or GetCallerIdentity .
+//   - You cannot call any STS API except AssumeRole , GetCallerIdentity ,
+//     GetScopedCredentials , GetWebIdentityToken , or GetDelegatedAccessToken .
 //
 // The credentials that GetSessionToken returns are based on permissions
 // associated with the IAM user whose credentials were used to call the operation.

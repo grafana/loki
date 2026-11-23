@@ -32,6 +32,33 @@ func TestMaxConjunctionsDefaultsAndOptIn(t *testing.T) {
 	}
 }
 
+func TestMaxHintRangesPerRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		want    int
+		wantErr bool
+	}{
+		{"omitted", nil, 100_000, false},
+		{"explicit", []string{"-logline-query.max-hint-ranges-per-request=500"}, 500, false},
+		{"zero disables", []string{"-logline-query.max-hint-ranges-per-request=0"}, 0, false},
+		{"negative", []string{"-logline-query.max-hint-ranges-per-request=-1"}, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg Config
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			cfg.RegisterFlagsWithPrefix("logline-query", fs)
+			require.NoError(t, fs.Parse(tc.args))
+			if tc.wantErr {
+				require.Error(t, cfg.Validate())
+				return
+			}
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, tc.want, cfg.MaxHintRangesPerRequest)
+		})
+	}
+}
+
 func TestDeprecatedShardPlanningFlagsStillParse(t *testing.T) {
 	register := func() *flag.FlagSet {
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)

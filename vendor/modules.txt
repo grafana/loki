@@ -268,7 +268,7 @@ github.com/aliyun/credentials-go/credentials/providers
 github.com/aliyun/credentials-go/credentials/request
 github.com/aliyun/credentials-go/credentials/response
 github.com/aliyun/credentials-go/credentials/utils
-# github.com/andybalholm/brotli v1.2.8
+# github.com/andybalholm/brotli v1.3.0
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
@@ -328,11 +328,11 @@ github.com/aws/aws-sdk-go-v2/internal/timeouts
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
-# github.com/aws/aws-sdk-go-v2/config v1.33.19
+# github.com/aws/aws-sdk-go-v2/config v1.33.21
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/config
 github.com/aws/aws-sdk-go-v2/config/internal/ini
-# github.com/aws/aws-sdk-go-v2/credentials v1.21.1
+# github.com/aws/aws-sdk-go-v2/credentials v1.21.3
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/credentials
 github.com/aws/aws-sdk-go-v2/credentials/ec2rolecreds
@@ -371,14 +371,14 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
-# github.com/aws/aws-sdk-go-v2/service/signin v1.13.1
+# github.com/aws/aws-sdk-go-v2/service/signin v1.14.0
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/signin
 github.com/aws/aws-sdk-go-v2/service/signin/internal/endpoints
@@ -396,7 +396,7 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc
 github.com/aws/aws-sdk-go-v2/service/ssooidc/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ssooidc/schemas
 github.com/aws/aws-sdk-go-v2/service/ssooidc/types
-# github.com/aws/aws-sdk-go-v2/service/sts v1.52.0
+# github.com/aws/aws-sdk-go-v2/service/sts v1.53.0
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
@@ -471,7 +471,7 @@ github.com/beorn7/perks/quantile
 # github.com/bits-and-blooms/bitset v1.29.0
 ## explicit; go 1.16
 github.com/bits-and-blooms/bitset
-# github.com/bits-and-blooms/bloom/v3 v3.7.1
+# github.com/bits-and-blooms/bloom/v3 v3.7.2
 ## explicit; go 1.16
 github.com/bits-and-blooms/bloom/v3
 # github.com/buger/jsonparser v1.6.1
@@ -1298,8 +1298,8 @@ github.com/parquet-go/bitpack/unsafecast
 # github.com/parquet-go/jsonlite v1.5.5
 ## explicit; go 1.24.0
 github.com/parquet-go/jsonlite
-# github.com/parquet-go/parquet-go v0.32.0
-## explicit; go 1.24.9
+# github.com/parquet-go/parquet-go v0.32.1
+## explicit; go 1.26.0
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
 github.com/parquet-go/parquet-go/bloom/xxhash
@@ -2028,7 +2028,7 @@ golang.org/x/crypto/sha3
 ## explicit; go 1.26.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/net v0.62.0
+# golang.org/x/net v0.63.0
 ## explicit; go 1.26.0
 golang.org/x/net/bpf
 golang.org/x/net/context/ctxhttp
@@ -2097,7 +2097,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.16.0
 ## explicit; go 1.26.0
 golang.org/x/time/rate
-# google.golang.org/api v0.315.0
+# google.golang.org/api v0.316.0
 ## explicit; go 1.26.0
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport

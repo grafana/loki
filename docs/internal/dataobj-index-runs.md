@@ -71,9 +71,13 @@ These rules hold for every run of more than one index object.
 3. **Whole runs only.**
    A change must remove all index objects of a run or none of them.
    The kept index objects would miss the postings of the removed ones.
-   A new run must not reuse a path that the ToC keeps, or a path that the change removes.
-   The kept entry would keep its own run ID, and a retry after a lost response would remove part of
-   the new run.
+   A new run must not reuse a path that the ToC keeps.
+   The ToC holds one pointer for each path, so that pointer would stay in its old run, and the new
+   run would lack one of its index objects.
+   A new run can reuse a path that the change removes.
+   Paths are content hashes, so the reused path names the same index object.
+   A single change may move its pointer to the new run.
+   This happens when a merge writes a copy of one of its sources.
 4. **One layout, recorded by every index object.**
    Every index object of a run records the stream layout of the run in a stats section, even if it
    holds no stats rows.
@@ -187,7 +191,3 @@ See `stats.LayoutSectionBuilder`, `Section.Empty` and `Section.ObjectPathColumn`
 - What target size to choose.
   A query pays for each index object that it opens, so many small index objects can cost more than
   one large one.
-- What to do when a task of a split merge writes a copy of an input index object.
-  This happens when its span holds rows of only that object.
-  The copy has the same content-hash path, so the ToC swap rejects the new run under rule 3.
-  The coordinator logs this case.
