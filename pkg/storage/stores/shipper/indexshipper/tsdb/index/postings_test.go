@@ -1126,6 +1126,11 @@ func TestClosePostingsReleasesEveryLeaf(t *testing.T) {
 		{name: "merge with error", build: func(a, b *pooledBigEndianPostings) Postings {
 			return Merge(a, ErrPostings(errors.New("failed")), b)
 		}},
+		// The intersection is empty but leaves b part-read, so the merge
+		// must close it when it drops it.
+		{name: "merge with empty leading input", build: func(a, b *pooledBigEndianPostings) Postings {
+			return Merge(Intersect(newListPostings(10), b), a)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, b := pooledRange(0, 100), pooledRange(50, 200)
@@ -1163,4 +1168,69 @@ func TestPooledPostingsUnusableAfterClose(t *testing.T) {
 	// A second close is a no-op: the buffer has already gone back.
 	p.Close()
 	require.Nil(t, p.buf)
+}
+
+// BenchmarkMergedPostings measures building a merge of n postings lists and
+// then using it in a few ways, from not at all to reading every value.
+func BenchmarkMergedPostings(b *testing.B) {
+	const perInput = 64
+
+	for _, n := range []int{2, 16, 256, 2048} {
+		// Input i holds i, i+n, i+2n, ..., so the inputs interleave.
+		lists := make([][]byte, n)
+		for i := range lists {
+			buf := make([]byte, 0, 4*perInput)
+			for j := range perInput {
+				buf = binary.BigEndian.AppendUint32(buf, uint32(i+j*n))
+			}
+			lists[i] = buf
+		}
+		total := storage.SeriesRef(n * perInput)
+
+		modes := []struct {
+			name string
+			use  func(Postings) int
+		}{
+			// The merge is built but never read, like a merge inside an
+			// intersection that stops early.
+			{"build", func(Postings) int { return 0 }},
+			// The merge is read once.
+			{"next", func(p Postings) int {
+				if p.Next() {
+					return 1
+				}
+				return 0
+			}},
+			// The merge is first sought to a value half-way through.
+			{"seek", func(p Postings) int {
+				if p.Seek(total / 2) {
+					return 1
+				}
+				return 0
+			}},
+			// The merge is read to the end.
+			{"all", func(p Postings) int {
+				c := 0
+				for p.Next() {
+					c++
+				}
+				return c
+			}},
+		}
+
+		for _, mode := range modes {
+			b.Run(fmt.Sprintf("n=%d/%s", n, mode.name), func(b *testing.B) {
+				ps := make([]BigEndianPostings, n)
+				its := make([]Postings, n)
+				b.ReportAllocs()
+				for b.Loop() {
+					for i, l := range lists {
+						ps[i] = BigEndianPostings{list: l}
+						its[i] = &ps[i]
+					}
+					mode.use(Merge(its...))
+				}
+			})
+		}
+	}
 }

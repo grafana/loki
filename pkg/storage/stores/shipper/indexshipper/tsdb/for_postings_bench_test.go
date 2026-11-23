@@ -42,6 +42,7 @@ func (z *zipfDistribution) sample() int {
 // buildIndex writes an index where each series has the labels:
 //   - cluster: cluster-00 -> cluster-39, zipf distributed.
 //   - namespace: namespace-a000 -> namespace-h599, zipf distributed.
+//   - container: container-000 -> container-999, zipf distributed.
 //   - pod: pod-000000 -> pod-249999, unique per series.
 //
 // It returns the index's path.
@@ -50,11 +51,13 @@ func buildIndex(b *testing.B) string {
 	const (
 		numClusters   = 40
 		numNamespaces = 600
+		numContainers = 1000
 		numSeries     = 250000
 	)
 
 	clusters := newZipfDistribution(numClusters)
 	namespaces := newZipfDistribution(numNamespaces)
+	containers := newZipfDistribution(numContainers)
 
 	builder := NewBuilder(index.FormatV3)
 	chunks := []index.ChunkMeta{{MinTime: 0, MaxTime: 1000, Checksum: 1, KB: 1, Entries: 1}}
@@ -63,6 +66,7 @@ func buildIndex(b *testing.B) string {
 		ls := labels.FromStrings(
 			"cluster", fmt.Sprintf("cluster-%02d", clusters.sample()),
 			"namespace", fmt.Sprintf("namespace-%c%03d", 'a'+ns%8, ns),
+			"container", fmt.Sprintf("container-%03d", containers.sample()),
 			"pod", fmt.Sprintf("pod-%06d", i),
 		)
 		builder.AddSeries(ls, model.Fingerprint(labels.StableHash(ls)), chunks)
@@ -117,6 +121,26 @@ func BenchmarkTSDBIndex_forPostings(b *testing.B) {
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "cluster", "cluster-.*"),       // Matches all clusters
 				labels.MustNewMatcher(labels.MatchRegexp, "namespace", "namespace-a000"), // Matches a single namespace
+			},
+		},
+		{
+			// container=~".+" merges the postings of every container. The
+			// namespace matches few series, so in most shards the intersection
+			// stops before the merge is iterated, and in the rest the merge is
+			// only sought to a few series.
+			name: "narrow_by_namespace_container_not_empty",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "namespace", "namespace-h599"), // Matches a single, small namespace
+				labels.MustNewMatcher(labels.MatchRegexp, "container", ".+"),            // Matches all containers
+			},
+		},
+		{
+			// As above, but the pod matches a single series, so the merge is
+			// built in every shard and read in almost none.
+			name: "single_pod_container_not_empty",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "pod", "pod-012345"), // Matches a single series
+				labels.MustNewMatcher(labels.MatchRegexp, "container", ".+"),  // Matches all containers
 			},
 		},
 	}
