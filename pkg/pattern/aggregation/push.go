@@ -270,9 +270,6 @@ func (p *Push) run(pushPeriod time.Duration) {
 	for {
 		select {
 		case <-p.quit:
-			// Push whatever is still buffered before exiting. Without this
-			// final push, entries written since the last tick (during
-			// shutdown, the ingester's flushed patterns) are dropped.
 			p.push(ctx)
 			cancel()
 			return

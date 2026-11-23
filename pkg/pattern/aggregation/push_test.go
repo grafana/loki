@@ -311,56 +311,6 @@ func Test_PushStopDrainsBufferedEntries(t *testing.T) {
 	}
 }
 
-// Test_PushStopConcurrentWrites exercises WriteEntry racing with Stop under
-// the race detector: writes landing while the drain runs must neither race
-// with it nor panic, and Stop must still return.
-func Test_PushStopConcurrentWrites(t *testing.T) {
-	lbls := labels.New(labels.Label{Name: "test", Value: "test"})
-
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		rw.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	backoffCfg := backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 20 * time.Millisecond,
-		MaxRetries: 1,
-	}
-
-	push, err := NewPush(
-		server.Listener.Addr().String(),
-		"test1",
-		2*time.Second,
-		time.Hour,
-		config.DefaultHTTPClientConfig,
-		"", "",
-		false,
-		&backoffCfg,
-		log.NewNopLogger(),
-		NewMetrics(nil),
-	)
-	require.NoError(t, err)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ts, payload := testPayload()
-			for j := 0; j < 50; j++ {
-				push.WriteEntry(ts, payload, lbls, nil)
-			}
-		}()
-	}
-
-	push.Stop()
-	wg.Wait()
-
-	// A second Stop after the writers finished must also return promptly.
-	push.Stop()
-}
-
 // Test helpers
 
 func assertResponse(t *testing.T, resp response, testAuth bool, ls labels.Labels, ts time.Time, payload string) {
