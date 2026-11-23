@@ -344,6 +344,83 @@ func TestHistogramOverTime_sum(t *testing.T) {
 	})
 }
 
+// NaN and the infinities are observations like the other values, as they are for sum_over_time and the other
+// functions of an unwrapped value, so a histogram has the count and the sum that those have, in every form of the
+// query. The histograms are valid ones, though Count is above the total of the exponential buckets for a NaN, which
+// is in none of them. Where the values are in the buckets is for the tests of the builder.
+func TestHistogramOverTime_nonFiniteValues(t *testing.T) {
+	const rng = `{app=~".+"} | logfmt | unwrap duration [1m]`
+	stream := func(lbs string, values ...string) logproto.Stream {
+		var timed []histogramTimedValue
+		for i, v := range values {
+			timed = append(timed, histogramTimedValue{histogramSeconds(10 * (i + 1)), v})
+		}
+		return histogramStream(lbs, timed...)
+	}
+	streams := []logproto.Stream{
+		stream(`{app="nan", pod="1"}`, "1", "NaN", "2"),
+		stream(`{app="nan", pod="2"}`, "NaN"),
+		stream(`{app="inf", pod="1"}`, "1", "+Inf"),
+		stream(`{app="inf", pod="2"}`, "3"),
+		stream(`{app="both", pod="1"}`, "+Inf", "1"),
+		stream(`{app="both", pod="2"}`, "-Inf", "5"), // the sums of the two pods are +Inf and -Inf
+		stream(`{app="neg", pod="1"}`, "-Inf", "-2"),
+	}
+	evaluate := func(query string) map[string]promql.Sample {
+		t.Helper()
+		return histogramByLabels(histogramMustEvaluate(t, streams, query, histogramAt(60), histogramAt(60), 0)[0].vec)
+	}
+
+	// Each line is a value, so the count of the lines is the count of the observations.
+	counts := evaluate(`sum by (app) (count_over_time({app=~".+"} | logfmt [1m]))`)
+	sums := evaluate(`sum by (app) (sum_over_time(` + rng + `))`)
+	require.Len(t, counts, 4)
+	require.True(t, math.IsNaN(sums[`{app="nan"}`].F), "it is the sum that the histograms have to have")
+	require.True(t, math.IsInf(sums[`{app="inf"}`].F, 1))
+	require.True(t, math.IsNaN(sums[`{app="both"}`].F))
+	require.True(t, math.IsInf(sums[`{app="neg"}`].F, -1))
+
+	// The number of NaNs of each app, which the exponential buckets do not hold.
+	nans := map[string]float64{`{app="nan"}`: 2}
+
+	forms := map[string]struct {
+		query  string
+		custom bool
+	}{
+		"by in the range aggregation":     {`histogram_over_time(` + rng + `) by (app)`, false},
+		"sum by":                          {`sum by (app) (histogram_over_time(` + rng + `))`, false},
+		"sum without":                     {`sum without (pod) (histogram_over_time(` + rng + `))`, false},
+		"custom buckets, by":              {`histogram_over_time(buckets(1, 10), ` + rng + `) by (app)`, true},
+		"custom buckets, sum by":          {`sum by (app) (histogram_over_time(buckets(1, 10), ` + rng + `))`, true},
+		"custom buckets, sum without pod": {`sum without (pod) (histogram_over_time(buckets(1, 10), ` + rng + `))`, true},
+	}
+	for name, form := range forms {
+		t.Run(name, func(t *testing.T) {
+			got := evaluate(form.query)
+			require.Len(t, got, len(counts))
+			for lbs, count := range counts {
+				h := got[lbs].H
+				require.NotNil(t, h, lbs)
+				require.NoError(t, h.Validate(), lbs)
+				require.Equal(t, count.F, h.Count, "the count of count_over_time for %s", lbs)
+
+				if want := sums[lbs].F; math.IsNaN(want) {
+					require.True(t, math.IsNaN(h.Sum), "%s has the sum %v", lbs, h.Sum)
+				} else {
+					require.Equal(t, want, h.Sum, "the sum of sum_over_time for %s", lbs)
+				}
+
+				// A NaN is in the last custom bucket, and in no exponential one.
+				inBuckets := h.Count
+				if !form.custom {
+					inBuckets -= nans[lbs]
+				}
+				require.Equal(t, inBuckets, bucketsTotal(histogramNonEmptyBucketsOf(h)), lbs)
+			}
+		})
+	}
+}
+
 func TestHistogramOverTime_pipelineErrors(t *testing.T) {
 	streams := []logproto.Stream{
 		histogramStream(`{app="a"}`,

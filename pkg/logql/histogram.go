@@ -66,6 +66,7 @@ type histogramBuilder struct {
 	negBuckets map[int]float64
 	zeroCount  float64
 
+	// count is the number of the observations. It is above the total of the buckets for each NaN, which is in none.
 	count float64
 	// sum is summed with compensation, as sum_over_time and the sum aggregation do, so that the sum of a
 	// histogram is the same whether one builder sees all the values or the histograms of their parts are
@@ -84,22 +85,27 @@ func newHistogramBuilder(spec *syntax.BucketSpec) *histogramBuilder {
 	return b
 }
 
-// observe adds a value to the histogram. NaN and the infinities are not observed: they are not
-// counted, and they have no bucket that would not skew a quantile.
+// observe adds a value to the histogram. Every value is counted and added to the sum, NaN and the infinities
+// too, as sum_over_time, avg_over_time and the other functions of an unwrapped value do, so that Count is the
+// number of the lines and the average is the one of avg_over_time. Where it goes, as in Prometheus:
+//
+//   - Custom buckets have no case of their own. A search for the first bound that is not below v puts +Inf
+//     and NaN, which no bound is below, in the last bucket, and -Inf in the first, as for a classic histogram.
+//   - Exponential buckets have ±Inf in the bucket above the one of math.MaxFloat64, see exponentialBucketIndex,
+//     as client_golang has it. NaN is in no bucket, so Count is above the total of the buckets, and the sum
+//     is NaN, which is what the functions that read a histogram look for.
 func (b *histogramBuilder) observe(v float64) {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return
-	}
 	b.count++
 	b.sum.addValue(v)
 
 	if b.bounds != nil {
-		// The first bound that is not below v. It is len(bounds) for a value above the last bound.
+		// The first bound that is not below v. It is len(bounds) for a value above the last bound, and for NaN.
 		b.buckets[sort.SearchFloat64s(b.bounds, v)]++
 		return
 	}
 
 	switch {
+	case math.IsNaN(v):
 	case math.Abs(v) <= prometheus.DefNativeHistogramZeroThreshold:
 		b.zeroCount++
 	case v > 0:
@@ -114,7 +120,13 @@ func (b *histogramBuilder) observe(v float64) {
 //
 // It splits v into a fraction in [0.5, 1) and a power of two, which are both exact, and finds the fraction
 // in a table of the bounds. Taking a logarithm instead would round a value that is on a bound to either side.
+//
+// The bucket of math.MaxFloat64 is the last one that a number can be in, and its upper bound is
+// math.MaxFloat64. +Inf is in the bucket above it, which has the upper bound +Inf, as it is in client_golang.
 func exponentialBucketIndex(v float64) int {
+	if math.IsInf(v, 1) {
+		return exponentialBucketIndex(math.MaxFloat64) + 1
+	}
 	frac, exp := math.Frexp(v)
 	t := sort.SearchFloat64s(histogramBounds, frac)
 	return (exp-1)*histogramBucketsPerDoubling + t
