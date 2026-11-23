@@ -60,6 +60,91 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 		requireSameRows(t, RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[3], columns[0]}})
 	})
 
+	t.Run("ends a record batch at the end of a page when a column has large pages that hold few rows", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 512<<10)
+		pageRows := pageRowCounts(t, columns[2])
+		require.Greater(t, len(pageRows), 2)
+
+		got := recordBatchSizes(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PrefetchAllOnOpen: true}, 1024)
+
+		require.Equal(t, pageRows, got)
+	})
+
+	t.Run("ends a record batch at the end of a page of a column that only a predicate reads", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 512<<10)
+		keepAll := FuncPredicate{Column: columns[2], Keep: func(Column, Value) bool { return true }}
+
+		got := recordBatchSizes(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns[:2], Predicates: []Predicate{keepAll}, PrefetchAllOnOpen: true}, 1024)
+
+		require.Equal(t, pageRowCounts(t, columns[2]), got)
+	})
+
+	t.Run("does not end a record batch at the end of a page when the pages of the column are small", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 16<<10)
+
+		got := recordBatchSizes(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PrefetchAllOnOpen: true}, 1024)
+
+		require.Equal(t, fullBatchSizes(4000, 1024), got)
+	})
+
+	t.Run("does not end a record batch at the end of a page when the pages hold more than two record batches of rows", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 30000, 40, 512<<10)
+
+		got := recordBatchSizes(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PrefetchAllOnOpen: true}, 1024)
+
+		require.Equal(t, fullBatchSizes(30000, 1024), got)
+	})
+
+	t.Run("does not end a record batch at the end of a page when the pages download lazily", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 512<<10)
+
+		got := recordBatchSizes(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PrefetchAllOnOpen: false}, 1024)
+
+		require.Equal(t, fullBatchSizes(4000, 1024), got)
+	})
+
+	t.Run("finds the columns that limit a record batch again when the batch size changes", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 512<<10)
+		pageRows := pageRowCounts(t, columns[2])
+		r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, PrefetchAllOnOpen: true})
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+		require.NoError(t, r.Open(t.Context()))
+
+		var alloc memory.Allocator
+		first, err := r.ReadRecordBatch(t.Context(), &alloc, 64)
+		require.NoError(t, err)
+		second, err := r.ReadRecordBatch(t.Context(), &alloc, 1024)
+		require.NoError(t, err)
+
+		require.Equal(t, int64(64), first.NumRows())
+		require.Equal(t, int64(pageRows[0]-64), second.NumRows())
+	})
+
+	t.Run("returns the same rows as Read when a record batch ends at the end of a page", func(t *testing.T) {
+		dset, columns := buildLongLineDataset(t, 4000, 1000, 512<<10)
+		stream, ts := columns[0], columns[1]
+
+		for name, predicates := range map[string][]Predicate{
+			"without predicates":         nil,
+			"with a selective predicate": {InPredicate{Column: stream, Values: NewInt64ValueSetOf(3, 77)}},
+			"with an and of two comparisons": {AndPredicate{
+				Left:  GreaterThanPredicate{Column: ts, Value: Int64Value(20_000)},
+				Right: LessThanPredicate{Column: ts, Value: Int64Value(80_000)},
+			}},
+			"with a line filter": {containsNeedle(columns[2], "e")},
+		} {
+			t.Run(name, func(t *testing.T) {
+				opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates, PrefetchAllOnOpen: true}
+
+				for _, batchSize := range []int{300, 1024, 10_000} {
+					want := readAllRowsAsText(t, opts, batchSize)
+					got := readAllRecordBatches(t.Context(), t, opts, batchSize)
+					require.Equal(t, want, got, "batch size %d", batchSize)
+				}
+			})
+		}
+	})
+
 	t.Run("returns the same rows as Read for the predicates of the people dataset", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 		first, middle, last, year := columns[0], columns[1], columns[2], columns[3]
@@ -2084,4 +2169,68 @@ func (d *truncatedListDataset) ListPages(ctx context.Context, columns []Column) 
 			}
 		}
 	}
+}
+
+// buildLongLineDataset returns a dataset with the given number of rows and three columns, in this
+// order: a stream ID, a timestamp and a message of about lineSize bytes. A page holds at most about
+// pageSizeHint bytes.
+func buildLongLineDataset(t *testing.T, rows int, lineSize int64, pageSizeHint int) (Dataset, []Column) {
+	t.Helper()
+
+	columns := generatedColumns(100, 1)[:3]
+	columns[2].AvgSize = lineSize
+	for i := range columns {
+		columns[i].Compression = datasetmd.COMPRESSION_TYPE_NONE
+	}
+
+	generator := DatasetGenerator{RowCount: rows, PageSizeHint: pageSizeHint, Columns: columns}
+	return generator.Build(t, 7)
+}
+
+// pageRowCounts returns the number of rows of each page of column, in order.
+func pageRowCounts(t *testing.T, column Column) []int {
+	t.Helper()
+
+	var counts []int
+	for result := range column.ListPages(t.Context()) {
+		page, err := result.Value()
+		require.NoError(t, err)
+		counts = append(counts, page.PageDesc().RowCount)
+	}
+	return counts
+}
+
+// recordBatchSizes returns the number of rows of each record batch that ReadRecordBatch returns,
+// in order, when it reads the dataset of opts with batches of at most batchSize rows.
+func recordBatchSizes(t *testing.T, opts RowReaderOptions, batchSize int) []int {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	require.NoError(t, r.Open(t.Context()))
+
+	var (
+		sizes []int
+		alloc memory.Allocator
+	)
+	for {
+		alloc.Reclaim()
+		batch, err := r.ReadRecordBatch(t.Context(), &alloc, batchSize)
+		if errors.Is(err, io.EOF) {
+			return sizes
+		}
+		require.NoError(t, err)
+		sizes = append(sizes, int(batch.NumRows()))
+	}
+}
+
+// fullBatchSizes returns the sizes of the record batches of a dataset with the given number of
+// rows, when no page end limits them: batches of batchSize rows, and a last batch with the rows that
+// remain.
+func fullBatchSizes(rows, batchSize int) []int {
+	var sizes []int
+	for ; rows > 0; rows -= batchSize {
+		sizes = append(sizes, min(rows, batchSize))
+	}
+	return sizes
 }

@@ -34,7 +34,8 @@ import (
 //
 // With a nil error, the record batch has between one and batchSize rows. A
 // record batch with fewer than batchSize rows does not mean that the dataset
-// ended.
+// ended. When [RowReaderOptions.PrefetchAllOnOpen] is true, a record batch can
+// also end at the end of a page of a column, so that it has fewer rows.
 //
 // The arrays of a record batch have these types:
 //   - an int64 column: a [columnar.Number] of int64,
@@ -102,6 +103,10 @@ func (r *RowReader) readNextRecordBatch(ctx context.Context, outAlloc *memory.Al
 	if readSize <= 0 {
 		return nil, fmt.Errorf("record batch at row %d has no row", row)
 	}
+	readSize, err = r.limitToPageEnds(ctx, row, readSize, batchSize)
+	if err != nil {
+		return nil, err
+	}
 	readRange := rangeset.Range{Start: row, End: row + uint64(readSize)}
 	r.dl.SetReadRange(readRange)
 
@@ -117,6 +122,85 @@ func (r *RowReader) readNextRecordBatch(ctx context.Context, outAlloc *memory.Al
 	// succeeds, so a retry after an error reads the same rows.
 	r.row += int64(readSize)
 	return batch, nil
+}
+
+const (
+	// pageLimitMaxBatches is the largest average number of batches of rows that a
+	// page of a limiting column holds. A page holds at most pageLimitMaxBatches
+	// times batchSize rows on average.
+	pageLimitMaxBatches = 2
+
+	// pageLimitMinPageBytes is the smallest average uncompressed size in bytes of
+	// a page of a limiting column.
+	pageLimitMinPageBytes = 256 << 10
+)
+
+// limitToPageEnds returns the number of rows that the input record batch at row
+// reads. It is readSize, or fewer rows when the next readSize rows hold the end
+// of a page of a column that limits the record batch. The input record batch
+// then ends at the earliest such page end, and the next one starts on the next
+// page.
+//
+// limitToPageEnds returns readSize when [RowReaderOptions.PrefetchAllOnOpen] is
+// false.
+func (r *RowReader) limitToPageEnds(ctx context.Context, row uint64, readSize, batchSize int) (int, error) {
+	// Skip the limit when the pages download lazily. Several columns can end
+	// pages at different rows, and the short record batches then make more page
+	// downloads.
+	if !r.opts.PrefetchAllOnOpen {
+		return readSize, nil
+	}
+	if r.pageLimitBatchSize != batchSize {
+		r.initPageLimitColumns(batchSize)
+	}
+
+	for _, idx := range r.pageLimitColumns {
+		pages, err := r.inner.readers[idx].PageRanges(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("listing pages of column %d: %w", idx, withoutEOF(err))
+		}
+
+		// A row past the last page does not limit the record batch.
+		if p := sort.Search(len(pages), func(i int) bool { return pages[i].End > row }); p < len(pages) && pages[p].Start <= row {
+			readSize = min(readSize, int(pages[p].End-row))
+		}
+	}
+	return readSize, nil
+}
+
+// initPageLimitColumns finds the columns that limit an input record batch of
+// batchSize rows, and keeps their indexes. A column limits the record batch when
+// its pages hold at most pageLimitMaxBatches times batchSize rows on average,
+// and at least pageLimitMinPageBytes uncompressed bytes on average.
+//
+// initPageLimitColumns reads the column descriptors only, so it makes no request
+// to the object store.
+func (r *RowReader) initPageLimitColumns(batchSize int) {
+	// An input record batch that spans pages of a column makes the read join the
+	// pages. The join copies every byte that the record batch reads from the
+	// column. A record batch that ends at a page end needs no join. It costs up to
+	// one more input record batch for each page, and an input record batch has a
+	// fixed cost.
+	//
+	// The copy costs more than the extra record batch when a page holds fewer than
+	// about two batches of rows. For a batch size of 1024 and pages of 1 MiB, this
+	// means values of about 500 bytes or more.
+	//
+	// The byte limit keeps a column with small pages from multiplying the record
+	// batches. Pages are small when the writer targets small pages or caps the
+	// rows of a page.
+	r.pageLimitColumns = r.pageLimitColumns[:0]
+	r.pageLimitBatchSize = batchSize
+
+	for idx, column := range r.columns {
+		desc := column.ColumnDesc()
+		if desc.PagesCount == 0 {
+			continue
+		}
+		if desc.RowsCount/desc.PagesCount <= pageLimitMaxBatches*batchSize && desc.UncompressedSize/desc.PagesCount >= pageLimitMinPageBytes {
+			r.pageLimitColumns = append(r.pageLimitColumns, idx)
+		}
+	}
 }
 
 // readFilteredRecordBatch runs the predicates on the current input record batch,

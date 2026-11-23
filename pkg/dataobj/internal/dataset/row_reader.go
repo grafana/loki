@@ -91,6 +91,12 @@ type RowReader struct {
 	recordBatchScratch    memory.Allocator
 	currRecordBatch       recordBatch      // The input record batch that ReadRecordBatch is reading, or read last.
 	recordBatchPageArrays []columnar.Array // Scratch for the page arrays that readColumnPages joins.
+
+	// pageLimitColumns holds the indexes in columns of the columns that limit an input record batch
+	// to the end of a page. pageLimitBatchSize is the batch size that pageLimitColumns was found
+	// for. Zero means that pageLimitColumns was not found yet.
+	pageLimitColumns   []int
+	pageLimitBatchSize int
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
@@ -609,6 +615,8 @@ func (r *RowReader) clearInitState() {
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
 	r.keepBatchPredicates = sliceclear.Clear(r.keepBatchPredicates)
+	r.pageLimitColumns = r.pageLimitColumns[:0]
+	r.pageLimitBatchSize = 0
 }
 
 func (r *RowReader) init(ctx context.Context) error {
