@@ -52,6 +52,9 @@ type Reader struct {
 	expectedSchema     *arrow.Schema
 
 	mem memory.Allocator
+	// size limits for the message readers this Reader creates itself
+	maxMetadataSize int64
+	maxBodySize     int64
 }
 
 // NewReaderFromMessageReader allows constructing a new reader object with the
@@ -80,6 +83,8 @@ func NewReaderFromMessageReader(r MessageReader, opts ...Option) (reader *Reader
 		mem:                cfg.alloc,
 		ensureNativeEndian: cfg.ensureNativeEndian,
 		expectedSchema:     cfg.schema,
+		maxMetadataSize:    cfg.maxMetadataSize,
+		maxBodySize:        cfg.maxBodySize,
 	}
 	reader.refCount.Add(1)
 
@@ -105,8 +110,7 @@ func NewReader(r io.Reader, opts ...Option) (rr *Reader, err error) {
 		}
 	}()
 	cfg := newConfig(opts...)
-	mr := &messageReader{r: r, mem: cfg.alloc}
-	mr.refCount.Add(1)
+	mr := NewMessageReader(r, opts...)
 	rr = &Reader{
 		r:        mr,
 		refCount: atomic.Int64{},
@@ -115,6 +119,8 @@ func NewReader(r io.Reader, opts ...Option) (rr *Reader, err error) {
 		mem:                cfg.alloc,
 		ensureNativeEndian: cfg.ensureNativeEndian,
 		expectedSchema:     cfg.schema,
+		maxMetadataSize:    cfg.maxMetadataSize,
+		maxBodySize:        cfg.maxBodySize,
 	}
 	rr.refCount.Add(1)
 
@@ -285,8 +291,17 @@ func (r *Reader) next() bool {
 		return false
 	}
 
-	if got, want := msg.Type(), MessageRecordBatch; got != want {
-		r.err = fmt.Errorf("arrow/ipc: invalid message type (got=%v, want=%v", got, want)
+	switch msg.Type() {
+	case MessageRecordBatch:
+	case MessageSchema:
+		// a schema message is only valid at the very start of a stream; a
+		// continuation source that begins with one is a separate stream, and
+		// skipping it would silently drop or misread its batches
+		r.err = errors.New("arrow/ipc: unexpected schema message: the stream's schema has already been read")
+		r.done = true
+		return false
+	default:
+		r.err = fmt.Errorf("arrow/ipc: invalid message type (got=%v, want=%v)", msg.Type(), MessageRecordBatch)
 		return false
 	}
 
@@ -326,6 +341,56 @@ func (r *Reader) Read() (arrow.RecordBatch, error) {
 	}
 
 	return r.rec, nil
+}
+
+// ContinueFrom resumes reading from src as a continuation of the same logical
+// stream, keeping the schema and dictionaries already read. It is
+// [Reader.ContinueFromMessageReader] for a plain byte stream, read with the
+// allocator and message size limits the Reader was created with.
+func (r *Reader) ContinueFrom(src io.Reader) error {
+	mr := NewMessageReader(src, WithAllocator(r.mem),
+		WithMetadataSizeLimit(r.maxMetadataSize), WithBodySizeLimit(r.maxBodySize))
+	if err := r.ContinueFromMessageReader(mr); err != nil {
+		mr.Release()
+		return err
+	}
+	return nil
+}
+
+// ContinueFromMessageReader resumes reading from mr as a continuation of the
+// same logical stream, keeping the schema and dictionaries already read. This
+// supports a stream that arrives as a sequence of independent blobs where only
+// the first one carries the schema.
+//
+// mr must start with record batch or dictionary batch messages. If it starts
+// with a schema message, the next call to Next or Read fails with an error
+// rather than reading the batches that follow.
+//
+// The schema must already have been read, and the reader must not have
+// failed: continuing after an error could hide corruption, so the error is
+// returned instead. Any messages left unread in the previous source are
+// discarded, as is the current record batch. On success the reader takes
+// ownership of mr and releases it, as NewReaderFromMessageReader does; on
+// error mr is left to the caller. ContinueFromMessageReader must not be
+// called concurrently with Next or Read.
+func (r *Reader) ContinueFromMessageReader(mr MessageReader) error {
+	if r.err != nil {
+		return fmt.Errorf("arrow/ipc: cannot continue a reader that failed: %w", r.err)
+	}
+	if r.schema == nil {
+		return errors.New("arrow/ipc: cannot continue a reader that has not read its schema")
+	}
+
+	if r.rec != nil {
+		r.rec.Release()
+		r.rec = nil
+	}
+	if r.r != nil {
+		r.r.Release()
+	}
+	r.r = mr
+	r.done = false
+	return nil
 }
 
 var _ array.RecordReader = (*Reader)(nil)

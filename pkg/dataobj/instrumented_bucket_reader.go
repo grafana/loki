@@ -7,6 +7,7 @@ import (
 
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -25,7 +26,7 @@ import (
 //   - the end of the body.
 //
 // When the caller closes a body, the reader also records the bytes it delivered
-// in [StatObjectBytesDownloaded].
+// in [bucketstat.StatObjectBytesDownloaded].
 //
 // Other methods, such as Iter and Exists, pass through and record nothing.
 func NewInstrumentedBucketReader(bucket objstore.BucketReader) objstore.BucketReader {
@@ -42,11 +43,11 @@ type instrumentedBucketReader struct {
 }
 
 func (r *instrumentedBucketReader) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	r.trackRequest(ctx, StatObjectRequestsAttributes)
+	r.trackRequest(ctx, bucketstat.StatObjectRequestsAttributes)
 
 	attrs, err := r.BucketReader.Attributes(ctx, name)
 	if err != nil {
-		r.trackFailure(ctx, StatObjectRequestFailuresAttributes, err)
+		r.trackFailure(ctx, bucketstat.StatObjectRequestFailuresAttributes, err)
 		return objstore.ObjectAttributes{}, err
 	}
 
@@ -54,27 +55,27 @@ func (r *instrumentedBucketReader) Attributes(ctx context.Context, name string) 
 }
 
 func (r *instrumentedBucketReader) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	r.trackRequest(ctx, StatObjectRequestsGet)
+	r.trackRequest(ctx, bucketstat.StatObjectRequestsGet)
 
 	rc, err := r.BucketReader.Get(ctx, name)
 	if err != nil {
-		r.trackFailure(ctx, StatObjectRequestFailuresGet, err)
+		r.trackFailure(ctx, bucketstat.StatObjectRequestFailuresGet, err)
 		return nil, err
 	}
 
-	return newInstrumentedReadCloser(ctx, rc, r, StatObjectRequestFailuresGet), nil
+	return newInstrumentedReadCloser(ctx, rc, r, bucketstat.StatObjectRequestFailuresGet), nil
 }
 
 func (r *instrumentedBucketReader) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
-	r.trackRequest(ctx, StatObjectRequestsGetRange)
+	r.trackRequest(ctx, bucketstat.StatObjectRequestsGetRange)
 
 	rc, err := r.BucketReader.GetRange(ctx, name, offset, length)
 	if err != nil {
-		r.trackFailure(ctx, StatObjectRequestFailuresGetRange, err)
+		r.trackFailure(ctx, bucketstat.StatObjectRequestFailuresGetRange, err)
 		return nil, err
 	}
 
-	return newInstrumentedReadCloser(ctx, rc, r, StatObjectRequestFailuresGetRange), nil
+	return newInstrumentedReadCloser(ctx, rc, r, bucketstat.StatObjectRequestFailuresGetRange), nil
 }
 
 // trackRequest records one request in the region of ctx. It does nothing when
@@ -99,7 +100,7 @@ func (r *instrumentedBucketReader) trackFailure(ctx context.Context, failures *x
 
 // instrumentedReadCloser wraps an [io.ReadCloser] returned by an object-store
 // request and counts the bytes read from it. When the body is closed, it records
-// the total in [StatObjectBytesDownloaded], in the region of the request's
+// the total in [bucketstat.StatObjectBytesDownloaded], in the region of the request's
 // context if any. The total reflects the bytes transferred from storage, not the
 // requested range size.
 //
@@ -145,7 +146,7 @@ func (rc *instrumentedReadCloser) ObjectSize() (int64, error) {
 
 func (rc *instrumentedReadCloser) Close() error {
 	if rc.n > 0 {
-		rc.region.Record(StatObjectBytesDownloaded.Observe(rc.n))
+		rc.region.Record(bucketstat.StatObjectBytesDownloaded.Observe(rc.n))
 		rc.n = 0
 	}
 	return rc.inner.Close()

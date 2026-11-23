@@ -18,6 +18,7 @@ package bitutil
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"math/bits"
 	"unsafe"
@@ -138,8 +139,8 @@ func (b *BitmapWriter) Next() {
 	}
 }
 
-// AppendBools writes a series of booleans to the bitmapwriter and returns
-// the number of remaining bytes left in the buffer for writing.
+// AppendBools writes up to the remaining number of bits from in and returns
+// the number of boolean values written.
 func (b *BitmapWriter) AppendBools(in []bool) int {
 	space := min(b.length-b.pos, len(in))
 	if space == 0 {
@@ -147,24 +148,86 @@ func (b *BitmapWriter) AppendBools(in []bool) int {
 	}
 
 	bitOffset := bits.TrailingZeros32(uint32(b.bitMask))
-	// location that the first byte needs to be written to for appending
-	appslice := b.buf[int(b.byteOffset) : b.byteOffset+int(BytesForBits(int64(bitOffset+space)))]
-	// update everything but curByte
-	appslice[0] = b.curByte
-	for i, b := range in[:space] {
-		if b {
-			SetBit(appslice, i+bitOffset)
-		} else {
-			ClearBit(appslice, i+bitOffset)
+	byteOffset := b.byteOffset
+	values := in[:space]
+
+	// Finish the first partial byte without changing unrelated bits.
+	if bitOffset != 0 {
+		n := min(len(values), 8-bitOffset)
+		current := b.curByte
+		for i, v := range values[:n] {
+			mask := byte(1) << uint(bitOffset+i)
+			if v {
+				current |= mask
+			} else {
+				current &^= mask
+			}
 		}
+		b.buf[byteOffset] = current
+		values = values[n:]
+		if n == 8-bitOffset {
+			byteOffset++
+		}
+	}
+
+	// Write eight booleans per byte instead of updating each bit individually.
+	for len(values) >= 8 {
+		b.buf[byteOffset] = packBoolByte(values)
+		byteOffset++
+		values = values[8:]
+	}
+
+	if len(values) != 0 {
+		current := b.buf[byteOffset]
+		for i, v := range values {
+			mask := byte(1) << uint(i)
+			if v {
+				current |= mask
+			} else {
+				current &^= mask
+			}
+		}
+		b.buf[byteOffset] = current
 	}
 
 	b.pos += space
 	b.bitMask = BitMask[(bitOffset+space)%8]
 	b.byteOffset += (bitOffset + space) / 8
-	b.curByte = appslice[len(appslice)-1]
-
+	// At a byte boundary, the next write must start with the next byte's
+	// existing bits, not the last byte written by this call.
+	if b.byteOffset < len(b.buf) {
+		b.curByte = b.buf[b.byteOffset]
+	}
 	return space
+}
+
+func packBoolByte(values []bool) byte {
+	var packed byte
+	if values[0] {
+		packed |= 1 << 0
+	}
+	if values[1] {
+		packed |= 1 << 1
+	}
+	if values[2] {
+		packed |= 1 << 2
+	}
+	if values[3] {
+		packed |= 1 << 3
+	}
+	if values[4] {
+		packed |= 1 << 4
+	}
+	if values[5] {
+		packed |= 1 << 5
+	}
+	if values[6] {
+		packed |= 1 << 6
+	}
+	if values[7] {
+		packed |= 1 << 7
+	}
+	return packed
 }
 
 // AppendBitmap writes bits directly from a source bitmap to this bitmap writer,
@@ -415,38 +478,119 @@ const (
 	transferInvert
 )
 
+// transferBitmapUnaligned copies full destination bytes in bulk, handling only
+// the first and last partial bytes separately. The caller has checked buffer
+// bounds and snapshotted any overlapping source and destination byte spans.
+func transferBitmapUnaligned(mode transferMode, src []byte, srcOffset, length int, dst []byte, dstOffset int) {
+	// Keep the bits preceding a non-byte-aligned destination untouched.
+	if bit := dstOffset & 7; bit != 0 {
+		count := min(length, 8-bit)
+		shift := uint(srcOffset & 7)
+		value := src[srcOffset/8] >> shift
+		if int(shift)+count > 8 {
+			value |= src[srcOffset/8+1] << (8 - shift)
+		}
+		if mode == transferInvert {
+			value = ^value
+		}
+		mask := byte((1<<uint(count))-1) << uint(bit)
+		at := dstOffset / 8
+		dst[at] = (dst[at] &^ mask) | ((value << uint(bit)) & mask)
+		srcOffset += count
+		dstOffset += count
+		length -= count
+	}
+
+	if length >= 8 {
+		nbytes := length / 8
+		out := dst[dstOffset/8 : dstOffset/8+nbytes]
+		in := src[srcOffset/8:]
+		shift := uint(srcOffset & 7)
+		if shift == 0 {
+			if mode == transferCopy {
+				copy(out, in[:nbytes])
+			} else {
+				for len(out) >= 8 {
+					binary.LittleEndian.PutUint64(out, ^binary.LittleEndian.Uint64(in))
+					out = out[8:]
+					in = in[8:]
+				}
+				for i := range out {
+					out[i] = ^in[i]
+				}
+			}
+		} else {
+			// A shifted 64-bit source word needs nine source bytes.
+			for len(out) >= 8 {
+				value := binary.LittleEndian.Uint64(in)>>shift | uint64(in[8])<<(64-shift)
+				if mode == transferInvert {
+					value = ^value
+				}
+				binary.LittleEndian.PutUint64(out, value)
+				in = in[8:]
+				out = out[8:]
+			}
+			for i := range out {
+				value := in[i]>>shift | in[i+1]<<(8-shift)
+				if mode == transferInvert {
+					value = ^value
+				}
+				out[i] = value
+			}
+		}
+		srcOffset += nbytes * 8
+		dstOffset += nbytes * 8
+		length -= nbytes * 8
+	}
+
+	// Preserve any bits beyond the requested destination range.
+	if length > 0 {
+		shift := uint(srcOffset & 7)
+		value := src[srcOffset/8] >> shift
+		if int(shift)+length > 8 {
+			value |= src[srcOffset/8+1] << (8 - shift)
+		}
+		if mode == transferInvert {
+			value = ^value
+		}
+		mask := byte((1 << uint(length)) - 1)
+		at := dstOffset / 8
+		dst[at] = (dst[at] &^ mask) | (value & mask)
+	}
+}
+
 func transferBitmap(mode transferMode, src []byte, srcOffset, length int, dst []byte, dstOffset int) {
 	if length == 0 {
 		// if there's nothing to write, end early.
 		return
 	}
 
+	// Both transfer paths can overwrite source bytes before reading them when
+	// the ranges alias. Only snapshot the source when their byte spans overlap.
+	srcStart := srcOffset / 8
+	dstStart := dstOffset / 8
+	srcBytes := src[srcStart : srcStart+int(BytesForBits(int64(srcOffset%8)+int64(length)))]
+	dstBytes := dst[dstStart : dstStart+int(BytesForBits(int64(dstOffset%8)+int64(length)))]
+	srcPtr := uintptr(unsafe.Pointer(&srcBytes[0]))
+	dstPtr := uintptr(unsafe.Pointer(&dstBytes[0]))
+	var overlaps bool
+	if srcPtr < dstPtr {
+		overlaps = dstPtr-srcPtr < uintptr(len(srcBytes))
+	} else {
+		overlaps = srcPtr-dstPtr < uintptr(len(dstBytes))
+	}
+	if overlaps {
+		src = bytes.Clone(srcBytes)
+		srcOffset %= 8
+	}
+
 	bitOffset := srcOffset % 8
 	destBitOffset := dstOffset % 8
 
-	// slow path, one of the bitmaps are not byte aligned.
+	// Transfer bytes and words directly instead of creating word readers and
+	// writers for unaligned ranges.
 	if bitOffset != 0 || destBitOffset != 0 {
-		rdr := NewBitmapWordReader(src, srcOffset, length)
-		wr := NewBitmapWordWriter(dst, dstOffset, length)
-
-		nwords := rdr.Words()
-		for nwords > 0 {
-			nwords--
-			if mode == transferInvert {
-				wr.PutNextWord(^rdr.NextWord())
-			} else {
-				wr.PutNextWord(rdr.NextWord())
-			}
-		}
-		nbytes := rdr.TrailingBytes()
-		for nbytes > 0 {
-			nbytes--
-			bt, validBits := rdr.NextTrailingByte()
-			if mode == transferInvert {
-				bt = ^bt
-			}
-			wr.PutNextTrailingByte(bt, validBits)
-		}
+		transferBitmapUnaligned(mode, src, srcOffset, length, dst, dstOffset)
 		return
 	}
 
@@ -480,12 +624,13 @@ func transferBitmap(mode transferMode, src []byte, srcOffset, length int, dst []
 
 // CopyBitmap copies the bitmap indicated by src, starting at bit offset srcOffset,
 // and copying length bits into dst, starting at bit offset dstOffset.
+// Source and destination ranges may overlap.
 func CopyBitmap(src []byte, srcOffset, length int, dst []byte, dstOffset int) {
 	transferBitmap(transferCopy, src, srcOffset, length, dst, dstOffset)
 }
 
 // InvertBitmap copies a bit range of a bitmap, inverting it as it copies
-// over into the destination.
+// over into the destination. Source and destination ranges may overlap.
 func InvertBitmap(src []byte, srcOffset, length int, dst []byte, dstOffset int) {
 	transferBitmap(transferInvert, src, srcOffset, length, dst, dstOffset)
 }
@@ -565,7 +710,84 @@ func alignedBitmapOp(op bitOp, left, right []byte, lOffset, rOffset int64, out [
 	}
 }
 
+// bitmapByteRangesOverlap reports whether two byte slices share any addressed bytes.
+// A bitmap op may write into either input, so the direct word loop is only used
+// when writes cannot overwrite unread source bytes.
+func bitmapByteRangesOverlap(a, b []byte) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	aPtr := uintptr(unsafe.Pointer(&a[0]))
+	bPtr := uintptr(unsafe.Pointer(&b[0]))
+	if aPtr < bPtr {
+		return bPtr-aPtr < uintptr(len(a))
+	}
+	return aPtr-bPtr < uintptr(len(b))
+}
+
 func unalignedBitmapOp(op bitOp, left, right []byte, lOffset, rOffset int64, out []byte, outOffset int64, length int64) {
+	// A byte-aligned output can be written directly in 64-bit words.
+	// Avoid constructing word readers and a writer for larger, non-aliasing
+	// slices. Keep the existing path for overlapping buffers, short inputs,
+	// and destinations with a bit offset.
+	// Require at least two 64-bit words to amortize the extra checks.
+	if outOffset%8 == 0 && length >= 128 {
+		leftStart, rightStart := lOffset/8, rOffset/8
+		outStart := outOffset / 8
+		leftBytes := left[leftStart : leftStart+BytesForBits(lOffset%8+length)]
+		rightBytes := right[rightStart : rightStart+BytesForBits(rOffset%8+length)]
+		outBytes := out[outStart : outStart+BytesForBits(length)]
+		if !bitmapByteRangesOverlap(outBytes, leftBytes) &&
+			!bitmapByteRangesOverlap(outBytes, rightBytes) {
+			leftShift, rightShift := uint(lOffset%8), uint(rOffset%8)
+			nwords := length / 64
+			for i := int64(0); i < nwords; i++ {
+				lword := binary.LittleEndian.Uint64(leftBytes)
+				if leftShift != 0 {
+					lword = (lword >> leftShift) | uint64(leftBytes[8])<<(64-leftShift)
+				}
+				rword := binary.LittleEndian.Uint64(rightBytes)
+				if rightShift != 0 {
+					rword = (rword >> rightShift) | uint64(rightBytes[8])<<(64-rightShift)
+				}
+				binary.LittleEndian.PutUint64(outBytes, op.opWord(lword, rword))
+				leftBytes = leftBytes[8:]
+				rightBytes = rightBytes[8:]
+				outBytes = outBytes[8:]
+			}
+			// Complete bytes at the end also avoid the reader/writer path.
+			remaining := length % 64
+			for remaining >= 8 {
+				lbyte := leftBytes[0] >> leftShift
+				if leftShift != 0 {
+					lbyte |= leftBytes[1] << (8 - leftShift)
+				}
+				rbyte := rightBytes[0] >> rightShift
+				if rightShift != 0 {
+					rbyte |= rightBytes[1] << (8 - rightShift)
+				}
+				outBytes[0] = op.opByte(lbyte, rbyte)
+				leftBytes = leftBytes[1:]
+				rightBytes = rightBytes[1:]
+				outBytes = outBytes[1:]
+				remaining -= 8
+			}
+			if remaining != 0 {
+				lbyte := leftBytes[0] >> leftShift
+				if int64(leftShift)+remaining > 8 {
+					lbyte |= leftBytes[1] << (8 - leftShift)
+				}
+				rbyte := rightBytes[0] >> rightShift
+				if int64(rightShift)+remaining > 8 {
+					rbyte |= rightBytes[1] << (8 - rightShift)
+				}
+				mask := byte((1 << uint(remaining)) - 1)
+				outBytes[0] = (outBytes[0] &^ mask) | (op.opByte(lbyte, rbyte) & mask)
+			}
+			return
+		}
+	}
+
 	leftRdr := NewBitmapWordReader(left, int(lOffset), int(length))
 	rightRdr := NewBitmapWordReader(right, int(rOffset), int(length))
 	writer := NewBitmapWordWriter(out, int(outOffset), int(length))
@@ -638,17 +860,17 @@ func BitmapXnorAlloc(mem memory.Allocator, left, right []byte, lOffset, rOffset 
 	return BitmapOpAlloc(mem, bitXnorOp, left, right, lOffset, rOffset, length, outOffset)
 }
 
+// BitmapEquals reports whether the selected ranges have the same bits.
+// Bytes outside the compared ranges are ignored.
 func BitmapEquals(left, right []byte, lOffset, rOffset int64, length int64) bool {
 	if lOffset%8 == 0 && rOffset%8 == 0 {
-		// byte aligned, fast path, can use bytes.Equal (memcmp)
+		// Byte aligned: use bytes.Equal for the bulk and compare trailing bits.
 		byteLen := length / 8
 		lStart := lOffset / 8
 		rStart := rOffset / 8
 		if !bytes.Equal(left[lStart:lStart+byteLen], right[rStart:rStart+byteLen]) {
 			return false
 		}
-
-		// check trailing bits
 		for i := (length / 8) * 8; i < length; i++ {
 			if BitIsSet(left, int(lOffset+i)) != BitIsSet(right, int(rOffset+i)) {
 				return false
@@ -657,25 +879,86 @@ func BitmapEquals(left, right []byte, lOffset, rOffset int64, length int64) bool
 		return true
 	}
 
-	lrdr := NewBitmapWordReader(left, int(lOffset), int(length))
-	rrdr := NewBitmapWordReader(right, int(rOffset), int(length))
+	// Slice up front, as the word-reader path did, so out-of-bounds
+	// ranges still panic even when the first compared bits differ.
+	lshift, rshift := uint(lOffset%8), uint(rOffset%8)
+	left = left[lOffset/8 : lOffset/8+(int64(lshift)+length+7)/8]
+	right = right[rOffset/8 : rOffset/8+(int64(rshift)+length+7)/8]
 
-	nwords := lrdr.Words()
-	for nwords > 0 {
-		nwords--
-		if lrdr.NextWord() != rrdr.NextWord() {
+	if lshift == rshift {
+		// Equal intra-byte offsets: compare the leading partial byte,
+		// all complete middle bytes using memcmp, then the trailing bits.
+		if length == 0 {
+			return true
+		}
+		leading := length
+		if leading > int64(8-lshift) {
+			leading = int64(8 - lshift)
+		}
+		mask := byte((1<<uint(leading))-1) << lshift
+		if (left[0]^right[0])&mask != 0 {
 			return false
 		}
+		if leading == length {
+			return true
+		}
+		left, right = left[1:], right[1:]
+		length -= leading
+		nbytes := length / 8
+		if !bytes.Equal(left[:nbytes], right[:nbytes]) {
+			return false
+		}
+		if tail := length % 8; tail != 0 {
+			mask := byte((1 << uint(tail)) - 1)
+			return (left[nbytes]^right[nbytes])&mask == 0
+		}
+		return true
 	}
 
-	nbytes := lrdr.TrailingBytes()
-	for nbytes > 0 {
-		nbytes--
-		lbt, _ := lrdr.NextTrailingByte()
-		rbt, _ := rrdr.NextTrailingByte()
-		if lbt != rbt {
+	// Different offsets: unpack directly from the input slices without
+	// constructing two BitmapWordReaders. Compare full 64-bit words first.
+	for length >= 64 {
+		lword := binary.LittleEndian.Uint64(left)
+		if lshift != 0 {
+			lword = (lword >> lshift) | uint64(left[8])<<(64-lshift)
+		}
+		rword := binary.LittleEndian.Uint64(right)
+		if rshift != 0 {
+			rword = (rword >> rshift) | uint64(right[8])<<(64-rshift)
+		}
+		if lword != rword {
 			return false
 		}
+		left, right = left[8:], right[8:]
+		length -= 64
+	}
+
+	for length >= 8 {
+		lbyte := left[0] >> lshift
+		if lshift != 0 {
+			lbyte |= left[1] << (8 - lshift)
+		}
+		rbyte := right[0] >> rshift
+		if rshift != 0 {
+			rbyte |= right[1] << (8 - rshift)
+		}
+		if lbyte != rbyte {
+			return false
+		}
+		left, right = left[1:], right[1:]
+		length -= 8
+	}
+	if length != 0 {
+		lbyte := left[0] >> lshift
+		if length+int64(lshift) > 8 {
+			lbyte |= left[1] << (8 - lshift)
+		}
+		rbyte := right[0] >> rshift
+		if length+int64(rshift) > 8 {
+			rbyte |= right[1] << (8 - rshift)
+		}
+		mask := byte((1 << uint(length)) - 1)
+		return (lbyte^rbyte)&mask == 0
 	}
 	return true
 }

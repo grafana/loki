@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -42,17 +41,16 @@ func (dec *Decoder) SectionMetadata(ctx context.Context) (*datasetmd.SectionMeta
 		return nil, err
 	}
 
-	rc, err := dec.sr.MetadataRange(ctx, int64(info.SectionMetadataOffset), int64(info.SectionMetadataLength))
+	metadata, err := dec.sr.MetadataRanges(ctx, []dataobj.RelativeByteRange{{
+		Offset: int64(info.SectionMetadataOffset),
+		Length: int64(info.SectionMetadataLength),
+	}})
 	if err != nil {
 		return nil, fmt.Errorf("reading section metadata: %w", err)
 	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
 
 	var md datasetmd.SectionMetadata
-	if err := protocodec.Decode(br, &md); err != nil {
+	if err := protocodec.DecodeBytes(metadata[0], &md); err != nil {
 		return nil, fmt.Errorf("decoding section metadata: %w", err)
 	}
 	return &md, nil
@@ -113,6 +111,9 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 // ReadPages reads the provided set of pages, iterating over their data matching
 // the argument order. If an error is encountered while retrieving pages, an
 // error is emitted from the sequence and iteration stops.
+//
+// ReadPages emits one error and no pages if a page does not fit in the data
+// region of the section.
 func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		region := xcap.RegionFromContext(ctx)
@@ -121,8 +122,18 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 			region.Record(dataobj.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
 		}()
 
+		// A page descriptor can be corrupt. Check each page against the data region before the
+		// loop allocates its buffer. A corrupt size would force a huge allocation or a panic.
+		dataSize := dec.sr.DataSize()
 		ranges := make([]rangeio.Range, 0, len(pages))
-		for _, page := range pages {
+		for i, page := range pages {
+			// Subtract instead of add, so a large offset or size cannot overflow. DataSize is
+			// negative for a region larger than math.MaxInt64 bytes. Reject it first, because
+			// uint64(dataSize) would wrap to a huge value.
+			if dataSize < 0 || page.DataOffset > uint64(dataSize) || page.DataSize > uint64(dataSize)-page.DataOffset {
+				return fmt.Errorf("page %d is outside the data region: offset=%d size=%d region length=%d", i, page.DataOffset, page.DataSize, dataSize)
+			}
+
 			ranges = append(ranges, rangeio.Range{
 				Data:   make([]byte, page.DataSize),
 				Offset: int64(page.DataOffset),
@@ -152,7 +163,7 @@ type dataRangeReader struct {
 var _ rangeio.Reader = (*dataRangeReader)(nil)
 
 func (rr dataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (int, error) {
-	rc, err := rr.Inner.DataRange(ctx, r.Offset, r.Len())
+	rc, err := rr.Inner.DataRange(ctx, dataobj.RelativeByteRange{Offset: r.Offset, Length: r.Len()})
 	if err != nil {
 		return 0, err
 	}

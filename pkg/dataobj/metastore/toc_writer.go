@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -97,10 +98,18 @@ type TableOfContentsEntry struct {
 	// must equal [indexobj.TenantShardBuckets] of the object, because readers
 	// trust it.
 	ShardBuckets indexpointers.ShardBuckets
+
+	// PostingKeys bounds the posting keys of the index object. Queries skip
+	// an index object whose bounds hold no column that they read, so the
+	// bounds must hold every posting key of the object. The zero value means
+	// the bounds are unknown.
+	PostingKeys postings.KeyRange
 }
 
 // IndexRunEntries holds the entries of the index objects of one run. A
 // query reads the index objects of a run as one index. A run is never empty.
+// The entries of a run of more than one entry share one time range, and each
+// has posting key bounds.
 type IndexRunEntries []TableOfContentsEntry
 
 // WatermarkUpdate raises the watermark of a Kafka topic and partition in a
@@ -257,10 +266,15 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 // oldPaths and newRuns are both empty, or if the ToC already holds the swap,
 // for example after a lost response.
 //
+// A query filters the entries of a ToC by time. If every entry of a run has
+// the same time range, the time filter keeps all entries of the run or none.
+//
 // It returns an error without retrying if:
 //   - the arguments are not valid: exactly one of oldPaths and newRuns is
-//     empty, a run is empty, an entry lies outside window, or a path of a run
-//     of more than one entry appears twice or is in oldPaths,
+//     empty, a run is empty or too long, an entry lies outside window, the
+//     entries of a run of more than one entry have different time ranges, an
+//     entry of such a run has no posting key bounds, or a path of such a run
+//     appears twice or is in oldPaths,
 //   - the ToC does not exist, holds another tenant, or lacks a path in
 //     oldPaths,
 //   - the ToC keeps a path of a run of more than one entry.
@@ -323,12 +337,17 @@ func runLengthOf(entries int) (int32, error) {
 	return int32(entries), nil
 }
 
-// validateNewRuns returns an error if a run of newRuns is empty or too long, if an entry
-// has no valid time range or lies in another window, or if the path of an
-// entry of a run of more than one entry appears twice in newRuns or is in
-// oldPaths.
+// validateNewRuns returns an error if a run of newRuns is empty or too long,
+// or if an entry has no valid time range or lies in another window. For a run
+// of more than one entry, it also returns an error if the entries have
+// different time ranges, if an entry has no posting key bounds, or if the path
+// of an entry appears twice in newRuns or is in oldPaths.
 //
-// A path in oldPaths and in such a run would make a retry after a lost
+// A run splits its postings by posting key, and queries read only the index
+// objects whose key bounds hold the columns that they need. An entry without
+// bounds shows that the writer of the run did not record where it split.
+//
+// A path in oldPaths and in a new run would make a retry after a lost
 // response remove part of the new run.
 func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntries) error {
 	pathCounts := make(map[string]int)
@@ -338,6 +357,19 @@ func validateNewRuns(window time.Time, oldPaths []string, newRuns []IndexRunEntr
 	for _, run := range newRuns {
 		if _, err := runLength(run); err != nil {
 			return err
+		}
+		for _, entry := range run[1:] {
+			if !entry.StartTime.Equal(run[0].StartTime) || !entry.EndTime.Equal(run[0].EndTime) {
+				return fmt.Errorf("replace-index-pointers: entry %s of a new run spans %s to %s, but entry %s spans %s to %s",
+					entry.Path, entry.StartTime, entry.EndTime, run[0].Path, run[0].StartTime, run[0].EndTime)
+			}
+		}
+		if len(run) > 1 {
+			for _, entry := range run {
+				if entry.PostingKeys.IsZero() {
+					return fmt.Errorf("replace-index-pointers: entry %s of a new run has no posting key bounds", entry.Path)
+				}
+			}
 		}
 		for _, entry := range run {
 			entryWindow, err := entry.TimeWindow()
@@ -679,6 +711,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 				EndTs:        entry.EndTime,
 				RunID:        runID,
 				RunLength:    length,
+				PostingKeys:  entry.PostingKeys,
 				ShardBuckets: entry.ShardBuckets,
 			}); err != nil {
 				return nil, fmt.Errorf("appending index pointer: %w", err)

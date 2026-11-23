@@ -103,69 +103,89 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 // together with [io.EOF]. If a length prefix is truncated or malformed, or a
 // value runs past the end of the data, Decode returns an error and no values.
 //
+// Decode allocates exactly the memory that the decoded values need. It does not
+// size the memory from the whole page.
+//
 // The return value is a [columnar.UTF8].
 func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	// Walk the length prefixes first. Without the total size, the values buffer
+	// would need the size of the whole page, or it would grow while the loop below
+	// fills it.
+	n, size, end, err := dec.peekValuesSize(count)
+	if err != nil {
+		dec.off = end
+		return nil, err
+	}
+
+	var eof error
+	if n < count {
+		// peekValuesSize stops early without an error only where the data ends.
+		eof = io.EOF
+		if n == 0 {
+			dec.off = end
+			return nil, eof
+		}
+	}
+
 	var (
-		// Strings need a an offsets and a value buffer.
-		//
-		// Offsets are in pairs, so there's always one additional offset from the
-		// requested count.
-		//
-		// Meanwhile, there's no good way of knowing how many bytes we might need to
-		// store all the strings. It's probably better to overestimate so we have
-		// exactly one allocated reusable memory region than to have it grow a few
-		// times as we try to discover the true size.
+		// Offsets are in pairs, so there is always one more offset than values.
+		offsetsBuf = memory.NewBuffer[int32](alloc, n+1)
+		valuesBuf  = memory.NewBuffer[byte](alloc, size)
 
-		offsetsBuf = memory.NewBuffer[int32](alloc, count+1)
-		valuesBuf  = memory.NewBuffer[byte](alloc, len(dec.data))
+		// It is far more efficient to manipulate the output slices ourselves.
+		offsets = offsetsBuf.Data()[:n+1]
+		values  = valuesBuf.Data()[:size]
 
-		// It's going to be far more efficient for us to manipulate the output
-		// slices ourselves, so we'll do that here.
-
-		offsets = offsetsBuf.Data()[:count+1]
-		values  = valuesBuf.Data()[:len(dec.data)]
+		// Store the state on the stack to avoid indirection.
+		data = dec.data
+		off  = dec.off
 
 		totalBytes int // Last offset to values written.
 	)
 
-	// Store state on stack to avoid indirection.
+	// First offset is always 0.
+	offsets[0] = 0
+
+	for i := range n {
+		// peekValuesSize already checked every length prefix.
+		stringSize, uvarintSize := binary.Uvarint(data[off:])
+		start := off + uvarintSize
+		off = start + int(stringSize)
+
+		copy(values[totalBytes:], data[start:off])
+		totalBytes += int(stringSize)
+		offsets[i+1] = int32(totalBytes)
+	}
+	dec.off = off
+
+	return columnar.NewUTF8(values, offsets, memory.Bitmap{}), eof
+}
+
+// peekValuesSize walks the length prefixes of up to count values, from the
+// current position, and does not move the decoder. It returns the number of
+// values that it found, their size in bytes without the length prefixes, and
+// the offset in the data where they end.
+//
+// peekValuesSize finds fewer than count values without an error where the data
+// ends after a complete value. If a length prefix is truncated or malformed, or
+// a value runs past the end of the data, it returns the error, and the offset
+// of that value.
+func (dec *plainBytesDecoder) peekValuesSize(count int) (n, size, end int, err error) {
 	var (
 		data = dec.data
 		off  = dec.off
 	)
-	defer func() { dec.off = off }()
-
-	// First offset is always 0.
-	offsets[0] = 0
-
-	for i := range count {
+	for n < count {
 		stringSize, uvarintSize := binary.Uvarint(data[off:])
 		if uvarintSize <= 0 || stringSize > uint64(len(data)-off-uvarintSize) {
-			if err := plainValueError(data, off, stringSize, uvarintSize); err != nil {
-				return nil, err
-			} else if i == 0 {
-				return nil, io.EOF
-			}
-
-			return columnar.NewUTF8(
-				values[:totalBytes],
-				offsets[:i+1],
-				memory.Bitmap{},
-			), io.EOF
+			return n, size, off, plainValueError(data, off, stringSize, uvarintSize)
 		}
 
-		copied := copy(values[totalBytes:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])
-
-		off += uvarintSize + copied
-		totalBytes += int(stringSize)
-		offsets[i+1] = int32(totalBytes)
+		off += uvarintSize + int(stringSize)
+		size += int(stringSize)
+		n++
 	}
-
-	return columnar.NewUTF8(
-		values[:totalBytes],
-		offsets[:count+1],
-		memory.Bitmap{},
-	), nil
+	return n, size, off, nil
 }
 
 // Skip implements [valueDecoder]. It returns an error and the number of values

@@ -32,6 +32,14 @@ type ReplicationSet struct {
 	MaxUnavailableZones int
 
 	ZoneAwarenessEnabled bool
+
+	// The partition ID that this replication set is associated with, if known, or -1 otherwise.
+	//
+	// This is only populated by methods that are partition-aware, for example:
+	// - ActivePartitionBatchRing.Get
+	// - MultiPartitionInstanceRing.GetReplicationSetForPartitionAndOperation
+	// - PartitionInstanceRing.GetReplicationSetsForOperation
+	PartitionID int32
 }
 
 // Do function f in parallel for all replicas in the set, erroring if we exceed
@@ -253,6 +261,8 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 	var logger kitlog.Logger = cfg.Logger
 	if cfg.Logger == nil {
 		logger = kitlog.NewNopLogger()
+	} else if r.PartitionID != -1 {
+		logger = kitlog.With(logger, "partition_id", r.PartitionID)
 	}
 
 	if cfg.IncludeReplicaCount {

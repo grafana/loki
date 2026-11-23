@@ -31,8 +31,8 @@ import (
 
 const (
 	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	indexStatsQuerySplitInterval = 24 * time.Hour
+	// Cached stats are reused for sub-ranges of a split without prorating chunks and streams, so we split the stats request in 8h intervals to limit their overcount.
+	indexStatsQuerySplitInterval = 8 * time.Hour
 
 	// Limited queries only need to fetch up to the requested line limit worth of logs,
 	// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -522,7 +522,8 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 			"target_bytes_per_shard", op.TargetBytesPerShard,
 		)
-		return r.indexStats.Do(ctx, req)
+		// Shards of different time ranges can't be merged, so the request isn't split like index stats.
+		return r.next.Do(ctx, req)
 	case *logproto.VolumeRequest:
 		logQueryExecution(ctx, logger,
 			"type", "volume_range",
@@ -1168,7 +1169,7 @@ func NewInstantMetricTripperware(
 func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, metricsNamespace string) (base.Middleware, error) {
 	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
-	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
+	limits = WithSplitByLimits(limits, 24*time.Hour)
 	var cacheMiddleware base.Middleware
 	if cfg.CacheVolumeResults {
 		var err error

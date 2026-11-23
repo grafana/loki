@@ -280,8 +280,16 @@ type EvaluatorFactory interface {
 // out from the parent down while evaluators are built. The zero value is the conservative one:
 // an expression that is not known to preserve the output.
 type NodeContext struct {
-	preserving bool
-	maxSeries  int
+	preserving    bool
+	maxSeries     int
+	cutoffTracker *cutoffTracker
+}
+
+// withCutoffTracker returns nc with t as the tracker of the dry-run cut-off. A nil t keeps the
+// cut-off enforcing.
+func (c NodeContext) withCutoffTracker(t *cutoffTracker) NodeContext {
+	c.cutoffTracker = t
+	return c
 }
 
 // RootContext returns the NodeContext of expr, the root expression of a query. The root
@@ -330,7 +338,7 @@ func (c NodeContext) child(opPreserves bool) NodeContext {
 	if !opPreserves {
 		return NodeContext{}
 	}
-	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries}
+	return NodeContext{preserving: c.preserving, maxSeries: c.maxSeries, cutoffTracker: c.cutoffTracker}
 }
 
 // iteratorLimits returns the limits that an iterator built for expr checks as it stores series.
@@ -340,20 +348,27 @@ func (c NodeContext) iteratorLimits(expr syntax.SampleExpr) iteratorLimits {
 	if isSketch(expr) {
 		return iteratorLimits{}
 	}
-	return iteratorLimits{maxSeries: c.maxSeries}
+	return iteratorLimits{maxSeries: c.maxSeries, cutoffTracker: c.cutoffTracker}
 }
 
 // iteratorLimits is what an iterator checks each time it stores a new series.
 type iteratorLimits struct {
 	// maxSeries is zero when the early cut-off does not apply to the iterator.
 	maxSeries int
+	// cutoffTracker is set when the cut-off only runs as a dry run: an iterator over the limit
+	// records it and carries on.
+	cutoffTracker *cutoffTracker
 }
 
 // validateMaxSeries returns the series limit error when an iterator holding series series has passed the
-// limit, and nil otherwise. The iterator's own count is a lower bound on the output only where
+// limit, and nil otherwise. In a dry run it records the breach and returns nil. The iterator's own count is a lower bound on the output only where
 // the expression is preserving, so it is never summed with other iterators.
 func (l iteratorLimits) validateMaxSeries(series int) error {
 	if l.maxSeries > 0 && series > l.maxSeries {
+		if l.cutoffTracker != nil {
+			l.cutoffTracker.record()
+			return nil
+		}
 		return logqlerr.NewSeriesLimitError(l.maxSeries)
 	}
 	return nil
@@ -925,7 +940,7 @@ func newTimestampFirstRangeAggEvaluator(
 			return nil, err
 		}
 
-		absentLabels, err := absentLabels(expr)
+		absentLabels, err := AbsentLabels(expr)
 		if err != nil {
 			return nil, err
 		}
@@ -1701,8 +1716,9 @@ func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
-// This is to replace missing timeseries during absent_over_time aggregation.
-func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
+// AbsentLabels returns the labels of the series that replaces missing timeseries during
+// absent_over_time aggregation.
+func AbsentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	m := labels.Labels{}
 
 	selector, err := expr.Selector()

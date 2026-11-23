@@ -121,13 +121,7 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
-	// TODO(segflow): restore `yaml:"logline,omitempty"` once the logline
-	// configuration is settled. Until then the section is flags-only and left
-	// out of the config reference. Every field is reachable through
-	// -logline-index.*, -logline-store.*, -logline-builder.*,
-	// -logline-query.*, -logline-correctness.*, -logline-compaction.* and
-	// -logline-retention.*.
-	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
+	Logline             loglineconfig.Config       `yaml:"logline,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`

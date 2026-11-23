@@ -41,8 +41,12 @@ type RowReader struct {
 
 // NewRowReader creates a RowReader over all of sec's columns. The underlying
 // reader is opened lazily on the first call to Next. The provided ctx governs
-// all subsequent I/O (Open and Read).
+// all subsequent I/O (Open and Read). A RowReader of an empty section reads no
+// rows.
 func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+	if sec.Empty() {
+		return &RowReader{ctx: ctx, exhausted: true}
+	}
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{

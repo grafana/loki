@@ -180,5 +180,6 @@ Refer to [Components](../components/) for a more detailed description of the com
 All data, both in memory and in long-term storage, may be partitioned by a
 tenant ID, pulled from the `X-Scope-OrgID` HTTP header in the request when Grafana Loki
 is running in multi-tenant mode. When Loki is **not** in multi-tenant mode, the
-header is ignored and the tenant ID is set to `fake`, which will appear in the
-index and in stored chunks.
+header is ignored and the tenant ID is set to the value of the `no_auth_tenant`
+configuration option (default `fake`), which will appear in the index and in
+stored chunks.
