@@ -591,6 +591,20 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
 	})
 
+	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds the paths of a new run inside a larger run and none of the old paths", func(t *testing.T) {
+		window := unixTime(0)
+		tocPath := TableOfContentsPath("tenantA", window)
+		bucket := objstore.NewInMemBucket()
+		uploadToCPointers(t, bucket, tocPath, "tenantA", runPointer("idx/new-a", 4), runPointer("idx/new-b", 4), runPointer("idx/new-c", 4))
+		before := readRawToC(t.Context(), t, bucket, tocPath)
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(t.Context(), window, "tenantA", []string{"idx/old"}, []IndexRunEntries{{runEntry(t, "idx/new-a"), runEntry(t, "idx/new-b")}})
+		require.ErrorIs(t, err, errChangeSuperseded)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(t.Context(), t, bucket, tocPath))
+	})
+
 	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds the paths of a new run as runs of one and none of the old paths", func(t *testing.T) {
 		window := unixTime(0)
 		tocPath := TableOfContentsPath("tenantA", window)

@@ -665,46 +665,58 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	// holdsRun reports whether the kept and reused pointers hold run. They
-	// hold a run of several entries only as one whole run, so a retry after a
-	// lost response sees the change as applied, but the same paths in another
-	// run structure do not count.
+	// holdsRunOfOne reports whether existing holds the run of one entry at
+	// path, so the change has nothing to write for it.
 	//
-	// A run of one entry adds no pointer for a path that the ToC keeps,
-	// whatever run holds that path. So a kept pointer holds a run of one
-	// entry in any run. A reused pointer is different: the change writes it
-	// as a run of one entry with no run ID. If it still has a run ID, the
-	// change did not apply yet, for example when it splits a run into runs of
-	// one entry.
-	holdsRun := func(run IndexRunEntries) bool {
+	// A run of one entry adds no pointer for a path that the ToC keeps, so a
+	// kept pointer holds it in any run. The change writes a reused path as a
+	// pointer with no run ID, so a reused pointer holds it only without a run
+	// ID. A reused pointer with a run ID means that the change did not apply
+	// yet, for example when it splits a run into runs of one entry.
+	holdsRunOfOne := func(path string) bool {
+		if _, ok := kept[path]; ok {
+			return true
+		}
+		runID, ok := reusedPresent[path]
+		return ok && runID == 0
+	}
+	// existingRunID returns the run ID of the kept or reused pointer of path.
+	// It returns false if existing holds no such pointer.
+	existingRunID := func(path string) (indexpointers.RunID, bool) {
+		if runID, ok := kept[path]; ok {
+			return runID, true
+		}
+		runID, ok := reusedPresent[path]
+		return runID, ok
+	}
+	// holdsRunOfSeveral reports whether existing holds run, a run of several
+	// entries, as one whole run: every path is kept or reused, all have one
+	// run ID, and that run has no other pointers. So a retry after a lost
+	// response sees the change as applied, but the same paths in another run
+	// structure do not count.
+	holdsRunOfSeveral := func(run IndexRunEntries) bool {
 		var runID indexpointers.RunID
 		for i, entry := range run {
-			existingRunID, isKept := kept[entry.Path]
-			reusedRunID, isReused := reusedPresent[entry.Path]
-			switch {
-			case isKept:
-			case isReused:
-				if len(run) == 1 && reusedRunID != 0 {
-					return false
-				}
-				existingRunID = reusedRunID
-			default:
+			entryRunID, ok := existingRunID(entry.Path)
+			if !ok || (i > 0 && entryRunID != runID) {
 				return false
 			}
-			if i == 0 {
-				runID = existingRunID
-			} else if existingRunID != runID {
-				return false
-			}
-		}
-		if len(run) <= 1 {
-			return true
+			runID = entryRunID
 		}
 		return runID != 0 && runs[runID].total == len(run)
 	}
 	holdsEveryEntry := true
 	for _, run := range change.add {
-		if !holdsRun(run) {
+		var held bool
+		switch len(run) {
+		case 0:
+			held = true
+		case 1:
+			held = holdsRunOfOne(run[0].Path)
+		default:
+			held = holdsRunOfSeveral(run)
+		}
+		if !held {
 			holdsEveryEntry = false
 		}
 	}
