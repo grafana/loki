@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 )
 
@@ -308,10 +308,7 @@ func (d *decoder) fetchAndDecodeMetadata(ctx context.Context) (*filemd.Metadata,
 		}
 		defer rc.Close()
 
-		br := bufpool.GetReader(rc)
-		defer bufpool.PutReader(br)
-
-		md, err = decodeFileMetadata(br)
+		md, err = decodeFileMetadata(bufio.NewReader(rc))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("decoding file metadata: %w", err)
 		}

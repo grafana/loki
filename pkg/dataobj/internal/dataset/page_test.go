@@ -1,9 +1,11 @@
 package dataset
 
 import (
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -182,6 +184,47 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		}
 	}
 	require.Equal(t, in, actual)
+}
+
+func TestMemPage_open(t *testing.T) {
+	// A page builder accepts the first value of a page whatever its size. One value makes a page that
+	// decompresses to more than maxDecompressedSizeHint.
+	values := []string{strings.Repeat("0123456789abcdef", maxDecompressedSizeHint/16+1024)}
+	newOptions := func(compression datasetmd.CompressionType) BuilderOptions {
+		return BuilderOptions{
+			PageSizeHint: 1 << 20,
+			Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+			Compression:  compression,
+			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		}
+	}
+
+	uncompressed, closer, err := buildPage(t, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
+	require.NoError(t, err)
+	require.NoError(t, closer.Close())
+
+	tests := []struct {
+		name             string
+		compression      datasetmd.CompressionType
+		uncompressedSize int
+	}{
+		{name: "decompresses a large snappy page whose descriptor claims a size too large for a buffer", compression: datasetmd.COMPRESSION_TYPE_SNAPPY, uncompressedSize: math.MaxInt},
+		{name: "decompresses a large snappy page whose descriptor claims a negative size", compression: datasetmd.COMPRESSION_TYPE_SNAPPY, uncompressedSize: -1},
+		{name: "decompresses a large zstd page whose descriptor claims a size too large for a buffer", compression: datasetmd.COMPRESSION_TYPE_ZSTD, uncompressedSize: math.MaxInt},
+		{name: "decompresses a large zstd page whose descriptor claims a negative size", compression: datasetmd.COMPRESSION_TYPE_ZSTD, uncompressedSize: -1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			page := buildPage(t, newOptions(tc.compression), values)
+			page.Desc.UncompressedSize = tc.uncompressedSize
+
+			got, closer, err := page.open(tc.compression)
+
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+			require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
+		})
+	}
 }
 
 func Test_pageBuilder_Fill(t *testing.T) {

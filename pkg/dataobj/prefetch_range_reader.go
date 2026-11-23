@@ -11,11 +11,12 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
-// prefetchedRangeReader wraps a rangeReader with prefetched ranges of bytes. A read serves the
-// parts that fall inside a prefetched range from memory and reads each gap from the inner reader.
-// It reads the gaps of one read in parallel.
+// prefetchedRangeReader wraps a rangeReader with prefetched ranges of bytes. ReadRange and
+// ReadRanges serve the parts that fall inside a prefetched range from memory and read the gaps from
+// the inner reader. Both read the gaps in parallel.
 type prefetchedRangeReader struct {
 	inner rangeReader
 
@@ -58,6 +59,42 @@ func (rr *prefetchedRangeReader) ReadRange(ctx context.Context, offset int64, le
 	return newRangeSegmentsReader(segments), nil
 }
 
+// ReadRanges returns the bytes of each requested range, in the order of ranges.
+//
+// When one prefetched range holds all the bytes of a requested range, the result aliases that
+// prefetched range. The capacity of that result equals its length.
+func (rr *prefetchedRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+	var (
+		results = make([][]byte, len(ranges))
+		gaps    []rangeio.Range
+	)
+	for i, r := range ranges {
+		if err := validateAbsoluteByteRange(r); err != nil {
+			return nil, err
+		}
+
+		// Return a slice of the prefetched range when one range holds all the bytes. This saves an
+		// allocation and a copy.
+		if data, ok := rr.zeroCopyPrefetchedRange(r.Offset, r.Length); ok {
+			results[i] = data
+			continue
+		}
+
+		// Allocate a new slice for the bytes. The call below copies the prefetched bytes into it and
+		// adds a read for each part that is not prefetched.
+		results[i] = make([]byte, r.Length)
+		gaps = rr.copyPrefetchedRangeAndCollectGaps(gaps, results[i], r.Offset)
+	}
+
+	// Give rangeio only the gaps, so a call with every byte prefetched reads nothing. rangeio can still
+	// merge two close gaps into one read, to save a request. That read also covers the bytes between
+	// the gaps, even when they are prefetched.
+	if err := readIORanges(ctx, rr.inner, gaps); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // openRangeSegmentReaders opens a reader on the inner reader for every segment without data, all at
 // the same time. When one fails, it waits for the others, closes every reader that it opened and
 // returns the first error.
@@ -87,11 +124,41 @@ func (rr *prefetchedRangeReader) openRangeSegmentReaders(ctx context.Context, se
 	return err
 }
 
-// Prefetched returns the bytes of [offset, offset+length) when one prefetched range holds all of
-// them. It returns false when length is zero or less. It also returns false when the bytes span two
-// ranges, even when the ranges touch, because a slice that joins them needs a copy. ReadRange
-// serves such a request from memory. The slice aliases the range, so the caller must not modify it.
-func (rr *prefetchedRangeReader) Prefetched(offset, length int64) ([]byte, bool) {
+// copyPrefetchedRangeAndCollectGaps copies the prefetched bytes of [offset, offset+len(buf)) into
+// buf. It returns gaps with one rangeio.Range appended for each part of buf that is not prefetched.
+// Each appended range reads into the matching part of buf.
+func (rr *prefetchedRangeReader) copyPrefetchedRangeAndCollectGaps(gaps []rangeio.Range, buf []byte, offset int64) []rangeio.Range {
+	if len(buf) == 0 {
+		return gaps
+	}
+
+	overlapping := rr.rangesOverlapping(offset, int64(len(buf)))
+	if len(overlapping) == 0 {
+		return append(gaps, rangeio.Range{Data: buf, Offset: offset})
+	}
+
+	pos := 0
+	for _, s := range rangeSegmentsFromPrefetchedRanges(overlapping, offset, offset+int64(len(buf))) {
+		if s.data != nil {
+			pos += copy(buf[pos:], s.data)
+			continue
+		}
+		next := pos + int(s.readerLength)
+		gaps = append(gaps, rangeio.Range{Data: buf[pos:next], Offset: s.readerOffset})
+		pos = next
+	}
+	return gaps
+}
+
+// zeroCopyPrefetchedRange returns the bytes of [offset, offset+length) when one prefetched range
+// holds all of them. It returns false when length is zero or less, or when offset+length overflows.
+//
+// It also returns false when the bytes span more than one prefetched range, even when the ranges
+// touch. A slice that joins them needs a copy.
+//
+// The slice aliases the prefetched range, so the caller must not modify it. Its capacity equals its
+// length, so an append does not write into the bytes that follow it in the range.
+func (rr *prefetchedRangeReader) zeroCopyPrefetchedRange(offset, length int64) ([]byte, bool) {
 	end := offset + length
 	if length <= 0 || end < offset {
 		return nil, false
@@ -105,7 +172,7 @@ func (rr *prefetchedRangeReader) Prefetched(offset, length int64) ([]byte, bool)
 	if r.Offset > offset || end > r.Offset+int64(len(r.Data)) {
 		return nil, false
 	}
-	return r.Data[offset-r.Offset : end-r.Offset], true
+	return r.Data[offset-r.Offset : end-r.Offset : end-r.Offset], true
 }
 
 // rangesOverlapping returns the prefetched ranges that share at least one byte with
@@ -158,20 +225,20 @@ func (rc *rangeSegmentsReader) Close() error {
 	return rc.segments.Close()
 }
 
-// rangeSegment is a part of the range of one ReadRange call. It holds either prefetched bytes or a
-// gap that the inner reader serves.
+// rangeSegment is a part of a requested range. It holds either prefetched bytes or a gap that the
+// inner reader serves.
 type rangeSegment struct {
 	// data holds the prefetched bytes of the segment. It is nil for a gap.
 	data []byte
 
-	// readerOffset and readerLength give the range that the reader of a gap reads.
+	// readerOffset and readerLength give the range of a gap in the object. The inner reader serves it.
 	readerOffset, readerLength int64
 
 	// reader is the reader that openRangeSegmentReaders opened for a gap.
 	reader io.ReadCloser
 }
 
-// rangeSegments are the segments of one ReadRange call, in order.
+// rangeSegments are the segments of one requested range, in order.
 type rangeSegments []rangeSegment
 
 // Close closes the readers of the segments, last first, and returns their errors joined. It skips

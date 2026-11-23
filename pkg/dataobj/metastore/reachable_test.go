@@ -95,6 +95,23 @@ func TestReachableObjects(t *testing.T) {
 		})
 	}
 
+	t.Run("returns the log objects of the other stats sections of an index object that has an empty stats section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), nil)
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+		statsBuilder.SetTenant(tenant)
+		statsBuilder.Append(stats.Stat{ObjectPath: "objects/00/in-stats"})
+		objBuilder := dataobj.NewBuilder(nil)
+		require.NoError(t, objBuilder.Append(stats.NewLayoutSectionBuilder(tenant, layout)))
+		require.NoError(t, objBuilder.Append(statsBuilder))
+		uploadObject(t, bucket, "indexes/aa/with-empty", objBuilder.Flush)
+		registerIndex(t, bucket, tenant, first, "indexes/aa/with-empty")
+
+		paths, _, err := ReachableObjects(t.Context(), bucket, tenant, 1)
+		require.NoError(t, err)
+		require.Equal(t, []string{"index/v0/indexes/aa/with-empty", "objects/00/in-stats"}, paths)
+	})
+
 	t.Run("returns the log objects of an index object that the index builder wrote", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))

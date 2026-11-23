@@ -232,6 +232,12 @@ func writeScenarioOrderNote(w io.Writer) {
 	fmt.Fprintln(w)
 }
 
+// escapeTableCell returns s with each pipe escaped, so a LogQL pipeline stage inside a code span
+// does not end the markdown table cell.
+func escapeTableCell(s string) string {
+	return strings.ReplaceAll(s, "|", `\|`)
+}
+
 func generate(w io.Writer, rep *report) {
 	fmt.Fprintln(w, "## Benchmark results")
 	fmt.Fprintln(w)
@@ -242,7 +248,7 @@ func generate(w io.Writer, rep *report) {
 	}
 	fmt.Fprint(w, "\n|---|---|"+strings.Repeat("---|", len(latencies))+"\n")
 	for _, q := range rep.order {
-		fmt.Fprintf(w, "| `%s`<br>%s | %s |", q.expr, q.shape, q.kind)
+		fmt.Fprintf(w, "| `%s`<br>%s | %s |", escapeTableCell(q.expr), q.shape, q.kind)
 		for _, latency := range latencies {
 			fmt.Fprintf(w, " %s |", cell(rep, q, latency, formatSeconds))
 		}
@@ -253,7 +259,7 @@ func generate(w io.Writer, rep *report) {
 	fmt.Fprint(w, "| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) |\n|---|---|---|---|---|---|---|\n")
 	for _, q := range rep.order {
 		fmt.Fprintf(w, "| `%s`<br>%s | %s | %s | %s | %s | %s | %s |\n",
-			q.expr, q.shape, q.kind,
+			escapeTableCell(q.expr), q.shape, q.kind,
 			cell(rep, q, "0s", formatCount("store_reqs/op")),
 			cell(rep, q, "0s", formatMB("store_bytes/op")),
 			cell(rep, q, maxParallelLatency, formatCount("store_max_parallel")),

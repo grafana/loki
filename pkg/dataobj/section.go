@@ -69,6 +69,13 @@ func (ty SectionType) String() string {
 	return base
 }
 
+// RelativeByteRange is a range of Length bytes inside a region of a section. It
+// starts Offset bytes after the start of the region. Each method that takes a
+// RelativeByteRange names its region.
+type RelativeByteRange struct {
+	Offset, Length int64
+}
+
 // SectionReader is a low-level interface to read data ranges and metadata from
 // a section.
 //
@@ -83,23 +90,23 @@ type SectionReader interface {
 	// ExtensionData will be nil if no extension data is available.
 	ExtensionData() []byte
 
-	// DataRange opens a reader of length bytes from the data region of a
-	// section. The offset argument determines where in the data region reading
-	// should start.
+	// DataRange opens a reader of r.Length bytes from the data region of a
+	// section. The reader starts r.Offset bytes after the start of that region.
 	//
-	// DataRange returns an error if the read fails or if offset+length goes
+	// DataRange returns an error if the read fails or if r.Offset+r.Length goes
 	// beyond the readable data region. The returned reader is only valid as long
 	// as the provided ctx is not canceled.
-	DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+	DataRange(ctx context.Context, r RelativeByteRange) (io.ReadCloser, error)
 
-	// MetadataRange opens a reader of length bytes from the metadata region of
-	// a section. The offset argument determines where in the metadata region
-	// reading should start.
+	// MetadataRanges returns the bytes of each range of the metadata region. The
+	// result has one slice for each range, in the order of ranges.
 	//
-	// MetadataRange returns an error if the read fails or if offset+length goes
-	// beyond the readable metadata region. The returned reader is only valid as long
-	// as the provided ctx is not canceled.
-	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+	// It returns slices, not readers, so an implementation can return bytes
+	// that it holds in memory without a copy.
+	//
+	// A returned slice can alias memory that other section readers share. The
+	// caller must not modify it. The slice stays valid after the call returns.
+	MetadataRanges(ctx context.Context, ranges []RelativeByteRange) ([][]byte, error)
 
 	// DataSize returns the total size of the data region of a section. DataSize
 	// returns 0 for sections with no data region.

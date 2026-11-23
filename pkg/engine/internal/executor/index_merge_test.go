@@ -138,7 +138,7 @@ var _ sequence[intRecord] = (*trackingSequence[intRecord])(nil)
 // loser-tree helpers as the production merge sites (heapAt, heapLess,
 // closeSeq). It yields every record in sorted order to fn; iteration stops
 // early when fn returns false. It mirrors the inlined loop in
-// mergePostingsIntoBuilder / mergeStatsIntoBuilder so those helpers stay tested
+// mergePostingsInto / mergeStatsInto so those helpers stay tested
 // without a dedicated merge function.
 func drainMerge[R any](ctx context.Context, groups []sequence[R], cmp func(a, b R) int, fn func(R) bool) error {
 	tree := loser.New(groups, heapVal[R]{isMax: true}, heapAt[R], heapLess(cmp), closeSeq[R])
@@ -464,7 +464,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 
 	// 3. Create executor context and run the merger.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	// 4. Verify an artifact was produced and contains both section kinds.
@@ -567,6 +567,120 @@ func TestDoIndexMerge(t *testing.T) {
 		require.ErrorContains(t, err, "records no stream layout")
 	})
 
+	t.Run("reports the posting key bounds of the postings rows of its output", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		observe := func(column string, ts int64) postings.LabelObservation {
+			return postings.LabelObservation{
+				ObjectPath: "log-X", ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, ts)), UncompressedSize: 100,
+			}
+		}
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-a.dat", []postings.LabelObservation{observe("env", 300), observe("app", 200)})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{observe("zone", 100)})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "v"}, artifact.PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "v"}, artifact.PostingKeys.Max())
+	})
+
+	t.Run("reports no posting key bounds when its output has no postings rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-b.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "web"})})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.True(t, artifact.PostingKeys.IsZero())
+	})
+
+	t.Run("merges the stats rows of a source with those of a source that has an empty stats section that records the same layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", layout,
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant(tenant)
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "log-X", ColumnName: "service", LabelValue: "api", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		})
+		uploadSections(t, bucket, "source/index-b.dat", stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Len(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path), 1)
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("records the layout of sources that have only empty stats sections", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for _, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: path + "/log", ColumnName: "service", LabelValue: "api", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
+		}
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Empty(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path))
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("writes a run of several index objects that together hold the rows of an output of one index object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for i, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			for j := range 150 {
+				postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath: fmt.Sprintf("log-%d", i), ColumnName: fmt.Sprintf("c%04d", 2*j+i), LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("log-%d", i), SortSchema: "label:service", Labels: map[string]string{"service": "api"},
+				MinTimestamp: 100, MaxTimestamp: 200, RowCount: 1, UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
+		}
+		node := twoSources("source/index-a.dat", "source/index-b.dat")
+
+		single, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
+		require.NoError(t, err)
+		artifacts, err := newSplittingContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var gotPostings []postings.Row
+		var gotStats []stats.Stat
+		for i, artifact := range artifacts {
+			if i > 0 {
+				require.Negative(t, artifacts[i-1].PostingKeys.Max().Compare(artifact.PostingKeys.Min()))
+			}
+			gotPostings = append(gotPostings, readAllPostingsRowsFromBucket(t.Context(), t, bucket, artifact.Path)...)
+			gotStats = append(gotStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path)...)
+		}
+		require.Equal(t, readAllPostingsRowsFromBucket(t.Context(), t, bucket, single.Path), gotPostings)
+		require.Equal(t, readAllStatsRowsFromBucket(t, bucket, single.Path), gotStats)
+	})
+
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
 		store := newLiveHandlesStore()
 		c := newTestExecutorContext(t, bucket)
@@ -618,7 +732,7 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 
 	// Run the executor.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err, "merge should succeed despite a legacy streams section")
 
 	// Verify the output exists.
@@ -931,7 +1045,7 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1053,7 +1167,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1151,7 +1265,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1244,7 +1358,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1329,7 +1443,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1367,9 +1481,9 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
-	require.Nil(t, artifacts)
+	require.Zero(t, artifacts)
 }
 
 // TestStatsRowReader_DottedLabelNames tests that label names containing dots
@@ -1538,7 +1652,7 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1610,9 +1724,8 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, resultRec, "result record must not be nil")
 
 	// Read the artifacts from the record.
-	var artifacts v2.ResultArtifact
-	require.NoError(t, artifacts.FromRecordBatch(resultRec))
-	require.NoError(t, artifacts.Validate())
+	artifacts, err := oneArtifact(t)(v2.DecodeResultArtifacts(resultRec))
+	require.NoError(t, err)
 
 	// Verify the artifact path matches the content-hash naming scheme.
 	path := artifacts.Path
@@ -1660,10 +1773,10 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		execCtx := newTestExecutorContext(t, bucket)
 		execCtx.indexMergeObserver = observer
 
-		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+		artifact, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, &physical.IndexMerge{
 			NodeID: ulid.Make(), Tenant: "tenant-1",
 			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
-		})
+		}))
 		require.NoError(t, err)
 
 		attrs, err := bucket.Attributes(ctx, artifact.Path)
@@ -1672,6 +1785,40 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
 		require.Len(t, observer.uncompressedSizes, 1)
 		require.Positive(t, observer.uncompressedSizes[0])
+	})
+
+	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newSplittingContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifacts, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var uploaded int64
+		for _, artifact := range artifacts {
+			attrs, err := bucket.Attributes(ctx, artifact.Path)
+			require.NoError(t, err)
+			uploaded += attrs.Size
+		}
+		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+		require.Greater(t, observer.uncompressedSizes[0], int64(4096*(len(artifacts)-1)))
 	})
 }
 
@@ -1683,7 +1830,7 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 		for _, path := range paths {
 			node.Runs[0].Sections = append(node.Runs[0].Sections, &compactionv2pb.SectionRef{ObjectPath: path})
 		}
-		artifacts, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		artifacts, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
 		require.NoError(t, err)
 		obj, err := dataobj.FromBucket(t.Context(), bucket, artifacts.Path, 0)
 		require.NoError(t, err)
@@ -1761,4 +1908,19 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
 	})
+}
+
+// oneArtifact returns a function that takes the results of a task and
+// returns its only artifact, or the error of the task. It returns a function
+// so a call can take the results of the task directly, as in
+// oneArtifact(t)(c.doIndexMerge(ctx, node)).
+func oneArtifact(t testing.TB) func([]v2.ResultArtifact, error) (v2.ResultArtifact, error) {
+	return func(artifacts []v2.ResultArtifact, err error) (v2.ResultArtifact, error) {
+		t.Helper()
+		if err != nil {
+			return v2.ResultArtifact{}, err
+		}
+		require.Len(t, artifacts, 1)
+		return artifacts[0], nil
+	}
 }

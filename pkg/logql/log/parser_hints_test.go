@@ -369,16 +369,32 @@ func TestStreamSampleExtractor_Process(t *testing.T) {
 			`{x__extracted="v"}`,
 		},
 		{
-			"a hint with a doubled duplicate suffix extracts the third key after two keys collide",
+			"a hint with a doubled duplicate suffix extracts the literal key when it comes first",
+			`sum by (foo_extracted_extracted)(count_over_time({a="b"} | logfmt [1m]))`,
+			labels.FromStrings("a", "b", "foo", "s"),
+			labels.FromStrings("foo", "sm"),
+			[]byte(`foo_extracted_extracted=3 foo=1 foo_extracted=2 x=4`),
+			`{foo_extracted_extracted="3"}`,
+		},
+		{
+			"a hint with a doubled duplicate suffix keeps the first key when two keys collide on it",
 			`sum by (foo_extracted_extracted)(count_over_time({a="b"} | logfmt [1m]))`,
 			labels.FromStrings("a", "b", "foo", "s"),
 			labels.FromStrings("foo", "sm"),
 			[]byte(`foo=1 foo_extracted=2 foo_extracted_extracted=3 x=4`),
-			`{foo_extracted_extracted="3"}`,
+			`{foo_extracted_extracted="2"}`,
 		},
 		{
-			"a filter with a doubled duplicate suffix keeps the line when the third key matches",
+			"a filter with a doubled duplicate suffix keeps the line when the literal key comes first and matches",
 			`sum by (x)(count_over_time({a="b"} | logfmt | foo_extracted_extracted="3" [1m]))`,
+			labels.FromStrings("a", "b", "foo", "s"),
+			labels.FromStrings("foo", "sm"),
+			[]byte(`foo_extracted_extracted=3 foo=1 foo_extracted=2 x=4`),
+			`{x="4"}`,
+		},
+		{
+			"a filter with a doubled duplicate suffix keeps the line when the first of two colliding keys matches",
+			`sum by (x)(count_over_time({a="b"} | logfmt | foo_extracted_extracted="2" [1m]))`,
 			labels.FromStrings("a", "b", "foo", "s"),
 			labels.FromStrings("foo", "sm"),
 			[]byte(`foo=1 foo_extracted=2 foo_extracted_extracted=3 x=4`),
@@ -493,7 +509,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 }
 
 // stagesFor parses a plain log-selector query and returns its stages list
-func stagesFor(t *testing.T, query string) []log.Stage {
+func stagesFor(t testing.TB, query string) []log.Stage {
 	t.Helper()
 	expr, err := syntax.ParseLogSelector(query, true)
 	require.NoError(t, err)
@@ -574,7 +590,6 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 			`{app="foo"} | logfmt | unpack | foo="bar"`,
 
 			// multi-label filters are not supported
-			`{app="foo"} | logfmt | foo > 5 and bar="baz"`,
 			`{app="foo"} | logfmt | foo > 5 and bar > 3`,
 			`{app="foo"} | logfmt | foo > 5 or bar < 3`,
 		} {
@@ -583,6 +598,20 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 				require.Equal(t, log.NoLabelFilterHints(), h, "expected the optimization to be disabled for %q", query)
 			})
 		}
+	})
+
+	t.Run("a multi-label filter only lets the parser skip lines", func(t *testing.T) {
+		h := log.NewLabelFilterHints(stagesFor(t, `{app="foo"} | logfmt | foo > 5 and bar="bazz"`))
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo"), 0)
+		lb.Set(log.ParsedLabel, "foo", "1")
+		lb.Set(log.ParsedLabel, "bar", "nope")
+		require.True(t, h.ShouldContinueParsingLine("foo", lb))
+		require.True(t, h.ShouldContinueParsingLine("bar", lb))
+
+		lb.Reset()
+		require.False(t, h.ShouldParseLine([]byte("foo=1 bar=nope"), lb))
+		require.True(t, h.ShouldParseLine([]byte("foo=1 bar=bazz"), lb))
 	})
 }
 

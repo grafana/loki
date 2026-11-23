@@ -80,7 +80,8 @@ type Copier struct {
 
 // Run performs the copy.
 func (c *Copier) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx, _ = startSpanWithBucket(ctx, c.dst.c, c.dst.bucket, "Copier.Run")
+	// Record the destination bucket and object on the span, consistent with gcp.resource.destination.*.
+	ctx, _ = startSpanWithObject(ctx, c.dst.c, c.dst.bucket, c.dst.object, "Copier.Run")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := c.src.validate(); err != nil {
@@ -182,7 +183,8 @@ type Composer struct {
 
 // Run performs the compose operation.
 func (c *Composer) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx, _ = startSpanWithBucket(ctx, c.dst.c, c.dst.bucket, "Composer.Run")
+	// Record the destination bucket and object on the span, consistent with gcp.resource.destination.*.
+	ctx, _ = startSpanWithObject(ctx, c.dst.c, c.dst.bucket, c.dst.object, "Composer.Run")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := c.dst.validate(); err != nil {

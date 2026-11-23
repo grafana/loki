@@ -431,7 +431,9 @@ func TestFromBucket_RequestStatistics(t *testing.T) {
 		obj, err := dataobj.FromBucket(ctx, bucket, "obj", 0)
 		require.NoError(t, err)
 		for _, sec := range obj.Sections() {
-			readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+			readAll(t, func() (io.ReadCloser, error) {
+				return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+			})
 		}
 	}
 

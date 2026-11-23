@@ -586,7 +586,7 @@ The label with the highest precedence keeps the name. Loki renames each of the o
 The following rules apply to all parsers:
 
 - A renamed label never replaces another label. If a stream label or a structured metadata key already has the name `<name>_extracted`, Loki drops the renamed label. Loki renames a label only once. For example, an extracted key `foo_extracted` becomes `foo_extracted_extracted` when a stream label `foo_extracted` exists.
-- In one parser stage, a key that is called `foo_extracted` in the log line wins over a key `foo` that Loki renames to `foo_extracted`. The order of the keys in the log line does not matter.
+- In one parser stage, a key `foo` that Loki renames to `foo_extracted` and a key that is called `foo_extracted` in the log line write the same label. The first of the two in the log line keeps the name, as for two equal keys. The `json` and `logfmt` parsers with extraction expressions, for example `| json foo, foo_extracted`, are the exception: the key that is called `foo_extracted` wins, whatever the order.
 - A [label format expression](#labels-format-expression) is the only way to replace a label, whatever its source.
 
 Consider a stream with the label `foo="l"`, the structured metadata `foo="m"`, and the log line `foo=p`. The extracted label `foo` finds both names taken, so Loki drops it. The following queries show how to get the extracted value:
