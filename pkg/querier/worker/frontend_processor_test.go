@@ -80,7 +80,7 @@ func TestFrontendProcessor_ReconnectsWithoutBackoffWhenStreamIsCanceled(t *testi
 	})
 
 	cfg := Config{QuerierID: "test-querier-id"}
-	fp := newFrontendProcessor(cfg, nil, log.NewNopLogger(), NewMetrics(cfg, nil), queryrange.DefaultCodec)
+	fp := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
