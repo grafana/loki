@@ -252,6 +252,115 @@ func Test_Push(t *testing.T) {
 	})
 }
 
+// Test_PushStopDrainsBufferedEntries is a regression test for
+// https://github.com/grafana/loki/issues/26553: entries buffered in a Push
+// were silently dropped when Stop was called before the next push tick,
+// which lost the patterns the ingester flushes during shutdown.
+func Test_PushStopDrainsBufferedEntries(t *testing.T) {
+	lbls := labels.New(labels.Label{Name: "test", Value: "test"})
+	structuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: "info"},
+	}
+
+	responses := make(chan response, 1) // buffered not to block the response handler
+	mock := httptest.NewServer(createServerHandler(responses))
+	require.NotNil(t, mock)
+	defer mock.Close()
+
+	backoffCfg := backoff.Config{
+		MinBackoff: 10 * time.Millisecond,
+		MaxBackoff: 20 * time.Millisecond,
+		MaxRetries: 1,
+	}
+
+	push, err := NewPush(
+		mock.Listener.Addr().String(),
+		"test1",
+		2*time.Second,
+		// Push period far in the future: the periodic ticker can never fire
+		// during the test, so only the drain on Stop can deliver the entry.
+		time.Hour,
+		config.DefaultHTTPClientConfig,
+		"", "",
+		false,
+		&backoffCfg,
+		log.NewNopLogger(),
+		NewMetrics(nil),
+	)
+	require.NoError(t, err)
+
+	ts, payload := testPayload()
+	push.WriteEntry(ts, payload, lbls, structuredMetadata)
+
+	push.Stop()
+
+	select {
+	case resp := <-responses:
+		assertResponse(t, resp, false, lbls, ts, payload)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for buffered entry to be pushed on Stop")
+	}
+
+	// Stop must be idempotent: a second call must return promptly and must
+	// not panic or push anything else.
+	push.Stop()
+	select {
+	case resp := <-responses:
+		t.Fatalf("unexpected second push on repeated Stop: %+v", resp.pushReq)
+	default:
+	}
+}
+
+// Test_PushStopConcurrentWrites exercises WriteEntry racing with Stop under
+// the race detector: writes landing while the drain runs must neither race
+// with it nor panic, and Stop must still return.
+func Test_PushStopConcurrentWrites(t *testing.T) {
+	lbls := labels.New(labels.Label{Name: "test", Value: "test"})
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	backoffCfg := backoff.Config{
+		MinBackoff: 10 * time.Millisecond,
+		MaxBackoff: 20 * time.Millisecond,
+		MaxRetries: 1,
+	}
+
+	push, err := NewPush(
+		server.Listener.Addr().String(),
+		"test1",
+		2*time.Second,
+		time.Hour,
+		config.DefaultHTTPClientConfig,
+		"", "",
+		false,
+		&backoffCfg,
+		log.NewNopLogger(),
+		NewMetrics(nil),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ts, payload := testPayload()
+			for j := 0; j < 50; j++ {
+				push.WriteEntry(ts, payload, lbls, nil)
+			}
+		}()
+	}
+
+	push.Stop()
+	wg.Wait()
+
+	// A second Stop after the writers finished must also return promptly.
+	push.Stop()
+}
+
 // Test helpers
 
 func assertResponse(t *testing.T, resp response, testAuth bool, ls labels.Labels, ts time.Time, payload string) {
