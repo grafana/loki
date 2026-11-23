@@ -313,7 +313,9 @@ func TestHistogramOverTime_sum(t *testing.T) {
 		require.Equal(t, want, sumOf(`sum(histogram_over_time(`+rng+`))`), "sum")
 		require.Equal(t, want, sumOf(`sum(sum by (pod) (histogram_over_time(`+rng+`)))`), "a sum of sums")
 
-		// It is what the sum of the sum_over_time of the three series returns, as sum_over_time does not group.
+		// It is what sum by (app) of sum_over_time returns. That query is not a sum of the sums of the three series:
+		// the sum is sent to the extractor, which reduces the labels to app at the source, so sum_over_time adds the
+		// values of the three series in one pass, as the range aggregation by app does for the histogram.
 		vec := histogramMustEvaluate(t, cancelling, `sum by (app) (sum_over_time(`+rng+`))`, histogramAt(60), histogramAt(60), 0)[0].vec
 		require.Len(t, vec, 1)
 		require.Equal(t, want, vec[0].F)
