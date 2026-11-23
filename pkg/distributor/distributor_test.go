@@ -3082,6 +3082,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 		blockStatusCode    int
 		expectError        bool
 		expectedStatusCode int
+		expectBlocked      bool
 	}{
 		{
 			name:               "not configured",
@@ -3098,6 +3099,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    456,
 			expectError:        true,
 			expectedStatusCode: 456,
+			expectBlocked:      true,
 		},
 		{
 			name:               "blocked with status code 200",
@@ -3105,6 +3107,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    http.StatusOK,
 			expectError:        false,
 			expectedStatusCode: http.StatusOK,
+			expectBlocked:      true,
 		},
 		{
 			name:               "blocked with status code 260",
@@ -3112,53 +3115,13 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    260,
 			expectError:        true,
 			expectedStatusCode: 260,
+			expectBlocked:      true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.BlockIngestionUntil = flagext.Time(tc.blockUntil)
-			limits.BlockIngestionStatusCode = tc.blockStatusCode
-
-			distributors, _ := prepare(t, 1, 5, limits, nil)
-			request := makeWriteRequest(1, 1024)
-			response, err := distributors[0].Push(ctx, request)
-
-			if tc.expectError {
-				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", tc.blockUntil.Format(time.RFC3339), tc.blockStatusCode)
-				require.ErrorContains(t, err, expectedErr)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, success, response)
-			}
-		})
-	}
-}
-
-func TestDistributor_PushIngestionBlockedWriteFailureLog(t *testing.T) {
-	blockUntil := time.Now().Add(time.Hour)
-
-	for _, tc := range []struct {
-		name             string
-		blockStatusCode  int
-		expectError      bool
-		expectFailureLog bool
-	}{
-		{
-			name:            "blocked with status code 200 discards without a write failure log",
-			blockStatusCode: http.StatusOK,
-		},
-		{
-			name:             "blocked with a failure status code logs a write failure",
-			blockStatusCode:  456,
-			expectError:      true,
-			expectFailureLog: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			limits := &validation.Limits{}
-			flagext.DefaultValues(limits)
-			limits.BlockIngestionUntil = flagext.Time(blockUntil)
 			limits.BlockIngestionStatusCode = tc.blockStatusCode
 
 			distributors, _ := prepareButDontStart(t, 1, 5, limits, nil)
@@ -3176,22 +3139,21 @@ func TestDistributor_PushIngestionBlockedWriteFailureLog(t *testing.T) {
 			discarded := validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestion, "test", "0", "", constants.Loki)
 			before := testutil.ToFloat64(discarded)
 
-			response, err := distributors[0].Push(ctx, makeWriteRequest(1, 1024))
+			request := makeWriteRequest(1, 1024)
+			response, err := distributors[0].Push(ctx, request)
 
 			if tc.expectError {
-				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", blockUntil.Format(time.RFC3339), tc.blockStatusCode)
+				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", tc.blockUntil.Format(time.RFC3339), tc.blockStatusCode)
 				require.ErrorContains(t, err, expectedErr)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
 			}
 
-			// The drop is counted as discarded either way; only the error log differs.
-			require.Greater(t, testutil.ToFloat64(discarded), before)
-
-			if tc.expectFailureLog {
-				require.Contains(t, buf.String(), "write operation failed")
-			} else {
+			if tc.expectBlocked {
+				// A configured block is counted as discarded but is not a write
+				// failure, whatever status code it answers.
+				require.Greater(t, testutil.ToFloat64(discarded), before)
 				require.NotContains(t, buf.String(), "write operation failed")
 			}
 		})

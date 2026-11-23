@@ -785,16 +785,17 @@ func (d *Distributor) validateStreams(
 			result.rejectPartialWritesPolicy = parsed.policy
 		}
 
-		discard := func(reason string, err error, logFailure bool) {
-			if logFailure {
-				d.writeFailuresManager.Log(tenantID, err)
-			}
+		reportDiscarded := func(reason string) {
 			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
+		}
+		discard := func(reason string, err error) {
+			d.writeFailuresManager.Log(tenantID, err)
+			reportDiscarded(reason)
 		}
 
 		if err != nil {
 			validationErrors.Add(err)
-			discard(labelsReason, err, true)
+			discard(labelsReason, err)
 			continue
 		}
 
@@ -802,15 +803,15 @@ func (d *Distributor) validateStreams(
 			if missing, lbsMissing := d.missingEnforcedLabels(parsed.lbs, tenantID, parsed.policy); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, parsed.policy)
 				validationErrors.Add(err)
-				discard(validation.MissingEnforcedLabels, err, true)
+				discard(validation.MissingEnforcedLabels, err)
 				continue
 			}
 		}
 
 		if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(vCtx, now, parsed.policy); block {
-			// A block answered with 200 is a deliberate drop the client asked to
-			// succeed, not a write failure: count the discard but skip the error log.
-			discard(reason, err, statusCode != http.StatusOK)
+			// A configured block is a deliberate drop, not a write failure:
+			// count the discard but skip the error log.
+			reportDiscarded(reason)
 			if statusCode == http.StatusOK {
 				continue
 			}
