@@ -210,7 +210,7 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 			wantErr: "custom bounds",
 		},
 		"too many buckets on a side":                  {h: manyBuckets(maxHistogramBuckets+1, 0), wantErr: "positive side"},
-		"too many non-empty buckets on the two sides": {h: manyBuckets(maxHistogramBuckets/2+1, maxHistogramBuckets/2), wantErr: "non-empty buckets", wantIs: logqlerr.ErrLimit},
+		"too many non-empty buckets on the two sides": {h: manyBuckets(maxHistogramBuckets/2+1, maxHistogramBuckets/2), wantErr: "non-empty buckets", wantIs: logqlerr.ErrHistogramBucketLimit},
 		"as many as are allowed":                      {h: manyBuckets(maxHistogramBuckets, 0)},
 		"as many on the two sides as are allowed":     {h: manyBuckets(maxHistogramBuckets/2, maxHistogramBuckets/2)},
 		// Prometheus accepts these, and they have no non-empty bucket to count.
