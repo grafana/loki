@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -348,4 +349,75 @@ func testPayload() (time.Time, string) {
 	payload := fmt.Sprintf(LogEntry, fmt.Sprint(ts.UnixNano()), "pppppp")
 
 	return ts, payload
+}
+
+func Test_PushRetryStatusCodes(t *testing.T) {
+	tests := []struct {
+		name string
+		// statuses are the status codes the server responds with to consecutive
+		// push requests. Using more than one allows a case to fail and then
+		// succeed, such as a 429 followed by a 200. Once the statuses run out,
+		// the last one is used for all further requests.
+		statuses []int
+		// expectedRequests is the total number of push requests the server
+		// should receive, including any retries.
+		expectedRequests int
+	}{
+		{name: "429 is retried", statuses: []int{http.StatusTooManyRequests, http.StatusOK}, expectedRequests: 2},
+		{name: "500 is retried", statuses: []int{http.StatusInternalServerError, http.StatusOK}, expectedRequests: 2},
+		{name: "503 is retried", statuses: []int{http.StatusServiceUnavailable, http.StatusOK}, expectedRequests: 2},
+		{name: "400 is not retried", statuses: []int{http.StatusBadRequest}, expectedRequests: 1},
+		{name: "401 is not retried", statuses: []int{http.StatusUnauthorized}, expectedRequests: 1},
+		{name: "403 is not retried", statuses: []int{http.StatusForbidden}, expectedRequests: 1},
+		{name: "404 is not retried", statuses: []int{http.StatusNotFound}, expectedRequests: 1},
+		{name: "413 is not retried", statuses: []int{http.StatusRequestEntityTooLarge}, expectedRequests: 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				mtx      sync.Mutex
+				requests int
+			)
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				mtx.Lock()
+				n := requests
+				requests++
+				mtx.Unlock()
+				rw.WriteHeader(tc.statuses[min(n, len(tc.statuses)-1)])
+			}))
+			defer server.Close()
+
+			numRequests := func() int {
+				mtx.Lock()
+				defer mtx.Unlock()
+				return requests
+			}
+
+			push, err := NewPush(
+				server.Listener.Addr().String(),
+				"test1",
+				2*time.Second,
+				50*time.Millisecond,
+				config.DefaultHTTPClientConfig,
+				"", "",
+				false,
+				&backoff.Config{MinBackoff: 10 * time.Millisecond, MaxBackoff: 20 * time.Millisecond, MaxRetries: 5},
+				log.NewNopLogger(),
+				NewMetrics(nil),
+			)
+			require.NoError(t, err)
+			defer push.Stop()
+
+			ts, line := testPayload()
+			push.WriteEntry(ts, line, labels.New(labels.Label{Name: "foo", Value: "bar"}), nil)
+
+			require.Eventually(t, func() bool {
+				return numRequests() >= tc.expectedRequests
+			}, 5*time.Second, 10*time.Millisecond)
+			// Give any further retries time to happen.
+			require.Never(t, func() bool {
+				return numRequests() > tc.expectedRequests
+			}, 500*time.Millisecond, 10*time.Millisecond)
+		})
+	}
 }
