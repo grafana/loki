@@ -36,13 +36,17 @@ The gateway is responsible for stripping any user supplied `X-Scope-OrgID` and `
 
 At a high level, your gateway attaches a label policy to each request, and Loki carries that policy through the read path so that every component filters data to match it.
 
-1. Your authentication gateway authenticates the request and sets the `X-Prom-Label-Policy` HTTP header. Each value in the header has the form `<TENANT>:<URL-ENCODED SELECTOR>`, for example `tenant1:%7Benv%3D%22dev%22%7D` for the selector `{env="dev"}`.
+1. Your authentication gateway authenticates the request and sets the `X-Prom-Label-Policy` HTTP header. Each value in the header has the form `<TENANT>:<URL-ENCODED SELECTOR>`, for example `tenant1:%7Benv=%22dev%22%7D` for the selector `{env="dev"}`.
 2. An HTTP middleware inside Loki parses this header on every incoming request and stores the resulting policies in the request context.
 3. As the request moves between Loki's internal components, for example from the query frontend to the queriers, ingesters, and index gateway, the policies travel with it as gRPC metadata. This means the same policy applies no matter which component ultimately reads the data.
 4. Loki enforces the policy at several points in the read path:
-   - It filters chunks and streams while running the query, for both the original query engine and the newer query engine.
+   - It filters chunks and streams while running the query, for both the original query engine and the newer query engine. This covers log and metric queries, `Series` queries, and live tailing.
    - It filters the results of label-values queries against the store and the ingesters.
-   - In the query frontend, it filters the response of volume queries, and it rewrites aggregated-metrics queries so they only return permitted data.
+   - For volume queries, it rewrites the query itself when a tenant has a single policy, and filters the response as a defense-in-depth measure when a tenant has multiple policies. It also rewrites aggregated-metrics queries so they only return permitted data.
+
+{{< admonition type="note" >}}
+LBAC does not filter every metadata endpoint. Label-name queries (listing which label keys exist) and the `DetectedLabels` endpoint can return label names and cardinality from streams outside a tenant's policy, because they are not routed through the chunk-level filter. No log data or label values are exposed by this; only the existence and cardinality of label names.
+{{< /admonition >}}
 
 The following diagram shows the request flow for a query from a client through the gateway and into Loki:
 
@@ -113,7 +117,7 @@ lbac:
 
 | Setting | CLI flag | Default | Description |
 | --- | --- | --- | --- |
-| `lbac.enabled` | `-lbac.enabled` | `false` | Enables label-based access control through the `X-Prom-Label-Policy` header. This setting is [experimental](https://grafana.com/docs/release-life-cycle/). |
+| `lbac.enabled` | `-lbac.enabled` | `false` | Enables label-based access control through the `X-Prom-Label-Policy` header. |
 
 ## Setting up a label policy
 
@@ -126,10 +130,14 @@ A label policy is conveyed to Loki in the `X-Prom-Label-Policy` request header. 
 The selector is a standard label matcher set such as `{env="dev"}`, URL-encoded so that it is safe to carry in a header. For example, the policy `{env="dev"}` for tenant `tenant1` is encoded as:
 
 ```http
-X-Prom-Label-Policy: tenant1:%7Benv%3D%22dev%22%7D
+X-Prom-Label-Policy: tenant1:%7Benv=%22dev%22%7D
 ```
 
-To associate multiple selectors with a tenant, set multiple values. You can either repeat the header or separate the encoded policies with a comma (`,`). The selectors are combined with `OR` into groups where each group is a list of things joined by `AND`: a stream is returned if any of the streams matches any one of the selector groups.  For example, a policy written `{a='true', b='true, c='true'} OR {x='true', y='true'}` reads as `{a='true' AND b='true'AND c='true'} OR {x='true'AND y='true'}`.
+To associate multiple selectors with a tenant, set multiple values. You can either repeat the header or separate the encoded policies with a comma (`,`). The selectors are combined with `OR` into groups where each group is a list of things joined by `AND`: a stream is returned if it matches any one of the selector groups. For example, a policy written `{a="true", b="true", c="true"} OR {x="true", y="true"}` reads as `{a="true" AND b="true" AND c="true"} OR {x="true" AND y="true"}`.
+
+{{< admonition type="note" >}}
+An empty selector (`{}`) is not a valid policy value. For some query types (such as aggregated-metrics queries), an empty selector causes Loki to reject the request with an error. For other query types, an empty selector silently matches all streams, effectively bypassing access control. Every policy should contain at least one label matcher.
+{{< /admonition >}}
 
 ## Exclude a label
 
@@ -170,7 +178,7 @@ Selector:
 Header:
 
 ```http
-X-Prom-Label-Policy: team-checkout:%7Bk8s_namespace_name%3D%22checkout%22%7D
+X-Prom-Label-Policy: team-checkout:%7Bk8s_namespace_name=%22checkout%22%7D
 ```
 
 ### Restrict by environment
@@ -186,7 +194,7 @@ Production team selector:
 Header:
 
 ```http
-X-Prom-Label-Policy: team-prod:%7Bdeployment_environment_name%3D%22production%22%7D
+X-Prom-Label-Policy: team-prod:%7Bdeployment_environment_name=%22production%22%7D
 ```
 
 Staging team selector:
@@ -198,7 +206,7 @@ Staging team selector:
 Header:
 
 ```http
-X-Prom-Label-Policy: team-staging:%7Bdeployment_environment_name%3D%22staging%22%7D
+X-Prom-Label-Policy: team-staging:%7Bdeployment_environment_name=%22staging%22%7D
 ```
 
 ### Restrict by service, with an exclusion
@@ -215,7 +223,7 @@ Allow access to the `payments-api` service, but exclude any of its streams label
 Header:
 
 ```http
-X-Prom-Label-Policy: team-payments:%7Bservice_name%3D%22payments-api%22%2C%20secret%21%3D%22true%22%7D,team-payments:%7Bservice_name%21%3D%22payments-api%22%7D
+X-Prom-Label-Policy: team-payments:%7Bservice_name=%22payments-api%22%2C%20secret%21=%22true%22%7D,team-payments:%7Bservice_name%21=%22payments-api%22%7D
 ```
 
 ### Restrict by region for a distributed team
@@ -231,7 +239,7 @@ Selector:
 Header:
 
 ```http
-X-Prom-Label-Policy: team-uswest:%7Bcloud_region%3D%22us-west-1%22%7D
+X-Prom-Label-Policy: team-uswest:%7Bcloud_region=%22us-west-1%22%7D
 ```
 
 ### Combine selectors across multiple namespaces
@@ -248,5 +256,5 @@ Because a tenant's selectors are combined with OR, a stream is returned if it ma
 Header:
 
 ```http
-X-Prom-Label-Policy: team-multi:%7Bk8s_namespace_name%3D%22frontend%22%7D,team-multi:%7Bk8s_namespace_name%3D%22checkout%22%7D
+X-Prom-Label-Policy: team-multi:%7Bk8s_namespace_name=%22frontend%22%7D,team-multi:%7Bk8s_namespace_name=%22checkout%22%7D
 ```
