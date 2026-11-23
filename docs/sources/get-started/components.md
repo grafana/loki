@@ -216,7 +216,7 @@ nanosecond timestamps:
 ### Handoff
 
 {{< admonition type="warning" >}}
-Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](https://grafana.com/docs/loki/latest<LOKI_VERSION>/operations/storage/wal/).
+Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/).
 {{< /admonition >}}
 
 By default, when an ingester is shutting down and tries to leave the hash ring,

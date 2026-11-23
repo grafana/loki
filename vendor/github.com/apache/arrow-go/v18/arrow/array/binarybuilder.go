@@ -164,60 +164,63 @@ func (b *BinaryBuilder) AppendEmptyValues(n int) {
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *BinaryBuilder) AppendValues(v [][]byte, valid []bool) {
-	if len(v) != len(valid) && len(valid) != 0 {
-		panic("len(v) != len(valid) && len(valid) != 0")
-	}
-
-	if len(v) == 0 {
-		return
-	}
-
-	b.Reserve(len(v))
-	b.reserveOffsetCapacity(len(v))
-
-	// Pre-calculate total data size to minimize allocations
-	totalDataSize := 0
-	for _, vv := range v {
-		totalDataSize += len(vv)
-	}
-	b.ReserveData(totalDataSize)
-
-	for _, vv := range v {
-		b.unsafeAppendNextOffset()
-		b.values.unsafeAppend(vv)
-	}
-
-	b.unsafeAppendBoolsToBitmap(valid, len(v))
+	appendBinaryValues(b, v, valid)
 }
 
 // AppendStringValues will append the values in the v slice. The valid slice determines which values
 // in v are valid (not null). The valid slice must either be empty or be equal in length to v. If empty,
 // all values in v are appended and considered valid.
 func (b *BinaryBuilder) AppendStringValues(v []string, valid []bool) {
-	if len(v) != len(valid) && len(valid) != 0 {
+	appendBinaryValues(b, v, valid)
+}
+
+// appendBinaryValues writes offsets and payloads in one pass after reserving
+// both buffers. The terminal offset is appended by newData, as for scalar
+// appends. Invalid slots still retain their payload and offsets.
+func appendBinaryValues[T ~string | ~[]byte](b *BinaryBuilder, values []T, valid []bool) {
+	if len(values) != len(valid) && len(valid) != 0 {
 		panic("len(v) != len(valid) && len(valid) != 0")
 	}
-
-	if len(v) == 0 {
+	if len(values) == 0 {
 		return
 	}
 
-	b.Reserve(len(v))
-	b.reserveOffsetCapacity(len(v))
+	b.Reserve(len(values))
+	b.reserveOffsetCapacity(len(values))
 
-	// Pre-calculate total data size to minimize allocations
 	totalDataSize := 0
-	for _, vv := range v {
-		totalDataSize += len(vv)
+	for _, v := range values {
+		totalDataSize += len(v)
 	}
 	b.ReserveData(totalDataSize)
 
-	for _, vv := range v {
-		b.unsafeAppendNextOffset()
-		b.values.unsafeAppend([]byte(vv))
+	pos := b.values.length
+	debug.Assert(uint64(pos+totalDataSize) <= b.maxCapacity, "exceeded maximum capacity of binary array")
+	data := b.values.bytes
+
+	switch b.offsetByteWidth {
+	case arrow.Int32SizeBytes:
+		offsets := b.offsets.(*int32BufferBuilder)
+		end := offsets.length + len(values)*arrow.Int32SizeBytes
+		dst := arrow.Int32Traits.CastFromBytes(offsets.bytes[offsets.length:end])
+		for i, v := range values {
+			dst[i] = int32(pos)
+			pos += copy(data[pos:], v)
+		}
+		offsets.length = end
+	case arrow.Int64SizeBytes:
+		offsets := b.offsets.(*int64BufferBuilder)
+		end := offsets.length + len(values)*arrow.Int64SizeBytes
+		dst := arrow.Int64Traits.CastFromBytes(offsets.bytes[offsets.length:end])
+		for i, v := range values {
+			dst[i] = int64(pos)
+			pos += copy(data[pos:], v)
+		}
+		offsets.length = end
 	}
 
-	b.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.values.length = pos
+	b.unsafeAppendBoolsToBitmap(valid, len(values))
 }
 
 func (b *BinaryBuilder) UnsafeAppend(v []byte) {

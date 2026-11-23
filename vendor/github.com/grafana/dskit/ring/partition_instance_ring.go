@@ -99,6 +99,8 @@ func (r *PartitionInstanceRing) GetReplicationSetsForOperation(op Operation) ([]
 			// but it's not guaranteed (depends on how the application was deployed). The safest thing
 			// we can do here is to just request a successful response from at least 1 zone.
 			MaxUnavailableZones: uniqueZones - 1,
+
+			PartitionID: partitionID,
 		})
 	}
 	return result, nil

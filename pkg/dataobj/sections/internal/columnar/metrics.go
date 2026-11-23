@@ -228,10 +228,10 @@ func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 		m.pageCount.WithLabelValues(columnType).Observe(float64(len(pages)))
 
 		for _, page := range pages {
-			m.pageCompressedBytes.WithLabelValues(columnType).Observe(float64(page.CompressedSize))
+			m.pageCompressedBytes.WithLabelValues(columnType).Observe(float64(page.DataSize))
 			m.pageUncompressedBytes.WithLabelValues(columnType).Observe(float64(page.UncompressedSize))
 			if compression != datasetmd.COMPRESSION_TYPE_NONE {
-				m.pageCompressionRatio.WithLabelValues(columnType, compression.String()).Observe(float64(page.UncompressedSize) / float64(page.CompressedSize))
+				m.pageCompressionRatio.WithLabelValues(columnType, compression.String()).Observe(float64(page.UncompressedSize) / float64(page.DataSize))
 			}
 			m.pageRows.WithLabelValues(columnType).Observe(float64(page.RowsCount))
 			m.pageValues.WithLabelValues(columnType).Observe(float64(page.ValuesCount))

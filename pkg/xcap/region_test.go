@@ -65,6 +65,48 @@ func TestRegion_ObservationForStatistic(t *testing.T) {
 	})
 }
 
+func TestRegion_Int64Value(t *testing.T) {
+	bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
+	rowsRead := NewStatisticInt64("rows.read", AggregationTypeSum)
+	duration := NewStatisticFloat64("duration", AggregationTypeSum)
+
+	newRegion := func(t *testing.T) *Region {
+		t.Helper()
+		ctx, _ := NewCapture(t.Context(), nil)
+		_, region := StartRegion(ctx, "test")
+		return region
+	}
+
+	t.Run("it returns the aggregated value of the statistic", func(t *testing.T) {
+		region := newRegion(t)
+		region.Record(bytesRead.Observe(10))
+		region.Record(bytesRead.Observe(5))
+		region.Record(rowsRead.Observe(3))
+
+		require.Equal(t, int64(15), region.Int64Value(bytesRead))
+	})
+
+	t.Run("it returns zero when the region recorded nothing for the statistic", func(t *testing.T) {
+		region := newRegion(t)
+		region.Record(rowsRead.Observe(3))
+
+		require.Zero(t, region.Int64Value(bytesRead))
+	})
+
+	t.Run("it returns zero for a statistic that is not an integer", func(t *testing.T) {
+		region := newRegion(t)
+		region.Record(duration.Observe(1.5))
+
+		require.Zero(t, region.Int64Value(duration))
+	})
+
+	t.Run("it returns zero for a nil region", func(t *testing.T) {
+		var region *Region
+
+		require.Zero(t, region.Int64Value(bytesRead))
+	})
+}
+
 func TestRegion_Record(t *testing.T) {
 	t.Run("first observation of a stat should be stored", func(t *testing.T) {
 		ctx, _ := NewCapture(context.Background(), nil)

@@ -25,9 +25,9 @@ type rangeReader interface {
 	// multiple concurrent instances of ReadRange.
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
 
-	// ReadRanges returns the bytes of each range, in the order of ranges. It
-	// returns an error if a range has a negative offset or length, or an end
-	// that overflows an int64.
+	// ReadRanges returns the bytes of each range. The result has one slice for
+	// each range, in the order of ranges. It returns an error if a range has a
+	// negative offset or length, or an end that overflows an int64.
 	//
 	// A returned slice can alias memory that the reader shares. The caller must
 	// not modify it.

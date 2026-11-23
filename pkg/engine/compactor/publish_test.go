@@ -24,20 +24,20 @@ func (d *deadlineRecorder) ReplaceIndexPointers(ctx context.Context, _ time.Time
 func TestPublisherReplace(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	oldPaths := []string{"indexes/old"}
-	newEntries := []metastore.TableOfContentsEntry{{Path: "indexes/new"}}
+	newEntries := []metastore.IndexRunEntries{{{Path: "indexes/new"}}}
 
-	t.Run("forwards the swap to the writer with each entry as a run of its own and reports it applied", func(t *testing.T) {
+	t.Run("forwards the runs to the writer and reports the swap applied", func(t *testing.T) {
 		writer := &fakeReplacer{swapped: true}
 		p := &tocPublisher{writer: writer, timeout: time.Second}
-		twoEntries := []metastore.TableOfContentsEntry{{Path: "indexes/new-a"}, {Path: "indexes/new-b"}}
+		runs := []metastore.IndexRunEntries{{{Path: "indexes/new-a"}, {Path: "indexes/new-b"}}, {{Path: "indexes/new-c"}}}
 
-		swapped, err := p.Replace(context.Background(), "acme", window, oldPaths, twoEntries)
+		swapped, err := p.Replace(context.Background(), "acme", window, oldPaths, runs)
 		require.NoError(t, err)
 		require.True(t, swapped)
 		require.Equal(t, []replaceCall{{
 			window: window, tenant: "acme", oldPaths: oldPaths,
-			newRuns:    []metastore.IndexRunEntries{{twoEntries[0]}, {twoEntries[1]}},
-			newEntries: twoEntries,
+			newRuns:    runs,
+			newEntries: []metastore.TableOfContentsEntry{{Path: "indexes/new-a"}, {Path: "indexes/new-b"}, {Path: "indexes/new-c"}},
 		}}, writer.snapshot())
 	})
 

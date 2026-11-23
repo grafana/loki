@@ -13,6 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -96,7 +97,7 @@ type observingBucket struct {
 }
 
 func (b *observingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	b.requestsSeen, _ = xcap.RegionFromContext(ctx).ObservationForStatistic(dataobj.StatObjectRequestsGetRange).Int64()
+	b.requestsSeen = xcap.RegionFromContext(ctx).Int64Value(bucketstat.StatObjectRequestsGetRange)
 	return b.Bucket.GetRange(ctx, name, off, length)
 }
 
@@ -129,8 +130,8 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(len(content)), attrs.Size)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsAttributes))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresAttributes))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsAttributes))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresAttributes))
 	})
 
 	t.Run("a successful Get call records one request and no failure, and the bytes once the body closes", func(t *testing.T) {
@@ -143,12 +144,12 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, content, got)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
-		require.Zero(t, value(dataobj.StatObjectBytesDownloaded), "the bytes are recorded on close, not while reading")
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
+		require.Zero(t, value(bucketstat.StatObjectBytesDownloaded), "the bytes are recorded on close, not while reading")
 
 		require.NoError(t, rc.Close())
-		require.Equal(t, int64(len(content)), value(dataobj.StatObjectBytesDownloaded))
+		require.Equal(t, int64(len(content)), value(bucketstat.StatObjectBytesDownloaded))
 	})
 
 	t.Run("a Get body reports the size that the wrapped body reports", func(t *testing.T) {
@@ -174,9 +175,9 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.Equal(t, content[2:6], got)
 		require.NoError(t, rc.Close())
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGetRange))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGetRange))
-		require.Equal(t, int64(4), value(dataobj.StatObjectBytesDownloaded))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGetRange))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGetRange))
+		require.Equal(t, int64(4), value(bucketstat.StatObjectBytesDownloaded))
 	})
 
 	t.Run("a call for an object that does not exist records one request and no failure", func(t *testing.T) {
@@ -191,13 +192,13 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err = reader.GetRange(ctx, "missing", 0, 1)
 		require.True(t, bucket.IsObjNotFoundErr(err), "the backend error reaches the caller unchanged")
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsAttributes))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGetRange))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresAttributes))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGetRange))
-		require.Zero(t, value(dataobj.StatObjectBytesDownloaded))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsAttributes))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGetRange))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresAttributes))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGetRange))
+		require.Zero(t, value(bucketstat.StatObjectBytesDownloaded))
 	})
 
 	t.Run("a call that fails with another error records one request and one failure of its own operation", func(t *testing.T) {
@@ -212,13 +213,13 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err = reader.GetRange(ctx, "obj", 0, 1)
 		require.ErrorIs(t, err, wantErr)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsAttributes))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresAttributes))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresGet))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGetRange))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresGetRange))
-		require.Zero(t, value(dataobj.StatObjectBytesDownloaded))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsAttributes))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresAttributes))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGetRange))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresGetRange))
+		require.Zero(t, value(bucketstat.StatObjectBytesDownloaded))
 	})
 
 	t.Run("it records the request before the object store receives it", func(t *testing.T) {
@@ -231,7 +232,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.NoError(t, rc.Close())
 
 		require.Equal(t, int64(1), bucket.requestsSeen)
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGetRange))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGetRange))
 	})
 
 	for _, tc := range []struct {
@@ -242,16 +243,16 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 	}{
 		{
 			name:     "Get",
-			request:  dataobj.StatObjectRequestsGet,
-			failures: dataobj.StatObjectRequestFailuresGet,
+			request:  bucketstat.StatObjectRequestsGet,
+			failures: bucketstat.StatObjectRequestFailuresGet,
 			open: func(ctx context.Context, reader objstore.BucketReader) (io.ReadCloser, error) {
 				return reader.Get(ctx, "obj")
 			},
 		},
 		{
 			name:     "GetRange",
-			request:  dataobj.StatObjectRequestsGetRange,
-			failures: dataobj.StatObjectRequestFailuresGetRange,
+			request:  bucketstat.StatObjectRequestsGetRange,
+			failures: bucketstat.StatObjectRequestFailuresGetRange,
 			open: func(ctx context.Context, reader objstore.BucketReader) (io.ReadCloser, error) {
 				return reader.GetRange(ctx, "obj", 0, 10)
 			},
@@ -270,7 +271,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 
 			require.Equal(t, int64(1), value(tc.request))
 			require.Equal(t, int64(1), value(tc.failures))
-			require.Equal(t, int64(3), value(dataobj.StatObjectBytesDownloaded), "the bytes delivered before the failure still count")
+			require.Equal(t, int64(3), value(bucketstat.StatObjectBytesDownloaded), "the bytes delivered before the failure still count")
 		})
 	}
 
@@ -283,7 +284,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err = io.ReadAll(rc)
 		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a body that keeps failing records one failure", func(t *testing.T) {
@@ -297,8 +298,8 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 			_, _ = rc.Read(buf)
 		}
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet))
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a body that fails after the caller canceled its context records no failure", func(t *testing.T) {
@@ -312,8 +313,8 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err = io.ReadAll(rc)
 		require.Error(t, err)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet), "a canceled request is still a request")
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet), "a canceled request is still a request")
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a call that fails with a real error after the context is done records a failure", func(t *testing.T) {
@@ -325,7 +326,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err := reader.Get(ctx, "obj")
 		require.Error(t, err)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a call that fails after the caller canceled its context records no failure", func(t *testing.T) {
@@ -337,8 +338,8 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err := reader.Get(ctx, "obj")
 		require.ErrorIs(t, err, context.Canceled)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsGet))
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsGet))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a body that fails with a not-found error records no failure", func(t *testing.T) {
@@ -353,7 +354,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err = io.ReadAll(rc)
 		require.Error(t, err)
 
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
 	})
 
 	t.Run("a body closed before its end records no failure and the bytes read", func(t *testing.T) {
@@ -366,8 +367,8 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, rc.Close())
 
-		require.Zero(t, value(dataobj.StatObjectRequestFailuresGet))
-		require.Equal(t, int64(2), value(dataobj.StatObjectBytesDownloaded))
+		require.Zero(t, value(bucketstat.StatObjectRequestFailuresGet))
+		require.Equal(t, int64(2), value(bucketstat.StatObjectBytesDownloaded))
 	})
 
 	t.Run("a call without a region in the context records nothing and does not panic", func(t *testing.T) {
@@ -394,7 +395,7 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		_, err := reader.Attributes(ctx, "obj")
 		require.NoError(t, err)
 
-		require.Equal(t, int64(1), value(dataobj.StatObjectRequestsAttributes))
+		require.Equal(t, int64(1), value(bucketstat.StatObjectRequestsAttributes))
 	})
 
 	t.Run("other methods pass through and record nothing", func(t *testing.T) {
@@ -405,9 +406,9 @@ func TestNewInstrumentedBucketReader(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, exists)
 
-		require.Zero(t, value(dataobj.StatObjectRequestsAttributes))
-		require.Zero(t, value(dataobj.StatObjectRequestsGet))
-		require.Zero(t, value(dataobj.StatObjectRequestsGetRange))
+		require.Zero(t, value(bucketstat.StatObjectRequestsAttributes))
+		require.Zero(t, value(bucketstat.StatObjectRequestsGet))
+		require.Zero(t, value(bucketstat.StatObjectRequestsGetRange))
 	})
 }
 
@@ -431,15 +432,17 @@ func TestFromBucket_RequestStatistics(t *testing.T) {
 		obj, err := dataobj.FromBucket(ctx, bucket, "obj", 0)
 		require.NoError(t, err)
 		for _, sec := range obj.Sections() {
-			readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
+			readAll(t, func() (io.ReadCloser, error) {
+				return sec.Reader.DataRange(ctx, dataobj.RelativeByteRange{Offset: 0, Length: sec.Reader.DataSize()})
+			})
 		}
 	}
 
 	requestStats := func(capture *xcap.Capture) map[string]int64 {
 		return map[string]int64{
-			"attributes": xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, dataobj.StatObjectRequestsAttributes),
-			"get":        xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, dataobj.StatObjectRequestsGet),
-			"get_range":  xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, dataobj.StatObjectRequestsGetRange),
+			"attributes": xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, bucketstat.StatObjectRequestsAttributes),
+			"get":        xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, bucketstat.StatObjectRequestsGet),
+			"get_range":  xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, bucketstat.StatObjectRequestsGetRange),
 		}
 	}
 
@@ -478,6 +481,6 @@ func TestFromBucket_RequestStatistics(t *testing.T) {
 
 		readEverything(ctx, t, newBucket(t))
 
-		require.Positive(t, xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, dataobj.StatObjectBytesDownloaded))
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, instrumentedTestRegion, bucketstat.StatObjectBytesDownloaded))
 	})
 }

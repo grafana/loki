@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -168,22 +167,38 @@ func TestMultiKVSetup(t *testing.T) {
 }
 
 func TestIndexGatewayClientConfig(t *testing.T) {
-	dir := t.TempDir()
-	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, Querier)
-		c, err := New(cfg)
-		require.NoError(t, err)
+	for _, tc := range []struct {
+		name              string
+		mode              indexgateway.Mode
+		perIndexOwnership bool
+	}{
+		{name: "simple mode", mode: indexgateway.SimpleMode},
+		{name: "ring mode with per-index ownership", mode: indexgateway.RingMode, perIndexOwnership: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := minimalWorkingConfig(t, t.TempDir(), Querier)
+			cfg.IndexGateway.Mode = tc.mode
+			cfg.IndexGateway.Ring.KVStore.Store = "inmemory"
+			cfg.IndexGateway.PerIndexOwnership.Enabled = tc.perIndexOwnership
+			cfg.SchemaConfig.Configs[0].IndexTables.ShardedPathPrefix = "index_sharded/"
+			flagext.DefaultValues(&cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig)
 
-		services, err := c.ModuleManager.InitModuleServices(Querier)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
+			c, err := New(cfg)
+			require.NoError(t, err)
 
-		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
-	})
+			services, err := c.ModuleManager.InitModuleServices(Querier)
+			defer func() {
+				for _, service := range services {
+					service.StopAsync()
+				}
+			}()
+			require.NoError(t, err)
+
+			clientCfg := c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig
+			require.False(t, clientCfg.Disabled)
+			require.Equal(t, tc.perIndexOwnership, clientCfg.PerIndexOwnership)
+		})
+	}
 }
 
 const localhost = "localhost"

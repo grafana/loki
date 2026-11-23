@@ -507,6 +507,9 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 		maxCasRetries:    maxCasRetries,
 	}
 
+	// Must be set before registering metrics.
+	mlkv.NamedService = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping).WithName("memberlist_kv")
+
 	mlkv.createAndRegisterMetrics()
 
 	for _, c := range cfg.Codecs {
@@ -517,8 +520,6 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 	if cfg.PropagationDelayTracker.Enabled {
 		mlkv.codecs[PropagationDelayTrackerCodecID] = GetPropagationDelayTrackerCodec()
 	}
-
-	mlkv.NamedService = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping).WithName("memberlist_kv")
 
 	return mlkv
 }
@@ -1095,8 +1096,9 @@ func (m *KV) get(key string, _ codec.Codec) (out interface{}, version uint, err 
 	return v.value, v.Version, nil
 }
 
-// WatchKey watches for value changes for given key. When value changes, 'f' function is called with the
-// latest value. Notifications that arrive while 'f' is running are coalesced into one subsequent 'f' call.
+// WatchKey watches for value changes for given key. If the key exists, 'f' function is first called with
+// its current value. When value changes, 'f' function is called with the latest value. Notifications that
+// arrive while 'f' is running are coalesced into one subsequent 'f' call.
 //
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
 func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func(interface{}) bool) {
@@ -1115,6 +1117,16 @@ func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func
 
 		removeWatcherChannel(key, w, m.watchers)
 	}()
+
+	// Callers usually read the key with Get() before they call WatchKey(). A change applied between that
+	// read and the registration above sends no notification to this watcher, so the caller would keep a
+	// stale value until the next change. Deliver the current value once to close that gap. Changes that
+	// arrive while 'f' runs are buffered in w.
+	if val, _, err := m.get(key, codec); err != nil {
+		level.Warn(m.logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
+	} else if val != nil && !f(val) {
+		return
+	}
 
 	for {
 		select {

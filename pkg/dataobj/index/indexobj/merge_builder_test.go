@@ -105,7 +105,7 @@ func TestMergeBuilder_AppendPostingsLabelEntry(t *testing.T) {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	}, nil, "tenant-1", testMergeLayout)
+	}, nil, "tenant-1", streams.Layout{})
 	require.NoError(t, err)
 
 	ts := int64(1000) // unix nanoseconds
@@ -165,7 +165,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	}, nil, "tenant-1", testMergeLayout)
+	}, nil, "tenant-1", streams.Layout{})
 	require.NoError(t, err)
 
 	timeVal := time.Unix(0, 500).UTC()
@@ -246,7 +246,7 @@ func TestMergeBuilder_PostingsSpillSectionsAtTargetSize(t *testing.T) {
 		TargetSectionSize:       1 << 12, // 4 KiB
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	}, nil, "tenant-1", testMergeLayout)
+	}, nil, "tenant-1", streams.Layout{})
 	require.NoError(t, err)
 
 	// Each entry is ~300 bytes (256-byte bitmap + keys), so 100 entries far
@@ -333,6 +333,71 @@ func TestMergeBuilder_RecordsLayout(t *testing.T) {
 		b, err := NewMergeBuilder(testBuilderConfig, nil, "tenant-1", streams.Layout{})
 		require.NoError(t, err)
 		require.ErrorContains(t, b.AppendStat("tenant-1", stats.Stat{ObjectPath: "obj"}), "without a stream layout")
+	})
+
+	t.Run("records the layout in an empty stats section when the builder got postings and no stats", func(t *testing.T) {
+		b, err := NewMergeBuilder(testBuilderConfig, nil, "tenant-1", testMergeLayout)
+		require.NoError(t, err)
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1}}))
+
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		got, ok, err := TenantLayout(context.Background(), obj, "tenant-1")
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(testMergeLayout))
+		var empty int
+		for _, sec := range obj.Sections().Filter(stats.CheckSection) {
+			opened, err := stats.Open(context.Background(), sec)
+			require.NoError(t, err)
+			require.True(t, opened.Empty())
+			empty++
+		}
+		require.Equal(t, 1, empty)
+	})
+
+	t.Run("writes no empty stats section when the builder cut a stats section before the flush", func(t *testing.T) {
+		b, err := NewMergeBuilder(oneStatPerSectionConfig, nil, "tenant-1", testMergeLayout)
+		require.NoError(t, err)
+		appendStats(t, b, 1)
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1}}))
+
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, 1, obj.Sections().Count(stats.CheckSection))
+		for _, sec := range obj.Sections().Filter(stats.CheckSection) {
+			opened, err := stats.Open(context.Background(), sec)
+			require.NoError(t, err)
+			require.False(t, opened.Empty())
+		}
+	})
+
+	t.Run("records the layout in an empty stats section after a flush of a builder that cut a stats section", func(t *testing.T) {
+		b, err := NewMergeBuilder(oneStatPerSectionConfig, nil, "tenant-1", testMergeLayout)
+		require.NoError(t, err)
+		appendStats(t, b, 1)
+		_, closer, err := b.Flush()
+		require.NoError(t, err)
+		require.NoError(t, closer.Close())
+
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1}}))
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Equal(t, 1, obj.Sections().Count(stats.CheckSection))
+	})
+
+	t.Run("writes no stats section when the builder has the zero layout", func(t *testing.T) {
+		b, err := NewMergeBuilder(testBuilderConfig, nil, "tenant-1", streams.Layout{})
+		require.NoError(t, err)
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1}}))
+
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.Zero(t, obj.Sections().Count(stats.CheckSection))
 	})
 
 	t.Run("every stats section records the layout of the builder", func(t *testing.T) {
@@ -617,4 +682,28 @@ func TestMergeBuilder_FlushResetsBuilder(t *testing.T) {
 			require.ErrorIs(t, err, ErrBuilderEmpty)
 		})
 	}
+}
+
+func TestMergeBuilder_GetEstimatedSize(t *testing.T) {
+	t.Run("counts a cut section by its encoded size only", func(t *testing.T) {
+		cfg := testBuilderConfig
+		cfg.TargetSectionSize = 1
+		b, err := NewMergeBuilder(cfg, nil, "tenant-1", streams.Layout{})
+		require.NoError(t, err)
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{
+			ObjectPath: "obj", ColumnName: "app", LabelValue: "a", StreamIDBitmap: []byte{1},
+		}))
+
+		require.Positive(t, b.builder.Bytes(), "the entry must cut a section")
+		require.Equal(t, b.builder.Bytes(), b.GetEstimatedSize())
+	})
+
+	t.Run("counts a cut stats section by its encoded size only", func(t *testing.T) {
+		b, err := NewMergeBuilder(oneStatPerSectionConfig, nil, "tenant-1", testMergeLayout)
+		require.NoError(t, err)
+		appendStats(t, b, 1)
+
+		require.Positive(t, b.builder.Bytes(), "the stat must cut a section")
+		require.Equal(t, b.builder.Bytes(), b.GetEstimatedSize())
+	})
 }
