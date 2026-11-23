@@ -178,16 +178,64 @@ func TestHistogramFuncs_quantiles(t *testing.T) {
 	})
 }
 
-func TestHistogramFuncs_noObservations(t *testing.T) {
-	// Every line is a number that is not finite, so the series has lines but no observation.
-	streams := []logproto.Stream{histogramStream(`{app="n"}`, histogramTimedValue{histogramSeconds(10), "NaN"}, histogramTimedValue{histogramSeconds(20), "+Inf"})}
-	const h = `histogram_over_time({app="n"} | logfmt | unwrap duration [1m])`
+// requireSameFloats fails unless got has the series of want with the same values. NaN is the same as NaN.
+func requireSameFloats(t *testing.T, want, got map[string]float64) {
+	t.Helper()
+	require.Len(t, got, len(want))
+	for lbs, w := range want {
+		g, ok := got[lbs]
+		require.True(t, ok, "series %s", lbs)
+		if math.IsNaN(w) {
+			require.True(t, math.IsNaN(g), "series %s is %v", lbs, g)
+			continue
+		}
+		require.Equal(t, w, g, "series %s", lbs)
+	}
+}
 
-	require.Equal(t, 0.0, histogramScalar(t, streams, `histogram_count(`+h+`)`))
-	require.Equal(t, 0.0, histogramScalar(t, streams, `histogram_sum(`+h+`)`))
-	require.True(t, math.IsNaN(histogramScalar(t, streams, `histogram_avg(`+h+`)`)))
-	require.True(t, math.IsNaN(histogramScalar(t, streams, `histogram_quantile(0.5, `+h+`)`)))
-	require.True(t, math.IsNaN(histogramScalar(t, streams, `histogram_fraction(0, 1, `+h+`)`)))
+// NaN and the infinities are values like the others, as they are for count_over_time, sum_over_time and
+// avg_over_time, so the count, the sum and the average of a histogram are the ones of those functions.
+func TestHistogramFuncs_nonFiniteValues(t *testing.T) {
+	stream := func(lbs string, values ...string) logproto.Stream {
+		var timed []histogramTimedValue
+		for i, v := range values {
+			timed = append(timed, histogramTimedValue{histogramSeconds(10 * (i + 1)), v})
+		}
+		return histogramStream(lbs, timed...)
+	}
+	streams := []logproto.Stream{
+		stream(`{app="nan"}`, "1", "NaN", "3"),
+		stream(`{app="inf"}`, "1", "2", "+Inf"),
+		stream(`{app="neg"}`, "-Inf", "1", "2"),
+		stream(`{app="both"}`, "+Inf", "-Inf"), // the sum is NaN, and the count is the total of the buckets
+		stream(`{app="only a NaN"}`, "NaN"),
+	}
+	const rng = `{app=~".+"} | logfmt | unwrap duration [1m]`
+
+	for name, buckets := range map[string]string{"exponential": "", "custom": "buckets(1, 2, 4), "} {
+		t.Run(name, func(t *testing.T) {
+			h := `histogram_over_time(` + buckets + rng + `) by (app)`
+
+			// Each line is a value, so the count of the lines is the count of the observations.
+			requireSameFloats(t,
+				histogramInstant(t, streams, `sum by (app) (count_over_time({app=~".+"} | logfmt [1m]))`),
+				histogramInstant(t, streams, `histogram_count(`+h+`)`))
+			requireSameFloats(t,
+				histogramInstant(t, streams, `sum by (app) (sum_over_time(`+rng+`))`),
+				histogramInstant(t, streams, `histogram_sum(`+h+`)`))
+			requireSameFloats(t,
+				histogramInstant(t, streams, `avg_over_time(`+rng+`) by (app)`),
+				histogramInstant(t, streams, `histogram_avg(`+h+`)`))
+		})
+	}
+
+	// The largest value is +Inf and the smallest is -Inf, and a quantile of a histogram can say so.
+	t.Run("a quantile can be infinite", func(t *testing.T) {
+		const inf = `histogram_over_time({app="inf"} | logfmt | unwrap duration [1m])`
+		const neg = `histogram_over_time({app="neg"} | logfmt | unwrap duration [1m])`
+		require.True(t, math.IsInf(histogramScalar(t, streams, `histogram_quantile(1, `+inf+`)`), 1))
+		require.True(t, math.IsInf(histogramScalar(t, streams, `histogram_quantile(0, `+neg+`)`), -1))
+	})
 
 	t.Run("a window without a line has no series", func(t *testing.T) {
 		require.Empty(t, histogramInstant(t, histogramSevenValues, `histogram_count(histogram_over_time({app="a"} | logfmt | unwrap duration [1m] offset 10m))`))

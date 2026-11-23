@@ -141,15 +141,99 @@ func TestHistogramBuilder_exponential(t *testing.T) {
 	})
 }
 
-func TestHistogramBuilder_nonFiniteValuesAreDropped(t *testing.T) {
-	h := histogramObserved(t, nil, math.NaN(), math.Inf(1), math.Inf(-1), 7)
-	require.Equal(t, 1.0, h.Count, "they are not counted")
-	require.Equal(t, 7.0, h.Sum, "and they are not summed")
-	require.Len(t, histogramNonEmptyBucketsOf(h), 1)
+// NaN and the infinities are values like the others, as they are for sum_over_time and avg_over_time, and they are
+// where Prometheus puts them. The histograms that these tests build are valid ones: Prometheus lets a histogram
+// with a NaN sum have more observations than its buckets hold, for the NaNs.
+func TestHistogramBuilder_nonFiniteValues(t *testing.T) {
+	nan, inf := math.NaN(), math.Inf(1)
 
-	h = histogramObserved(t, &syntax.BucketSpec{Bounds: []float64{1, 2}}, math.NaN(), math.Inf(1), math.Inf(-1))
-	require.Equal(t, 0.0, h.Count)
-	require.Empty(t, histogramNonEmptyBucketsOf(h))
+	t.Run("exponential buckets", func(t *testing.T) {
+		h := histogramObserved(t, nil, nan, inf, -inf, 7)
+		require.Equal(t, 4.0, h.Count, "every value is counted")
+		require.True(t, math.IsNaN(h.Sum), "and summed")
+
+		// -Inf and +Inf are in the bucket above the one of MaxFloat64, on the side of their sign. The bucket has
+		// the upper bound +Inf for Prometheus, so a quantile in it is not a number that was never observed.
+		// NaN is in no bucket.
+		buckets := histogramNonEmptyBucketsOf(h)
+		require.Len(t, buckets, 3)
+		require.Equal(t, histogramBucketOf{lower: math.Inf(-1), upper: -math.MaxFloat64, count: 1}, buckets[0])
+		require.Less(t, buckets[1].lower, 7.0)
+		require.GreaterOrEqual(t, buckets[1].upper, 7.0)
+		require.Equal(t, histogramBucketOf{lower: math.MaxFloat64, upper: inf, count: 1}, buckets[2])
+	})
+
+	t.Run("the largest number is not in the bucket of the infinity", func(t *testing.T) {
+		h := histogramObserved(t, nil, math.MaxFloat64, -math.MaxFloat64, inf)
+		buckets := histogramNonEmptyBucketsOf(h)
+		require.Len(t, buckets, 3)
+		require.Equal(t, -math.MaxFloat64, buckets[0].lower)
+		require.Equal(t, math.MaxFloat64, buckets[1].upper, "the bucket of the largest number ends at it")
+		require.Equal(t, 1.0, buckets[1].count)
+		require.Equal(t, histogramBucketOf{lower: math.MaxFloat64, upper: inf, count: 1}, buckets[2], "and +Inf is above it")
+	})
+
+	t.Run("an infinity gives an infinite sum, and both of them a NaN", func(t *testing.T) {
+		h := histogramObserved(t, nil, 1, inf, inf)
+		require.Equal(t, 3.0, h.Count)
+		require.Equal(t, inf, h.Sum)
+
+		h = histogramObserved(t, nil, 1, -inf)
+		require.Equal(t, -inf, h.Sum)
+
+		h = histogramObserved(t, nil, 1, inf, -inf)
+		require.Equal(t, 3.0, h.Count, "the infinities are in buckets, so it is the total of them")
+		require.True(t, math.IsNaN(h.Sum))
+		require.Equal(t, 3.0, bucketsTotal(histogramNonEmptyBucketsOf(h)))
+	})
+
+	t.Run("custom buckets", func(t *testing.T) {
+		// The search for a bound puts NaN and +Inf above the last one, and -Inf below the first, as for a classic
+		// histogram.
+		h := histogramObserved(t, &syntax.BucketSpec{Bounds: []float64{1, 2}}, nan, inf, -inf, 1.5)
+		require.Equal(t, 4.0, h.Count)
+		require.True(t, math.IsNaN(h.Sum))
+		require.Equal(t, []histogramBucketOf{
+			{lower: math.Inf(-1), upper: 1, count: 1},
+			{lower: 1, upper: 2, count: 1},
+			{lower: 2, upper: inf, count: 2},
+		}, histogramNonEmptyBucketsOf(h))
+	})
+
+	t.Run("they are summed as sum_over_time does", func(t *testing.T) {
+		custom := &syntax.BucketSpec{Bounds: []float64{1, 10}}
+		for _, values := range [][]float64{
+			{nan},
+			{1, inf},
+			{inf, -inf},
+			{inf, 1, -inf},
+			{1e16, inf, 1, -1e16},
+			{nan, 1, 2},
+			{-inf, 1e16, 1, -1e16},
+		} {
+			var sum kahanSum
+			for _, v := range values {
+				sum.addValue(v)
+			}
+			for name, spec := range map[string]*syntax.BucketSpec{"exponential": nil, "custom": custom} {
+				got := histogramObserved(t, spec, values...).Sum
+				if math.IsNaN(sum.result()) {
+					require.True(t, math.IsNaN(got), "%s %v: %v", name, values, got)
+				} else {
+					require.Equal(t, sum.result(), got, "%s %v", name, values)
+				}
+			}
+		}
+	})
+}
+
+// bucketsTotal returns the observations in buckets.
+func bucketsTotal(buckets []histogramBucketOf) float64 {
+	var total float64
+	for _, b := range buckets {
+		total += b.count
+	}
+	return total
 }
 
 func TestHistogramBuilder_empty(t *testing.T) {
@@ -327,8 +411,9 @@ func TestHistogramBuilder_sumIsCompensated(t *testing.T) {
 	})
 }
 
-// For any observations the counts in the buckets add up to Count, and Count and Sum are
-// those of the finite observations.
+// For any observations Count is the number of them, and the counts in the buckets add up to it, except for the NaNs,
+// which are in no exponential bucket. The sum is the one of the values, which is not a number or infinite
+// when a value is NaN or infinite.
 func TestHistogramBuilder_countsAddUp(t *testing.T) {
 	r := rand.New(rand.NewSource(7))
 	specs := map[string]struct {
@@ -345,46 +430,59 @@ func TestHistogramBuilder_countsAddUp(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for round := 0; round < 200; round++ {
 				var (
-					values    []float64
-					wantCount float64
-					exactSum  big.Rat // the sum of the finite values, with no rounding
-					absSum    float64
+					values                 []float64
+					nans, posInfs, negInfs float64
+					exactSum               big.Rat // the sum of the finite values, with no rounding
+					absSum                 float64
+					withNonFinite          = round%2 == 1 // so that the sums of the other rounds are numbers
 				)
 				for i, n := 0, r.Intn(300); i < n; i++ {
 					var v float64
-					switch r.Intn(8) {
-					case 0:
+					switch kind := r.Intn(8); {
+					case kind == 0:
 						v = 0
-					case 1:
+					case kind == 1 && withNonFinite:
 						v = math.NaN()
-					case 2:
+						nans++
+					case kind == 2 && withNonFinite:
 						v = math.Inf(1 - 2*r.Intn(2))
+						if v > 0 {
+							posInfs++
+						} else {
+							negInfs++
+						}
 					default:
 						// a logarithmic scale around 1, with both signs.
 						v = math.Pow(10, (r.Float64()-0.5)*tc.decades) * float64(1-2*r.Intn(2))
 					}
 					values = append(values, v)
 					if !math.IsNaN(v) && !math.IsInf(v, 0) {
-						wantCount++
 						exactSum.Add(&exactSum, new(big.Rat).SetFloat64(v))
 						absSum += math.Abs(v)
 					}
 				}
 
 				h := histogramObserved(t, spec, values...)
-				require.Equal(t, wantCount, h.Count)
-				wantSum, _ := exactSum.Float64()
-				requireCompensatedSum(t, wantSum, absSum, len(values), h.Sum)
+				require.Equal(t, float64(len(values)), h.Count)
 
-				total := h.ZeroCount
-				for _, b := range histogramNonEmptyBucketsOf(h) {
-					total += b.count
+				switch {
+				case nans > 0 || (posInfs > 0 && negInfs > 0):
+					require.True(t, math.IsNaN(h.Sum), "%v", h.Sum)
+				case posInfs > 0:
+					require.Equal(t, math.Inf(1), h.Sum)
+				case negInfs > 0:
+					require.Equal(t, math.Inf(-1), h.Sum)
+				default:
+					wantSum, _ := exactSum.Float64()
+					requireCompensatedSum(t, wantSum, absSum, len(values), h.Sum)
 				}
-				// The zero bucket is part of the iteration, so it is counted once.
+
+				// Custom buckets have a NaN in the last one. The zero bucket is part of the iteration of the buckets.
+				wantTotal := float64(len(values))
 				if !h.UsesCustomBuckets() {
-					total -= h.ZeroCount
+					wantTotal -= nans
 				}
-				require.Equal(t, wantCount, total)
+				require.Equal(t, wantTotal, bucketsTotal(histogramNonEmptyBucketsOf(h)))
 			}
 		})
 	}

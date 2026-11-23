@@ -79,6 +79,24 @@ func TestHistogramMatrix_roundTrip(t *testing.T) {
 		"many buckets": {
 			{histogramSample(1000, "a", histogramObserved(t, nil, 1, 3, 9, 27, 81, 243, 729, 2187, 6561, 19683, 1e9, -1e9, 1e-3, 1e-6))},
 		},
+		// The count is more than the buckets hold for a NaN, and the sum is NaN.
+		"NaN and the infinities, in exponential buckets": {
+			{histogramSample(1000, "a", histogramObserved(t, nil, 1, 5, math.NaN(), math.Inf(1), math.Inf(-1), math.NaN()))},
+		},
+		"NaN and the infinities, in custom buckets": {
+			{histogramSample(1000, "a", histogramObserved(t, custom, 1, 5, math.NaN(), math.Inf(1), math.Inf(-1)))},
+		},
+		"only NaN": {
+			{histogramSample(1000, "a", histogramObserved(t, nil, math.NaN())), histogramSample(1000, "b", histogramObserved(t, custom, math.NaN()))},
+		},
+		"the sum of histograms that have a NaN": {
+			{histogramSample(1000, "a", func() *histogram.FloatHistogram {
+				h := histogramObserved(t, nil, 1, math.NaN()).Copy()
+				_, _, _, err := h.KahanAdd(histogramObserved(t, nil, 2, math.Inf(1), math.NaN()), nil)
+				require.NoError(t, err)
+				return h
+			}())},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got := histogramThroughTheWire(t, m)
@@ -202,6 +220,39 @@ func TestHistogramMatrix_fromProtoRefusesWhatIsNotAHistogramOfAQuery(t *testing.
 		"as many empty buckets as are allowed":        {h: emptyBuckets(maxHistogramBuckets, false)},
 		"a span that holds no bucket":                 {h: emptySpans(1), wantErr: "holds no bucket"},
 		"as many spans that hold none as are allowed": {h: emptySpans(maxHistogramBuckets), wantErr: "holds no bucket"},
+
+		// A NaN is in no exponential bucket, and in the last custom one, so only a histogram of exponential buckets
+		// that has a NaN sum has more observations than its buckets hold.
+		"a NaN sum and the NaNs that the buckets do not hold": {h: func() *logproto.NativeHistogram { p := valid(); p.Sum = math.NaN(); p.Count += 3; return p }()},
+		"a NaN sum and less than the buckets hold":            {h: func() *logproto.NativeHistogram { p := valid(); p.Sum = math.NaN(); p.Count--; return p }(), wantErr: "count"},
+		"custom buckets that have a NaN in the last one": {
+			h: func() *logproto.NativeHistogram {
+				p, err := histogramToProto(histogramObserved(t, &syntax.BucketSpec{Bounds: []float64{1, 10}}, 5, math.NaN()))
+				require.NoError(t, err)
+				return p
+			}(),
+		},
+		"custom buckets and a NaN sum with more than the buckets hold": {
+			h: func() *logproto.NativeHistogram {
+				p, err := histogramToProto(histogramObserved(t, &syntax.BucketSpec{Bounds: []float64{1, 10}}, 5, math.NaN()))
+				require.NoError(t, err)
+				p.Count += 3
+				return p
+			}(),
+			wantErr: "count",
+		},
+		// The bucket of the largest number is the index 8192, and the infinities are in the one above it.
+		"the bucket of the infinities": {h: func() *logproto.NativeHistogram {
+			p, err := histogramToProto(histogramObserved(t, nil, math.Inf(1), math.Inf(-1), 1))
+			require.NoError(t, err)
+			return p
+		}()},
+		"a bucket above the one of the infinities": {h: func() *logproto.NativeHistogram {
+			p, err := histogramToProto(histogramObserved(t, nil, math.Inf(1)))
+			require.NoError(t, err)
+			p.PositiveSpans[0].Offset++
+			return p
+		}(), wantErr: "indexes of schema"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := HistogramMatrixFromProto(&logproto.HistogramMatrix{Values: []*logproto.HistogramVector{{
