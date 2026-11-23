@@ -6,7 +6,7 @@ weight: 100
 ---
 # Single Store TSDB (tsdb)
 
-Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). This new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index which preceded it.
+TSDB is the only supported Loki index. It is heavily inspired by the Prometheus TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). This index is efficient, fast, and scalable, and resides in object storage.
 
 For the on-disk binary layout of the index files, see [TSDB index format](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/).
 
@@ -14,19 +14,14 @@ For the on-disk binary layout of the index files, see [TSDB index format](https:
 
 To get started using TSDB, add the following configurations to your `config.yaml`:
 
+{{< admonition type="note" >}}
+If you are migrating from a legacy index type such as `boltdb-shipper`, do the migration while still running Loki 3.x: add a new TSDB period with a future `from` date, keep the old period entries until your retention period has passed, then remove them, and only then upgrade to Loki 4.0. Loki 4.0 fails to start if any period, including past periods, still refers to a removed index type such as `boltdb-shipper`. Refer to [Migrate to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/) for the full migration procedure.
+{{< /admonition >}}
+
 ```yaml
 schema_config:
   configs:
-    # Old boltdb-shipper schema. Included in example for reference but does not need changing.
-    - from: "2023-01-03" # <---- A date in the past
-      index:
-        period: 24h
-        prefix: index_
-      object_store: gcs
-      schema: v12
-      store: boltdb-shipper
-    # New TSDB schema below
-    - from: "2023-01-05" # <---- A date in the future
+    - from: "2023-01-05"
       index:
         period: 24h
         prefix: index_
@@ -35,16 +30,6 @@ schema_config:
       store: tsdb
 
 storage_config:
-  # Old boltdb-shipper configuration. Included in example for reference but does not need changing.
-  boltdb_shipper:
-    active_index_directory: /data/index
-    build_per_tenant_index: true
-    cache_location: /data/boltdb-cache
-    index_gateway_client:
-      # only applicable if using microservices where index-gateways are independently deployed.
-      # This example is using kubernetes-style naming.
-      server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
-  # New tsdb-shipper configuration
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache
@@ -71,7 +56,7 @@ querier:
 
 ### Limits
 
-We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `128` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
+The per-tenant limit `tsdb_max_query_parallelism` in the `limits_config` controls the maximum number of parallel TSDB queries. The default parallelism is `128` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
 
 ### Dynamic Query Sharding
 
