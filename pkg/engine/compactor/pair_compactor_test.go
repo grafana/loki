@@ -272,7 +272,7 @@ func TestPairCompactorScan(t *testing.T) {
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
 	})
 
-	splitResponder := func(t *testing.T, bucket objstore.Bucket, filteredIndexes map[string]string) *fakeRunner {
+	splitResponder := func(t *testing.T, filteredIndexes map[string]string) *fakeRunner {
 		t.Helper()
 		return &fakeRunner{respond: func(_ context.Context, _ workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 			root, err := plan.Root()
@@ -299,7 +299,7 @@ func TestPairCompactorScan(t *testing.T) {
 	t.Run("a split runs one index filter per log run and publishes one index run per filter", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedSplitSource(t, bucket)
-		runner := splitResponder(t, bucket, map[string]string{
+		runner := splitResponder(t, map[string]string{
 			"logs/a-0": filteredIndex(t, bucket, "indexes/filtered-0", testLogObject{"logs/a-0", "a", "c"}),
 			"logs/a-1": filteredIndex(t, bucket, "indexes/filtered-1", testLogObject{"logs/a-1", "b", "d"}),
 		})
@@ -338,7 +338,7 @@ func TestPairCompactorScan(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedSplitSource(t, bucket)
 		filtered := filteredIndex(t, bucket, "indexes/filtered-0", testLogObject{"logs/a-0", "a", "c"})
-		runner := splitResponder(t, bucket, map[string]string{"logs/a-0": filtered, "logs/a-1": filtered})
+		runner := splitResponder(t, map[string]string{"logs/a-0": filtered, "logs/a-1": filtered})
 		replacer := &fakeReplacer{swapped: true}
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
