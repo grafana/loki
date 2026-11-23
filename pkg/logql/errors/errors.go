@@ -31,6 +31,12 @@ var (
 	ErrorDetailsLabel      = "__error_details__"
 )
 
+// ErrHistogramBucketLimit is for a histogram that has more non-empty buckets than a query may build. It is a limit
+// of its own and not an ErrLimit, which is the limit of series: that one is reported as a series limit, and the dry
+// run of the max_query_series cut-off counts a query that ends on it as one that agrees with the cut-off. It is a
+// client error all the same, and it is not retried.
+var ErrHistogramBucketLimit = errors.New("histogram bucket limit reached")
+
 // IsPipelineErrorLabel reports whether name is one of the labels the pipeline sets when a stage
 // fails.
 func IsPipelineErrorLabel(name string) bool {
