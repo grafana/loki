@@ -245,7 +245,7 @@ func TestDoIndexFilter(t *testing.T) {
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"}, SourcesInKeyOrder: true,
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.ErrorContains(t, err, `a row of object "indexes/run/a" (section 2 of 2 of the run) sorts below the row before it, of object "indexes/run/z"`)
+		require.ErrorContains(t, err, `a row of section 1/2 of the sequence, of object "indexes/run/a", sorts below the row before it, of object "indexes/run/z"`)
 	})
 
 	t.Run("reports the posting key bounds of the kept postings rows only", func(t *testing.T) {

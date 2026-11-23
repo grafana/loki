@@ -874,7 +874,7 @@ func TestDoIndexMerge(t *testing.T) {
 		}}}}
 
 		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
-		require.ErrorContains(t, err, `a row of object "source/wide-b.dat" (section 2 of 2 of the run) sorts below the row before it, of object "source/wide-a.dat"`)
+		require.ErrorContains(t, err, `a row of section 1/2 of the sequence, of object "source/wide-b.dat", sorts below the row before it, of object "source/wide-a.dat"`)
 	})
 
 	t.Run("returns an error when an index object is in two runs", func(t *testing.T) {
@@ -2242,7 +2242,7 @@ func TestSectionConcatSeq(t *testing.T) {
 	t.Run("stops with an error that names the object when a section starts below the end of the section before it", func(t *testing.T) {
 		seq := inOrderSeq([]int{1, 4}, []int{3})
 		require.Equal(t, []int{1, 4}, drain(seq))
-		require.ErrorContains(t, seq.Err(), `run 0: a row of object "indexes/1" (section 2 of 2 of the run) sorts below the row before it, of object "indexes/0"`)
+		require.ErrorContains(t, seq.Err(), `a row of section 1/2 of the sequence, of object "indexes/1", sorts below the row before it, of object "indexes/0"`)
 	})
 }
 

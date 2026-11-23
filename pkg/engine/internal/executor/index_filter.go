@@ -100,8 +100,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 
 // filterRuns returns the runs of postings sections that the filter merges.
 // Sources in key order form one run, so the merge holds one postings section
-// reader at a time. It fails if they are not in key order. Otherwise each
-// source is a run of its own, and the merge accepts any order.
+// reader at a time. The merge then fails if they are not in key order.
+// Otherwise each source is a run of its own, and the merge accepts any order.
 func filterRuns(node *physical.IndexFilter, sources []objectSections) [][]sourceSection {
 	if !node.SourcesInKeyOrder {
 		runs := make([][]sourceSection, len(sources))

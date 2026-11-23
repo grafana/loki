@@ -540,7 +540,7 @@ func (s *sectionConcatSeq[R]) Next() bool {
 		if s.cur.Next() {
 			row := s.cur.At()
 			if s.compare != nil && s.hasRow && s.compare(row, s.row) < 0 {
-				s.err = fmt.Errorf("run %d: a row of object %q (section %d of %d of the run) sorts below the row before it, of object %q", s.seqIdx, s.sections[s.idx].objectPath, s.idx+1, len(s.sections), s.sections[s.rowSection].objectPath)
+				s.err = fmt.Errorf("a row of section %d/%d of the sequence, of object %q, sorts below the row before it, of object %q", s.idx, len(s.sections), s.sections[s.idx].objectPath, s.sections[s.rowSection].objectPath)
 				return false
 			}
 			s.row, s.hasRow, s.rowSection = row, true, s.idx

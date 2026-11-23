@@ -125,8 +125,8 @@ func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, err
 // MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
 func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexFilter{
-		NodeID:           nodeID,
-		Tenant:           n.Tenant,
+		NodeID:            nodeID,
+		Tenant:            n.Tenant,
 		SourceIndexPaths:  slices.Clone(n.SourceIndexPaths),
 		SourcesInKeyOrder: n.SourceIndexPathsInKeyOrder,
 		ObjectPaths:       slices.Clone(n.ObjectPaths),
