@@ -670,23 +670,25 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	// lost response sees the change as applied, but the same paths in another
 	// run structure do not count.
 	//
-	// A kept pointer holds a run of one entry in any run, because a run of one
-	// entry skips a path that the ToC keeps. A reused pointer holds it only as
-	// a run of its own, so a change that splits a run into runs of one entry
-	// still applies.
+	// A run of one entry adds no pointer for a path that the ToC keeps,
+	// whatever run holds that path. So a kept pointer holds a run of one
+	// entry in any run. A reused pointer is different: the change writes it
+	// as a run of one entry with no run ID. If it still has a run ID, the
+	// change did not apply yet, for example when it splits a run into runs of
+	// one entry.
 	holdsRun := func(run IndexRunEntries) bool {
 		var runID indexpointers.RunID
 		for i, entry := range run {
-			existingRunID, ok := kept[entry.Path]
-			reusedPath := false
-			if !ok {
-				existingRunID, ok = reusedPresent[entry.Path]
-				reusedPath = ok
-			}
-			if !ok {
-				return false
-			}
-			if len(run) == 1 && reusedPath && existingRunID != 0 {
+			existingRunID, isKept := kept[entry.Path]
+			reusedRunID, isReused := reusedPresent[entry.Path]
+			switch {
+			case isKept:
+			case isReused:
+				if len(run) == 1 && reusedRunID != 0 {
+					return false
+				}
+				existingRunID = reusedRunID
+			default:
 				return false
 			}
 			if i == 0 {
