@@ -32,9 +32,12 @@ type RecordBatch struct {
 	// Timestamp holds nanoseconds since the Unix epoch. StreamID and Timestamp have no null
 	// element. A null element of Message means that the record has no message. It reads as an
 	// empty line, as in [DecodeRow].
+	//
+	// Message is a [columnar.UTF8Reader]. A caller reads a value with Get, and must not assume
+	// that the bytes of the values are contiguous.
 	StreamID  *columnar.Number[int64]
 	Timestamp *columnar.Number[int64]
-	Message   *columnar.UTF8
+	Message   columnar.UTF8Reader
 
 	// Metadata holds the projected metadata columns, sorted by name.
 	Metadata []MetadataColumn
@@ -42,10 +45,11 @@ type RecordBatch struct {
 
 // A MetadataColumn holds the values that one structured metadata key has in a [RecordBatch].
 // Values is never nil. A null element means that the record has no value for the key. An empty
-// element means that the record has the key with an empty value.
+// element means that the record has the key with an empty value. A caller reads a value with
+// Get, and must not assume that the bytes of the values are contiguous.
 type MetadataColumn struct {
 	Name   string
-	Values *columnar.UTF8
+	Values columnar.UTF8Reader
 }
 
 // MetadataLabels returns the structured metadata of record i as labels. It skips a null element
@@ -151,7 +155,7 @@ func (r *RowReader) newRecordBatch(rb *columnar.RecordBatch) (*RecordBatch, erro
 			}
 
 		case ColumnTypeMessage, ColumnTypeMetadata:
-			values, ok := arr.(*columnar.UTF8)
+			values, ok := arr.(columnar.UTF8Reader)
 			if !ok {
 				return nil, fmt.Errorf("invalid array type %T for %s", arr, column.Type)
 			}

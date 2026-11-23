@@ -19,6 +19,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// spanningPagesOptions are builder options that make pages of about 1 KiB. A batch of 100 of the
+// records of spanningPagesRecords spans pages.
+var spanningPagesOptions = BuilderOptions{StripeMergeLimit: 2, SortOrder: SortStreamASC, PageSizeHint: 1024}
+
 func TestRowReader_ReadRecordBatch(t *testing.T) {
 	t.Run("returns the records of the section as one array for each column", func(t *testing.T) {
 		section := buildTestProjectionSection(t)
@@ -138,6 +142,88 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 				}
 			}
 		}
+	})
+
+	t.Run("returns the message as a view over the pages when the batch spans pages and no message is null", func(t *testing.T) {
+		records := randomRecords(rand.New(rand.NewSource(2)), 400)
+		for i := range records {
+			records[i].Line = fmt.Appendf(nil, "line %d %s", i, strings.Repeat("x", 100))
+		}
+		section := buildSectionWithOptions(t, spanningPagesOptions, records)
+
+		reader := NewRowReader(section)
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		var alloc memory.Allocator
+		batch, err := reader.ReadRecordBatch(t.Context(), &alloc, 100)
+		require.NoError(t, err)
+
+		view, ok := batch.Message.(*columnar.ChunkedUTF8)
+		require.True(t, ok, "got %T, want a view", batch.Message)
+		require.Greater(t, view.NumChunks(), 1)
+
+		wantReader := NewRowReader(section)
+		require.NoError(t, wantReader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, wantReader.Close()) })
+		requireSameRecords(t, readAllRecords(t, wantReader)[:100], batchRecords(batch))
+	})
+
+	t.Run("returns the same records as Read for a line filter with a batch function when the batches span pages", func(t *testing.T) {
+		section := buildSectionWithOptions(t, spanningPagesOptions, spanningPagesRecords(400))
+		lineHasError := func(line []byte) bool { return bytes.Contains(line, []byte("level=error")) }
+		lineFilter := LogMessageFilterRowPredicate{Keep: lineHasError, KeepBatch: keepBatchOf(lineHasError)}
+
+		for name, predicates := range map[string][]RowPredicate{
+			"alone": {lineFilter},
+			"after a selective metadata equality": {
+				MetadataMatcherRowPredicate{Key: "env", Value: "env-1-" + strings.Repeat("m", 60)},
+				lineFilter,
+			},
+		} {
+			for _, batchSize := range []int{7, 100, 1000} {
+				t.Run(fmt.Sprintf("%s with a batch size of %d", name, batchSize), func(t *testing.T) {
+					open := func() *RowReader {
+						r := NewRowReader(section)
+						require.NoError(t, r.SetPredicates(predicates))
+						require.NoError(t, r.Open(t.Context()))
+						return r
+					}
+
+					reader := open()
+					want := readAllRecords(t, reader)
+					require.NoError(t, reader.Close())
+					require.NotEmpty(t, want)
+
+					reader = open()
+					got := readAllBatchRecords(t, reader, batchSize)
+					require.NoError(t, reader.Close())
+
+					requireSameRecords(t, want, got)
+				})
+			}
+		}
+	})
+
+	t.Run("returns a metadata column as a view when its key is set on every record and the batch spans pages", func(t *testing.T) {
+		section := buildSectionWithOptions(t, spanningPagesOptions, spanningPagesRecords(400))
+
+		reader := NewRowReader(section)
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+		var alloc memory.Allocator
+		batch, err := reader.ReadRecordBatch(t.Context(), &alloc, 100)
+		require.NoError(t, err)
+
+		require.Len(t, batch.Metadata, 1)
+		require.Equal(t, "env", batch.Metadata[0].Name)
+		require.IsType(t, &columnar.ChunkedUTF8{}, batch.Metadata[0].Values)
+
+		wantReader := NewRowReader(section)
+		require.NoError(t, wantReader.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, wantReader.Close()) })
+		requireSameRecords(t, readAllRecords(t, wantReader)[:100], batchRecords(batch))
 	})
 
 	t.Run("returns every record once and in order when Read and ReadRecordBatch alternate", func(t *testing.T) {
@@ -449,6 +535,24 @@ func TestRowReader_newRecordBatch(t *testing.T) {
 		require.True(t, batch.Metadata[0].Values.IsNull(0))
 	})
 
+	t.Run("keeps a view for the message and for a metadata column", func(t *testing.T) {
+		view := func(chunks ...string) columnar.Array {
+			arrays := make([]*columnar.UTF8, len(chunks))
+			for i, chunk := range chunks {
+				arrays[i] = strs(chunk).(*columnar.UTF8)
+			}
+			return columnar.NewChunkedUTF8(arrays)
+		}
+		rb := columnar.NewRecordBatch(nil, 2, []columnar.Array{numbers(1, 2), numbers(10, 20), view("a", "b"), view("x", "y")})
+
+		batch, err := newReader().newRecordBatch(rb)
+		require.NoError(t, err)
+
+		require.Equal(t, "b", string(batch.Message.Get(1)))
+		scratch := labels.NewScratchBuilder(0)
+		require.Equal(t, labels.FromStrings("env", "y"), batch.MetadataLabels(1, &scratch))
+	})
+
 	t.Run("returns an error when the record batch has no row", func(t *testing.T) {
 		rb := columnar.NewRecordBatch(nil, 0, []columnar.Array{numbers(), numbers(), strs(), strs()})
 
@@ -595,4 +699,21 @@ func requireSameRecords(t *testing.T, want, got []Record) {
 		require.Equal(t, string(want[i].Line), string(got[i].Line), "record %d: line", i)
 		require.True(t, labels.Equal(want[i].Metadata, got[i].Metadata), "record %d: metadata %s and %s", i, want[i].Metadata, got[i].Metadata)
 	}
+}
+
+// spanningPagesRecords returns n records in six streams. Every record has a line and an env
+// metadata value, so no array of the section holds a null.
+func spanningPagesRecords(n int) []Record {
+	levels := []string{"info", "warn", "error", "debug"}
+
+	records := make([]Record, 0, n)
+	for i := range n {
+		records = append(records, Record{
+			StreamID:  int64(1 + i%6),
+			Timestamp: time.Unix(int64(i), 0).UTC(),
+			Line:      fmt.Appendf(nil, "line %d level=%s %s", i, levels[(i/4)%len(levels)], strings.Repeat("x", 100)),
+			Metadata:  labels.FromStrings("env", fmt.Sprintf("env-%d-%s", i%4, strings.Repeat("m", 60))),
+		})
+	}
+	return records
 }

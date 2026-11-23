@@ -2,6 +2,7 @@ package columnar
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -10,6 +11,9 @@ import (
 // Concat concatenates the input arrays into a single, combined array using the
 // provided allocator. Concat returns an error if not all arrays are of the same
 // kind.
+//
+// An input can be a [ChunkedUTF8]. The result is never a [ChunkedUTF8]: Concat
+// always copies the values.
 func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -42,6 +46,29 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 	default:
 		return nil, fmt.Errorf("unsupported array kind %s", kind)
 	}
+}
+
+// expandChunks returns in with each [ChunkedUTF8] replaced by its chunks. It
+// returns in itself when no input is a ChunkedUTF8.
+func expandChunks(in []Array) []Array {
+	if !slices.ContainsFunc(in, func(arr Array) bool {
+		_, ok := arr.(*ChunkedUTF8)
+		return ok
+	}) {
+		return in
+	}
+
+	out := make([]Array, 0, len(in)+1)
+	for _, arr := range in {
+		if view, ok := arr.(*ChunkedUTF8); ok {
+			for _, chunk := range view.chunks {
+				out = append(out, chunk)
+			}
+			continue
+		}
+		out = append(out, arr)
+	}
+	return out
 }
 
 func concatNull(alloc *memory.Allocator, in []Array) (Array, error) {
@@ -172,6 +199,7 @@ func concatStruct(alloc *memory.Allocator, in []Array) (Array, error) {
 
 // concatUTF8 concatenates UTF8 arrays, normalizing offsets to be zero-based.
 func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
+	in = expandChunks(in)
 	totalLen := getTotalLen(in)
 
 	var totalDataLen int

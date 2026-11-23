@@ -145,6 +145,20 @@ func TestConcat_UTF8_Slices(t *testing.T) {
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
+func TestConcat_ChunkedUTF8(t *testing.T) {
+	t.Run("reads a view as its chunks", func(t *testing.T) {
+		var alloc memory.Allocator
+		view := columnar.NewChunkedUTF8([]*columnar.UTF8{utf8Chunk(t, &alloc, "a", "b"), utf8Chunk(t, &alloc, "c")})
+		in := []columnar.Array{utf8Chunk(t, &alloc, "x"), view, columnartest.Array(t, types.KindUTF8, &alloc, "y", nil)}
+
+		got, err := columnar.Concat(&alloc, in)
+		require.NoError(t, err)
+
+		require.IsType(t, &columnar.UTF8{}, got)
+		columnartest.RequireArraysEqual(t, columnartest.Array(t, types.KindUTF8, &alloc, "x", "a", "b", "c", "y", nil), got, memory.Bitmap{})
+	})
+}
+
 func TestConcat_Struct(t *testing.T) {
 	var alloc memory.Allocator
 

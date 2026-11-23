@@ -871,10 +871,11 @@ func buildTestSection(t *testing.T) *Section {
 }
 
 func buildSectionFromRecords(t *testing.T, sortOrder SortOrder, records []Record) *Section {
-	logsBuilder := NewBuilder(nil, BuilderOptions{
-		StripeMergeLimit: 2,
-		SortOrder:        sortOrder,
-	})
+	return buildSectionWithOptions(t, BuilderOptions{StripeMergeLimit: 2, SortOrder: sortOrder}, records)
+}
+
+func buildSectionWithOptions(t *testing.T, opts BuilderOptions, records []Record) *Section {
+	logsBuilder := NewBuilder(nil, opts)
 	for _, record := range records {
 		logsBuilder.Append(record)
 	}

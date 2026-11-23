@@ -79,7 +79,7 @@ func (p *compiledLessThanOrEqualPredicate) evalRecordBatch(ctx context.Context, 
 }
 
 func (p *compiledInPredicate) evalRecordBatch(ctx context.Context, rb *recordBatch, sel selection) (selection, error) {
-	arr, err := rb.columnArray(ctx, p.columnIndex, sel)
+	arr, err := rb.columnArrayOrView(ctx, p.columnIndex, sel)
 	if err != nil {
 		return sel, err
 	}
@@ -108,56 +108,114 @@ func (p *compiledInPredicate) evalRecordBatch(ctx context.Context, rb *recordBat
 // binary, wherever the predicate sits in the predicate tree. Otherwise it calls
 // Keep on each selected row.
 //
-// KeepBatch gets the values of the column for one record batch. It gets
-// only the selected values if fewer than half of the rows are selected.
-// Otherwise it gets the values of every row, and evalRecordBatch drops the
-// indexes of the rows that are not selected. The values of those rows are
-// unspecified. evalRecordBatch returns an error if an index is out of range,
-// repeats, or does not ascend.
+// The array of the column can be a view over several pages. Then evalRecordBatch
+// calls KeepBatch once for each chunk that holds a selected row.
+//
+// If fewer than half of the rows are selected, a call gets only the selected
+// values of its chunk. Otherwise it gets the values of every row of its chunk.
+// In that case evalRecordBatch drops the indexes of the unselected rows. The
+// values of those rows are unspecified.
+//
+// evalRecordBatch returns an error if an index is out of range, repeats, or does
+// not ascend.
 func (p *compiledFuncPredicate) evalRecordBatch(ctx context.Context, rb *recordBatch, sel selection) (selection, error) {
-	arr, err := rb.columnArray(ctx, p.columnIndex, sel)
+	arr, err := rb.columnArrayOrView(ctx, p.columnIndex, sel)
 	if err != nil {
 		return sel, err
 	}
 
-	if utf8Arr, ok := arr.(*columnar.UTF8); ok && p.keepBatch != nil {
-		return p.evalKeepBatch(rb, utf8Arr, sel)
+	if values, ok := arr.(columnar.UTF8Reader); ok && p.keepBatch != nil {
+		return p.evalKeepBatch(rb, values, sel)
 	}
 	return evalRowwiseRecordBatch(rb, p.columnIndex, arr, p, sel), nil
 }
 
-func (p *compiledFuncPredicate) evalKeepBatch(rb *recordBatch, arr *columnar.UTF8, sel selection) (selection, error) {
-	var (
-		src       = arr
-		compacted bool
-		positions []int32 // Maps an index of src to a row of the record batch, when src is compacted.
-		ok        bool
-	)
-
+// evalKeepBatch calls keepBatchChunk for each chunk of the column. KeepBatch runs
+// only for a chunk that holds a selected row. A [columnar.UTF8] is one chunk.
+// evalKeepBatch returns an error if values does not hold exactly the rows of the
+// record batch.
+func (p *compiledFuncPredicate) evalKeepBatch(rb *recordBatch, values columnar.UTF8Reader, sel selection) (selection, error) {
 	// Compacting copies the selected values into a dense array, so KeepBatch skips
 	// the rows that earlier predicates dropped. The copy grows with the number of
 	// selected rows. The KeepBatch work that it saves shrinks.
 	//
 	// The threshold of one half assumes that KeepBatch costs more per value than
 	// the copy. Below half, compacting saves more than it costs. At half or more,
-	// the function passes the whole array instead, and KeepBatch tests at most
+	// the function passes each whole chunk instead, and KeepBatch tests at most
 	// twice the values it needs. The threshold is a heuristic.
-	if !sel.isAllRows() && sel.count()*2 < rb.n {
-		dense, err := sel.filterArray(rb.scratch, arr)
-		if err != nil {
-			return sel, fmt.Errorf("compacting column %d: %w", p.columnIndex, err)
+	compact := !sel.isAllRows() && sel.count()*2 < rb.n
+
+	if values.Len() != rb.n {
+		return sel, fmt.Errorf("column %d has %d rows, want %d", p.columnIndex, values.Len(), rb.n)
+	}
+
+	var (
+		out   = newSelection(rb.scratch, rb.n, false)
+		start int
+	)
+	keepChunk := func(chunk *columnar.UTF8) error {
+		end := start + chunk.Len()
+		err := p.keepBatchChunk(rb, chunk, start, end, compact, sel, &out)
+		start = end
+		return err
+	}
+
+	switch values := values.(type) {
+	case *columnar.UTF8:
+		if err := keepChunk(values); err != nil {
+			return sel, err
 		}
-		src, ok = dense.(*columnar.UTF8)
-		if !ok {
-			return sel, fmt.Errorf("compacting column %d returned %T, want a binary array", p.columnIndex, dense)
+	case *columnar.ChunkedUTF8:
+		for k := range values.NumChunks() {
+			if err := keepChunk(values.Chunk(k)); err != nil {
+				return sel, err
+			}
+		}
+	default:
+		return sel, fmt.Errorf("column %d returned %T, want a binary array", p.columnIndex, values)
+	}
+
+	if !compact {
+		// KeepBatch saw each whole chunk that holds a selected row. Drop the rows
+		// that did not reach this predicate.
+		return out.and(rb.scratch, sel), nil
+	}
+	return out, nil
+}
+
+// keepBatchChunk calls KeepBatch on the chunk that holds the rows [start, end)
+// of the record batch, and sets in out the rows that it keeps. It skips a chunk
+// that holds no selected row. In compact mode, it passes only the selected
+// values of a chunk that also holds unselected rows.
+func (p *compiledFuncPredicate) keepBatchChunk(rb *recordBatch, chunk *columnar.UTF8, start, end int, compact bool, sel selection, out *selection) error {
+	var (
+		src       = chunk
+		compacted bool
+		positions []int32 // Maps an index of src to a row of the record batch, when src is compacted.
+	)
+	if !sel.isAllRows() {
+		chunkSel := sel.slice(start, end)
+		if chunkSel.empty() {
+			return nil
 		}
 
-		compacted = true
-		positions = rb.keepBatchPositions[:0]
-		sel.forEach(func(i int) {
-			positions = append(positions, int32(i))
-		})
-		rb.keepBatchPositions = positions
+		if compact && chunkSel.count() < chunk.Len() {
+			dense, err := chunkSel.filterArray(rb.scratch, chunk)
+			if err != nil {
+				return fmt.Errorf("compacting column %d: %w", p.columnIndex, err)
+			}
+			var ok bool
+			if src, ok = dense.(*columnar.UTF8); !ok {
+				return fmt.Errorf("compacting column %d returned %T, want a binary array", p.columnIndex, dense)
+			}
+
+			compacted = true
+			positions = rb.keepBatchPositions[:0]
+			chunkSel.forEach(func(i int) {
+				positions = append(positions, int32(start+i))
+			})
+			rb.keepBatchPositions = positions
+		}
 	}
 
 	// dstIndexes is a scratch slice that later calls reuse, so KeepBatch must not
@@ -165,27 +223,20 @@ func (p *compiledFuncPredicate) evalKeepBatch(rb *recordBatch, arr *columnar.UTF
 	keep := p.keepBatch(p.column, src, rb.keepBatchScratch[:0])
 	rb.keepBatchScratch = keep[:0]
 
-	out := newSelection(rb.scratch, rb.n, false)
 	prev := int32(-1)
 	for _, k := range keep {
 		if k <= prev || int(k) >= src.Len() {
-			return sel, fmt.Errorf("batch predicate kept index %d of %d values after index %d, want ascending indexes in range", k, src.Len(), prev)
+			return fmt.Errorf("batch predicate on column %d kept index %d of %d values for rows [%d, %d) after index %d, want ascending indexes in range", p.columnIndex, k, src.Len(), start, end, prev)
 		}
 		prev = k
 
-		row := int(k)
+		row := start + int(k)
 		if compacted {
 			row = int(positions[k])
 		}
 		out.set(row)
 	}
-
-	if !compacted {
-		// KeepBatch saw every row of the record batch. Drop the rows that did
-		// not reach this predicate.
-		return out.and(rb.scratch, sel), nil
-	}
-	return out, nil
+	return nil
 }
 
 type compareOp int
@@ -228,12 +279,18 @@ func newKernelComparison(op compareOp, column Column, value Value) *kernelCompar
 // It runs a kernel if k allows it, and leaf.evalRow on each selected row
 // otherwise.
 func evalCompareRecordBatch(ctx context.Context, rb *recordBatch, columnIndex int, k *kernelComparison, leaf compiledPredicate, sel selection) (selection, error) {
+	if k.scalar == nil {
+		arr, err := rb.columnArrayOrView(ctx, columnIndex, sel)
+		if err != nil {
+			return sel, err
+		}
+		return evalRowwiseRecordBatch(rb, columnIndex, arr, leaf, sel), nil
+	}
+
+	// The kernels read a contiguous array only.
 	arr, err := rb.columnArray(ctx, columnIndex, sel)
 	if err != nil {
 		return sel, err
-	}
-	if k.scalar == nil {
-		return evalRowwiseRecordBatch(rb, columnIndex, arr, leaf, sel), nil
 	}
 
 	var kernel func(*memory.Allocator, columnar.Datum, columnar.Datum, memory.Bitmap) (columnar.Datum, error)

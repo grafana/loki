@@ -44,6 +44,9 @@ type (
 		// row and a copy of each line that fails. The reader calls Keep when it cannot use KeepBatch,
 		// so Keep must always be set.
 		//
+		// The reader can call KeepBatch several times for one batch of records. Each call gets
+		// later lines than the call before. An index is relative to the lines of its call.
+		//
 		// Line i is data[offsets[i]:offsets[i+1]]. An entry with no message is an empty line, and
 		// Keep gets a nil line for it, so Keep must treat a nil and an empty line alike. Lines have
 		// no separator, offsets can start after 0, and data can hold bytes that belong to no line.

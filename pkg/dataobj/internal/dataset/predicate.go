@@ -104,6 +104,9 @@ type (
 		// order with no repeat, and returns the result. values holds a null value as an empty
 		// value.
 		//
+		// The reader can call KeepBatch several times for one record batch. Each call gets the
+		// values of later rows than the call before. An index is relative to the values of its call.
+		//
 		// KeepBatch must give the same result as Keep on every value that the reader needs to test.
 		//
 		// The reader can call Keep instead of KeepBatch for any value, so Keep must always be set.

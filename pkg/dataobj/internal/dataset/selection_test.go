@@ -254,6 +254,46 @@ func TestSelection_filterArray(t *testing.T) {
 		require.Equal(t, "ccc", string(values.Get(1)))
 	})
 
+	t.Run("returns the values of the selected rows of a view as one array", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"}, []string{"dddd", "e"})
+
+		got, err := selectionOf(&alloc, 5, 1, 2, 4).filterArray(&alloc, view)
+		require.NoError(t, err)
+
+		values, ok := got.(*columnar.UTF8)
+		require.True(t, ok, "got %T, want one array", got)
+		require.Equal(t, 3, values.Len())
+		require.Equal(t, "bb", string(values.Get(0)))
+		require.Equal(t, "ccc", string(values.Get(1)))
+		require.Equal(t, "e", string(values.Get(2)))
+	})
+
+	t.Run("returns an empty array when the selection selects no row of a view", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"})
+
+		got, err := selectionOf(&alloc, 3).filterArray(&alloc, view)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, got.Len())
+	})
+
+	t.Run("copies a view into one array when the selection selects every row", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"})
+
+		for name, sel := range map[string]selection{
+			"a selection of every row without a bitmap": newSelectionAllRows(3),
+			"a bitmap that has every bit set":           fullBitmapSelection(&alloc, 3),
+		} {
+			got, err := sel.filterArray(&alloc, view)
+			require.NoError(t, err, name)
+
+			values, ok := got.(*columnar.UTF8)
+			require.True(t, ok, "%s: got %T, want one array", name, got)
+			require.Equal(t, 3, values.Len(), name)
+			require.Equal(t, "ccc", string(values.Get(2)), name)
+		}
+	})
+
 	t.Run("keeps the nulls of the selected rows", func(t *testing.T) {
 		arr := columnar.NewNumber([]int64{10, 20, 30, 40}, bitmapOf(&alloc, true, false, true, true))
 
@@ -263,6 +303,29 @@ func TestSelection_filterArray(t *testing.T) {
 		require.True(t, got.IsNull(0))
 		require.False(t, got.IsNull(1))
 		require.Equal(t, int64(30), got.(*columnar.Number[int64]).Values()[1])
+	})
+
+	t.Run("returns the selected values of a view when a chunk holds no selected row", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"}, []string{"dddd", "e"})
+
+		got, err := selectionOf(&alloc, 5, 0, 4).filterArray(&alloc, view)
+		require.NoError(t, err)
+
+		values, ok := got.(*columnar.UTF8)
+		require.True(t, ok, "got %T, want one array", got)
+		require.Equal(t, 2, values.Len())
+		require.Equal(t, "a", string(values.Get(0)))
+		require.Equal(t, "e", string(values.Get(1)))
+	})
+
+	t.Run("returns an error when the selection has a different number of rows than a view", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"})
+
+		_, err := selectionOf(&alloc, 2, 1).filterArray(&alloc, view)
+		require.EqualError(t, err, "mask length 2 does not match input length 3")
+
+		_, err = selectionOf(&alloc, 5, 1).filterArray(&alloc, view)
+		require.EqualError(t, err, "mask length 5 does not match input length 3")
 	})
 
 	t.Run("returns an error when the selection has a different number of rows than the array", func(t *testing.T) {
@@ -524,4 +587,17 @@ func bitmapOf(alloc *memory.Allocator, values ...bool) memory.Bitmap {
 	bm := memory.NewBitmap(alloc, len(values))
 	bm.AppendValues(values...)
 	return bm
+}
+
+// viewOf returns a view in which each element of chunks is one chunk.
+func viewOf(alloc *memory.Allocator, chunks ...[]string) *columnar.ChunkedUTF8 {
+	arrays := make([]*columnar.UTF8, len(chunks))
+	for k, values := range chunks {
+		builder := columnar.NewUTF8Builder(alloc)
+		for _, v := range values {
+			builder.AppendValue([]byte(v))
+		}
+		arrays[k] = builder.Build()
+	}
+	return columnar.NewChunkedUTF8(arrays)
 }

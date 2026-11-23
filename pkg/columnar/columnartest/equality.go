@@ -70,7 +70,7 @@ func RequireArraysEqual(t testing.TB, expect, actual columnar.Array, mask memory
 	case types.KindUint64:
 		requireArraysEqual(t, expect.(*columnar.Number[uint64]), actual.(*columnar.Number[uint64]), mask)
 	case types.KindUTF8:
-		requireArraysEqual(t, expect.(*columnar.UTF8), actual.(*columnar.UTF8), mask)
+		requireArraysEqual(t, expect.(columnar.UTF8Reader), actual.(columnar.UTF8Reader), mask)
 	case types.KindStruct:
 		requireStructArraysEqual(t, expect.(*columnar.Struct), actual.(*columnar.Struct), mask)
 	}

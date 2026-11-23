@@ -9,6 +9,8 @@ import (
 // Clone returns a deep copy of the input Datum, allocating all new memory from
 // alloc. The returned Datum does not share any memory with the input.
 //
+// Clone copies a [ChunkedUTF8] into one [UTF8].
+//
 // Scalars are returned as-is since they do not reference allocator-managed
 // memory.
 func Clone(alloc *memory.Allocator, input Datum) (Datum, error) {
@@ -30,6 +32,8 @@ func Clone(alloc *memory.Allocator, input Datum) (Datum, error) {
 		return cloneNumber(alloc, src), nil
 	case *UTF8:
 		return cloneUTF8(alloc, src), nil
+	case *ChunkedUTF8:
+		return Flatten(alloc, src)
 	case *Struct:
 		return cloneStruct(alloc, src)
 

@@ -39,7 +39,10 @@ import (
 // The arrays of a record batch have these types:
 //   - an int64 column: a [columnar.Number] of int64,
 //   - a uint64 column: a [columnar.Number] of uint64,
-//   - a binary column: a [columnar.UTF8].
+//   - a binary column: a [columnar.UTF8Reader]. It is a [columnar.UTF8], or a
+//     [columnar.ChunkedUTF8] that has one chunk for each page that holds a
+//     returned row. It is a ChunkedUTF8 only if no predicate read the column,
+//     the rows come from more than one page, and no returned value is null.
 //
 // At the end of the dataset, ReadRecordBatch returns an empty record batch and
 // [io.EOF]. Every later call does the same. If ReadRecordBatch fails, it returns
@@ -226,7 +229,7 @@ func (r *RowReader) projectRecordBatchColumn(ctx context.Context, rb *recordBatc
 	case read:
 		arr, err = r.readCompactedColumnBySelection(ctx, outAlloc, idx, rb.row, rb.n, sel)
 	default:
-		arr, err = rb.columnArray(ctx, idx, sel)
+		arr, err = rb.columnArrayOrView(ctx, idx, sel)
 		if err == nil {
 			arr, err = sel.filterArray(outAlloc, arr)
 		}
@@ -262,7 +265,7 @@ func (r *RowReader) columnSegments(ctx context.Context, idx int, row int64, n in
 
 // readCompactedColumnBySelection reads the rows of [row, row+n) that sel
 // selects, from the column at index idx. It returns them as one array in memory
-// from outAlloc.
+// from outAlloc. A binary column can come back as a [columnar.ChunkedUTF8].
 //
 // The array is compacted: it has one element for each selected row, in row
 // order, and no element for the other rows. So element i is the i-th selected
@@ -301,7 +304,7 @@ func (r *RowReader) readCompactedColumnBySelection(ctx context.Context, outAlloc
 	case 1:
 		return pieces[0], nil
 	default:
-		arr, err := columnar.Concat(outAlloc, pieces)
+		arr, err := columnar.ConcatView(outAlloc, pieces)
 		if err != nil {
 			return nil, fmt.Errorf("joining the selected rows of column %d: %w", idx, err)
 		}
@@ -310,7 +313,8 @@ func (r *RowReader) readCompactedColumnBySelection(ctx context.Context, outAlloc
 }
 
 // readUncompactedColumnBySelection reads rows [row, row+n) of the column at
-// index idx as one array, in memory from dst.
+// index idx as one array, in memory from dst. When sel selects a row in every
+// page, a binary column can come back as a [columnar.ChunkedUTF8].
 //
 // The array is uncompacted: it has one element for each of the n rows, whether
 // sel selects the row or not. So element i is the row at offset i, and the
@@ -371,11 +375,12 @@ func (r *RowReader) readUncompactedColumnBySelection(ctx context.Context, dst *m
 }
 
 // readColumn reads rows [row, row+n) of the column at index idx as one array of
-// n elements, in memory from dst. The rows past the end of the column read as
-// null, because a section writer can leave out the trailing null rows of a
-// sparse column. It returns an error that wraps [io.ErrUnexpectedEOF] if a row
-// that it reads lies past the end of the pages, and the pages end before the
-// last row that the column holds.
+// n elements, in memory from dst. A binary column can come back as a
+// [columnar.ChunkedUTF8]. The rows past the end of the column read as null,
+// because a section writer can leave out the trailing null rows of a sparse
+// column. It returns an error that wraps [io.ErrUnexpectedEOF] if a row that it
+// reads lies past the end of the pages, and the pages end before the last row
+// that the column holds.
 func (r *RowReader) readColumn(ctx context.Context, dst *memory.Allocator, idx int, row int64, n int) (columnar.Array, error) {
 	arr, err := r.readColumnPages(ctx, dst, idx, row, n)
 	if err != nil {
@@ -400,7 +405,8 @@ func (r *RowReader) readColumn(ctx context.Context, dst *memory.Allocator, idx i
 
 // readColumnPages reads up to n rows from row of the column at index idx as one array,
 // in memory from dst. The array is nil or shorter than n if the column ends
-// early.
+// early. A binary column comes back as a [columnar.ChunkedUTF8] with one chunk
+// for each page when its rows come from more than one page and none is null.
 func (r *RowReader) readColumnPages(ctx context.Context, dst *memory.Allocator, idx int, row int64, n int) (columnar.Array, error) {
 	// List the pages first. The column reader lists them on its first use, and its
 	// io.EOF would then look like the end of the column.
@@ -435,7 +441,7 @@ func (r *RowReader) readColumnPages(ctx context.Context, dst *memory.Allocator, 
 	case 1:
 		return dropEmptyValidity(r.recordBatchPageArrays[0]), nil
 	default:
-		arr, err := columnar.Concat(dst, r.recordBatchPageArrays)
+		arr, err := columnar.ConcatView(dst, r.recordBatchPageArrays)
 		if err != nil {
 			return nil, fmt.Errorf("joining pages of column %d: %w", idx, err)
 		}
@@ -535,6 +541,9 @@ func arrayBytes(arr columnar.Array, sel selection) int64 {
 		}
 		return size
 
+	case *columnar.ChunkedUTF8:
+		return int64(sel.chunkBytes(arr))
+
 	case *columnar.Number[int64], *columnar.Number[uint64]:
 		if arr.Nulls() == 0 {
 			return int64(sel.count()) * 8
@@ -563,7 +572,10 @@ type recordBatchColumnReader interface {
 	//
 	// The array is uncompacted: element i is the row at offset i, whether sel
 	// selects the row or not. The array holds real values for the rows that sel
-	// selects. The elements of the other rows can be null. A row past the end of the column reads as null.
+	// selects. The elements of the other rows can be null. A row past the end of
+	// the column reads as null. A binary column can come back as a
+	// [columnar.ChunkedUTF8].
+	//
 	// readUncompactedColumnBySelection returns an error that wraps
 	// [io.ErrUnexpectedEOF] if a row that sel selects lies past the end of the
 	// pages, and the pages end before the last row that the column holds.
@@ -636,12 +648,35 @@ func (rb *recordBatch) filledBytes() int64 {
 	return total
 }
 
-// columnArray returns the array of the column at index idx for the rows of the
-// record batch. It reads the column on the first call, and again if the column
-// is not filled for sel. The array holds the data of at least the rows that sel
-// selects. A page that holds none of them can read as null. The array uses
-// scratch memory, so it stays valid until the next record batch.
+// columnArray is like columnArrayOrView, but it never returns a
+// [columnar.ChunkedUTF8]. It joins one into a [columnar.UTF8], and caches the
+// joined array for the column.
 func (rb *recordBatch) columnArray(ctx context.Context, idx int, sel selection) (columnar.Array, error) {
+	arr, err := rb.columnArrayOrView(ctx, idx, sel)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := arr.(*columnar.ChunkedUTF8); !ok {
+		return arr, nil
+	}
+
+	flat, err := columnar.Flatten(rb.scratch, arr)
+	if err != nil {
+		return nil, fmt.Errorf("flattening column %d: %w", idx, err)
+	}
+	rb.columns[idx].arr = flat
+	return flat, nil
+}
+
+// columnArrayOrView returns the array of the column at index idx for the rows
+// of the record batch. It reads the column on the first call, and again if the
+// column is not filled for sel. The array holds the data of at least the rows
+// that sel selects. A page that holds none of them can read as null. The array
+// uses scratch memory, so it stays valid until the next record batch.
+//
+// A binary column can come back as a [columnar.ChunkedUTF8]. A caller must
+// handle it, or call columnArray instead.
+func (rb *recordBatch) columnArrayOrView(ctx context.Context, idx int, sel selection) (columnar.Array, error) {
 	if arr := rb.columns[idx].arr; arr != nil {
 		if rb.isColumnArrayFilled(idx, sel) {
 			return arr, nil

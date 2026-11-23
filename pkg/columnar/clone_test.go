@@ -145,6 +145,20 @@ func TestCloneArray(t *testing.T) {
 			requireDistinctMemory(t, tc.src, got)
 		})
 	}
+
+	t.Run("returns one UTF8 array with the values of a view when the input is a view", func(t *testing.T) {
+		view := columnar.NewChunkedUTF8([]*columnar.UTF8{
+			columnartest.Array(t, types.KindUTF8, &srcAlloc, "hello", "world").(*columnar.UTF8),
+			columnartest.Array(t, types.KindUTF8, &srcAlloc, "foo").(*columnar.UTF8),
+		})
+
+		got, err := columnar.CloneArray(&dstAlloc, view)
+		require.NoError(t, err)
+		srcAlloc.Reclaim()
+
+		require.IsType(t, &columnar.UTF8{}, got)
+		columnartest.RequireArraysEqual(t, columnartest.Array(t, types.KindUTF8, &dstAlloc, "hello", "world", "foo"), got, memory.Bitmap{})
+	})
 }
 
 // requireDistinctMemory asserts that two arrays do not share backing memory.

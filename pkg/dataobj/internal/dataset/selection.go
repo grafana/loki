@@ -145,8 +145,14 @@ func (s selection) slice(i, j int) selection {
 }
 
 // filterArray returns the elements of arr that s selects, in memory from
-// alloc. It copies arr even if s selects every element.
+// alloc. It copies arr even if s selects every element. A
+// [columnar.ChunkedUTF8] comes back as one [columnar.UTF8]. It returns an error
+// if arr does not hold the n rows of s.
 func (s selection) filterArray(alloc *memory.Allocator, arr columnar.Array) (columnar.Array, error) {
+	if s.n != arr.Len() {
+		return nil, fmt.Errorf("mask length %d does not match input length %d", s.n, arr.Len())
+	}
+
 	// compute.Filter returns its input when s selects every element. The result
 	// must not share memory with arr, which can be scratch memory of the input
 	// record batch.
@@ -154,11 +160,67 @@ func (s selection) filterArray(alloc *memory.Allocator, arr columnar.Array) (col
 		return columnar.CloneArray(alloc, arr)
 	}
 
+	// The compute kernels read a contiguous array only.
+	if view, ok := arr.(*columnar.ChunkedUTF8); ok {
+		return s.gatherChunks(alloc, view), nil
+	}
+
 	filtered, err := compute.Filter(alloc, arr, s.bits)
 	if err != nil {
 		return nil, err
 	}
 	return columnar.AsArray(filtered)
+}
+
+// gatherChunks returns the elements of view that s selects as one array, in
+// memory from alloc. s must be a selection of the rows of view that has a
+// bitmap.
+func (s selection) gatherChunks(alloc *memory.Allocator, view *columnar.ChunkedUTF8) *columnar.UTF8 {
+	var (
+		count = s.count()
+		size  = s.chunkBytes(view)
+	)
+
+	var (
+		offsetsBuf = memory.NewBuffer[int32](alloc, count+1)
+		dataBuf    = memory.NewBuffer[byte](alloc, size)
+	)
+	offsetsBuf.Resize(count + 1)
+	dataBuf.Resize(size)
+
+	var (
+		offsets = offsetsBuf.Data()
+		data    = dataBuf.Data()
+		n, pos  int
+		cursor  = newChunkCursor(view)
+	)
+	offsets[0] = 0
+	for i := range s.bits.IterValues(true) {
+		chunk, j := cursor.locate(i)
+		pos += copy(data[pos:], chunk.Get(j))
+		n++
+		offsets[n] = int32(pos)
+	}
+	return columnar.NewUTF8(data, offsets, memory.Bitmap{})
+}
+
+// chunkBytes returns the total length in bytes of the values of view that s
+// selects. s must be a selection of the rows of view.
+func (s selection) chunkBytes(view *columnar.ChunkedUTF8) int {
+	if s.isAllRows() {
+		return view.DataLen()
+	}
+
+	var (
+		size   int
+		cursor = newChunkCursor(view)
+	)
+	for i := range s.bits.IterValues(true) {
+		chunk, j := cursor.locate(i)
+		offsets := chunk.Offsets()
+		size += int(offsets[j+1] - offsets[j])
+	}
+	return size
 }
 
 // checkRows panics if s and other are selections of a different number of rows.

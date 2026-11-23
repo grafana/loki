@@ -562,7 +562,7 @@ func TestReadBatch_Fill(t *testing.T) {
 		var batch readBatch
 		require.NoError(t, batch.fill(task, in))
 
-		copy(in.Message.Data(), "xxxxxx")
+		copy(in.Message.(*columnar.UTF8).Data(), "xxxxxx")
 		require.Equal(t, "one", string(batch.records[0].line))
 		require.Equal(t, "two", string(batch.records[1].line))
 	})
@@ -582,6 +582,25 @@ func TestReadBatch_Fill(t *testing.T) {
 		require.Equal(t, "two", string(batch.records[0].line))
 		require.Equal(t, "three", string(batch.records[1].line))
 		require.Equal(t, len("two")+len("three"), batch.linesAlloc.AllocatedBytes())
+	})
+
+	t.Run("reads the lines of a message that is a view over several arrays", func(t *testing.T) {
+		full := batchOf(t, []int64{streamID, streamID, streamID}, []string{"one", "two", "three"})
+		first := batchOf(t, []int64{streamID}, []string{"one"}).Message.(*columnar.UTF8)
+		second := batchOf(t, []int64{streamID, streamID}, []string{"two", "three"}).Message.(*columnar.UTF8)
+		viewed := &logs.RecordBatch{
+			Rows:      3,
+			StreamID:  full.StreamID,
+			Timestamp: full.Timestamp,
+			Message:   columnar.NewChunkedUTF8([]*columnar.UTF8{first, second}),
+		}
+		require.Equal(t, len("one")+len("two")+len("three"), task.forwardedLineBytes(viewed))
+
+		var batch readBatch
+		require.NoError(t, batch.fill(task, viewed))
+		require.Equal(t, "one", string(batch.records[0].line))
+		require.Equal(t, "two", string(batch.records[1].line))
+		require.Equal(t, "three", string(batch.records[2].line))
 	})
 
 	t.Run("a second fill reuses the region of the first", func(t *testing.T) {

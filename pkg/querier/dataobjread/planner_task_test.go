@@ -115,7 +115,7 @@ func TestReadTask_AppendRecords(t *testing.T) {
 		records, err := task.appendRecords(nil, lineBuf, batch)
 		require.NoError(t, err)
 
-		copy(batch.Message.Data(), "third")
+		copy(batch.Message.(*columnar.UTF8).Data(), "third")
 		require.Len(t, records, 1)
 		require.Equal(t, "first", string(records[0].line))
 		require.Same(t, &lineBuf[:1][0], &records[0].line[0])

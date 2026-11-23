@@ -120,7 +120,7 @@ func scalarOf(value Value) columnar.Datum {
 // valueAt returns the value at index i of arr. A null element gives the nil
 // Value. The returned value shares memory with arr.
 //
-// valueAt panics on an array type that a page reader never returns.
+// valueAt panics if arr is not an int64, uint64, binary or null array.
 func valueAt(arr columnar.Array, i int) Value {
 	switch arr := arr.(type) {
 	case *columnar.Number[int64]:
@@ -137,6 +137,8 @@ func valueAt(arr columnar.Array, i int) Value {
 		if arr.IsNull(i) {
 			return Value{}
 		}
+		return BinaryValue(arr.Get(i))
+	case *columnar.ChunkedUTF8:
 		return BinaryValue(arr.Get(i))
 	case *columnar.Null:
 		return Value{}

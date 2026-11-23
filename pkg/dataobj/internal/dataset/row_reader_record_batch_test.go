@@ -60,6 +60,278 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 		requireSameRows(t, RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[3], columns[0]}})
 	})
 
+	t.Run("returns a view over the pages that the record batch spans for a binary column", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		batch := readOneRecordBatch(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns}, len(basicReaderTestData))
+
+		view, ok := batch.Column(0).(*columnar.ChunkedUTF8)
+		require.True(t, ok, "got %T, want a view", batch.Column(0))
+		require.Equal(t, columns[0].ColumnDesc().PagesCount, view.NumChunks())
+		for i, person := range basicReaderTestData {
+			require.Equal(t, person.firstName, string(view.Get(i)), "row %d", i)
+		}
+		require.IsType(t, &columnar.Number[int64]{}, batch.Column(3))
+	})
+
+	t.Run("returns one UTF8 array for a binary column when one page holds the record batch", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		batch := readOneRecordBatch(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns}, 1)
+
+		require.IsType(t, &columnar.UTF8{}, batch.Column(0))
+		require.Equal(t, basicReaderTestData[0].firstName, string(batch.Column(0).(*columnar.UTF8).Get(0)))
+	})
+
+	t.Run("returns the selected values as one UTF8 array when a predicate read a column that spans pages", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		longerThanFour := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(_ Column, v Value) bool { return len(v.Binary()) > 4 },
+		}
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates:       []Predicate{longerThanFour},
+		}, len(basicReaderTestData))
+
+		require.IsType(t, &columnar.UTF8{}, batch.Column(0))
+		var got []string
+		for i := range batch.Column(0).Len() {
+			got = append(got, arrayText(t, batch.Column(0), i))
+		}
+		require.Equal(t, []string{"Alice", "Carol", "David", "Frank", "Grace", "Henry"}, got)
+	})
+
+	t.Run("calls KeepBatch once for each page that the record batch spans when no earlier predicate dropped a row", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var calls []int
+		keepAll := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(Column, Value) bool { return true },
+			KeepBatch: func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+				calls = append(calls, values.Len())
+				for i := range values.Len() {
+					dst = append(dst, int32(i))
+				}
+				return dst
+			},
+		}
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates:       []Predicate{keepAll},
+		}, len(basicReaderTestData))
+
+		require.Equal(t, len(basicReaderTestData), int(batch.NumRows()))
+		require.Len(t, calls, columns[0].ColumnDesc().PagesCount)
+		total := 0
+		for _, n := range calls {
+			total += n
+		}
+		require.Equal(t, len(basicReaderTestData), total)
+	})
+
+	t.Run("calls KeepBatch for each page with only the selected values when fewer than half of the rows are selected", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var calls [][]string
+		keepFiveLetters := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(_ Column, v Value) bool { return len(v.Binary()) == 5 },
+			KeepBatch: func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+				var call []string
+				for i := range values.Len() {
+					call = append(call, string(values.Get(i)))
+					if len(values.Get(i)) == 5 {
+						dst = append(dst, int32(i))
+					}
+				}
+				calls = append(calls, call)
+				return dst
+			},
+		}
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates: []Predicate{
+				InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(1985, 1982, 1983, 1981)},
+				keepFiveLetters,
+			},
+		}, len(basicReaderTestData))
+
+		require.Equal(t, [][]string{{"Jane"}, {"Carol"}, {"Frank"}, {"Henry"}}, calls)
+		require.Equal(t, int64(3), batch.NumRows())
+		for i, want := range []string{"Carol", "Frank", "Henry"} {
+			require.Equal(t, want, arrayText(t, batch.Column(0), i))
+		}
+	})
+
+	t.Run("does not call KeepBatch for a page that holds no selected row", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var calls [][]string
+		recordCalls := func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+			var call []string
+			for i := range values.Len() {
+				call = append(call, string(values.Get(i)))
+				dst = append(dst, int32(i))
+			}
+			calls = append(calls, call)
+			return dst
+		}
+		keepAll := func() FuncPredicate {
+			return FuncPredicate{Column: columns[0], Keep: func(Column, Value) bool { return true }, KeepBatch: recordCalls}
+		}
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates: []Predicate{
+				keepAll(),
+				InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(1980, 1979)},
+				keepAll(),
+			},
+		}, len(basicReaderTestData))
+
+		wantCalls := [][]string{
+			{"John", "Jane", "Alice"}, {"Bob", "Carol", "David"}, {"Eve", "Frank", "Grace"}, {"Henry"},
+			{"John"}, {"Eve"},
+		}
+		require.Equal(t, wantCalls, calls)
+		require.Equal(t, int64(2), batch.NumRows())
+	})
+
+	t.Run("does not call KeepBatch for a page that holds no selected row when most of the rows are selected", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var calls [][]string
+		recordCalls := func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+			var call []string
+			for i := range values.Len() {
+				call = append(call, string(values.Get(i)))
+				dst = append(dst, int32(i))
+			}
+			calls = append(calls, call)
+			return dst
+		}
+		keepAll := func() FuncPredicate {
+			return FuncPredicate{Column: columns[0], Keep: func(Column, Value) bool { return true }, KeepBatch: recordCalls}
+		}
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates: []Predicate{
+				keepAll(),
+				InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(1980, 1985, 1990, 1979, 1983, 1987)},
+				keepAll(),
+			},
+		}, len(basicReaderTestData))
+
+		wantCalls := [][]string{
+			{"John", "Jane", "Alice"}, {"Bob", "Carol", "David"}, {"Eve", "Frank", "Grace"}, {"Henry"},
+			{"John", "Jane", "Alice"}, {"Eve", "Frank", "Grace"},
+		}
+		require.Equal(t, wantCalls, calls)
+		require.Equal(t, int64(6), batch.NumRows())
+	})
+
+	t.Run("returns a view over the selected values of a column that no predicate read when the rows lie in several pages", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates:       []Predicate{InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(1980, 1975, 1979, 1981)}},
+		}, len(basicReaderTestData))
+
+		view, ok := batch.Column(0).(*columnar.ChunkedUTF8)
+		require.True(t, ok, "got %T, want a view", batch.Column(0))
+		require.Equal(t, 4, view.NumChunks())
+		for i, want := range []string{"John", "Bob", "Eve", "Henry"} {
+			require.Equal(t, want, string(view.Get(i)))
+		}
+	})
+
+	t.Run("returns one UTF8 array for the selected values of a column that no predicate read when the rows lie in one page", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		batch := readOneRecordBatch(t, RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates:       []Predicate{InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(1980, 1985)}},
+		}, len(basicReaderTestData))
+
+		require.IsType(t, &columnar.UTF8{}, batch.Column(0))
+		require.Equal(t, 2, batch.Column(0).Len())
+	})
+
+	t.Run("returns the same rows as Read for predicates on a binary column that spans pages and holds empty values", func(t *testing.T) {
+		numbers, words := buildInt64Column(t, "n"), buildStringColumn(t, "v")
+		for i, v := range []string{"", "x", "", "", "yy", "", "zzz", "", "", "w", "", "vv"} {
+			require.NoError(t, numbers.Append(i, Int64Value(int64(i))))
+			require.NoError(t, words.Append(i, BinaryValue([]byte(v))))
+		}
+		dset, columns := memDatasetOf(t, numbers, words)
+		n, v := columns[0], columns[1]
+
+		keepNonEmpty := func(values *columnar.UTF8, dst []int32) []int32 {
+			for i := range values.Len() {
+				if len(values.Get(i)) > 0 {
+					dst = append(dst, int32(i))
+				}
+			}
+			return dst
+		}
+		nonEmpty := FuncPredicate{Column: v, Keep: func(_ Column, value Value) bool { return len(value.Binary()) > 0 }}
+		nonEmptyBatch := nonEmpty
+		nonEmptyBatch.KeepBatch = func(_ Column, values *columnar.UTF8, dst []int32) []int32 { return keepNonEmpty(values, dst) }
+
+		for name, predicates := range map[string][]Predicate{
+			"an equality with an empty value":                               {EqualPredicate{Column: v, Value: BinaryValue(nil)}},
+			"a greater than an empty value":                                 {GreaterThanPredicate{Column: v, Value: BinaryValue(nil)}},
+			"a func predicate":                                              {nonEmpty},
+			"a func predicate with KeepBatch":                               {nonEmptyBatch},
+			"an in on the numbers and then a func predicate with KeepBatch": {InPredicate{Column: n, Values: NewInt64ValueSetOf(1, 4, 6, 9, 11)}, nonEmptyBatch},
+		} {
+			t.Run(name, func(t *testing.T) {
+				requireSameRows(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates})
+			})
+		}
+	})
+
+	t.Run("reads the same rows again when the caller retries after a KeepBatch function fails on a later page", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var calls int
+		failOnSecondCall := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(Column, Value) bool { return true },
+			KeepBatch: func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+				calls++
+				if calls == 2 {
+					return append(dst, int32(values.Len()))
+				}
+				for i := range values.Len() {
+					dst = append(dst, int32(i))
+				}
+				return dst
+			},
+		}
+		opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{failOnSecondCall}}
+		r := NewRowReader(opts)
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+		require.NoError(t, r.Open(t.Context()))
+
+		var alloc memory.Allocator
+		_, err := r.ReadRecordBatch(t.Context(), &alloc, len(basicReaderTestData))
+		require.Error(t, err)
+
+		got := readRemainingRecordBatches(t.Context(), t, r, len(basicReaderTestData))
+		want := readAllRowsAsText(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns}, len(basicReaderTestData))
+		require.Equal(t, want, got)
+	})
+
 	t.Run("returns the same rows as Read for the predicates of the people dataset", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 		first, middle, last, year := columns[0], columns[1], columns[2], columns[3]
@@ -538,37 +810,40 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 
 	t.Run("returns an error when a KeepBatch function returns indexes that are not ascending and in range", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
-		rows := int32(len(basicReaderTestData))
 
 		for name, tc := range map[string]struct {
-			indexes func(dst []int32) []int32
-			wantErr string
+			indexes       func(values int32, dst []int32) []int32
+			wantErrFormat string
 		}{
 			"in descending order": {
-				indexes: func(dst []int32) []int32 { return append(dst, 1, 0) },
-				wantErr: "kept index 0 of 10 values after index 1",
+				indexes:       func(_ int32, dst []int32) []int32 { return append(dst, 1, 0) },
+				wantErrFormat: "kept index 0 of %[1]d values for rows [0, %[1]d) after index 1",
 			},
 			"repeated": {
-				indexes: func(dst []int32) []int32 { return append(dst, 1, 1) },
-				wantErr: "kept index 1 of 10 values after index 1",
+				indexes:       func(_ int32, dst []int32) []int32 { return append(dst, 1, 1) },
+				wantErrFormat: "kept index 1 of %[1]d values for rows [0, %[1]d) after index 1",
 			},
 			"equal to the number of values": {
-				indexes: func(dst []int32) []int32 { return append(dst, rows) },
-				wantErr: "kept index 10 of 10 values after index -1",
+				indexes:       func(values int32, dst []int32) []int32 { return append(dst, values) },
+				wantErrFormat: "kept index %[1]d of %[1]d values for rows [0, %[1]d) after index -1",
 			},
 			"negative": {
-				indexes: func(dst []int32) []int32 { return append(dst, -1) },
-				wantErr: "kept index -1 of 10 values after index -1",
+				indexes:       func(_ int32, dst []int32) []int32 { return append(dst, -1) },
+				wantErrFormat: "kept index -1 of %[1]d values for rows [0, %[1]d) after index -1",
 			},
 		} {
 			t.Run("when they are "+name, func(t *testing.T) {
+				var valuesInCall int
 				r := NewRowReader(RowReaderOptions{
 					Dataset:          dset,
 					ProjectedColumns: columns,
 					Predicates: []Predicate{FuncPredicate{
-						Column:    columns[0],
-						Keep:      func(Column, Value) bool { return true },
-						KeepBatch: func(_ Column, _ *columnar.UTF8, dst []int32) []int32 { return tc.indexes(dst) },
+						Column: columns[0],
+						Keep:   func(Column, Value) bool { return true },
+						KeepBatch: func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+							valuesInCall = values.Len()
+							return tc.indexes(int32(values.Len()), dst)
+						},
 					}},
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
@@ -576,9 +851,38 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 
 				var alloc memory.Allocator
 				_, err := r.ReadRecordBatch(t.Context(), &alloc, len(basicReaderTestData))
-				require.EqualError(t, err, "evaluating predicate 0: batch predicate "+tc.wantErr+", want ascending indexes in range")
+				require.EqualError(t, err, "evaluating predicate 0: batch predicate on column 0 "+fmt.Sprintf(tc.wantErrFormat, valuesInCall)+", want ascending indexes in range")
 			})
 		}
+	})
+
+	t.Run("returns an error that names the rows of the page when a KeepBatch function returns an index out of range for a later page", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+		var pageRows []int
+		r := NewRowReader(RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: columns,
+			Predicates: []Predicate{FuncPredicate{
+				Column: columns[0],
+				Keep:   func(Column, Value) bool { return true },
+				KeepBatch: func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+					pageRows = append(pageRows, values.Len())
+					if len(pageRows) == 2 {
+						return append(dst, int32(values.Len()))
+					}
+					return dst
+				},
+			}},
+		})
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+		require.NoError(t, r.Open(t.Context()))
+
+		var alloc memory.Allocator
+		_, err := r.ReadRecordBatch(t.Context(), &alloc, len(basicReaderTestData))
+
+		require.Len(t, pageRows, 2)
+		wantErr := fmt.Sprintf("evaluating predicate 0: batch predicate on column 0 kept index %[1]d of %[1]d values for rows [%[2]d, %[3]d) after index -1, want ascending indexes in range", pageRows[1], pageRows[0], pageRows[0]+pageRows[1])
+		require.EqualError(t, err, wantErr)
 	})
 
 	t.Run("returns an error when a KeepBatch function returns an index out of range for a compacted array", func(t *testing.T) {
@@ -602,7 +906,7 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 
 		var alloc memory.Allocator
 		_, err := r.ReadRecordBatch(t.Context(), &alloc, len(basicReaderTestData))
-		require.EqualError(t, err, "evaluating predicate 1: batch predicate kept index 3 of 3 values after index -1, want ascending indexes in range")
+		require.EqualError(t, err, "evaluating predicate 1: batch predicate on column 0 kept index 3 of 3 values for rows [0, 10) after index -1, want ascending indexes in range")
 	})
 
 	t.Run("returns the same rows and records the same statistics as a run without failures when a read fails at any page download and the caller retries", func(t *testing.T) {
@@ -835,6 +1139,25 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 
 		t.Run("returns the same rows as Read when there are no predicates", func(t *testing.T) {
 			requireSameRows(t, RowReaderOptions{Dataset: dset, ProjectedColumns: columns})
+		})
+
+		t.Run("returns null for the missing rows when the short column is binary and spans pages", func(t *testing.T) {
+			numbers, words := buildInt64Column(t, "a"), buildStringColumn(t, "b")
+			for i := range 10 {
+				require.NoError(t, numbers.Append(i, Int64Value(int64(i))))
+			}
+			for i := range 7 {
+				require.NoError(t, words.Append(i, BinaryValue(fmt.Appendf(nil, "value-%d", i))))
+			}
+			shortDataset, shortColumns := memDatasetOf(t, numbers, words)
+			opts := RowReaderOptions{Dataset: shortDataset, ProjectedColumns: shortColumns}
+
+			requireSameRows(t, opts)
+
+			batch := readOneRecordBatch(t, opts, 10)
+			for i := range 10 {
+				require.Equal(t, i >= 7, batch.Column(1).IsNull(i), "row %d", i)
+			}
 		})
 
 		t.Run("returns the same rows as Read when another column holds the rows that the column misses", func(t *testing.T) {
@@ -1440,11 +1763,70 @@ func TestRecordBatch_columnArray(t *testing.T) {
 		require.Equal(t, int64(2*8), rb.filledBytes())
 	})
 
+	t.Run("joins the view that the reader returns into one array and caches it for the column", func(t *testing.T) {
+		reader := &fakeColumnReader{array: viewOf(&alloc, []string{"a", "bb"}, []string{"c", "dd"})}
+		rb := newBatch(reader)
+
+		first, err := rb.columnArray(t.Context(), 0, newSelectionAllRows(n))
+		require.NoError(t, err)
+		second, err := rb.columnArray(t.Context(), 0, newSelectionAllRows(n))
+		require.NoError(t, err)
+
+		require.IsType(t, &columnar.UTF8{}, first)
+		require.Equal(t, "dd", string(first.(*columnar.UTF8).Get(3)))
+		require.Same(t, first, second)
+		require.Len(t, reader.reads, 1)
+		require.Equal(t, int64(6), rb.filledBytes())
+	})
+
+	t.Run("returns the view that the reader returns when the caller accepts a view", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"c", "dd"})
+		rb := newBatch(&fakeColumnReader{array: view})
+
+		got, err := rb.columnArrayOrView(t.Context(), 0, newSelectionAllRows(n))
+		require.NoError(t, err)
+
+		require.Same(t, view, got)
+	})
+
+	t.Run("returns the joined array after a caller that does not accept a view joined it", func(t *testing.T) {
+		rb := newBatch(&fakeColumnReader{array: viewOf(&alloc, []string{"a", "bb"}, []string{"c", "dd"})})
+
+		joined, err := rb.columnArray(t.Context(), 0, newSelectionAllRows(n))
+		require.NoError(t, err)
+		got, err := rb.columnArrayOrView(t.Context(), 0, newSelectionAllRows(n))
+		require.NoError(t, err)
+
+		require.Same(t, joined, got)
+	})
+
 	t.Run("returns an error when the reader returns an array of another length", func(t *testing.T) {
 		rb := newBatch(&fakeColumnReader{length: n - 1})
 
 		_, err := rb.columnArray(t.Context(), 0, selectionOf(&alloc, n, 1))
 		require.EqualError(t, err, "column 0 has 3 rows, want 4")
+	})
+}
+
+func TestArrayBytes(t *testing.T) {
+	var alloc memory.Allocator
+
+	t.Run("counts the data length of every chunk of a view when the selection selects every row", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"}, []string{"dddd", "e"})
+
+		require.Equal(t, int64(11), arrayBytes(view, newSelectionAllRows(5)))
+	})
+
+	t.Run("counts only the bytes of the selected rows of a view when the selection skips a whole chunk", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"}, []string{"dddd", "e"})
+
+		require.Equal(t, int64(2), arrayBytes(view, selectionOf(&alloc, 5, 0, 4)))
+	})
+
+	t.Run("counts no byte of a view when the selection selects no row", func(t *testing.T) {
+		view := viewOf(&alloc, []string{"a", "bb"}, []string{"ccc"})
+
+		require.Equal(t, int64(0), arrayBytes(view, selectionOf(&alloc, 3)))
 	})
 }
 
@@ -1754,7 +2136,7 @@ func arrayText(t *testing.T, arr columnar.Array, i int) string {
 		return strconv.FormatInt(arr.Get(i), 10)
 	case *columnar.Number[uint64]:
 		return strconv.FormatUint(arr.Get(i), 10)
-	case *columnar.UTF8:
+	case columnar.UTF8Reader:
 		return string(arr.Get(i))
 	default:
 		t.Fatalf("unexpected array type %T", arr)
@@ -2019,6 +2401,7 @@ type fakeColumnReader struct {
 	reads  [][]int // The selected rows of each call. A nil entry means every row.
 	err    error   // The error that a call returns, if set.
 	length int     // The length of the array that a call returns, if set.
+	array  columnar.Array
 }
 
 func (s *fakeColumnReader) readUncompactedColumnBySelection(_ context.Context, _ *memory.Allocator, _ int, row int64, n int, sel selection) (columnar.Array, error) {
@@ -2029,6 +2412,9 @@ func (s *fakeColumnReader) readUncompactedColumnBySelection(_ context.Context, _
 	}
 	if s.err != nil {
 		return nil, s.err
+	}
+	if s.array != nil {
+		return s.array, nil
 	}
 
 	if s.length > 0 {
@@ -2084,4 +2470,20 @@ func (d *truncatedListDataset) ListPages(ctx context.Context, columns []Column) 
 			}
 		}
 	}
+}
+
+// readOneRecordBatch opens a reader on opts and returns the first record batch of at most
+// batchSize rows. The batch stays valid until the test ends.
+func readOneRecordBatch(t *testing.T, opts RowReaderOptions, batchSize int) *columnar.RecordBatch {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	require.NoError(t, r.Open(t.Context()))
+
+	alloc := new(memory.Allocator)
+	t.Cleanup(alloc.Reclaim)
+	batch, err := r.ReadRecordBatch(t.Context(), alloc, batchSize)
+	require.NoError(t, err)
+	return batch
 }

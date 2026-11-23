@@ -88,6 +88,28 @@ func TestCompiledPredicate_evalRecordBatch(t *testing.T) {
 	})
 }
 
+func TestCompiledFuncPredicate_evalKeepBatch(t *testing.T) {
+	keepAll := func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+		for i := range values.Len() {
+			dst = append(dst, int32(i))
+		}
+		return dst
+	}
+
+	t.Run("returns an error when the chunks hold another number of rows than the record batch", func(t *testing.T) {
+		var (
+			alloc memory.Allocator
+			rb    recordBatch
+			p     = &compiledFuncPredicate{columnIndex: 0, keepBatch: keepAll}
+		)
+		rb.reset(&fakeColumnReader{}, &alloc, 1, 0, 4)
+
+		_, err := p.evalKeepBatch(&rb, viewOf(&alloc, []string{"a", "b"}, []string{"c"}), newSelectionAllRows(4))
+
+		require.EqualError(t, err, "column 0 has 3 rows, want 4")
+	})
+}
+
 // requireEvalRecordBatchMatchesEvalRow requires that evalRecordBatch passes, for every
 // record batch, prefetch mode and selection, exactly the selected rows that
 // evalRow passes.
