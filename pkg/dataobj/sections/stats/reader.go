@@ -32,8 +32,8 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	} else if !columnar.IsSupportedVersion(section.Type.Version) {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
 	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)

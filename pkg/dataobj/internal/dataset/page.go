@@ -12,6 +12,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -28,18 +29,25 @@ type (
 	//
 	// values-data is then the encoded and optionally compressed sequence of
 	// non-NULL values.
+	//
+	// If the format version of the page has its checksum in the page (see
+	// [PageDesc.FormatVersion]), a four-byte checksum follows values-data.
 	PageData []byte
 
 	// PageDesc describes a page.
 	PageDesc struct {
 		UncompressedSize int    // UncompressedSize is the size of a page before compression.
-		CompressedSize   int    // CompressedSize is the size of a page after compression.
-		CRC32            uint32 // CRC32 checksum of the page after encoding and compression.
+		CompressedSize   int    // CompressedSize is the size of a page after compression. It includes the checksum if the page has it in the page.
+		CRC32            uint32 // CRC32C checksum of the page after encoding and compression.
 		RowCount         int    // RowCount is the number of rows in the page, including NULLs.
 		ValuesCount      int    // ValuesCount is the number of non-NULL values in the page.
 
 		Encoding datasetmd.EncodingType // Encoding used for values in the page.
 		Stats    *datasetmd.Statistics  // Optional statistics for the page.
+
+		// FormatVersion is the columnar format version of the section that holds
+		// the page.
+		FormatVersion uint32
 	}
 
 	// Pages is a set of [Page]s.
@@ -91,25 +99,33 @@ type openedPage struct {
 	ValueData    []byte
 }
 
-// open the page for decoding. The page is validated for its CRC32 checksum.
+// open the page for decoding. The page is validated for its CRC32C checksum.
 //
 // The page value data will be decompressed with the given compression type.
 // After the page has been fully consumed, call the returned io.Closer to
 // release resources associated with the page. The openedPage must not be
 // used after closing.
 func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Closer, error) {
-	if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
-		return openedPage{}, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
+	data, expected := p.Data, p.Desc.CRC32
+	if format.ColumnarPageHasChecksum(p.Desc.FormatVersion) {
+		if len(data) < crc32.Size {
+			return openedPage{}, nil, fmt.Errorf("reading page checksum: %w", io.ErrUnexpectedEOF)
+		}
+		footer := len(data) - crc32.Size
+		data, expected = data[:footer], binary.LittleEndian.Uint32(data[footer:])
+	}
+	if actual := crc32.Checksum(data, checksumTable); expected != actual {
+		return openedPage{}, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, expected)
 	}
 
-	bitmapSize, n := binary.Uvarint(p.Data)
+	bitmapSize, n := binary.Uvarint(data)
 	if n <= 0 {
 		return openedPage{}, nil, fmt.Errorf("reading presence bitmap size: %w", io.ErrUnexpectedEOF)
 	}
 
 	var (
-		presenceData         = p.Data[n : n+int(bitmapSize)]
-		compressedValuesData = p.Data[n+int(bitmapSize):]
+		presenceData         = data[n : n+int(bitmapSize)]
+		compressedValuesData = data[n+int(bitmapSize):]
 	)
 
 	switch compression {
