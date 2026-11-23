@@ -195,14 +195,14 @@ func TestDoIndexFilter(t *testing.T) {
 		uploadFilterSourceIndex(t, bucket, path, objBuilder)
 	}
 
-	t.Run("keeps the rows of the listed objects from every index object of a run, in key order", func(t *testing.T) {
+	t.Run("keeps the rows of the listed objects from every index object of a run in key order", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c"}
 		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
 		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"},
 			ObjectPaths: []string{"logs/a", "logs/c"},
 		}))
 		require.NoError(t, err)
@@ -219,6 +219,19 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
 
+	t.Run("returns an error when the index objects of the run are not in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, `of object "indexes/run/a", holds a row that sorts below the row before it`)
+	})
+
 	t.Run("reports the posting key bounds of the kept postings rows only", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c"}
@@ -226,7 +239,7 @@ func TestDoIndexFilter(t *testing.T) {
 		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"},
 			ObjectPaths: []string{"logs/a", "logs/b"},
 		}))
 		require.NoError(t, err)

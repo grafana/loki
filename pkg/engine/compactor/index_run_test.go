@@ -10,6 +10,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -64,6 +65,26 @@ func TestIndexRun_String(t *testing.T) {
 			"run 3 [indexes/00 indexes/01 indexes/02 indexes/03 indexes/04 indexes/05 indexes/06 indexes/07 and 2 more]",
 			runOf(10).String(),
 		)
+	})
+}
+
+func TestIndexRun_PathsInKeyOrder(t *testing.T) {
+	entry := func(t *testing.T, path, column string) indexpointers.IndexPointer {
+		t.Helper()
+		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column + "z"})
+		require.NoError(t, err)
+		return indexpointers.IndexPointer{Path: path, RunID: 1, PostingKeys: keys}
+	}
+
+	t.Run("returns the paths in the order of the smallest posting key of each index object", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/z", "zone"), entry(t, "indexes/a", "app"), entry(t, "indexes/e", "env")}}
+		require.Equal(t, []string{"indexes/a", "indexes/e", "indexes/z"}, run.pathsInKeyOrder())
+		require.Equal(t, []string{"indexes/z", "indexes/a", "indexes/e"}, run.paths(), "paths keeps the order of the ToC")
+	})
+
+	t.Run("returns the path of a run of one index object without posting key bounds", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{{Path: "indexes/only"}}}
+		require.Equal(t, []string{"indexes/only"}, run.pathsInKeyOrder())
 	})
 }
 

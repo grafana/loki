@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -83,6 +84,23 @@ func (r indexRun) planningUnit() string { return r.entries[0].Path }
 func (r indexRun) paths() []string {
 	paths := make([]string, len(r.entries))
 	for i, entry := range r.entries {
+		paths[i] = entry.Path
+	}
+	return paths
+}
+
+// pathsInKeyOrder returns the paths of the index objects of r, in the order
+// of their smallest posting key. A worker that reads r as one sequence needs
+// that order, and the order of the ToC entries is not part of its contract.
+// Every entry of a run of several entries has posting key bounds, and the key
+// ranges of a run do not overlap.
+func (r indexRun) pathsInKeyOrder() []string {
+	entries := slices.Clone(r.entries)
+	slices.SortStableFunc(entries, func(a, b indexpointers.IndexPointer) int {
+		return a.PostingKeys.Min().Compare(b.PostingKeys.Min())
+	})
+	paths := make([]string, len(entries))
+	for i, entry := range entries {
 		paths[i] = entry.Path
 	}
 	return paths

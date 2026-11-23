@@ -3920,6 +3920,21 @@ func TestIndexFilterForUnmerged(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/b"}, task.objectPaths)
 		require.Equal(t, newTimeRange(time.Unix(0, 10), time.Unix(0, 40)), task.inputRange)
 	})
+
+	t.Run("lists the index objects of the source run in posting key order when the ToC lists them in another order", func(t *testing.T) {
+		keysOf := func(column string) postings.KeyRange {
+			keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: column}, postings.Key{Kind: postings.KindLabel, ColumnName: column})
+			require.NoError(t, err)
+			return keys
+		}
+		run := indexRun{entries: []indexpointers.IndexPointer{
+			{Path: "indexes/run/z", RunID: 1, PostingKeys: keysOf("zone")},
+			{Path: "indexes/run/a", RunID: 1, PostingKeys: keysOf("app")},
+		}}
+
+		task := indexFilterForUnmerged(run, nil)
+		require.Equal(t, []string{"indexes/run/a", "indexes/run/z"}, task.sourceIndexPaths)
+	})
 }
 
 func TestNewLayoutKey(t *testing.T) {

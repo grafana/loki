@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -530,10 +531,10 @@ func TestDoIndexMerge(t *testing.T) {
 		return &physical.IndexMerge{
 			NodeID: ulid.Make(),
 			Tenant: tenant,
-			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: pathA, SectionIndex: 0},
-				{ObjectPath: pathB, SectionIndex: 0},
-			}}},
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathA, SectionIndex: 0}}},
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathB, SectionIndex: 0}}},
+			},
 		}
 	}
 	statRow := func(schema string, labels map[string]string) stats.Stat {
@@ -823,6 +824,60 @@ func TestDoIndexMerge(t *testing.T) {
 
 		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
 		require.ErrorContains(t, err, "1 of the 2 referenced sections are not postings sections")
+	})
+
+	disjointRun := func(t *testing.T, bucket objstore.Bucket) []*compactionv2pb.SectionRef {
+		t.Helper()
+		for path, column := range map[string]string{"source/run-a.dat": "app", "source/run-z.dat": "zone"} {
+			buildSourcePostingsObject(t, bucket, tenant, path, []postings.LabelObservation{{
+				ObjectPath: "log-" + column, ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			}})
+		}
+		return []*compactionv2pb.SectionRef{{ObjectPath: "source/run-a.dat"}, {ObjectPath: "source/run-z.dat"}}
+	}
+
+	t.Run("reads the index objects of one run as one sequence and merges it with the other runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		buildSourcePostingsObject(t, bucket, tenant, "source/other.dat", []postings.LabelObservation{{
+			ObjectPath: "log-other", ColumnName: "env", LabelValue: "v", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		}})
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/other.dat"}}},
+		}}
+
+		_, runs, _, err := newTestExecutorContext(t, bucket).classifyRuns(t.Context(), node)
+		require.NoError(t, err)
+		require.Len(t, postingsSequences(t.Context(), runs, postings.KeySpan{}), 2, "one sequence for each run, not for each index object")
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("env", "v"), labelKey("zone", "v")}, postingKeys(rows))
+	})
+
+	t.Run("returns an error when an index object is in two runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run[:1]},
+			{Sections: run},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" appears in more than one place of the runs of the merge`)
+	})
+
+	t.Run("returns an error when the sections of an index object are not next to each other in its run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: append(slices.Clone(run), &compactionv2pb.SectionRef{ObjectPath: "source/run-a.dat", SectionIndex: 1})},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" appears in more than one place of the runs of the merge`)
 	})
 
 	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
@@ -1334,17 +1389,14 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		},
 	})
 
-	// Build IndexMerge node with two source objects.
+	// Build IndexMerge node with two source objects. Their key ranges
+	// overlap, so they are two runs.
 	node := &physical.IndexMerge{
 		NodeID: ulid.Make(),
 		Tenant: "tenant",
 		Runs: []*compactionv2pb.RunRef{
-			{
-				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: sourceAPath, SectionIndex: 0},
-					{ObjectPath: sourceBPath, SectionIndex: 0},
-				},
-			},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceAPath, SectionIndex: 0}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceBPath, SectionIndex: 0}}},
 		},
 	}
 
@@ -2077,9 +2129,8 @@ func TestSectionConcatSeq(t *testing.T) {
 	t.Run("stops with the close error of a drained section reader", func(t *testing.T) {
 		closeErr := errors.New("close failed")
 		seq := &sectionConcatSeq[int]{
-			ctx:        context.Background(),
-			objectPath: "indexes/a",
-			sections:   []*dataobj.Section{nil, nil},
+			ctx:      context.Background(),
+			sections: []sourceSection{{objectPath: "indexes/a"}, {objectPath: "indexes/a"}},
 			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
 				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
 			},
@@ -2089,6 +2140,43 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.Equal(t, 1, seq.At())
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
+	})
+
+	inOrderSeq := func(sections ...[]int) *sectionConcatSeq[int] {
+		var refs []sourceSection
+		for i := range sections {
+			refs = append(refs, sourceSection{objectPath: fmt.Sprintf("indexes/%d", i)})
+		}
+		next := 0
+		return &sectionConcatSeq[int]{
+			ctx:      context.Background(),
+			sections: refs,
+			compare:  func(a, b int) int { return a - b },
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				rows := sections[next]
+				next++
+				return &closeErrIter{rows: rows}, nil
+			},
+		}
+	}
+	drain := func(seq *sectionConcatSeq[int]) []int {
+		var rows []int
+		for seq.Next() {
+			rows = append(rows, seq.At())
+		}
+		return rows
+	}
+
+	t.Run("returns the rows of every section in order when each row sorts at or above the row before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 2, 2}, []int{2, 5})
+		require.Equal(t, []int{1, 2, 2, 2, 5}, drain(seq))
+		require.NoError(t, seq.Err())
+	})
+
+	t.Run("stops with an error that names the object when a section starts below the end of the section before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 4}, []int{3})
+		require.Equal(t, []int{1, 4}, drain(seq))
+		require.ErrorContains(t, seq.Err(), `section 1/2 of the sequence, of object "indexes/1", holds a row that sorts below the row before it`)
 	})
 }
 
