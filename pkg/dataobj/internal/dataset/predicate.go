@@ -59,6 +59,28 @@ type (
 		Value  Value  // Value for which rows in Column must be less than.
 	}
 
+	// A GreaterThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is greater than or equal to the
+	// provided Value.
+	//
+	// A null in Column passes this predicate only when Value is nil or an empty
+	// binary value.
+	GreaterThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be greater than or equal to.
+	}
+
+	// A LessThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is less than or equal to the
+	// provided Value.
+	//
+	// A null in Column is less than every Value, except nil and an empty binary
+	// Value, which it equals. So a null passes this predicate for every Value.
+	LessThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be less than or equal to.
+	}
+
 	// FuncPredicate is a [Predicate] which asserts that a row may only be
 	// included if the Value of the Column passes the Keep function.
 	//
@@ -72,6 +94,9 @@ type (
 		// multiple columns, if necessary.
 		//
 		// If Keep returns true, the row is kept.
+		//
+		// Keep gets a nil Value for a null value. If KeepBatch is set, Keep must treat a nil and
+		// an empty value alike, because KeepBatch sees a null value as an empty value.
 		Keep func(column Column, value Value) bool
 
 		// KeepBatch is optional. It tests an array of values of a binary column at once.
@@ -79,14 +104,13 @@ type (
 		// order with no repeat, and returns the result. values holds a null value as an empty
 		// value.
 		//
-		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
-		// for a null value, so Keep must treat a nil and an empty value alike.
+		// KeepBatch must give the same result as Keep on every value that the reader needs to test.
 		//
-		// The reader can call Keep instead of KeepBatch, so Keep must always be set. It does so for:
-		//   - the first predicate,
-		//   - a predicate inside And, Or or Not,
-		//   - a column that another predicate reads,
-		//   - a column that is not binary.
+		// The reader can call Keep instead of KeepBatch for any value, so Keep must always be set.
+		//
+		// values can also hold values that the reader does not need to test. KeepBatch can keep or
+		// drop them. The reader drops their indexes, but all indexes must still be in range and
+		// ascending with no repeat.
 		//
 		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
 		// values. It must be safe for concurrent use.
@@ -115,16 +139,18 @@ func IsConstPredicate(p Predicate) (keep, ok bool) {
 	return false, false
 }
 
-func (AndPredicate) isPredicate()         {}
-func (OrPredicate) isPredicate()          {}
-func (NotPredicate) isPredicate()         {}
-func (TruePredicate) isPredicate()        {}
-func (FalsePredicate) isPredicate()       {}
-func (EqualPredicate) isPredicate()       {}
-func (InPredicate) isPredicate()          {}
-func (GreaterThanPredicate) isPredicate() {}
-func (LessThanPredicate) isPredicate()    {}
-func (FuncPredicate) isPredicate()        {}
+func (AndPredicate) isPredicate()                {}
+func (OrPredicate) isPredicate()                 {}
+func (NotPredicate) isPredicate()                {}
+func (TruePredicate) isPredicate()               {}
+func (FalsePredicate) isPredicate()              {}
+func (EqualPredicate) isPredicate()              {}
+func (InPredicate) isPredicate()                 {}
+func (GreaterThanPredicate) isPredicate()        {}
+func (LessThanPredicate) isPredicate()           {}
+func (GreaterThanOrEqualPredicate) isPredicate() {}
+func (LessThanOrEqualPredicate) isPredicate()    {}
+func (FuncPredicate) isPredicate()               {}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively
@@ -153,6 +179,8 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case InPredicate: // No children.
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
+	case GreaterThanOrEqualPredicate: // No children.
+	case LessThanOrEqualPredicate: // No children.
 	case FuncPredicate: // No children.
 
 	default:
@@ -176,6 +204,10 @@ func WalkPredicateColumn(p Predicate, fn func(Column)) {
 		case GreaterThanPredicate:
 			fn(p.Column)
 		case LessThanPredicate:
+			fn(p.Column)
+		case GreaterThanOrEqualPredicate:
+			fn(p.Column)
+		case LessThanOrEqualPredicate:
 			fn(p.Column)
 		case FuncPredicate:
 			fn(p.Column)
@@ -225,7 +257,13 @@ func NewInt64ValueSetOf(members ...int64) Int64Set {
 }
 
 func (s Int64Set) Contains(value Value) bool {
-	_, ok := s.values[value.Int64()]
+	return s.ContainsInt64(value.Int64())
+}
+
+// ContainsInt64 reports whether the set holds v. It tests an int64 without a
+// [Value].
+func (s Int64Set) ContainsInt64(v int64) bool {
+	_, ok := s.values[v]
 	return ok
 }
 
@@ -284,7 +322,13 @@ func newMemoizedInt64Set(set Int64Set) *MemoizedInt64Set {
 }
 
 func (s *MemoizedInt64Set) Contains(value Value) bool {
-	key := value.Int64()
+	return s.ContainsInt64(value.Int64())
+}
+
+// ContainsInt64 reports whether the set holds key. It tests an int64 without a
+// [Value]. It remembers the last key and its result, so it is not safe for
+// concurrent use.
+func (s *MemoizedInt64Set) ContainsInt64(key int64) bool {
 	if key != s.lastKey {
 		_, s.lastResult = s.set.values[key]
 		s.lastKey = key

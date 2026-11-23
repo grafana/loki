@@ -11,10 +11,8 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -41,9 +39,16 @@ type PusherAppender struct {
 	userID  string
 }
 
-var _ storage.Appender = (*PusherAppender)(nil)
+var _ storage.AppenderV2 = (*PusherAppender)(nil)
 
-func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	if h != nil || fh != nil {
+		return 0, errors.New("native histograms are unsupported")
+	}
+	if len(opts.Exemplars) > 0 {
+		return 0, errors.New("exemplars are unsupported")
+	}
+
 	a.labels = append(a.labels, l)
 
 	a.samples = append(a.samples, logproto.LegacySample{
@@ -52,36 +57,6 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 	})
 	return 0, nil
 }
-
-func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
-	return 0, errors.New("exemplars are unsupported")
-}
-
-func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
-	return 0, errors.New("updating metadata is unsupported")
-}
-
-func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, errors.New("native histograms are unsupported")
-}
-
-func (a *PusherAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, errors.New("histogram created timestamps are unsupported")
-}
-
-func (a *PusherAppender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	return 0, errors.New("histogram start timestamps are unsupported")
-}
-
-func (a *PusherAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	return 0, errors.New("start timestamps are unsupported")
-}
-
-func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
-	return 0, errors.New("created timestamps are unsupported")
-}
-
-func (a *PusherAppender) SetOptions(_ *storage.AppendOptions) {}
 
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
@@ -107,7 +82,7 @@ func (a *PusherAppender) Rollback() error {
 	return nil
 }
 
-// PusherAppendable fulfills the storage.Appendable interface for prometheus manager
+// PusherAppendable fulfills the storage.AppendableV2 interface for prometheus manager
 type PusherAppendable struct {
 	pusher Pusher
 	userID string
@@ -115,6 +90,8 @@ type PusherAppendable struct {
 	totalWrites  prometheus.Counter
 	failedWrites prometheus.Counter
 }
+
+var _ storage.AppendableV2 = (*PusherAppendable)(nil)
 
 func NewPusherAppendable(pusher Pusher, userID string, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
 	return &PusherAppendable{
@@ -125,8 +102,8 @@ func NewPusherAppendable(pusher Pusher, userID string, totalWrites, failedWrites
 	}
 }
 
-// Appender returns a storage.Appender
-func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
+// AppenderV2 returns a storage.AppenderV2
+func (t *PusherAppendable) AppenderV2(ctx context.Context) storage.AppenderV2 {
 	return &PusherAppender{
 		failedWrites: t.failedWrites,
 		totalWrites:  t.totalWrites,
@@ -265,7 +242,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		}
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, totalWrites, failedWrites),
+			AppendableV2:    NewPusherAppendable(p, userID, totalWrites, failedWrites),
 			Queryable:       q,
 			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(rules.EngineQueryFunc(engine, q), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),

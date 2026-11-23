@@ -93,8 +93,7 @@ type Writer struct {
 	err             error
 	schema          *arrow.Schema
 	mapper          dictutils.Mapper
-	codec           flatbuf.CompressionType
-	compressNP      int
+	compression     compressionSettings
 	compressors     []compressor
 	encoder         *recordEncoder
 	minSpaceSavings float64
@@ -114,8 +113,7 @@ func NewWriterWithPayloadWriter(pw PayloadWriter, opts ...Option) *Writer {
 		mem:             cfg.alloc,
 		pw:              pw,
 		schema:          cfg.schema,
-		codec:           cfg.codec,
-		compressNP:      cfg.compressNP,
+		compression:     compressionSettings{codec: cfg.codec, zstdLevel: cfg.zstdLevel, compressNP: cfg.compressNP},
 		minSpaceSavings: cfg.minSpaceSavings,
 		emitDictDeltas:  cfg.emitDictDeltas,
 		compressors:     make([]compressor, cfg.compressNP),
@@ -130,9 +128,8 @@ func NewWriter(w io.Writer, opts ...Option) *Writer {
 		mem:             cfg.alloc,
 		pw:              &streamWriter{w: w},
 		schema:          cfg.schema,
-		codec:           cfg.codec,
+		compression:     compressionSettings{codec: cfg.codec, zstdLevel: cfg.zstdLevel, compressNP: cfg.compressNP},
 		emitDictDeltas:  cfg.emitDictDeltas,
-		compressNP:      cfg.compressNP,
 		minSpaceSavings: cfg.minSpaceSavings,
 		compressors:     make([]compressor, cfg.compressNP),
 	}
@@ -145,8 +142,7 @@ func (w *Writer) getRecordEncoder() *recordEncoder {
 			0,
 			kMaxNestingDepth,
 			true,
-			w.codec,
-			w.compressNP,
+			w.compression,
 			w.minSpaceSavings,
 			w.compressors,
 		)
@@ -156,6 +152,7 @@ func (w *Writer) getRecordEncoder() *recordEncoder {
 
 func (w *Writer) Close() error {
 	defer func() { w.encoder = nil }()
+	defer releaseCompressors(w.compressors)
 
 	if w.err != nil {
 		return w.closeAfterFailure()
@@ -349,7 +346,7 @@ type dictEncoder struct {
 }
 
 func (d *dictEncoder) encodeMetadata(p *Payload, isDelta bool, id, nrows int64) error {
-	p.meta = writeDictionaryMessage(d.mem, id, isDelta, nrows, p.size, d.fields, d.meta, d.codec, d.variadicCounts)
+	p.meta = writeDictionaryMessage(d.mem, id, isDelta, nrows, p.size, d.fields, d.meta, d.compression.codec, d.variadicCounts)
 	return nil
 }
 
@@ -369,6 +366,15 @@ func (d *dictEncoder) Encode(p *Payload, id int64, isDelta bool, dict arrow.Arra
 	return d.encodeMetadata(p, isDelta, id, batch.NumRows())
 }
 
+// compressionSettings groups the three related compression knobs (codec
+// type, zstd level, and concurrency) so that callers of newRecordEncoder
+// do not risk transposing adjacent positional int/enum arguments.
+type compressionSettings struct {
+	codec      flatbuf.CompressionType
+	zstdLevel  int
+	compressNP int
+}
+
 type recordEncoder struct {
 	mem memory.Allocator
 
@@ -380,8 +386,7 @@ type recordEncoder struct {
 	maxDepth        int64
 	start           int64
 	allow64b        bool
-	codec           flatbuf.CompressionType
-	compressNP      int
+	compression     compressionSettings
 	compressors     []compressor
 	minSpaceSavings float64
 }
@@ -391,8 +396,7 @@ func newRecordEncoder(
 	startOffset,
 	maxDepth int64,
 	allow64b bool,
-	codec flatbuf.CompressionType,
-	compressNP int,
+	compression compressionSettings,
 	minSpaceSavings float64,
 	compressors []compressor,
 ) *recordEncoder {
@@ -402,8 +406,7 @@ func newRecordEncoder(
 		depth:           maxDepth,
 		maxDepth:        maxDepth,
 		allow64b:        allow64b,
-		codec:           codec,
-		compressNP:      compressNP,
+		compression:     compression,
 		compressors:     compressors,
 		minSpaceSavings: minSpaceSavings,
 	}
@@ -429,7 +432,7 @@ func (w *recordEncoder) reset() {
 
 func (w *recordEncoder) getCompressor(id int) compressor {
 	if w.compressors[id] == nil {
-		w.compressors[id] = getCompressor(w.codec)
+		w.compressors[id] = getCompressor(w.compression.codec, w.compression.zstdLevel)
 	}
 	return w.compressors[id]
 }
@@ -473,7 +476,7 @@ func (w *recordEncoder) compressBodyBuffers(p *Payload) error {
 		return nil
 	}
 
-	if w.compressNP <= 1 {
+	if w.compression.compressNP <= 1 {
 		codec := w.getCompressor(0)
 		for idx := range p.body {
 			if err := compress(idx, codec); err != nil {
@@ -491,7 +494,7 @@ func (w *recordEncoder) compressBodyBuffers(p *Payload) error {
 	)
 	defer cancel()
 
-	for workerID := 0; workerID < w.compressNP; workerID++ {
+	for workerID := 0; workerID < w.compression.compressNP; workerID++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -549,7 +552,7 @@ func (w *recordEncoder) encode(p *Payload, rec arrow.RecordBatch) error {
 		}
 	}
 
-	if w.codec != -1 {
+	if w.compression.codec != -1 {
 		if math.IsNaN(w.minSpaceSavings) || w.minSpaceSavings < 0 || w.minSpaceSavings > 1 {
 			p.Release()
 			return fmt.Errorf("%w: minSpaceSavings not in range [0,1]. Provided %.05f",
@@ -1074,7 +1077,7 @@ func (w *recordEncoder) rebaseDenseUnionValueOffsets(arr *array.DenseUnion, offs
 	// child array, when we have a sliced array, we need to re-base
 	// the value offsets for each array! ew.
 	unshiftedOffsets := arr.RawValueOffsets()
-	codes := arr.RawTypeCodes()
+	codes := arr.RawTypeCodes()[:arr.Len()]
 
 	shiftedOffsetsBuf := memory.NewResizableBuffer(w.mem)
 	shiftedOffsetsBuf.Resize(arrow.Int32Traits.BytesRequired(arr.Len()))
@@ -1109,7 +1112,7 @@ func (w *recordEncoder) Encode(p *Payload, rec arrow.RecordBatch) error {
 }
 
 func (w *recordEncoder) encodeMetadata(p *Payload, nrows int64, customMetadata arrow.Metadata) error {
-	p.meta = writeRecordMessage(w.mem, nrows, p.size, w.fields, w.meta, w.codec, w.variadicCounts, customMetadata)
+	p.meta = writeRecordMessage(w.mem, nrows, p.size, w.fields, w.meta, w.compression.codec, w.variadicCounts, customMetadata)
 	return nil
 }
 
@@ -1159,6 +1162,7 @@ func GetRecordBatchPayload(batch arrow.RecordBatch, opts ...Option) (Payload, er
 	cfg := newConfig(opts...)
 	compressors := make([]compressor, cfg.compressNP)
 	copy(compressors, cfg.compressors)
+	defer releaseCompressors(compressors)
 	var (
 		data = Payload{msg: MessageRecordBatch}
 		enc  = newRecordEncoder(
@@ -1166,8 +1170,7 @@ func GetRecordBatchPayload(batch arrow.RecordBatch, opts ...Option) (Payload, er
 			0,
 			kMaxNestingDepth,
 			true,
-			cfg.codec,
-			cfg.compressNP,
+			compressionSettings{codec: cfg.codec, zstdLevel: cfg.zstdLevel, compressNP: cfg.compressNP},
 			cfg.minSpaceSavings,
 			compressors,
 		)

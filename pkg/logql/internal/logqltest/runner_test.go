@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,57 @@ func TestLogQLScripts_ShouldNotChangeAnyOutcomeWithTheMaxQuerySeriesCutoff(t *te
 			}
 		})
 	}
+}
+
+// TestLogQLScripts_ShouldNeverMismatchInTheMaxQuerySeriesCutoffDryRun runs every script with a low
+// series limit with the cutoff off and in dry-run mode. Every eval must end exactly the same way,
+// and no query where the cut-off would have fired may succeed.
+func TestLogQLScripts_ShouldNeverMismatchInTheMaxQuerySeriesCutoffDryRun(t *testing.T) {
+	const maxQuerySeries = 2
+
+	files, err := filepath.Glob("testdata/*.logqltest")
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "no .logqltest scripts found under testdata/")
+
+	before := cutoffDryRunMismatches(t)
+	t.Cleanup(func() {
+		require.Equal(t, before, cutoffDryRunMismatches(t), "the dry-run cut-off would have failed a query that succeeded")
+	})
+
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			b, err := os.ReadFile(f)
+			require.NoError(t, err)
+
+			disabled := newDirectTimestampFirstStack(t, "max query series cutoff disabled", withMaxQuerySeries(maxQuerySeries))
+			dryRun := newDirectTimestampFirstStack(t, "max query series cutoff dry run", withMaxQuerySeries(maxQuerySeries), withMaxQuerySeriesCutoffDryRun())
+
+			outcomes := runScript(t, filepath.Base(f), string(b), []executionStack{disabled, dryRun})
+			requireSameOutcomes(t, outcomes[disabled.name()], outcomes[dryRun.name()])
+		})
+	}
+}
+
+// cutoffDryRunMismatches returns the number of queries where the dry-run cut-off would have failed
+// a query that went on to succeed.
+func cutoffDryRunMismatches(t *testing.T) float64 {
+	t.Helper()
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != "loki_logql_series_cutoff_dry_run_total" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "outcome" && l.GetValue() == "mismatch" {
+					return m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // requireSameOutcomesWithMaxQuerySeriesCutoff checks that every eval that neither skipped ends the

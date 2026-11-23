@@ -106,6 +106,125 @@ func Test_plainBytesDecoder_Decode(t *testing.T) {
 		require.EqualError(t, err, "plain: value of 5 bytes at offset 0 runs past the end of the data")
 		require.Nil(t, arr)
 	})
+
+	t.Run("allocates only the memory of the decoded values when the data holds many more", func(t *testing.T) {
+		const (
+			valueSize  = 100
+			valueCount = 10_000
+			readCount  = 10
+		)
+		var buf bytes.Buffer
+		enc := newPlainBytesEncoder(&buf)
+		for i := range valueCount {
+			require.NoError(t, enc.Encode(BinaryValue(bytes.Repeat([]byte{byte('a' + i%26)}, valueSize))))
+		}
+
+		var alloc memory.Allocator
+		dec := newPlainBytesDecoder(buf.Bytes())
+
+		for read := 0; read < valueCount; read += readCount {
+			alloc.Reclaim()
+			arr, err := dec.Decode(&alloc, readCount)
+			require.NoError(t, err)
+
+			values := arr.(*columnar.UTF8)
+			require.Equal(t, readCount, values.Len())
+			require.Equal(t, readCount*valueSize, values.DataLen())
+			for i := range readCount {
+				require.Equal(t, bytes.Repeat([]byte{byte('a' + (read+i)%26)}, valueSize), values.Get(i))
+			}
+		}
+
+		// The allocator holds one region for the values and one for the offsets. Each
+		// region has up to 63 bytes of padding.
+		const padding = 2 * 63
+		require.LessOrEqual(t, alloc.AllocatedBytes(), readCount*valueSize+(readCount+1)*4+padding)
+	})
+
+	t.Run("allocates the memory of the values that exist when the data ends before count", func(t *testing.T) {
+		var (
+			buf        bytes.Buffer
+			valueBytes int
+		)
+		enc := newPlainBytesEncoder(&buf)
+		for _, v := range testStrings {
+			require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
+			valueBytes += len(v)
+		}
+
+		var alloc memory.Allocator
+		arr, err := newPlainBytesDecoder(buf.Bytes()).Decode(&alloc, 100_000)
+		require.ErrorIs(t, err, io.EOF)
+
+		values := arr.(*columnar.UTF8)
+		require.Equal(t, len(testStrings), values.Len())
+		for i, want := range testStrings {
+			require.Equal(t, want, string(values.Get(i)))
+		}
+
+		const padding = 2 * 63
+		require.LessOrEqual(t, alloc.AllocatedBytes(), valueBytes+(len(testStrings)+1)*4+padding)
+	})
+
+	t.Run("decodes values of zero bytes without a values buffer", func(t *testing.T) {
+		var buf bytes.Buffer
+		enc := newPlainBytesEncoder(&buf)
+		for range 3 {
+			require.NoError(t, enc.Encode(BinaryValue(nil)))
+		}
+
+		var alloc memory.Allocator
+		arr, err := newPlainBytesDecoder(buf.Bytes()).Decode(&alloc, 3)
+		require.NoError(t, err)
+
+		values := arr.(*columnar.UTF8)
+		require.Equal(t, 3, values.Len())
+		require.Equal(t, 0, values.DataLen())
+		require.LessOrEqual(t, alloc.AllocatedBytes(), 4*4+63)
+	})
+
+	t.Run("decodes values at the boundaries of one-, two- and three-byte length prefixes", func(t *testing.T) {
+		lengths := []int{0, 1, 127, 128, 16383, 16384, 70000, 0, 5}
+
+		var buf bytes.Buffer
+		enc := newPlainBytesEncoder(&buf)
+		want := make([][]byte, len(lengths))
+		for i, length := range lengths {
+			want[i] = bytes.Repeat([]byte{byte('a' + i)}, length)
+			require.NoError(t, enc.Encode(BinaryValue(want[i])))
+		}
+
+		var alloc memory.Allocator
+		arr, err := newPlainBytesDecoder(buf.Bytes()).Decode(&alloc, len(lengths))
+		require.NoError(t, err)
+
+		values := arr.(*columnar.UTF8)
+		require.Equal(t, len(lengths), values.Len())
+		for i := range want {
+			require.Equal(t, want[i], values.Get(i), "value %d", i)
+		}
+	})
+
+	t.Run("returns no values and io.EOF when no value is left", func(t *testing.T) {
+		var alloc memory.Allocator
+		dec := newPlainBytesDecoder([]byte{1, 'a'})
+
+		arr, err := dec.Decode(&alloc, 1)
+		require.NoError(t, err)
+		require.Equal(t, 1, arr.Len())
+
+		arr, err = dec.Decode(&alloc, 1)
+		require.Equal(t, io.EOF, err)
+		require.Nil(t, arr)
+	})
+
+	t.Run("returns an empty array when count is zero", func(t *testing.T) {
+		var alloc memory.Allocator
+
+		arr, err := newPlainBytesDecoder([]byte{1, 'a'}).Decode(&alloc, 0)
+		require.NoError(t, err)
+		require.Equal(t, 0, arr.Len())
+	})
 }
 
 func Test_plainBytesDecoder_Skip(t *testing.T) {

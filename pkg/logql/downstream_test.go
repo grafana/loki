@@ -40,6 +40,10 @@ func TestDownstreamEngine_Query_ShouldOnlyPropagateMaxQuerySeriesCutoff(t *testi
 			opts:     EngineOpts{MaxQuerySeriesCutoff: true},
 			expected: queryOpts{maxQuerySeriesCutoff: true},
 		},
+		"max query series cutoff dry run is propagated": {
+			opts:     EngineOpts{MaxQuerySeriesCutoffDryRun: true},
+			expected: queryOpts{maxQuerySeriesCutoffDryRun: true},
+		},
 		"max query series cutoff is off by default": {
 			opts:     EngineOpts{},
 			expected: queryOpts{},
