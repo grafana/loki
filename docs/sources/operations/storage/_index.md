@@ -42,7 +42,7 @@ For more information:
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
 
-- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - S3 API compatible storage, such as [MinIO](https://min.io/)
 
 ## Cloud Storage Permissions
