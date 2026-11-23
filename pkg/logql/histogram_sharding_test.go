@@ -177,7 +177,7 @@ func requireSameShardedFloat(t *testing.T, want, got, tolerance float64, msgAndA
 	switch {
 	case math.IsNaN(want):
 		require.True(t, math.IsNaN(got), msgAndArgs...)
-	case tolerance == 0 || want == 0:
+	case math.IsInf(want, 0) || tolerance == 0 || want == 0:
 		require.Equal(t, want, got, msgAndArgs...)
 	default:
 		require.InEpsilon(t, want, got, tolerance, msgAndArgs...)
@@ -362,6 +362,148 @@ func TestMappingEquivalenceHistograms_aSeriesOnManyShards(t *testing.T) {
 			require.Equal(t, float64(streams), p.F, "a value of each stream, at %d", p.T)
 		}
 	})
+}
+
+// histogramWireDownstreamer is the MockDownstreamer with the histograms of each shard sent as a querier sends them
+// to the frontend, which reads them as it does a response it does not trust, before they are added up.
+type histogramWireDownstreamer struct{ MockDownstreamer }
+
+func (d histogramWireDownstreamer) Downstreamer(context.Context) Downstreamer { return d }
+
+func (d histogramWireDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	return d.MockDownstreamer.Downstream(ctx, queries, histogramWireAccumulator{acc})
+}
+
+type histogramWireAccumulator struct{ Accumulator }
+
+func (a histogramWireAccumulator) Accumulate(ctx context.Context, res logqlmodel.Result, i int) error {
+	if m, ok := res.Data.(HistogramMatrix); ok {
+		p, err := m.ToProto()
+		if err != nil {
+			return err
+		}
+		b, err := p.Marshal()
+		if err != nil {
+			return err
+		}
+		var read logproto.HistogramMatrix
+		if err := read.Unmarshal(b); err != nil {
+			return err
+		}
+		if res.Data, err = HistogramMatrixFromProto(&read); err != nil {
+			return err
+		}
+	}
+	return a.Accumulator.Accumulate(ctx, res, i)
+}
+
+// histogramNonFiniteStreams returns streams that have a value for each second, of which the values of a second
+// are the same kind for all the streams, and the kinds go round: finite values only, finite values and NaN, finite
+// values and +Inf, finite values and -Inf, and finite values and both of the infinities.
+func histogramNonFiniteStreams(streams, seconds int) []logproto.Stream {
+	r := rand.New(rand.NewSource(11)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG -- nosemgrep: math-random-used
+	out := make([]logproto.Stream, 0, streams)
+	for i := 0; i < streams; i++ {
+		s := logproto.Stream{Labels: fmt.Sprintf(`{app="api", id="%d"}`, i)}
+		for j := 0; j <= seconds; j++ {
+			value := fmt.Sprintf("%f", r.Float64()*100)
+			// A tenth of the streams have the other kind of value, so that there are a few of them in a step.
+			if r.Intn(10) == 0 {
+				switch j % 5 {
+				case 1:
+					value = "NaN"
+				case 2:
+					value = "+Inf"
+				case 3:
+					value = "-Inf"
+				case 4:
+					value = []string{"+Inf", "-Inf"}[r.Intn(2)]
+				}
+			}
+			s.Entries = append(s.Entries, logproto.Entry{
+				Timestamp: time.Unix(0, int64(j)*int64(time.Second)+1+r.Int63n(time.Second.Nanoseconds()-1)),
+				Line:      "value=" + value,
+			})
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// NaN and the infinities are values like the others, so the histograms of the shards have them, and the result of a
+// query is the same whether it is sharded or not. The histograms of the shards go over the wire, where a NaN makes
+// the count of a histogram more than its buckets hold. The sum of the observations is NaN or infinite for some of
+// the steps, and a number for the others.
+func TestMappingEquivalenceHistograms_nonFiniteValues(t *testing.T) {
+	const (
+		streams = 100
+		seconds = 10
+		rng     = `{app="api"} | logfmt | unwrap value`
+	)
+
+	for _, tc := range []struct {
+		name      string
+		query     string
+		tolerance float64
+	}{
+		{"a count", `histogram_count(sum by (app) (histogram_over_time(` + rng + ` [1s])))`, 0},
+		{"a count of the range aggregation", `histogram_count(histogram_over_time(` + rng + ` [1s]) by (app))`, 0},
+		{"a quantile", `histogram_quantile(0.9, sum by (app) (histogram_over_time(` + rng + ` [1s])))`, 0},
+		{"the median", `histogram_quantile(0.5, histogram_over_time(` + rng + ` [1s]) by (app))`, 0},
+		{"a fraction", `histogram_fraction(10, 50, sum by (app) (histogram_over_time(` + rng + ` [1s])))`, 0},
+		{"custom buckets", `histogram_quantile(0.9, sum by (app) (histogram_over_time(buckets(10, 50, 90), ` + rng + ` [1s])))`, 0},
+		{"custom buckets and a fraction", `histogram_fraction(10, 50, sum by (app) (histogram_over_time(buckets(10, 50, 90), ` + rng + ` [1s])))`, 0},
+		{"the sum of the observations", `histogram_sum(sum by (app) (histogram_over_time(` + rng + ` [1s])))`, 1e-9},
+		{"the average of the observations", `histogram_avg(sum by (app) (histogram_over_time(` + rng + ` [1s])))`, 1e-9},
+	} {
+		for _, shards := range []int{2, 5} {
+			t.Run(fmt.Sprintf("%s, %d shards", tc.name, shards), func(t *testing.T) {
+				var (
+					opts    = EngineOpts{EnableHistograms: true}
+					regular = NewEngine(opts, NewMockQuerier(shards, histogramNonFiniteStreams(streams, seconds)), NoLimits, log.NewNopLogger())
+					sharded = NewDownstreamEngine(opts, histogramWireDownstreamer{MockDownstreamer{regular}}, NoLimits, log.NewNopLogger())
+					ctx     = user.InjectOrgID(context.Background(), "fake")
+				)
+
+				params, err := NewLiteralParams(tc.query, time.Unix(1, 0), time.Unix(seconds, 0), time.Second, 0, logproto.FORWARD, 100, nil, nil)
+				require.NoError(t, err)
+				noop, _, mapped, err := histogramShardMapper(shards, ShardHistogramOverTime).Parse(params.GetExpression())
+				require.NoError(t, err)
+				require.False(t, noop)
+
+				want, err := regular.Query(params).Exec(ctx)
+				require.NoError(t, err)
+				got, err := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
+				require.NoError(t, err)
+
+				wantMatrix := want.Data.(promql.Matrix)
+				require.Len(t, wantMatrix, 1)
+				require.Len(t, wantMatrix[0].Floats, seconds, "a point for each step")
+				requireSameMatrix(t, wantMatrix, got.Data.(promql.Matrix), tc.tolerance)
+
+				// The steps are not all alike, or the query would not tell a sum that is a number from one that is not.
+				if tc.name == "the sum of the observations" {
+					var numbers, nans, posInfs, negInfs int
+					for _, p := range wantMatrix[0].Floats {
+						switch {
+						case math.IsNaN(p.F):
+							nans++
+						case math.IsInf(p.F, 1):
+							posInfs++
+						case math.IsInf(p.F, -1):
+							negInfs++
+						default:
+							numbers++
+						}
+					}
+					require.Positive(t, numbers)
+					require.Positive(t, nans)
+					require.Positive(t, posInfs)
+					require.Positive(t, negInfs)
+				}
+			})
+		}
+	}
 }
 
 // histogramStubDownstreamer gives the part of a sharded query that each shard runs a result of its own.
