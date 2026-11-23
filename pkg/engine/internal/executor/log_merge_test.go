@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/facette/natsort"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -106,30 +109,39 @@ func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path
 func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, shardLayout streams.ShardLayout, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides{sortSchema: sortSchema, shardLayout: shardLayout})
-	require.NoError(t, err)
+	// A logs builder holds one tenant, so the helper builds one object for each
+	// tenant and merges them. The merged object lists the streams sections of
+	// all tenants first, then their logs sections, in natural tenant order.
+	tenants := slices.Collect(maps.Keys(byTenant))
+	natsort.Sort(tenants)
 
-	for tenant, streamSet := range byTenant {
-		for _, s := range streamSet {
+	var perTenant []*dataobj.Object
+	for _, tenant := range tenants {
+		b, err := logsobj.NewBuilder(tenant, cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides{sortSchema: sortSchema, shardLayout: shardLayout})
+		require.NoError(t, err)
+
+		for _, s := range byTenant[tenant] {
 			require.NotEmpty(t, s.entries, "test stream must have at least one entry")
-			require.NoError(t, b.Append(tenant, logproto.Stream{
+			require.NoError(t, b.Append(logproto.Stream{
 				Labels:  s.labels,
 				Entries: s.entries,
 			}, s.entries[0].Timestamp))
 		}
+
+		sorted, sortedCloser, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		defer sortedCloser.Close()
+		perTenant = append(perTenant, sorted)
 	}
 
-	// FlushAndSort sorts the objects of one tenant. An object of several
-	// tenants, which older builders wrote, is only flushed.
-	flush := b.FlushAndSort
-	if len(byTenant) > 1 {
-		flush = func(context.Context) (*dataobj.Object, io.Closer, error) { return b.Flush() }
+	if len(perTenant) == 1 {
+		require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, perTenant[0]))
+		return
 	}
-	sorted, sortedCloser, err := flush(t.Context())
-	require.NoError(t, err)
-	defer sortedCloser.Close()
 
-	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, sorted))
+	merged, mergedCloser := fixtures.MergeObjects(t, perTenant...)
+	defer mergedCloser.Close()
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, merged))
 }
 
 // sourceLogRuns gives each object its own run; overlapping objects cannot be
@@ -1957,7 +1969,7 @@ func TestLogObjectWriter_StartNewObject(t *testing.T) {
 		require.NoError(t, w.startNewObject())
 
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		require.NoError(t, w.logsBuilder.Append("T", logproto.Stream{
+		require.NoError(t, w.logsBuilder.Append(logproto.Stream{
 			Labels:  `{cluster="c1"}`,
 			Entries: []push.Entry{{Timestamp: now, Line: "line"}},
 		}, now))

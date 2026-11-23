@@ -239,23 +239,22 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 		cfg.SortParallelism = parallelism
 		cfg.DropDuplicates = dropDuplicates
 		cfg.TargetSectionSize = flagext.Bytes(sectionSize)
-		builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		const tenant = "tenant-a"
+		builder, err := NewBuilder(tenant, cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
 
 		now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
-		for _, tenant := range []string{"tenant-a"} {
-			for i := range numRows {
-				n := i - i%9*(i%2)
-				ts := now.Add(time.Duration(n%97) * time.Second)
-				require.NoError(t, builder.Append(tenant, logproto.Stream{
-					Labels: sh.labels(n),
-					Entries: []push.Entry{{
-						Timestamp:          ts,
-						Line:               sh.line(tenant, n),
-						StructuredMetadata: push.LabelsAdapter{{Name: "trace_id", Value: fmt.Sprintf("%08x", n*2654435761)}},
-					}},
-				}, ts))
-			}
+		for i := range numRows {
+			n := i - i%9*(i%2)
+			ts := now.Add(time.Duration(n%97) * time.Second)
+			require.NoError(t, builder.Append(logproto.Stream{
+				Labels: sh.labels(n),
+				Entries: []push.Entry{{
+					Timestamp:          ts,
+					Line:               sh.line(tenant, n),
+					StructuredMetadata: push.LabelsAdapter{{Name: "trace_id", Value: fmt.Sprintf("%08x", n*2654435761)}},
+				}},
+			}, ts))
 		}
 		obj, closer, err := builder.FlushAndSort(t.Context())
 		require.NoError(t, err)
@@ -303,8 +302,8 @@ func TestBuilder_FlushAndSortParallelism(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// A section size above the size of all records puts every stream of
-			// a tenant in one range, which is a plain merge of the sections.
+			// A section size above the size of all records puts every stream in
+			// one range, which is a plain merge of the sections.
 			oracle := flushAndSort(t, tc.shape, tc.overrides, tc.dropDuplicates, 1, hugeSection)
 			require.Equal(t, 1, oracle.Sections().Count(logs.CheckSection), "the oracle must have one section")
 
@@ -343,11 +342,11 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 	// and cuts its streams into five ranges of four streams.
 	newRun := func(t *testing.T, parallelism int) (sorter *Builder, sections []*dataobj.Section, plan *sortPlan) {
 		t.Helper()
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		builder, err := NewBuilder("tenant", testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		now := time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC)
 		for i := range numStreams * rowsPerStream {
-			require.NoError(t, builder.Append("tenant", logproto.Stream{
+			require.NoError(t, builder.Append(logproto.Stream{
 				Labels:  fmt.Sprintf(`{pod="pod-%d"}`, i%numStreams),
 				Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: "line"}},
 			}, now))
@@ -370,7 +369,7 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 
 		cfg := testBuilderConfig
 		cfg.SortParallelism = parallelism
-		sorter, err = NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+		sorter, err = NewBuilder("tenant", cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 		require.NoError(t, err)
 		return sorter, sections, plan
 	}
@@ -453,9 +452,8 @@ func TestBuilder_WriteLogsSections(t *testing.T) {
 	})
 }
 
-// BenchmarkBuilder_FlushAndSortParallelism sorts an object that holds one
-// tenant with compressible logfmt lines, many streams and structured
-// metadata, so that the sort of that tenant sets the time of the whole sort.
+// BenchmarkBuilder_FlushAndSortParallelism sorts an object with compressible
+// logfmt lines, many streams and structured metadata.
 func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 	const (
 		numRows    = 600_000
@@ -515,14 +513,14 @@ func BenchmarkBuilder_FlushAndSortParallelism(b *testing.B) {
 				SortParallelism:         parallelism,
 				DropDuplicates:          true,
 			}
-			builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
+			builder, err := NewBuilder(testTenant, cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), NoTenantOverrides{})
 			require.NoError(b, err)
 			b.SetBytes(uncompressed)
 			b.ReportAllocs()
 			for b.Loop() {
 				b.StopTimer()
 				for _, r := range rows {
-					require.NoError(b, builder.Append("tenant", logproto.Stream{Labels: r.labels, Entries: []push.Entry{r.entry}}, r.entry.Timestamp))
+					require.NoError(b, builder.Append(logproto.Stream{Labels: r.labels, Entries: []push.Entry{r.entry}}, r.entry.Timestamp))
 				}
 				b.StartTimer()
 				sortedStreams, closer, err := builder.FlushAndSort(b.Context())
