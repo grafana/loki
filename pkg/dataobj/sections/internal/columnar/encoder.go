@@ -24,8 +24,8 @@ import (
 // Version 1 was the format of the original section implementations. Version 2
 // merged them into one format.
 //
-// Version 3 is not a format version. Logs sections in schema sort order use it
-// as their section version, and they have format version 2.
+// Version 3 is not a format version. Older writers used it as the section
+// version of logs sections in schema sort order, which have format version 2.
 const (
 	// FormatVersionDescriptorChecksum keeps the CRC32C checksum of each page in
 	// the page descriptor.
@@ -38,9 +38,8 @@ const (
 
 	// DefaultFormatVersion is the version that an [Encoder] writes unless the
 	// caller calls [Encoder.SetFormatVersion]. Section builders also use it as
-	// the version of their section type. Logs sections in schema sort order use
-	// version 3 instead.
-	DefaultFormatVersion = FormatVersionDescriptorChecksum
+	// the version of their section type.
+	DefaultFormatVersion = FormatVersionPageChecksum
 )
 
 // IsSupportedVersion returns true if [NewDecoder] accepts the given format
