@@ -222,11 +222,14 @@ func checkHistogramBuckets(h *histogram.FloatHistogram) error {
 	return checkBucketLimit(n)
 }
 
+// checkBucketLimit fails with logqlerr.ErrHistogramBucketLimit, and not with ErrLimit, which is the limit of series.
+// The message starts with the text of the error, which is what tells it apart where the error has crossed from a
+// querier to the frontend as an HTTP response, and has lost its type, see server.ClassifyFailure.
 func checkBucketLimit(nonEmpty int) error {
 	if nonEmpty > maxHistogramBuckets {
 		return fmt.Errorf("%w: a histogram has %d non-empty buckets, and at most %d are allowed. "+
 			"Use buckets(...) to choose the bounds, or narrow the query",
-			logqlerr.ErrLimit, nonEmpty, maxHistogramBuckets)
+			logqlerr.ErrHistogramBucketLimit, nonEmpty, maxHistogramBuckets)
 	}
 	return nil
 }
