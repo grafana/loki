@@ -50,6 +50,9 @@ type pairWindowPlan struct {
 	// because a read of their stats failed. A later scan reads them again.
 	readFailures int
 
+	// pairs are the pairs that planning found, in merges or not.
+	pairs []pair
+
 	jobs []pairJob
 }
 
@@ -129,6 +132,7 @@ func (p *pairPlanner) planWindow(ctx context.Context, tenant string, window time
 	}
 
 	pairs, splits := p.classifyCandidates(logger, tenant, window, candidates, leased)
+	plan.pairs = pairs
 	for _, split := range splits {
 		plan.jobs = append(plan.jobs, split)
 	}
