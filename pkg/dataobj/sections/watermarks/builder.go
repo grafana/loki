@@ -112,9 +112,9 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
-	if err := b.encodeTo(&enc); err != nil {
+	if err := b.encodeTo(enc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
