@@ -500,7 +500,7 @@ func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.
 	}
 	slices.Sort(objectPaths)
 	objectPaths = slices.Compact(objectPaths)
-	sourceIndexPaths, err := sourceIndexRun.pathsInKeyOrder()
+	sourceIndexPaths, err := filterSourcePaths(sourceIndexRun)
 	if err != nil {
 		return indexFilterTask{}, err
 	}

@@ -1,9 +1,7 @@
 package compactor
 
 import (
-	"cmp"
 	"fmt"
-	"slices"
 	"strings"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -88,35 +86,6 @@ func (r indexRun) paths() []string {
 		paths[i] = entry.Path
 	}
 	return paths
-}
-
-// pathsInKeyOrder returns the paths of the index objects of r, in posting key
-// order. A worker that reads r as one sequence needs that order, and the ToC
-// does not promise an order for its entries.
-//
-// It returns an error that wraps errCorruptIndex if r has several index
-// objects and one has no posting key bounds, or if the key ranges of two
-// overlap. A worker could not read such a run as one sequence.
-func (r indexRun) pathsInKeyOrder() ([]string, error) {
-	entries := slices.Clone(r.entries)
-	if len(entries) > 1 {
-		for _, entry := range entries {
-			if entry.PostingKeys.IsZero() {
-				return nil, fmt.Errorf("%w: index object %s of run %s has no posting key bounds", errCorruptIndex, entry.Path, r)
-			}
-		}
-	}
-	slices.SortStableFunc(entries, func(a, b indexpointers.IndexPointer) int {
-		return cmp.Or(a.PostingKeys.Min().Compare(b.PostingKeys.Min()), a.PostingKeys.Max().Compare(b.PostingKeys.Max()))
-	})
-	paths := make([]string, len(entries))
-	for i, entry := range entries {
-		if i > 0 && entries[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()) >= 0 {
-			return nil, fmt.Errorf("%w: index objects %s and %s of run %s have overlapping posting key ranges", errCorruptIndex, entries[i-1].Path, entry.Path, r)
-		}
-		paths[i] = entry.Path
-	}
-	return paths, nil
 }
 
 // String describes r for logs and errors. It names the paths of up to
