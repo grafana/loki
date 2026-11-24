@@ -70,10 +70,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	// A K-way merge keeps the rows in key order when they come from several
-	// index objects of one index run, so each output section stays sorted.
 	foundPostings := make(map[string]struct{}, len(keepSet))
-	if err := c.mergePostingsInto(ctx, sources, keep(foundPostings), out); err != nil {
+	if err := c.mergePostingsInto(ctx, filterRuns(node, sources), postings.KeySpan{}, keep(foundPostings), out); err != nil {
 		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
 	}
 	foundStats := make(map[string]struct{}, len(keepSet))
@@ -98,6 +96,25 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("index filter output for source index %q: %w", source, err)
 	}
 	return artifacts, nil
+}
+
+// filterRuns returns the runs of postings sections that the filter merges.
+// Sources in key order form one run, so the merge holds one postings section
+// reader at a time. The merge then fails if they are not in key order.
+// Otherwise each source is a run of its own, and the merge accepts any order.
+func filterRuns(node *physical.IndexFilter, sources []objectSections) [][]sourceSection {
+	if !node.SourcesInKeyOrder {
+		runs := make([][]sourceSection, len(sources))
+		for i, source := range sources {
+			runs[i] = sectionsOf(source.path, source.postings)
+		}
+		return runs
+	}
+	var run []sourceSection
+	for _, source := range sources {
+		run = append(run, sectionsOf(source.path, source.postings)...)
+	}
+	return [][]sourceSection{run}
 }
 
 // openFilterSources opens the source index objects of node and returns their

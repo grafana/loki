@@ -463,8 +463,16 @@ func writeRowsFuncOfByteSlice(t reflect.Type, schema *Schema, path columnPath) w
 
 func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	elemType := t.Elem()
-	elemSize := uintptr(elemType.Size())
 	writeRows := writeRowsFuncOf(elemType, schema, path, tagReplacements)
+	return writeRowsFuncOfPointerValue(elemType, schema, path, writeRows)
+}
+
+// writeRowsFuncOfPointerValue writes values of a pointer type. A nil pointer is
+// a null; a non-nil pointer writes the value writeRows produces. When the
+// schema node is optional, a non-nil pointer increments the definition level.
+// An empty path is a pointer to the row value, which does not change levels.
+func writeRowsFuncOfPointerValue(elemType reflect.Type, schema *Schema, path columnPath, writeRows writeRowsFunc) writeRowsFunc {
+	elemSize := uintptr(elemType.Size())
 
 	if len(path) == 0 {
 		// This code path is taken when generating a writeRowsFunc for a pointer
@@ -493,6 +501,13 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 	// should not increment the definition level.
 	node := findByPath(schema, path)
 	isOptional := node != nil && node.Optional()
+	// A legacy repeated fixed-length byte array (for example []*uuid.UUID
+	// without a list tag) has a single definition level meaning the element
+	// is present. The slice writer has already consumed that level, so a nil
+	// pointer must be written one level lower. Otherwise the missing value is
+	// read back as a present zero UUID.
+	nilDropsDefinitionLevel := node != nil && node.Repeated() && !isOptional &&
+		node.Leaf() && node.Type().Kind() == FixedLenByteArray
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		if rows.Len() == 0 {
@@ -509,6 +524,8 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 				if isOptional {
 					elemLevels.definitionLevel++
 				}
+			} else if nilDropsDefinitionLevel && elemLevels.definitionLevel > 0 {
+				elemLevels.definitionLevel--
 			}
 			writeRows(columns, elemLevels, a)
 		}
@@ -533,8 +550,10 @@ func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath, tagRe
 	// the list elements themselves are optional (non-pointer basic types).
 	// For pointer types (like []*string), the pointer handling already
 	// takes care of optionality via writeRowsFuncOfPointer.
+	// JSON string and byte elements do the same in writeRowsFuncOfJSON;
+	// wrapping them again writes past the column's max definition level.
 	if elemType.Kind() != reflect.Ptr {
-		if node := findByPath(schema, path); node != nil && node.Optional() {
+		if node := findByPath(schema, path); node != nil && node.Optional() && !isJSONStringOrBytes(elemType, node) {
 			writeRows = writeRowsFuncOfOptional(elemType, schema, path, writeRows)
 		}
 	}
@@ -595,9 +614,15 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath, tagR
 			switch option {
 			case "list":
 				list = true
-				columnPath = columnPath.append("list", "element")
 			}
 		})
+		// writeRowsFuncOfSlice drills into list.element. Drilling here first
+		// makes a JSON element look like a plain JSON column while the Go
+		// value is still the whole slice, so the slice is stored as one null
+		// and reads back empty. Non-JSON lists keep the pre-drilled path.
+		if list && !listElementIsJSON(node) {
+			columnPath = columnPath.append("list", "element")
+		}
 		writeRows := writeRowsFuncOf(f.Type, schema, columnPath, tagReplacements)
 		// Check if the schema node is optional (from the schema, not the Go struct tag)
 		if node.Optional() {
@@ -612,7 +637,11 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath, tagR
 				// to the element, not the list.
 			case f.Type == reflect.TypeFor[json.RawMessage]():
 				// json.RawMessage handles its own definition levels through
-				// writeRowsFuncOfJSONRawMessage -> writeValueFuncOf -> writeValueFuncOfOptional
+				// writeRowsFuncFor -> writeValueFuncOf -> writeValueFuncOfOptional,
+				// or through writeRowsFuncOfJSON for JSON columns.
+			case isJSONStringOrBytes(f.Type, node):
+				// Strings and byte slices in JSON columns handle their own
+				// definition levels through writeRowsFuncOfJSON.
 			case f.Type == reflect.TypeFor[time.Time]():
 				// time.Time is a struct but has IsZero() method,
 				// so it needs special handling.
@@ -823,8 +852,10 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath, tagRepl
 
 	valuePath := path.append("key_value", "value")
 	valueNode := findByPath(schema, valuePath)
-	// If the value is a LIST type, adjust the path to include list/element
-	if valueNode != nil && isList(valueNode) {
+	// If the value is a LIST type, adjust the path to include list/element.
+	// JSON elements stay on the list node so the slice writer splits them;
+	// see writeRowsFuncOfStruct.
+	if valueNode != nil && isList(valueNode) && !listElementIsJSON(valueNode) {
 		valuePath = valuePath.append("list", "element")
 	}
 	valueType := t.Elem()
@@ -867,9 +898,48 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath, tagRepl
 	}
 }
 
+// isJSONStringOrBytes reports whether values of type t written to node take the
+// writeRowsFuncOfJSON fast path, which handles optional definition levels itself.
+func isJSONStringOrBytes(t reflect.Type, node Node) bool {
+	return node != nil && node.Leaf() && logicalTypeIs[*format.JsonType](node.Type().LogicalType()) && isStringOrBytes(t)
+}
+
+// listElementIsJSON reports whether node is a LIST whose element is a JSON leaf.
+// A non-standard LIST shape returns false so callers keep their previous path.
+func listElementIsJSON(node Node) bool {
+	if node == nil || node.Leaf() || !isList(node) {
+		return false
+	}
+	fields := node.Fields()
+	if len(fields) != 1 || fields[0].Leaf() || !fields[0].Repeated() {
+		return false
+	}
+	elems := fields[0].Fields()
+	if len(elems) != 1 || !elems[0].Leaf() {
+		return false
+	}
+	return logicalTypeIs[*format.JsonType](elems[0].Type().LogicalType())
+}
+
+func isStringOrBytes(t reflect.Type) bool {
+	return t.Kind() == reflect.String || (t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8)
+}
+
 func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
+	// Optional *string / *[]byte columns are null only when the pointer is nil.
+	// The string fast path below treats a zero string as null and would both
+	// drop a non-nil empty string and apply the definition level twice. A
+	// required *string stays on the encode path: its column has no definition
+	// level, and the JSON text (including "null") is what the reader unmarshals.
+	if t.Kind() == reflect.Pointer && isStringOrBytes(t.Elem()) {
+		if node := findByPath(schema, path); node != nil && node.Optional() {
+			elem := t.Elem()
+			return writeRowsFuncOfPointerValue(elem, schema, path, writeRowsFuncOfRequired(elem, schema, path))
+		}
+	}
+
 	// If this is a string or a byte array, write directly.
-	if t.Kind() == reflect.String || (t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8) {
+	if isStringOrBytes(t) {
 		column, _ := schema.Lookup(path...)
 		isOptional := column.Node.Optional()
 

@@ -12356,6 +12356,19 @@ func awsRestxml_serializeDocumentEncryptionConfiguration(v *types.EncryptionConf
 		el := value.MemberElement(root)
 		el.String(*v.ReplicaKmsKeyID)
 	}
+	if v.UseSourceMultiRegionKey != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "UseSourceMultiRegionKey",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentUseSourceMultiRegionKey(v.UseSourceMultiRegionKey, el); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -14713,6 +14726,26 @@ func awsRestxml_serializeDocumentReplicationConfiguration(v *types.ReplicationCo
 	return nil
 }
 
+func awsRestxml_serializeDocumentReplicationPrefixList(v []string, value smithyxml.Value) error {
+	var array *smithyxml.Array
+	if !value.IsFlattened() {
+		defer value.Close()
+	}
+	customMemberNameAttr := []smithyxml.Attr{}
+	customMemberName := smithyxml.StartElement{
+		Name: smithyxml.Name{
+			Local: "Prefix",
+		},
+		Attr: customMemberNameAttr,
+	}
+	array = value.ArrayWithCustomName(customMemberName)
+	for i := range v {
+		am := array.Member()
+		am.String(v[i])
+	}
+	return nil
+}
+
 func awsRestxml_serializeDocumentReplicationRule(v *types.ReplicationRule, value smithyxml.Value) error {
 	defer value.Close()
 	if v.DeleteMarkerReplication != nil {
@@ -14829,6 +14862,19 @@ func awsRestxml_serializeDocumentReplicationRule(v *types.ReplicationRule, value
 
 func awsRestxml_serializeDocumentReplicationRuleAndOperator(v *types.ReplicationRuleAndOperator, value smithyxml.Value) error {
 	defer value.Close()
+	if v.Not != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Not",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentReplicationRuleNotOperator(v.Not, el); err != nil {
+			return err
+		}
+	}
 	if v.Prefix != nil {
 		rootAttr := []smithyxml.Attr{}
 		root := smithyxml.StartElement{
@@ -14871,6 +14917,19 @@ func awsRestxml_serializeDocumentReplicationRuleFilter(v *types.ReplicationRuleF
 			return err
 		}
 	}
+	if v.Not != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Not",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentReplicationRuleNotOperator(v.Not, el); err != nil {
+			return err
+		}
+	}
 	if v.Prefix != nil {
 		rootAttr := []smithyxml.Attr{}
 		root := smithyxml.StartElement{
@@ -14892,6 +14951,79 @@ func awsRestxml_serializeDocumentReplicationRuleFilter(v *types.ReplicationRuleF
 		}
 		el := value.MemberElement(root)
 		if err := awsRestxml_serializeDocumentTag(v.Tag, el); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsRestxml_serializeDocumentReplicationRuleNotOperator(v *types.ReplicationRuleNotOperator, value smithyxml.Value) error {
+	defer value.Close()
+	if v.Or != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Or",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentReplicationRuleOrOperator(v.Or, el); err != nil {
+			return err
+		}
+	}
+	if v.Prefix != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Prefix",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		el.String(*v.Prefix)
+	}
+	if v.Tag != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Tag",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentTag(v.Tag, el); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsRestxml_serializeDocumentReplicationRuleOrOperator(v *types.ReplicationRuleOrOperator, value smithyxml.Value) error {
+	defer value.Close()
+	if v.Prefixes != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Prefix",
+			},
+			Attr: rootAttr,
+		}
+		el := value.FlattenedElement(root)
+		if err := awsRestxml_serializeDocumentReplicationPrefixList(v.Prefixes, el); err != nil {
+			return err
+		}
+	}
+	if v.Tags != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Tag",
+			},
+			Attr: rootAttr,
+		}
+		el := value.FlattenedElement(root)
+		if err := awsRestxml_serializeDocumentTagSet(v.Tags, el); err != nil {
 			return err
 		}
 	}
@@ -15942,6 +16074,22 @@ func awsRestxml_serializeDocumentUserMetadata(v []types.MetadataEntry, value smi
 		if err := awsRestxml_serializeDocumentMetadataEntry(&v[i], am); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func awsRestxml_serializeDocumentUseSourceMultiRegionKey(v *types.UseSourceMultiRegionKey, value smithyxml.Value) error {
+	defer value.Close()
+	if len(v.Status) > 0 {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "Status",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		el.String(string(v.Status))
 	}
 	return nil
 }

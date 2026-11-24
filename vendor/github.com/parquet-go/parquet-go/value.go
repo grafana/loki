@@ -1189,3 +1189,21 @@ type UUIDWriter interface {
 	// occurred while writing the values.
 	WriteUUIDs(values []uuid.UUID) (int, error)
 }
+
+// memsetValues fills values with copies of model.
+//
+// Value contains a pointer field, so the memory must not be written with raw
+// vector stores: pointer writes to the heap need write barriers or a
+// concurrent garbage collection cycle may fail to mark the pointee. The
+// doubling copy below is GC-safe while still running at memmove speed: each
+// copy of a []Value goes through runtime.typedslicecopy, which performs one
+// bulk write barrier pass followed by a memmove, so the whole fill needs only
+// O(log n) barrier passes.
+func memsetValues(values []Value, model Value) {
+	if len(values) > 0 {
+		values[0] = model
+		for n := 1; n < len(values); n *= 2 {
+			copy(values[n:], values[:n])
+		}
+	}
+}

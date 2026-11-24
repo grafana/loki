@@ -1,4 +1,4 @@
-//go:build purego || !amd64
+//go:build !amd64 || (purego && !goexperiment.simd)
 
 package hashprobe
 

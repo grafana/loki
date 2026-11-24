@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -81,7 +82,7 @@ type hintPrefetchKeyType struct{}
 // hintPrefetchResult holds pre-computed logline index lookup results, shared
 // between the prefetch and filter middleware layers via context.
 type hintPrefetchResult struct {
-	ranges         []hintprovider.HintTimeRange // normalized, sorted by start
+	ranges         []hintprovider.HintTimeRange // normalized: grouped by document shard, sorted by start
 	err            error
 	stats          *hintprovider.QueryStats
 	queryBytes     uint64
@@ -92,6 +93,9 @@ type hintPrefetchResult struct {
 	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
 	wait           waitTracker   // time sub-requests spent waiting for done
+	// maxRangesPerRequest is the most ranges attached to one sub-request
+	// (Config.MaxHintRangesPerRequest). 0 is no cap.
+	maxRangesPerRequest int
 }
 
 // waitForLookup blocks until the lookup is done, ctx ends or timeout passes,
@@ -386,35 +390,37 @@ func newLoglinePrefetchHandler(
 		logger = log.NewNopLogger()
 	}
 	return &loglinePrefetchHandler{
-		next:                 next,
-		hintProvider:         hp,
-		defaultMode:          modeFromDryRun(cfg.DryRun),
-		requireOptInHeader:   cfg.RequireOptInHeader,
-		ngramLength:          cfg.NgramLength,
-		maxConjunctions:      cfg.MaxConjunctions,
-		hintTimeout:          cfg.HintTimeout,
-		queryIngestersWithin: cfg.QueryIngestersWithin,
-		limits:               limits,
-		metrics:              metrics,
-		logger:               logger,
-		alignQueriesWithStep: cfg.AlignQueriesWithStep,
+		next:                    next,
+		hintProvider:            hp,
+		defaultMode:             modeFromDryRun(cfg.DryRun),
+		requireOptInHeader:      cfg.RequireOptInHeader,
+		ngramLength:             cfg.NgramLength,
+		maxConjunctions:         cfg.MaxConjunctions,
+		hintTimeout:             cfg.HintTimeout,
+		queryIngestersWithin:    cfg.QueryIngestersWithin,
+		limits:                  limits,
+		metrics:                 metrics,
+		logger:                  logger,
+		alignQueriesWithStep:    cfg.AlignQueriesWithStep,
+		maxHintRangesPerRequest: cfg.MaxHintRangesPerRequest,
 	}
 }
 
 type loglinePrefetchHandler struct {
-	next                 queryrangebase.Handler
-	hintProvider         hintprovider.QueryHintProvider
-	defaultMode          Mode
-	requireOptInHeader   bool
-	ngramLength          int
-	maxConjunctions      int
-	hintTimeout          time.Duration
-	dryRunInflight       atomic.Int32
-	queryIngestersWithin time.Duration
-	limits               logline_query_limits.Limits
-	metrics              *Metrics
-	logger               log.Logger
-	alignQueriesWithStep bool
+	next                    queryrangebase.Handler
+	hintProvider            hintprovider.QueryHintProvider
+	defaultMode             Mode
+	requireOptInHeader      bool
+	ngramLength             int
+	maxConjunctions         int
+	hintTimeout             time.Duration
+	dryRunInflight          atomic.Int32
+	queryIngestersWithin    time.Duration
+	limits                  logline_query_limits.Limits
+	metrics                 *Metrics
+	logger                  log.Logger
+	alignQueriesWithStep    bool
+	maxHintRangesPerRequest int
 }
 
 // Mode controls how logline filtering behaves for a tenant.
@@ -786,7 +792,8 @@ func (h *loglinePrefetchHandler) doDryRun(
 			return
 		}
 		if hints != nil {
-			lookup.ranges = hints.TimeRanges
+			// Dry-run verifies and summarizes hints by time alone.
+			lookup.ranges = hintprovider.TimeUnion(hints.TimeRanges)
 			if h.metrics != nil && h.metrics.hintRangesReturned != nil {
 				h.metrics.hintRangesReturned.Observe(float64(len(lookup.ranges)))
 			}
@@ -967,11 +974,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			if _, isDetectedFields := req.(*queryrange.DetectedFieldsRequest); isDetectedFields {
 				return h.next.Do(ctx, req)
 			}
-			// Left unhinted until a later PR. An empty result would drop the 1
-			// an empty window returns.
-			if isAbsentOverTimeAgg(expr) {
-				return h.next.Do(ctx, req)
-			}
 		}
 	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		// A log selector on the instant endpoint is rejected by the querier.
@@ -1052,13 +1054,14 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	result := &hintPrefetchResult{
-		queryStart:     readStart,
-		queryEnd:       readEnd,
-		queryBytes:     queryBytes,
-		ingesterCutoff: ingesterCutoff,
-		minDate:        h.minDate(),
-		stats:          hintprovider.NewQueryStats(),
-		done:           make(chan struct{}),
+		queryStart:          readStart,
+		queryEnd:            readEnd,
+		queryBytes:          queryBytes,
+		ingesterCutoff:      ingesterCutoff,
+		minDate:             h.minDate(),
+		stats:               hintprovider.NewQueryStats(),
+		done:                make(chan struct{}),
+		maxRangesPerRequest: h.maxHintRangesPerRequest,
 	}
 
 	// Pass-through sub-requests don't wait for the lookup, so the query can
@@ -1275,23 +1278,34 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.passthrough(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, readStart, overlapEnd)
-	if len(overlapping) == 0 {
+	queryShards, _, err := logql.ParseShards(requestQueryShards(req))
+	if err != nil {
+		h.metrics.passthroughSubRequests.WithLabelValues("unparseable_query").Inc()
+		level.Warn(logger).Log("msg", "cannot read the request's query shards, passing through", "err", err, "query_shards", requestQueryShards(req))
+		return h.passthrough(ctx, req)
+	}
+
+	spans := overlappingSpans(result.ranges, queryShards, readStart, overlapEnd)
+	if len(spans) == 0 {
 		return h.skip(ctx, req, expr)
 	}
 
-	hints := clipHintRangesForInterval(overlapping, readStart, overlapEnd)
+	hints, coarsened := hintRangesForSpans(result.ranges, spans, readStart, overlapEnd, result.maxRangesPerRequest)
 	if len(hints) == 0 {
 		return h.skip(ctx, req, expr)
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
-	if passthroughCoversInterval(overlapping, hints, readStart, overlapEnd) {
+	if passthroughCoversInterval(result.ranges, spans, hints, readStart, overlapEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
 		return h.passthrough(ctx, req)
 	}
 
+	if coarsened {
+		h.metrics.coarsenedSubRequests.Inc()
+	}
+	h.metrics.subRequestHintRanges.Observe(float64(len(hints)))
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
 	resp, err := h.next.Do(ctx, withHintRanges(req, hints))
 	// The count travels on the sub-request's response, so the split and shard
@@ -1327,8 +1341,14 @@ func (h *loglineFilterHandler) skip(ctx context.Context, req queryrangebase.Requ
 		h.metrics.passthroughSubRequests.WithLabelValues("sketch_shard").Inc()
 		return h.passthrough(ctx, req)
 	}
+	resp := skippedResponse(req, expr)
+	if isAbsentOverTimeAgg(expr) {
+		if err := setAbsentSeries(resp.(*queryrange.LokiPromResponse), req, expr); err != nil {
+			return nil, err
+		}
+	}
 	h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-	return skippedResponse(req, expr), nil
+	return resp, nil
 }
 
 // requestExpr returns the planned expression. A shard request puts an internal
@@ -1345,6 +1365,21 @@ func requestExpr(req queryrangebase.Request) (syntax.Expr, error) {
 		return queryPlan.AST, nil
 	}
 	return syntax.ParseExpr(req.GetQuery())
+}
+
+// requestQueryShards returns the query shards of a sub-request. The shard
+// middleware gives each sub-request it shards one query shard. A sub-request
+// it does not shard has none and reads every stream. A request can also
+// arrive with several, because the shards form value repeats.
+func requestQueryShards(req queryrangebase.Request) []string {
+	switch r := req.(type) {
+	case *queryrange.LokiRequest:
+		return r.Shards
+	case *queryrange.LokiInstantRequest:
+		return r.Shards
+	default:
+		return nil
+	}
 }
 
 // isQuantileSketch reports whether expr is a shard of a sharded
@@ -1399,6 +1434,37 @@ func skippedResponse(req queryrangebase.Request, expr syntax.Expr) queryrangebas
 	}
 }
 
+// setAbsentSeries sets the result to what the querier would return for an empty
+// window: one series with a 1 on every step. It uses AbsentLabels, like the
+// querier, so skipped and evaluated splits merge into one series.
+func setAbsentSeries(resp *queryrange.LokiPromResponse, req queryrangebase.Request, expr syntax.Expr) error {
+	lbs, err := logql.AbsentLabels(expr.(syntax.SampleExpr))
+	if err != nil {
+		return err
+	}
+	resp.Response.Data.Result = []queryrangebase.SampleStream{{
+		Labels:  logproto.FromLabelsToLabelAdapters(lbs),
+		Samples: absentSamples(req),
+	}}
+	return nil
+}
+
+// absentSamples returns a 1 for each step the engine evaluates, from the start
+// of req up to and including its end. It steps in nanoseconds, like the engine,
+// so a start or end with sub-millisecond precision gets the same steps.
+func absentSamples(req queryrangebase.Request) []logproto.LegacySample {
+	ms := int64(time.Millisecond)
+	// An instant request has a step of 0, so force at least 1 to advance the loop.
+	step := max(req.GetStep()*ms, 1)
+	start, end := req.GetStart().UnixNano(), req.GetEnd().UnixNano()
+
+	var samples []logproto.LegacySample
+	for ts := start; ts <= end; ts += step {
+		samples = append(samples, logproto.LegacySample{Value: 1, TimestampMs: ts / ms})
+	}
+	return samples
+}
+
 func skippedInstantResponse() *queryrange.LokiPromResponse {
 	resp := skippedMetricResponse()
 	resp.Response.Data.ResultType = loghttp.ResultTypeVector
@@ -1436,25 +1502,19 @@ func withHintRanges(req queryrangebase.Request, hints []logproto.HintTimeRange) 
 }
 
 // clipHintRangesForInterval clips ranges to the half-open interval, converts a
-// pre-min-date sentinel into that overlap, then sorts and merges. Touching
-// ranges merge, matching querier hint consumption.
+// pre-min-date sentinel into that overlap, then sorts and merges each document
+// shard's ranges. Touching ranges merge, matching querier hint consumption.
 func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
 	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
 	for _, r := range ranges {
-		rangeStart := r.Start
-		if r.IsPassthrough() || rangeStart.Before(start) {
-			rangeStart = start
+		if c, ok := clipHintRange(r, start, end); ok {
+			clipped = append(clipped, c)
 		}
-		rangeEnd := r.End
-		if rangeEnd.After(end) {
-			rangeEnd = end
-		}
-		if !rangeStart.Before(rangeEnd) {
-			continue
-		}
-		clipped = append(clipped, logproto.HintTimeRange{Start: rangeStart, End: rangeEnd})
 	}
 	sort.Slice(clipped, func(i, j int) bool {
+		if ki, kj := documentShardKey(clipped[i]), documentShardKey(clipped[j]); ki != kj {
+			return ki < kj
+		}
 		if clipped[i].Start.Equal(clipped[j].Start) {
 			return clipped[i].End.Before(clipped[j].End)
 		}
@@ -1463,7 +1523,7 @@ func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end t
 
 	merged := clipped[:0]
 	for _, current := range clipped {
-		if len(merged) == 0 || current.Start.After(merged[len(merged)-1].End) {
+		if len(merged) == 0 || documentShardKey(current) != documentShardKey(merged[len(merged)-1]) || current.Start.After(merged[len(merged)-1].End) {
 			merged = append(merged, current)
 			continue
 		}
@@ -1474,15 +1534,41 @@ func clipHintRangesForInterval(ranges []hintprovider.HintTimeRange, start, end t
 	return merged
 }
 
-// passthroughCoversInterval reports that every overlapping hint is a
-// pre-min-date sentinel and together they cover the whole interval.
-func passthroughCoversInterval(ranges []hintprovider.HintTimeRange, hints []logproto.HintTimeRange, start, end time.Time) bool {
+// clipHintRange clips r to the half-open interval [start, end). A pre-min-date
+// sentinel becomes the part of the interval before its end. ok is false when
+// nothing is left.
+func clipHintRange(r hintprovider.HintTimeRange, start, end time.Time) (logproto.HintTimeRange, bool) {
+	rangeStart := r.Start
+	if r.IsPassthrough() || rangeStart.Before(start) {
+		rangeStart = start
+	}
+	rangeEnd := r.End
+	if rangeEnd.After(end) {
+		rangeEnd = end
+	}
+	if !rangeStart.Before(rangeEnd) {
+		return logproto.HintTimeRange{}, false
+	}
+	return logproto.HintTimeRange{Start: rangeStart, End: rangeEnd, DocumentShard: r.DocumentShard, DocumentShardBits: uint32(r.DocumentShardBits)}, true
+}
+
+// documentShardKey orders and groups ranges by document shard like
+// hintprovider.NormalizeRanges.
+func documentShardKey(r logproto.HintTimeRange) uint64 {
+	return uint64(r.DocumentShardBits)<<32 | uint64(r.DocumentShard)
+}
+
+// passthroughCoversInterval reports that every hint in spans is a pre-min-date
+// sentinel and together they cover the whole interval.
+func passthroughCoversInterval(ranges []hintprovider.HintTimeRange, spans []hintSpan, hints []logproto.HintTimeRange, start, end time.Time) bool {
 	if len(hints) != 1 || !end.After(start) {
 		return false
 	}
-	for _, r := range ranges {
-		if !r.IsPassthrough() {
-			return false
+	for _, s := range spans {
+		for _, r := range ranges[s.lo:s.hi] {
+			if !r.IsPassthrough() {
+				return false
+			}
 		}
 	}
 	return !hints[0].Start.After(start) && !hints[0].End.Before(end)
@@ -1497,7 +1583,7 @@ func hintRangesDuration(hints []logproto.HintTimeRange) time.Duration {
 }
 
 func hintCoverageDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
-	return hintRangesDuration(clipHintRangesForInterval(ranges, start, end))
+	return hintRangesDuration(clipHintRangesForInterval(hintprovider.TimeUnion(ranges), start, end))
 }
 
 func isCancel(err error) bool {
@@ -1517,25 +1603,22 @@ func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bo
 	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
-// rangesOverlapping returns hint ranges that overlap [start, end].
-// Assumes ranges are sorted by Start.
-func rangesOverlapping(ranges []hintprovider.HintTimeRange, start, end time.Time) []hintprovider.HintTimeRange {
-	if len(ranges) == 0 {
-		return nil
-	}
-
-	idx := sort.Search(len(ranges), func(i int) bool {
-		return !ranges[i].End.Before(start)
+// nextDocumentShardGroup splits off the leading ranges in ranges[0]'s document
+// shard. ranges must be grouped by document shard.
+func nextDocumentShardGroup(ranges []hintprovider.HintTimeRange) (group, rest []hintprovider.HintTimeRange) {
+	n := sort.Search(len(ranges), func(i int) bool {
+		return ranges[i].DocumentShard != ranges[0].DocumentShard || ranges[i].DocumentShardBits != ranges[0].DocumentShardBits
 	})
+	return ranges[:n], ranges[n:]
+}
 
-	var result []hintprovider.HintTimeRange
-	for i := idx; i < len(ranges); i++ {
-		if ranges[i].Start.After(end) {
-			break
-		}
-		result = append(result, ranges[i])
-	}
-	return result
+// overlapsQueryShards reports whether r's document shard can hold a stream in
+// one of queryShards, or any stream when queryShards is empty.
+func overlapsQueryShards(r hintprovider.HintTimeRange, queryShards logql.Shards) bool {
+	return len(queryShards) == 0 || slices.ContainsFunc(queryShards, func(s logql.Shard) bool {
+		from, through := s.GetFromThrough()
+		return r.MatchesFingerprintRange(uint64(from), uint64(through))
+	})
 }
 
 func maxTime(a, b time.Time) time.Time {

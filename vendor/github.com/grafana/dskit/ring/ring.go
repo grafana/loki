@@ -538,8 +538,9 @@ func (r *Ring) getReplicationSetForKey(key uint32, op Operation, bufDescs []Inst
 	}
 
 	return ReplicationSet{
-		Instances: healthyInstances,
-		MaxErrors: maxFailure,
+		Instances:   healthyInstances,
+		MaxErrors:   maxFailure,
+		PartitionID: -1,
 	}, nil
 }
 
@@ -703,8 +704,9 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}
 
 	return ReplicationSet{
-		Instances: instances,
-		MaxErrors: 0,
+		Instances:   instances,
+		MaxErrors:   0,
+		PartitionID: -1,
 	}, nil
 }
 
@@ -788,6 +790,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		MaxErrors:            maxErrors,
 		MaxUnavailableZones:  maxUnavailableZones,
 		ZoneAwarenessEnabled: r.cfg.ZoneAwarenessEnabled,
+		PartitionID:          -1,
 	}, nil
 }
 

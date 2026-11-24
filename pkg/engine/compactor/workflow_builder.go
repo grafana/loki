@@ -23,13 +23,15 @@ import (
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
-	task *compactionv2pb.TaskSpec,
+	task indexMergeTask,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
-		Runs:           task.Runs,
+		Runs:           task.spec.Runs,
+		KeySpan:        task.keySpan,
+		StatsSources:   task.statsSources,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -57,13 +59,14 @@ func buildLogMergePlan(
 
 // buildIndexFilterPlan returns a single-root physical.Plan holding one
 // IndexFilter node that keeps the rows of objectPaths from the index objects
-// at sourceIndexPaths.
+// at sourceIndexPaths. sourceIndexPaths must be in posting key order.
 func buildIndexFilterPlan(tenant string, sourceIndexPaths, objectPaths []string) *physical.Plan {
 	node := &physical.IndexFilter{
-		NodeID:           ulid.Make(),
-		Tenant:           tenant,
-		SourceIndexPaths: sourceIndexPaths,
-		ObjectPaths:      objectPaths,
+		NodeID:            ulid.Make(),
+		Tenant:            tenant,
+		SourceIndexPaths:  sourceIndexPaths,
+		SourcesInKeyOrder: true,
+		ObjectPaths:       objectPaths,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)

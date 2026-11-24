@@ -1,8 +1,8 @@
-//go:build purego || !amd64
+//go:build !amd64 || (purego && !goexperiment.simd)
 
 package bytestreamsplit
 
-import "github.com/parquet-go/bitpack/unsafecast"
+import "encoding/binary"
 
 func encodeFloat(dst, src []byte) {
 	n := len(src) / 4
@@ -11,7 +11,8 @@ func encodeFloat(dst, src []byte) {
 	b2 := dst[2*n : 3*n]
 	b3 := dst[3*n : 4*n]
 
-	for i, v := range unsafecast.Slice[uint32](src) {
+	for i := range n {
+		v := binary.LittleEndian.Uint32(src[4*i:])
 		b0[i] = byte(v >> 0)
 		b1[i] = byte(v >> 8)
 		b2[i] = byte(v >> 16)
@@ -30,7 +31,8 @@ func encodeDouble(dst, src []byte) {
 	b6 := dst[6*n : 7*n]
 	b7 := dst[7*n : 8*n]
 
-	for i, v := range unsafecast.Slice[uint64](src) {
+	for i := range n {
+		v := binary.LittleEndian.Uint64(src[8*i:])
 		b0[i] = byte(v >> 0)
 		b1[i] = byte(v >> 8)
 		b2[i] = byte(v >> 16)
@@ -49,12 +51,11 @@ func decodeFloat(dst, src []byte) {
 	b2 := src[2*n : 3*n]
 	b3 := src[3*n : 4*n]
 
-	dst32 := unsafecast.Slice[uint32](dst)
-	for i := range dst32 {
-		dst32[i] = uint32(b0[i]) |
-			uint32(b1[i])<<8 |
-			uint32(b2[i])<<16 |
-			uint32(b3[i])<<24
+	for i := range n {
+		binary.LittleEndian.PutUint32(dst[4*i:], uint32(b0[i])|
+			uint32(b1[i])<<8|
+			uint32(b2[i])<<16|
+			uint32(b3[i])<<24)
 	}
 }
 
@@ -69,16 +70,15 @@ func decodeDouble(dst, src []byte) {
 	b6 := src[6*n : 7*n]
 	b7 := src[7*n : 8*n]
 
-	dst64 := unsafecast.Slice[uint64](dst)
-	for i := range dst64 {
-		dst64[i] = uint64(b0[i]) |
-			uint64(b1[i])<<8 |
-			uint64(b2[i])<<16 |
-			uint64(b3[i])<<24 |
-			uint64(b4[i])<<32 |
-			uint64(b5[i])<<40 |
-			uint64(b6[i])<<48 |
-			uint64(b7[i])<<56
+	for i := range n {
+		binary.LittleEndian.PutUint64(dst[8*i:], uint64(b0[i])|
+			uint64(b1[i])<<8|
+			uint64(b2[i])<<16|
+			uint64(b3[i])<<24|
+			uint64(b4[i])<<32|
+			uint64(b5[i])<<40|
+			uint64(b6[i])<<48|
+			uint64(b7[i])<<56)
 	}
 }
 

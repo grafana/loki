@@ -191,7 +191,7 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 		rnd         = rand.New(rand.NewPCG(t.seed, t.seed))
 		recTime     = time.Now()
 	)
-	lb, err := factory.NewBuilder()
+	lb, err := factory.NewBuilder(t.name)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 				stream.Entries = append(stream.Entries, logproto.Entry{Timestamp: ts, Line: line})
 				n--
 			}
-			if err := lb.Append(t.name, stream, recTime); err != nil {
+			if err := lb.Append(stream, recTime); err != nil {
 				tb.Fatal(err)
 			}
 		}

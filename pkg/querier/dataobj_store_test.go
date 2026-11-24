@@ -48,6 +48,10 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
+// objectComponents are the components of the metadata metrics that open the log objects of a query.
+// The metastore component opens the index objects.
+var objectComponents = []string{"streams-reader", "logs-reader"}
+
 func TestNewDataObjStore(t *testing.T) {
 	builder := objtest.NewBuilder(t)
 	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
@@ -107,52 +111,79 @@ func TestWithDataObjMetadataCache(t *testing.T) {
 
 	t.Run("opening an object loads its metadata through the cache", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.callKeys(), 1, "the query opens the one object through the cache")
 		require.Equal(t, 1, spy.loadCount())
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 1.0, got.onDemandCacheRequests, "the open looks up the cache")
+		require.Zero(t, got.onDemandCacheBytes)
+		require.Positive(t, got.onDemandStorageBytes, "the miss loads the metadata from object storage")
+		require.Equal(t, 1.0, got.onDemandStorageRequests, "the cached region holds the metadata that the sections read, so they read nothing more")
+		require.Zero(t, got.prefetchStorageRequests+got.prefetchCacheRequests, "the metadata cache is not the prefetcher")
 	})
 
 	t.Run("a second query is served from the cache without loading again", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.callKeys(), 2, "each query opens the object through the cache")
 		require.Equal(t, 1, spy.loadCount(), "only the first query loads the metadata")
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 2.0, got.onDemandCacheRequests, "each query looks up the cache")
+		require.Positive(t, got.onDemandCacheBytes)
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the second query takes from the cache the bytes that the first query loaded")
+		require.Equal(t, 1.0, got.onDemandStorageRequests)
 	})
 
 	t.Run("each object loads its own metadata once", func(t *testing.T) {
 		spy := newMetadataCacheSpy()
-		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withMetadataCache(spy))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withMetadataCache(spy), withRegisterer(reg))
 
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 		store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.Len(t, spy.distinctKeys(), 2, "two objects have two cache keys")
 		require.Equal(t, 2, spy.loadCount())
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Equal(t, 4.0, got.onDemandCacheRequests, "two queries look up the cache for each of the two objects")
+		require.Equal(t, 2.0, got.onDemandStorageRequests, "each object loads once")
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the second query takes from the cache the bytes that the first query loaded")
 	})
 
 	t.Run("returns the same samples from a cached object as from a freshly loaded one", func(t *testing.T) {
-		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withMetadataCache(newMetadataCacheSpy()))
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withMetadataCache(newMetadataCacheSpy()), withRegisterer(reg))
 
 		loaded := store.selectSamples(testCtx(t), query, at(0), at(10))
 		cached := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, loaded)
 		require.Equal(t, loaded, cached)
+		got := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Positive(t, got.onDemandCacheBytes)
+		require.Equal(t, got.onDemandStorageBytes, got.onDemandCacheBytes, "the cached query takes from the cache the bytes that the first query loaded")
 	})
 
 	t.Run("returns samples without a cache when none is configured", func(t *testing.T) {
-		store := newTestDataObjStore(t, []logproto.Stream{appStream})
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withRegisterer(reg))
 
 		got := store.selectSamples(testCtx(t), query, at(0), at(10))
 
 		require.NotEmpty(t, got)
+		direct := gatherMetadataMetrics(t, reg, objectComponents...)
+		require.Zero(t, direct.onDemandCacheRequests)
+		require.Positive(t, direct.onDemandStorageBytes, "without a cache, the open reads the head of the object from object storage")
+		require.Equal(t, 1.0, direct.onDemandStorageRequests, "the head read holds the metadata that the sections read, so they read nothing more")
 	})
 }
 
@@ -195,14 +226,29 @@ func TestWithDataObjMetadataPrefetcher(t *testing.T) {
 			want := newTestDataObjStore(t, streams).selectSamples(testCtx(t), query, at(0), at(10))
 			require.NotEmpty(t, want)
 
+			reg := prometheus.NewRegistry()
 			recorder := &rangeRecorder{}
-			store := newTestDataObjStore(t, streams, withMetadataPrefetcher(newTestPrefetcher(t)), withBucketWrapper(recorder.wrap))
+			store := newTestDataObjStore(t, streams, withMetadataPrefetcher(newTestPrefetcher(t)), withBucketWrapper(recorder.wrap), withRegisterer(reg))
 
 			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "cold")
+			cold := gatherMetadataMetrics(t, reg, objectComponents...)
 			recorder.reset()
 			require.Equal(t, want, store.selectSamples(testCtx(t), query, at(0), at(10)), "warm")
+			warm := gatherMetadataMetrics(t, reg, objectComponents...).minus(cold)
 			require.NotZero(t, recorder.total(), "the data pages still come from object storage")
 			require.Zero(t, recorder.readsBelow(metadataRegionEnd(t, store)), "reads inside the metadata region")
+
+			require.Positive(t, cold.prefetchStorageBytes, "the cold query loads the metadata from object storage")
+			require.Positive(t, cold.prefetchStorageRequests)
+			require.Zero(t, cold.onDemandStorageBytes, "the prefetch covers the metadata that the query reads")
+			require.Zero(t, cold.onDemandStorageRequests)
+			require.GreaterOrEqual(t, cold.prefetchStorageBytes, warm.prefetchCacheBytes, "the cold query downloads the whole head of the object, and the warm query takes the part of it that the response holds")
+			require.Positive(t, warm.prefetchCacheBytes)
+			require.Positive(t, warm.prefetchCacheRequests)
+			require.Zero(t, warm.prefetchStorageBytes)
+			require.Zero(t, warm.prefetchStorageRequests)
+			require.Zero(t, warm.onDemandStorageBytes)
+			require.Zero(t, warm.onDemandStorageRequests)
 		})
 	}
 }
@@ -311,6 +357,13 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
 				require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"))
 				require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
+				directReads := gatherMetadataMetrics(t, reg, objectComponents...)
+				require.Zero(t, directReads.onDemandCacheRequests)
+				require.Zero(t, directReads.prefetchStorageRequests+directReads.prefetchCacheRequests, "without a prefetcher, nothing counts in the prefetch phase")
+				require.Positive(t, directReads.onDemandStorageBytes, "without a cache, opening an object reads its head from object storage")
+				require.Positive(t, directReads.onDemandStorageRequests)
+				require.LessOrEqual(t, directReads.onDemandStorageBytes, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader")+seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "logs-reader"),
+					"the metadata that the opens read is part of the downloaded bytes")
 
 				got := statsCtx.Result(0, 0, 0).Querier.Store.Dataobj
 				require.Equal(t, layout.wantLogsCompacted, got.LogsCompactedObjectsCount)
@@ -1495,6 +1548,61 @@ func (s *metadataCacheSpy) loadCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.loads
+}
+
+// metadataMetrics holds the sum, over some components, of the series of the metadata metrics.
+type metadataMetrics struct {
+	prefetchCacheBytes, prefetchCacheRequests     float64
+	prefetchStorageBytes, prefetchStorageRequests float64
+	onDemandCacheBytes, onDemandCacheRequests     float64
+	onDemandStorageBytes, onDemandStorageRequests float64
+}
+
+// gatherMetadataMetrics returns the metadata metrics of the given components that reg holds. Without
+// components, it sums every component.
+func gatherMetadataMetrics(t *testing.T, reg prometheus.Gatherer, components ...string) metadataMetrics {
+	t.Helper()
+
+	families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+	require.NoError(t, err)
+	sum := func(name, source, phase string) float64 {
+		var total float64
+		for _, series := range metrics.FindMetricsInFamilyMatchingLabels(families[name], "source", source, "phase", phase) {
+			inComponents := slices.ContainsFunc(components, func(component string) bool {
+				return metrics.MatchesLabels(series, "component", component)
+			})
+			if len(components) == 0 || inComponents {
+				total += series.GetCounter().GetValue()
+			}
+		}
+		return total
+	}
+
+	const bytesName, requestsName = "loki_querier_dataobj_metadata_bytes_total", "loki_querier_dataobj_metadata_requests_total"
+	return metadataMetrics{
+		prefetchCacheBytes:      sum(bytesName, "cache", "prefetch"),
+		prefetchCacheRequests:   sum(requestsName, "cache", "prefetch"),
+		prefetchStorageBytes:    sum(bytesName, "storage", "prefetch"),
+		prefetchStorageRequests: sum(requestsName, "storage", "prefetch"),
+		onDemandCacheBytes:      sum(bytesName, "cache", "on_demand"),
+		onDemandCacheRequests:   sum(requestsName, "cache", "on_demand"),
+		onDemandStorageBytes:    sum(bytesName, "storage", "on_demand"),
+		onDemandStorageRequests: sum(requestsName, "storage", "on_demand"),
+	}
+}
+
+// minus returns the metrics that grew since earlier.
+func (m metadataMetrics) minus(earlier metadataMetrics) metadataMetrics {
+	return metadataMetrics{
+		prefetchCacheBytes:      m.prefetchCacheBytes - earlier.prefetchCacheBytes,
+		prefetchCacheRequests:   m.prefetchCacheRequests - earlier.prefetchCacheRequests,
+		prefetchStorageBytes:    m.prefetchStorageBytes - earlier.prefetchStorageBytes,
+		prefetchStorageRequests: m.prefetchStorageRequests - earlier.prefetchStorageRequests,
+		onDemandCacheBytes:      m.onDemandCacheBytes - earlier.onDemandCacheBytes,
+		onDemandCacheRequests:   m.onDemandCacheRequests - earlier.onDemandCacheRequests,
+		onDemandStorageBytes:    m.onDemandStorageBytes - earlier.onDemandStorageBytes,
+		onDemandStorageRequests: m.onDemandStorageRequests - earlier.onDemandStorageRequests,
+	}
 }
 
 // newTestPrefetcher returns a prefetcher with the default config over an in-memory store.

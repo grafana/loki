@@ -75,6 +75,11 @@ message HintTimeRange {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+  // document_shard and document_shard_bits limit the range to the streams
+  // whose fingerprint has document_shard as its top document_shard_bits bits.
+  // Zero bits covers every stream.
+  uint32 document_shard = 3;
+  uint32 document_shard_bits = 4;
 }
 
 message HintTimeRanges {

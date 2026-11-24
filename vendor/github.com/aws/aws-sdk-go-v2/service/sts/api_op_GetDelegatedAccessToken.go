@@ -62,10 +62,7 @@ type GetDelegatedAccessTokenOutput struct {
 	// Amazon Web Services credentials for API authentication.
 	Credentials *types.Credentials
 
-	// The percentage of the maximum policy size that is used by the session policy.
-	// The policy size is calculated as the sum of all the session policies and
-	// permission boundaries attached to the session. If the packed size exceeds 100%,
-	// the request fails.
+	// This field is deprecated. It is not populated for GetDelegatedAccessToken .
 	//
 	// Deprecated: Deprecated. This field is not populated for GetDelegatedAccessToken.
 	PackedPolicySize *int32

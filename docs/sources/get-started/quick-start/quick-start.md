@@ -29,7 +29,7 @@ killercoda:
 
 # Quickstart to run Loki locally
 
-If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in the [simple scalable deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) mode and includes a sample application to generate logs. Simple Scalable Deployment (SSD) mode is deprecated and scheduled for removal in Loki 4.0; for production deployments, see [deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) for currently recommended options.
+If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) and includes a sample application to generate logs. For production deployments, see [deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) for currently recommended options.
 
 The Docker Compose configuration runs the following components, each in its own container:
 
@@ -37,11 +37,9 @@ The Docker Compose configuration runs the following components, each in its own 
   [flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
 
 - **Grafana Alloy**: which scrapes the log lines from flog, and pushes them to Loki through the gateway.
-- **Gateway** (nginx) which receives requests and redirects them to the appropriate container based on the request's URL.
-- **Loki read component**: which runs a Query Frontend and a Querier.
-- **Loki write component**: which runs a Distributor and an Ingester.
-- **Loki backend component**: which runs an Index Gateway, Compactor, Ruler, Bloom Planner (deprecated), Bloom Builder (deprecated), and Bloom Gateway (deprecated).
-- **Minio**: which Loki uses to store its index and chunks.
+- **Gateway** (nginx) which receives requests and redirects them to the Loki container.
+- **Loki**: which runs all Loki components (Distributor, Ingester, Query Frontend, Query Scheduler, Querier, Compactor, and Ruler) together in a single monolithic process.
+- **Silo**: which Loki uses to store its index and chunks.
 - **Grafana**: which provides visualization of the log lines captured within Loki.
 
 {{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application" >}}
@@ -131,11 +129,9 @@ This quickstart assumes you are running Linux.
 
    ```console
    ✔ Network evaluate-loki_loki          Created      0.1s
-   ✔ Container evaluate-loki-minio-1     Started      0.6s
+   ✔ Container evaluate-loki-silo-1      Started      0.6s
    ✔ Container evaluate-loki-flog-1      Started      0.6s
-   ✔ Container evaluate-loki-backend-1   Started      0.8s
-   ✔ Container evaluate-loki-write-1     Started      0.8s
-   ✔ Container evaluate-loki-read-1      Started      0.8s
+   ✔ Container evaluate-loki-loki-1      Started      0.8s
    ✔ Container evaluate-loki-gateway-1   Started      1.1s
    ✔ Container evaluate-loki-grafana-1   Started      1.4s
    ✔ Container evaluate-loki-alloy-1     Started      1.4s
@@ -144,10 +140,8 @@ This quickstart assumes you are running Linux.
 
 4. (Optional) Verify that the Loki cluster is up and running.
 
-   - The read component returns `ready` when you browse to [http://localhost:3101/ready](http://localhost:3101/ready).
-     The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` shows until the read component is ready.
-   - The write component returns `ready` when you browse to [http://localhost:3102/ready](http://localhost:3102/ready).
-     The message `Ingester not ready: waiting for 15s after being ready` shows until the write component is ready.
+   - The Loki component returns `ready` when you browse to [http://localhost:3101/ready](http://localhost:3101/ready).
+     It can take a few seconds after the container starts for all internal components to report ready.
 
 5. (Optional) Verify that Grafana Alloy is running.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).

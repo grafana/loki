@@ -28,11 +28,17 @@ import (
 // the multipart upload request. For more information about multipart uploads, see [Multipart Upload Overview]
 // in the Amazon S3 User Guide.
 //
-// After you initiate a multipart upload and upload one or more parts, to stop
-// being charged for storing the uploaded parts, you must either complete or abort
-// the multipart upload. Amazon S3 frees up the space used to store the parts and
-// stops charging you for storing them only after you either complete or abort a
-// multipart upload.
+//   - After you initiate a multipart upload and upload one or more parts, to stop
+//     being charged for storing the uploaded parts, you must either complete or abort
+//     the multipart upload. Amazon S3 frees up the space used to store the parts and
+//     stops charging you for storing them only after you either complete or abort a
+//     multipart upload.
+//
+//   - When you initiate a multipart upload, Amazon S3 records the bucket
+//     configuration in place at that time and uses it for the rest of the upload.
+//     Changes that you make to the bucket configuration after you initiate the upload
+//     don't apply to that upload. To apply new bucket configuration to uploads in
+//     progress, use [ListMultipartUploads]to find them and [AbortMultipartUpload]to stop them. Then start the uploads again.
 //
 // If you have configured a lifecycle rule to abort incomplete multipart uploads,
 // the created multipart upload must be completed within the number of days
@@ -227,8 +233,8 @@ import (
 // [Authenticating Requests (Amazon Web Services Signature Version 4)]: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
 // [AbortMultipartUpload]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html
 // [Multipart Upload Overview]: https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuoverview.html
-// [Protecting data using server-side encryption with Amazon Web Services KMS]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 // [ListMultipartUploads]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
+// [Protecting data using server-side encryption with Amazon Web Services KMS]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 // [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 //
 // [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
@@ -869,6 +875,14 @@ type CreateMultipartUploadOutput struct {
 
 	// ID for the initiated multipart upload.
 	UploadId *string
+
+	// Version ID of the object.
+	//
+	// Returns the Version ID of the object for the initiated multipart upload, if
+	// bucket versioning is enabled.
+	//
+	// This functionality is not supported for directory buckets.
+	VersionId *string
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
