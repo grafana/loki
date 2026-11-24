@@ -162,6 +162,10 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
 			sanitizedKey = sanitizedKey + DuplicateSuffix
+			// A parsed value never replaces a label that has the final name.
+			if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
+				return nil
+			}
 		}
 
 		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
@@ -203,6 +207,13 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], DuplicateSuffix...)
 
 		keyString = string(j.buildSanitizedPrefixFromBuffer())
+
+		// A parsed value never replaces a label that has the final name.
+		if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
+			// reset the prefix position
+			j.prefixBuffer = j.prefixBuffer[:prefixLen]
+			return nil
+		}
 	}
 
 	if !j.parserHints.ShouldExtract(keyString) || j.parserHints.Extracted(keyString) {
@@ -372,6 +383,10 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = fmt.Sprintf("%s%s", key, DuplicateSuffix)
+				// A parsed value never replaces a label that has the final name.
+				if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+					continue
+				}
 			}
 
 			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -449,6 +464,10 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + DuplicateSuffix
+			// A parsed value never replaces a label that has the final name.
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+				continue
+			}
 		}
 
 		if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -535,6 +554,10 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		name := names[i]
 		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
 			name = name + DuplicateSuffix
+			// A parsed value never replaces a label that has the final name.
+			if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
+				continue
+			}
 		}
 
 		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
@@ -605,9 +628,9 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 
 // wantsOtherName reports whether a name of an expression other than current may still be wanted: the
 // name, or its renamed form when a stream label or structured metadata holds it, passes the hints. A
-// renamed name that something extracted is done, because a renamed key never overwrites a value. Any
-// other name stays wanted, because a key of this line overwrites its value. The parser stops reading
-// a line when this is false.
+// renamed name that something extracted, or that a label holds, is done, because a renamed key never
+// overwrites a value. Any other name stays wanted, because a key of this line overwrites its value.
+// The parser stops reading a line when this is false.
 func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current string) bool {
 	// The common query has one expression, so there is no other name.
 	if len(l.expressions) == 1 {
@@ -623,7 +646,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 		if renamed {
 			name = id + DuplicateSuffix
 		}
-		if renamed && hints.Extracted(name) {
+		if renamed && (hints.Extracted(name) || lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel)) {
 			continue
 		}
 		if hints.ShouldExtract(name) {
@@ -708,9 +731,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				id := key
 				key = key + DuplicateSuffix
-				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
-					// Don't extract duplicates if we don't have to. The next key of the line may
-					// still be needed, so stop only when no other name is left to read.
+				if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) || lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+					// A label has the final name, or another key of this line or an earlier stage
+					// wrote it, or the query does not need it. The next key of the line may still be
+					// needed, so stop only when no other name is left to read.
 					if !l.wantsOtherName(lbs, id) {
 						break
 					}
@@ -834,10 +858,10 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + DuplicateSuffix
-			// A renamed key must not overwrite a value that is already extracted under the final
-			// name, e.g. by another expression that asks for the literal key (mirrors
-			// LogfmtExpressionParser).
-			if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+			// A renamed key must not overwrite a label that has the final name, or a value that
+			// is already extracted under it, e.g. by another expression that asks for the literal
+			// key (mirrors LogfmtExpressionParser).
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) || lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 				return
 			}
 		}
@@ -972,6 +996,10 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + DuplicateSuffix
+				// A parsed value never replaces a label that has the final name.
+				if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
+					return nil
+				}
 			}
 
 			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {

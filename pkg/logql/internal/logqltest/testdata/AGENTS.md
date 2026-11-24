@@ -66,11 +66,11 @@ eval range from 40s to 60s step 20s <query>   # last step == the instant above
 7. **Cover extraction and error edge cases** where a stage builds labels or can fail (parsers,
    `| unwrap`, `label_format`).
    A clashing name — a label present in more than one of stream labels, structured metadata, and
-   parsed fields — follows two rules. The base name goes to the highest-precedence source:
-   `stream > structured metadata > parsed`. Each value that loses the base name spills to the single
-   `<name>_extracted` key, where the precedence is the opposite: `parsed > structured metadata > stream`.
-   A three-way clash therefore keeps the parsed value under `<name>_extracted` and drops the
-   structured-metadata value. Test every combination. A malformed line sets `__error__`, which fails the metric query unless
+   parsed fields — follows one precedence: `stream > structured metadata > parsed`. The
+   highest-precedence source keeps the base name. Each value that loses moves to the single
+   `<name>_extracted` key, unless a stream label or a structured-metadata value already has that name.
+   Then it is dropped, because a parsed value never replaces a label. A three-way clash therefore keeps
+   the structured-metadata value under `<name>_extracted` and drops the parsed value. Test every combination. A malformed line sets `__error__`, which fails the metric query unless
    `| __error__=""` drops that line; assert both, plus a partially malformed line (valid fields kept,
    the bad one dropped, or `--strict`-failed). An empty-value label (e.g. a `json` path with no
    match → `age=""`) is significant and distinct from an absent label; JSON input needs a backtick
