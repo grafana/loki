@@ -16,6 +16,10 @@ For the on-disk binary layout of the index files, see [TSDB index format](https:
 
 To get started using TSDB, add the following configurations to your `config.yaml`:
 
+{{< admonition type="note" >}}
+If you are migrating from a legacy index type such as `boltdb-shipper`, do the migration while still running Loki 3.x: add a new TSDB period with a future `from` date, keep the old period entries until your retention period has passed, then remove them, and only then upgrade to Loki 4.0. Loki 4.0 fails to start if any period, including past periods, still refers to a removed index type such as `boltdb-shipper`. Refer to [Migrate to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/) for the full migration procedure.
+{{< /admonition >}}
+
 ```yaml
 schema_config:
   configs:
