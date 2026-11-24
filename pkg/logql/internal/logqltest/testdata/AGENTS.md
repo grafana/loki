@@ -70,9 +70,10 @@ eval range from 40s to 60s step 20s <query>   # last step == the instant above
    highest-precedence source keeps the base name. Each value that loses moves to the single
    `<name>_extracted` key, unless a stream label or a structured-metadata value already has that name.
    Then it is dropped, because a parsed value never replaces a label. A three-way clash therefore keeps
-   the structured-metadata value under `<name>_extracted` and drops the parsed value. Test every combination. A malformed line sets `__error__`, which fails the metric query unless
-   `| __error__=""` drops that line; assert both, plus a partially malformed line (valid fields kept,
-   the bad one dropped, or `--strict`-failed). An empty-value label (e.g. a `json` path with no
+   the structured-metadata value under `<name>_extracted` and drops the parsed value. Among parsed
+   fields the first value wins, in every parser. Test every combination. A malformed line sets
+   `__error__`, which fails the metric query unless `| __error__=""` drops that line; assert both,
+   plus a partially malformed line (valid fields kept, the bad one dropped, or `--strict`-failed). An empty-value label (e.g. a `json` path with no
    match → `age=""`) is significant and distinct from an absent label; JSON input needs a backtick
    raw log line.
 

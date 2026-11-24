@@ -2581,6 +2581,24 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			want:     labels.FromStrings("app", "x", "c", "z", "c_extracted", "m"),
 		},
 		{
+			// The second foo is skipped, but the literal foo_extracted after it replaces the renamed first foo.
+			name:        "a literal key after a skipped duplicate replaces the renamed value",
+			names:       []string{"foo", "foo_extracted"},
+			required:    []string{"foo_extracted"},
+			stream:      labels.FromStrings("foo", "x"),
+			line:        "foo=1 foo=2 foo_extracted=3" + fillers.String(),
+			want:        labels.FromStrings("foo", "x", "foo_extracted", "3"),
+			wantFillers: true,
+		},
+		{
+			// The first-writer rule makes `b` final once the line wrote it, so the parser stops.
+			name:     "the other name comes before the renamed key",
+			names:    []string{"app", "b"},
+			required: []string{"app", "b"},
+			line:     "b=1 app=y" + fillers.String(),
+			want:     labels.FromStrings("app", "x", "b", "1"),
+		},
+		{
 			name:        "another name is needed and comes later",
 			names:       []string{"app", "b"},
 			required:    []string{"app", "b"},
@@ -2699,6 +2717,154 @@ func TestParsedKeyDoesNotReplaceLabelWithTheName(t *testing.T) {
 				require.Equal(t, tc.wantMetadata, res.StructuredMetadata())
 				require.Equal(t, tc.wantParsed, res.Parsed())
 			})
+		}
+	}
+}
+
+// The expression forms follow the first-writer rule of the other parsers: a name that an earlier
+// stage wrote, or an earlier key of the same line, keeps its value. An asked name that the line lacks
+// does not replace a value with an empty one.
+func TestExpressionParsersKeepTheFirstValue(t *testing.T) {
+	jsonExpr, err := NewJSONExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")})
+	require.NoError(t, err)
+	logfmtExpr, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+	require.NoError(t, err)
+
+	type stage struct {
+		parser Stage
+		line   string
+	}
+	for _, tt := range []struct {
+		name   string
+		stream labels.Labels
+		stages []stage
+		want   labels.Labels
+	}{
+		{
+			name:   "json expression after an earlier stage",
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"foo":"second"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression after an earlier stage",
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `foo=second`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "json expression, name missing after an earlier stage",
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"other":"x"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression, name missing after an earlier stage",
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `other=x`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "json expression, renamed key after an earlier stage",
+			stream: labels.FromStrings("foo", "l"),
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"foo":"second"}`}},
+			want:   labels.FromStrings("foo", "l", "foo_extracted", "first"),
+		},
+		{
+			name:   "logfmt expression, renamed key after an earlier stage",
+			stream: labels.FromStrings("foo", "l"),
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `foo=second`}},
+			want:   labels.FromStrings("foo", "l", "foo_extracted", "first"),
+		},
+		{
+			name:   "json expression, duplicate key",
+			stages: []stage{{jsonExpr, `{"foo":"first","foo":"second"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression, duplicate key",
+			stages: []stage{{logfmtExpr, `foo=first foo=second`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			base := tt.stream
+			if base.IsEmpty() {
+				base = labels.FromStrings("app", "x")
+			} else {
+				base = labels.NewBuilder(tt.stream).Set("app", "x").Labels()
+			}
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			for _, st := range tt.stages {
+				_, ok := st.parser.Process(0, []byte(st.line), b)
+				require.True(t, ok)
+			}
+			want := labels.NewBuilder(tt.want).Set("app", "x").Labels()
+			require.Equal(t, want, b.LabelsResult().Labels())
+		})
+	}
+}
+
+// An expression reads the keys that it names. A key of the line that no expression reads does not write a
+// label, even when it has the name of one. Below, `status` is the label and `code` is the key that holds its
+// value, so the `status` key of the line never wins, in either order. That holds for the first-writer rule
+// too: the key that comes first must be the source key. A grouping or a label filter on the name asks the
+// hints only for that name, so the parser must still read the source key.
+func TestExpressionParsersIgnoreKeysThatNoExpressionReads(t *testing.T) {
+	exprs := []LabelExtractionExpr{NewLabelExtractionExpr("status", "code")}
+	parsers := []struct {
+		name  string
+		build func() (Stage, error)
+		lines []string
+	}{
+		{
+			"json",
+			func() (Stage, error) { return NewJSONExpressionParser(exprs) },
+			[]string{`{"code":"200","status":"500"}`, `{"status":"500","code":"200"}`},
+		},
+		{
+			"logfmt",
+			func() (Stage, error) { return NewLogfmtExpressionParser(exprs, false) },
+			[]string{`code=200 status=500`, `status=500 code=200`},
+		},
+	}
+	streams := []struct {
+		name  string
+		base  labels.Labels
+		final string // the name that the value of `code` is stored under
+		want  labels.Labels
+	}{
+		{
+			name:  "no stream label",
+			base:  labels.FromStrings("app", "x"),
+			final: "status",
+			want:  labels.FromStrings("app", "x", "status", "200"),
+		},
+		{
+			name:  "stream label",
+			base:  labels.FromStrings("app", "x", "status", "s"),
+			final: "status_extracted",
+			want:  labels.FromStrings("app", "x", "status", "s", "status_extracted", "200"),
+		},
+	}
+	for _, p := range parsers {
+		for _, line := range p.lines {
+			for _, st := range streams {
+				for _, hinted := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/%s/hinted=%t", p.name, line, st.name, hinted), func(t *testing.T) {
+						// A parser remembers which keys it reads, so each run gets its own.
+						parser, err := p.build()
+						require.NoError(t, err)
+
+						b := NewBaseLabelsBuilder().ForLabels(st.base, labels.StableHash(st.base))
+						if hinted {
+							b.parserKeyHints = NewParserHint(nil, []string{st.final}, false, false, "")
+						}
+						b.Reset()
+						_, ok := parser.Process(0, []byte(line), b)
+						require.True(t, ok)
+						require.Equal(t, st.want, b.LabelsResult().Labels())
+					})
+				}
+			}
 		}
 	}
 }
