@@ -102,7 +102,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.queryPanel('sum (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'bytes')
                           )
                           .addPanel(
-                            $.newQueryPanel('By tenant share of metadata bytes') +
+                            $.newQueryPanel('Per tenant share of structured metadata bytes') +
                             $.queryPanel('sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], '{{tenant}}') + {
                               stack: true,
                               yaxes: [
