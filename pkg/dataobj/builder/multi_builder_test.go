@@ -78,9 +78,7 @@ func TestMultiObjectBuilder_AppendSplitsAcrossTenantsAndWindows(t *testing.T) {
 	}
 	var got []scope
 	for _, b := range builders {
-		ranges := b.TimeRanges()
-		require.Len(t, ranges, 1, "each builder must hold exactly one tenant")
-		got = append(got, scope{ranges[0].Tenant, truncatedWindow(t, b)})
+		got = append(got, scope{b.TimeRange().Tenant, truncatedWindow(t, b)})
 	}
 	require.Equal(t, []scope{
 		{"tenant-a", w1},
@@ -226,13 +224,11 @@ func TestMultiObjectBuilder_Reset(t *testing.T) {
 	require.Equal(t, readsBefore, readSamples(t, watermarks, resultOK))
 }
 
-// truncatedWindow returns the TOC window that the builder's single tenant time
-// range belongs to.
+// truncatedWindow returns the TOC window that the time range of the builder
+// belongs to.
 func truncatedWindow(t *testing.T, b builder) time.Time {
 	t.Helper()
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-	return ranges[0].MinTime.UTC().Truncate(metastore.MetastoreWindowSize)
+	return b.TimeRange().MinTime.UTC().Truncate(metastore.MetastoreWindowSize)
 }
 
 // appendToTestBuilder appends the stream as a record at offset 0.
@@ -283,7 +279,7 @@ func TestMultiObjectBuilder_AppendWatermarks(t *testing.T) {
 		require.Equal(t, AppendResult{Appended: 1}, res)
 		require.Equal(t, uint64(2), readSamples(t, w, resultOK))
 		for _, b := range m.getBuilders() {
-			if b.TimeRanges()[0].Tenant == "tenant" {
+			if b.TimeRange().Tenant == "tenant" {
 				require.Equal(t, int64(10), *b.(WatermarkedBuilder).InitialWatermark())
 			}
 		}

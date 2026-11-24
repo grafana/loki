@@ -52,11 +52,15 @@ func main() {
 		BufferSize:              16 << 20,
 		SectionStripeMergeLimit: 8,
 	}
+	tenant, err := orig.Tenant()
+	if err != nil {
+		log.Fatal(err)
+	}
 	scr, err := scratch.NewFilesystem(gokitlog.NewNopLogger(), os.TempDir())
 	if err != nil {
 		log.Fatal(err)
 	}
-	b, err := logsobj.NewBuilder(cfg, scr, logsobj.NewBuilderMetrics(), gokitlog.NewNopLogger(), logsobj.NoTenantOverrides{})
+	b, err := logsobj.NewBuilder(tenant, cfg, scr, logsobj.NewBuilderMetrics(), gokitlog.NewNopLogger(), logsobj.NoTenantOverrides{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,40 +112,38 @@ func main() {
 }
 
 // appendObject appends every log record of obj to b. The sorted output uses
-// the sort schema of b, not the schema of obj.
+// the sort schema of b, not the schema of obj. obj must hold the tenant of b.
 func appendObject(ctx context.Context, b *logsobj.Builder, obj *dataobj.Object) error {
-	for _, tenant := range obj.Tenants() {
-		streamLabels := make(map[int64]labels.Labels)
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
-			opened, err := streams.Open(ctx, sec)
-			if err != nil {
-				return err
-			}
-			for res := range streams.IterSection(ctx, opened) {
-				stream, err := res.Value()
-				if err != nil {
-					return err
-				}
-				streamLabels[stream.ID] = stream.Labels.Copy()
-			}
+	streamLabels := make(map[int64]labels.Labels)
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		opened, err := streams.Open(ctx, sec)
+		if err != nil {
+			return err
 		}
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
-			opened, err := logs.Open(ctx, sec)
+		for res := range streams.IterSection(ctx, opened) {
+			stream, err := res.Value()
 			if err != nil {
 				return err
 			}
-			for res := range logs.IterSection(ctx, opened) {
-				record, err := res.Value()
-				if err != nil {
-					return err
-				}
-				ls, ok := streamLabels[record.StreamID]
-				if !ok {
-					return fmt.Errorf("tenant %s: record references unknown stream ID %d", tenant, record.StreamID)
-				}
-				if err := b.AppendRecord(tenant, ls, record.Copy(), record.Timestamp); err != nil {
-					return err
-				}
+			streamLabels[stream.ID] = stream.Labels.Copy()
+		}
+	}
+	for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+		opened, err := logs.Open(ctx, sec)
+		if err != nil {
+			return err
+		}
+		for res := range logs.IterSection(ctx, opened) {
+			record, err := res.Value()
+			if err != nil {
+				return err
+			}
+			ls, ok := streamLabels[record.StreamID]
+			if !ok {
+				return fmt.Errorf("record references unknown stream ID %d", record.StreamID)
+			}
+			if err := b.AppendRecord(ls, record.Copy(), record.Timestamp); err != nil {
+				return err
 			}
 		}
 	}

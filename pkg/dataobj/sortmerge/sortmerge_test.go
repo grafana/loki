@@ -45,11 +45,11 @@ func (s schemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
 func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]push.Entry) (*dataobj.Object, func()) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(testBuilderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
+	b, err := logsobj.NewBuilder(testTenant, testBuilderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
 	require.NoError(t, err)
 
 	for lbls, entries := range byLabel {
-		require.NoError(t, b.Append(testTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
+		require.NoError(t, b.Append(logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
 	obj, closer, err := b.FlushAndSort(t.Context())
