@@ -305,3 +305,30 @@ func TestWALCheckpointWaitsForInflightPush(t *testing.T) {
 	require.NoError(t, <-pushDone)
 	require.NoError(t, <-checkpointDone)
 }
+
+// A checkpointed stream is flushed, removed and then receives a new entry that is
+// only in the WAL. The returning stream must continue its counter, or replay drops
+// the new entry as a duplicate of the checkpoint's higher counter.
+func TestWALRecreatedStreamEntriesSurviveReplay(t *testing.T) {
+	dir := t.TempDir()
+	i, stop := newDefinitionTestIngester(t, dir)
+	definitionTestPush(t, i, 1)
+	s := definitionTestPush(t, i, 2)
+	w := i.wal.(*walWrapper)
+	cp := NewCheckpointer(time.Millisecond, w.seriesIter, w.checkpointWriter(), i.metrics, make(chan struct{}))
+	require.NoError(t, cp.PerformCheckpoint())
+	definitionTestFlush(t, i, s)
+	fresh := definitionTestPush(t, i, 3)
+	require.Equal(t, int64(3), fresh.entryCt)
+	stop()
+
+	recovered := definitionTestRecover(t, dir)
+	inst, err := recovered.GetOrCreateInstance("wal-retention-test")
+	require.NoError(t, err)
+	got, ok := inst.streams.Load(definitionTestLabels)
+	require.True(t, ok)
+	require.Equal(t, int64(3), got.entryCt)
+	require.Len(t, got.chunks, 1)
+	// The checkpoint's two entries plus the entry that is only in the WAL.
+	require.Equal(t, 3, got.chunks[0].chunk.Size(), "the unflushed entry must be recovered")
+}
