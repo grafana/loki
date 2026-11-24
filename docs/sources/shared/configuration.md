@@ -5121,6 +5121,12 @@ query:
   # CLI flag: -logline-query.max-hint-ranges-per-request
   [max_hint_ranges_per_request: <int> | default = 100000]
 
+  # Maximum estimated bytes held by the querier's index metadata cache. Least
+  # recently used entries are evicted to stay within it. 0 disables the byte
+  # budget.
+  # CLI flag: -logline-query.metadata-cache-max-bytes
+  [metadata_cache_max_bytes: <int> | default = 2GB]
+
 correctness:
   # Comma-separated Loki query endpoint base URLs
   # CLI flag: -logline-correctness.loki-query-endpoints

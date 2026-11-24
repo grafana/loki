@@ -9,6 +9,7 @@ type cacheMetrics struct {
 	entries   prometheus.Gauge
 	sizeBytes prometheus.Gauge
 	drops     prometheus.Counter
+	evictions prometheus.Counter
 }
 
 func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
@@ -24,6 +25,10 @@ func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
 		drops: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_hint_provider_metadata_cache_drops_total",
 			Help: "Total number of metadata cache inserts dropped due to capacity limits.",
+		}),
+		evictions: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "logline_hint_provider_metadata_cache_evictions_total",
+			Help: "Total number of metadata cache entries evicted to stay within the entry or byte limits.",
 		}),
 	}
 }
