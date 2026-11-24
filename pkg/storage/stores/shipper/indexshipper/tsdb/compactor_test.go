@@ -608,7 +608,7 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, periodConfig)
+					}, periodConfig, newDedupeTracker(nil, 8)) // nil registerer: counters are not exported
 
 					require.NoError(t, tCompactor.CompactTable())
 
@@ -1216,7 +1216,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	builder, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
@@ -1279,6 +1279,7 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 				filepath.Join(tableWorkingDirectory, userID), objectClient)
 		},
 		periodConfig,
+		newDedupeTracker(nil, 8), // nil registerer: counters are not exported
 	)
 
 	// CompactTable should return an error due to the corrupt file.
@@ -1654,7 +1655,7 @@ func BenchmarkSetupBuilder(b *testing.B) {
 		before := heapAlloc()
 		b.StartTimer()
 
-		builder, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
+		builder, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
 		require.NoError(b, err)
 
 		b.StopTimer()
