@@ -457,7 +457,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "By tenant share of metadata bytes",
+                  "title": "Per tenant share of structured metadata bytes",
                   "type": "timeseries",
                   "yaxes": [
                      {
