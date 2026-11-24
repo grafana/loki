@@ -22,6 +22,9 @@
 #    null, gives an empty label. A name that a label already has gets no empty label.
 # 7. `drop` before the parser removes a name from the clash test. `label_format` replaces any label.
 #    A filter or a grouping does not change the labels of a line.
+# 8. An expression that renames, for example `json status="code"`, reads only the key that it names.
+#    A line key with the name of the label does not set it. The generated file does not cover this
+#    rule, because its expression forms use equal names.
 #
 # The groups, in order:
 #
@@ -33,6 +36,7 @@
 # - A literal `foo_extracted` key next to the key that is renamed to it, and next to labels.
 # - The shape of a value: an empty string, a null, a key with no value.
 # - A duplicate key in one line.
+# - A line key that has the name of a renamed expression label.
 #
 # Each group loads several streams and reads them with one query, so the query reads lines with a
 # collision and lines without one, and each line resolves on its own. A comment on a `load` line
@@ -435,3 +439,70 @@ eval select from 0 to 30s forward {app="h3"} | logfmt foo
 # The expression form of JSON keeps the first value.
 eval select from 0 to 30s forward {app="h4"} | json foo
   {app="h4"} `{"foo":"a","foo":"b"}` @ 10s [parsed foo="a"]
+
+# An expression that renames reads only the key that it names. `status="code"` sets `status` from
+# the key `code`. A key that is called `status` in the line does not set it, in either order (#25905).
+# With a stream label `status`, the value goes to `status_extracted`. The key `status` stays out of
+# that name too.
+clear
+load
+  {app="r1a"}             `{"code":200,"status":500}` @ 10s # json, the source key comes first
+  {app="r1b"}             `{"status":500,"code":200}` @ 10s # json, the source key comes last
+  {app="r2a"}             "code=200 status=500"       @ 10s # logfmt, the source key comes first
+  {app="r2b"}             "status=500 code=200"       @ 10s # logfmt, the source key comes last
+  {app="r3a", status="s"} `{"code":200,"status":500}` @ 10s # json with the stream label
+  {app="r3b", status="s"} `{"status":500,"code":200}` @ 10s
+  {app="r4a", status="s"} "code=200 status=500"       @ 10s # logfmt with the stream label
+  {app="r4b", status="s"} "status=500 code=200"       @ 10s
+  {app="noise"}           `{"code":1,"status":2}`     @ 10s
+  {app="noise", status="s"} "code=1 status=2"         @ 10s
+
+eval select from 0 to 30s forward {app=~"r1[ab]"} | json status="code"
+  {app="r1a"} `{"code":200,"status":500}` @ 10s [parsed status="200"]
+  {app="r1b"} `{"status":500,"code":200}` @ 10s [parsed status="200"]
+eval select from 0 to 30s forward {app=~"r2[ab]"} | logfmt status="code"
+  {app="r2a"} "code=200 status=500" @ 10s [parsed status="200"]
+  {app="r2b"} "status=500 code=200" @ 10s [parsed status="200"]
+eval select from 0 to 30s forward {app=~"r3[ab]"} | json status="code"
+  {app="r3a", status="s"} `{"code":200,"status":500}` @ 10s [parsed status_extracted="200"]
+  {app="r3b", status="s"} `{"status":500,"code":200}` @ 10s [parsed status_extracted="200"]
+eval select from 0 to 30s forward {app=~"r4[ab]"} | logfmt status="code"
+  {app="r4a", status="s"} "code=200 status=500" @ 10s [parsed status_extracted="200"]
+  {app="r4b", status="s"} "status=500 code=200" @ 10s [parsed status_extracted="200"]
+# A filter judges the value of the source key. The value of the line key `status` never matches.
+eval select from 0 to 30s forward {app=~"r2[ab]"} | logfmt status="code" | status="200"
+  {app="r2a"} "code=200 status=500" @ 10s [parsed status="200"]
+  {app="r2b"} "status=500 code=200" @ 10s [parsed status="200"]
+eval select from 0 to 30s forward {app=~"r2[ab]"} | logfmt status="code" | status="500"
+  expect empty
+eval select from 0 to 30s forward {app=~"r4[ab]"} | logfmt status="code" | status_extracted="200"
+  {app="r4a", status="s"} "code=200 status=500" @ 10s [parsed status_extracted="200"]
+  {app="r4b", status="s"} "status=500 code=200" @ 10s [parsed status_extracted="200"]
+eval select from 0 to 30s forward {app=~"r4[ab]"} | logfmt status="code" | status_extracted="500"
+  expect empty
+# A grouping asks the parser for the name only. The parser must still read the key `code`.
+eval instant at 60s sum by (status) (count_over_time({app=~"r1[ab]"} | json status="code" [1m]))
+  {status="200"} 2
+eval range from 40s to 60s step 20s sum by (status) (count_over_time({app=~"r1[ab]"} | json status="code" [1m])) # overlapping
+  {status="200"} 2 2
+eval instant at 60s sum by (status) (count_over_time({app=~"r2[ab]"} | logfmt status="code" [1m]))
+  {status="200"} 2
+eval range from 40s to 60s step 20s sum by (status) (count_over_time({app=~"r2[ab]"} | logfmt status="code" [1m])) # overlapping
+  {status="200"} 2 2
+eval instant at 60s sum by (status_extracted) (count_over_time({app=~"r3[ab]"} | json status="code" [1m]))
+  {status_extracted="200"} 2
+eval range from 40s to 60s step 20s sum by (status_extracted) (count_over_time({app=~"r3[ab]"} | json status="code" [1m])) # overlapping
+  {status_extracted="200"} 2 2
+eval instant at 60s sum by (status_extracted) (count_over_time({app=~"r4[ab]"} | logfmt status="code" [1m]))
+  {status_extracted="200"} 2
+eval range from 40s to 60s step 20s sum by (status_extracted) (count_over_time({app=~"r4[ab]"} | logfmt status="code" [1m])) # overlapping
+  {status_extracted="200"} 2 2
+# The same grouping with a filter after the parser.
+eval instant at 60s sum by (status) (count_over_time({app=~"r2[ab]"} | logfmt status="code" | status="200" [1m]))
+  {status="200"} 2
+eval range from 40s to 60s step 20s sum by (status) (count_over_time({app=~"r2[ab]"} | logfmt status="code" | status="200" [1m])) # overlapping
+  {status="200"} 2 2
+eval instant at 60s sum by (status_extracted) (count_over_time({app=~"r4[ab]"} | logfmt status="code" | status_extracted="200" [1m]))
+  {status_extracted="200"} 2
+eval range from 40s to 60s step 20s sum by (status_extracted) (count_over_time({app=~"r4[ab]"} | logfmt status="code" | status_extracted="200" [1m])) # overlapping
+  {status_extracted="200"} 2 2
