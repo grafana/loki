@@ -2,12 +2,14 @@ package parquet
 
 import (
 	"io"
+	"sync/atomic"
 
 	"github.com/parquet-go/parquet-go/encoding"
 )
 
 type repeatedPage struct {
 	base               Page
+	numRows            atomic.Int64 // -1 means the row count has not been computed
 	maxRepetitionLevel byte
 	maxDefinitionLevel byte
 	definitionLevels   []byte
@@ -15,13 +17,15 @@ type repeatedPage struct {
 }
 
 func newRepeatedPage(base Page, maxRepetitionLevel, maxDefinitionLevel byte, repetitionLevels, definitionLevels []byte) *repeatedPage {
-	return &repeatedPage{
+	page := &repeatedPage{
 		base:               base,
 		maxRepetitionLevel: maxRepetitionLevel,
 		maxDefinitionLevel: maxDefinitionLevel,
 		definitionLevels:   definitionLevels,
 		repetitionLevels:   repetitionLevels,
 	}
+	page.numRows.Store(-1)
+	return page
 }
 
 func (page *repeatedPage) Type() Type { return page.base.Type() }
@@ -30,7 +34,15 @@ func (page *repeatedPage) Column() int { return page.base.Column() }
 
 func (page *repeatedPage) Dictionary() Dictionary { return page.base.Dictionary() }
 
-func (page *repeatedPage) NumRows() int64 { return int64(countLevelsEqual(page.repetitionLevels, 0)) }
+func (page *repeatedPage) NumRows() int64 {
+	if n := page.numRows.Load(); n >= 0 {
+		return n
+	}
+
+	n := int64(countLevelsEqual(page.repetitionLevels, 0))
+	page.numRows.Store(n)
+	return n
+}
 
 func (page *repeatedPage) NumValues() int64 { return int64(len(page.definitionLevels)) }
 
@@ -74,43 +86,68 @@ func (page *repeatedPage) Slice(i, j int64) Page {
 	repetitionLevels := page.repetitionLevels
 	definitionLevels := page.definitionLevels
 
-	rowIndex0 := 0
-	rowIndex1 := len(repetitionLevels)
+	rowIndex1 := findRowStart(repetitionLevels, i)
 	rowIndex2 := len(repetitionLevels)
 
-	for k, def := range repetitionLevels {
-		if def == 0 {
-			if rowIndex0 == int(i) {
-				rowIndex1 = k
-				break
-			}
-			rowIndex0++
-		}
-	}
-
-	for k, def := range repetitionLevels[rowIndex1:] {
-		if def == 0 {
-			if rowIndex0 == int(j) {
-				rowIndex2 = rowIndex1 + k
-				break
-			}
-			rowIndex0++
-		}
-	}
-
 	numNulls1 := countLevelsNotEqual(definitionLevels[:rowIndex1], maxDefinitionLevel)
-	numNulls2 := countLevelsNotEqual(definitionLevels[rowIndex1:rowIndex2], maxDefinitionLevel)
+	baseI := int64(rowIndex1 - numNulls1)
 
-	i = int64(rowIndex1 - numNulls1)
-	j = int64(rowIndex2 - (numNulls1 + numNulls2))
+	var baseJ int64
+	if j == numRows {
+		baseJ = page.base.NumValues()
+	} else {
+		rowIndex2 = rowIndex1 + findRowStart(
+			repetitionLevels[rowIndex1:],
+			j-i,
+		)
+		numNulls2 := countLevelsNotEqual(
+			definitionLevels[rowIndex1:rowIndex2],
+			maxDefinitionLevel,
+		)
+		baseJ = int64(rowIndex2 - (numNulls1 + numNulls2))
+	}
 
-	return newRepeatedPage(
-		page.base.Slice(i, j),
-		maxRepetitionLevel,
-		maxDefinitionLevel,
-		repetitionLevels[rowIndex1:rowIndex2:rowIndex2],
-		definitionLevels[rowIndex1:rowIndex2:rowIndex2],
-	)
+	slicedNumRows := j - i
+	sliced := &repeatedPage{
+		base:               page.base.Slice(baseI, baseJ),
+		maxRepetitionLevel: maxRepetitionLevel,
+		maxDefinitionLevel: maxDefinitionLevel,
+		definitionLevels:   definitionLevels[rowIndex1:rowIndex2:rowIndex2],
+		repetitionLevels:   repetitionLevels[rowIndex1:rowIndex2:rowIndex2],
+	}
+	sliced.numRows.Store(slicedNumRows)
+	return sliced
+}
+
+// findRowStart returns the index of the repetition level that starts rowIndex,
+// or len(repetitionLevels) when rowIndex is the number of rows.
+func findRowStart(repetitionLevels []byte, rowIndex int64) int {
+	const blockSize = 256
+
+	offset := 0
+	if rowIndex > 0 {
+		for len(repetitionLevels) > blockSize {
+			block := repetitionLevels[:blockSize]
+			numRows := int64(countLevelsEqual(block, 0))
+			if numRows > rowIndex {
+				repetitionLevels = block
+				break
+			}
+			rowIndex -= numRows
+			offset += blockSize
+			repetitionLevels = repetitionLevels[blockSize:]
+		}
+	}
+
+	for i, level := range repetitionLevels {
+		if level == 0 {
+			if rowIndex == 0 {
+				return offset + i
+			}
+			rowIndex--
+		}
+	}
+	return offset + len(repetitionLevels)
 }
 
 type repeatedPageValues struct {

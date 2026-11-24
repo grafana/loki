@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap/xcaptest"
 )
 
 var regionLoaderCodec = metadata.CacheItemCodec{Zstd: true, MinRatio: 1.5}
@@ -96,13 +97,17 @@ func TestCachedRegionLoader(t *testing.T) {
 		_, err := l.Load(t.Context(), req)
 		require.NoError(t, err)
 		source(req).block = true
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, recorded := xcaptest.NewRegion(t)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		got, err := l.Load(ctx, req)
 
 		require.NoError(t, err)
 		require.Equal(t, region, got)
+		require.Equal(t, int64(1), recorded(metadata.StatMetadataPrefetchRequestsToCache))
+		require.Equal(t, int64(len(region)), recorded(metadata.StatMetadataPrefetchBytesFromCache))
+		require.Zero(t, recorded(metadata.StatMetadataPrefetchBytesFromStorage), "the blocked read downloads nothing")
 		require.Equal(t, regionLoaderMetrics{
 			requests:         2,
 			storageSuccesses: 1,

@@ -1842,6 +1842,22 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`sum(avg_over_time({app="foo"} | unwrap bar[3m]))`,
 		},
 
+		// histogram_over_time is not split by range. A part of a rate is rebuilt from the operation and the
+		// log range, so splitting a histogram that way would drop its buckets and turn custom buckets into
+		// the default ones. The buckets stay in what is returned.
+		{
+			`histogram_count(histogram_over_time({app="foo"} | unwrap bar [3m]) by (a))`,
+			`histogram_count(histogram_over_time({app="foo"} | unwrap bar [3m]) by (a))`,
+		},
+		{
+			`histogram_quantile(0.9, sum by (a) (histogram_over_time(buckets(1, 10), {app="foo"} | unwrap bar [3m])))`,
+			`histogram_quantile(0.9, sum by (a) (histogram_over_time(buckets(1, 10), {app="foo"} | unwrap bar [3m])))`,
+		},
+		{
+			`histogram_sum(histogram_over_time(buckets(1, 10), {app="foo"} | unwrap bar [3m])) / rate({app="foo"}[1m])`,
+			`(histogram_sum(histogram_over_time(buckets(1, 10), {app="foo"} | unwrap bar [3m])) / rate({app="foo"}[1m]))`,
+		},
+
 		// should be noop if range interval is lower or equal to split interval (1m)
 		{
 			`bytes_over_time({app="foo"}[1m])`,

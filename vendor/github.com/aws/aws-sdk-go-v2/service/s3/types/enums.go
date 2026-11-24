@@ -1719,3 +1719,23 @@ func (Type) Values() []Type {
 		"Group",
 	}
 }
+
+type UseSourceMultiRegionKeyStatus string
+
+// Enum values for UseSourceMultiRegionKeyStatus
+const (
+	UseSourceMultiRegionKeyStatusEnabled  UseSourceMultiRegionKeyStatus = "Enabled"
+	UseSourceMultiRegionKeyStatusDisabled UseSourceMultiRegionKeyStatus = "Disabled"
+)
+
+// Values returns all known values for UseSourceMultiRegionKeyStatus. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (UseSourceMultiRegionKeyStatus) Values() []UseSourceMultiRegionKeyStatus {
+	return []UseSourceMultiRegionKeyStatus{
+		"Enabled",
+		"Disabled",
+	}
+}

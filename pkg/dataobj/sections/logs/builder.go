@@ -366,8 +366,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
 
-	var logsEnc columnar.Encoder
-	if err := b.encodeSection(&logsEnc, section); err != nil {
+	logsEnc := columnar.NewEncoder()
+	if err := b.encodeSection(logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 

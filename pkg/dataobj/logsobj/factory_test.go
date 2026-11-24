@@ -23,7 +23,7 @@ func newTestBuilderFactory(t *testing.T, reg prometheus.Registerer, overrides Te
 func TestBuilderFactory_NewBuilder(t *testing.T) {
 	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), NoTenantOverrides{})
 
-	b, err := bf.NewBuilder()
+	b, err := bf.NewBuilder(testTenant)
 	require.NoError(t, err)
 	require.NotNil(t, b)
 }
@@ -50,7 +50,7 @@ func TestBuilderFactory_SetsOverridesOnBuilders(t *testing.T) {
 	overrides := tenantOverrides{"tenant": {"label"}}
 	bf := newTestBuilderFactory(t, prometheus.NewRegistry(), overrides)
 
-	b, err := bf.NewBuilder()
+	b, err := bf.NewBuilder(testTenant)
 	require.NoError(t, err)
 	require.Equal(t, overrides, b.overrides)
 }

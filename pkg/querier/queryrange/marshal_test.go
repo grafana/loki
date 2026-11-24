@@ -128,7 +128,7 @@ func TestQueryRequestWrapUnwrap_HintRanges(t *testing.T) {
 	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 	hintRanges := []logproto.HintTimeRange{
 		{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
-		{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute)},
+		{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
 	}
 	ctx := user.InjectOrgID(context.Background(), "fake")
 

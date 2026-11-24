@@ -1892,6 +1892,26 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			),
 			map[string]string{"app": "foo_sm"},
 		},
+		{
+			"rename to a key also in the line, source first",
+			[]byte(`code=200 status=500`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
+		{
+			"rename to a key also in the line, source last",
+			[]byte(`status=500 code=200`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2477,6 +2497,26 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
 }
 
+// A grouping or a label filter on a renamed name asks the hints only for that name, so the parser must
+// still read the key that the expression renames.
+func TestLogfmtExpressionParserReadsTheSourceKeyOfARequiredName(t *testing.T) {
+	for _, line := range []string{`code=200 status=500`, `status=500 code=200`} {
+		t.Run(line, func(t *testing.T) {
+			parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			}, false)
+			require.NoError(t, err)
+
+			base := labels.FromStrings("app", "x")
+			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+			b.parserKeyHints = NewParserHint(nil, []string{"status"}, false, false, "")
+			b.Reset()
+			_, _ = parser.Process(0, []byte(line), b)
+			require.Equal(t, labels.FromStrings("app", "x", "status", "200"), b.LabelsResult().Labels())
+		})
+	}
+}
+
 // askedHints records the names that a parser asks the hints about.
 type askedHints struct {
 	ParserHint
@@ -2760,6 +2800,72 @@ func TestExpressionParsersKeepTheFirstValue(t *testing.T) {
 			want := labels.NewBuilder(tt.want).Set("app", "x").Labels()
 			require.Equal(t, want, b.LabelsResult().Labels())
 		})
+	}
+}
+
+// An expression reads the keys that it names. A key of the line that no expression reads does not write a
+// label, even when it has the name of one. Below, `status` is the label and `code` is the key that holds its
+// value, so the `status` key of the line never wins, in either order. That holds for the first-writer rule
+// too: the key that comes first must be the source key. A grouping or a label filter on the name asks the
+// hints only for that name, so the parser must still read the source key.
+func TestExpressionParsersIgnoreKeysThatNoExpressionReads(t *testing.T) {
+	exprs := []LabelExtractionExpr{NewLabelExtractionExpr("status", "code")}
+	parsers := []struct {
+		name  string
+		build func() (Stage, error)
+		lines []string
+	}{
+		{
+			"json",
+			func() (Stage, error) { return NewJSONExpressionParser(exprs) },
+			[]string{`{"code":"200","status":"500"}`, `{"status":"500","code":"200"}`},
+		},
+		{
+			"logfmt",
+			func() (Stage, error) { return NewLogfmtExpressionParser(exprs, false) },
+			[]string{`code=200 status=500`, `status=500 code=200`},
+		},
+	}
+	streams := []struct {
+		name  string
+		base  labels.Labels
+		final string // the name that the value of `code` is stored under
+		want  labels.Labels
+	}{
+		{
+			name:  "no stream label",
+			base:  labels.FromStrings("app", "x"),
+			final: "status",
+			want:  labels.FromStrings("app", "x", "status", "200"),
+		},
+		{
+			name:  "stream label",
+			base:  labels.FromStrings("app", "x", "status", "s"),
+			final: "status_extracted",
+			want:  labels.FromStrings("app", "x", "status", "s", "status_extracted", "200"),
+		},
+	}
+	for _, p := range parsers {
+		for _, line := range p.lines {
+			for _, st := range streams {
+				for _, hinted := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/%s/hinted=%t", p.name, line, st.name, hinted), func(t *testing.T) {
+						// A parser remembers which keys it reads, so each run gets its own.
+						parser, err := p.build()
+						require.NoError(t, err)
+
+						b := NewBaseLabelsBuilder().ForLabels(st.base, labels.StableHash(st.base))
+						if hinted {
+							b.parserKeyHints = NewParserHint(nil, []string{st.final}, false, false, "")
+						}
+						b.Reset()
+						_, ok := parser.Process(0, []byte(line), b)
+						require.True(t, ok)
+						require.Equal(t, st.want, b.LabelsResult().Labels())
+					})
+				}
+			}
+		}
 	}
 }
 

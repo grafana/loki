@@ -22,9 +22,12 @@ import (
 // Postings rows must come first, in posting key order, then stats rows. The
 // output cuts a new index object before a postings row when the current one is
 // full and the posting key changes. So no posting key spans two index objects,
-// every index object of a run of several holds postings, and all stats rows go
-// into the last index object. An earlier index object records the layout in an
-// empty stats section, unless the output has the zero layout.
+// every index object of the output holds postings, and all stats rows of the
+// output go into its last index object. An earlier index object records the
+// layout in an empty stats section, unless the output has the zero layout.
+//
+// The tasks of a split merge each write one output into the same index run,
+// so the stats rows of a run can sit in several of its index objects.
 //
 // After an error, the output holds no usable state, and the caller must call
 // reset.

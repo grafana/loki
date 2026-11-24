@@ -55,7 +55,6 @@ func NewStatsFrom(md *datasetmd.Statistics) (res Statistics) {
 type PageInfo struct {
 	UncompressedSize uint64 `json:"uncompressed_size"`
 	CompressedSize   uint64 `json:"compressed_size"`
-	CRC32            uint32 `json:"crc32"`
 	RowsCount        uint64 `json:"rows_count"`
 	Encoding         string `json:"encoding"`
 	DataOffset       uint64 `json:"data_offset"`
@@ -221,7 +220,6 @@ func inspectIndexPointersSection(ctx context.Context, logger log.Logger, ty data
 			colMeta.Pages = append(colMeta.Pages, PageInfo{
 				UncompressedSize: page.UncompressedSize,
 				CompressedSize:   page.CompressedSize,
-				CRC32:            page.CRC32,
 				RowsCount:        page.RowsCount,
 				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
 				DataOffset:       page.DataOffset,
@@ -289,7 +287,6 @@ func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.S
 			colMeta.Pages = append(colMeta.Pages, PageInfo{
 				UncompressedSize: page.UncompressedSize,
 				CompressedSize:   page.CompressedSize,
-				CRC32:            page.CRC32,
 				RowsCount:        page.RowsCount,
 				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
 				DataOffset:       page.DataOffset,
@@ -339,7 +336,6 @@ func inspectStreamsSection(ctx context.Context, ty dataobj.SectionType, sec *str
 			colMeta.Pages = append(colMeta.Pages, PageInfo{
 				UncompressedSize: page.UncompressedSize,
 				CompressedSize:   page.CompressedSize,
-				CRC32:            page.CRC32,
 				RowsCount:        page.RowsCount,
 				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
 				DataOffset:       page.DataOffset,

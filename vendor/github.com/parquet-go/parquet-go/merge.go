@@ -247,6 +247,28 @@ func rowGroupRangeOfSortedColumns(rg RowGroup, schema *Schema, sorting []Sorting
 			return nil, nil, fmt.Errorf("column index not available for sorting column %s", sortingColumnPath)
 		}
 
+		leaf, _ := schema.Lookup(sortingColumnPath...)
+		if leaf.MaxDefinitionLevel > 0 {
+			// Non-null page bounds cannot enclose nulls; absent counts are unknown.
+			knownNullCounts := false
+			switch index := columnIndex.(type) {
+			case *FileColumnIndex:
+				knownNullCounts = len(index.index.NullCounts) == index.NumPages()
+			case *formatColumnIndex:
+				knownNullCounts = len(index.index.NullCounts) == index.NumPages()
+			case *nullableColumnIndex:
+				knownNullCounts = true
+			}
+			if !knownNullCounts {
+				return nil, nil, fmt.Errorf("null counts not available for sorting column %s", sortingColumnPath)
+			}
+			for page := range columnIndex.NumPages() {
+				if columnIndex.NullPage(page) || columnIndex.NullCount(page) != 0 {
+					return nil, nil, fmt.Errorf("null bounds not available for sorting column %s", sortingColumnPath)
+				}
+			}
+		}
+
 		// Since data is sorted by sorting columns, we can bound the first and
 		// last rows of the row group from the first and last non-null pages of
 		// the column index. The bounds are expressed in sort order: when the

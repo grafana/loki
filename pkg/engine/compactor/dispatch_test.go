@@ -24,9 +24,9 @@ import (
 func TestPlanDispatcherRunToCompletion(t *testing.T) {
 	// Each plan has its own window, so a runner can tell the plans apart.
 	plans := []*physical.Plan{
-		buildIndexMergePlan("acme", time.Unix(0, 0), &compactionv2pb.TaskSpec{}),
-		buildIndexMergePlan("acme", time.Unix(0, 1), &compactionv2pb.TaskSpec{}),
-		buildIndexMergePlan("acme", time.Unix(0, 2), &compactionv2pb.TaskSpec{}),
+		buildIndexMergePlan("acme", time.Unix(0, 0), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
+		buildIndexMergePlan("acme", time.Unix(0, 1), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
+		buildIndexMergePlan("acme", time.Unix(0, 2), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
 	}
 	// taskOf panics instead of failing t, because runners call it outside
 	// the test goroutine.
@@ -313,8 +313,8 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 
 func TestPlanDispatcherRunCancellable(t *testing.T) {
 	plans := []*physical.Plan{
-		buildIndexMergePlan("acme", time.Unix(0, 0), &compactionv2pb.TaskSpec{}),
-		buildIndexMergePlan("acme", time.Unix(0, 1), &compactionv2pb.TaskSpec{}),
+		buildIndexMergePlan("acme", time.Unix(0, 0), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
+		buildIndexMergePlan("acme", time.Unix(0, 1), indexMergeTask{spec: &compactionv2pb.TaskSpec{}}),
 	}
 	taskOf := func(plan *physical.Plan) int64 {
 		root, err := plan.Root()
@@ -379,7 +379,7 @@ func TestPlanDispatcherRunPlanWithRetries(t *testing.T) {
 		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, counter)
 		run := planRun{tenant: "acme", siblingCtx: siblingCtx, retryCtx: t.Context()}
 
-		_, err := d.runPlanWithRetries(run, log.NewNopLogger(), buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}))
+		_, err := d.runPlanWithRetries(run, log.NewNopLogger(), buildIndexMergePlan("acme", time.Time{}, indexMergeTask{spec: &compactionv2pb.TaskSpec{}}))
 		require.ErrorIs(t, err, context.Canceled)
 		require.Len(t, runner.snapshot(), 1)
 		require.Equal(t, 1.0, testutil.ToFloat64(counter.WithLabelValues("index-merge", attemptOutcomeCancelled)))

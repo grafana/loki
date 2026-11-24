@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"testing"
 	"time"
 
@@ -25,13 +26,18 @@ const (
 	benchIndexSources         = 8
 	benchLogObjectsPerIndex   = 64
 	benchSectionsPerLogObject = 8
-	benchStreamsPerSection    = 10_000
+	benchStreamsPerSection    = 256
 )
 
 // BenchmarkIndexMerge merges 8 source index objects that hold only postings.
 // The merges that used the most memory in a dev cluster had 8 sources with two
 // postings sections each. Here, every source has one bloom section and one
 // label section, built by benchPostings.
+//
+// Most label rows are small, because a logs section has few streams and one
+// label has many values. Many small rows show the merge costs that grow with
+// the row count, such as row comparisons. Large rows hide those costs behind
+// the encoding cost, which grows with bytes.
 //
 // The sub-benchmarks share the sources:
 //
@@ -79,9 +85,9 @@ func BenchmarkIndexMerge(b *testing.B) {
 		b.SetBytes(inputBytes)
 		benchPeakHeap(b, func() {
 			c := newTestExecutorContext(b, bucket)
-			objects, _, err := c.classifyRuns(b.Context(), node)
+			_, runs, _, err := c.classifyRuns(b.Context(), node)
 			require.NoError(b, err)
-			readers := postingsSequences(b.Context(), objects)
+			readers := postingsSequences(b.Context(), runs, postings.KeySpan{})
 			require.NoError(b, drainMerge(b.Context(), readers, comparePostingsRow, func(postings.Row) bool { return true }))
 		})
 	})
@@ -98,22 +104,38 @@ func benchPostings(b *testing.B, rng *rand.Rand, cfg logsobj.BuilderBaseConfig) 
 	pb := postings.NewMergeBuilder(nil, int(cfg.TargetPageSize), cfg.MaxPageRows, int(cfg.TargetSectionSize))
 	pb.SetTenant(benchIndexTenant)
 
-	var size int64
+	var (
+		size int64
+		rows []postings.Row
+	)
 	for i := range benchLogObjectsPerIndex {
 		obj := newBenchLogObject(rng, i)
 		for section := range benchSectionsPerLogObject {
 			for _, key := range benchMetadata {
 				entry := obj.bloomEntry(rng, section, key.name, key.cardinality)
 				size += int64(len(entry.BloomFilter) + len(entry.StreamIDBitmap))
-				require.NoError(b, pb.AppendBloomEntry(entry))
+				rows = append(rows, entry.Row())
 			}
 			for _, label := range benchIndexLabels {
 				for value := range label.cardinality {
 					entry := obj.labelEntry(rng, section, label.name, value, label.cardinality)
 					size += int64(len(entry.StreamIDBitmap))
-					require.NoError(b, pb.AppendLabelEntry(entry))
+					rows = append(rows, entry.Row())
 				}
 			}
+		}
+	}
+
+	// The builder requires rows in strictly increasing CompareRows order.
+	slices.SortFunc(rows, postings.CompareRows)
+	for _, row := range rows {
+		switch row.Kind {
+		case postings.KindBloom:
+			require.NoError(b, pb.AppendBloomEntry(row.BloomEntry()))
+		case postings.KindLabel:
+			require.NoError(b, pb.AppendLabelEntry(row.LabelEntry()))
+		default:
+			b.Fatalf("unsupported posting kind %d", row.Kind)
 		}
 	}
 	return pb, size
@@ -126,7 +148,7 @@ var benchIndexLabels = []struct {
 	name        string
 	cardinality int
 }{
-	{"app", 50},
+	{"app", 1000},
 	{"cluster", 2},
 	{"namespace", 10},
 }
@@ -167,7 +189,7 @@ func (o benchLogObject) bloomEntry(rng *rand.Rand, section int, key string, card
 
 // labelEntry returns the label posting of one value of a label with
 // cardinality values in a logs section of o. The value covers an equal share
-// of the streams of the section.
+// of the streams of the section, and at least one stream.
 func (o benchLogObject) labelEntry(rng *rand.Rand, section int, label string, value, cardinality int) postings.LabelEntry {
 	return postings.LabelEntry{
 		ObjectPath:       o.path,
@@ -175,7 +197,7 @@ func (o benchLogObject) labelEntry(rng *rand.Rand, section int, label string, va
 		SectionIndex:     int64(section),
 		ColumnName:       label,
 		LabelValue:       fmt.Sprintf("%s-%d", label, value),
-		StreamIDBitmap:   benchStreamBitmap(rng, benchStreamsPerSection/cardinality),
+		StreamIDBitmap:   benchStreamBitmap(rng, max(1, benchStreamsPerSection/cardinality)),
 		MinTimestamp:     o.minTimestamp,
 		MaxTimestamp:     o.maxTimestamp,
 		UncompressedSize: 1 << 16,

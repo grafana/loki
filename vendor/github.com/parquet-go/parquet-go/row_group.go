@@ -279,7 +279,7 @@ func (r *rowGroupRows) SeekToRow(rowIndex int64) error {
 }
 
 func (r *rowGroupRows) ReadRows(rows []Row) (int, error) {
-	if r.closed {
+	if r.closed || len(r.columns) == 0 {
 		return 0, io.EOF
 	}
 
