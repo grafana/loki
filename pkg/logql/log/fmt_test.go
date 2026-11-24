@@ -742,7 +742,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				"bar", "12345678",
 				"foo", "",
 				"__error__", "TemplateFormatErr",
-				"__error_details__", "template: label:1:10: executing \"label\" at <unixToTime>: error calling unixToTime: unable to parse time '12345678': unsupported epoch length 8, expected 5, 10, 13, 16 or 19 characters",
+				"__error_details__", "template: label:1:10: executing \"label\" at <unixToTime>: error calling unixToTime: unable to parse time '12345678'",
 			),
 		},
 		{
