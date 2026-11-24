@@ -31,11 +31,11 @@ type multiBuilder interface {
 
 // A logsBuilder allows mocking of [logsobj.Builder] in tests.
 type logsBuilder interface {
-	Append(tenant string, stream logproto.Stream, recTime time.Time) error
+	Append(stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
 	IsFull() bool
 	FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error)
-	TimeRanges() []dataobj.TimeRange
+	TimeRange() dataobj.TimeRange
 	GetEarliestRecordTime() time.Time
 }
 

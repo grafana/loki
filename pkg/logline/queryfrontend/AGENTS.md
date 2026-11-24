@@ -109,6 +109,54 @@ so the filter dispatches them without waiting. This changes what some signals co
   middleware records the pre-min-date range the lookup would have returned, so the
   hint status, ranges and outcome match a query that ran the lookup.
 
+### Document shards
+
+v5 hint ranges belong to one document shard: the top bits of a stream's
+fingerprint (`hintprovider` invariant 15). A shard sub-request reads only the
+streams in its query shards' fingerprint bounds (`GetFromThrough`), so the
+filter keeps the ranges whose document shard lies in those bounds, plus every
+range without a shard. A request without shards keeps every range, and so
+does a query shard starting at or below `logline.MaxMappedFingerprint`: the
+ingester remaps colliding streams into that space, so they can belong to any
+document shard. Prefetched
+ranges are grouped by document shard, and ranges of different shards overlap
+in time, so `overlappingSpans` searches each group on its own.
+
+The hint range duration in the query stats and the dry-run report use the
+time union (`hintprovider.TimeUnion`). Dry-run verifies entries by time
+alone, and a per-shard sum would count the same time once per shard.
+
+### Hint range cap
+
+Every split and shard sub-request carries its own copy of the hint ranges in its
+window. With v3 and v4 hints, every shard sub-request of a split carries the same
+full list, so a lookup with many ranges is copied once per sub-request in the
+frontend, the scheduler and the querier. `max_hint_ranges_per_request` (default
+100,000, 0 disables it) caps the ranges the filter attaches to one sub-request. The
+cap is fixed rather than scaled by query parallelism: it bounds one sub-request,
+and the parallelism limit bounds how many are in flight.
+
+Over the cap, `coarsenHintRanges` merges the smallest gaps between a document
+shard's ranges. The wider ranges still cover every match, so a coarsened
+sub-request reads more chunks but doesn't miss lines.
+
+- Ranges of different document shards never merge, and every range keeps its
+  shard. `iter.NewHintTimeRanges` copies a range without a shard into every
+  shard's list, so dropping the shard would multiply the list on the querier.
+- Each overlapping document shard keeps at least one range, so a sub-request that
+  overlaps more document shards than the cap gets one range per shard.
+- The gaps equal to the smallest kept gap are kept evenly spread in time. v5
+  documents have a fixed width, so many gaps can be equal, and keeping the first
+  ones would merge the rest of the window into one range.
+- Memory is bounded by the cap, not by the lookup. `overlappingSpans` finds each
+  group's overlapping ranges by index without copying them, and `selectGaps` keeps
+  the largest gaps in a min-heap of at most cap entries. Picking the gaps takes two
+  passes over the ranges, and emitting the result a third.
+
+`logline_query_frontend_sub_request_hint_ranges` observes the ranges attached to
+each narrowed sub-request, after coarsening, and
+`logline_query_frontend_coarsened_sub_requests_total` counts the coarsened ones.
+
 ### Detected fields
 
 The prefetch middleware also handles `DetectedFieldsRequest`, for both
@@ -183,11 +231,13 @@ why it didn't:
    reads only the ingester window skips the size estimate, so it never records the
    last two. `X-Logline-Index: live` also skips the estimate, so only live mode from
    the tenant limit or the `logline.query` settings records `size_estimate_failed`
-   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects, and
-   `absent_over_time` queries, return before these skips. They get no `Logline` stats,
-   so outcome counts leave them out. `absent_over_time` stays unhinted because a skipped
-   sub-request returns an empty matrix or vector, which drops the 1 that an empty window
-   returns.
+   and `query_too_small`. Metric queries that `SupportedMetricQuery` rejects return
+   before these skips. They get no `Logline` stats, so outcome counts leave them out.
+   `SupportedMetricQuery` rejects an `absent_over_time` wrapped in a vector
+   aggregation, because a skipped sub-request would need the wrapper applied to its
+   answer. A bare `absent_over_time` is hinted: a skipped sub-request answers 1 on
+   every step, labeled by `logql.AbsentLabels`, so it merges with the narrowed
+   sub-requests into one series.
 2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
    `lookup_timeout`, `answered_before_lookup`, `canceled` or `recent_data_only`.
    A lookup still running when the query returns is `lookup_timeout` if a
@@ -201,11 +251,12 @@ why it didn't:
 
 | File | Purpose |
 |------|---------|
-| `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `rangesOverlapping` |
+| `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `clipHintRangesForInterval` |
+| `coarsen.go` | `overlappingSpans`, `hintRangesForSpans`: a sub-request's hint ranges, coarsened to `max_hint_ranges_per_request` |
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
-| `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings |
+| `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings, hint range cap |
 | `limits/definitions.go` | The per-tenant `Limits` interface |
-| `metrics.go` | Prometheus metrics for hint provider duration, canceled lookups, hint wait, ranges returned, passthrough/skip/narrow counts |
+| `metrics.go` | Prometheus metrics for hint provider duration, canceled lookups, hint wait, ranges returned, ranges per sub-request, coarsened sub-requests, passthrough/skip/narrow counts |
 
 ## Running tests
 

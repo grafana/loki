@@ -2,14 +2,13 @@ package delta
 
 import (
 	"bytes"
+	"math/bits"
 	"sort"
 
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-)
-
-const (
-	maxLinearSearchPrefixLength = 64 // arbitrary
+	"golang.org/x/sys/cpu"
 )
 
 type ByteArrayEncoding struct {
@@ -42,11 +41,7 @@ func (e *ByteArrayEncoding) EncodeByteArray(dst []byte, src []byte, offsets []ui
 			p := 0
 			baseOffset = endOffset
 
-			if len(v) <= maxLinearSearchPrefixLength {
-				p = linearSearchPrefixLength(lastValue, v)
-			} else {
-				p = binarySearchPrefixLength(lastValue, v)
-			}
+			p = searchPrefixLength(lastValue, v)
 
 			prefix.values = append(prefix.values, int32(p))
 			length.values = append(length.values, int32(n-p))
@@ -65,10 +60,11 @@ func (e *ByteArrayEncoding) EncodeByteArray(dst []byte, src []byte, offsets []ui
 		i := int(offsets[0])
 		j := 0
 
-		_ = length.values[:len(prefix.values)]
+		prefixValues := prefix.values
+		lengthValues := length.values[:len(prefixValues)]
 
-		for k, p := range prefix.values {
-			n := p + length.values[k]
+		for k, p := range prefixValues {
+			n := p + lengthValues[k]
 			j += copy(b[j:], src[i+int(p):i+int(n)])
 			i += int(n)
 		}
@@ -100,7 +96,7 @@ func (e *ByteArrayEncoding) EncodeFixedLenByteArray(dst []byte, src []byte, size
 
 	for i := size; i <= len(src); i += size {
 		v := src[i-size : i : i]
-		p := linearSearchPrefixLength(lastValue, v)
+		p := searchPrefixLength(lastValue, v)
 		n := size - p
 		prefix.values = append(prefix.values, int32(p))
 		length.values = append(length.values, int32(n))
@@ -202,6 +198,33 @@ func linearSearchPrefixLength(base, data []byte) (n int) {
 		n++
 	}
 	return n
+}
+
+// wordSearchPrefixLength returns the length of the longest common prefix of
+// base and data, comparing 8 bytes at a time and locating the first mismatch
+// with a zero count of the xored words.
+func wordSearchPrefixLength(base, data []byte) int {
+	n := min(len(base), len(data))
+	nw := n / 8
+	bw := unsafecast.Slice[uint64](base)[:nw]
+	dw := unsafecast.Slice[uint64](data)[:nw]
+
+	for i := range bw {
+		if x := bw[i] ^ dw[i]; x != 0 {
+			if cpu.IsBigEndian {
+				return i*8 + bits.LeadingZeros64(x)/8
+			}
+			return i*8 + bits.TrailingZeros64(x)/8
+		}
+	}
+
+	i := nw * 8
+	for ; i < n; i++ {
+		if base[i] != data[i] {
+			break
+		}
+	}
+	return i
 }
 
 func binarySearchPrefixLength(base, data []byte) int {

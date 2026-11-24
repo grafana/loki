@@ -19,22 +19,31 @@ import (
 var RegionRead = "logs.Reader.Read"
 
 // schemaSortVersion is the section type version for logs sections written in
-// schema sort order. It must differ from columnar.FormatVersion, so callers
-// can detect the sort contract from the object header alone, without opening
-// the section. The stream layout that orders the rows is in the tenant's
-// streams section.
+// schema sort order. It has format version 2. It must differ
+// from every columnar format version, so callers can detect the sort contract
+// from the object header alone, without opening the section. The stream layout
+// that orders the rows is in the tenant's streams section.
 const schemaSortVersion uint32 = 3
 
 var sectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
 	Kind:      format.LogsSectionKind,
-	Version:   columnar.FormatVersion,
+	Version:   columnar.DefaultFormatVersion,
 }
 
 var schemaSortSectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
 	Kind:      format.LogsSectionKind,
 	Version:   schemaSortVersion,
+}
+
+// formatVersionOf returns the format version of a logs section with the given
+// section version.
+func formatVersionOf(sectionVersion uint32) uint32 {
+	if sectionVersion == schemaSortVersion {
+		return columnar.FormatVersionDescriptorChecksum
+	}
+	return sectionVersion
 }
 
 // CheckSection returns true if section is a logs section.
@@ -53,11 +62,13 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
-	if section.Type.Version != columnar.FormatVersion && section.Type.Version != schemaSortVersion {
+
+	formatVersion := formatVersionOf(section.Type.Version)
+	if !columnar.IsSupportedVersion(formatVersion) {
 		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
+	dec, err := columnar.NewDecoder(section.Reader, formatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}

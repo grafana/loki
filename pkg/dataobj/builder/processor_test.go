@@ -801,7 +801,7 @@ func startTestFlushLoop(ctx context.Context, t *testing.T, proc *processor) (sto
 func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
 	m := logsobj.NewBuilderMetrics()
 	require.NoError(t, m.Register(reg))
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m, log.NewNopLogger(), logsobj.NoTenantOverrides{})
+	b, err := logsobj.NewBuilder("test", testBuilderCfg, scratch.NewMemory(), m, log.NewNopLogger(), logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	return b
 }

@@ -29,7 +29,7 @@ type (
 		PagesCount       int // Total number of pages in the column.
 		RowsCount        int // Total number of rows in the column.
 		ValuesCount      int // Total number of non-NULL values in the column.
-		CompressedSize   int // Total size of all pages in the column after compression.
+		CompressedSize   int // Total size of all pages in the column after compression, without page checksums.
 		UncompressedSize int // Total size of all pages in the column before compression.
 
 		Statistics *datasetmd.Statistics // Optional statistics for the column.

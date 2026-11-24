@@ -46,20 +46,19 @@ func (c *Codec) Encode(dst, src []byte) ([]byte, error) {
 		err error
 	)
 	if c.Level == Fastest {
-		compressor := lz4.Compressor{}
-		n, err = compressor.CompressBlock(src, dst)
+		n, err = lz4.CompressBlock(src, dst, nil)
 	} else {
-		compressor := lz4.CompressorHC{Level: c.Level}
-		n, err = compressor.CompressBlock(src, dst)
+		n, err = lz4.CompressBlockHC(src, dst, c.Level, nil, nil)
 	}
 	return dst[:n], err
 }
 
 func (c *Codec) Decode(dst, src []byte) ([]byte, error) {
-	// 3x seems like a common compression ratio, so we optimistically size the
-	// output buffer to that size. Feel free to change the value if you observe
-	// different behaviors.
-	dst = reserveAtLeast(dst, 3*len(src))
+	// Use the capacity of dst if any, otherwise guess a 3x compression ratio.
+	if cap(dst) == 0 {
+		dst = make([]byte, 3*len(src))
+	}
+	dst = dst[:cap(dst)]
 
 	for {
 		n, err := lz4.UncompressBlock(src, dst)

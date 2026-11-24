@@ -4,6 +4,7 @@ package schemas
 
 import (
 	smithy "github.com/aws/smithy-go"
+	smithyprelude "github.com/aws/smithy-go/prelude"
 	smithytraits "github.com/aws/smithy-go/traits"
 )
 
@@ -50,6 +51,11 @@ var GetDelegatedAccessToken = smithy.NewSchema(smithy.ShapeID{
 var GetFederationToken = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "GetFederationToken",
+}, smithy.ShapeTypeOperation, 0)
+
+var GetScopedCredentials = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "GetScopedCredentials",
 }, smithy.ShapeTypeOperation, 0)
 
 var GetSessionToken = smithy.NewSchema(smithy.ShapeID{
@@ -223,6 +229,20 @@ var _idpRejectedClaimMessage = smithy.NewSchema(smithy.ShapeID{
 	Name:      "idpRejectedClaimMessage",
 }, smithy.ShapeTypeString, 0)
 
+var InsufficientSessionLifetimeException = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "InsufficientSessionLifetimeException",
+}, smithy.ShapeTypeStructure, 1, &smithytraits.Error{Type: "client"},
+	&smithytraits.HTTPError{Code: 400},
+	&smithytraits.AWSQueryError{ErrorCode: "InsufficientSessionLifetime",
+		StatusCode: 400})
+var InsufficientSessionLifetimeException_message *smithy.Schema
+
+var _insufficientSessionLifetimeMessage = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "insufficientSessionLifetimeMessage",
+}, smithy.ShapeTypeString, 0)
+
 var _invalidAuthorizationMessage = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "invalidAuthorizationMessage",
@@ -237,6 +257,20 @@ var InvalidAuthorizationMessageException = smithy.NewSchema(smithy.ShapeID{
 		StatusCode: 400})
 var InvalidAuthorizationMessageException_message *smithy.Schema
 
+var InvalidContextAssertionException = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "InvalidContextAssertionException",
+}, smithy.ShapeTypeStructure, 1, &smithytraits.Error{Type: "client"},
+	&smithytraits.HTTPError{Code: 400},
+	&smithytraits.AWSQueryError{ErrorCode: "InvalidContextAssertion",
+		StatusCode: 400})
+var InvalidContextAssertionException_message *smithy.Schema
+
+var _InvalidContextAssertionMessage = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "InvalidContextAssertionMessage",
+}, smithy.ShapeTypeString, 0)
+
 var InvalidIdentityTokenException = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "InvalidIdentityTokenException",
@@ -249,6 +283,20 @@ var InvalidIdentityTokenException_message *smithy.Schema
 var _invalidIdentityTokenMessage = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "invalidIdentityTokenMessage",
+}, smithy.ShapeTypeString, 0)
+
+var InvalidSubjectCredentialsException = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "InvalidSubjectCredentialsException",
+}, smithy.ShapeTypeStructure, 1, &smithytraits.Error{Type: "client"},
+	&smithytraits.HTTPError{Code: 400},
+	&smithytraits.AWSQueryError{ErrorCode: "InvalidSubjectCredentials",
+		StatusCode: 400})
+var InvalidSubjectCredentialsException_message *smithy.Schema
+
+var _InvalidSubjectCredentialsMessage = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "InvalidSubjectCredentialsMessage",
 }, smithy.ShapeTypeString, 0)
 
 var _Issuer = smithy.NewSchema(smithy.ShapeID{
@@ -303,6 +351,33 @@ var _nonNegativeIntegerType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "nonNegativeIntegerType",
 }, smithy.ShapeTypeInteger, 0)
+
+var OriginIdentity = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "OriginIdentity",
+}, smithy.ShapeTypeStructure, 4)
+var OriginIdentity_Subject *smithy.Schema
+
+var OriginIdentity_SubjectType *smithy.Schema
+
+var OriginIdentity_Issuer *smithy.Schema
+
+var OriginIdentity_FederatedProviderArn *smithy.Schema
+
+var _originIdentityIssuerType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "originIdentityIssuerType",
+}, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
+
+var _originIdentitySubjectType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "originIdentitySubjectType",
+}, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
+
+var _originIdentitySubjectTypeType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "originIdentitySubjectTypeType",
+}, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
 
 var OutboundWebIdentityFederationDisabledException = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
@@ -391,6 +466,34 @@ var _SAMLAssertionType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "SAMLAssertionType",
 }, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
+
+var _scopedCredentialDurationSecondsType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "scopedCredentialDurationSecondsType",
+}, smithy.ShapeTypeInteger, 0)
+
+var _scopedPoliciesCountType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "scopedPoliciesCountType",
+}, smithy.ShapeTypeInteger, 0)
+
+var ScopedSession = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "ScopedSession",
+}, smithy.ShapeTypeStructure, 2)
+var ScopedSession_ScopedSessionId *smithy.Schema
+
+var ScopedSession_Arn *smithy.Schema
+
+var _scopedSessionDescriptionType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "scopedSessionDescriptionType",
+}, smithy.ShapeTypeString, 0)
+
+var _scopedSessionIdType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "scopedSessionIdType",
+}, smithy.ShapeTypeString, 0)
 
 var _serialNumberType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
@@ -491,6 +594,38 @@ var _tradeInTokenType = smithy.NewSchema(smithy.ShapeID{
 	Name:      "tradeInTokenType",
 }, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
 
+var TransactionContext = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "TransactionContext",
+}, smithy.ShapeTypeStructure, 1)
+var TransactionContext_IdentityProvider *smithy.Schema
+
+var _transactionContextIdentityProviderMapType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "transactionContextIdentityProviderMapType",
+}, smithy.ShapeTypeMap, 2)
+var _transactionContextIdentityProviderMapType_key *smithy.Schema
+
+var _transactionContextIdentityProviderMapType_value *smithy.Schema
+
+var _transactionContextKeyType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "transactionContextKeyType",
+}, smithy.ShapeTypeString, 0)
+
+var _transactionContextValueType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "transactionContextValueType",
+}, smithy.ShapeTypeString, 0, &smithytraits.Sensitive{})
+
+var TrustedIdentityPropagationContext = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "TrustedIdentityPropagationContext",
+}, smithy.ShapeTypeStructure, 2, &smithytraits.Sensitive{})
+var TrustedIdentityPropagationContext_OriginIdentity *smithy.Schema
+
+var TrustedIdentityPropagationContext_TransactionContext *smithy.Schema
+
 var _unrestrictedSessionPolicyDocumentType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "unrestrictedSessionPolicyDocumentType",
@@ -531,6 +666,19 @@ var _webIdentityTokenDurationSecondsType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "webIdentityTokenDurationSecondsType",
 }, smithy.ShapeTypeInteger, 0)
+
+var _webIdentityTokenScopeType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "webIdentityTokenScopeType",
+}, smithy.ShapeTypeString, 0)
+
+var webIdentityTokenSubjectModeType = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "webIdentityTokenSubjectModeType",
+}, smithy.ShapeTypeEnum, 2)
+var webIdentityTokenSubjectModeType_AWS_IDENTITY *smithy.Schema
+
+var webIdentityTokenSubjectModeType_ORIGIN_IDENTITY *smithy.Schema
 
 var _webIdentityTokenType = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
@@ -604,7 +752,7 @@ var AssumeRoleWithSAMLRequest_MinimumSessionTokenSize *smithy.Schema
 var AssumeRoleWithSAMLResponse = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "AssumeRoleWithSAMLResponse",
-}, smithy.ShapeTypeStructure, 11)
+}, smithy.ShapeTypeStructure, 12)
 var AssumeRoleWithSAMLResponse_Credentials *smithy.Schema
 
 var AssumeRoleWithSAMLResponse_AssumedRoleUser *smithy.Schema
@@ -626,6 +774,8 @@ var AssumeRoleWithSAMLResponse_SourceIdentity *smithy.Schema
 var AssumeRoleWithSAMLResponse_SessionTokenUtilization *smithy.Schema
 
 var AssumeRoleWithSAMLResponse_SessionTokenSize *smithy.Schema
+
+var AssumeRoleWithSAMLResponse_TrustedIdentityPropagationContext *smithy.Schema
 
 var AssumeRoleWithWebIdentityRequest = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
@@ -650,7 +800,7 @@ var AssumeRoleWithWebIdentityRequest_MinimumSessionTokenSize *smithy.Schema
 var AssumeRoleWithWebIdentityResponse = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "AssumeRoleWithWebIdentityResponse",
-}, smithy.ShapeTypeStructure, 9)
+}, smithy.ShapeTypeStructure, 10)
 var AssumeRoleWithWebIdentityResponse_Credentials *smithy.Schema
 
 var AssumeRoleWithWebIdentityResponse_SubjectFromWebIdentityToken *smithy.Schema
@@ -668,6 +818,8 @@ var AssumeRoleWithWebIdentityResponse_SourceIdentity *smithy.Schema
 var AssumeRoleWithWebIdentityResponse_SessionTokenUtilization *smithy.Schema
 
 var AssumeRoleWithWebIdentityResponse_SessionTokenSize *smithy.Schema
+
+var AssumeRoleWithWebIdentityResponse_TrustedIdentityPropagationContext *smithy.Schema
 
 var AssumeRootRequest = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
@@ -778,6 +930,34 @@ var GetFederationTokenResponse_SessionTokenUtilization *smithy.Schema
 
 var GetFederationTokenResponse_SessionTokenSize *smithy.Schema
 
+var GetScopedCredentialsRequest = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "GetScopedCredentialsRequest",
+}, smithy.ShapeTypeStructure, 4)
+var GetScopedCredentialsRequest_Policy *smithy.Schema
+
+var GetScopedCredentialsRequest_DurationSeconds *smithy.Schema
+
+var GetScopedCredentialsRequest_MinimumSessionTokenSize *smithy.Schema
+
+var GetScopedCredentialsRequest_ScopedSessionDescription *smithy.Schema
+
+var GetScopedCredentialsResponse = smithy.NewSchema(smithy.ShapeID{
+	Namespace: "com.amazonaws.sts",
+	Name:      "GetScopedCredentialsResponse",
+}, smithy.ShapeTypeStructure, 6)
+var GetScopedCredentialsResponse_Credentials *smithy.Schema
+
+var GetScopedCredentialsResponse_SessionInfo *smithy.Schema
+
+var GetScopedCredentialsResponse_SessionTokenUtilization *smithy.Schema
+
+var GetScopedCredentialsResponse_SessionTokenSize *smithy.Schema
+
+var GetScopedCredentialsResponse_ScopedPoliciesCount *smithy.Schema
+
+var GetScopedCredentialsResponse_SourceIdentity *smithy.Schema
+
 var GetSessionTokenRequest = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "GetSessionTokenRequest",
@@ -803,12 +983,16 @@ var GetSessionTokenResponse_SessionTokenSize *smithy.Schema
 var GetWebIdentityTokenRequest = smithy.NewSchema(smithy.ShapeID{
 	Namespace: "com.amazonaws.sts",
 	Name:      "GetWebIdentityTokenRequest",
-}, smithy.ShapeTypeStructure, 4)
+}, smithy.ShapeTypeStructure, 6)
 var GetWebIdentityTokenRequest_Audience *smithy.Schema
 
 var GetWebIdentityTokenRequest_DurationSeconds *smithy.Schema
 
 var GetWebIdentityTokenRequest_SigningAlgorithm *smithy.Schema
+
+var GetWebIdentityTokenRequest_Scope *smithy.Schema
+
+var GetWebIdentityTokenRequest_SubjectMode *smithy.Schema
 
 var GetWebIdentityTokenRequest_Tags *smithy.Schema
 
@@ -847,13 +1031,27 @@ func init() {
 
 	IDPRejectedClaimException_message = IDPRejectedClaimException.AddMember("message", _idpRejectedClaimMessage)
 
+	InsufficientSessionLifetimeException_message = InsufficientSessionLifetimeException.AddMember("message", _insufficientSessionLifetimeMessage)
+
 	InvalidAuthorizationMessageException_message = InvalidAuthorizationMessageException.AddMember("message", _invalidAuthorizationMessage)
 
+	InvalidContextAssertionException_message = InvalidContextAssertionException.AddMember("message", _InvalidContextAssertionMessage)
+
 	InvalidIdentityTokenException_message = InvalidIdentityTokenException.AddMember("message", _invalidIdentityTokenMessage)
+
+	InvalidSubjectCredentialsException_message = InvalidSubjectCredentialsException.AddMember("message", _InvalidSubjectCredentialsMessage)
 
 	JWTPayloadSizeExceededException_message = JWTPayloadSizeExceededException.AddMember("message", _JWTPayloadSizeExceededException2)
 
 	MalformedPolicyDocumentException_message = MalformedPolicyDocumentException.AddMember("message", _malformedPolicyDocumentMessage)
+
+	OriginIdentity_Subject = OriginIdentity.AddMember("Subject", _originIdentitySubjectType)
+
+	OriginIdentity_SubjectType = OriginIdentity.AddMember("SubjectType", _originIdentitySubjectTypeType)
+
+	OriginIdentity_Issuer = OriginIdentity.AddMember("Issuer", _originIdentityIssuerType)
+
+	OriginIdentity_FederatedProviderArn = OriginIdentity.AddMember("FederatedProviderArn", _arnType)
 
 	OutboundWebIdentityFederationDisabledException_message = OutboundWebIdentityFederationDisabledException.AddMember("message", _OutboundWebIdentityFederationDisabledException2)
 
@@ -871,6 +1069,10 @@ func init() {
 
 	RegionDisabledException_message = RegionDisabledException.AddMember("message", _regionDisabledMessage)
 
+	ScopedSession_ScopedSessionId = ScopedSession.AddMember("ScopedSessionId", _scopedSessionIdType)
+
+	ScopedSession_Arn = ScopedSession.AddMember("Arn", _arnType)
+
 	SessionDurationEscalationException_message = SessionDurationEscalationException.AddMember("message", _SessionDurationEscalationException2)
 
 	Tag_Key = Tag.AddMember("Key", _tagKeyType)
@@ -881,7 +1083,21 @@ func init() {
 
 	_tagListType_member = _tagListType.AddMember("member", Tag)
 
+	_transactionContextIdentityProviderMapType_key = _transactionContextIdentityProviderMapType.AddMember("key", _transactionContextKeyType)
+
+	_transactionContextIdentityProviderMapType_value = _transactionContextIdentityProviderMapType.AddMember("value", _transactionContextValueType)
+
+	TransactionContext_IdentityProvider = TransactionContext.AddMember("IdentityProvider", _transactionContextIdentityProviderMapType)
+
+	TrustedIdentityPropagationContext_OriginIdentity = TrustedIdentityPropagationContext.AddMember("OriginIdentity", OriginIdentity)
+
+	TrustedIdentityPropagationContext_TransactionContext = TrustedIdentityPropagationContext.AddMember("TransactionContext", TransactionContext)
+
 	_webIdentityTokenAudienceListType_member = _webIdentityTokenAudienceListType.AddMember("member", _webIdentityTokenAudienceStringType)
+
+	webIdentityTokenSubjectModeType_AWS_IDENTITY = webIdentityTokenSubjectModeType.AddMember("AWS_IDENTITY", smithyprelude.Unit)
+
+	webIdentityTokenSubjectModeType_ORIGIN_IDENTITY = webIdentityTokenSubjectModeType.AddMember("ORIGIN_IDENTITY", smithyprelude.Unit)
 
 	AssumeRoleRequest_RoleArn = AssumeRoleRequest.AddMember("RoleArn", _arnType)
 
@@ -957,6 +1173,8 @@ func init() {
 
 	AssumeRoleWithSAMLResponse_SessionTokenSize = AssumeRoleWithSAMLResponse.AddMember("SessionTokenSize", _sessionTokenSizeType)
 
+	AssumeRoleWithSAMLResponse_TrustedIdentityPropagationContext = AssumeRoleWithSAMLResponse.AddMember("TrustedIdentityPropagationContext", TrustedIdentityPropagationContext)
+
 	AssumeRoleWithWebIdentityRequest_RoleArn = AssumeRoleWithWebIdentityRequest.AddMember("RoleArn", _arnType)
 
 	AssumeRoleWithWebIdentityRequest_RoleSessionName = AssumeRoleWithWebIdentityRequest.AddMember("RoleSessionName", _roleSessionNameType)
@@ -990,6 +1208,8 @@ func init() {
 	AssumeRoleWithWebIdentityResponse_SessionTokenUtilization = AssumeRoleWithWebIdentityResponse.AddMember("SessionTokenUtilization", _sessionTokenUtilizationType)
 
 	AssumeRoleWithWebIdentityResponse_SessionTokenSize = AssumeRoleWithWebIdentityResponse.AddMember("SessionTokenSize", _sessionTokenSizeType)
+
+	AssumeRoleWithWebIdentityResponse_TrustedIdentityPropagationContext = AssumeRoleWithWebIdentityResponse.AddMember("TrustedIdentityPropagationContext", TrustedIdentityPropagationContext)
 
 	AssumeRootRequest_TargetPrincipal = AssumeRootRequest.AddMember("TargetPrincipal", _TargetPrincipalType)
 
@@ -1051,6 +1271,26 @@ func init() {
 
 	GetFederationTokenResponse_SessionTokenSize = GetFederationTokenResponse.AddMember("SessionTokenSize", _sessionTokenSizeType)
 
+	GetScopedCredentialsRequest_Policy = GetScopedCredentialsRequest.AddMember("Policy", _sessionPolicyDocumentType)
+
+	GetScopedCredentialsRequest_DurationSeconds = GetScopedCredentialsRequest.AddMember("DurationSeconds", _scopedCredentialDurationSecondsType)
+
+	GetScopedCredentialsRequest_MinimumSessionTokenSize = GetScopedCredentialsRequest.AddMember("MinimumSessionTokenSize", _minimumSessionTokenSizeType)
+
+	GetScopedCredentialsRequest_ScopedSessionDescription = GetScopedCredentialsRequest.AddMember("ScopedSessionDescription", _scopedSessionDescriptionType)
+
+	GetScopedCredentialsResponse_Credentials = GetScopedCredentialsResponse.AddMember("Credentials", Credentials)
+
+	GetScopedCredentialsResponse_SessionInfo = GetScopedCredentialsResponse.AddMember("SessionInfo", ScopedSession)
+
+	GetScopedCredentialsResponse_SessionTokenUtilization = GetScopedCredentialsResponse.AddMember("SessionTokenUtilization", _sessionTokenUtilizationType)
+
+	GetScopedCredentialsResponse_SessionTokenSize = GetScopedCredentialsResponse.AddMember("SessionTokenSize", _sessionTokenSizeType)
+
+	GetScopedCredentialsResponse_ScopedPoliciesCount = GetScopedCredentialsResponse.AddMember("ScopedPoliciesCount", _scopedPoliciesCountType)
+
+	GetScopedCredentialsResponse_SourceIdentity = GetScopedCredentialsResponse.AddMember("SourceIdentity", _sourceIdentityType)
+
 	GetSessionTokenRequest_DurationSeconds = GetSessionTokenRequest.AddMember("DurationSeconds", _durationSecondsType)
 
 	GetSessionTokenRequest_SerialNumber = GetSessionTokenRequest.AddMember("SerialNumber", _serialNumberType)
@@ -1070,6 +1310,10 @@ func init() {
 	GetWebIdentityTokenRequest_DurationSeconds = GetWebIdentityTokenRequest.AddMember("DurationSeconds", _webIdentityTokenDurationSecondsType)
 
 	GetWebIdentityTokenRequest_SigningAlgorithm = GetWebIdentityTokenRequest.AddMember("SigningAlgorithm", _jwtAlgorithmType)
+
+	GetWebIdentityTokenRequest_Scope = GetWebIdentityTokenRequest.AddMember("Scope", _webIdentityTokenScopeType)
+
+	GetWebIdentityTokenRequest_SubjectMode = GetWebIdentityTokenRequest.AddMember("SubjectMode", webIdentityTokenSubjectModeType)
 
 	GetWebIdentityTokenRequest_Tags = GetWebIdentityTokenRequest.AddMember("Tags", _tagListType)
 

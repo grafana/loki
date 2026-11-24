@@ -3,7 +3,10 @@ package dataset
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"math"
 	"math/rand"
@@ -13,9 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -199,7 +204,7 @@ func TestMemPage_open(t *testing.T) {
 		}
 	}
 
-	uncompressed, closer, err := buildPage(t, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
+	uncompressed, closer, err := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
 	require.NoError(t, err)
 	require.NoError(t, closer.Close())
 
@@ -215,7 +220,7 @@ func TestMemPage_open(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			page := buildPage(t, newOptions(tc.compression), values)
+			page := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(tc.compression), values)
 			page.Desc.UncompressedSize = tc.uncompressedSize
 
 			got, closer, err := page.open(tc.compression)
@@ -225,6 +230,89 @@ func TestMemPage_open(t *testing.T) {
 			require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
 		})
 	}
+
+	t.Run("decompresses a zstd page whose frame checksum is wrong but whose page CRC32 is valid", func(t *testing.T) {
+		page := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(datasetmd.COMPRESSION_TYPE_ZSTD), values)
+		page.Data = bytes.Clone(page.Data)
+
+		// The page holds one zstd frame, so the frame checksum is the last 4 bytes of the page.
+		for i := len(page.Data) - 4; i < len(page.Data); i++ {
+			page.Data[i] ^= 0xff
+		}
+		page.Desc.CRC32 = crc32.Checksum(page.Data, checksumTable)
+
+		bitmapSize, n := binary.Uvarint(page.Data)
+		require.Positive(t, n)
+		decoder, err := zstd.NewReader(nil)
+		require.NoError(t, err)
+		t.Cleanup(decoder.Close)
+		_, err = decoder.DecodeAll(page.Data[n+int(bitmapSize):], nil)
+		require.EqualError(t, err, zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
+
+		got, closer, err := page.open(datasetmd.COMPRESSION_TYPE_ZSTD)
+
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
+	})
+
+	for _, version := range []uint32{format.ColumnarVersionDescriptorChecksum, format.ColumnarVersionPageChecksum} {
+		for _, compression := range []datasetmd.CompressionType{datasetmd.COMPRESSION_TYPE_NONE, datasetmd.COMPRESSION_TYPE_ZSTD} {
+			t.Run(fmt.Sprintf("returns an error when a byte of a %s page of format version %d changes", compression, version), func(t *testing.T) {
+				// Both versions hold the same body, so the checksum of the body is the same.
+				body := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(compression), []string{"a", "bc"})
+				changedBody := bytes.Clone(body.Data)
+				changedBody[0] ^= 0xff
+				want := fmt.Sprintf("invalid CRC32 checksum %x, expected %x", crc32.Checksum(changedBody, checksumTable), body.Desc.CRC32)
+				page := buildPage(t, version, newOptions(compression), []string{"a", "bc"})
+				page.Data = bytes.Clone(page.Data)
+				page.Data[0] ^= 0xff
+
+				_, _, err := page.open(compression)
+
+				require.EqualError(t, err, want)
+			})
+		}
+	}
+
+	for _, compression := range []datasetmd.CompressionType{datasetmd.COMPRESSION_TYPE_NONE, datasetmd.COMPRESSION_TYPE_ZSTD} {
+		t.Run(fmt.Sprintf("opens a %s page whose checksum is in the page", compression), func(t *testing.T) {
+			page := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(compression), []string{"a", "bc"})
+			// Closing an opened page returns its buffers to a pool, so copy the
+			// values before you close it.
+			want, closer, err := page.open(compression)
+			require.NoError(t, err)
+			wantPresence, wantValues := bytes.Clone(want.PresenceData), bytes.Clone(want.ValueData)
+			require.NoError(t, closer.Close())
+
+			got, closer, err := buildPage(t, format.ColumnarVersionPageChecksum, newOptions(compression), []string{"a", "bc"}).open(compression)
+
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+			require.Equal(t, wantPresence, got.PresenceData)
+			require.Equal(t, wantValues, got.ValueData)
+		})
+	}
+
+	t.Run("returns an error when the checksum of a page with its checksum in the page changes", func(t *testing.T) {
+		page := buildPage(t, format.ColumnarVersionPageChecksum, newOptions(datasetmd.COMPRESSION_TYPE_NONE), []string{"a", "bc"})
+		page.Data[len(page.Data)-1] ^= 0xff
+		footer := page.Data[len(page.Data)-crc32.Size:]
+		actual := crc32.Checksum(page.Data[:len(page.Data)-crc32.Size], checksumTable)
+
+		_, _, err := page.open(datasetmd.COMPRESSION_TYPE_NONE)
+
+		require.EqualError(t, err, fmt.Sprintf("invalid CRC32 checksum %x, expected %x", actual, binary.LittleEndian.Uint32(footer)))
+	})
+
+	t.Run("returns an unexpected EOF error when a page with its checksum in the page has fewer than four bytes", func(t *testing.T) {
+		page := &MemPage{Desc: PageDesc{FormatVersion: format.ColumnarVersionPageChecksum}, Data: PageData{1, 2, 3}}
+
+		_, _, err := page.open(datasetmd.COMPRESSION_TYPE_NONE)
+
+		require.EqualError(t, err, "reading page checksum: unexpected EOF")
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
 }
 
 func Test_pageBuilder_Fill(t *testing.T) {

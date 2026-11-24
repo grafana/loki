@@ -33,7 +33,7 @@ func newTestFlushBuilder(t *testing.T, reg prometheus.Registerer) builder {
 func newTestFlushBuilderAt(t *testing.T, reg prometheus.Registerer, recTime time.Time) builder {
 	t.Helper()
 	b := newTestBuilder(t, reg)
-	require.NoError(t, b.Append("test", logproto.Stream{
+	require.NoError(t, b.Append(logproto.Stream{
 		Labels:  `{foo="bar"}`,
 		Entries: []logproto.Entry{{Timestamp: recTime, Line: "test"}},
 	}, recTime))

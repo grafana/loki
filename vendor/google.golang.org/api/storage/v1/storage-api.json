@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"36343836353730373237303939393235333638\"",
+  "etag": "\"3133333534363036353333363239373332313233\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4729,7 +4729,7 @@
       }
     }
   },
-  "revision": "20261107",
+  "revision": "20261111",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -6379,6 +6379,19 @@
           "description": "The modification time of the object metadata in RFC 3339 format. Set initially to object creation time and then updated whenever any metadata of the object changes. This includes changes made by a requester, such as modifying custom metadata, as well as changes made by Cloud Storage on behalf of a requester, such as changing the storage class based on an Object Lifecycle Configuration.",
           "format": "date-time",
           "type": "string"
+        },
+        "zonalAvailabilityInfo": {
+          "description": "Information about the object's availability in Rapid Cache Ultra (RCU) zonal caches. This field will only populate once the object is loaded into the cache.",
+          "properties": {
+            "availableZones": {
+              "description": "A list of zones where the object has a zonal copy. The zone names are expected to be in lower-dash case format (e.g., 'us-central1-a').",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"
