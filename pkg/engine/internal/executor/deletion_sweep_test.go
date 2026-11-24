@@ -87,7 +87,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		require.Equal(t, want, exists)
 	}
 
-	t.Run("logs the deletion candidates and deletes nothing when the node does not delete", func(t *testing.T) {
+	t.Run("logs examples of the deletion candidates and deletes nothing when the node does not delete", func(t *testing.T) {
 		root := t.TempDir()
 		bucket := newRootBucket(t, root)
 		storeCandidate(t, root, bucket)
@@ -96,13 +96,13 @@ func TestExecuteDeletionSweep(t *testing.T) {
 
 		_, err := runLogged(t, cfg, &physical.DeletionSweep{Tenant: "t1"}, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
 		require.NoError(t, err)
-		require.Contains(t, logs.String(), `msg="deletion sweep found deletion candidates"`)
+		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep candidate" kind=log path=`+orphan+" last_modified=")
 		require.NotContains(t, logs.String(), `msg="deletion sweep deleted candidates"`)
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep finished" outcome=scanned delete=false candidates=1 duration=`)
 		requireOrphanExists(t, bucket, true)
 	})
 
-	t.Run("deletes the deletion candidates when the node deletes", func(t *testing.T) {
+	t.Run("deletes the deletion candidates and logs no examples when the node deletes", func(t *testing.T) {
 		root := t.TempDir()
 		bucket := newRootBucket(t, root)
 		storeCandidate(t, root, bucket)
@@ -112,6 +112,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		_, err := runLogged(t, cfg, &physical.DeletionSweep{Tenant: "t1", Delete: true}, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
 		require.NoError(t, err)
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep deleted candidates" candidates=1 deleted_log_objects=1`)
+		require.NotContains(t, logs.String(), "deletion sweep candidate")
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep finished" outcome=scanned delete=true candidates=1 duration=`)
 		requireOrphanExists(t, bucket, false)
 	})

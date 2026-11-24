@@ -19,9 +19,9 @@ import (
 // list, whatever the outcome of the sweep.
 //
 // The sweep stores the objects of the tenant that no ToC can reach in the
-// file list of the tenant, and logs a summary and examples of the deletion
-// candidates. If node.Delete is true, the pipeline then deletes the
-// candidates. Otherwise it deletes nothing.
+// file list of the tenant, and logs a summary of the deletion candidates. If
+// node.Delete is true, the pipeline then deletes the candidates. Otherwise it
+// deletes nothing and logs examples of the candidates.
 func (c *Context) executeDeletionSweep(node *physical.DeletionSweep) Pipeline {
 	return newLazyPipeline(func(ctx context.Context) Pipeline {
 		artifact, err := c.doDeletionSweep(ctx, node)
@@ -69,6 +69,8 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 		if err := deletion.DeleteObjects(ctx, bucket, result.Candidates, c.deletionSweepMetrics, logger); err != nil {
 			return nil, err
 		}
+	} else {
+		deletion.LogCandidates(ctx, bucket, result.Candidates, logger)
 	}
 	level.Info(logger).Log(
 		"msg", "deletion sweep finished",
