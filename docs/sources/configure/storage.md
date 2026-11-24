@@ -13,14 +13,14 @@ is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
 simplifies the operation and significantly lowers the cost of Loki.
 
-Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki. This type only requires one store, the object store, for both the index and chunks.
+TSDB is the only supported way to persist data in Loki. This type only requires one store, the object store, for both the index and chunks.
 More detailed information about TSDB can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
 ## Single Store TSDB
 
 Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There is one supported mode:
 
-Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as the deprecated "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
+The [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the only supported index store.
 
 ### Supported storage backends
 
@@ -69,19 +69,23 @@ Loki aims to be backwards compatible and over the course of its development has 
 
 For a more detailed reference on schema configuration, including required values and the recommended settings for new installs, refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
 
-For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
+{{< admonition type="note" >}}
+`tsdb` is the only supported `store` value. Loki 4.0 fails to start if any `schema_config` entry, including past periods, refers to a removed index type such as `boltdb-shipper`. If you are still running a legacy index type, complete your migration on Loki 3.x before upgrading; refer to [Migrate to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/).
+{{< /admonition >}}
+
+For instance, this is what it looks like when migrating from schema `v12` to schema `v13` starting 2024-04-08, the date `v13` became the default schema:
 
 ```yaml
 schema_config:
   configs:
-    - from: 2019-07-01
-      store: boltdb-shipper
+    - from: 2022-04-07
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h
-    - from: 2023-07-01
+    - from: 2024-04-08
       store: tsdb
       object_store: filesystem
       schema: v13
@@ -90,13 +94,13 @@ schema_config:
         period: 24h
 ```
 
-For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v13 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
+For all data ingested before 2024-04-08, Loki used schema `v12`, and then switched after that point to schema `v13`. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
 
 ## Upgrading Schemas
 
 When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query and merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
-First, you'll want to create a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
+First, you'll want to create a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This gives Loki time to transition to the new schema in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2023-07-14 and you want to start using the `v13` schema on the 20th:
 

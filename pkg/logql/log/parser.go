@@ -710,9 +710,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
 	alwaysExtract := func(key string) bool {
-		// Any key in the expression list should always be extracted.
-		_, ok := l.origKeys[key]
-		return ok
+		// Any key that an expression reads from the line should always be extracted.
+		for _, orig := range l.origKeys {
+			if key == orig {
+				return true
+			}
+		}
+		return false
 	}
 
 	l.dec.Reset(line)
@@ -749,11 +753,18 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
+		// Only extract keys that are the source of an expression, so a line key
+		// sharing a renamed label's name can't overwrite it.
+		matched := false
 		for id, orig := range l.origKeys {
 			if key == orig {
 				key = id
+				matched = true
 				break
 			}
+		}
+		if !matched {
+			continue
 		}
 
 		if _, ok := l.expressions[key]; ok {

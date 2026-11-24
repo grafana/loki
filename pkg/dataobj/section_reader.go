@@ -7,7 +7,10 @@ import (
 	"io"
 	"math"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadata"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type sectionReader struct {
@@ -62,7 +65,9 @@ func (sr *sectionReader) DataRange(ctx context.Context, r RelativeByteRange) (io
 // MetadataRanges returns the bytes of each range of the metadata region of the section. The offset
 // of each range counts from the start of that region, not from the start of the object.
 //
-// It checks every range before it reads any.
+// It checks every range before it reads any. It records these statistics in the xcap region of ctx:
+//   - [metadata.StatMetadataRequestsToStorage]
+//   - [metadata.StatMetadataBytesFromStorage]
 func (sr *sectionReader) MetadataRanges(ctx context.Context, ranges []RelativeByteRange) ([][]byte, error) {
 	metadataRegion := sr.sec.GetLayout().GetMetadata()
 	if metadataRegion == nil {
@@ -86,7 +91,19 @@ func (sr *sectionReader) MetadataRanges(ctx context.Context, ranges []RelativeBy
 		}
 		absolute[i] = absoluteByteRange{Offset: regionOffset + r.Offset, Length: r.Length}
 	}
-	return sr.rr.ReadRanges(ctx, absolute)
+
+	// The region of ctx also holds the statistics of concurrent work, such as the reads of pages. An
+	// isolated region holds only the statistics of this call, so the readers record into it.
+	return xcap.RunIsolated(ctx, "metadata_ranges",
+		func(ctx context.Context) ([][]byte, error) {
+			return sr.rr.ReadRanges(ctx, absolute)
+		},
+		// The instrumented bucket reader counts a request before it sends it, so the count includes the
+		// requests of a failed read.
+		xcap.MergeDerived(
+			xcap.Derive(metadata.StatMetadataRequestsToStorage, bucketstat.StatObjectRequestsGetRange),
+			xcap.Derive(metadata.StatMetadataBytesFromStorage, bucketstat.StatObjectBytesDownloaded),
+		))
 }
 
 func (sr *sectionReader) DataSize() int64 {

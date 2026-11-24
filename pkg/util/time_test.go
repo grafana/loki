@@ -41,6 +41,12 @@ func TestDurationWithJitter_ZeroInputDuration(t *testing.T) {
 	assert.Equal(t, time.Duration(0), DurationWithJitter(time.Duration(0), 0.5))
 }
 
+func TestDurationWithJitter_NoVariance(t *testing.T) {
+	assert.Equal(t, time.Minute, DurationWithJitter(time.Minute, 0))
+	assert.Equal(t, time.Minute, DurationWithJitter(time.Minute, -0.5))
+	assert.Equal(t, time.Nanosecond, DurationWithJitter(time.Nanosecond, 0.2))
+}
+
 func TestParseTime(t *testing.T) {
 	var tests = []struct {
 		input  string

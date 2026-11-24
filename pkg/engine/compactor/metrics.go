@@ -20,6 +20,11 @@ const (
 	labelReason  = "reason"
 	labelPhase   = "phase"
 	labelActor   = "actor"
+
+	// labelWindowLookback is the position of a ToC window in a pass: 0 for
+	// the current window, 1 for the window before it, and so on up to the
+	// configured window lookback.
+	labelWindowLookback = "window_lookback"
 )
 
 // Values of the phase label of corruptIndexesTotal.
@@ -40,7 +45,7 @@ const (
 type coordinatorMetrics struct {
 	unconsolidatedBacklog      *prometheus.GaugeVec // tenant
 	oldestBacklogLogAgeSeconds *prometheus.GaugeVec // tenant
-	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
+	indexesPerTenantWindow     *prometheus.GaugeVec // tenant, window_lookback
 
 	// cyclesTotal counts worker-loop phase iterations by outcome.
 	// outcome=compacted|converged|failed
@@ -127,8 +132,8 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
-		}, []string{labelTenant}),
+			Help: "Per-tenant index count for each ToC window that IndexMerge compacts. window_lookback is 0 for the current window and N for the window N windows before it. The index objects of one run count as one index. Bounded cardinality (window lookback + 1 series per tenant).",
+		}, []string{labelTenant, labelWindowLookback}),
 
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
@@ -301,7 +306,7 @@ func (m *coordinatorMetrics) recordTenantCycle(
 func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
-	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.indexesPerTenantWindow.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.singleObjectLogRuns.DeleteLabelValues(tenant)

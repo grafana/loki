@@ -96,6 +96,21 @@ func (t fixedLenByteArrayType) AssignValue(dst reflect.Value, src Value) error {
 			dst.SetString(uuid.UUID(v).String())
 			return nil
 		}
+	case reflect.Ptr:
+		// Repeated optional values, such as []*uuid.UUID, are assigned onto
+		// the pointer element itself. byteArrayType.AssignValue does the same
+		// for []*string. A null value is a nil pointer; a present value,
+		// including the zero UUID, is a freshly allocated element.
+		if src.IsNull() {
+			dst.SetZero()
+			return nil
+		}
+		elem := reflect.New(dst.Type().Elem())
+		if err := t.AssignValue(elem.Elem(), src); err != nil {
+			return err
+		}
+		dst.Set(elem)
+		return nil
 	}
 
 	val := reflect.ValueOf(copyBytes(v))

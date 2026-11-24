@@ -82,7 +82,8 @@ message ColumnDesc {
   uint64 uncompressed_size = 7;
 
   // Total compressed size of all pages in the column. If no compression is
-  // used, compressed_size matches uncompressed_size.
+  // used, compressed_size matches uncompressed_size. The size does not include
+  // the checksums that format version 4 adds to the pages.
   uint64 compressed_size = 8;
 
   // Byte offset relative to the start of the section's metadata region where
@@ -155,14 +156,19 @@ message ColumnMetadata {
 
 // PageDesc describes an individual page within a column.
 message PageDesc {
+  // Field 2 held the compressed size of the page. It always equaled data_size.
+  // Writers no longer write it, and readers use data_size instead.
+  reserved 2;
+  reserved "compressed_size";
+
   // Uncompressed size of the page in bytes.
   uint64 uncompressed_size = 1;
 
-  // Compressed size of the page in bytes.
-  uint64 compressed_size = 2;
-
-  // CRC32 checksum of the page data.
-  uint32 crc32 = 3;
+  // CRC32C (Castagnoli) checksum of the page. Format version 2 sets it, and
+  // readers use it for pages of that version. Format version 4 leaves it unset.
+  // In format version 4 the page ends with the checksum instead: four bytes,
+  // little-endian, computed over all bytes before them.
+  uint32 deprecated_crc32 = 3;
 
   // Total number of rows (values + nulls) in the page.
   uint64 rows_count = 4;
@@ -178,7 +184,10 @@ message PageDesc {
   // page is stored.
   uint64 data_offset = 7;
 
-  // Size of the page's data in bytes.
+  // Size of the page's data in bytes. This is the number of bytes of the page
+  // in the data region, which readers use as the number of bytes to read. In
+  // format version 4 it includes the four bytes of the checksum at the end of
+  // the page.
   uint64 data_size = 8;
 
   // Optional statistics for the page.

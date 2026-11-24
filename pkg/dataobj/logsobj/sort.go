@@ -18,29 +18,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/parallel"
 )
 
-// A stream is one label set of a tenant, one row of its streams section. Before
-// the sort, the logs sections refer to a stream by its old ID. In the sorted
-// object, the streams of a tenant get the new IDs 1 to N in sort order.
+// A stream is one label set, one row of the streams section. Before the sort,
+// the logs sections refer to a stream by its old ID. In the sorted object, the
+// streams get the new IDs 1 to N in sort order.
 
 // sort writes originalObj sorted object-wide to b.builder and flushes it.
-// originalObj must hold exactly one tenant. layouts must hold the layout of
-// that tenant, and every logs section of originalObj must follow it.
+// Every logs section of originalObj must follow layout.
 // originalObj must stay open until sort returns.
 //
 // sort always resets Builder.
-func (b *Builder) sort(ctx context.Context, originalObj *dataobj.Object, layouts map[string]streams.Layout) (*dataobj.Object, io.Closer, error) {
+func (b *Builder) sort(ctx context.Context, originalObj *dataobj.Object, layout streams.Layout) (*dataobj.Object, io.Closer, error) {
 	defer b.Reset()
 
-	tenants := originalObj.Tenants()
-	if len(tenants) != 1 {
-		return nil, nil, fmt.Errorf("a sorted object holds one tenant, but the builder holds %d", len(tenants))
-	}
-	tenant := tenants[0]
-	tenantLayout, ok := layouts[tenant]
-	if !ok {
-		return nil, nil, fmt.Errorf("no layout for tenant %s", tenant)
-	}
-	if err := b.sortAndWriteTenant(ctx, originalObj, tenant, tenantLayout); err != nil {
+	if err := b.sortAndWriteTenant(ctx, originalObj, b.tenant, layout); err != nil {
 		return nil, nil, err
 	}
 
@@ -50,12 +40,11 @@ func (b *Builder) sort(ctx context.Context, originalObj *dataobj.Object, layouts
 	return b.builder.Flush()
 }
 
-// sortAndWriteTenant sorts the logs and the streams of the tenant in
-// originalObj, and appends the sorted logs sections and the sorted streams
-// section of the tenant to b.builder.
+// sortAndWriteTenant sorts the logs and the streams of originalObj, and appends
+// the sorted logs sections and the sorted streams section to b.builder.
 //
-// tenantLayout is the layout that the builder used for the tenant in
-// originalObj, and the sorted object keeps it. The logs go first, because the
+// tenantLayout is the layout that the builder used for originalObj, and the
+// sorted object keeps it. The logs go first, because the
 // streams section needs the rows and the sizes that the sort of the logs
 // counts.
 func (b *Builder) sortAndWriteTenant(ctx context.Context, originalObj *dataobj.Object, tenant string, tenantLayout streams.Layout) error {
@@ -101,10 +90,9 @@ func tenantSections(obj *dataobj.Object, tenant string) ([]*dataobj.Section, *da
 	return logsSections, streamSections[0], nil
 }
 
-// sortPlan says how to sort the logs of one tenant.
+// sortPlan says how to sort the logs of the builder.
 type sortPlan struct {
-	// streams holds the streams of the tenant in sort order, with the new IDs
-	// 1 to N.
+	// streams holds the streams in sort order, with the new IDs 1 to N.
 	streams []sortedStream
 
 	// ranges splits streams into groups of consecutive streams. The sort
@@ -113,9 +101,8 @@ type sortPlan struct {
 	ranges [][]sortedStream
 }
 
-// planTenantSort orders the streams of the tenant, and cuts them into ranges of
-// about one logs section. It returns an error if the tenant has no streams,
-// because a sort without ranges would drop every record of its logs sections.
+// planTenantSort orders the streams, and cuts them into ranges of about one
+// logs section. It returns an error if there are no streams, because a sort without ranges would drop every record of its logs sections.
 func (b *Builder) planTenantSort(ctx context.Context, tenant string, originalStreams *streams.Section, tenantLayout streams.Layout) (*sortPlan, error) {
 	sortedStreams, err := newSortedStreams(streamsSectionIter(ctx, originalStreams), tenant, tenantLayout.SchemaLabels(), tenantLayout.ShardLayout(), originalStreams.NumRows())
 	if err != nil {
@@ -128,12 +115,11 @@ func (b *Builder) planTenantSort(ctx context.Context, tenant string, originalStr
 	return &sortPlan{streams: sortedStreams, ranges: ranges}, nil
 }
 
-// writeLogsSections sorts the records of the tenant, and appends the sorted
+// writeLogsSections sorts the records, and appends the sorted
 // logs sections to b.builder. It sorts each range of the plan on up to
 // b.cfg.SortParallelism goroutines, and appends the sections of the ranges in
 // range order. It adds each appended record to the counters of its stream in
-// the plan. originalLogsSections are the logs sections of the tenant in the object that
-// the sort reads.
+// the plan. originalLogsSections are the logs sections that the sort reads.
 //
 // At most SortParallelism ranges hold records or encoded sections at a time,
 // even when an early range is slow. A range keeps its encoded sections in memory
@@ -358,8 +344,7 @@ func (b *Builder) drainLogsIter(
 	return rowsRead, flushAndReset()
 }
 
-// writeStreamsSection appends the sorted streams section of the tenant to
-// b.builder. It takes the streams from the plan, with the rows and the sizes
+// writeStreamsSection appends the sorted streams section to b.builder. It takes the streams from the plan, with the rows and the sizes
 // that writeLogsSections counted.
 func (b *Builder) writeStreamsSection(ctx context.Context, tenant string, plan *sortPlan, tenantLayout streams.Layout) error {
 	sb := streams.NewBuilder(b.sortStreamsMetrics, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, tenantLayout.ShardLayout())
@@ -377,7 +362,7 @@ func (b *Builder) writeStreamsSection(ctx context.Context, tenant string, plan *
 	return b.builder.Append(sb)
 }
 
-// sortedStream is one stream of a tenant in the sorted object.
+// sortedStream is one stream in the sorted object.
 type sortedStream struct {
 	// Stream is the stream as the sorted object holds it. Its ID is the new ID.
 	// Rows and UncompressedSize start at 0, and the sort adds each record that
@@ -525,7 +510,7 @@ type sortedRecord struct {
 // streams, so that the goroutines of the sort never read or write the same
 // record. The section readers use the old IDs of the streams to skip the rows
 // of other streams. A record of a stream that no range lists does not reach the
-// merge, so the caller must give every stream of the tenant to some range.
+// merge, so the caller must give every stream to some range.
 func mergeAndRemapLogsIter(ctx context.Context, sections []*dataobj.Section, ordering []streams.SortKey, rangeStreams []sortedStream) (result.Seq[sortedRecord], error) {
 	iter, err := sortmerge.SchemaSortedIterator(ctx, sections, ordering, oldIDs(rangeStreams))
 	if err != nil {

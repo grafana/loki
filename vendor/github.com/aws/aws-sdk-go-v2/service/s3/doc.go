@@ -25,9 +25,9 @@
 //
 // Amazon S3 supports the REST API.
 //
-// Support for SOAP over HTTP is deprecated, but it is still available over HTTPS.
-// However, new Amazon S3 features will not be supported for SOAP. We recommend
-// that you use either this REST API or the Amazon Web Services SDKs.
+// As announced on May 5, 2025, SOAP API support is discontinued. Requests that
+// use the SOAP API return an HTTP 400 Bad Request error. Use this REST API or the
+// Amazon Web Services SDKs instead.
 //
 // [Amazon S3 Developer Guide]: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/Welcome.html
 package s3

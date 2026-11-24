@@ -169,7 +169,7 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 		builderConfig.MaxPageRows = options.maxPageRows
 	}
 
-	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), options.overrides)
+	logsBuilder, err := logsobj.NewBuilder(Tenant, builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), options.overrides)
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := metastore.NewIndexBucket(bucket)
@@ -201,7 +201,7 @@ func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
 		}
 
-		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
+		require.NoError(b.t, b.logsBuilder.Append(stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}
@@ -222,7 +222,7 @@ func (b *Builder) flush(ctx context.Context) error {
 		return nil
 	}
 
-	timeRanges := b.logsBuilder.TimeRanges()
+	timeRange := b.logsBuilder.TimeRange()
 
 	obj, closer, err := b.logsBuilder.FlushAndSort(context.Background())
 	if err != nil {
@@ -241,7 +241,7 @@ func (b *Builder) flush(ctx context.Context) error {
 		return fmt.Errorf("uploading logs object: %w", err)
 	}
 
-	if err := writeTableOfContentsEntries(ctx, b.logsMetastoreToc, path, timeRanges); err != nil {
+	if err := writeTableOfContentsEntries(ctx, b.logsMetastoreToc, path, []dataobj.TimeRange{timeRange}); err != nil {
 		return fmt.Errorf("updating metastore: %w", err)
 	}
 

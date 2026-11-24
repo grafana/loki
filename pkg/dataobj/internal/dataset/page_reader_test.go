@@ -1,7 +1,9 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"hash/crc32"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -37,7 +40,7 @@ func Test_pageReader(t *testing.T) {
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
-	page := buildPage(t, opts, pageReaderTestStrings)
+	page := buildPage(t, format.ColumnarVersionDescriptorChecksum, opts, pageReaderTestStrings)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
 
@@ -62,7 +65,7 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
-	page := buildPage(t, opts, pageReaderTestStrings)
+	page := buildPage(t, format.ColumnarVersionDescriptorChecksum, opts, pageReaderTestStrings)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
 
@@ -94,7 +97,7 @@ func Test_pageReader_Reset(t *testing.T) {
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
-	page := buildPage(t, opts, pageReaderTestStrings)
+	page := buildPage(t, format.ColumnarVersionDescriptorChecksum, opts, pageReaderTestStrings)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
 	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
 
@@ -133,7 +136,7 @@ func Test_pageReader_SkipRows(t *testing.T) {
 			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 		}
 
-		page := buildPage(t, opts, pageReaderTestStrings)
+		page := buildPage(t, format.ColumnarVersionDescriptorChecksum, opts, pageReaderTestStrings)
 		require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
 		require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
 
@@ -192,7 +195,7 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	truncatedPageReader := func(t *testing.T, n int) *pageReader {
 		t.Helper()
 
-		page := buildPage(t, uncompressedOpts, []string{"a", "b", "c", "d", "e"})
+		page := buildPage(t, format.ColumnarVersionDescriptorChecksum, uncompressedOpts, []string{"a", "b", "c", "d", "e"})
 		page.Data = page.Data[:len(page.Data)-n]
 		page.Desc.CRC32 = crc32.Checksum(page.Data, checksumTable)
 		return newPageReader(page, uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
@@ -261,7 +264,10 @@ func Test_pageReader_statsStability(t *testing.T) {
 	require.Equal(t, BinaryValue([]byte("d")), b.maxValue)
 }
 
-func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
+// buildPage returns a page of the given columnar format version that holds the
+// strings in. If the version has the checksum in the page, the page ends with
+// its checksum and CRC32 is zero, like a page that a decoder reads.
+func buildPage(t *testing.T, version uint32, opts BuilderOptions, in []string) *MemPage {
 	t.Helper()
 
 	b, err := newPageBuilder(opts)
@@ -273,6 +279,13 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 
 	page, err := b.Flush()
 	require.NoError(t, err)
+
+	page.Desc.FormatVersion = version
+	if format.ColumnarPageHasChecksum(version) {
+		page.Data = binary.LittleEndian.AppendUint32(bytes.Clone(page.Data), page.Desc.CRC32)
+		page.Desc.CRC32 = 0
+		page.Desc.CompressedSize = len(page.Data)
+	}
 	return page
 }
 

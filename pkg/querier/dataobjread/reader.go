@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
@@ -50,9 +51,9 @@ type LogRecord struct {
 
 // LogReader runs a read plan and yields decoded log records in batches.
 //
-// One row reader scans each planned section, matching all of its streams together and returning
-// only the planned columns. The planner rejects a section it was given twice, so no section is
-// scanned twice.
+// One [logs.RowReader] scans each planned section with ReadRecordBatch, matching all of its
+// streams together and returning only the planned columns. The planner rejects a section it was
+// given twice, so no section is scanned twice.
 //
 // Up to maxConcurrency sections are scanned at once, to hide object-storage latency.
 //
@@ -249,9 +250,13 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		return err
 	}
 
+	// Each scan has its own allocator, because an allocator is not safe for concurrent use. Sharing
+	// allocators between scans did not save CPU.
+	var alloc memory.Allocator
+
 	// A panic in sendBatches drops the batch that it held. The garbage collector frees that
 	// batch, and the outer recover reports the panic itself.
-	batch, err := r.sendBatches(ctx, reader, task, batchSize)
+	batch, err := r.sendBatches(ctx, reader, &alloc, task, batchSize)
 	if batch != nil {
 		r.batchPool.put(batch)
 	}
@@ -259,31 +264,33 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 }
 
 // sendBatches reads up to batchSize rows of reader at a time, and sends one batch of records per
-// Read call that returns rows. A send passes the batch to the consumer, which owns it from then on.
+// read. A send passes the batch to the consumer, which owns it from then on.
 //
 // When sendBatches fails after it took a batch from the pool and did not send it, it returns
 // that batch, and the caller must return it to the pool. It never returns a batch that it sent,
 // because the consumer could then read lines that a scan copies into the same memory.
-func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, batchSize int) (*readBatch, error) {
-	rows := make([]logs.Record, batchSize)
+func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, alloc *memory.Allocator, task ReadTask, batchSize int) (*readBatch, error) {
 	for {
-		n, readErr := reader.Read(ctx, rows)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return nil, readErr
-		}
-		if n > 0 {
-			batch := r.batchPool.get()
-			if err := batch.fill(task, rows[:n]); err != nil {
-				return batch, err
-			}
-			select {
-			case r.batches <- batch:
-			case <-ctx.Done():
-				return batch, ctx.Err()
-			}
-		}
-		if n == 0 && errors.Is(readErr, io.EOF) {
+		// The arrays of the previous [logs.RecordBatch] use memory from alloc, and Reclaim
+		// invalidates them. That is safe because the records copy the lines, and the metadata
+		// labels own their strings.
+		alloc.Reclaim()
+
+		in, err := reader.ReadRecordBatch(ctx, alloc, batchSize)
+		if errors.Is(err, io.EOF) {
 			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+
+		batch := r.batchPool.get()
+		if err := batch.fill(task, in); err != nil {
+			return batch, err
+		}
+		select {
+		case r.batches <- batch:
+		case <-ctx.Done():
+			return batch, ctx.Err()
 		}
 	}
 }
@@ -393,7 +400,7 @@ func (r *LogReader) Close() error {
 //   - the counts of logs objects and of index objects opened
 //   - the downloaded bytes of logs objects and of index objects
 //
-// The metrics get the object-store requests and the downloaded bytes. Only the metrics count the
+// The metrics get the object-store requests, the downloaded bytes and the metadata reads. Only the metrics count the
 // table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
@@ -421,10 +428,10 @@ func (r *LogReader) recordStats() {
 			}
 			for _, region := range tree {
 				if region.Name() != metastore.RegionGetIndexes {
-					downloadedBytes += regionInt64(region, dataobj.StatObjectBytesDownloaded)
+					downloadedBytes += region.Int64Value(bucketstat.StatObjectBytesDownloaded)
 				}
-				compactedObjects += regionInt64(region, dataobj.StatObjectsOpenedCompacted)
-				uncompactedObjects += regionInt64(region, dataobj.StatObjectsOpenedUncompacted)
+				compactedObjects += region.Int64Value(dataobj.StatObjectsOpenedCompacted)
+				uncompactedObjects += region.Int64Value(dataobj.StatObjectsOpenedUncompacted)
 			}
 		}
 		return downloadedBytes, compactedObjects, uncompactedObjects
@@ -443,9 +450,9 @@ func (r *LogReader) recordStats() {
 	r.capture = nil
 }
 
-// readBatch holds the records built from the rows of one Read call. A non-nil record line
-// points into a region of linesAlloc, and stays valid until the next fill or reset of the batch.
-// Only fill and reset use linesAlloc.
+// readBatch holds the records built from one [logs.RecordBatch]. A non-nil record line points
+// into a region of linesAlloc, and stays valid until the next fill or reset of the batch. Only
+// fill and reset use linesAlloc.
 //
 // A readBatch must not be copied, because it owns an Allocator.
 type readBatch struct {
@@ -456,20 +463,20 @@ type readBatch struct {
 	pooled bool
 }
 
-// fill replaces the records of the batch with one record per row. It copies the lines that the
-// task needs into one region from b.linesAlloc, so the records do not alias rows. On error the
+// fill replaces the records of the batch with one record per row of in. It copies the lines that
+// the task needs into one region from b.linesAlloc, so the records do not alias in. On error the
 // batch holds no records.
 //
 // fill reclaims b.linesAlloc first, so the lines of the previous fill must no longer be in use.
-func (b *readBatch) fill(task ReadTask, rows []logs.Record) error {
+func (b *readBatch) fill(task ReadTask, in *logs.RecordBatch) error {
 	b.linesAlloc.Reclaim()
 
 	var lineBuf []byte
-	if size := task.forwardedLineBytes(rows); size > 0 {
+	if size := task.forwardedLineBytes(in); size > 0 {
 		lineBuf = b.linesAlloc.Allocate(size).Data()[:0:size]
 	}
 
-	records, err := task.appendRecords(b.records[:0], lineBuf, rows)
+	records, err := task.appendRecords(b.records[:0], lineBuf, in)
 	if err != nil {
 		b.records = b.records[:0]
 		return err

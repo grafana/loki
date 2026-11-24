@@ -55,9 +55,18 @@ func (page *optionalPage) Slice(i, j int64) Page {
 	maxDefinitionLevel := page.maxDefinitionLevel
 	definitionLevels := page.definitionLevels
 	numNulls1 := int64(countLevelsNotEqual(definitionLevels[:i], maxDefinitionLevel))
-	numNulls2 := int64(countLevelsNotEqual(definitionLevels[i:j], maxDefinitionLevel))
+	baseI := i - numNulls1
+
+	var baseJ int64
+	if j == int64(len(definitionLevels)) {
+		baseJ = page.base.NumValues()
+	} else {
+		numNulls2 := int64(countLevelsNotEqual(definitionLevels[i:j], maxDefinitionLevel))
+		baseJ = j - (numNulls1 + numNulls2)
+	}
+
 	return newOptionalPage(
-		page.base.Slice(i-numNulls1, j-(numNulls1+numNulls2)),
+		page.base.Slice(baseI, baseJ),
 		maxDefinitionLevel,
 		definitionLevels[i:j:j],
 	)

@@ -1,4 +1,4 @@
-//go:build !purego
+//go:build !purego && !goexperiment.simd
 
 package sparse
 
@@ -68,18 +68,3 @@ func gather64(dst []uint64, src Uint64Array) int {
 
 	return n
 }
-
-//go:noescape
-func gatherBitsAVX2(dst []byte, src Uint8Array)
-
-//go:noescape
-func gatherBitsDefault(dst []byte, src Uint8Array)
-
-//go:noescape
-func gather32AVX2(dst []uint32, src Uint32Array)
-
-//go:noescape
-func gather64AVX2(dst []uint64, src Uint64Array)
-
-//go:noescape
-func gather128(dst [][16]byte, src Uint128Array) int
