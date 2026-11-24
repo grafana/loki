@@ -37,7 +37,7 @@ storage_config:
       server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
 
 query_scheduler:
-  # The TSDB index dispatches many more, but each individually smaller, requests.
+  # The TSDB index dispatches more, smaller, requests than previous Loki indexes.
   # Increase the pending request queue size to compensate.
   max_outstanding_requests_per_tenant: 32768
 
@@ -71,7 +71,7 @@ The per-tenant `tsdb_max_bytes_per_shard` setting in `limits_config` controls th
 
 Loki also supports the following related per-tenant settings in `limits_config`:
 
-- `tsdb_sharding_strategy`: The sharding strategy to use during query planning. The default is `power_of_two`, the strategy described above. An alternative, `bounded`, is also available; refer to the [configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) before switching. When upgrading from an earlier Loki version, confirm that all Loki components in the cluster recognize `bounded` before enabling it, to avoid issues during a rolling upgrade.
+- `tsdb_sharding_strategy`: The sharding strategy to use during query planning. The default is `power_of_two`, the strategy described above. An alternative, `bounded` introduced in Loki 3.0, is also available; refer to the [configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) before switching. When upgrading from an earlier Loki version, confirm that all Loki components in the cluster recognize `bounded` before enabling it, to avoid issues during a rolling upgrade.
 - `tsdb_precompute_chunks`: When set to `true`, Loki computes chunk references once during query planning instead of resolving them again from the index during query execution. This can reduce the number of index calls a query makes, at the cost of higher memory usage. It defaults to `false`. This setting only takes effect when `tsdb_sharding_strategy` is set to `bounded`, because the `power_of_two` strategy does not support precomputed chunk references.
 
 ### Index caching not required
