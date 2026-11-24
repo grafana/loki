@@ -242,9 +242,9 @@ func TestIndexOwnershipWatcher(t *testing.T) {
 	time.Sleep(10 * period)
 	require.Zero(t, preloader.count())
 
-	// The first check after the preload reconciles.
+	// The first check after the preload reconciles. Run can reconcile before
+	// Preload returns, so the count after Preload is 1 or 2.
 	require.NoError(t, w.Preload(context.Background()))
-	require.Equal(t, 1, preloader.count())
 	require.Eventually(t, func() bool { return preloader.count() == 2 }, time.Second, period)
 
 	// A heartbeat alone does not.
@@ -262,7 +262,9 @@ func TestIndexOwnershipWatcher(t *testing.T) {
 	r.set(active[:3])
 	require.Eventually(t, func() bool { return preloader.count() >= 6 }, time.Second, period)
 	preloader.setErr(nil)
-	time.Sleep(5 * period)
+	// A call counted after setErr returns sees no error, so it succeeds.
+	cleared := preloader.count()
+	require.Eventually(t, func() bool { return preloader.count() > cleared }, time.Second, period)
 	settled := preloader.count()
 	time.Sleep(10 * period)
 	require.Equal(t, settled, preloader.count(), "it stops once the reconcile succeeds")
