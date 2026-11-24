@@ -58,7 +58,35 @@ type pairWindowPlan struct {
 	// no stats rows or share a log object.
 	skipped []skippedIndex
 
+	// legacy are the index runs over more than one log run that planning
+	// left as they are, because the window is not the current one.
+	legacy []legacyIndexRun
+
 	jobs []pairJob
+}
+
+// legacyPolicy decides what planning does with a legacy index run: an index
+// run whose log objects form more than one log run. The phased planner
+// writes such index runs, and the coupled planner never does.
+type legacyPolicy int
+
+const (
+	// splitLegacy splits each legacy index run into one pair per log run.
+	// Planning uses it in the current window, which still gets data and
+	// queries, so its index runs converge.
+	splitLegacy legacyPolicy = iota
+
+	// ignoreLegacy leaves legacy index runs as they are. Planning uses it
+	// in older windows. Their legacy index runs no longer change, and the
+	// windows leave the planned range soon, so a split would only add index
+	// runs.
+	ignoreLegacy
+)
+
+// legacyIndexRun is a legacy index run that planning left as it is.
+type legacyIndexRun struct {
+	indexRun indexRun
+	logRuns  []v2.Run
 }
 
 // Values of the reason label of pairSkippedIndexesTotal.
@@ -99,16 +127,19 @@ type pairPlanner struct {
 // free.
 //
 // planWindow plans two kinds of jobs:
-//   - a pairSplit for each index run whose log objects form more than one log
-//     run,
+//   - a pairSplit for each legacy index run, whose log objects form more than
+//     one log run, if legacy is splitLegacy,
 //   - a pairMerge for each group of K pairs of one size level and stream
 //     layout.
+//
+// With ignoreLegacy, it leaves legacy index runs as they are and reports them
+// in the plan.
 //
 // A window without a ToC has no work. planWindow skips and counts a
 // corrupt index run, so it does not block the other index runs of the window.
 // If the stats of any index run fail to read, it counts them and plans no
 // jobs in the window.
-func (p *pairPlanner) planWindow(ctx context.Context, tenant string, window time.Time, leased leaseSnapshot) (pairWindowPlan, error) {
+func (p *pairPlanner) planWindow(ctx context.Context, tenant string, window time.Time, leased leaseSnapshot, legacy legacyPolicy) (pairWindowPlan, error) {
 	entries, err := loadTenantIndexes(ctx, p.bucket, window, tenant)
 	if p.bucket.IsObjNotFoundErr(err) {
 		return pairWindowPlan{}, nil
@@ -136,15 +167,15 @@ func (p *pairPlanner) planWindow(ctx context.Context, tenant string, window time
 		return plan, nil
 	}
 
-	pairs, splits, skipped := p.classifyCandidates(logger, tenant, window, candidates, leased)
-	plan.pairs, plan.skipped = pairs, skipped
-	for _, split := range splits {
+	classified := p.classifyCandidates(logger, tenant, window, candidates, leased, legacy)
+	plan.pairs, plan.skipped, plan.legacy = classified.pairs, classified.skipped, classified.legacy
+	for _, split := range classified.splits {
 		plan.jobs = append(plan.jobs, split)
 	}
-	for _, merge := range p.planMerges(logger, tenant, window, pairs) {
+	for _, merge := range p.planMerges(logger, tenant, window, classified.pairs) {
 		plan.jobs = append(plan.jobs, merge)
 	}
-	level.Debug(logger).Log("msg", "pair-compaction: planned window", "index_runs", len(indexRuns), "leased_index_runs", len(indexRuns)-len(freeIndexRuns), "pairs", len(pairs), "splits", len(splits), "jobs", len(plan.jobs))
+	level.Debug(logger).Log("msg", "pair-compaction: planned window", "index_runs", len(indexRuns), "leased_index_runs", len(indexRuns)-len(freeIndexRuns), "pairs", len(classified.pairs), "splits", len(classified.splits), "legacy_index_runs", len(classified.legacy), "jobs", len(plan.jobs))
 	return plan, nil
 }
 
@@ -200,8 +231,9 @@ func (p *pairPlanner) readCandidates(ctx context.Context, logger log.Logger, ten
 	return out, readFailures, nil
 }
 
-// classifyCandidates splits candidates into pairs, and into splits for the
-// index runs whose log objects form more than one log run.
+// classifyCandidates splits candidates into pairs, and into the legacy index
+// runs whose log objects form more than one log run. With splitLegacy it plans
+// a split of each legacy index run, and with ignoreLegacy it leaves them.
 //
 // It skips, counts and logs as errors these index runs, which stay in the ToC
 // as they are:
@@ -218,7 +250,17 @@ func (p *pairPlanner) readCandidates(ctx context.Context, logger log.Logger, ten
 //
 // The check sees only the log objects in stats rows. It can't see the log
 // objects of a corrupt index run, or of an index run without stats rows.
-func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, window time.Time, candidates []pairCandidate, leased leaseSnapshot) (pairs []pair, splits []*pairSplit, skipped []skippedIndex) {
+// classifiedCandidates are the candidates of one window, sorted by what
+// planning does with them.
+type classifiedCandidates struct {
+	pairs   []pair
+	splits  []*pairSplit
+	legacy  []legacyIndexRun
+	skipped []skippedIndex
+}
+
+func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, window time.Time, candidates []pairCandidate, leased leaseSnapshot, legacy legacyPolicy) classifiedCandidates {
+	var out classifiedCandidates
 	owners := make(map[string][]indexRun)
 	for _, candidate := range candidates {
 		for _, path := range candidate.logObjects() {
@@ -228,7 +270,7 @@ func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, windo
 	skip := func(skip skippedIndex, msg string) {
 		level.Error(logger).Log(append([]any{"msg", msg}, skip.logFields()...)...)
 		p.metrics.pairSkippedIndexesTotal.WithLabelValues(tenant, skip.reason).Inc()
-		skipped = append(skipped, skip)
+		out.skipped = append(out.skipped, skip)
 	}
 
 	for _, candidate := range candidates {
@@ -243,8 +285,13 @@ func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, windo
 		}
 
 		logRuns := v2.CalculateRuns(logSections.sections, compareLogSortPrefix)
+		if len(logRuns) > 1 && legacy == ignoreLegacy {
+			level.Info(logger).Log("msg", "pair-compaction: leaving legacy index as it is, because the window is not the current one", "index", candidate.indexRun.String(), "log_runs", len(logRuns))
+			out.legacy = append(out.legacy, legacyIndexRun{indexRun: candidate.indexRun, logRuns: logRuns})
+			continue
+		}
 		if len(logRuns) > 1 {
-			splits = append(splits, &pairSplit{
+			out.splits = append(out.splits, &pairSplit{
 				window:       window,
 				source:       candidate.indexRun,
 				logRuns:      logRuns,
@@ -252,14 +299,14 @@ func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, windo
 			})
 			continue
 		}
-		pairs = append(pairs, pair{
+		out.pairs = append(out.pairs, pair{
 			indexRun:    candidate.indexRun,
 			layout:      logSections.layout,
 			logRun:      logRuns[0],
 			logSections: logSections.sections,
 		})
 	}
-	return pairs, splits, skipped
+	return out
 }
 
 // skippedIndex is an index run that classifyCandidates skipped.

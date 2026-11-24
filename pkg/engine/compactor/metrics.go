@@ -127,6 +127,10 @@ type coordinatorMetrics struct {
 	// pairSkippedIndexesTotal counts the index runs that the coupled planner
 	// skipped, by reason.
 	pairSkippedIndexesTotal *prometheus.CounterVec // tenant, reason
+
+	// pairLegacyIndexRuns is the number of legacy index runs that the last
+	// scan of the coupled planner left as they are, per window.
+	pairLegacyIndexRuns *prometheus.GaugeVec // tenant, window_lookback
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -230,6 +234,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_pair_skipped_indexes_total",
 			Help: "Index runs that the coupled planner (plan-version 2) skipped in a scan, by reason. read_failed = the read of its stats failed, no_stats = it has no stats rows, shared_log_object = it shares a log object with another index run, unknown_pair = a planned merge held a log object of no pair. Each scan counts the index run again, so a nonzero rate means an index run that stays uncompacted. Corrupt index runs count in loki_dataobj_compaction_corrupt_indexes_total instead.",
 		}, []string{labelTenant, labelReason}),
+		pairLegacyIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pair_legacy_index_runs",
+			Help: "Index runs over more than one log run that the last scan of the coupled planner (plan-version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
+		}, []string{labelTenant, labelWindowLookback}),
 	}
 }
 
@@ -339,6 +347,7 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pairJobsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pairSkippedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairLegacyIndexRuns.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

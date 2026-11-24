@@ -10,7 +10,7 @@ import (
 )
 
 func TestPlanPairs(t *testing.T) {
-	cfg := PairPlanConfig{LogMaxRunsPerTask: 2, LogMinCompactionSize: 1}
+	cfg := PairPlanConfig{LogMaxRunsPerTask: 2, LogMinCompactionSize: 1, Now: imWindow().Add(time.Hour)}
 
 	t.Run("reports the pairs, merges and splits of the window", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
@@ -40,6 +40,18 @@ func TestPlanPairs(t *testing.T) {
 		require.Equal(t, imWindow().Add(time.Hour), merge.MinTime)
 		require.Equal(t, imWindow().Add(2*time.Hour), merge.MaxTime)
 		require.Equal(t, []PlannedSplit{{IndexPaths: []string{"indexes/split"}, LogRuns: 2, UncompressedSize: 400}}, plan.Splits)
+	})
+
+	t.Run("reports a legacy index run as left as it is in a window that is not the current one", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(t.Context(), t, bucket, "indexes/legacy", pairTestSchema, testLogObject{"logs/legacy-0", "a", "c"}, testLogObject{"logs/legacy-1", "b", "d"})
+		laterCfg := cfg
+		laterCfg.Now = imWindow().Add(36 * time.Hour)
+
+		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), laterCfg)
+		require.NoError(t, err)
+		require.Empty(t, plan.Splits)
+		require.Equal(t, []LegacyIndexRun{{IndexPaths: []string{"indexes/legacy"}, LogRuns: 2, UncompressedSize: 400}}, plan.Legacy)
 	})
 
 	t.Run("splits a merge into log tasks above the maximum log task size", func(t *testing.T) {

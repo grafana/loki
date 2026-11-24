@@ -172,7 +172,11 @@ func (p *pairCompactor) scan(ctx context.Context) int {
 	)
 	for lookback, window := range p.windows() {
 		leased := p.leases.snapshot()
-		plan, err := p.planner.planWindow(ctx, p.tenant, window, leased)
+		legacy := ignoreLegacy
+		if lookback == 0 {
+			legacy = splitLegacy
+		}
+		plan, err := p.planner.planWindow(ctx, p.tenant, window, leased, legacy)
 		if err != nil {
 			complete = false
 			if ctx.Err() == nil {
@@ -184,6 +188,7 @@ func (p *pairCompactor) scan(ctx context.Context) int {
 			complete = false
 		}
 		p.metrics.indexesPerTenantWindow.WithLabelValues(p.tenant, strconv.Itoa(lookback)).Set(float64(plan.indexRuns))
+		p.metrics.pairLegacyIndexRuns.WithLabelValues(p.tenant, strconv.Itoa(lookback)).Set(float64(len(plan.legacy)))
 		for _, job := range plan.jobs {
 			if p.start(ctx, job) {
 				started++

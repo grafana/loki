@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -348,6 +349,33 @@ func TestPairCompactorScan(t *testing.T) {
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindSplit, pairJobOutcomeFailed))
+	})
+
+	t.Run("a scan splits a legacy index run in the current window and leaves one in the previous window", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		legacyObjects := []testLogObject{{"logs/legacy-0", "a", "c"}, {"logs/legacy-1", "b", "d"}}
+		seedPairIndex(t.Context(), t, bucket, "indexes/current-legacy", pairTestSchema, legacyObjects...)
+		previous := imWindow().Add(-metastore.MetastoreWindowSize)
+		previousObjects := []testLogObject{{"logs/previous-0", "a", "c"}, {"logs/previous-1", "b", "d"}}
+		buildIndexWithStatsAndPostings(t.Context(), t, bucket, "acme", "indexes/previous-legacy", pairStats(pairTestSchema, previousObjects...))
+		writeToCReferencing(t.Context(), t, bucket, "acme", previous, "indexes/previous-legacy")
+		runner := &fakeRunner{}
+		c := newPairTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true})
+		c.cfg.WindowLookback = 1
+		p := c.newPairCompactor("acme")
+
+		require.Equal(t, 1, p.scan(t.Context()))
+		p.jobs.Wait()
+
+		for _, call := range runner.snapshot() {
+			root, err := call.plan.Root()
+			require.NoError(t, err)
+			filter, ok := root.(*physical.IndexFilter)
+			require.True(t, ok)
+			require.Equal(t, []string{"indexes/current-legacy"}, filter.SourceIndexPaths)
+		}
+		require.Zero(t, testutil.ToFloat64(c.metrics.pairLegacyIndexRuns.WithLabelValues("acme", "0")))
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.pairLegacyIndexRuns.WithLabelValues("acme", "1")))
 	})
 
 	t.Run("a failed task publishes nothing and frees the sources for the next scan", func(t *testing.T) {

@@ -66,7 +66,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/c", schema, testLogObject{"logs/c", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Equal(t, 3, plan.indexRuns)
 		require.Len(t, plan.jobs, 1)
@@ -85,7 +85,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Len(t, plan.jobs, 1)
 		merge, ok := plan.jobs[0].(*pairMerge)
@@ -98,7 +98,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a-0", "a", "c"}, testLogObject{"logs/a-1", "b", "d"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Len(t, plan.jobs, 1)
 		split, ok := plan.jobs[0].(*pairSplit)
@@ -107,13 +107,31 @@ func TestPlanPairWindow(t *testing.T) {
 		require.Len(t, split.logRuns, 2)
 	})
 
+	t.Run("leaves a legacy index run as it is and plans the merges of the pairs when legacy index runs are ignored", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(ctx, t, bucket, "indexes/legacy", schema, testLogObject{"logs/legacy-0", "a", "c"}, testLogObject{"logs/legacy-1", "b", "d"})
+		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
+		c := newCoordinator(t, bucket)
+
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, ignoreLegacy)
+		require.NoError(t, err)
+		require.Len(t, plan.legacy, 1)
+		require.Equal(t, []string{"indexes/legacy"}, plan.legacy[0].indexRun.paths())
+		require.Len(t, plan.legacy[0].logRuns, 2)
+		require.Len(t, plan.jobs, 1)
+		_, isMerge := plan.jobs[0].(*pairMerge)
+		require.True(t, isMerge)
+		require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, pairSourcePaths(plan.jobs[0]))
+	})
+
 	t.Run("skips the index runs that a running job leases", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{indexes: map[string]struct{}{"indexes/a": {}}})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{indexes: map[string]struct{}{"indexes/a": {}}}, splitLegacy)
 		require.NoError(t, err)
 		require.Equal(t, 2, plan.indexRuns)
 		require.Empty(t, plan.jobs)
@@ -125,7 +143,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/b", "label:app", testLogObject{"logs/b", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 	})
@@ -138,7 +156,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/d", schema, testLogObject{"logs/d", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Len(t, plan.jobs, 1)
 		require.ElementsMatch(t, []string{"indexes/c", "indexes/d"}, pairSourcePaths(plan.jobs[0]))
@@ -151,7 +169,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{logObjects: map[string]struct{}{"logs/a": {}}})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{logObjects: map[string]struct{}{"logs/a": {}}}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.pairSkippedIndexesTotal.WithLabelValues("acme", pairSkipReasonSharedLogObject)))
@@ -170,7 +188,7 @@ func TestPlanPairWindow(t *testing.T) {
 		}}
 		c := newCoordinator(t, failing)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Equal(t, 1, plan.readFailures)
 		require.Equal(t, 3, plan.indexRuns)
@@ -184,7 +202,7 @@ func TestPlanPairWindow(t *testing.T) {
 		writeToCReferencing(ctx, t, bucket, "acme", imWindow(), "indexes/corrupt")
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 		require.Zero(t, plan.readFailures)
@@ -197,7 +215,7 @@ func TestPlanPairWindow(t *testing.T) {
 		writeToCReferencing(ctx, t, bucket, "acme", imWindow(), "indexes/postings-only")
 		c := newCoordinator(t, bucket)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.pairSkippedIndexesTotal.WithLabelValues("acme", pairSkipReasonNoStats)))
@@ -210,7 +228,7 @@ func TestPlanPairWindow(t *testing.T) {
 		c := newCoordinator(t, bucket)
 		c.cfg.LogMinCompactionSize = flagext.Bytes(401)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 	})
@@ -222,7 +240,7 @@ func TestPlanPairWindow(t *testing.T) {
 		c := newCoordinator(t, bucket)
 		c.cfg.LogMaxKeySize = flagext.Bytes(199)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
@@ -235,7 +253,7 @@ func TestPlanPairWindow(t *testing.T) {
 		c := newCoordinator(t, bucket)
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Len(t, plan.jobs, 1)
 		merge, ok := plan.jobs[0].(*pairMerge)
@@ -251,7 +269,7 @@ func TestPlanPairWindow(t *testing.T) {
 	t.Run("has no work in a window without a ToC", func(t *testing.T) {
 		c := newCoordinator(t, objstore.NewInMemBucket())
 
-		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{})
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Equal(t, pairWindowPlan{}, plan)
 	})

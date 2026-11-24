@@ -82,9 +82,10 @@ func (env jobEnv) run(ctx context.Context, class priorityClass, plans []*physica
 	return env.dispatcher.RunAdmitted(ctx, env.tenant, plans, env.slots.admit(class))
 }
 
-// pairSplit replaces one index run, whose log objects form more than one log
-// run, with one index run per log run. Each new index run and its log run
-// form a pair. The split keeps the log data and rewrites only the index.
+// pairSplit replaces one legacy index run, whose log objects form more than
+// one log run, with one index run per log run. Each new index run and its log
+// run form a pair. The split keeps the log data and rewrites only the index.
+// The planner plans splits only in the current window.
 type pairSplit struct {
 	window time.Time
 	source indexRun

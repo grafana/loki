@@ -10,6 +10,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // PairPlanConfig holds the settings of PlanPairs. Each field matches a flag
@@ -40,6 +41,11 @@ type PairPlanConfig struct {
 	// SizeLevelRatio is the size ratio between levels. 0 uses
 	// v2.DefaultSizeLevelRatio.
 	SizeLevelRatio uint64
+
+	// Now decides which window is the current one. The planner splits
+	// legacy index runs only in the current window. The zero value uses the
+	// time of the call.
+	Now time.Time
 }
 
 // PairPlan is the work that the coupled planner (plan version 2) would start
@@ -58,13 +64,31 @@ type PairPlan struct {
 	// Merges are the merges of K pairs of one size level.
 	Merges []PlannedMerge
 
-	// Splits are the index runs over more than one log run, which the
-	// planner splits into pairs.
+	// Splits are the index runs over more than one log run that the planner
+	// splits into pairs. It splits them only in the current window.
 	Splits []PlannedSplit
 
 	// Skipped are the index runs that the planner skipped, because they
 	// have no stats rows or share a log object with another index run.
 	Skipped []SkippedIndex
+
+	// Legacy are the index runs over more than one log run that the planner
+	// leaves as they are, because the window is not the current one. In the
+	// current window the planner splits them instead.
+	Legacy []LegacyIndexRun
+}
+
+// LegacyIndexRun is an index run over more than one log run that the planner
+// leaves as it is.
+type LegacyIndexRun struct {
+	// IndexPaths are the paths of the index objects of the index run.
+	IndexPaths []string
+
+	// LogRuns is the number of log runs of the index run.
+	LogRuns int
+
+	// UncompressedSize is the uncompressed size of the log runs.
+	UncompressedSize uint64
 }
 
 // SkippedIndex is an index run that the planner skipped.
@@ -141,7 +165,8 @@ type PlannedSplit struct {
 // the paths that the compactor uses.
 //
 // PlanPairs plans as if no job runs, so it plans every index run of the
-// window. It logs skipped index runs to logger.
+// window. It splits legacy index runs only if window is the current window at
+// cfg.Now, as the compactor does. It logs skipped index runs to logger.
 func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, tenant string, window time.Time, cfg PairPlanConfig) (PairPlan, error) {
 	base, ratio := cfg.SizeLevelBase, cfg.SizeLevelRatio
 	if base == 0 {
@@ -163,7 +188,15 @@ func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, t
 		maxLogTaskSize:    cfg.LogMaxTaskSize,
 		maxKeySize:        cfg.LogMaxKeySize,
 	}
-	plan, err := planner.planWindow(ctx, tenant, window, leaseSnapshot{})
+	now := cfg.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	legacy := ignoreLegacy
+	if window.UTC().Truncate(metastore.MetastoreWindowSize).Equal(now.UTC().Truncate(metastore.MetastoreWindowSize)) {
+		legacy = splitLegacy
+	}
+	plan, err := planner.planWindow(ctx, tenant, window, leaseSnapshot{}, legacy)
 	if err != nil {
 		return PairPlan{}, err
 	}
@@ -177,6 +210,13 @@ func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, t
 			Level:            strategy.Level(source.logRun.Size()),
 			Layout:           newLayoutKey(source.layout).String(),
 		})
+	}
+	for _, run := range plan.legacy {
+		planned := LegacyIndexRun{IndexPaths: run.indexRun.paths(), LogRuns: len(run.logRuns)}
+		for _, logRun := range run.logRuns {
+			planned.UncompressedSize += logRun.Size()
+		}
+		out.Legacy = append(out.Legacy, planned)
 	}
 	for _, skip := range plan.skipped {
 		planned := SkippedIndex{IndexPaths: skip.indexRun.paths(), Reason: skip.reason, SharedLogObject: skip.sharedLogObject}
