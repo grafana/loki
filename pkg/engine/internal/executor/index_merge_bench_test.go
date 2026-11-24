@@ -85,9 +85,9 @@ func BenchmarkIndexMerge(b *testing.B) {
 		b.SetBytes(inputBytes)
 		benchPeakHeap(b, func() {
 			c := newTestExecutorContext(b, bucket)
-			objects, _, err := c.classifyRuns(b.Context(), node)
+			_, runs, _, err := c.classifyRuns(b.Context(), node)
 			require.NoError(b, err)
-			readers := postingsSequences(b.Context(), objects, postings.KeySpan{})
+			readers := postingsSequences(b.Context(), runs, postings.KeySpan{})
 			require.NoError(b, drainMerge(b.Context(), readers, comparePostingsRow, func(postings.Row) bool { return true }))
 		})
 	})
