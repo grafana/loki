@@ -1,4 +1,4 @@
-//go:build (!amd64 && !arm && !arm64) || !gc || noasm
+//go:build (!amd64 && !arm && !arm64) || !gc || noasm || purego
 
 package lz4block
 

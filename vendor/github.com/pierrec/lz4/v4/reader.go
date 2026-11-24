@@ -3,6 +3,7 @@ package lz4
 import (
 	"bytes"
 	"io"
+	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -32,16 +33,17 @@ func newReader(r io.Reader, legacy bool) *Reader {
 
 // Reader allows reading an LZ4 stream.
 type Reader struct {
-	state   _State
-	src     io.Reader        // source reader
-	num     int              // concurrency level
-	frame   *lz4stream.Frame // frame being read
-	data    []byte           // block buffer allocated in non-concurrent mode
-	reads   chan []byte      // pending data
-	idx     int              // size of pending data
-	handler func(int)
-	cum     uint32
-	dict    []byte
+	state      _State
+	src        io.Reader        // source reader
+	num        int              // concurrency level
+	frame      *lz4stream.Frame // frame being read
+	data       []byte           // block buffer allocated in non-concurrent mode
+	reads      chan []byte      // pending data
+	idx        int              // size of pending data
+	handler    func(int)
+	cum        uint32
+	dict       []byte
+	presetDict []byte
 }
 
 func (*Reader) private() {}
@@ -79,6 +81,9 @@ func (r *Reader) isNotConcurrent() bool {
 }
 
 func (r *Reader) init() error {
+	if len(r.dict) > 0 {
+		r.num = 1
+	}
 	err := r.frame.ParseHeaders(r.src)
 	if err != nil {
 		return err
@@ -122,9 +127,11 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 				bn, err = r.read(buf)
 			} else {
 				lz4block.Put(r.data)
-				r.data = <-r.reads
-				if len(r.data) == 0 {
-					// No uncompressed data: something went wrong or we are done.
+				var ok bool
+				r.data, ok = <-r.reads
+				if !ok {
+					// The read loop has exited: something went wrong or we are done.
+					// An empty block is not a signal, as it may precede an error.
 					err = r.frame.Blocks.ErrorR()
 				}
 			}
@@ -218,6 +225,8 @@ func (r *Reader) read(buf []byte) (int, error) {
 // Reset clears the state of the Reader r such that it is equivalent to its
 // initial state from NewReader, but instead reading from reader.
 // No access to reader is performed.
+// With concurrency, Reset waits for a read of the previous source that is in
+// progress to return; the previous source is then no longer used.
 func (r *Reader) Reset(reader io.Reader) {
 	lz4block.Put(r.data)
 	r.data = nil
@@ -225,6 +234,7 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.state.reset()
 	r.src = reader
 	r.reads = nil
+	r.dict = slices.Clip(bytes.Clone(r.presetDict))
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.
@@ -246,6 +256,13 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		return 0, r.state.fail()
 	}
 	defer r.state.nextd(&err)
+	defer func() {
+		if err != nil {
+			// Don't leave a concurrent read-ahead using the source, as
+			// after a failed write to w.
+			r.frame.Blocks.StopR()
+		}
+	}()
 
 	if r.idx > 0 {
 		// A previous Read left part of the current block unconsumed.
@@ -269,11 +286,11 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 			dst = r.data
 			bn = len(dst)
 		} else {
-			lz4block.Put(dst)
-			dst = <-r.reads
+			var ok bool
+			dst, ok = <-r.reads
 			bn = len(dst)
-			if bn == 0 {
-				// No uncompressed data: something went wrong or we are done.
+			if !ok {
+				// The read loop has exited: something went wrong or we are done.
 				err = r.frame.Blocks.ErrorR()
 			}
 		}
@@ -302,6 +319,9 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		}
 		r.handler(bn)
 		bn, err = w.Write(dst)
+		if !r.isNotConcurrent() {
+			lz4block.Put(dst)
+		}
 		n += int64(bn)
 		if err != nil {
 			return
