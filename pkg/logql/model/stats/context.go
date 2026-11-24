@@ -257,9 +257,7 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 
 // ComputeSummary compute the summary of the statistics.
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
-	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
-		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes +
-		r.Querier.Store.Dataobj.PrePredicateDecompressedBytes + r.Querier.Store.Dataobj.PostPredicateDecompressedBytes
+	r.Summary.TotalBytesProcessed = r.TotalBytesProcessed()
 	r.Summary.TotalStructuredMetadataBytesProcessed = r.Querier.Store.Chunk.DecompressedStructuredMetadataBytes + r.Querier.Store.Chunk.HeadChunkStructuredMetadataBytes +
 		r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.HeadChunkStructuredMetadataBytes +
 		r.Querier.Store.Dataobj.PrePredicateDecompressedStructuredMetadataBytes + r.Querier.Store.Dataobj.PostPredicateStructuredMetadataBytes
@@ -366,6 +364,8 @@ func (i *Index) Merge(m Index) {
 	}
 	i.ShardPlannedChunks += m.ShardPlannedChunks
 	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
+	i.ShardPlannedBytes += m.ShardPlannedBytes
+	i.ShardPlannedBytesScanned += m.ShardPlannedBytesScanned
 }
 
 // ChunkFilterRatio returns the share of ShardPlannedChunks that weren't
@@ -373,10 +373,28 @@ func (i *Index) Merge(m Index) {
 // chunks are an estimate, so more chunks than planned can be scanned. It
 // reports false when no split went through shard planning.
 func (i Index) ChunkFilterRatio() (float64, bool) {
-	if i.ShardPlannedChunks <= 0 {
+	return filterRatio(i.ShardPlannedChunks, i.ShardPlannedChunksScanned)
+}
+
+// ByteFilterRatio returns the share of ShardPlannedBytes that weren't
+// scanned, from 0 (no bytes filtered) to 1 (all bytes filtered). It reports
+// false when no split went through shard planning.
+//
+// The two sides count bytes by different rules. The planned bytes are chunk
+// sizes from the index, and the scanned bytes are what the queriers counted
+// while decoding. A line with structured metadata counts for more in the
+// queriers, so the ratio understates the filtering for tenants that use it.
+func (i Index) ByteFilterRatio() (float64, bool) {
+	return filterRatio(i.ShardPlannedBytes, i.ShardPlannedBytesScanned)
+}
+
+// filterRatio returns the share of planned that scanned did not cover,
+// clamped to [0, 1]. It reports false when nothing was planned.
+func filterRatio(planned, scanned int64) (float64, bool) {
+	if planned <= 0 {
 		return 0, false
 	}
-	ratio := 1 - float64(i.ShardPlannedChunksScanned)/float64(i.ShardPlannedChunks)
+	ratio := 1 - float64(scanned)/float64(planned)
 	return min(max(ratio, 0), 1), true
 }
 
@@ -396,6 +414,9 @@ func (l *Logline) Merge(m Logline) {
 	keepFirst(&l.PlannedChunks, m.PlannedChunks)
 	keepFirst(&l.ScannedChunks, m.ScannedChunks)
 	keepFirst(&l.ChunkFilterRatio, m.ChunkFilterRatio)
+	keepFirst(&l.PlannedBytes, m.PlannedBytes)
+	keepFirst(&l.ScannedBytes, m.ScannedBytes)
+	keepFirst(&l.ByteFilterRatio, m.ByteFilterRatio)
 	keepFirst(&l.ObjectRequests, m.ObjectRequests)
 	keepFirst(&l.IOBytes, m.IOBytes)
 	keepFirst(&l.IOWait, m.IOWait)
@@ -518,6 +539,14 @@ func (r Result) TotalChunkFetchFailures() int64 {
 // logline hint filtering, plus the chunks ingesters matched in memory.
 func (r Result) TotalChunksScanned() int64 {
 	return r.Querier.Store.TotalChunksScanned + r.Ingester.Store.TotalChunksScanned + r.Ingester.TotalChunksMatched
+}
+
+// TotalBytesProcessed returns the bytes the queriers and ingesters processed,
+// which the query summary reports as total_bytes.
+func (r Result) TotalBytesProcessed() int64 {
+	return r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
+		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedBytes + r.Querier.Store.Dataobj.PostPredicateDecompressedBytes
 }
 
 func (r Result) TotalDecompressedBytes() int64 {

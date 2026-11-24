@@ -274,7 +274,7 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 			l.IOWait = snap.TotalIOWait.Nanoseconds()
 		}
 	}
-	setLoglineChunkStats(stats)
+	setLoglinePlanningStats(stats)
 	l.Outcome = loglineOutcome(l, result.stats.Snapshot().PrefetchTimeouts > 0)
 }
 
@@ -295,13 +295,16 @@ func lokiResponseStats(resp queryrangebase.Response) *logqlstats.Result {
 	}
 }
 
-// setLoglineChunkStats copies the shard planning chunk counts and their ratio
-// into the logline statistics.
-func setLoglineChunkStats(s *logqlstats.Result) {
+// setLoglinePlanningStats copies the shard planning chunk and byte counts and
+// their ratios into the logline statistics.
+func setLoglinePlanningStats(s *logqlstats.Result) {
 	l := s.LoglineStats()
 	l.PlannedChunks = s.Index.ShardPlannedChunks
 	l.ScannedChunks = s.Index.ShardPlannedChunksScanned
 	l.ChunkFilterRatio, _ = s.Index.ChunkFilterRatio()
+	l.PlannedBytes = s.Index.ShardPlannedBytes
+	l.ScannedBytes = s.Index.ShardPlannedBytesScanned
+	l.ByteFilterRatio, _ = s.Index.ByteFilterRatio()
 }
 
 // indexedHintDuration sums the hint ranges clipped to [start, end], leaving out
@@ -1174,7 +1177,7 @@ func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryr
 		return resp, err
 	}
 	if stats := lokiResponseStats(resp); stats != nil {
-		setLoglineChunkStats(stats)
+		setLoglinePlanningStats(stats)
 		stats.LoglineStats().Outcome = outcome
 	}
 	return resp, nil

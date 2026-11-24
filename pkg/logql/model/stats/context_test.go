@@ -433,18 +433,23 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 		PlannedChunks:      26,
 		ScannedChunks:      4,
 		ChunkFilterRatio:   0.85,
+		PlannedBytes:       2600,
+		ScannedBytes:       400,
+		ByteFilterRatio:    0.85,
 		ObjectRequests:     12,
 		IOBytes:            2048,
 		IOWait:             int64(40 * time.Millisecond),
 	}
 	skipped := Result{
-		Index:   Index{ShardPlannedChunks: 10},
+		Index:   Index{ShardPlannedChunks: 10, ShardPlannedBytes: 1000},
 		Logline: &Logline{SkippedRequests: 1},
 	}
 	narrowed := Result{
 		Index: Index{
 			ShardPlannedChunks:        8,
 			ShardPlannedChunksScanned: 2,
+			ShardPlannedBytes:         800,
+			ShardPlannedBytesScanned:  200,
 		},
 		Logline:  &Logline{NarrowedRequests: 1},
 		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
@@ -472,6 +477,8 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	require.Equal(t, &expected, res.Logline)
 	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
 	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
+	require.Equal(t, int64(2600), res.Index.ShardPlannedBytes)
+	require.Equal(t, int64(400), res.Index.ShardPlannedBytesScanned)
 	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
 
 	require.Equal(t, int64(1), skipped.Logline.SkippedRequests, "merging must not change the merged result")
@@ -525,6 +532,45 @@ func TestIndex_ChunkFilterRatio(t *testing.T) {
 			require.InDelta(t, tc.expectedRatio, ratio, 1e-9)
 		})
 	}
+}
+
+func TestIndex_ByteFilterRatio(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		planned       int64
+		scanned       int64
+		expectedRatio float64
+		expectedOK    bool
+	}{
+		{name: "nothing planned", scanned: 5000},
+		{name: "some bytes filtered", planned: 4000, scanned: 1000, expectedRatio: 0.75, expectedOK: true},
+		{name: "no bytes filtered", planned: 4000, scanned: 4000, expectedOK: true},
+		{name: "all bytes filtered", planned: 4000, expectedRatio: 1, expectedOK: true},
+		// The queriers count a line with structured metadata at a larger width
+		// than the index does, so they can scan more bytes than were planned.
+		{name: "more bytes scanned than planned", planned: 4000, scanned: 6000, expectedOK: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ratio, ok := Index{ShardPlannedBytes: tc.planned, ShardPlannedBytesScanned: tc.scanned}.ByteFilterRatio()
+			require.Equal(t, tc.expectedOK, ok)
+			require.InDelta(t, tc.expectedRatio, ratio, 1e-9)
+		})
+	}
+}
+
+func TestResult_TotalBytesProcessed(t *testing.T) {
+	res := Result{
+		Querier: Querier{Store: Store{
+			Chunk:   Chunk{DecompressedBytes: 1, HeadChunkBytes: 2},
+			Dataobj: Dataobj{PrePredicateDecompressedBytes: 4, PostPredicateDecompressedBytes: 8},
+		}},
+		Ingester: Ingester{Store: Store{Chunk: Chunk{DecompressedBytes: 16, HeadChunkBytes: 32}}},
+	}
+
+	require.Equal(t, int64(63), res.TotalBytesProcessed())
+
+	res.ComputeSummary(time.Second, 0, 0)
+	require.Equal(t, res.TotalBytesProcessed(), res.Summary.TotalBytesProcessed, "the planned-vs-scanned bytes must count what total_bytes counts")
 }
 
 func TestContext_ChunksScanned(t *testing.T) {

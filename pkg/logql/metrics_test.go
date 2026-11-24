@@ -262,7 +262,7 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 }
 
 func TestAppendLoglineStats(t *testing.T) {
-	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
+	withPlanning := func(outcome string, planned, scanned int64, ratio float64, plannedBytes, scannedBytes int64, byteRatio float64) stats.Result {
 		return stats.Result{Logline: &stats.Logline{
 			Outcome:             outcome,
 			HintStatus:          "ok",
@@ -276,12 +276,15 @@ func TestAppendLoglineStats(t *testing.T) {
 			PlannedChunks:       planned,
 			ScannedChunks:       scanned,
 			ChunkFilterRatio:    ratio,
+			PlannedBytes:        plannedBytes,
+			ScannedBytes:        scannedBytes,
+			ByteFilterRatio:     byteRatio,
 			ObjectRequests:      12,
 			IOBytes:             2048,
 			IOWait:              (40 * time.Millisecond).Nanoseconds(),
 		}}
 	}
-	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
+	loglineFields := func(outcome string, planned, scanned int64, plannedBytes, scannedBytes string) []interface{} {
 		return []interface{}{
 			"logline_outcome", outcome,
 			"logline_hint_status", "ok",
@@ -297,10 +300,9 @@ func TestAppendLoglineStats(t *testing.T) {
 			"logline_io_wait", 40 * time.Millisecond,
 			"shard_planned_chunks", planned,
 			"logline_scanned_chunks", scanned,
+			"shard_planned_bytes", plannedBytes,
+			"logline_scanned_bytes", scannedBytes,
 		}
-	}
-	withRatio := func(outcome string, planned, scanned int64, ratio string) []interface{} {
-		return append(loglineFields(outcome, planned, scanned), "logline_chunk_filter_ratio", ratio)
 	}
 
 	for _, tc := range []struct {
@@ -319,19 +321,29 @@ func TestAppendLoglineStats(t *testing.T) {
 			expected: []interface{}{"logline_outcome", "query_too_small"},
 		},
 		{
-			name:     "some chunks filtered",
-			stats:    withChunks("data_skipped", 40, 10, 0.75),
-			expected: withRatio("data_skipped", 40, 10, "0.75"),
+			name:  "some chunks and bytes filtered",
+			stats: withPlanning("data_skipped", 40, 10, 0.75, 4_000_000_000, 2_000_000_000, 0.5),
+			expected: append(loglineFields("data_skipped", 40, 10, "4.0GB", "2.0GB"),
+				"logline_chunk_filter_ratio", "0.75",
+				"logline_byte_filter_ratio", "0.50"),
 		},
 		{
-			name:     "no chunks filtered",
-			stats:    withChunks("tiny_data_skipped", 40, 40, 0),
-			expected: withRatio("tiny_data_skipped", 40, 40, "0.00"),
+			name:  "nothing filtered",
+			stats: withPlanning("tiny_data_skipped", 40, 40, 0, 4_000_000_000, 4_000_000_000, 0),
+			expected: append(loglineFields("tiny_data_skipped", 40, 40, "4.0GB", "4.0GB"),
+				"logline_chunk_filter_ratio", "0.00",
+				"logline_byte_filter_ratio", "0.00"),
 		},
 		{
-			name:     "ratio omitted without shard planning",
-			stats:    withChunks("skip_ratio_unavailable", 0, 0, 0),
-			expected: loglineFields("skip_ratio_unavailable", 0, 0),
+			name:  "byte ratio omitted when only chunks were planned",
+			stats: withPlanning("data_skipped", 40, 10, 0.75, 0, 1_000, 0),
+			expected: append(loglineFields("data_skipped", 40, 10, "0B", "1.0kB"),
+				"logline_chunk_filter_ratio", "0.75"),
+		},
+		{
+			name:     "ratios omitted without shard planning",
+			stats:    withPlanning("skip_ratio_unavailable", 0, 0, 0, 0, 0, 0),
+			expected: loglineFields("skip_ratio_unavailable", 0, 0, "0B", "0B"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

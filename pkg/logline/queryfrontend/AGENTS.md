@@ -215,13 +215,26 @@ and shard merges sum them and discarded responses (retries) drop them. The prefe
 middleware adds the rest to the final response: the lookup
 status, time and ranges, the hint wait time, the lookup's object storage I/O, copies of
 `Index.ShardPlannedChunks` and `Index.ShardPlannedChunksScanned`, the chunk filter ratio,
-and the outcome. `Logline.Merge` sums the two counts and keeps the first value of every
-other field.
+the same pair for bytes and their ratio, and the outcome. `Logline.Merge` sums the two
+counts and keeps the first value of every other field.
 
 The chunk filter ratio compares `Index.ShardPlannedChunks`, the chunks shard planning
 estimated, with `Index.ShardPlannedChunksScanned`, the chunks scanned for the same
 requests (`Store.TotalChunksScanned` plus ingester matches). The shard middleware records
 both per split, so splits that bypass shard planning count toward neither.
+
+The byte filter ratio compares `Index.ShardPlannedBytes` with
+`Index.ShardPlannedBytesScanned` the same way. The planned bytes are the index stats bytes
+(or the sum over the GetShards shards), which add up the chunk sizes the ingester recorded
+when it cut each chunk. The scanned bytes are `Result.TotalBytesProcessed()`, what
+`total_bytes` counts, summed per planned split and not read from the query total, which
+also counts splits that skipped shard planning. The two sides count bytes by different
+rules: the querier counts a line with structured metadata at a larger width than the index
+does. For tenants that use structured metadata the scanned bytes are inflated, so the ratio
+understates the filtering. When the inflation outweighs the savings the ratio is clamped
+to 0 although the index did skip data. Prefer the chunk ratio for such a tenant.
+The chunk ratio only sees whole chunks that the hint filter dropped. The byte ratio also
+sees blocks the querier skipped inside a chunk that survived it, so it can be higher.
 
 `loglineOutcome` sets `Logline.Outcome`, which tells whether the index skipped data or
 why it didn't:

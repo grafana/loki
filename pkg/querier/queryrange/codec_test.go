@@ -3035,6 +3035,8 @@ func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
 			HintStatus:    "ok",
 			PlannedChunks: 40,
 			ScannedChunks: 40,
+			PlannedBytes:  4096,
+			ScannedBytes:  4096,
 		}})
 		require.Contains(t, got, "logline")
 
@@ -3044,10 +3046,13 @@ func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
 			"outcome", "hintStatus", "hintLookupTime", "hintRanges", "hintRangesDuration",
 			"skippedRequests", "narrowedRequests", "passthroughRequests", "plannedChunks", "scannedChunks",
 			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait", "hintWaitTime",
+			"plannedBytes", "scannedBytes", "byteFilterRatio",
 		}, slices.Collect(maps.Keys(logline)), "every field is written, including zeros")
 		require.Equal(t, "tiny_data_skipped", logline["outcome"])
 		require.Equal(t, 40.0, logline["plannedChunks"])
 		require.Equal(t, 0.0, logline["chunkFilterRatio"])
+		require.Equal(t, 4096.0, logline["plannedBytes"])
+		require.Equal(t, 0.0, logline["byteFilterRatio"])
 	})
 
 	t.Run("query without logline stats", func(t *testing.T) {

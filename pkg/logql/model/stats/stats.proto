@@ -84,6 +84,14 @@ message Logline {
   // or error). Together with skippedRequests and narrowedRequests it accounts
   // for every sub-request the hint filter classified.
   int64 passthroughRequests = 15 [(gogoproto.jsontag) = "passthroughRequests"];
+  // Copy of index.shardPlannedBytes.
+  int64 plannedBytes = 16 [(gogoproto.jsontag) = "plannedBytes"];
+  // Copy of index.shardPlannedBytesScanned.
+  int64 scannedBytes = 17 [(gogoproto.jsontag) = "scannedBytes"];
+  // Share of plannedBytes that weren't scanned, from 0 to 1. It is 0 when
+  // plannedBytes is 0. The planned and scanned bytes are counted by different
+  // rules, so this is approximate. See index.shardPlannedBytes.
+  double byteFilterRatio = 18 [(gogoproto.jsontag) = "byteFilterRatio"];
 }
 
 message Caches {
@@ -192,6 +200,18 @@ message Index {
   // Chunks scanned for the same splits as shardPlannedChunks. It can exceed
   // shardPlannedChunks, which is an estimate.
   int64 shardPlannedChunksScanned = 15 [(gogoproto.jsontag) = "shardPlannedChunksScanned,omitempty"];
+  // Bytes the frontend shard planner estimated for the same splits as
+  // shardPlannedChunks. They sum the chunk sizes the index recorded when the
+  // ingester cut each chunk. With power_of_two sharding they are the index
+  // stats bytes, scaled to the planned time range. With bounded sharding they
+  // are the sum over the GetShards shards, which count each overlapping chunk
+  // whole.
+  int64 shardPlannedBytes = 16 [(gogoproto.jsontag) = "shardPlannedBytes,omitempty"];
+  // Bytes processed for the same splits as shardPlannedBytes, as total_bytes
+  // counts them. The querier counts the bytes of a line with structured
+  // metadata at a larger width than the index does, so this can exceed
+  // shardPlannedBytes even when nothing was filtered.
+  int64 shardPlannedBytesScanned = 17 [(gogoproto.jsontag) = "shardPlannedBytesScanned,omitempty"];
 
   // Logline stats that moved to Result.logline.
   reserved 8 to 13;
