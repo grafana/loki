@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/prometheus/prometheus/util/compression"
@@ -197,7 +199,10 @@ type streamInstance struct {
 }
 
 type streamIterator struct {
-	instances []streamInstance
+	instances    []streamInstance
+	retired      []retiredWALStreamRef
+	count        int
+	emptyStreams int
 
 	current Series
 	buffer  []chunkWithBuffer
@@ -209,6 +214,8 @@ type streamIterator struct {
 func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
+	var retired []retiredWALStreamRef
+	var count int
 	for i, inst := range instances {
 		streams := make([]*stream, 0, inst.streams.Len())
 		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
@@ -219,9 +226,16 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 			streams: streams,
 			id:      inst.instanceID,
 		}
+		count += len(streams)
+		inst.retiredWALStreams.Range(func(key, value any) bool {
+			retired = append(retired, retiredWALStreamRef{instance: inst, fp: key.(model.Fingerprint), state: value.(*retiredWALStream)})
+			return true
+		})
 	}
 	return &streamIterator{
 		instances: streamInstances,
+		retired:   retired,
+		count:     count,
 	}
 }
 
@@ -247,13 +261,9 @@ func (s *streamIterator) Next() bool {
 
 	stream.chunkMtx.Lock()
 	if len(stream.chunks) < 1 {
-		// it's possible the stream has been flushed to storage
-		// in between starting the checkpointing process and
-		// checkpointing this stream.
-		// Unlock before recursing so empty streams don't stay
-		// exclusively locked while later streams are serialized.
-		stream.chunkMtx.Unlock()
-		return s.Next()
+		// A flush during checkpointing must not erase the definition or replay
+		// counter needed by records written after the checkpoint boundary.
+		s.emptyStreams++
 	}
 	defer stream.chunkMtx.Unlock()
 
@@ -312,8 +322,9 @@ type walLogger interface {
 }
 
 type WALCheckpointWriter struct {
-	metrics    *ingesterMetrics
-	segmentWAL *wlog.WL
+	metrics      *ingesterMetrics
+	segmentWAL   *wlog.WL
+	checkpointMu *sync.RWMutex
 
 	checkpointWAL walLogger
 	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
@@ -323,22 +334,36 @@ type WALCheckpointWriter struct {
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
+	lastSegment, noop, err := w.rotate()
+	if err != nil || noop {
+		return noop, err
+	}
+	return false, w.open(lastSegment)
+}
+
+// rotate starts a new WAL segment, which is the checkpoint boundary. It returns the
+// last segment before the boundary, or noop if there are no segments yet.
+func (w *WALCheckpointWriter) rotate() (int, bool, error) {
 	_, lastSegment, err := wlog.Segments(w.segmentWAL.Dir())
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 
 	if lastSegment < 0 {
 		// There are no WAL segments. No need of checkpoint yet.
-		return true, nil
+		return 0, true, nil
 	}
 
 	// First we advance the wal segment internally to ensure we don't overlap a previous checkpoint in
 	// low throughput scenarios and to minimize segment replays on top of checkpoints.
 	if _, err := w.segmentWAL.NextSegment(); err != nil {
-		return false, err
+		return 0, false, err
 	}
+	return lastSegment, false, nil
+}
 
+// open prepares the temporary checkpoint for the WAL segments up to lastSegment.
+func (w *WALCheckpointWriter) open(lastSegment int) error {
 	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
 	// we can start from that particular WAL segment.
 	checkpointDir := filepath.Join(w.segmentWAL.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
@@ -349,19 +374,19 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	cleanupStaleTmpCheckpoints(w.segmentWAL.Dir(), util_log.Logger)
 
 	if err := os.MkdirAll(checkpointDirTemp, 0750); err != nil {
-		return false, fmt.Errorf("create checkpoint dir: %w", err)
+		return fmt.Errorf("create checkpoint dir: %w", err)
 	}
 
 	checkpoint, err := wlog.NewSize(util_log.SlogFromGoKit(log.With(util_log.Logger, "component", "checkpoint_wal")), nil, checkpointDirTemp, walSegmentSize, compression.None)
 	if err != nil {
-		return false, fmt.Errorf("open checkpoint: %w", err)
+		return fmt.Errorf("open checkpoint: %w", err)
 	}
 
 	w.checkpointWAL = checkpoint
 	w.lastSegment = lastSegment
 	w.final = checkpointDir
 
-	return false, nil
+	return nil
 }
 
 // Buckets [64KB to 256MB] by 2
@@ -646,25 +671,32 @@ func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter
 }
 
 func (c *Checkpointer) PerformCheckpoint() (err error) {
-	noop, err := c.writer.Advance()
+	iter, noop, err := c.prepare()
 	if err != nil {
 		return err
 	}
 	if noop {
 		return nil
 	}
+	committed := false
 
 	c.metrics.checkpointCreationTotal.Inc()
 	defer func() {
+		if committed {
+			iter.forgetRetired()
+			level.Info(util_log.Logger).Log("msg", "checkpoint stream definitions retained", "streams", iter.count, "empty_streams", iter.emptyStreams)
+		}
 		if err != nil {
 			c.metrics.checkpointCreationFail.Inc()
 		}
 	}()
 	// signal whether checkpoint writes should be amortized or burst
 	var immediate bool
-	n := c.iter.Count()
+	n := iter.count
 	if n < 1 {
-		return c.writer.Close(false)
+		err = c.writer.Close(false)
+		committed = err == nil
+		return err
 	}
 
 	// Give a 10% buffer to the checkpoint duration in order to account for
@@ -680,7 +712,6 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		c.metrics.checkpointDuration.Observe(elapsed.Seconds())
 	}()
 
-	iter := c.iter.Iter()
 	for iter.Next() {
 		if err := c.writer.Write(iter.Stream()); err != nil {
 			return err
@@ -707,7 +738,38 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 		return iter.Error()
 	}
 
-	return c.writer.Close(false)
+	err = c.writer.Close(false)
+	committed = err == nil
+	return err
+}
+
+// prepare pins the streams at the same boundary as the WAL rotation. The lock is held
+// only while rotating and collecting stream pointers; cleaning up stale checkpoints and
+// opening the new one, like the much longer serialization, run concurrently with ingestion.
+func (c *Checkpointer) prepare() (*streamIterator, bool, error) {
+	writer, ok := c.writer.(*WALCheckpointWriter)
+	if !ok || writer.checkpointMu == nil {
+		noop, err := c.writer.Advance()
+		if err != nil || noop {
+			return nil, noop, err
+		}
+		return c.iter.Iter(), false, nil
+	}
+
+	writer.checkpointMu.Lock()
+	lastSegment, noop, err := writer.rotate()
+	var iter *streamIterator
+	if err == nil && !noop {
+		iter = c.iter.Iter()
+	}
+	writer.checkpointMu.Unlock()
+	if err != nil || noop {
+		return nil, noop, err
+	}
+	if err := writer.open(lastSegment); err != nil {
+		return nil, false, err
+	}
+	return iter, false, nil
 }
 
 func (c *Checkpointer) Run() {

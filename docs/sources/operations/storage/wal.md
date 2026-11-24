@@ -13,6 +13,14 @@ The WAL in Grafana Loki records incoming data and stores it on the local file sy
 
 This section will use Kubernetes as a reference deployment paradigm in the examples.
 
+## Stream definitions and checkpoints
+
+WAL entry records refer to a stream by a local reference; a separate series record defines the stream's labels. A checkpoint keeps the definition and replay counter of every stream present at its boundary, including streams whose chunks flush before the checkpoint reaches them. The counter lets replay skip entries the checkpoint already covers.
+
+The ingester briefly pauses writes and stream removal while it rotates the WAL for a checkpoint, then serializes the checkpoint concurrently with new writes. When a flushed stream is removed from memory, the ingester keeps its definition and counter until a later successful checkpoint supersedes the WAL records that refer to it. A stream that returns before then continues its previous counter.
+
+Each completed checkpoint logs `checkpoint stream definitions retained` with the number of `streams` and of `empty_streams`, which are streams kept only for their definition after their chunks flushed.
+
 ## Disclaimer and WAL nuances
 
 The Write Ahead Log in Loki takes a few particular tradeoffs compared to other WALs you may be familiar with. The WAL aims to add additional durability guarantees, but _not at the expense of availability_. Particularly, there are two scenarios where the WAL sacrifices these guarantees.

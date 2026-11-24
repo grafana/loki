@@ -243,6 +243,11 @@ func (s *stream) PushWalReplay(
 	toStore, invalid := s.validateEntries(ctx, entries, counter > 0, false, usageTracker, format)
 
 	bytesAdded, storedEntries, entriesWithErr := s.appendEntries(ctx, toStore, usageTracker, format, recordTime)
+	if counter > 0 {
+		// The retained WAL may start after earlier entries were flushed. Continue the
+		// persisted counter rather than counting only the replayed entries.
+		s.entryCt = max(s.entryCt, counter)
+	}
 	if len(storedEntries) > 0 {
 		s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
 	}

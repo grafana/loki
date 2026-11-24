@@ -137,7 +137,9 @@ type instance struct {
 
 	configs *runtime.TenantConfigs
 
-	wal WAL
+	wal               WAL
+	checkpointMu      *sync.RWMutex
+	retiredWALStreams sync.Map // model.Fingerprint -> *retiredWALStream
 
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
@@ -203,6 +205,7 @@ func newInstance(
 		configs:             configs,
 
 		wal:                   wal,
+		checkpointMu:          checkpointMutex(wal),
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
 		chunkFilter:      chunkFilter,
@@ -234,6 +237,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
 func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) error {
+	// A checkpoint must not start between accepting a push and logging its WAL records.
+	if i.checkpointMu != nil {
+		i.checkpointMu.RLock()
+		defer i.checkpointMu.RUnlock()
+	}
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
 	record.IngestedAt = req.IngestedAt
@@ -325,6 +333,11 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	// Continue the counter of a retired incarnation of this stream: its WAL records may
+	// still be replayed, and replay drops entries whose counter isn't above entryCt.
+	if previous, ok := i.retiredWALStreams.LoadAndDelete(fp); ok {
+		s.entryCt = previous.(*retiredWALStream).entryCt
+	}
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -463,6 +476,10 @@ func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto
 // removeStream removes a stream from the instance.
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
+		// Keep the stream's definition until a committed checkpoint supersedes its WAL records.
+		if i.checkpointMu != nil {
+			i.retiredWALStreams.Store(s.fp, &retiredWALStream{labels: s.labels, entryCt: s.entryCt})
+		}
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		i.memoryStreams.For(s.policy).Dec()
@@ -486,6 +503,9 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
 	s, ok := i.streams.LoadByFP(fp)
 	if !ok {
+		if retired, exists := i.retiredWALStreams.Load(fp); exists {
+			return retired.(*retiredWALStream).labels
+		}
 		return labels.EmptyLabels()
 	}
 	return s.labels

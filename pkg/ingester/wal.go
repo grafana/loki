@@ -85,6 +85,9 @@ type walWrapper struct {
 	wal        *wlog.WL
 	metrics    *ingesterMetrics
 	seriesIter SeriesIter
+	// The checkpoint boundary must not split an accepted push from its WAL
+	// records, or lose a stream between rotating the WAL and taking the snapshot.
+	checkpointMu sync.RWMutex
 
 	wait          sync.WaitGroup
 	quit          chan struct{}
@@ -172,10 +175,13 @@ func (w *walWrapper) IsDiskThrottled() bool {
 
 func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
 	return &WALCheckpointWriter{
-		metrics:    w.metrics,
-		segmentWAL: w.wal,
+		metrics:      w.metrics,
+		segmentWAL:   w.wal,
+		checkpointMu: &w.checkpointMu,
 	}
 }
+
+func (w *walWrapper) checkpointMutex() *sync.RWMutex { return &w.checkpointMu }
 
 func (w *walWrapper) run() {
 	level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
