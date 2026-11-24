@@ -221,7 +221,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -281,7 +281,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -350,7 +350,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -409,7 +409,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Per Total Received Bytes",
+                  "title": "Share of received bytes",
                   "type": "timeseries"
                },
                {
@@ -457,7 +457,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Per Tenant",
+                  "title": "By tenant share of metadata bytes",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -483,7 +483,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Distributor - Structured Metadata",
+            "title": "Distributor – structured metadata",
             "titleSize": "h6"
          },
          {
@@ -685,7 +685,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -745,7 +745,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -814,7 +814,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -822,7 +822,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Ingester - Zone Aware",
+            "title": "Ingester (zone aware)",
             "titleSize": "h6"
          },
          {
@@ -1024,7 +1024,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -1084,7 +1084,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -1153,7 +1153,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -1363,7 +1363,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Index write rate",
                   "type": "timeseries"
                },
                {
@@ -1423,7 +1423,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Index write latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -1492,7 +1492,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 index write latency",
                   "type": "timeseries"
                }
             ],
