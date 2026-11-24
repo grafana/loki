@@ -162,13 +162,13 @@ func (sc *seriesScan) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) 
 	return names, nil
 }
 
-func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (uint64, error) {
 	content, err := sc.readSeriesRecord(seriesOffset(id))
 	if err != nil {
 		return 0, err
 	}
 
-	fingerprint, err := sc.reader.decoder.Series(sc.reader.version, content, id, from, through, lbls, chks)
+	fingerprint, err := sc.reader.decoder.Series(sc.reader.version, content, id, from, through, lbls, chks, by)
 	if err != nil {
 		return 0, fmt.Errorf("decode series: %w", err)
 	}
