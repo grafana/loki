@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -14,8 +13,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -42,23 +39,7 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.NoError(t, err)
 		return sweeper, &logs
 	}
-	newDeletingSweeper := func(t *testing.T, bucket objstore.Bucket) (*Sweeper, *SweepMetrics, *bytes.Buffer) {
-		t.Helper()
-		var logs bytes.Buffer
-		metrics := NewSweepMetrics(prometheus.NewRegistry())
-		sweeper, err := NewDeletingSweeper(bucket, metrics, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
-		require.NoError(t, err)
-		return sweeper, metrics, &logs
-	}
 	stale := now.Add(-MinSweepInterval)
-	requireExists := func(t *testing.T, bucket objstore.BucketReader, want bool, paths ...string) {
-		t.Helper()
-		for _, p := range paths {
-			exists, err := bucket.Exists(t.Context(), p)
-			require.NoError(t, err)
-			require.Equal(t, want, exists, p)
-		}
-	}
 	// storeAnyReachableIndex stores a reachable index object, so that the scan
 	// finds a reachable object. Sweep fails when no scanned object is
 	// reachable.
@@ -73,9 +54,9 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket.put(t, "objects/tenants/a/01/unreachable", notADataObject, old)
 		storeReachableIndex(t, bucket, "a", "indexes/tenants/a/aa/index", []string{"objects/tenants/a/00/reachable"}, old)
 
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		result, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
+		require.Equal(t, SweepScanned, result.Outcome)
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/01/unreachable"}}, readFileList(t, bucket, "a"))
 	})
 
@@ -88,14 +69,14 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.NoError(t, bucket.Delete(t.Context(), "index/v0/indexes/53/expired"))
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
+		require.Equal(t, SweepScanned, result.Outcome)
 		require.Contains(t, logs.String(), "scanned=3 reachable=2 unreachable=1 missing_index_objects=1")
 		require.Equal(t, []string{"objects/tenants/a/01/only-in-expired-index"}, readFileList(t, bucket, "a").Paths)
 	})
 
-	t.Run("logs the objects that are unreachable in both the stored list and the scan as deletion candidates and deletes nothing", func(t *testing.T) {
+	t.Run("returns and logs the objects that are unreachable in both the stored list and the scan as sorted deletion candidates and deletes nothing", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		bucket.put(t, "index/v0/indexes/tenants/a/00/orphan-index", notADataObject, old)
 		bucket.put(t, "objects/tenants/a/00/reachable-now", notADataObject, old)
@@ -110,15 +91,16 @@ func TestSweeper_Sweep(t *testing.T) {
 		}})
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		require.Contains(t, logs.String(), `msg="deletion sweep dry run: would delete objects"`)
+		require.Equal(t, SweepScanned, result.Outcome)
+		require.Equal(t, []string{"index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan"}, result.Candidates)
+		require.Contains(t, logs.String(), `msg="deletion sweep found deletion candidates"`)
 		require.Contains(t, logs.String(), "previous_list_created_at="+stale.Format(time.RFC3339)+" list_created_at="+now.Format(time.RFC3339)+" previous_list_paths=4 list_paths=3 candidates=2 log_objects=1 index_objects=1\n")
 		lastModified := old.Format(time.RFC3339)
 		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep stored unreachable objects" scanned=5 reachable=2 unreachable=3 missing_index_objects=0`)
-		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep dry run: candidate" kind=index path=index/v0/indexes/tenants/a/00/orphan-index last_modified=`+lastModified+" size=")
-		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep dry run: candidate" kind=log path=objects/tenants/a/01/orphan last_modified=`+lastModified+" size=")
+		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep candidate" kind=index path=index/v0/indexes/tenants/a/00/orphan-index last_modified=`+lastModified+" size=")
+		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep candidate" kind=log path=objects/tenants/a/01/orphan last_modified=`+lastModified+" size=")
 		require.NotContains(t, logs.String(), "path=objects/tenants/a/00/reachable-now last_modified")
 		require.NotContains(t, logs.String(), "path=objects/tenants/a/02/new-orphan last_modified")
 		requireExists(t, bucket, true, "index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan", "objects/tenants/a/02/new-orphan")
@@ -127,175 +109,6 @@ func TestSweeper_Sweep(t *testing.T) {
 			"objects/tenants/a/01/orphan",
 			"objects/tenants/a/02/new-orphan",
 		}}, readFileList(t, bucket, "a"))
-	})
-
-	// storeCandidates stores an index candidate, a log candidate, an object
-	// that is reachable now, and a new orphan. It returns the candidates.
-	storeCandidates := func(t *testing.T, bucket fileBucket) []string {
-		t.Helper()
-		bucket.put(t, "index/v0/indexes/tenants/a/00/orphan-index", notADataObject, old)
-		bucket.put(t, "objects/tenants/a/00/reachable-now", notADataObject, old)
-		bucket.put(t, "objects/tenants/a/01/orphan", notADataObject, old)
-		bucket.put(t, "objects/tenants/a/02/new-orphan", notADataObject, old)
-		storeReachableIndex(t, bucket, "a", "indexes/tenants/a/aa/index", []string{"objects/tenants/a/00/reachable-now"}, old)
-		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{
-			"index/v0/indexes/tenants/a/00/orphan-index",
-			"objects/tenants/a/00/reachable-now",
-			"objects/tenants/a/01/orphan",
-		}})
-		return []string{"index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan"}
-	}
-	requireCounts := func(t *testing.T, metrics *SweepMetrics, deletedLog, deletedIndex, failedLog, failedIndex float64) {
-		t.Helper()
-		require.Equal(t, deletedLog, testutil.ToFloat64(metrics.deletedObjects.WithLabelValues(kindLog)))
-		require.Equal(t, deletedIndex, testutil.ToFloat64(metrics.deletedObjects.WithLabelValues(kindIndex)))
-		require.Equal(t, failedLog, testutil.ToFloat64(metrics.failedDeletes.WithLabelValues(kindLog)))
-		require.Equal(t, failedIndex, testutil.ToFloat64(metrics.failedDeletes.WithLabelValues(kindIndex)))
-	}
-
-	t.Run("deletes the index and log candidates and keeps the reachable objects and the new orphans", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		cands := storeCandidates(t, bucket)
-		sweeper, metrics, logs := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		requireExists(t, bucket, false, cands...)
-		requireExists(t, bucket, true, "objects/tenants/a/00/reachable-now", "objects/tenants/a/02/new-orphan", "index/v0/indexes/tenants/a/aa/index")
-		requireCounts(t, metrics, 1, 1, 0, 0)
-		require.Contains(t, logs.String(), `tenant=a msg="deletion sweep deleted candidates" previous_list_created_at=`+stale.Format(time.RFC3339)+" list_created_at="+now.Format(time.RFC3339)+" candidates=2 deleted_log_objects=1 deleted_index_objects=1 failed_log_objects=0 failed_index_objects=0\n")
-		require.NotContains(t, logs.String(), "dry run")
-		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{
-			"index/v0/indexes/tenants/a/00/orphan-index",
-			"objects/tenants/a/01/orphan",
-			"objects/tenants/a/02/new-orphan",
-		}}, readFileList(t, bucket, "a"))
-	})
-
-	t.Run("deletes nothing when no list is stored", func(t *testing.T) {
-		bucket := newFileBucket(t)
-		storeAnyReachableIndex(t, bucket)
-		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
-		sweeper, metrics, logs := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		requireExists(t, bucket, true, "objects/tenants/a/00/orphan")
-		requireCounts(t, metrics, 0, 0, 0, 0)
-		require.NotContains(t, logs.String(), "deleted candidates")
-	})
-
-	t.Run("deletes nothing and returns SweepSuperseded when a concurrent sweep stores its list first", func(t *testing.T) {
-		files := newFileBucket(t)
-		cands := storeCandidates(t, files)
-		newer := FileList{Tenant: "a", CreatedAt: now.Add(time.Minute), Paths: []string{"objects/tenants/a/00/newer"}}
-		bucket := &conflictBucket{Bucket: files, conflicts: 1, concurrentWrite: func() { storeFileList(t, files, newer) }}
-		sweeper, metrics, _ := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		requireExists(t, files, true, cands...)
-		requireCounts(t, metrics, 0, 0, 0, 0)
-	})
-
-	t.Run("deletes nothing and returns SweepSuperseded when the stored list changes during the scan", func(t *testing.T) {
-		files := newFileBucket(t)
-		cands := storeCandidates(t, files)
-		replacement := FileList{Tenant: "a", CreatedAt: now.Add(-time.Minute), Paths: cands}
-		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { storeFileList(t, files, replacement) }}
-		sweeper, metrics, _ := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		requireExists(t, files, true, cands...)
-		requireCounts(t, metrics, 0, 0, 0, 0)
-	})
-
-	t.Run("deletes nothing and returns the write error when the list cannot be stored", func(t *testing.T) {
-		files := newFileBucket(t)
-		cands := storeCandidates(t, files)
-		bucket := &malformedOnReplaceBucket{fileBucket: files}
-		sweeper, metrics, _ := newDeletingSweeper(t, bucket)
-
-		_, err := sweeper.Sweep(t.Context(), "a", now)
-		require.ErrorContains(t, err, "storing file list")
-		requireExists(t, files, true, cands...)
-		requireCounts(t, metrics, 0, 0, 0, 0)
-	})
-
-	t.Run("counts a candidate that is already gone as deleted", func(t *testing.T) {
-		files := newFileBucket(t)
-		storeCandidates(t, files)
-		bucket := &failingDeleteBucket{fileBucket: files, errs: map[string]error{
-			"objects/tenants/a/01/orphan": &os.PathError{Op: "remove", Path: "objects/tenants/a/01/orphan", Err: os.ErrNotExist},
-		}}
-		sweeper, metrics, logs := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		requireCounts(t, metrics, 1, 1, 0, 0)
-		require.Contains(t, logs.String(), "deleted_log_objects=1 deleted_index_objects=1 failed_log_objects=0 failed_index_objects=0\n")
-	})
-
-	t.Run("counts and logs a failed delete, deletes the other candidates, and returns SweepScanned", func(t *testing.T) {
-		files := newFileBucket(t)
-		storeCandidates(t, files)
-		bucket := &failingDeleteBucket{fileBucket: files, errs: map[string]error{
-			"index/v0/indexes/tenants/a/00/orphan-index": errors.New("delete failed"),
-		}}
-		sweeper, metrics, logs := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		requireExists(t, files, false, "objects/tenants/a/01/orphan")
-		requireExists(t, files, true, "index/v0/indexes/tenants/a/00/orphan-index")
-		requireCounts(t, metrics, 1, 0, 0, 1)
-		require.Contains(t, logs.String(), "deleted_log_objects=1 deleted_index_objects=0 failed_log_objects=0 failed_index_objects=1\n")
-		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep cannot delete candidate" kind=index path=index/v0/indexes/tenants/a/00/orphan-index err="delete failed"`)
-		require.Contains(t, readFileList(t, files, "a").Paths, "index/v0/indexes/tenants/a/00/orphan-index")
-	})
-
-	t.Run("logs only the first five failed deletes and counts every failed delete", func(t *testing.T) {
-		files := newFileBucket(t)
-		storeAnyReachableIndex(t, files)
-		errs := make(map[string]error)
-		var paths []string
-		for i := range 8 {
-			p := fmt.Sprintf("objects/tenants/a/aa/log-%d", i)
-			files.put(t, p, notADataObject, old)
-			paths = append(paths, p)
-			errs[p] = errors.New("delete failed")
-		}
-		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: paths})
-		bucket := &failingDeleteBucket{fileBucket: files, errs: errs}
-		sweeper, metrics, logs := newDeletingSweeper(t, bucket)
-
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
-		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		requireCounts(t, metrics, 0, 0, 8, 0)
-		require.Equal(t, 5, strings.Count(logs.String(), `msg="deletion sweep cannot delete candidate"`))
-	})
-
-	t.Run("returns the context error and keeps the new list when the context ends during the deletes", func(t *testing.T) {
-		files := newFileBucket(t)
-		cands := storeCandidates(t, files)
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-		bucket := &cancellingDeleteBucket{fileBucket: files, cancel: cancel}
-		sweeper, metrics, _ := newDeletingSweeper(t, bucket)
-
-		_, err := sweeper.Sweep(ctx, "a", now)
-		require.ErrorIs(t, err, context.Canceled)
-		requireExists(t, files, true, cands...)
-		requireCounts(t, metrics, 0, 0, 0, 0)
-		require.Equal(t, now, readFileList(t, files, "a").CreatedAt)
 	})
 
 	t.Run("excludes reachable compacted log and index objects and keeps a compacted index that no ToC reaches", func(t *testing.T) {
@@ -328,8 +141,8 @@ func TestSweeper_Sweep(t *testing.T) {
 		_, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
 		require.Contains(t, logs.String(), "candidates=16 log_objects=8 index_objects=8\n")
-		require.Equal(t, 5, strings.Count(logs.String(), `msg="deletion sweep dry run: candidate" kind=log`))
-		require.Equal(t, 5, strings.Count(logs.String(), `msg="deletion sweep dry run: candidate" kind=index`))
+		require.Equal(t, 5, strings.Count(logs.String(), `msg="deletion sweep candidate" kind=log`))
+		require.Equal(t, 5, strings.Count(logs.String(), `msg="deletion sweep candidate" kind=index`))
 	})
 
 	t.Run("logs every candidate whose attributes cannot be read with the error and stores the list", func(t *testing.T) {
@@ -341,15 +154,15 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket := &failingAttributesBucket{fileBucket: files}
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
-		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep dry run: candidate" kind=log path=objects/tenants/a/00/orphan err="attributes failed"`)
-		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep dry run: candidate" kind=log path=objects/tenants/a/01/orphan err="attributes failed"`)
+		require.Equal(t, SweepScanned, result.Outcome)
+		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep candidate" kind=log path=objects/tenants/a/00/orphan err="attributes failed"`)
+		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep candidate" kind=log path=objects/tenants/a/01/orphan err="attributes failed"`)
 		require.Equal(t, now, readFileList(t, files, "a").CreatedAt)
 	})
 
-	t.Run("returns the write error and logs no deletion candidates when the list cannot be stored", func(t *testing.T) {
+	t.Run("returns the write error and no deletion candidates when the list cannot be stored", func(t *testing.T) {
 		files := newFileBucket(t)
 		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
@@ -357,38 +170,41 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket := &malformedOnReplaceBucket{fileBucket: files}
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.ErrorIs(t, err, ErrMalformedFileList)
 		require.ErrorContains(t, err, "storing file list")
-		require.Empty(t, outcome)
-		require.NotContains(t, logs.String(), "dry run")
+		require.Empty(t, result)
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		require.Equal(t, stale, readFileList(t, files, "a").CreatedAt)
 	})
 
-	t.Run("logs no deletion candidates and says why when no list is stored", func(t *testing.T) {
+	t.Run("returns and logs no deletion candidates and says why when no list is stored", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		_, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.NotContains(t, logs.String(), "dry run")
+		require.Equal(t, SweepScanned, result.Outcome)
+		require.Empty(t, result.Candidates)
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		require.Contains(t, logs.String(), "no file list is stored, so this list is the first")
 		require.True(t, strings.HasPrefix(logs.String(), `level=info tenant=a msg="deletion sweep running"`+"\n"))
 	})
 
-	t.Run("logs an empty dry run when the stored list shares no object with the new list", func(t *testing.T) {
+	t.Run("returns no deletion candidates and logs an empty summary when the stored list shares no object with the new list", func(t *testing.T) {
 		bucket := newFileBucket(t)
 		storeAnyReachableIndex(t, bucket)
 		bucket.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
 		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/09/gone"}})
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		_, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
+		require.Empty(t, result.Candidates)
 		require.Contains(t, logs.String(), "candidates=0 log_objects=0 index_objects=0\n")
-		require.NotContains(t, logs.String(), "dry run: candidate")
+		require.NotContains(t, logs.String(), "deletion sweep candidate")
 	})
 
 	t.Run("returns ErrMalformedFileList without a write when the stored list is malformed at the second read", func(t *testing.T) {
@@ -398,9 +214,9 @@ func TestSweeper_Sweep(t *testing.T) {
 		storeFileList(t, files, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { upload(t, files, fileListPath("a"), []byte("not gzip")) }}
 
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		result, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
 		require.ErrorIs(t, err, ErrMalformedFileList)
-		require.Empty(t, outcome)
+		require.Empty(t, result)
 		require.Equal(t, "not gzip", readRaw(t, files, fileListPath("a")))
 	})
 
@@ -411,9 +227,10 @@ func TestSweeper_Sweep(t *testing.T) {
 		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: stale, Paths: []string{"objects/tenants/a/00/orphan"}})
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		_, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
+		require.Empty(t, result)
 		require.ErrorContains(t, err, `no ToC of tenant "a" reaches any of the 2 scanned objects, and none of the 0 reachable objects is among them`)
-		require.NotContains(t, logs.String(), "dry run")
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		require.Equal(t, stale, readFileList(t, bucket, "a").CreatedAt)
 	})
 
@@ -441,7 +258,7 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.False(t, exists)
 	})
 
-	t.Run("returns SweepSuperseded and logs no deletion candidates when a concurrent sweep stores its list first", func(t *testing.T) {
+	t.Run("returns SweepSuperseded and no deletion candidates when a concurrent sweep stores its list first", func(t *testing.T) {
 		files := newFileBucket(t)
 		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
@@ -450,14 +267,15 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket := &conflictBucket{Bucket: files, conflicts: 1, concurrentWrite: func() { storeFileList(t, files, newer) }}
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		require.NotContains(t, logs.String(), "dry run")
+		require.Equal(t, SweepSuperseded, result.Outcome)
+		require.Empty(t, result.Candidates)
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		require.Equal(t, newer, readFileList(t, files, "a"))
 	})
 
-	t.Run("returns SweepSuperseded without a write when the stored list changes during the scan", func(t *testing.T) {
+	t.Run("returns SweepSuperseded and no deletion candidates without a write when the stored list changes during the scan", func(t *testing.T) {
 		files := newFileBucket(t)
 		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
@@ -466,14 +284,15 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { storeFileList(t, files, replacement) }}
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		require.NotContains(t, logs.String(), "dry run")
+		require.Equal(t, SweepSuperseded, result.Outcome)
+		require.Empty(t, result.Candidates)
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		require.Equal(t, replacement, readFileList(t, files, "a"))
 	})
 
-	t.Run("returns SweepSuperseded without a write when the stored list is removed during the scan", func(t *testing.T) {
+	t.Run("returns SweepSuperseded and no deletion candidates without a write when the stored list is removed during the scan", func(t *testing.T) {
 		files := newFileBucket(t)
 		storeAnyReachableIndex(t, files)
 		files.put(t, "objects/tenants/a/00/orphan", notADataObject, old)
@@ -481,10 +300,11 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket := &onFirstListingBucket{fileBucket: files, hook: func() { require.NoError(t, files.Delete(t.Context(), fileListPath("a"))) }}
 		sweeper, logs := newLoggedSweeper(t, bucket)
 
-		outcome, err := sweeper.Sweep(t.Context(), "a", now)
+		result, err := sweeper.Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepSuperseded, outcome)
-		require.NotContains(t, logs.String(), "dry run")
+		require.Equal(t, SweepSuperseded, result.Outcome)
+		require.Empty(t, result.Candidates)
+		require.NotContains(t, logs.String(), "found deletion candidates")
 		exists, err := files.Exists(t.Context(), fileListPath("a"))
 		require.NoError(t, err)
 		require.False(t, exists)
@@ -512,9 +332,10 @@ func TestSweeper_Sweep(t *testing.T) {
 		storeFileList(t, files, stored)
 		bucket := &failingIterBucket{listRecordingBucket: listRecordingBucket{fileBucket: files}}
 
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		result, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepSkipped, outcome)
+		require.Equal(t, SweepSkipped, result.Outcome)
+		require.Empty(t, result.Candidates)
 		require.Empty(t, bucket.dirs)
 		require.Equal(t, stored, readFileList(t, files, "a"))
 	})
@@ -525,9 +346,9 @@ func TestSweeper_Sweep(t *testing.T) {
 		bucket.put(t, "objects/tenants/a/00/single-a", notADataObject, old)
 		storeFileList(t, bucket, FileList{Tenant: "a", CreatedAt: now.Add(-MinSweepInterval)})
 
-		outcome, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
+		result, err := newSweeper(t, bucket).Sweep(t.Context(), "a", now)
 		require.NoError(t, err)
-		require.Equal(t, SweepScanned, outcome)
+		require.Equal(t, SweepScanned, result.Outcome)
 		require.Equal(t, FileList{Tenant: "a", CreatedAt: now, Paths: []string{"objects/tenants/a/00/single-a"}}, readFileList(t, bucket, "a"))
 	})
 
@@ -554,13 +375,6 @@ func TestSweeper_Sweep(t *testing.T) {
 		require.Empty(t, bucket.dirs)
 		require.Contains(t, logs.String(), `level=error tenant=a msg="deletion sweep cannot continue: stored file list is malformed, repair or delete it" path=deletion/a/files.jsonl.gz`)
 		require.Equal(t, "not gzip", readRaw(t, files, fileListPath("a")))
-	})
-}
-
-func TestNewDeletingSweeper(t *testing.T) {
-	t.Run("returns an error when the metrics are nil", func(t *testing.T) {
-		_, err := NewDeletingSweeper(newFileBucket(t), nil, log.NewNopLogger())
-		require.ErrorContains(t, err, "metrics are required")
 	})
 }
 
@@ -594,6 +408,17 @@ func TestListCompactedTenants(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, tenants)
 	})
+}
+
+// requireExists checks that each of paths exists in bucket if want is true,
+// or does not exist if want is false.
+func requireExists(t *testing.T, bucket objstore.BucketReader, want bool, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		exists, err := bucket.Exists(t.Context(), p)
+		require.NoError(t, err)
+		require.Equal(t, want, exists, p)
+	}
 }
 
 // storeReachableIndex stores an index object of tenant at indexPath in the
@@ -667,30 +492,4 @@ type onFirstListingBucket struct {
 func (b *onFirstListingBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
 	b.once.Do(b.hook)
 	return b.fileBucket.IterWithAttributes(ctx, dir, f, options...)
-}
-
-// failingDeleteBucket returns the error in errs for a Delete of a path in
-// errs, and keeps the object. It deletes other paths.
-type failingDeleteBucket struct {
-	fileBucket
-	errs map[string]error
-}
-
-func (b *failingDeleteBucket) Delete(ctx context.Context, name string) error {
-	if err, ok := b.errs[name]; ok {
-		return err
-	}
-	return b.fileBucket.Delete(ctx, name)
-}
-
-// cancellingDeleteBucket calls cancel on every Delete, and then fails the
-// Delete with the context error. It keeps the object.
-type cancellingDeleteBucket struct {
-	fileBucket
-	cancel context.CancelFunc
-}
-
-func (b *cancellingDeleteBucket) Delete(ctx context.Context, _ string) error {
-	b.cancel()
-	return ctx.Err()
 }

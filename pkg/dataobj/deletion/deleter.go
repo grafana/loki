@@ -2,9 +2,9 @@ package deletion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,14 +14,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// maxConcurrentDeletes limits the deletes that one sweep runs at the same
-// time. The limit is per sweep, so a worker that runs several sweeps runs
-// more deletes in total.
+// maxConcurrentDeletes limits the deletes that one DeleteObjects call runs at
+// the same time. The limit is per call, so a worker that runs several sweeps
+// runs more deletes in total.
 const maxConcurrentDeletes = 64
 
-// maxLoggedDeleteFailures limits the failed deletes that one sweep logs. A
-// failure of the bucket can fail every delete, and one line for each would
-// flood the logs.
+// maxLoggedDeleteFailures limits the failed deletes that one DeleteObjects
+// call logs. A failure of the bucket can fail every delete, and one line for
+// each would flood the logs.
 const maxLoggedDeleteFailures = 5
 
 // The values of the kind label, and of the kind key in log lines.
@@ -30,11 +30,10 @@ const (
 	kindIndex = "index"
 )
 
-// SweepMetrics counts the deletes of the sweeps that delete their deletion
-// candidates.
+// SweepMetrics counts the deletes of DeleteObjects.
 //
 // SweepMetrics is safe for concurrent use. Create it once for each registry,
-// and share it between the sweepers.
+// and share it between the DeleteObjects calls.
 type SweepMetrics struct {
 	deletedObjects *prometheus.CounterVec
 	failedDeletes  *prometheus.CounterVec
@@ -65,66 +64,71 @@ func NewSweepMetrics(reg prometheus.Registerer) *SweepMetrics {
 	return metrics
 }
 
-// deleter deletes the deletion candidates of a sweep.
-type deleter struct {
-	bucket  objstore.Bucket
-	metrics *SweepMetrics
-}
-
-// handle deletes every candidate, with at most maxConcurrentDeletes deletes
-// at the same time. It counts a candidate that is already gone as deleted.
-// It logs a summary, and the first maxLoggedDeleteFailures failed deletes.
+// DeleteObjects deletes paths from bucket, with at most maxConcurrentDeletes
+// deletes at the same time. paths are relative to the bucket root, for
+// example the SweepResult.Candidates of a sweep. DeleteObjects counts the
+// deletes in metrics by kind of object.
 //
-// A failed delete does not stop the other deletes, and does not fail the
-// sweep. The new list holds every candidate. So a sweep at least
-// MinSweepInterval later tries a failed candidate again.
+// DeleteObjects counts a path that is already gone as deleted. It logs a
+// summary, and the first maxLoggedDeleteFailures failed deletes. It logs
+// nothing if paths is empty, because most sweeps skip and return no paths.
+// It adds no tenant to the log lines, so logger must carry it.
 //
-// handle returns the context error if ctx ends before all deletes finish.
-func (d deleter) handle(ctx context.Context, logger log.Logger, list FileList, cands candidates) error {
-	tally := &deleteTally{metrics: d.metrics, deleted: map[string]int{}, failed: map[string]int{}}
+// A failed delete does not stop the other deletes, and does not make
+// DeleteObjects fail. The stored file list holds every candidate of a sweep.
+// So a sweep at least MinSweepInterval later returns a failed candidate
+// again.
+//
+// DeleteObjects returns an error, and deletes nothing, if metrics is nil. It
+// returns the context error if ctx ends before all deletes finish. It does
+// not count a delete that fails because ctx ended.
+func DeleteObjects(ctx context.Context, bucket objstore.Bucket, paths []string, metrics *SweepMetrics, logger log.Logger) error {
+	if metrics == nil {
+		return errors.New("deleting objects: metrics are required")
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	tally := &deleteTally{metrics: metrics, deleted: map[string]int{}, failed: map[string]int{}}
 	var g errgroup.Group
 	g.SetLimit(maxConcurrentDeletes)
-	startDeletes := func(kind string, paths []string) {
-		for _, p := range paths {
-			if ctx.Err() != nil {
-				return
-			}
-			g.Go(func() error {
-				err := d.bucket.Delete(ctx, p)
-				// A delete that fails because ctx ended says nothing about the
-				// candidate, so handle does not count it.
-				if err != nil && ctx.Err() != nil {
-					return nil
-				}
-				if d.bucket.IsObjNotFoundErr(err) {
-					err = nil
-				}
-				tally.record(kind, p, err)
-				return nil
-			})
+	for _, p := range paths {
+		if ctx.Err() != nil {
+			break
 		}
+		g.Go(func() error {
+			err := bucket.Delete(ctx, p)
+			// A delete that fails because ctx ended says nothing about the
+			// object, so DeleteObjects does not count it.
+			if err != nil && ctx.Err() != nil {
+				return nil
+			}
+			if bucket.IsObjNotFoundErr(err) {
+				err = nil
+			}
+			tally.record(p, err)
+			return nil
+		})
 	}
-	startDeletes(kindIndex, cands.indexObjects)
-	startDeletes(kindLog, cands.logObjects)
 	// The deletes return no error. They record their failures in tally.
 	_ = g.Wait()
 
-	tally.log(logger, list, cands)
+	tally.log(logger, len(paths))
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("deleting candidates: %w", err)
+		return fmt.Errorf("deleting objects: %w", err)
 	}
 	return nil
 }
 
-// deleteFailure is a candidate that a sweep could not delete.
+// deleteFailure is an object that DeleteObjects could not delete.
 type deleteFailure struct {
 	kind string
 	path string
 	err  error
 }
 
-// deleteTally counts the deletes of one sweep for each kind of object. It
-// keeps the first maxLoggedDeleteFailures failures to log them.
+// deleteTally counts the deletes of one DeleteObjects call for each kind of
+// object. It keeps the first maxLoggedDeleteFailures failures to log them.
 //
 // deleteTally is safe for concurrent use.
 type deleteTally struct {
@@ -136,8 +140,12 @@ type deleteTally struct {
 	failures  []deleteFailure
 }
 
-// record counts the delete of path, of the given kind, that returned err.
-func (t *deleteTally) record(kind, path string, err error) {
+// record counts the delete of path that returned err.
+func (t *deleteTally) record(path string, err error) {
+	kind := kindLog
+	if isIndexObject(path) {
+		kind = kindIndex
+	}
 	if err == nil {
 		t.metrics.deletedObjects.WithLabelValues(kind).Inc()
 	} else {
@@ -156,8 +164,9 @@ func (t *deleteTally) record(kind, path string, err error) {
 	}
 }
 
-// log logs a summary of the deletes, and one line for each kept failure.
-func (t *deleteTally) log(logger log.Logger, list FileList, cands candidates) {
+// log logs a summary of the deletes of the given number of paths, and one
+// line for each kept failure.
+func (t *deleteTally) log(logger log.Logger, paths int) {
 	t.resultsMu.Lock()
 	defer t.resultsMu.Unlock()
 	// Log the summary at warn level if a delete failed, so that an operator
@@ -168,9 +177,7 @@ func (t *deleteTally) log(logger log.Logger, list FileList, cands candidates) {
 	}
 	logAt(logger).Log(
 		"msg", "deletion sweep deleted candidates",
-		"previous_list_created_at", cands.previousCreatedAt.Format(time.RFC3339),
-		"list_created_at", list.CreatedAt.Format(time.RFC3339),
-		"candidates", cands.count(),
+		"candidates", paths,
 		"deleted_log_objects", t.deleted[kindLog],
 		"deleted_index_objects", t.deleted[kindIndex],
 		"failed_log_objects", t.failed[kindLog],

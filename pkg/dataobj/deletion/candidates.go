@@ -15,8 +15,8 @@ import (
 )
 
 // examplesPerKind is the number of log objects, and the number of index
-// objects, that a dry run logs as example candidates. An operator checks the
-// examples by hand, so the dry run shows both kinds.
+// objects, that a sweep logs as example candidates. An operator checks the
+// examples by hand, so the sweep shows both kinds.
 const examplesPerKind = 5
 
 // unreachable returns the paths of scanned that reachable does not hold.
