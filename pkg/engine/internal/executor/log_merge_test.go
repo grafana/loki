@@ -228,15 +228,16 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 
 	// One multi-tenant object: only tenant T's sections should be collected.
 	buildSourceLogObject(t, bucket, "multi", sortSchema, map[string][]testStream{
-		tenant:  {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
-		"other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
+		tenant:    {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+		"A-other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
 	})
 
-	// Reference tenant T's actual logs section index. Sections are ordered by
-	// natsorted tenant name, so "other" may precede "T"; a task's refs always
-	// name the tenant's own section indices, never another tenant's.
+	// Reference the logs section index of tenant T. Sections are ordered by
+	// natsorted tenant name, so the logs section of "A-other" comes first on
+	// purpose and T's section has index 1. A task names the section indexes of
+	// its tenant in the whole object, not indexes within the tenant.
 	tIdxs := logsSectionIndexesForTenant(ctx, t, bucket, "multi", tenant)
-	require.NotEmpty(t, tIdxs)
+	require.Equal(t, []int{1}, tIdxs, "the logs section of the other tenant must come first")
 	refs := make([]*compactionv2pb.SectionRef, 0, len(tIdxs))
 	for _, idx := range tIdxs {
 		refs = append(refs, &compactionv2pb.SectionRef{ObjectPath: "multi", SectionIndex: int64(idx)})

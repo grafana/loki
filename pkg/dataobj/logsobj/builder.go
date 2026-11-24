@@ -257,13 +257,13 @@ func NewBuilder(tenant string, cfg BuilderBaseConfig, scratchStore scratch.Store
 	}, nil
 }
 
-// start creates the layout and the section builders of the current object. It
+// init creates the layout and the section builders of the current object. It
 // does nothing if the object already started.
 //
-// start reads the overrides only once per object. Every section and stream of
+// init reads the overrides only once per object. Every section and stream of
 // an object must use the same layout, and the overrides can change while the
 // object is open.
-func (b *Builder) start() {
+func (b *Builder) init() {
 	if b.streams != nil {
 		return
 	}
@@ -273,9 +273,8 @@ func (b *Builder) start() {
 	b.streams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, b.layout.ShardLayout())
 	b.streams.SetTenant(b.tenant)
 
-	// TODO(ashwanth): SortSchemaASC does not support AppendUnordered.
-	// It cannot merge stripes with schema ordering. Force AppendOrdered
-	// until stripe merging can use schema keys.
+	// SortSchemaASC does not support AppendUnordered, because stripe merging
+	// cannot use schema keys. Force AppendOrdered.
 	b.logs = logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 		PageSizeHint:              int(b.cfg.TargetPageSize),
 		PageMaxRowCount:           b.cfg.MaxPageRows,
@@ -373,7 +372,7 @@ func (b *Builder) targetFor(ls labels.Labels) (*streamTarget, error) {
 		return t, nil
 	}
 
-	b.start()
+	b.init()
 	schemaKey, err := ComputeSchemaKey(ls, b.layout.SchemaLabels())
 	if err != nil {
 		return nil, fmt.Errorf("compute schema key for tenant %s: %w", b.tenant, err)
