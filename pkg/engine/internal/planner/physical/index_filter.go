@@ -24,7 +24,10 @@ type IndexFilter struct {
 	// posting key order, with key ranges that do not overlap. The filter then
 	// reads them as one sequence, with one postings section reader at a time.
 	// Otherwise it merges one sequence for each index object, which accepts
-	// any order. A coordinator that predates the field sends false.
+	// any order.
+	//
+	// Every current planner sets SourcesInKeyOrder. False comes only from a
+	// coordinator that predates the field, during a rollout.
 	SourcesInKeyOrder bool
 
 	// ObjectPaths are the log objects whose rows the new index keeps.

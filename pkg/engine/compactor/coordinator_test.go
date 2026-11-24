@@ -3951,6 +3951,42 @@ func TestIndexFilterForUnmerged(t *testing.T) {
 	})
 }
 
+func TestSourcePathsInKeyOrder(t *testing.T) {
+	entry := func(t *testing.T, path, minColumn, maxColumn string) indexpointers.IndexPointer {
+		t.Helper()
+		keys, err := postings.NewKeyRange(postings.Key{Kind: postings.KindLabel, ColumnName: minColumn}, postings.Key{Kind: postings.KindLabel, ColumnName: maxColumn})
+		require.NoError(t, err)
+		return indexpointers.IndexPointer{Path: path, RunID: 1, PostingKeys: keys}
+	}
+
+	t.Run("returns the paths in the order of the posting keys of the index objects", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/z", "zone", "zz"), entry(t, "indexes/a", "app", "az"), entry(t, "indexes/e", "env", "ez")}}
+		paths, err := sourcePathsInKeyOrder(run)
+		require.NoError(t, err)
+		require.Equal(t, []string{"indexes/a", "indexes/e", "indexes/z"}, paths)
+	})
+
+	t.Run("returns the path of a run of one index object without posting key bounds", func(t *testing.T) {
+		paths, err := sourcePathsInKeyOrder(indexRun{entries: []indexpointers.IndexPointer{{Path: "indexes/only"}}})
+		require.NoError(t, err)
+		require.Equal(t, []string{"indexes/only"}, paths)
+	})
+
+	t.Run("returns a corrupt index error when an index object of a run of several has no posting key bounds", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/a", "app", "az"), {Path: "indexes/b", RunID: 1}}}
+		_, err := sourcePathsInKeyOrder(run)
+		require.ErrorIs(t, err, errCorruptIndex)
+		require.ErrorContains(t, err, "indexes/b")
+	})
+
+	t.Run("returns a corrupt index error when the key ranges of two index objects overlap", func(t *testing.T) {
+		run := indexRun{entries: []indexpointers.IndexPointer{entry(t, "indexes/a", "app", "env"), entry(t, "indexes/e", "env", "zone")}}
+		_, err := sourcePathsInKeyOrder(run)
+		require.ErrorIs(t, err, errCorruptIndex)
+		require.ErrorContains(t, err, "overlapping posting key ranges")
+	})
+}
+
 func TestNewLayoutKey(t *testing.T) {
 	sixteen, err := streams.ShardLayoutFromBuckets(16)
 	require.NoError(t, err)

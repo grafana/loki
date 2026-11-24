@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -500,7 +501,7 @@ func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.
 	}
 	slices.Sort(objectPaths)
 	objectPaths = slices.Compact(objectPaths)
-	sourceIndexPaths, err := filterSourcePaths(sourceIndexRun)
+	sourceIndexPaths, err := sourcePathsInKeyOrder(sourceIndexRun)
 	if err != nil {
 		return indexFilterTask{}, err
 	}
@@ -509,6 +510,35 @@ func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.
 		objectPaths:      objectPaths,
 		inputRange:       runsTimeRange(unmerged),
 	}, nil
+}
+
+// sourcePathsInKeyOrder returns the paths of the index objects of run in
+// posting key order. A worker that reads them as one sequence needs that
+// order, and the ToC does not promise an order for its entries.
+//
+// It returns an error that wraps errCorruptIndex if run has several index
+// objects and one has no posting key bounds, or if the key ranges of two
+// overlap. A worker could not read such a run as one sequence.
+func sourcePathsInKeyOrder(run indexRun) ([]string, error) {
+	entries := slices.Clone(run.entries)
+	if len(entries) > 1 {
+		for _, entry := range entries {
+			if entry.PostingKeys.IsZero() {
+				return nil, fmt.Errorf("%w: index object %s of run %s has no posting key bounds", errCorruptIndex, entry.Path, run)
+			}
+		}
+	}
+	slices.SortStableFunc(entries, func(a, b indexpointers.IndexPointer) int {
+		return cmp.Or(a.PostingKeys.Min().Compare(b.PostingKeys.Min()), a.PostingKeys.Max().Compare(b.PostingKeys.Max()))
+	})
+	paths := make([]string, len(entries))
+	for i, entry := range entries {
+		if i > 0 && entries[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()) >= 0 {
+			return nil, fmt.Errorf("%w: index objects %s and %s of run %s have overlapping posting key ranges", errCorruptIndex, entries[i-1].Path, entry.Path, run)
+		}
+		paths[i] = entry.Path
+	}
+	return paths, nil
 }
 
 func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
