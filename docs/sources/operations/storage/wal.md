@@ -41,7 +41,7 @@ The Write Ahead Log in Loki takes a few particular tradeoffs compared to other W
 
 ### Backpressure
 
-The WAL also includes a backpressure mechanism to allow a large WAL to be replayed within a smaller memory bound. This is helpful after bad scenarios (i.e. an outage) when a WAL has grown past the point it may be recovered in memory. In this case, the ingester will track the amount of data being replayed and once it's passed 90% of the `ingester.wal-replay-memory-ceiling` threshold, will flush to storage. When this happens, it's likely that the Loki attempt to deduplicate chunks via content addressable storage will suffer. We deemed this efficiency loss an acceptable tradeoff considering how it simplifies operation and that it should not occur during regular operation (rollouts, rescheduling) where the WAL can be replayed without triggering this threshold. Setting `ingester.wal-replay-memory-ceiling` to `0` disables backpressure entirely.
+The WAL also includes a backpressure mechanism to allow a large WAL to be replayed within a smaller memory bound. This is helpful after bad scenarios (for example, an outage) when a WAL has grown past the point it may be recovered in memory. In this case, the ingester will track the amount of data being replayed and once it's passed 90% of the `ingester.wal-replay-memory-ceiling` threshold, will flush to storage. When this happens, it's likely that the Loki attempt to deduplicate chunks via content addressable storage will suffer. We deemed this efficiency loss an acceptable tradeoff considering how it simplifies operation and that it should not occur during regular operation (rollouts, rescheduling) where the WAL can be replayed without triggering this threshold. Setting `ingester.wal-replay-memory-ceiling` to `0` disables backpressure entirely.
 
 ### Metrics
 
@@ -54,6 +54,8 @@ The following metrics are available for monitoring the WAL:
 * `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
 * `loki_ingester_wal_replay_active`: Set to 1 while an ingester is replaying its WAL and checkpoint on startup, 0 otherwise
 * `loki_ingester_wal_replay_duration_seconds`: Time taken to replay the checkpoint and the WAL
+* `loki_ingester_wal_bytes_in_use`: Number of bytes currently held in memory by the WAL recovery process. Used to track progress toward the [backpressure](#backpressure) threshold
+* `loki_ingester_wal_replay_flushing`: Set to 1 while WAL replay is in a flushing phase due to [backpressure](#backpressure), 0 otherwise
 
 ## Changes to deployment
 
@@ -62,8 +64,8 @@ The following metrics are available for monitoring the WAL:
 1. The following flags are relevant when deploying with a persistent volume:
     * `--ingester.wal-enabled` enables writing to WAL during ingestion. It defaults to `true`, so this typically doesn't need to be set explicitly.
     * `--ingester.wal-dir` sets the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
-    * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
-    * `--ingester.wal-replay-memory-ceiling` (default 4GB) may be set higher/lower depending on your resource settings. It handles memory pressure during WAL replays, allowing a WAL many times larger than available memory to be replayed. This is provided to minimize reconciliation time after very bad situations, i.e. an outage, and will likely not impact regular operations/rollouts _at all_. We suggest setting this to a high percentage (~75%) of available memory.
+    * `--ingester.checkpoint-duration` sets the interval at which checkpoints should be created.
+    * `--ingester.wal-replay-memory-ceiling` (default 4GB) may be set higher/lower depending on your resource settings. It handles memory pressure during WAL replays, allowing a WAL many times larger than available memory to be replayed. This is provided to minimize reconciliation time after very bad situations, for example, an outage, and will likely not impact regular operations/rollouts _at all_. We suggest setting this to a high percentage (~75%) of available memory.
     * `--ingester.wal-disk-full-threshold` (default 0.90) sets the fraction of disk usage (0.0 to 1.0) at which the ingester throttles incoming writes to protect WAL durability. Set to `0` to disable this protection. For details, refer to [Disclaimer and WAL nuances](#disclaimer-and-wal-nuances).
 
 ## Changes in lifecycle when WAL is enabled
@@ -74,13 +76,15 @@ Flushing of data to chunk store during rollouts or scale down is disabled. This 
 
 Based on tests in real world:
 
-* Numbers from an ingester with 5000 series ingesting ~5mb/s.
+* Numbers from an ingester with 5000 streams ingesting ~5mb/s.
 * Checkpoint period was 5mins.
 * disk utilization on a WAL-only disk was steady at ~10-15GB.
 
 You should not target 100% disk utilization.
 
 ## Migrating from stateless deployments
+
+This section applies only if you are upgrading from a Loki version where the WAL was not yet enabled by default and the ingester ran as a stateless Deployment. The WAL has been enabled by default since Loki 2.4, so most Loki 4.x deployments can skip this section.
 
 The ingester _Deployment without WAL_ and _StatefulSet with WAL_ should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.
 
@@ -89,7 +93,7 @@ Let's take an example of 4 ingesters. The migration would look something like th
 1. Bring up one stateful ingester `ingester-0` and wait until it's ready (accepting read and write requests).
 1. Scale down the old ingester deployment to 3 and wait until the leaving ingester flushes all the data to chunk store.
 1. Once that ingester has disappeared from `kc get pods ...`, add another stateful ingester and wait until it's ready. Now you have `ingester-0` and `ingester-1`.
-1. Repeat step 2 to reduce remove another ingester from old deployment.
+1. Repeat step 2 to remove another ingester from old deployment.
 1. Repeat step 3 to add another stateful ingester. Now you have `ingester-0 ingester-1 ingester-2`.
 1. Repeat step 4 and 5, and now you will finally have `ingester-0 ingester-1 ingester-2 ingester-3`.
 
@@ -105,27 +109,29 @@ When scaling down, we must ensure existing data on the leaving ingesters are flu
 
 Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shut down according to StatefulSet rules are `ingester-3` and then `ingester-2`.
 
-Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#flush-in-memory-chunks-and-shut-down) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
+Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#flush-in-memory-chunks-and-shut-down) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
 
 Also you can set the `--ingester.flush-on-shutdown` flag to `true`. This enables chunks to be flushed to long-term storage when the ingester is shut down.
 
+For automated scale-down, you can use the [`/ingester/prepare_shutdown`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#prepare-ingester-shutdown) endpoint. Unlike `/ingester/shutdown`, this endpoint does not flush data or remove the ingester from the ring immediately. Instead, it marks the ingester so that the next time the process receives a `SIGTERM` (for example, when Kubernetes deletes the pod), it will flush all in-memory data and unregister from the ring before stopping. Kubernetes-specific scale-down automation such as the [rollout-operator](https://github.com/grafana/rollout-operator) uses this endpoint to coordinate graceful scale-downs.
+
 ## Additional notes
 
 ### Kubernetes hacking
 
-StatefulSets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the TSDB, you may see immutability errors when attempting updates the Kubernetes StatefulSets.
+StatefulSets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the TSDB, you may see immutability errors when attempting to update the Kubernetes StatefulSets.
 
-In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`.
+In this case, try `kubectl -n <namespace> delete sts ingester --cascade=orphan`.
 This will leave the Pods alive but delete the StatefulSet.
 Then you may recreate the (updated) StatefulSet and one-by-one start deleting the `ingester-0` through `ingester-n` Pods _in that order_, allowing the StatefulSet to spin up new pods to replace them.
 
-#### Scaling Down Using `/flush_shutdown` Endpoint and Lifecycle Hook
+#### Scaling Down Using the `/ingester/shutdown` Endpoint and Lifecycle Hook
 
 1. **StatefulSets for Ordered Scaling Down**: The Loki ingesters should be scaled down one by one, which is efficiently handled by Kubernetes StatefulSets. This ensures an ordered and reliable scaling process, as described in the [Deployment and Scaling Guarantees](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#deployment-and-scaling-guarantees) documentation.
 
-1. **Using PreStop Lifecycle Hook**: During the Pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
+1. **Using PreStop Lifecycle Hook**: During the Pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the [`/ingester/shutdown?flush=true`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#flush-in-memory-chunks-and-shut-down) endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion. The older `/ingester/flush_shutdown` handler has been removed; use `/ingester/shutdown` instead.
 
 1. **Using terminationGracePeriodSeconds**: Provides time for the ingester to flush its data before being deleted, if flushing data takes more than 30 minutes, you may need to increase it.
 
