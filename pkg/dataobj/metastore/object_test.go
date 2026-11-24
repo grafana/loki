@@ -50,7 +50,9 @@ const (
 )
 
 var (
-	now = time.Now().UTC()
+	// now is fixed so that test data around it, such as ToC entries for now±1m,
+	// stays inside one ToC window.
+	now = time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
 	testStreams = []logproto.Stream{
