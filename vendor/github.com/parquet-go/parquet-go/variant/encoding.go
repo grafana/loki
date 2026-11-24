@@ -18,6 +18,9 @@ import (
 func Encode(b *MetadataBuilder, v Value) []byte {
 	switch v.basic {
 	case BasicObject:
+		if len(v.object.Fields) == 0 {
+			return []byte{byte(BasicObject), 0, 0}
+		}
 		enc := getEncoder(b)
 
 		start, end, err := enc.encodeValueObject(v.object)
@@ -31,6 +34,9 @@ func Encode(b *MetadataBuilder, v Value) []byte {
 		releaseEncoder(enc)
 		return res
 	case BasicArray:
+		if len(v.array.Elements) == 0 {
+			return []byte{byte(BasicArray), 0, 0}
+		}
 		enc := getEncoder(b)
 
 		start, end, err := enc.encodeValueArray(v.array)

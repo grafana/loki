@@ -3,10 +3,13 @@ package columnar_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +33,11 @@ var testColumnOptions = dataset.BuilderOptions{
 	Compression: datasetmd.COMPRESSION_TYPE_NONE,
 }
 
+var (
+	supportedVersions   = []uint32{columnar.FormatVersionDescriptorChecksum, columnar.FormatVersionPageChecksum}
+	unsupportedVersions = []uint32{0, 1, 3, 5}
+)
+
 // Test runs a basic end-to-end test for columnar encoding. More involved tests
 // are currently delegated to section packages.
 func Test(t *testing.T) {
@@ -39,15 +47,155 @@ func Test(t *testing.T) {
 	}
 	column := buildColumn(t, "test-column", testColumnOptions, values)
 
-	obj := buildObject(t, []*dataset.MemColumn{column})
-
 	expectRows := []dataset.Row{
 		{Index: 0, Values: []dataset.Value{values[0]}},
 		{Index: 1, Values: []dataset.Value{values[1]}},
 	}
-	rows, err := readDataset(t, obj)
-	require.NoError(t, err)
-	require.Equal(t, expectRows, rows)
+
+	for _, version := range supportedVersions {
+		t.Run(fmt.Sprintf("reads the rows of a section of format version %d", version), func(t *testing.T) {
+			obj := buildObject(t, version, []*dataset.MemColumn{column})
+
+			rows, err := readDataset(t, obj)
+
+			require.NoError(t, err)
+			require.Equal(t, expectRows, rows)
+		})
+	}
+
+	t.Run("returns an error when a byte of a page of format version 4 changes", func(t *testing.T) {
+		raw := objectBytes(t, buildObject(t, columnar.FormatVersionPageChecksum, []*dataset.MemColumn{column}))
+		raw[bytes.Index(raw, []byte("Hello"))] ^= 0xff
+
+		_, err := readDataset(t, truncateObject(t, raw, len(raw)))
+
+		require.ErrorContains(t, err, "invalid CRC32 checksum")
+	})
+}
+
+func TestNewDecoder(t *testing.T) {
+	for _, version := range unsupportedVersions {
+		t.Run(fmt.Sprintf("returns an error for format version %d", version), func(t *testing.T) {
+			_, err := columnar.NewDecoder(nil, version)
+
+			require.EqualError(t, err, fmt.Sprintf("unsupported format version %d", version))
+		})
+	}
+}
+
+func TestEncoder(t *testing.T) {
+	column := buildColumn(t, "test-column", testColumnOptions, []dataset.Value{
+		dataset.BinaryValue([]byte("Hello, world!")),
+		dataset.BinaryValue([]byte("Goodbye, world!")),
+	})
+
+	t.Run("keeps the checksum of a page in its descriptor in format version 2", func(t *testing.T) {
+		obj := buildObject(t, columnar.FormatVersionDescriptorChecksum, []*dataset.MemColumn{column})
+
+		descs, pages := readColumnPages(t, obj)
+
+		require.Len(t, descs, len(column.Pages))
+		for i, desc := range descs {
+			require.Equal(t, column.Pages[i].Desc.CRC32, desc.DeprecatedCrc32)
+			require.Equal(t, uint64(len(column.Pages[i].Data)), desc.DataSize)
+			require.Equal(t, column.Pages[i].Data, pages[i])
+		}
+	})
+
+	t.Run("keeps the checksum of a page in the page in format version 4", func(t *testing.T) {
+		obj := buildObject(t, columnar.FormatVersionPageChecksum, []*dataset.MemColumn{column})
+
+		descs, pages := readColumnPages(t, obj)
+
+		require.Len(t, descs, len(column.Pages))
+		for i, desc := range descs {
+			page := column.Pages[i]
+			require.Zero(t, desc.DeprecatedCrc32)
+			require.Equal(t, uint64(len(page.Data)+crc32.Size), desc.DataSize)
+			require.Equal(t, dataset.PageData(binary.LittleEndian.AppendUint32(bytes.Clone(page.Data), page.Desc.CRC32)), pages[i])
+		}
+	})
+
+	t.Run("starts the metadata region with the format version in format version 2", func(t *testing.T) {
+		obj := buildObject(t, columnar.FormatVersionDescriptorChecksum, []*dataset.MemColumn{column})
+
+		first, err := obj.Sections()[0].Reader.MetadataRanges(t.Context(), []dataobj.RelativeByteRange{{Offset: 0, Length: 1}})
+
+		require.NoError(t, err)
+		require.Equal(t, [][]byte{{byte(columnar.FormatVersionDescriptorChecksum)}}, first)
+		require.Equal(t, uint64(1), firstColumnMetadataOffset(t, obj))
+	})
+
+	t.Run("starts the metadata region with the column metadata in format version 4", func(t *testing.T) {
+		obj := buildObject(t, columnar.FormatVersionPageChecksum, []*dataset.MemColumn{column})
+
+		require.Zero(t, firstColumnMetadataOffset(t, obj))
+	})
+
+	t.Run("places the pages of format version 4 one after the other", func(t *testing.T) {
+		large := strings.Repeat("x", 2*testColumnOptions.PageSizeHint)
+		manyPages := buildColumn(t, "test-column", testColumnOptions, []dataset.Value{
+			dataset.BinaryValue([]byte(large)),
+			dataset.BinaryValue([]byte(large)),
+			dataset.BinaryValue([]byte(large)),
+		})
+		require.Greater(t, len(manyPages.Pages), 1)
+		obj := buildObject(t, columnar.FormatVersionPageChecksum, []*dataset.MemColumn{manyPages})
+
+		descs, pages := readColumnPages(t, obj)
+
+		require.Len(t, descs, len(manyPages.Pages))
+		var offset uint64
+		for i, desc := range descs {
+			require.Equal(t, offset, desc.DataOffset)
+			require.Len(t, pages[i], len(manyPages.Pages[i].Data)+crc32.Size)
+			offset += desc.DataSize
+		}
+	})
+
+	for _, version := range unsupportedVersions {
+		t.Run(fmt.Sprintf("returns an error for format version %d, which it cannot write", version), func(t *testing.T) {
+			enc := columnar.NewEncoder()
+
+			err := enc.SetFormatVersion(version)
+
+			require.EqualError(t, err, fmt.Sprintf("unsupported format version %d", version))
+		})
+	}
+
+	t.Run("returns an error when the format version is set while a column is open", func(t *testing.T) {
+		enc := columnar.NewEncoder()
+		_, err := enc.OpenColumn(column.ColumnDesc())
+		require.NoError(t, err)
+
+		err = enc.SetFormatVersion(columnar.FormatVersionPageChecksum)
+
+		require.EqualError(t, err, "format version set after opening a column")
+	})
+
+	t.Run("returns an error when the format version is set after committing a column", func(t *testing.T) {
+		enc := columnar.NewEncoder()
+		columnEnc, err := enc.OpenColumn(column.ColumnDesc())
+		require.NoError(t, err)
+		for _, page := range column.Pages {
+			require.NoError(t, columnEnc.AppendPage(page))
+		}
+		require.NoError(t, columnEnc.Commit())
+
+		err = enc.SetFormatVersion(columnar.FormatVersionPageChecksum)
+
+		require.EqualError(t, err, "format version set after opening a column")
+	})
+
+	t.Run("returns an error when a page has its checksum in its data", func(t *testing.T) {
+		enc := columnar.NewEncoder()
+		columnEnc, err := enc.OpenColumn(column.ColumnDesc())
+		require.NoError(t, err)
+
+		err = columnEnc.AppendPage(&dataset.MemPage{Desc: dataset.PageDesc{FormatVersion: columnar.FormatVersionPageChecksum}})
+
+		require.EqualError(t, err, "page has its checksum in its data")
+	})
 }
 
 func TestOpen(t *testing.T) {
@@ -78,11 +226,11 @@ func TestRowReader_Read(t *testing.T) {
 
 func TestDecoder_ReadPages(t *testing.T) {
 	column := buildColumn(t, "test-column", testColumnOptions, []dataset.Value{dataset.BinaryValue([]byte("Hello, world!"))})
-	reader := buildObject(t, []*dataset.MemColumn{column}).Sections()[0].Reader
+	reader := buildObject(t, columnar.DefaultFormatVersion, []*dataset.MemColumn{column}).Sections()[0].Reader
 	dataSize := uint64(reader.DataSize())
 
 	readPages := func(t *testing.T, reader dataobj.SectionReader, pages ...*datasetmd.PageDesc) ([]dataset.PageData, error) {
-		dec, err := columnar.NewDecoder(reader, columnar.FormatVersion)
+		dec, err := columnar.NewDecoder(reader, columnar.DefaultFormatVersion)
 		require.NoError(t, err)
 
 		return result.Collect(dec.ReadPages(t.Context(), pages))
@@ -141,29 +289,33 @@ func TestDecoder_ReadPages(t *testing.T) {
 }
 
 func TestMakeDatasetPage(t *testing.T) {
-	tests := []struct {
-		name string
-		desc *datasetmd.PageDesc
-		want int
-	}{
-		{
-			name: "takes the compressed size from the data size when compressed_size is unset",
-			desc: &datasetmd.PageDesc{DataSize: 1234},
-			want: 1234,
-		},
-		{
-			name: "takes the compressed size from the data size when compressed_size is different",
-			desc: &datasetmd.PageDesc{DataSize: 1234, CompressedSize: 1230},
-			want: 1234,
-		},
+	newDecoder := func(t *testing.T, version uint32) *columnar.Decoder {
+		dec, err := columnar.NewDecoder(nil, version)
+		require.NoError(t, err)
+		return dec
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			page := columnar.MakeDatasetPage(nil, tc.desc)
 
-			require.Equal(t, tc.want, page.PageDesc().CompressedSize)
+	for _, version := range supportedVersions {
+		t.Run(fmt.Sprintf("takes the compressed size from the data size for format version %d", version), func(t *testing.T) {
+			page := columnar.MakeDatasetPage(newDecoder(t, version), &datasetmd.PageDesc{DataSize: 1234})
+
+			require.Equal(t, 1234, page.PageDesc().CompressedSize)
 		})
 	}
+
+	for _, version := range supportedVersions {
+		t.Run(fmt.Sprintf("sets the format version %d of the decoder on the page", version), func(t *testing.T) {
+			page := columnar.MakeDatasetPage(newDecoder(t, version), &datasetmd.PageDesc{})
+
+			require.Equal(t, version, page.PageDesc().FormatVersion)
+		})
+	}
+
+	t.Run("takes the checksum from the descriptor", func(t *testing.T) {
+		page := columnar.MakeDatasetPage(newDecoder(t, columnar.FormatVersionDescriptorChecksum), &datasetmd.PageDesc{DeprecatedCrc32: 99})
+
+		require.Equal(t, uint32(99), page.PageDesc().CRC32)
+	})
 }
 
 func buildColumn(t *testing.T, tag string, opts dataset.BuilderOptions, values []dataset.Value) *dataset.MemColumn {
@@ -181,13 +333,13 @@ func buildColumn(t *testing.T, tag string, opts dataset.BuilderOptions, values [
 	return column
 }
 
-func buildObject(t *testing.T, columns []*dataset.MemColumn) *dataobj.Object {
+func buildObject(t *testing.T, version uint32, columns []*dataset.MemColumn) *dataobj.Object {
 	t.Helper()
 
 	testSectionType := dataobj.SectionType{
 		Namespace: "my-namespace",
 		Kind:      "my-kind",
-		Version:   columnar.FormatVersion,
+		Version:   version,
 	}
 
 	objBuilder := dataobj.NewBuilder(nil)
@@ -215,15 +367,53 @@ func serializeObject(t *testing.T) ([]byte, dataobj.SectionReader) {
 		dataset.BinaryValue([]byte("Hello, world!")),
 		dataset.BinaryValue([]byte("Goodbye, world!")),
 	})
-	obj := buildObject(t, []*dataset.MemColumn{column})
+	obj := buildObject(t, columnar.DefaultFormatVersion, []*dataset.MemColumn{column})
+	return objectBytes(t, obj), obj.Sections()[0].Reader
+}
+
+func objectBytes(t *testing.T, obj *dataobj.Object) []byte {
+	t.Helper()
 
 	rc, err := obj.Reader(t.Context())
 	require.NoError(t, err)
 	raw, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.NoError(t, rc.Close())
+	return raw
+}
 
-	return raw, obj.Sections()[0].Reader
+// readColumnPages returns the descriptors and the bytes of the pages of the
+// first column of the first section of obj.
+func readColumnPages(t *testing.T, obj *dataobj.Object) ([]*datasetmd.PageDesc, []dataset.PageData) {
+	t.Helper()
+
+	rawSection := obj.Sections()[0]
+	dec, err := columnar.NewDecoder(rawSection.Reader, rawSection.Type.Version)
+	require.NoError(t, err)
+
+	md, err := dec.SectionMetadata(t.Context())
+	require.NoError(t, err)
+	pageSets, err := result.Collect(dec.Pages(t.Context(), md.Columns[:1]))
+	require.NoError(t, err)
+	require.Len(t, pageSets, 1)
+
+	pages, err := result.Collect(dec.ReadPages(t.Context(), pageSets[0]))
+	require.NoError(t, err)
+	return pageSets[0], pages
+}
+
+// firstColumnMetadataOffset returns the offset, in the metadata region, of the
+// metadata of the first column of the first section of obj.
+func firstColumnMetadataOffset(t *testing.T, obj *dataobj.Object) uint64 {
+	t.Helper()
+
+	rawSection := obj.Sections()[0]
+	dec, err := columnar.NewDecoder(rawSection.Reader, rawSection.Type.Version)
+	require.NoError(t, err)
+
+	md, err := dec.SectionMetadata(t.Context())
+	require.NoError(t, err)
+	return md.Columns[0].ColumnMetadataOffset
 }
 
 // truncateObject returns the object made of the first size bytes of raw.
@@ -302,7 +492,8 @@ func newColumnarBuilder(t *testing.T, secType dataobj.SectionType, columns []*da
 func (b *columnarBuilder) Type() dataobj.SectionType { return b.sectionType }
 
 func (b *columnarBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
+	require.NoError(b.t, enc.SetFormatVersion(b.sectionType.Version))
 
 	for _, column := range b.columns {
 		columnEnc, err := enc.OpenColumn(column.ColumnDesc())

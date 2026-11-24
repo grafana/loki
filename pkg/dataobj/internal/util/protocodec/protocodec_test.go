@@ -41,7 +41,6 @@ func TestDecodeBytes(t *testing.T) {
 	for i := range 3 {
 		want.Pages = append(want.Pages, &datasetmd.PageDesc{
 			UncompressedSize: 1 << 20,
-			CompressedSize:   300000 + uint64(i),
 			RowsCount:        10000,
 			DataOffset:       uint64(i) * 300000,
 			DataSize:         300000 + uint64(i),

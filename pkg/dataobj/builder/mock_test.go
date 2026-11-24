@@ -55,12 +55,12 @@ type mockBuilder struct {
 	flushCloser *countingCloser
 }
 
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+func (m *mockBuilder) Append(stream logproto.Stream, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream, recTime)
+	return m.builder.Append(stream, recTime)
 }
 
 func (m *mockBuilder) InitialWatermark() *int64 { return nil }
@@ -90,8 +90,8 @@ func (m *mockBuilder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Clo
 	return obj, m.flushCloser, nil
 }
 
-func (m *mockBuilder) TimeRanges() []dataobj.TimeRange {
-	return m.builder.TimeRanges()
+func (m *mockBuilder) TimeRange() dataobj.TimeRange {
+	return m.builder.TimeRange()
 }
 
 // A mockCommitter implements the committer interface for tests.
@@ -343,12 +343,12 @@ func newTestBuilderFactory() *testBuilderFactory {
 	return &testBuilderFactory{metrics: logsobj.NewBuilderMetrics(), failAt: -1}
 }
 
-func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
+func (f *testBuilderFactory) NewBuilder(tenant string) (*logsobj.Builder, error) {
 	if f.failAt >= 0 && f.created >= f.failAt {
 		return nil, errors.New("boom")
 	}
 	f.created++
-	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), logsobj.NoTenantOverrides{})
+	return logsobj.NewBuilder(tenant, testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), logsobj.NoTenantOverrides{})
 }
 
 // mockMultiBuilder wraps the production [MultiObjectBuilder] so processor

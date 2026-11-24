@@ -323,6 +323,57 @@ func DataObject(t *testing.T, sections ...dataobj.SectionBuilder) (*dataobj.Obje
 	return obj, closer
 }
 
+// MergeObjects returns an object that holds a copy of every section of objs.
+//
+// The sections keep their order, except that the streams sections of all
+// objects come first, as in an object that [logsobj.Builder] wrote. The merged
+// object can hold several tenants. A [logsobj.Builder] holds one tenant, so use
+// MergeObjects to build a multi-tenant object in a test.
+func MergeObjects(t testing.TB, objs ...*dataobj.Object) (*dataobj.Object, io.Closer) {
+	t.Helper()
+
+	objBuilder := dataobj.NewBuilder(scratch.NewMemory(), dataobj.WithPrioritySections(streams.SectionType()))
+	for _, obj := range objs {
+		for _, sec := range obj.Sections() {
+			require.NoError(t, objBuilder.Append(copiedSection{t: t, section: sec}))
+		}
+	}
+
+	merged, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	return merged, closer
+}
+
+// copiedSection is a [dataobj.SectionBuilder] that writes the bytes of an
+// existing section unchanged.
+type copiedSection struct {
+	t       testing.TB
+	section *dataobj.Section
+}
+
+func (c copiedSection) Type() dataobj.SectionType { return c.section.Type }
+
+func (c copiedSection) Flush(w dataobj.SectionWriter) (int64, error) {
+	c.t.Helper()
+
+	reader := c.section.Reader
+	dataReader, err := reader.DataRange(c.t.Context(), dataobj.RelativeByteRange{Length: reader.DataSize()})
+	require.NoError(c.t, err)
+	defer dataReader.Close()
+	data, err := io.ReadAll(dataReader)
+	require.NoError(c.t, err)
+
+	metadata, err := reader.MetadataRanges(c.t.Context(), []dataobj.RelativeByteRange{{Length: reader.MetadataSize()}})
+	require.NoError(c.t, err)
+
+	return w.WriteSection(&dataobj.WriteSectionOptions{
+		Tenant:        c.section.Tenant,
+		ExtensionData: reader.ExtensionData(),
+	}, data, metadata[0])
+}
+
+func (c copiedSection) Reset() {}
+
 // StoredDataObject builds a data object from the given sections, writes it to bucket, and returns
 // the path it was written to.
 func StoredDataObject(t *testing.T, bucket objstore.Bucket, sections ...dataobj.SectionBuilder) string {

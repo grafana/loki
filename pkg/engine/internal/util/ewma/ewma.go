@@ -116,15 +116,18 @@ func (ewma *EWMA) Monitor(ctx context.Context) error {
 }
 
 func (ewma *EWMA) updateWindows() {
-	ewma.mut.Lock()
-	defer ewma.mut.Unlock()
-
 	// Make sure to use the same sample and "now" time for all windows for
 	// consistency.
+	//
+	// Get the sample before taking mut. The source can block on locks of its
+	// own, and holding mut while it waits blocks every Collect call.
 	var (
 		sample = ewma.source.Get()
 		now    = time.Now()
 	)
+
+	ewma.mut.Lock()
+	defer ewma.mut.Unlock()
 
 	for _, w := range ewma.windows {
 		w.Observe(sample, now)
@@ -141,11 +144,17 @@ func (ewma *EWMA) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
+	// Build the metrics under mut but send them after releasing it. A send can
+	// block until the registry drains ch, and Monitor must not wait on that.
 	ewma.mut.RLock()
-	defer ewma.mut.RUnlock()
-
+	metrics := make([]prometheus.Metric, 0, len(ewma.windows))
 	for _, w := range ewma.windows {
-		ch <- prometheus.MustNewConstMetric(ewma.metric, prometheus.GaugeValue, w.Value(), w.Name())
+		metrics = append(metrics, prometheus.MustNewConstMetric(ewma.metric, prometheus.GaugeValue, w.Value(), w.Name()))
+	}
+	ewma.mut.RUnlock()
+
+	for _, m := range metrics {
+		ch <- m
 	}
 }
 

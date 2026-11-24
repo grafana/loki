@@ -158,7 +158,7 @@ func (b *sortInfoSectionBuilder) Type() dataobj.SectionType { return sectionType
 func (b *sortInfoSectionBuilder) Reset() {}
 
 func (b *sortInfoSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 
 	streamIDBuilder := newInt64ColumnBuilder("stream_id", ColumnTypeStreamID.String())
@@ -169,7 +169,7 @@ func (b *sortInfoSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 	if err := timestampBuilder.Append(0, dataset.Int64Value(1)); err != nil {
 		return 0, err
 	}
-	if err := encodeTestColumns(&enc, streamIDBuilder, timestampBuilder); err != nil {
+	if err := encodeTestColumns(enc, streamIDBuilder, timestampBuilder); err != nil {
 		return 0, err
 	}
 	enc.SetTenant("tenant")

@@ -184,10 +184,13 @@ type DatasetPage struct {
 
 var _ dataset.Page = (*DatasetPage)(nil)
 
-// MakeDatasetPage returns a [DatasetPage] from a decoder and page description.
+// MakeDatasetPage returns a [DatasetPage] from a decoder and page descriptor.
+// The decoder must not be nil.
 //
-// The compressed size of the page is the data size of the description. The
-// compressed_size field is not read, because writers may leave it unset.
+// The compressed size of the page is the data size of its descriptor. In format
+// version 4 it includes the four bytes of the checksum.
+//
+// The format version of the page is the one that dec reads.
 func MakeDatasetPage(dec *Decoder, desc *datasetmd.PageDesc) *DatasetPage {
 	return &DatasetPage{
 		dec:  dec,
@@ -195,12 +198,14 @@ func MakeDatasetPage(dec *Decoder, desc *datasetmd.PageDesc) *DatasetPage {
 		info: &dataset.PageDesc{
 			UncompressedSize: int(desc.UncompressedSize),
 			CompressedSize:   int(desc.DataSize),
-			CRC32:            desc.Crc32,
+			CRC32:            desc.DeprecatedCrc32,
 			RowCount:         int(desc.RowsCount),
 			ValuesCount:      int(desc.ValuesCount),
 
 			Encoding: desc.Encoding,
 			Stats:    desc.Statistics,
+
+			FormatVersion: dec.formatVersion,
 		},
 	}
 }

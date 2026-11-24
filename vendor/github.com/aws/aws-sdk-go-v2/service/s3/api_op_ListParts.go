@@ -312,6 +312,14 @@ type ListPartsOutput struct {
 	// Upload ID identifying the multipart upload whose parts are being listed.
 	UploadId *string
 
+	// Version ID of the object.
+	//
+	// Returns the Version ID of the object for the listed parts, if bucket versioning
+	// is enabled.
+	//
+	// This functionality is not supported for directory buckets.
+	VersionId *string
+
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
 

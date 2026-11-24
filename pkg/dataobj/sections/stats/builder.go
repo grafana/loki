@@ -136,10 +136,10 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	slices.SortStableFunc(b.rows, Compare)
 
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 
-	if err := b.encode(b.rows, b.layout, &enc); err != nil {
+	if err := b.encode(b.rows, b.layout, enc); err != nil {
 		return 0, fmt.Errorf("encoding stats: %w", err)
 	}
 

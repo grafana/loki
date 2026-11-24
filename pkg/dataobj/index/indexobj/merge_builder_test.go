@@ -253,10 +253,10 @@ func TestMergeBuilder_PostingsSpillSectionsAtTargetSize(t *testing.T) {
 	// exceed a 4 KiB section and force several mid-stream cuts.
 	const numEntries = 100
 	bitmap := make([]byte, 256)
-	want := make(map[string]struct{}, numEntries)
+	want := make([]string, 0, numEntries)
 	for i := range numEntries {
 		val := fmt.Sprintf("value-%05d", i)
-		want[val] = struct{}{}
+		want = append(want, val)
 		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{
 			ObjectPath:     "/obj",
 			SectionIndex:   0,
@@ -281,19 +281,17 @@ func TestMergeBuilder_PostingsSpillSectionsAtTargetSize(t *testing.T) {
 	sections := obj.Sections()
 	require.Greater(t, len(sections), 1, "expected multiple postings sections")
 
-	// ...and every appended row survives across them, none lost or duplicated at
-	// the section boundaries.
+	// ...and every appended row survives across them in append order, none lost,
+	// duplicated or reordered at the section boundaries.
 	ctx := context.Background()
-	got := make(map[string]struct{}, numEntries)
+	got := make([]string, 0, numEntries)
 	for _, sec := range sections {
 		require.True(t, postings.CheckSection(sec))
 		ps, err := postings.Open(ctx, sec)
 		require.NoError(t, err)
 		for _, row := range readAllPostingsRows(ctx, t, ps) {
 			require.Equal(t, postings.KindLabel, row.Kind)
-			_, dup := got[row.LabelValue]
-			require.False(t, dup, "duplicate row across sections: %s", row.LabelValue)
-			got[row.LabelValue] = struct{}{}
+			got = append(got, row.LabelValue)
 		}
 	}
 	require.Equal(t, want, got)

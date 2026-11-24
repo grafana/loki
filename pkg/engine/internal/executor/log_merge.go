@@ -484,8 +484,8 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-// fixedLayout gives every tenant the same layout, so the output builder
-// writes the layout of the source objects instead of the tenant overrides.
+// fixedLayout gives the tenant the layout of the source objects, so the output
+// builder does not use the tenant overrides.
 type fixedLayout struct{ layout streams.Layout }
 
 func (l fixedLayout) SortSchemaLabels(string) []string { return l.layout.SchemaLabels() }
@@ -516,7 +516,7 @@ func (w *logObjectWriter) startNewObject() error {
 	overrides := fixedLayout{layout: w.layout}
 
 	sizeLeveled := dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: w.node.OutputLevel})
-	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, sizeLeveled)
+	builder, err := logsobj.NewBuilder(w.node.Tenant, cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, sizeLeveled)
 	if err != nil {
 		return err
 	}
@@ -544,7 +544,7 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(gs.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}

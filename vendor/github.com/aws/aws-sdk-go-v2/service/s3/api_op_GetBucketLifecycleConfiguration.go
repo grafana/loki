@@ -67,8 +67,6 @@ import (
 //
 //   - HTTP Status Code: 404 Not Found
 //
-//   - SOAP Fault Code Prefix: Client
-//
 // The following operations are related to GetBucketLifecycleConfiguration :
 //
 // [GetBucketLifecycle]
