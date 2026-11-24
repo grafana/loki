@@ -164,5 +164,16 @@ eval select from 0 to 30s forward {app="a"} | label_format level=lvl
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
 `functions` (`label_replace`, `vector`), `conversions`, `log_selection` (stream selectors, line
-filters, as opposed to a metric aggregation), … add more as coverage grows (`line_filters`,
-`label_filters`, `parsers`, `formatters`, …).
+filters, as opposed to a metric aggregation), `label_collisions` (the label collision matrix: mixed
+queries, layered parsers, literal `_extracted` keys), `label_collisions_parsers` (the same rules for
+every parser, for every source of a name, key order, filter, grouping, and pair of parsers;
+generated, see below), … add more as coverage grows (`line_filters`, `label_filters`, `parsers`,
+`formatters`, …).
+
+The rules that the cases of `label_collisions` show are at the top of that script. The model in
+`../collisiongen` follows the same rules, so change them together.
+
+`label_collisions_parsers.logqltest` is generated. Do not edit it by hand. Its expected values come
+from that model. To change the script, change the model or the cases there, and run
+`go test ./pkg/logql/internal/logqltest/collisiongen -update`. A test in that package fails when the
+script is out of date.
