@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
@@ -46,6 +47,7 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 }
 
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
+	start := time.Now()
 	// Check prerequisites
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -62,25 +64,88 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, runs, node.KeySpan, keepAll, out); err != nil {
+	meter := newInputMeter(c.indexMergeObserver.ObserveIndexMergeInputBytes)
+	// The deferred flush reports the last rows of a merge that fails.
+	defer meter.flush()
+	if err := c.mergePostingsInto(ctx, runs, node.KeySpan, keepAll, meter, out); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, meter, out); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
+	meter.flush()
 
 	artifacts, sizes, err := out.finish(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("index merge output: %w", err)
 	}
-	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, sizes.compressed, sizes.uncompressed)
+
+	summary := IndexMergeObservedStats{
+		InputBytes:              meter.total(),
+		OutputBytesCompressed:   sizes.compressed,
+		OutputBytesUncompressed: sizes.uncompressed,
 	}
+	duration := time.Since(start)
+	var inputBytesPerSecond int64
+	if duration > 0 {
+		inputBytesPerSecond = int64(float64(summary.InputBytes) / duration.Seconds())
+	}
+	var inputSections int
+	for _, run := range runs {
+		inputSections += len(run)
+	}
+	level.Info(c.logger).Log(
+		"msg", "IndexMerge: built index run",
+		"tenant", node.Tenant,
+		"source_objects", len(objects),
+		"input_runs", len(node.Runs),
+		"input_postings_sections", inputSections,
+		"input_bytes", summary.InputBytes,
+		"input_bytes_per_second", inputBytesPerSecond,
+		"output_objects", len(artifacts),
+		"output_bytes", summary.OutputBytesCompressed,
+		"key_span_bounded", !node.KeySpan.IsAll(),
+		"duration", duration,
+	)
+	c.indexMergeObserver.ObserveIndexMerge(node.Tenant, summary, duration)
 	return artifacts, nil
+}
+
+// IndexMergeObservedStats is the summary of one successful IndexMerge task
+// that the executor reports to IndexMergeObserver.
+type IndexMergeObservedStats struct {
+	// InputBytes is the size of the postings and stats rows that the task
+	// read, as postingsRowBytes and statBytes count it.
+	InputBytes int64
+
+	// OutputBytesCompressed is the size of the uploaded index objects.
+	OutputBytesCompressed int64
+
+	// OutputBytesUncompressed is the estimated size of the index objects at
+	// flush.
+	OutputBytesUncompressed int64
+}
+
+// postingsRowBytes returns the input size of row: the length of its strings,
+// stream ID bitmap, and bloom filter. It does not count the fixed-size
+// fields.
+func postingsRowBytes(row postings.Row) int64 {
+	return int64(len(row.ObjectPath) + len(row.ColumnName) + len(row.LabelValue) + len(row.StreamIDBitmap) + len(row.BloomFilter))
+}
+
+// statBytes returns the input size of stat: the length of its object path,
+// sort schema, and label names and values. It does not count the fixed-size
+// fields.
+func statBytes(stat stats.Stat) int64 {
+	size := len(stat.ObjectPath) + len(stat.SortSchema)
+	for name, value := range stat.Labels {
+		size += len(name) + len(value)
+	}
+	return int64(size)
 }
 
 // statsSources returns the objects whose stats rows node merges. A merge over
@@ -299,7 +364,8 @@ func keepAll(string) bool { return true }
 
 // mergePostingsInto merges the postings rows of runs whose posting key is in
 // keySpan, with a K-way loser-tree merge. It writes a row to out only if keep
-// returns true for the log object path of the row.
+// returns true for the log object path of the row. It counts every row that
+// it reads in meter, kept or not.
 //
 // Each run holds postings sections in posting key order, for example the
 // sections of every index object of one index run. The merge reads each run
@@ -308,7 +374,7 @@ func keepAll(string) bool { return true }
 //
 // The readers skip the pages that hold no key of keySpan, so a task of a
 // merge split by key span reads little more than its own range.
-func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
+func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, keep func(logObjectPath string) bool, meter *inputMeter, out *indexOutput) error {
 	readers := postingsSequences(ctx, runs, keySpan)
 	if len(readers) == 0 {
 		return nil
@@ -330,6 +396,7 @@ func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection,
 		}
 
 		row := tree.Winner().At()
+		meter.add(postingsRowBytes(row))
 		if !keep(row.ObjectPath) {
 			continue
 		}
@@ -393,8 +460,9 @@ func postingsSequences(ctx context.Context, runs [][]sourceSection, keySpan post
 
 // mergeStatsInto merges the stats sections of all source index objects with a
 // K-way loser-tree merge. It writes a row to out only if keep returns true for
-// the log object path of the row.
-func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
+// the log object path of the row. It counts every row that it reads in meter,
+// kept or not.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, meter *inputMeter, out *indexOutput) error {
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -427,6 +495,7 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 		}
 
 		row := tree.Winner().At()
+		meter.add(statBytes(row))
 		if !keep(row.ObjectPath) {
 			continue
 		}

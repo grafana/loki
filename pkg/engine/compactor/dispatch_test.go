@@ -40,7 +40,7 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *prometheus.CounterVec) {
 		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
 		retryBackoff := backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
-		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, counter), counter
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, 0, counter), counter
 	}
 	attempts := func(counter *prometheus.CounterVec, outcome string) float64 {
 		return testutil.ToFloat64(counter.WithLabelValues("index-merge", outcome))
@@ -283,7 +283,7 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
 		retryBackoff := backoff.Config{MinBackoff: 50 * time.Millisecond, MaxBackoff: 50 * time.Millisecond}
 		runner := &fakeRunner{err: errors.New("boom")}
-		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 2, retryBackoff, counter)
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 2, retryBackoff, 0, counter)
 
 		start := time.Now()
 		_, err := d.RunToCompletion(t.Context(), "acme", plans[:1])
@@ -300,7 +300,7 @@ func TestPlanDispatcherRunToCompletion(t *testing.T) {
 			time.AfterFunc(10*time.Millisecond, cancel)
 			return nil, errors.New("boom")
 		}}
-		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, counter)
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, 0, counter)
 
 		_, err := d.RunToCompletion(ctx, "acme", plans[:1])
 		require.EqualError(t, err, "index-merge job: boom (attempts: 1, retries stopped: context canceled)")
@@ -326,7 +326,7 @@ func TestPlanDispatcherRunCancellable(t *testing.T) {
 	newDispatcher := func(run runFunc, maxRetries int) (*planDispatcher, *prometheus.CounterVec) {
 		counter := newCoordinatorMetrics(prometheus.NewRegistry()).taskAttemptsTotal
 		retryBackoff := backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
-		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, counter), counter
+		return newPlanDispatcher(log.NewNopLogger(), run, 0, maxRetries, retryBackoff, 0, counter), counter
 	}
 
 	t.Run("returns the artifacts in plan order when every plan succeeds", func(t *testing.T) {
@@ -376,7 +376,7 @@ func TestPlanDispatcherRunPlanWithRetries(t *testing.T) {
 			time.AfterFunc(10*time.Millisecond, siblingFailed)
 			return nil, errors.New("boom")
 		}}
-		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, counter)
+		d := newPlanDispatcher(log.NewNopLogger(), runner.run, 0, 3, retryBackoff, 0, counter)
 		run := planRun{tenant: "acme", siblingCtx: siblingCtx, retryCtx: t.Context()}
 
 		_, err := d.runPlanWithRetries(run, log.NewNopLogger(), buildIndexMergePlan("acme", time.Time{}, indexMergeTask{spec: &compactionv2pb.TaskSpec{}}))

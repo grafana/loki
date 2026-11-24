@@ -1168,8 +1168,9 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 		logsobjCfg:     testBuilderCfg,
 		builderMetrics: logsobj.NewBuilderMetrics(),
 
-		logMergeObserver: nopLogMergeObserver{},
-		logger:           log.NewNopLogger(),
+		indexMergeObserver: nopIndexMergeObserver{},
+		logMergeObserver:   nopLogMergeObserver{},
+		logger:             log.NewNopLogger(),
 	}
 }
 
@@ -2007,19 +2008,23 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawStats, "output must contain a stats section")
 }
 
-// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+// recordingIndexMergeObserver records every call of an IndexMergeObserver.
 type recordingIndexMergeObserver struct {
-	tenants                            []string
-	compressedSizes, uncompressedSizes []int64
+	tenants    []string
+	stats      []IndexMergeObservedStats
+	inputBytes []int64
 }
 
-func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
+func (o *recordingIndexMergeObserver) ObserveIndexMerge(tenant string, stats IndexMergeObservedStats, _ time.Duration) {
 	o.tenants = append(o.tenants, tenant)
-	o.compressedSizes = append(o.compressedSizes, compressedBytes)
-	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
+	o.stats = append(o.stats, stats)
 }
 
-func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInputBytes(bytes int64) {
+	o.inputBytes = append(o.inputBytes, bytes)
+}
+
+func TestExecuteIndexMerge_Observes(t *testing.T) {
 	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
@@ -2037,9 +2042,43 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		attrs, err := bucket.Attributes(ctx, artifact.Path)
 		require.NoError(t, err)
 		require.Equal(t, []string{"tenant-1"}, observer.tenants)
-		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
-		require.Len(t, observer.uncompressedSizes, 1)
-		require.Positive(t, observer.uncompressedSizes[0])
+		require.Len(t, observer.stats, 1)
+		require.Equal(t, attrs.Size, observer.stats[0].OutputBytesCompressed)
+		require.Positive(t, observer.stats[0].OutputBytesUncompressed)
+	})
+
+	t.Run("reports the bytes of every postings and stats row of the sources while it runs and in the summary", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-1.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		var want int64
+		for _, path := range []string{"source/index-0.dat", "source/index-1.dat"} {
+			for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, path) {
+				want += postingsRowBytes(row)
+			}
+			for _, row := range readStatsRowsFromBucket(ctx, t, bucket, path) {
+				want += statBytes(row)
+			}
+		}
+
+		_, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}},
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-1.dat"}}},
+			},
+		})
+		require.NoError(t, err)
+
+		require.Positive(t, want)
+		require.Equal(t, []int64{want}, observer.inputBytes, "rows below one batch must be reported in one report")
+		require.Len(t, observer.stats, 1)
+		require.Equal(t, want, observer.stats[0].InputBytes)
 	})
 
 	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
@@ -2071,9 +2110,9 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 			require.NoError(t, err)
 			uploaded += attrs.Size
 		}
-		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
-		require.Len(t, observer.uncompressedSizes, 1)
-		require.Greater(t, observer.uncompressedSizes[0], int64(4096*(len(artifacts)-1)))
+		require.Len(t, observer.stats, 1)
+		require.Equal(t, uploaded, observer.stats[0].OutputBytesCompressed)
+		require.Greater(t, observer.stats[0].OutputBytesUncompressed, int64(4096*(len(artifacts)-1)))
 	})
 }
 

@@ -85,9 +85,9 @@ type Config struct {
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
-	// IndexMergeObserver is used  by compaction to populate output-size
-	// histograms. Optional; nil disables observation.
-	IndexMergeObserver executor.IndexMergeObserver
+	// NewIndexMergeObserver returns the IndexMerge observer for each thread.
+	// Optional; nil disables observation.
+	NewIndexMergeObserver executor.NewIndexMergeObserverFunc
 
 	// NewLogMergeObserver returns the LogMerge observer for each thread.
 	// Optional; nil disables observation.
@@ -187,6 +187,10 @@ func (w *Worker) run(ctx context.Context) error {
 	// Spin up worker threads.
 	var threads []*thread
 	for i := range w.numThreads {
+		var indexMergeObserver executor.IndexMergeObserver
+		if w.config.NewIndexMergeObserver != nil {
+			indexMergeObserver = w.config.NewIndexMergeObserver(i)
+		}
 		var logMergeObserver executor.LogMergeObserver
 		if w.config.NewLogMergeObserver != nil {
 			logMergeObserver = w.config.NewLogMergeObserver(i)
@@ -200,7 +204,7 @@ func (w *Worker) run(ctx context.Context) error {
 			LogsobjCfg:     w.config.LogsobjCfg,
 			BuilderMetrics: w.config.BuilderMetrics,
 
-			IndexMergeObserver: w.config.IndexMergeObserver,
+			IndexMergeObserver: indexMergeObserver,
 			LogMergeObserver:   logMergeObserver,
 
 			Metrics:    w.metrics,

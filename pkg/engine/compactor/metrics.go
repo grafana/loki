@@ -327,6 +327,10 @@ type workerMetrics struct {
 	outputBytesCompressed   *prometheus.HistogramVec // tenant
 	outputBytesUncompressed *prometheus.HistogramVec // tenant
 
+	indexMergeDurationSeconds     *prometheus.HistogramVec // tenant
+	indexMergeTaskInputBytes      *prometheus.HistogramVec // tenant
+	indexMergeTaskInputBytesTotal *prometheus.CounterVec   // thread
+
 	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
 	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
@@ -350,6 +354,28 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Help:    "Estimated size of the index objects of a successful IndexMerge task at flush, summed over the index objects of the run of the task. Sections that the builder holds count before encoding, and sections that it already cut count as encoded. One observation per task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
+		indexMergeDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_index_merge_duration_seconds",
+			Help:    "Wall-clock duration of a successful IndexMerge task on the worker.",
+			Buckets: durationBuckets,
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{labelTenant}),
+		indexMergeTaskInputBytes: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_index_merge_task_input_bytes",
+			Help:    "Bytes of the postings and stats rows that a successful IndexMerge task read. A row counts the length of its strings and byte fields, such as the stream ID bitmap and bloom filter, but not its fixed-size fields. One observation per task, for the same tasks as loki_dataobj_compaction_index_merge_duration_seconds.",
+			Buckets: byteBuckets,
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{labelTenant}),
+		indexMergeTaskInputBytesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_index_merge_task_input_bytes_total",
+			Help: "Bytes of the postings and stats rows that IndexMerge tasks read, counted while tasks run. It tracks the same bytes as loki_dataobj_compaction_index_merge_task_input_bytes. Includes tasks that later fail. A thread runs one task at a time, so rate() per thread gives the throughput of its running task.",
+		}, []string{labelThread}),
 		logMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_tasks_total",
 			Help: "LogMerge tasks by outcome. success = compacted log objects uploaded, empty = no source data or records.",
@@ -388,14 +414,38 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	}
 }
 
-// ObserveIndexMergeOutput satisfies executor.IndexMergeObserver. Called by
-// the IndexMerge executor on the worker after each successful task.
-func (m *workerMetrics) ObserveIndexMergeOutput(tenant string, compressed, uncompressed int64) {
-	if compressed > 0 {
-		m.outputBytesCompressed.WithLabelValues(tenant).Observe(float64(compressed))
+// indexMergeObserver returns the executor.IndexMergeObserver for one worker
+// thread. It satisfies executor.NewIndexMergeObserverFunc.
+func (m *workerMetrics) indexMergeObserver(thread int) executor.IndexMergeObserver {
+	return &threadIndexMergeMetrics{
+		workerMetrics: m,
+		inputBytes:    m.indexMergeTaskInputBytesTotal.WithLabelValues(strconv.Itoa(thread)),
 	}
-	if uncompressed > 0 {
-		m.outputBytesUncompressed.WithLabelValues(tenant).Observe(float64(uncompressed))
+}
+
+// threadIndexMergeMetrics is the executor.IndexMergeObserver for one worker
+// thread. It holds the thread's input bytes counter, so the per-row path does
+// no label lookup.
+type threadIndexMergeMetrics struct {
+	*workerMetrics
+	inputBytes prometheus.Counter
+}
+
+// ObserveIndexMergeInputBytes satisfies executor.IndexMergeObserver.
+func (m *threadIndexMergeMetrics) ObserveIndexMergeInputBytes(bytes int64) {
+	m.inputBytes.Add(float64(bytes))
+}
+
+// ObserveIndexMerge records the duration, input bytes, and output sizes of
+// one successful IndexMerge task.
+func (m *workerMetrics) ObserveIndexMerge(tenant string, stats executor.IndexMergeObservedStats, duration time.Duration) {
+	m.indexMergeDurationSeconds.WithLabelValues(tenant).Observe(duration.Seconds())
+	m.indexMergeTaskInputBytes.WithLabelValues(tenant).Observe(float64(stats.InputBytes))
+	if stats.OutputBytesCompressed > 0 {
+		m.outputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
+	}
+	if stats.OutputBytesUncompressed > 0 {
+		m.outputBytesUncompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesUncompressed))
 	}
 }
 

@@ -33,6 +33,11 @@ var errStalePlan = errors.New("source index no longer exists in ToC")
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
+// indexMergeSlowTaskThreshold is how long an attempt of an IndexMerge task
+// runs before the coordinator logs the plan of the task. The time includes the
+// wait in the scheduler queue.
+const indexMergeSlowTaskThreshold = 3 * time.Minute
+
 type coordinator struct {
 	cfg    Config
 	logger log.Logger
@@ -84,8 +89,8 @@ func newCoordinator(
 		cfg:             cfg,
 		logger:          logger,
 		bucket:          bucket,
-		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
-		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), indexMergeSlowTaskThreshold, metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), 0, metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,

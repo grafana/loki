@@ -53,8 +53,9 @@ func newSweepScheduler(
 		dataBucket: dataBucket,
 		limits:     limits,
 		// The next hourly sweep is the retry, so the dispatcher does not
-		// retry.
-		dispatcher: newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, attempts),
+		// retry. A sweep lists every tenant directory and often runs for
+		// minutes, so the dispatcher logs no plan for a slow sweep.
+		dispatcher: newPlanDispatcher(logger, run, 1, 0, backoff.Config{}, 0, attempts),
 		slots:      make(chan struct{}, cfg.MaxConcurrentSweeps),
 		clock:      time.Now,
 		sleep:      sleepUntil,

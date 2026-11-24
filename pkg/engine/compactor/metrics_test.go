@@ -97,6 +97,53 @@ func TestWorkerMetrics_LogMergeObserver(t *testing.T) {
 	})
 }
 
+func TestWorkerMetrics_IndexMergeObserver(t *testing.T) {
+	t.Run("adds input bytes to the series of the observer's thread only", func(t *testing.T) {
+		m := newWorkerMetrics(prometheus.NewRegistry())
+		thread0 := m.indexMergeObserver(0)
+		thread3 := m.indexMergeObserver(3)
+
+		thread0.ObserveIndexMergeInputBytes(10)
+		thread0.ObserveIndexMergeInputBytes(5)
+		thread3.ObserveIndexMergeInputBytes(7)
+
+		require.Equal(t, 2, testutil.CollectAndCount(m.indexMergeTaskInputBytesTotal))
+		require.Equal(t, 15.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("0")))
+		require.Equal(t, 7.0, testutil.ToFloat64(m.indexMergeTaskInputBytesTotal.WithLabelValues("3")))
+	})
+
+	t.Run("observes the input bytes, duration, and output sizes of a task as histograms", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newWorkerMetrics(reg)
+
+		m.indexMergeObserver(0).ObserveIndexMerge("acme", executor.IndexMergeObservedStats{
+			InputBytes: 1 << 30, OutputBytesCompressed: 1 << 20, OutputBytesUncompressed: 1 << 25,
+		}, 3*time.Minute)
+
+		mfm, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		for name, want := range map[string]float64{
+			"loki_dataobj_compaction_index_merge_task_input_bytes": 1 << 30,
+			"loki_dataobj_compaction_index_merge_duration_seconds": 180,
+			"loki_dataobj_compaction_output_bytes_compressed":      1 << 20,
+			"loki_dataobj_compaction_output_bytes_uncompressed":    1 << 25,
+		} {
+			h, err := metrics.FindHistogramWithNameAndLabels(mfm, name, labelTenant, "acme")
+			require.NoError(t, err, name)
+			require.Equal(t, uint64(1), h.GetSampleCount(), name)
+			require.Equal(t, want, h.GetSampleSum(), name)
+		}
+		for _, name := range []string{
+			"loki_dataobj_compaction_index_merge_task_input_bytes",
+			"loki_dataobj_compaction_index_merge_duration_seconds",
+		} {
+			h, err := metrics.FindHistogramWithNameAndLabels(mfm, name, labelTenant, "acme")
+			require.NoError(t, err, name)
+			require.NotEmpty(t, h.GetPositiveSpan(), name+" must also be a native histogram")
+		}
+	})
+}
+
 func TestWorkerMetrics_ObserveLogMerge(t *testing.T) {
 	t.Run("observes task input bytes for every outcome so the sum pairs with the duration sum", func(t *testing.T) {
 		reg := prometheus.NewRegistry()

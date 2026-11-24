@@ -47,19 +47,23 @@ type planDispatcher struct {
 	// retryBackoff sets the wait before each retry. Its MaxRetries is
 	// ignored, because maxRetries limits the retries.
 	retryBackoff backoff.Config
-	attempts     *prometheus.CounterVec
+	// slowTaskThreshold is how long an attempt runs before the dispatcher
+	// logs the plan of the task. Zero logs no plan for a slow attempt.
+	slowTaskThreshold time.Duration
+	attempts          *prometheus.CounterVec
 }
 
 // newPlanDispatcher returns a planDispatcher that counts task attempts in
 // attempts, by actor and outcome.
-func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, retryBackoff backoff.Config, attempts *prometheus.CounterVec) *planDispatcher {
+func newPlanDispatcher(logger log.Logger, runPlan runFunc, limit, maxRetries int, retryBackoff backoff.Config, slowTaskThreshold time.Duration, attempts *prometheus.CounterVec) *planDispatcher {
 	return &planDispatcher{
-		logger:       logger,
-		runPlan:      runPlan,
-		limit:        limit,
-		maxRetries:   maxRetries,
-		retryBackoff: retryBackoff,
-		attempts:     attempts,
+		logger:            logger,
+		runPlan:           runPlan,
+		limit:             limit,
+		maxRetries:        maxRetries,
+		retryBackoff:      retryBackoff,
+		slowTaskThreshold: slowTaskThreshold,
+		attempts:          attempts,
 	}
 }
 
@@ -151,6 +155,10 @@ func (d *planDispatcher) run(ctx, planCtx context.Context, tenant string, plans 
 //
 // Retries do not classify errors, because worker errors reach the coordinator
 // as plain strings. A plan without a valid root node fails at once.
+//
+// runPlanWithRetries logs the plan at most once: the first time an attempt
+// fails or runs longer than slowTaskThreshold. It logs no plan for an attempt
+// that a failed sibling cut short.
 func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 	root, err := plan.Root()
 	if err != nil {
@@ -161,6 +169,7 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 		return nil, err
 	}
 	logger = log.With(logger, "actor", actor, "node_id", root.ID())
+	dump := newPlanDump(logger, plan, root)
 	retryBackoff := backoff.New(context.Background(), d.retryBackoff)
 	for attempt := 1; ; attempt++ {
 		// After a sibling fails, the run discards every result, so skip the
@@ -168,7 +177,7 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 		if err := run.siblingCtx.Err(); err != nil {
 			return nil, err
 		}
-		artifacts, err := d.runOne(run.siblingCtx, run.tenant, actor, plan)
+		artifacts, err := d.runAttempt(run, actor, plan, dump, attempt)
 		if err == nil {
 			d.attempts.WithLabelValues(actor, attemptOutcomeSuccess).Inc()
 			return artifacts, nil
@@ -177,6 +186,7 @@ func (d *planDispatcher) runPlanWithRetries(run planRun, logger log.Logger, plan
 			d.siblingCancelled(logger, actor, attempt, err)
 			return nil, err
 		}
+		dump.log("failed", "attempt", attempt, "err", err)
 		attemptLogger := log.With(logger, "attempt", attempt, "max_retries", d.maxRetries, "err", err)
 		if attempt > d.maxRetries {
 			d.attempts.WithLabelValues(actor, attemptOutcomeFailed).Inc()
@@ -218,6 +228,22 @@ func (d *planDispatcher) siblingCancelled(logger log.Logger, actor string, attem
 		lvl = level.Debug
 	}
 	lvl(logger).Log("msg", "compaction task attempt ended after a sibling task failed", "attempt", attempt, "err", err)
+}
+
+// runAttempt runs one attempt of plan. It logs the plan to dump if the
+// attempt runs longer than slowTaskThreshold, unless a failed sibling already
+// cut the attempt short.
+func (d *planDispatcher) runAttempt(run planRun, actor string, plan *physical.Plan, dump *planDump, attempt int) ([]v2.ResultArtifact, error) {
+	if d.slowTaskThreshold > 0 {
+		slow := time.AfterFunc(d.slowTaskThreshold, func() {
+			if run.siblingCtx.Err() != nil {
+				return
+			}
+			dump.log("slow", "attempt", attempt, "running_for", d.slowTaskThreshold)
+		})
+		defer slow.Stop()
+	}
+	return d.runOne(run.siblingCtx, run.tenant, actor, plan)
 }
 
 func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan *physical.Plan) ([]v2.ResultArtifact, error) {

@@ -85,17 +85,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, err
 	}
 	defer w.discard()
-	var (
-		inputBytesTotal int64
-		dups            logs.DuplicateTracker
-		inputBytesBatch int64
-		count           int
-	)
-	batchRecords := 1000
-	observeBatch := func() {
-		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
-		inputBytesTotal += inputBytesBatch
-	}
+	var dups logs.DuplicateTracker
+	meter := newInputMeter(c.logMergeObserver.ObserveLogMergeInputBytes)
+	// The deferred flush reports the last records of a merge that fails.
+	defer meter.flush()
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -104,21 +97,14 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return nil, err
 		}
-		size := rec.UncompressedSize()
-		inputBytesBatch += size
-		count++
-		if count%batchRecords == 0 {
-			observeBatch()
-			inputBytesBatch = 0
-			count = 0
-		}
+		meter.add(rec.UncompressedSize())
 		_ = dups.IsDuplicate(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
 	}
-	// Count any remaining records that haven't been added to the metric yet
-	observeBatch()
+	meter.flush()
+	inputBytesTotal := meter.total()
 	// The index stats record the same UncompressedSize per record, so a
 	// difference means the planner and this merge disagree on which records
 	// the key range holds. Fail before the index is written, so the source
