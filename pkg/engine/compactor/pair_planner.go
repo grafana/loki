@@ -444,7 +444,7 @@ func (p *pairPlanner) planLayoutGroupMerges(logger log.Logger, tenant string, wi
 		if kept, _ := skipOversizedMerges(logger, p.metrics, p.maxKeySize, tenant, keys, []*compactionv2pb.TaskSpec{spec}); len(kept) == 0 {
 			continue
 		}
-		sourceIndexRuns, err := mergeSources(spec, indexRunOfObject)
+		sourceIndexRuns, err := sourcesOfMerge(spec, indexRunOfObject)
 		if err != nil {
 			level.Error(logger).Log("msg", "pair-compaction: skipping merge", "err", err)
 			p.metrics.pairSkippedIndexesTotal.WithLabelValues(tenant, pairSkipReasonUnknownPair).Add(float64(len(spec.Runs)))
@@ -461,11 +461,11 @@ func (p *pairPlanner) planLayoutGroupMerges(logger log.Logger, tenant string, wi
 	return merges
 }
 
-// mergeSources returns the index runs of the log runs of spec, in the order of
-// the log runs. indexRunOfObject maps each log object path to its index run.
-// It returns an error if spec has no log runs, or if a log run has no sections
-// or its first section belongs to no index run.
-func mergeSources(spec *compactionv2pb.TaskSpec, indexRunOfObject map[string]indexRun) ([]indexRun, error) {
+// sourcesOfMerge returns the index runs of the log runs of spec, in the order
+// of the log runs. indexRunOfObject maps each log object path to its index
+// run. It returns an error if spec has no log runs, or if a log run has no
+// sections or its first section belongs to no index run.
+func sourcesOfMerge(spec *compactionv2pb.TaskSpec, indexRunOfObject map[string]indexRun) ([]indexRun, error) {
 	if len(spec.Runs) == 0 {
 		return nil, errors.New("the merge has no runs")
 	}
