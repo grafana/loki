@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -74,10 +75,7 @@ type dedupeTracker struct {
 
 	mtx       sync.Mutex
 	maxTables int
-	// seq orders tables by when they were last recorded.
-	seq      uint64
-	lastUsed map[string]uint64
-	seen     map[string]map[string]struct{}
+	seen      map[string]map[string]struct{}
 }
 
 // newDedupeTracker registers the counters with reg, or leaves them unregistered if reg is nil.
@@ -111,7 +109,6 @@ func newDedupeTracker(reg prometheus.Registerer, maxTables int) *dedupeTracker {
 			Help:      "Total lines of chunk entries that were new in the compacted index after deduplication.",
 		}),
 		maxTables: maxTables,
-		lastUsed:  make(map[string]uint64),
 		seen:      make(map[string]map[string]struct{}),
 	}
 }
@@ -147,7 +144,7 @@ func (m *dedupeTracker) isSeen(table, fileName string) bool {
 	return ok
 }
 
-// record adds to the counters and remembers fileNames, forgetting the oldest table beyond maxTables.
+// record adds to the counters and remembers fileNames, keeping the maxTables newest tables by date.
 func (m *dedupeTracker) record(table string, fileNames []string, listed, distinct chunkTotals) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -156,9 +153,6 @@ func (m *dedupeTracker) record(table string, fileNames []string, listed, distinc
 	m.distinctKB.Add(float64(distinct.kb))
 	m.listedLines.Add(float64(listed.lines))
 	m.distinctLines.Add(float64(distinct.lines))
-
-	m.seq++
-	m.lastUsed[table] = m.seq
 
 	files, ok := m.seen[table]
 	if !ok {
@@ -171,14 +165,12 @@ func (m *dedupeTracker) record(table string, fileNames []string, listed, distinc
 
 	for len(m.seen) > m.maxTables {
 		oldest := ""
-		var oldestSeq uint64
 		for t := range m.seen {
-			if oldest == "" || m.lastUsed[t] < oldestSeq {
-				oldest, oldestSeq = t, m.lastUsed[t]
+			if oldest == "" || retention.ExtractIntervalFromTableName(t).Start < retention.ExtractIntervalFromTableName(oldest).Start {
+				oldest = t
 			}
 		}
 		delete(m.seen, oldest)
-		delete(m.lastUsed, oldest)
 	}
 }
 

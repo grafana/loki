@@ -29,7 +29,7 @@ import (
 
 const readDBsConcurrency = 50
 
-// dedupeTrackedTables is how many recent tables the dedupe tracker keeps file names for.
+// dedupeTrackedTables is how many tables, newest by date, the dedupe tracker keeps file names for.
 // 3 is a guess that leaves some headroom.
 const dedupeTrackedTables = 3
 

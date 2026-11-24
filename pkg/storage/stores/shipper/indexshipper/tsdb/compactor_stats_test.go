@@ -94,17 +94,18 @@ func TestDedupeTracker_RecordRunSkipsReuploads(t *testing.T) {
 	require.Equal(t, [4]float64{30, 5, 9, 1}, counters(m))
 }
 
-// TestDedupeTracker_ForgetsOldestTable checks that only the maxTables most recent tables are kept.
+// TestDedupeTracker_ForgetsOldestTable checks that the maxTables newest tables by date are kept,
+// even when a run records the newest table first.
 func TestDedupeTracker_ForgetsOldestTable(t *testing.T) {
 	m := newDedupeTracker(prometheus.NewRegistry(), 2)
-	m.record("a", []string{"a-1"}, chunkTotals{}, chunkTotals{})
-	m.record("b", []string{"b-1"}, chunkTotals{}, chunkTotals{})
-	m.record("a", []string{"a-2"}, chunkTotals{}, chunkTotals{}) // b is now the oldest
-	m.record("c", []string{"c-1"}, chunkTotals{}, chunkTotals{})
+	for _, table := range []string{"index_20003", "index_20002", "index_20000", "index_20001"} {
+		m.record(table, []string{table + "-file"}, chunkTotals{}, chunkTotals{})
+	}
 
-	require.False(t, m.isSeen("b", "b-1"))
-	require.True(t, m.isSeen("a", "a-1"))
-	require.True(t, m.isSeen("c", "c-1"))
+	require.True(t, m.isSeen("index_20003", "index_20003-file"))
+	require.True(t, m.isSeen("index_20002", "index_20002-file"))
+	require.False(t, m.isSeen("index_20001", "index_20001-file"))
+	require.False(t, m.isSeen("index_20000", "index_20000-file"))
 }
 
 // TestNewIndexCompactorWithDedupeMetrics checks that the four counters are registered.
