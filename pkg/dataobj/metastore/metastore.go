@@ -97,6 +97,10 @@ type IndexEntry struct {
 	// index object is in no run. A run ID is unique within one ToC only, so the
 	// index objects of one run share TableOfContentsPath and RunID.
 	RunID indexpointers.RunID
+	// RunLength is the number of index objects of the run that holds the
+	// index object, as the ToC writer recorded it. The zero value means the
+	// length is unknown, for example in a ToC that predates the column.
+	RunLength int32
 	// PostingKeys bounds the posting keys of the index object. The zero value
 	// means the index object can hold any posting key.
 	PostingKeys postings.KeyRange

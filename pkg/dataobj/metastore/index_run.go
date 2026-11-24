@@ -1,6 +1,7 @@
 package metastore
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -52,6 +53,28 @@ func indexRuns(entries []IndexEntry) []indexRun {
 		out = append(out, indexRun{entries: []IndexEntry{entry}})
 	}
 	return out
+}
+
+// errIncompleteRun reports a run that the ToC lists only in part. A query
+// that reads part of a run misses the streams whose labels sit in the index
+// objects that the ToC does not list, and returns wrong results without an
+// error.
+var errIncompleteRun = errors.New("the ToC lists only part of an index run")
+
+// checkLength returns an error that wraps errIncompleteRun if an index object
+// of r records a run length other than the number of index objects of r. An
+// index object that records no length passes.
+//
+// Call it before pruning r by posting key. The entries of a run share one
+// time range, so a time filter keeps all of them or none, and only a ToC that
+// lists part of the run gives fewer entries than the recorded length.
+func (r indexRun) checkLength() error {
+	for _, entry := range r.entries {
+		if entry.RunLength != 0 && int(entry.RunLength) != len(r.entries) {
+			return fmt.Errorf("%w: index object %s of %s records %d index objects, but the ToC lists %d", errIncompleteRun, entry.Path, r, entry.RunLength, len(r.entries))
+		}
+	}
+	return nil
 }
 
 // maxLoggedRunPaths is the largest number of index object paths that
