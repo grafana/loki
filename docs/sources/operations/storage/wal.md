@@ -107,7 +107,7 @@ After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters
 
 Also you can set the `--ingester.flush-on-shutdown` flag to `true`. This enables chunks to be flushed to long-term storage when the ingester is shut down.
 
-Instead of manually port-forwarding and calling the endpoint, you can automate this process with the [`/ingester/prepare_shutdown`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#prepare-ingester-shutdown) endpoint, which Kubernetes-specific scale-down automation such as the [rollout-operator](https://github.com/grafana/rollout-operator) uses to coordinate ring unregistration and flushing before a pod is deleted.
+For automated scale-down, you can use the [`/ingester/prepare_shutdown`](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#prepare-ingester-shutdown) endpoint. Unlike `/ingester/shutdown`, this endpoint does not flush data or remove the ingester from the ring immediately. Instead, it marks the ingester so that the next time the process receives a `SIGTERM` (for example, when Kubernetes deletes the pod), it will flush all in-memory data and unregister from the ring before stopping. Kubernetes-specific scale-down automation such as the [rollout-operator](https://github.com/grafana/rollout-operator) uses this endpoint to coordinate graceful scale-downs.
 
 ## Additional notes
 
