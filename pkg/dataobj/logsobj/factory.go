@@ -41,8 +41,8 @@ func NewBuilderFactory(
 	}, nil
 }
 
-// NewBuilder returns a new builder, or an error. The returned builder shares
-// the factory's [BuilderMetrics].
-func (f *BuilderFactory) NewBuilder() (*Builder, error) {
-	return NewBuilder(f.cfg, f.scratchStore, f.metrics, f.logger, f.overrides)
+// NewBuilder returns a new builder for tenant, or an error. The returned
+// builder shares the factory's [BuilderMetrics].
+func (f *BuilderFactory) NewBuilder(tenant string) (*Builder, error) {
+	return NewBuilder(tenant, f.cfg, f.scratchStore, f.metrics, f.logger, f.overrides)
 }

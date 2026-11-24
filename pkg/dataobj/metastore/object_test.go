@@ -50,7 +50,9 @@ const (
 )
 
 var (
-	now = time.Now().UTC()
+	// now is fixed so that test data around it, such as ToC entries for now±1m,
+	// stays inside one ToC window.
+	now = time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
 	testStreams = []logproto.Stream{
@@ -90,7 +92,7 @@ type testDataBuilder struct {
 	t      testing.TB
 	bucket objstore.Bucket
 
-	builder  *logsobj.Builder
+	builders map[string]*logsobj.Builder
 	meta     *TableOfContentsWriter
 	uploader *uploader.Uploader
 }
@@ -98,11 +100,12 @@ type testDataBuilder struct {
 // addStreamAndFlush flushes stream into its own object, records it in the
 // tenant's ToCs and returns the object's path.
 func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) string {
-	err := b.builder.Append(tenant, stream, now)
+	builder := b.builderFor(tenant)
+	err := builder.Append(stream, now)
 	require.NoError(b.t, err)
 
-	timeRanges := b.builder.TimeRanges()
-	obj, closer, err := b.builder.FlushAndSort(b.t.Context())
+	timeRanges := []dataobj.TimeRange{builder.TimeRange()}
+	obj, closer, err := builder.FlushAndSort(b.t.Context())
 	require.NoError(b.t, err)
 	defer closer.Close()
 
@@ -1582,17 +1585,26 @@ func TestDataobjSectionDescriptor_Merge(t *testing.T) {
 	})
 }
 
-func newTestDataBuilder(t testing.TB) *testDataBuilder {
-	bucket := objstore.NewInMemBucket()
-
-	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+// builderFor returns the logs builder of tenant. A logs builder holds one
+// tenant, so the test data builder keeps one for each tenant.
+func (b *testDataBuilder) builderFor(tenant string) *logsobj.Builder {
+	if builder, ok := b.builders[tenant]; ok {
+		return builder
+	}
+	builder, err := logsobj.NewBuilder(tenant, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,      // 1MB
 		TargetObjectSize:        10 * 1024 * 1024, // 10MB
 		TargetSectionSize:       1024 * 1024,      // 1MB
 		BufferSize:              1024 * 1024,      // 1MB
 		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
-	require.NoError(t, err)
+	require.NoError(b.t, err)
+	b.builders[tenant] = builder
+	return builder
+}
+
+func newTestDataBuilder(t testing.TB) *testDataBuilder {
+	bucket := objstore.NewInMemBucket()
 
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
@@ -1606,7 +1618,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	return &testDataBuilder{
 		t:        t,
 		bucket:   bucket,
-		builder:  builder,
+		builders: make(map[string]*logsobj.Builder),
 		meta:     meta,
 		uploader: uploader,
 	}

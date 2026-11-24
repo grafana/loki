@@ -53,7 +53,7 @@ func (b *unknownColumnSectionBuilder) Type() dataobj.SectionType { return sectio
 func (b *unknownColumnSectionBuilder) Reset() {}
 
 func (b *unknownColumnSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 
 	streamIDs := []int64{1, 2}
@@ -73,7 +73,7 @@ func (b *unknownColumnSectionBuilder) Flush(w dataobj.SectionWriter) (int64, err
 
 	// The unknown column is encoded last so it lands at a physical index beyond
 	// the recognized columns, reproducing the index-out-of-range panic.
-	if err := encodeTestColumns(&enc, streamIDBuilder, timestampBuilder, futureBuilder); err != nil {
+	if err := encodeTestColumns(enc, streamIDBuilder, timestampBuilder, futureBuilder); err != nil {
 		return 0, err
 	}
 

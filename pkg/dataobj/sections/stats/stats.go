@@ -17,7 +17,7 @@ import (
 var sectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
 	Kind:      format.StatsSectionKind,
-	Version:   columnar.FormatVersion,
+	Version:   columnar.DefaultFormatVersion,
 }
 
 // ColumnType identifies the type of a column in the stats section.
