@@ -70,7 +70,7 @@ type Config struct {
 	// MetadataCacheMaxBytes is the byte budget of the querier's index metadata
 	// cache. The cache evicts least recently used entries to stay within it.
 	// 0 disables the byte budget, leaving only the entry cap.
-	MetadataCacheMaxBytes lokiflagext.ByteSize `yaml:"metadata_cache_max_bytes"`
+	MetadataCacheMaxBytes lokiflagext.ByteSize `yaml:"metadata_cache_max_bytes" category:"experimental"`
 	// AlignQueriesWithStep floors both ends of a range metric query onto the step
 	// before the splitter rounds the end up. Populated from
 	// query_range.align_queries_with_step at assembly time.
@@ -100,7 +100,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	c.MetadataCacheMaxBytes = lokiflagext.ByteSize(hintprovider.DefaultMetadataCacheMaxBytes)
 	f.Var(&c.MetadataCacheMaxBytes, prefix+".metadata-cache-max-bytes",
-		"Maximum estimated bytes held by the querier's index metadata cache. Least recently used entries are evicted to stay within it. 0 disables the byte budget.")
+		"Experimental: Maximum estimated bytes held by the querier's index metadata cache. Least recently used entries are evicted to stay within it. 0 disables the byte budget.")
 
 	// Cancel-and-rerun no longer reads these. Keep them so existing
 	// deployments still start, and remove them in a follow-up.
