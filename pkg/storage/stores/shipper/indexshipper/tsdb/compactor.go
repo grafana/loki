@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -28,14 +29,24 @@ import (
 
 const readDBsConcurrency = 50
 
-type indexProcessor struct{}
+// dedupeTrackedTables is how many recent tables the dedupe tracker keeps file names for.
+// 3 is a guess that leaves some headroom.
+const dedupeTrackedTables = 3
+
+type indexProcessor struct {
+	dedupe *dedupeTracker
+}
 
 func NewIndexCompactor() compactor.IndexCompactor {
-	return indexProcessor{}
+	return indexProcessor{dedupe: newDedupeTracker(nil, dedupeTrackedTables)}
+}
+
+func NewIndexCompactorWithDedupeMetrics(r prometheus.Registerer) compactor.IndexCompactor {
+	return indexProcessor{dedupe: newDedupeTracker(r, dedupeTrackedTables)}
 }
 
 func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig)
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.dedupe)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -76,14 +87,17 @@ type tableCompactor struct {
 	ctx                     context.Context
 	periodConfig            config.PeriodConfig
 	compactedIndexes        map[string]compactor.CompactedIndex
+	dedupe                  *dedupeTracker
 }
 
+// newTableCompactor returns a tableCompactor for a single table, counting into dedupe.
 func newTableCompactor(
 	ctx context.Context,
 	commonIndexSet compactor.IndexSet,
 	existingUserIndexSet map[string]compactor.IndexSet,
 	userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc,
 	periodConfig config.PeriodConfig,
+	dedupe *dedupeTracker,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -91,6 +105,7 @@ func newTableCompactor(
 		existingUserIndexSet:    existingUserIndexSet,
 		userIndexSetFactoryFunc: userIndexSetFactoryFunc,
 		periodConfig:            periodConfig,
+		dedupe:                  dedupe,
 	}
 }
 
@@ -157,6 +172,8 @@ func (t *tableCompactor) CompactTable() error {
 	// go through all the users having index in the multi-tenant indexes and setup builder for each user
 	// builder would combine users index from multi-tenant indexes and the existing compacted index(es)
 	t.compactedIndexes = make(map[string]compactor.CompactedIndex, len(userIDs))
+	// sizes sums the chunk totals of all tenants, for the dedupe counters at the end of the run.
+	var sizes mergeStageSizes
 	for _, userID := range userIDs {
 		existingUserIndexSet, ok := t.existingUserIndexSet[userID]
 		if !ok {
@@ -172,10 +189,11 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices)
+		builder, tenantSizes, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices)
 		if err != nil {
 			return err
 		}
+		sizes = sizes.plus(tenantSizes)
 
 		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
 		t.compactedIndexes[userID] = compactedIndex
@@ -197,7 +215,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
+		builder, _, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
 		if err != nil {
 			return err
 		}
@@ -214,6 +232,9 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 	}
+
+	// Count the run only once the merge has succeeded.
+	t.dedupe.recordRun(t.ctx, t.commonIndexSet.GetLogger(), t.commonIndexSet.GetTableName(), multiTenantIndexes, multiTenantIndices, sizes)
 	return nil
 }
 
@@ -254,8 +275,10 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 }
 
 // setupBuilder creates a Builder for a single user.
-// It combines the users index from multiTenantIndexes and its existing compacted index(es)
-func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
+// It combines the users index from multiTenantIndexes and its existing compacted index(es).
+// It also returns the chunk totals of the merge, see mergeStageSizes.
+func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, mergeStageSizes, error) {
+	var sizes mergeStageSizes
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
 	builder := NewBuilder(indexType)
 
@@ -266,21 +289,24 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
-			return nil, err
+			return nil, mergeStageSizes{}, err
 		}
 	}
+	sizes.listed = builder.totalChunks()
 
 	// download all the existing compacted indexes and add them to the builder
 	for _, sourceIndex := range sourceIndexes {
 		if err := processSourceIndex(ctx, sourceIndex, sourceIndexSet, builder); err != nil {
-			return nil, err
+			return nil, mergeStageSizes{}, err
 		}
 	}
+	sizes.existing = builder.totalChunks().minus(sizes.listed)
 
 	// finalize the chunks to remove the duplicates and sort them
 	builder.FinalizeChunks()
+	sizes.afterDedupe = builder.totalChunks()
 
-	return builder, nil
+	return builder, sizes, nil
 }
 
 type compactedIndex struct {

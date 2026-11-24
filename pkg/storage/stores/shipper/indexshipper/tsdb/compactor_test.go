@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -241,6 +243,16 @@ type recordingIndexWriter struct {
 func (w *recordingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, chks index.ChunkMetas) error {
 	w.metas = append(w.metas, chks...)
 	return nil
+}
+
+func streamsKB(streams []streamConfig) uint64 {
+	var kb uint64
+	for _, s := range streams {
+		for _, chk := range s.chunkMetas {
+			kb += uint64(chk.KB)
+		}
+	}
+	return kb
 }
 
 func buildUserID(i int) string {
@@ -600,6 +612,7 @@ func TestCompactor_Compact(t *testing.T) {
 					require.NoError(t, err)
 
 					// build TableCompactor and compact the index
+					dedupe := newDedupeTracker(prometheus.NewRegistry(), dedupeTrackedTables)
 					tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
 						idxSet, err := newMockIndexSet(userID, tableName.Prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
@@ -608,9 +621,23 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, periodConfig)
+					}, periodConfig, dedupe)
 
 					require.NoError(t, tCompactor.CompactTable())
+
+					// Every stream config is indexed twice per user, with and without the user_id label.
+					if len(tc.multiTenantIndexConfigs) > 0 {
+						var listed, existing uint64
+						for _, c := range tc.multiTenantIndexConfigs {
+							listed += streamsKB(c.streamsConfig)
+						}
+						for _, c := range tc.perTenantIndexConfigs {
+							existing += streamsKB(c.streamsConfig)
+						}
+						n := uint64(2 * numUsers)
+						require.Equal(t, float64(n*listed), testutil.ToFloat64(dedupe.listedKB))
+						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)), testutil.ToFloat64(dedupe.distinctKB))
+					}
 
 					// verify that we have CompactedIndex for numUsers
 					require.Len(t, tCompactor.compactedIndexes, tc.expectedNumCompactedIndexes)
@@ -1216,7 +1243,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	builder, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
@@ -1279,6 +1306,7 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 				filepath.Join(tableWorkingDirectory, userID), objectClient)
 		},
 		periodConfig,
+		newDedupeTracker(nil, dedupeTrackedTables),
 	)
 
 	// CompactTable should return an error due to the corrupt file.
@@ -1654,7 +1682,7 @@ func BenchmarkSetupBuilder(b *testing.B) {
 		before := heapAlloc()
 		b.StartTimer()
 
-		builder, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
+		builder, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
 		require.NoError(b, err)
 
 		b.StopTimer()
