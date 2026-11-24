@@ -35,6 +35,15 @@ type compositeStoreEntry struct {
 	Store
 }
 
+// OpenChunkCursors delegates cursor creation to the store for this schema period.
+func (c compositeStoreEntry) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	source, ok := c.Store.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	return source.OpenChunkCursors(ctx, userID, from, through, matchers...)
+}
+
 type storeEntry struct {
 	limits      StoreLimits
 	stop        func()
@@ -202,6 +211,22 @@ func (c *storeEntry) HasForSeries(from, through model.Time) (sharding.ForSeries,
 
 func (c *storeEntry) HasChunkSizingInfo(from, through model.Time) bool {
 	return c.indexReader.HasChunkSizingInfo(from, through)
+}
+
+// OpenChunkCursors validates the query range and opens cursors on its index.
+func (c *storeEntry) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil || shortcut {
+		return nil, err
+	}
+	source, ok := c.indexReader.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	return source.OpenChunkCursors(ctx, userID, from, through, matchers...)
 }
 
 func (c *storeEntry) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {

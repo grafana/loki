@@ -85,6 +85,10 @@ func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFact
 
 // Lookup resolves ordinal n either from a file or a local cache.
 func (s *streamSymbols) Lookup(n uint32) (string, error) {
+	return s.lookupWithFactory(n, s.factory)
+}
+
+func (s *streamSymbols) lookupWithFactory(n uint32, factory streamenc.DecbufFactory) (string, error) {
 	if symbol, ok := s.labelNameSymbols[n]; ok {
 		return symbol, nil
 	}
@@ -101,7 +105,7 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	}
 	s.labelValueSymbolsMtx.Unlock()
 
-	symbol, err := s.lookup(n)
+	symbol, err := s.lookup(n, factory)
 	if err != nil {
 		return "", err
 	}
@@ -115,8 +119,8 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 }
 
 // lookup resolves ordinal n from the file.
-func (s *streamSymbols) lookup(n uint32) (string, error) {
-	decbuf := s.factory.NewDecbufAtUnchecked(context.Background(), s.off)
+func (s *streamSymbols) lookup(n uint32, factory streamenc.DecbufFactory) (string, error) {
+	decbuf := factory.NewDecbufAtUnchecked(context.Background(), s.off)
 	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return "", err

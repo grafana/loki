@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -38,6 +39,19 @@ type store struct {
 	logger        log.Logger
 	stopOnce      sync.Once
 	postingsCache *postingsCache
+}
+
+// OpenChunkCursors opens cursors on the TSDB reader when it supports them.
+func (s *store) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	// Check the head before the index client can start opening shipped files.
+	if head, ok := s.indexWriter.(*HeadManager); ok && Overlap(head, newBounds(from, through)) {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	source, ok := s.Reader.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	return source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
 }
 
 type storeInitParams struct {

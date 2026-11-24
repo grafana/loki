@@ -2,25 +2,29 @@ package indexgateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc/metadata"
-
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
-
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -32,10 +36,11 @@ type mockLimits struct {
 	precomputeChunks bool
 }
 
-func (l mockLimits) IndexGatewayShardSize(_ string) int       { return l.shardSize }
-func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64 { return l.maxCapacity }
-func (l mockLimits) TSDBMaxBytesPerShard(_ string) int        { return l.maxBytesPerShard }
-func (l mockLimits) TSDBPrecomputeChunks(_ string) bool       { return l.precomputeChunks }
+func (l mockLimits) IndexGatewayShardSize(_ string) int                   { return l.shardSize }
+func (l mockLimits) IndexGatewayMaxCapacity(_ string) float64             { return l.maxCapacity }
+func (l mockLimits) TSDBMaxBytesPerShard(_ string) int                    { return l.maxBytesPerShard }
+func (l mockLimits) TSDBPrecomputeChunks(_ string) bool                   { return l.precomputeChunks }
+func (l mockLimits) MaxQueryLength(context.Context, string) time.Duration { return 0 }
 
 func TestVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
@@ -662,4 +667,149 @@ func buildChunkRefs(series, chunksPerSeries int) []logproto.ChunkRefWithSizingIn
 		}
 	}
 	return refs
+}
+
+func TestGetShardsIndexErrorDoesNotSendPartialResponse(t *testing.T) {
+	sentinel := errors.New("index read failed")
+	q := newIngesterQuerierMock()
+	q.On("HasChunkSizingInfo", model.Time(1), model.Time(2)).Return(true)
+	q.On("GetChunkRefsWithSizingInfo", "fake", model.Time(1), model.Time(2)).Return(nil, sentinel).Once()
+	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, q, nil, nil)
+	require.NoError(t, err)
+	server := &mockGetShardsServer{ctx: user.InjectOrgID(context.Background(), "fake")}
+	err = gateway.GetShards(&logproto.ShardsRequest{From: 1, Through: 2, Query: `{app="test"}`}, server)
+	require.ErrorIs(t, err, sentinel)
+	require.Empty(t, server.sent)
+	q.AssertExpectations(t)
+}
+
+// Expose the planners to external tests, which can import the TSDB package.
+var (
+	BuildShardsResponseForTest     = buildShardsResponse
+	PlanShardsFromCursorsForTest   = planShardsFromCursors
+	ErrUnorderedChunkCursorForTest = errUnorderedChunkCursor
+)
+
+// TestChunkCursor provides an in-memory cursor for the planner and gateway tests.
+type TestChunkCursor struct {
+	Refs    []logproto.ChunkRefWithSizingInfo
+	next    int
+	Closed  bool
+	ReadErr error
+	onClose func()
+}
+
+func (c *TestChunkCursor) Next() bool {
+	if c.next == len(c.Refs) {
+		return false
+	}
+	c.next++
+	return true
+}
+func (c *TestChunkCursor) At() logproto.ChunkRefWithSizingInfo { return c.Refs[c.next-1] }
+func (c *TestChunkCursor) Err() error                          { return c.ReadErr }
+func (c *TestChunkCursor) Close() error {
+	if c.onClose != nil {
+		c.onClose()
+	}
+	c.Closed = true
+	return nil
+}
+
+type orderedIndexReader struct {
+	index.ReaderWriter
+	cursor      *TestChunkCursor
+	openErr     error
+	legacyRefs  []logproto.ChunkRefWithSizingInfo
+	legacyCalls int
+}
+
+func (q *orderedIndexReader) OpenChunkCursors(context.Context, string, model.Time, model.Time, ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	if q.openErr != nil {
+		return nil, q.openErr
+	}
+	return []sharding.ChunkCursor{q.cursor}, nil
+}
+
+func (q *orderedIndexReader) GetChunkRefsWithSizingInfo(context.Context, string, model.Time, model.Time, chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	q.legacyCalls++
+	return q.legacyRefs, nil
+}
+
+func TestGatewayOrderedShardsAndFallback(t *testing.T) {
+	req := &logproto.ShardsRequest{From: 1, Through: 100, Query: `{app="synthetic"} |= "test"`, TargetBytesPerShard: 10 << 20}
+	predicate, err := ExtractShardRequestMatchersAndAST(req.Query)
+	require.NoError(t, err)
+	one := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 10, Through: 20}, KB: 1}
+	two := logproto.ChunkRefWithSizingInfo{ChunkRef: logproto.ChunkRef{UserID: "synthetic", Fingerprint: 1, From: 30, Through: 40}, KB: 3}
+	legacyRefs := []logproto.ChunkRefWithSizingInfo{one, two}
+	readFailure := errors.New("index read failed")
+	for _, tc := range []struct {
+		name           string
+		refs           []logproto.ChunkRefWithSizingInfo
+		openErr        error
+		readErr        error
+		wantErr        error
+		fallbackReason string
+	}{
+		{name: "ordered", refs: legacyRefs},
+		{name: "unsupported", openErr: sharding.ErrChunkCursorsUnsupported, fallbackReason: "unsupported"},
+		{name: "misordered cursor", refs: []logproto.ChunkRefWithSizingInfo{two, one}, fallbackReason: "out_of_order"},
+		{name: "open error", openErr: readFailure, wantErr: readFailure},
+		{name: "read error", readErr: readFailure, wantErr: readFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			cursor := &TestChunkCursor{Refs: tc.refs, ReadErr: tc.readErr, onClose: func() {
+				families, err := reg.Gather()
+				require.NoError(t, err)
+				require.Empty(t, families, "lookup timing must include closing the cursor")
+			}}
+			source := &orderedIndexReader{cursor: cursor, openErr: tc.openErr, legacyRefs: legacyRefs}
+			indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "synthetic"}, reg)
+			limits := mockLimits{precomputeChunks: true}
+			store := stores.NewCompositeStore(limits)
+			store.AddStore(0, nil, index.NewMonitoredReaderWriter(source, indexReg), nil, nil)
+			gateway, err := NewIndexGateway(Config{}, limits, util_log.Logger, nil, store, nil, nil)
+			require.NoError(t, err)
+
+			resp, ordered, err := gateway.planShardsFromStore(t.Context(), "synthetic", req, predicate)
+			statusCode := "200"
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				require.Nil(t, resp)
+				statusCode = "500"
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.fallbackReason == "", ordered)
+				require.Equal(t, []logproto.ChunkRefGroup{{Refs: []*logproto.ChunkRef{&one.ChunkRef, &two.ChunkRef}}}, resp.ChunkGroups)
+			}
+			require.Equal(t, tc.openErr == nil, cursor.Closed)
+			for _, reason := range []string{"unsupported", "out_of_order"} {
+				want := 0.0
+				if tc.fallbackReason == reason {
+					want = 1
+				}
+				require.Equal(t, want, testutil.ToFloat64(gateway.metrics.shardPlanningFallbacks.WithLabelValues(reason)))
+			}
+			if tc.fallbackReason != "" {
+				require.Equal(t, 1, source.legacyCalls)
+			} else {
+				require.Zero(t, source.legacyCalls)
+			}
+
+			families, err := reg.Gather()
+			require.NoError(t, err)
+			require.Len(t, families, 1)
+			require.Equal(t, "loki_index_request_duration_seconds", families[0].GetName())
+			require.Len(t, families[0].Metric, 1)
+			metric := families[0].Metric[0]
+			metricLabels := make(map[string]string, len(metric.Label))
+			for _, label := range metric.Label {
+				metricLabels[label.GetName()] = label.GetValue()
+			}
+			require.Equal(t, map[string]string{"component": "synthetic", "operation": "chunk_refs_with_sizing_info", "status_code": statusCode}, metricLabels)
+			require.EqualValues(t, 1, metric.GetHistogram().GetSampleCount())
+		})
+	}
 }

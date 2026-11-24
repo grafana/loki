@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -17,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
@@ -78,6 +80,40 @@ func (m mockStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ 
 }
 
 func (m mockStore) Stop() {}
+
+type queryLengthLimit time.Duration
+
+func (l queryLengthLimit) MaxQueryLength(context.Context, string) time.Duration {
+	return time.Duration(l)
+}
+
+type cursorIndexReader struct {
+	index.Reader
+	open func(from, through model.Time)
+}
+
+func (r cursorIndexReader) OpenChunkCursors(_ context.Context, _ string, from, through model.Time, _ ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	r.open(from, through)
+	return nil, nil
+}
+
+func TestCompositeStoreOpenChunkCursorsTimeRanges(t *testing.T) {
+	store := NewCompositeStore(queryLengthLimit(50 * time.Millisecond))
+	var visited [][2]model.Time
+	reader := cursorIndexReader{open: func(from, through model.Time) {
+		visited = append(visited, [2]model.Time{from, through})
+	}}
+	store.AddStore(20, nil, reader, nil, nil)
+	store.AddStore(100, nil, reader, nil, nil)
+
+	cursors, err := store.OpenChunkCursors(t.Context(), "synthetic", 55, 125)
+	require.NoError(t, err)
+	require.Empty(t, cursors)
+	require.Equal(t, [][2]model.Time{{55, 99}, {100, 125}}, visited)
+
+	_, err = store.OpenChunkCursors(t.Context(), "synthetic", 25, 90)
+	require.ErrorContains(t, err, "query time range exceeds the limit")
+}
 
 func TestCompositeStore(t *testing.T) {
 	type result struct {

@@ -373,3 +373,12 @@ func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {
 	return true
 }
+
+// OpenChunkCursors opens ordered file cursors for the shard planner.
+func (c *IndexClient) OpenChunkCursors(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	cleaned, filter, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+	return openChunkCursors(ctx, c.idx, userID, from, through, filter, cleaned...)
+}

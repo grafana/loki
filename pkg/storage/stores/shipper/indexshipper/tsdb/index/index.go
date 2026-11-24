@@ -1697,6 +1697,14 @@ func (r *ByteSliceReader) NewSeriesScan() SeriesScan {
 	return byteSliceSeriesScan{r}
 }
 
+// NewOrderedChunkScan returns a scan that can look ahead at the fingerprint
+// before decoding the current series.
+func (r *ByteSliceReader) NewOrderedChunkScan() *OrderedChunkScan {
+	return &OrderedChunkScan{
+		readRecord: r.seriesRecord, version: r.version, decoder: r.dec, lookupSymbol: r.dec.LookupSymbol,
+	}
+}
+
 // byteSliceSeriesScan forwards straight to its ByteSliceReader.
 type byteSliceSeriesScan struct{ *ByteSliceReader }
 
@@ -1766,18 +1774,24 @@ func (r *ByteSliceReader) LabelValueFor(id storage.SeriesRef, label string) (str
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
 func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
-	offset := id * 16
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-	if d.Err() != nil {
-		return 0, d.Err()
+	content, err := r.seriesRecord(id)
+	if err != nil {
+		return 0, err
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, content, id, from, through, lbls, chks)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
 	return fprint, nil
+}
+
+func (r *ByteSliceReader) seriesRecord(id storage.SeriesRef) ([]byte, error) {
+	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, seriesOffset(id), castagnoliTable))
+	if err := d.Err(); err != nil {
+		return nil, err
+	}
+	return d.Get(), nil
 }
 
 func (r *ByteSliceReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
@@ -2123,6 +2137,10 @@ func buildChunkSamples(version int, d encoding.Decbuf, numChunks int, info *chun
 // prepSeries returns series labels for a series, only returning selected `by` label names.
 // If `by` is nil, it returns all labels for the series.
 func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+	return prepSeries(b, lbls, by, dec.LookupSymbol)
+}
+
+func prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}, lookupSymbol func(uint32) (string, error)) (*encoding.Decbuf, uint64, error) {
 	builder := labelpool.Get()
 	defer labelpool.Put(builder)
 
@@ -2139,7 +2157,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
 		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
-		ln, err := dec.LookupSymbol(lno)
+		ln, err := lookupSymbol(lno)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label name")
 		}
@@ -2150,7 +2168,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 			}
 		}
 
-		lv, err := dec.LookupSymbol(lvo)
+		lv, err := lookupSymbol(lvo)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
@@ -2329,12 +2347,16 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 // Series decodes a series entry from the given byte slice into lbls and chks.
 // lbls can be nil, indicating the caller only wants the chunks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+	return dec.seriesWithSymbolLookup(version, b, seriesRef, from, through, lbls, chks, dec.LookupSymbol)
+}
+
+func (dec *Decoder) seriesWithSymbolLookup(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, lookupSymbol func(uint32) (string, error)) (fprint uint64, err error) {
 	var d *encoding.Decbuf
 	if lbls == nil {
 		d, fprint, err = dec.skipSeriesLabels(b)
 	} else {
-		d, fprint, err = dec.prepSeries(b, lbls, nil)
+		d, fprint, err = prepSeries(b, lbls, nil, lookupSymbol)
 	}
 	if err != nil {
 		return 0, err

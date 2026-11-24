@@ -174,7 +174,7 @@ func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, 
 func (m MonitoredReaderWriter) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
 	var chunks []logproto.ChunkRefWithSizingInfo
 
-	if err := loki_instrument.TimeRequest(ctx, "chunk_refs_with_sizing_info", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, chunkRefsWithSizingInfoOperation, instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		chunks, err = m.rw.GetChunkRefsWithSizingInfo(ctx, userID, from, through, predicate)
 		return err
@@ -317,4 +317,37 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 
 func (m MonitoredReaderWriter) HasChunkSizingInfo(from, through model.Time) bool {
 	return m.rw.HasChunkSizingInfo(from, through)
+}
+
+const chunkRefsWithSizingInfoOperation = "chunk_refs_with_sizing_info"
+
+type chunkCursorLookupTimingKey struct{}
+
+// TrackChunkCursorLookups collects timings from the stores in an ordered lookup.
+// Call the returned function after consuming and closing all cursors. If the
+// lookup falls back, the legacy lookup records its own timing instead.
+func TrackChunkCursorLookups(ctx context.Context) (context.Context, func(error)) {
+	var lookups []func(error)
+	return context.WithValue(ctx, chunkCursorLookupTimingKey{}, &lookups), func(err error) {
+		for _, observe := range lookups {
+			observe(err)
+		}
+	}
+}
+
+// OpenChunkCursors opens ordered chunk cursors when the underlying index supports them.
+func (m MonitoredReaderWriter) OpenChunkCursors(ctx context.Context, tenant string, from, through model.Time, matchers ...*labels.Matcher) ([]sharding.ChunkCursor, error) {
+	source, ok := m.rw.(sharding.ChunkCursorSource)
+	if !ok {
+		return nil, sharding.ErrChunkCursorsUnsupported
+	}
+	// Schema stores are visited in sequence. Any parallel file opens happen
+	// below this wrapper.
+	if lookups, ok := ctx.Value(chunkCursorLookupTimingKey{}).(*[]func(error)); ok {
+		start := time.Now()
+		*lookups = append(*lookups, func(err error) {
+			instrument.NewHistogramCollector(m.metrics.indexQueryLatency).After(ctx, chunkRefsWithSizingInfoOperation, instrument.ErrorCode(err), start)
+		})
+	}
+	return source.OpenChunkCursors(ctx, tenant, from, through, matchers...)
 }

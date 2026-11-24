@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -426,43 +427,23 @@ func (g *Gateway) boundedShards(
 	instanceID string,
 	p chunk.Predicate,
 ) error {
-	// TODO(owen-d): instead of using GetChunks which buffers _all_ the chunks
-	// (expensive when looking at the full fingerprint space), we should
-	// use the `ForSeries` implementation to accumulate batches of chunks to dedupe,
-	// but I'm leaving this as a future improvement. This may be difficult considering
-	// fingerprints aren't necessarily iterated in order because multiple underlying TSDBs
-	// can be queried independently. This could also result in the same chunks being present in
-	// multiple batches. However, this is all OK because we can dedupe them post-blooms and in
-	// many cases the majority of chunks will only be present in a single post-compacted TSDB,
-	// making this more of an edge case than a common occurrence (make sure to check this assumption
-	// as getting it _very_ wrong could harm some cache locality benefits on the bloom-gws by
-	// sending multiple requests to the entire keyspace).
-
 	logger := util_log.WithContext(ctx, g.log)
 	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
 	defer sp.End()
 
 	start := time.Now()
 
-	// For all bounds, get chunk refs
-	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
+	resp, ordered, err := g.planShardsFromStore(ctx, instanceID, req, p)
 	if err != nil {
 		return err
 	}
-
-	ct := len(refs)
-
+	ct := resp.Statistics.Index.TotalChunks
 	sp.AddEvent("queried local index", trace.WithAttributes(
-		attribute.Int("index_chunks_resolved", ct),
+		attribute.Int64("index_chunks_resolved", ct),
+		attribute.Bool("ordered_chunk_cursors", ordered),
 	))
-
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
-
-	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
-	if err != nil {
-		return err
-	}
 
 	sp.AddEvent("send shards response", trace.WithAttributes(
 		attribute.Int("shards", len(resp.Shards)),
@@ -481,6 +462,7 @@ func (g *Gateway) boundedShards(
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
 		"precomputed_refs", refCt,
+		"ordered_chunk_cursors", ordered,
 		"matchers", ms.String(),
 		"from", req.From.Time().String(),
 		"through", req.Through.Time().String(),
@@ -491,6 +473,36 @@ func (g *Gateway) boundedShards(
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	return server.Send(resp)
+}
+
+func (g *Gateway) planShardsFromStore(ctx context.Context, tenant string, req *logproto.ShardsRequest, predicate chunk.Predicate) (*logproto.ShardsResponse, bool, error) {
+	precompute := g.limits.TSDBPrecomputeChunks(tenant)
+	fallbackReason := fallbackUnsupported
+	if source, ok := g.indexQuerier.(sharding.ChunkCursorSource); ok {
+		lookupCtx, finish := index.TrackChunkCursorLookups(ctx)
+		cursors, err := source.OpenChunkCursors(lookupCtx, tenant, req.From, req.Through, predicate.Matchers...)
+		if err == nil {
+			g.metrics.shardPlanningFiles.Observe(float64(len(cursors)))
+			resp, err := planShardsFromCursors(ctx, req, precompute, cursors)
+			if !errors.Is(err, errUnorderedChunkCursor) {
+				finish(err)
+				return resp, true, err
+			}
+			fallbackReason = fallbackOutOfOrder
+		} else if !errors.Is(err, sharding.ErrChunkCursorsUnsupported) {
+			finish(err)
+			return nil, false, err
+		}
+	}
+	g.metrics.shardPlanningFallbacks.WithLabelValues(fallbackReason).Inc()
+	trace.SpanFromContext(ctx).AddEvent("shard planning fallback", trace.WithAttributes(attribute.String("reason", fallbackReason)))
+	// Use the legacy chunk lookup when the store can't return refs in order.
+	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, tenant, req.From, req.Through, predicate)
+	if err != nil {
+		return nil, false, err
+	}
+	resp, err := buildShardsResponse(req, refs, precompute)
+	return resp, false, err
 }
 
 // buildShardsResponse builds the response for a shards request from the chunk refs

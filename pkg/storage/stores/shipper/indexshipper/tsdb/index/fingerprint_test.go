@@ -44,3 +44,9 @@ func Test_FingerprintOffsetRange(t *testing.T) {
 	}
 
 }
+
+func TestFingerprintOffsetRangeIncludesMaximumFingerprint(t *testing.T) {
+	offsets := FingerprintOffsets{{1, 0}, {2, math.MaxUint64 - 1}, {3, math.MaxUint64}}
+	_, through := offsets.Range(NewShard(1, 2))
+	require.Equal(t, uint64(math.MaxUint64), through, "the last shard must include a sampled maximum fingerprint")
+}

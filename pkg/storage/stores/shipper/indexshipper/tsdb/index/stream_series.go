@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"sort"
@@ -26,8 +27,11 @@ func seriesOffset(id storage.SeriesRef) int {
 // It is how StreamReader reads the postings list.
 // A seriesScan is not safe for concurrent use.
 type seriesScan struct {
-	reader *StreamReader
-	decbuf streamenc.Decbuf
+	reader       *StreamReader
+	factory      streamenc.DecbufFactory
+	decbuf       streamenc.Decbuf
+	lookupSymbol func(uint32) (string, error)
+	pinned       bool
 	// scratch backs the content slice handed to the decoder.
 	// The decoder never retains it, so it is reused across records rather
 	// than allocated per readSeriesRecord.
@@ -43,13 +47,48 @@ type seriesScan struct {
 // NewSeriesScan implements Reader.
 func (s *StreamReader) NewSeriesScan() SeriesScan {
 	return &seriesScan{
-		reader: s,
-		decbuf: s.factory.NewRawDecbuf(context.Background()),
+		reader:       s,
+		factory:      s.factory,
+		decbuf:       s.factory.NewRawDecbuf(context.Background()),
+		lookupSymbol: s.decoder.LookupSymbol,
 	}
 }
 
+// NewPinnedSeriesScan opens a chunk scan that keeps the underlying file open
+// through cache eviction. Series data and label symbol reads share its handle.
+// The caller must open the scan while the reader's file is still present and
+// close the scan when it is done.
+func (s *StreamReader) NewPinnedSeriesScan() (*OrderedChunkScan, error) {
+	factory, err := s.factory.Pin()
+	if err != nil {
+		return nil, err
+	}
+	scan := &seriesScan{
+		reader:  s,
+		factory: factory,
+		decbuf:  factory.NewRawDecbuf(context.Background()),
+		lookupSymbol: func(n uint32) (string, error) {
+			return s.symbols.lookupWithFactory(n, factory)
+		},
+		pinned: true,
+	}
+	if err := scan.decbuf.Err(); err != nil {
+		return nil, errors.Join(err, scan.Close())
+	}
+	return &OrderedChunkScan{
+		readRecord: func(id storage.SeriesRef) ([]byte, error) {
+			return scan.readSeriesRecord(seriesOffset(id))
+		},
+		close: scan.Close, version: s.version, decoder: s.decoder, lookupSymbol: scan.lookupSymbol,
+	}, nil
+}
+
 func (sc *seriesScan) Close() error {
-	return sc.decbuf.Close()
+	err := sc.decbuf.Close()
+	if sc.pinned {
+		return errors.Join(err, sc.factory.Close())
+	}
+	return err
 }
 
 // seek positions the scan's reader at the given absolute file offset.
@@ -69,7 +108,7 @@ func (sc *seriesScan) seek(offset int) {
 func (sc *seriesScan) readSeriesRecord(offset int) ([]byte, error) {
 	if sc.reopen {
 		_ = sc.decbuf.Close()
-		sc.decbuf = sc.reader.factory.NewRawDecbuf(context.Background())
+		sc.decbuf = sc.factory.NewRawDecbuf(context.Background())
 		sc.reopen = false
 	}
 	if err := sc.decbuf.Err(); err != nil {
@@ -168,7 +207,7 @@ func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lb
 		return 0, err
 	}
 
-	fingerprint, err := sc.reader.decoder.Series(sc.reader.version, content, id, from, through, lbls, chks)
+	fingerprint, err := sc.reader.decoder.seriesWithSymbolLookup(sc.reader.version, content, id, from, through, lbls, chks, sc.lookupSymbol)
 	if err != nil {
 		return 0, fmt.Errorf("decode series: %w", err)
 	}

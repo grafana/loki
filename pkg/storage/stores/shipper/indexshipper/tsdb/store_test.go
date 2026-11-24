@@ -18,8 +18,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
+
+func TestOpenChunkCursorsSkipsOverlappingHead(t *testing.T) {
+	s := &store{
+		Reader:      NewIndexClient(NewMultiIndex(IndexSlice{}), IndexClientOptions{}, nil),
+		indexWriter: &HeadManager{Index: NoopIndex{}},
+	}
+
+	_, err := s.OpenChunkCursors(t.Context(), "synthetic", 0, 1)
+	require.ErrorIs(t, err, sharding.ErrChunkCursorsUnsupported)
+	cursors, err := s.OpenChunkCursors(t.Context(), "synthetic", 1, 2)
+	require.NoError(t, err)
+	require.Empty(t, cursors)
+}
 
 // newTestStore builds a store over a filesystem object store and returns the
 // store's base directory, which holds the object store under "objects" and the
