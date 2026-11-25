@@ -127,12 +127,11 @@ func (it *SampleIterator) labelsString(resultLabels logqllog.LabelsResult) strin
 // initExtractorFor makes the stream extractor of a stream the current one, and keeps the current
 // extractor while the stream does not change. The labels.Equal check guards the reuse, so a
 // stream-hash collision cannot apply one stream's extractor to another's lines.
-//
-// Keeping the current extractor pays off when the first run of a batch continues the stream of the
-// last run of the previous batch. Each run holds one stream, so the iterator calls this method once
-// for each run. The reuse is only an optimisation: logs.SortTimestampDESC interleaves streams, and
-// the labels.Equal check keeps it correct under any layout.
 func (it *SampleIterator) initExtractorFor(stream objectStream) {
+	// Keeping the current extractor pays off when the first run of a batch continues the stream of
+	// the last run of the previous batch. Each run holds one stream, so the iterator calls this
+	// method once for each run. The reuse is only an optimisation: logs.SortTimestampDESC
+	// interleaves streams, and the labels.Equal check keeps it correct under any layout.
 	if it.hasCurrExtractor && stream.streamHash == it.currStreamHash && labels.Equal(stream.streamLabels, it.currStreamLabels) {
 		return
 	}

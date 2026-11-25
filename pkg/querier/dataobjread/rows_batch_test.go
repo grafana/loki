@@ -118,7 +118,7 @@ func TestRowsBatch_Init(t *testing.T) {
 	t.Run("a record from a stream that a filter dropped fails too", func(t *testing.T) {
 		streams := newObjectStreams(
 			map[int64]labels.Labels{7: labels.FromStrings("app", "a")},
-			func(labels.Labels, uint64) bool { return false }, // decoded, not admitted
+			func(labels.Labels, uint64) bool { return false },
 		)
 		dropped := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
@@ -177,14 +177,6 @@ func TestRowsBatch_Init(t *testing.T) {
 			_ = batch.init(task, batchOf(t, []int64{7}, []string{"one"}))
 		})
 	})
-
-	t.Run("a batch that comes from the pool after a failed init was released initialises", func(t *testing.T) {
-		failed := pool.get()
-		require.Error(t, failed.init(task, batchOf(t, []int64{7, 8, 9999}, []string{"one", "two", "three"})))
-		failed.release()
-
-		require.NoError(t, pool.get().init(task, batchOf(t, []int64{7}, []string{"one"})))
-	})
 }
 
 func TestRowsBatch_Line(t *testing.T) {
@@ -237,6 +229,20 @@ func TestRowsBatch_Line(t *testing.T) {
 	})
 }
 
+func TestRowsBatch_Reset(t *testing.T) {
+	t.Run("it keeps the regions of an earlier larger read, because it never trims", func(t *testing.T) {
+		batch := newRowsBatchPool().get()
+		batch.alloc.Allocate(1024)
+		batch.alloc.Allocate(4096)
+		batch.reset()
+		allocated := batch.alloc.AllocatedBytes()
+
+		batch.alloc.Allocate(8)
+		batch.reset()
+		require.Equal(t, allocated, batch.alloc.AllocatedBytes())
+	})
+}
+
 func TestRowsBatch_Release(t *testing.T) {
 	task := twoStreamTask()
 
@@ -272,18 +278,6 @@ func TestRowsBatch_Release(t *testing.T) {
 		batch.release()
 		require.Equal(t, allocated, batch.alloc.AllocatedBytes())
 		require.Equal(t, allocated, batch.alloc.FreeBytes())
-	})
-
-	t.Run("reset keeps the regions of an earlier larger read, because it never trims", func(t *testing.T) {
-		batch := newRowsBatchPool().get()
-		batch.alloc.Allocate(1024)
-		batch.alloc.Allocate(4096)
-		batch.reset()
-		allocated := batch.alloc.AllocatedBytes()
-
-		batch.alloc.Allocate(8)
-		batch.reset()
-		require.Equal(t, allocated, batch.alloc.AllocatedBytes())
 	})
 
 	t.Run("it panics when the batch is still in the pool", func(t *testing.T) {

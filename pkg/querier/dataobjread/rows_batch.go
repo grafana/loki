@@ -58,9 +58,9 @@ type streamRun struct {
 // with the identity of its stream. The batch must come from the pool, with no records. init
 // panics when the batch sits in the pool, or already holds records or runs.
 //
-// init fails when the records have no stream ID array or no timestamp array. init reads the first
-// and the iterator reads the second, both without a nil check. It also fails on a record whose
-// stream the task did not plan to read. The read matches only the task's streams, so an unexpected
+// init fails when the records have no stream ID array or no timestamp array. The loop in init reads
+// the stream ID array, and the iterator reads the timestamp array, without a nil check. It also
+// fails on a record whose stream the task did not plan to read. The read matches only the task's streams, so an unexpected
 // ID means that the read broke its stream filter. Dropping the record would under-count the query
 // without saying so.
 //
@@ -193,8 +193,8 @@ func (p *rowsBatchPool) put(b *rowsBatch) {
 // poisonReleasedBatches reports whether a pool overwrites the memory of the batches that it gets
 // back.
 //
-// It does in a test binary, so a test that keeps a line past release reads garbage. It does not
-// when the binary runs benchmarks. The overwrite takes time in proportion to the memory of each
+// A test binary overwrites them, so a test that keeps a line past release reads garbage. A binary
+// that runs benchmarks does not. The overwrite takes time in proportion to the memory of each
 // batch, and that would distort the timings.
 func poisonReleasedBatches() bool {
 	if !testing.Testing() {

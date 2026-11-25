@@ -35,8 +35,8 @@ type row struct {
 // It owns the batch. Close releases the batch. After Close, Next returns false and At returns the
 // zero row. The zero value owns no batch, so it behaves the same.
 //
-// A rowsBatchIterator is for a single goroutine. Do not copy it after newRowsBatchIterator returns
-// it, because a copy would share the ownership of the batch.
+// A rowsBatchIterator is for a single goroutine. Store the value that newRowsBatchIterator returns,
+// and do not copy it again, because a copy would share the ownership of the batch.
 type rowsBatchIterator struct {
 	batch *rowsBatch
 
