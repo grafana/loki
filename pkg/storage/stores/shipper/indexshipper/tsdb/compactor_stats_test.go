@@ -87,11 +87,11 @@ func TestDedupeTracker_RecordRunSkipsReuploads(t *testing.T) {
 	sizes := mergeStageSizes{listed: chunkTotals{kb: 50, lines: 15}, afterDedupe: chunkTotals{kb: 5, lines: 1}}
 	files := []storage.IndexFile{reuploaded, {Name: "new"}}
 	m.recordRun(context.Background(), log.NewNopLogger(), "table", files, []Index{idx.(Index), nil}, sizes)
-	require.Equal(t, [4]float64{30, 5, 9, 1}, counters(m))
+	require.Equal(t, [4]float64{30 * 1024, 5 * 1024, 9, 1}, counters(m))
 
 	// A run with only the re-uploaded file counts nothing.
 	m.recordRun(context.Background(), log.NewNopLogger(), "table", files[:1], []Index{idx.(Index)}, sizes)
-	require.Equal(t, [4]float64{30, 5, 9, 1}, counters(m))
+	require.Equal(t, [4]float64{30 * 1024, 5 * 1024, 9, 1}, counters(m))
 }
 
 // TestDedupeTracker_ForgetsOldestTable checks that the maxTables newest tables by date are kept,
@@ -229,10 +229,10 @@ func randomRuns(rng *rand.Rand, replicas [2]entries) [][]entries {
 	return runs
 }
 
-// counters returns listed KB, distinct KB, listed lines and distinct lines.
+// counters returns listed bytes, distinct bytes, listed lines and distinct lines.
 func counters(m *dedupeTracker) [4]float64 {
 	return [4]float64{
-		testutil.ToFloat64(m.listedKB), testutil.ToFloat64(m.distinctKB),
+		testutil.ToFloat64(m.listedBytes), testutil.ToFloat64(m.distinctBytes),
 		testutil.ToFloat64(m.listedLines), testutil.ToFloat64(m.distinctLines),
 	}
 }

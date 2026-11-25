@@ -635,8 +635,8 @@ func TestCompactor_Compact(t *testing.T) {
 							existing += streamsKB(c.streamsConfig)
 						}
 						n := uint64(2 * numUsers)
-						require.Equal(t, float64(n*listed), testutil.ToFloat64(dedupe.listedKB))
-						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)), testutil.ToFloat64(dedupe.distinctKB))
+						require.Equal(t, float64(n*listed*1024), testutil.ToFloat64(dedupe.listedBytes))
+						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)*1024), testutil.ToFloat64(dedupe.distinctBytes))
 					}
 
 					// verify that we have CompactedIndex for numUsers

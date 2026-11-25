@@ -64,12 +64,12 @@ func (s mergeStageSizes) distinct() chunkTotals {
 	return s.afterDedupe.minus(s.existing)
 }
 
-// dedupeTracker exports listed and distinct chunk KB and lines. It remembers the ingester files it
+// dedupeTracker exports listed and distinct chunk bytes and lines. It remembers the ingester files it
 // counted, so files re-uploaded after an ingester restart aren't counted twice. The memory is lost
 // when the compactor restarts.
 type dedupeTracker struct {
-	listedKB      prometheus.Counter
-	distinctKB    prometheus.Counter
+	listedBytes   prometheus.Counter
+	distinctBytes prometheus.Counter
 	listedLines   prometheus.Counter
 	distinctLines prometheus.Counter
 
@@ -83,18 +83,19 @@ func newDedupeTracker(reg prometheus.Registerer, maxTables int) *dedupeTracker {
 	if maxTables < 1 {
 		maxTables = 1
 	}
+	const sizeNote = " Sizes come from the index, rounded to whole KB per chunk, so chunks under 512 bytes count as 0."
 	return &dedupeTracker{
-		listedKB: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		listedBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Subsystem: "compactor",
-			Name:      "tsdb_listed_chunk_kb_total",
-			Help:      "Total size in KB of chunk entries read from ingester index files by the compactor, before deduplication.",
+			Name:      "tsdb_listed_chunk_uncompressed_bytes_total",
+			Help:      "Total uncompressed bytes of chunk entries read from ingester index files by the compactor, before deduplication." + sizeNote,
 		}),
-		distinctKB: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		distinctBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Subsystem: "compactor",
-			Name:      "tsdb_distinct_chunk_kb_total",
-			Help:      "Total size in KB of chunk entries that were new in the compacted index after deduplication.",
+			Name:      "tsdb_distinct_chunk_uncompressed_bytes_total",
+			Help:      "Total uncompressed bytes of chunk entries that were new in the compacted index after deduplication." + sizeNote,
 		}),
 		listedLines: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
@@ -149,8 +150,8 @@ func (m *dedupeTracker) record(table string, fileNames []string, listed, distinc
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.listedKB.Add(float64(listed.kb))
-	m.distinctKB.Add(float64(distinct.kb))
+	m.listedBytes.Add(float64(listed.kb * 1024))
+	m.distinctBytes.Add(float64(distinct.kb * 1024))
 	m.listedLines.Add(float64(listed.lines))
 	m.distinctLines.Add(float64(distinct.lines))
 
