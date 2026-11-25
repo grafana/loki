@@ -332,3 +332,75 @@ func TestWALRecreatedStreamEntriesSurviveReplay(t *testing.T) {
 	// The checkpoint's two entries plus the entry that is only in the WAL.
 	require.Equal(t, 3, got.chunks[0].chunk.Size(), "the unflushed entry must be recovered")
 }
+
+// definitionTestPushOther keeps a second stream in memory, so checkpoints serialize streams.
+func definitionTestPushOther(t *testing.T, i *Ingester) {
+	t.Helper()
+	ctx := user.InjectOrgID(context.Background(), "wal-retention-test")
+	_, err := i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{{
+		Labels:  `{app="wal-retention-other"}`,
+		Entries: []logproto.Entry{{Timestamp: time.Unix(1700000000, 0), Line: "other"}},
+	}}})
+	require.NoError(t, err)
+}
+
+// Close still reports success when deleting the superseded segments fails. Retired
+// metadata must survive until those segments are gone, even when the same writer's
+// previous checkpoint did delete its segments.
+func TestWALDefinitionsKeptWhileSupersededSegmentsRemain(t *testing.T) {
+	i, _ := newDefinitionTestIngester(t, t.TempDir())
+	definitionTestPushOther(t, i)
+	inst, err := i.GetOrCreateInstance("wal-retention-test")
+	require.NoError(t, err)
+	w := i.wal.(*walWrapper)
+	writer := w.checkpointWriter()
+	cp := NewCheckpointer(time.Millisecond, w.seriesIter, writer, i.metrics, make(chan struct{}))
+
+	first := definitionTestPush(t, i, 1)
+	definitionTestFlush(t, i, first)
+	require.NoError(t, cp.PerformCheckpoint())
+	_, exists := inst.retiredWALStreams.Load(first.fp)
+	require.False(t, exists, "a checkpoint that deletes its segments releases the definition")
+
+	second := definitionTestPush(t, i, 2)
+	definitionTestFlush(t, i, second)
+	writer.truncate = func(int) error { return errInjectedCheckpoint }
+	require.NoError(t, cp.PerformCheckpoint())
+	_, exists = inst.retiredWALStreams.Load(second.fp)
+	require.True(t, exists, "superseded segments are still on disk")
+
+	writer.truncate = nil
+	require.NoError(t, cp.PerformCheckpoint())
+	_, exists = inst.retiredWALStreams.Load(second.fp)
+	require.False(t, exists, "the next checkpoint deletes the leftover segments and releases the definition")
+}
+
+// After a failed truncation the stale segments are replayed on restart. A stream that
+// returns in the meantime must continue its counter, or replay drops its new entries as
+// duplicates of the stale records.
+func TestWALRecreatedStreamSurvivesFailedTruncation(t *testing.T) {
+	dir := t.TempDir()
+	i, stop := newDefinitionTestIngester(t, dir)
+	definitionTestPushOther(t, i)
+	definitionTestPush(t, i, 1)
+	s := definitionTestPush(t, i, 2)
+	definitionTestFlush(t, i, s)
+
+	w := i.wal.(*walWrapper)
+	writer := w.checkpointWriter()
+	writer.truncate = func(int) error { return errInjectedCheckpoint }
+	require.NoError(t, NewCheckpointer(time.Millisecond, w.seriesIter, writer, i.metrics, make(chan struct{})).PerformCheckpoint())
+
+	fresh := definitionTestPush(t, i, 3)
+	require.Equal(t, int64(3), fresh.entryCt)
+	stop()
+
+	recovered := definitionTestRecover(t, dir)
+	inst, err := recovered.GetOrCreateInstance("wal-retention-test")
+	require.NoError(t, err)
+	got, ok := inst.streams.Load(definitionTestLabels)
+	require.True(t, ok)
+	require.Equal(t, int64(3), got.entryCt)
+	// The stale segment's two entries plus the entry written after the checkpoint.
+	require.Equal(t, 3, got.chunks[0].chunk.Size(), "the returning stream's entry must be recovered")
+}

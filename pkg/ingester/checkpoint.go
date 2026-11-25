@@ -331,6 +331,12 @@ type WALCheckpointWriter struct {
 	final         string // filename to atomically rotate upon completion
 	bufSize       int
 	recs          [][]byte
+
+	// truncated reports whether the last committed checkpoint also deleted the WAL
+	// segments it supersedes. Replay still reads segments left on disk.
+	truncated bool
+	// truncate deletes the segments before the given one. Tests replace it.
+	truncate func(int) error
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
@@ -614,6 +620,7 @@ func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
 }
 
 func (w *WALCheckpointWriter) Close(abort bool) error {
+	w.truncated = false
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
 			return err
@@ -634,10 +641,16 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 	// We delete the WAL segments which are before the previous checkpoint and not before the
 	// current checkpoint created. This is because if the latest checkpoint is corrupted for any reason, we
 	// should be able to recover from the older checkpoint which would need the older WAL segments.
-	if err := w.segmentWAL.Truncate(w.lastSegment + 1); err != nil {
+	truncate := w.segmentWAL.Truncate
+	if w.truncate != nil {
+		truncate = w.truncate
+	}
+	if err := truncate(w.lastSegment + 1); err != nil {
 		// It is fine to have old WAL segments hanging around if deletion failed.
 		// We can try again next time.
 		level.Error(util_log.Logger).Log("msg", "error deleting old WAL segments", "err", err, "lastSegment", w.lastSegment)
+	} else {
+		w.truncated = true
 	}
 
 	if w.lastSegment >= 0 {
@@ -695,7 +708,7 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	n := iter.count
 	if n < 1 {
 		err = c.writer.Close(false)
-		committed = err == nil
+		committed = err == nil && c.supersededSegmentsDeleted()
 		return err
 	}
 
@@ -739,8 +752,18 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	}
 
 	err = c.writer.Close(false)
-	committed = err == nil
+	committed = err == nil && c.supersededSegmentsDeleted()
 	return err
+}
+
+// supersededSegmentsDeleted reports whether the committed checkpoint also deleted the
+// segments it supersedes. Until they are deleted, replay still reads them, so retired
+// stream metadata must be kept.
+func (c *Checkpointer) supersededSegmentsDeleted() bool {
+	if w, ok := c.writer.(*WALCheckpointWriter); ok {
+		return w.truncated
+	}
+	return true
 }
 
 // prepare pins the streams at the same boundary as the WAL rotation. The lock is held
