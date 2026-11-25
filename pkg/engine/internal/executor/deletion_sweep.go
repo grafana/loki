@@ -75,7 +75,7 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 	level.Info(logger).Log(
 		"msg", "deletion sweep finished",
 		"outcome", result.Outcome,
-		"delete", node.Delete,
+		"dry_run", !node.Delete,
 		"candidates", len(result.Candidates),
 		"duration", time.Since(start),
 	)

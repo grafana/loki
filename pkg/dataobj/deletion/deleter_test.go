@@ -44,7 +44,7 @@ func TestDeleteObjects(t *testing.T) {
 		requireExists(t, bucket, false, indexPath, logPath)
 		requireExists(t, bucket, true, "objects/tenants/a/02/other")
 		requireCounts(t, metrics, 1, 1, 0, 0)
-		require.Contains(t, logs.String(), `level=info tenant=a msg="deletion sweep deleted candidates" candidates=2 deleted_log_objects=1 deleted_index_objects=1 failed_log_objects=0 failed_index_objects=0`+"\n")
+		require.Contains(t, logs.String(), `level=info tenant=a msg="deletion sweep deleted candidates (max 5)" candidates=2 deleted_log_objects=1 deleted_index_objects=1 failed_log_objects=0 failed_index_objects=0`+"\n")
 	})
 
 	t.Run("counts a path that is already gone as deleted", func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestDeleteObjects(t *testing.T) {
 		requireExists(t, files, false, logPath)
 		requireExists(t, files, true, indexPath)
 		requireCounts(t, metrics, 1, 0, 0, 1)
-		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep deleted candidates" candidates=2 deleted_log_objects=1 deleted_index_objects=0 failed_log_objects=0 failed_index_objects=1`+"\n")
+		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep deleted candidates (max 5)" candidates=2 deleted_log_objects=1 deleted_index_objects=0 failed_log_objects=0 failed_index_objects=1`+"\n")
 		require.Contains(t, logs.String(), `level=warn tenant=a msg="deletion sweep cannot delete candidate" kind=index path=`+indexPath+` err="delete failed"`)
 	})
 

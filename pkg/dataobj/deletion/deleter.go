@@ -176,7 +176,7 @@ func (t *deleteTally) log(logger log.Logger, paths int) {
 		logAt = level.Warn
 	}
 	logAt(logger).Log(
-		"msg", "deletion sweep deleted candidates",
+		"msg", fmt.Sprintf("deletion sweep deleted candidates (max %d)", maxLoggedDeleteFailures),
 		"candidates", paths,
 		"deleted_log_objects", t.deleted[kindLog],
 		"deleted_index_objects", t.deleted[kindIndex],
