@@ -8,7 +8,29 @@ weight: 400
 
 To support iterations over the storage layer contents, Loki has a configurable storage schema. The schema is defined to apply over periods of time. A `from` value marks the starting point of that schema. The schema is active until another entry defines a new schema with a new `from` date.
 
-![schema_example](./schema.png)
+{{< mermaid >}}
+flowchart LR
+    subgraph period1["Period 1 config"]
+        cfg1["from: 2022-04-07
+store: tsdb
+object_store: gcs
+schema: v12
+index:
+  prefix: loki_ops_index_
+  period: 24h"]
+    end
+    subgraph period2["Period 2 config"]
+        cfg2["from: 2024-04-08
+store: tsdb
+object_store: gcs
+schema: v13
+index:
+  prefix: loki_ops_index_
+  period: 24h"]
+    end
+    cfg1 -->|"Data from 2022-04-07 to 2024-04-08 is stored and queried with schema v12"| cfg2
+    cfg2 -->|"Data from 2024-04-08 onward is stored and queried with schema v13"| ongoing["..."]
+{{< /mermaid >}}
 
 Loki uses the defined schemas to determine which format to use when storing and querying the data.
 
@@ -30,15 +52,14 @@ schema_config:
         period: 24h
 ```
 
-| Property     | Description                                                                                                                                            |
-|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| from         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
-| object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config)). |
-| store        | `tsdb` is the current and only recommended value for store. `boltdb-shipper` is deprecated; refer to [Deprecated `boltdb-shipper` store](#deprecated-boltdb-shipper-store) below.                    |
-| schema       | `v13` is the most recent schema and recommended value.                                                                                                 |
-| row_shards   | optional. Set at the same level as `store` and `schema`, not under `index`. Defaults to `16` for schema `v10` and newer. You do not usually need to change this value. |
-| prefix:      | any value without spaces is acceptable.                                                                                                                |
-| period:      | must be `24h`.                                                                                                                                         |
+| Property:     | Description                                                                                                                                            |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| from:         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
+| object_store: | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config)). |
+| store:        | `tsdb` is the only supported value.                                                                                                                    |
+| schema:       | `v13` is the current recommended value. Schema `v14` is newer but experimental; do not use it unless you understand the trade-offs. Refer to [TSDB schema v14](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#tsdb-schema-v14). |
+| prefix:       | any value without spaces is acceptable.                                                                                                                |
+| period:       | must be `24h`.                                                                                                                                         |
 
 {{< admonition type="note" >}}
 For a new install, the `from` date must be in the past so the schema is immediately active when Loki starts. If you set it to a future date, Loki will have no valid schema for the current time and will not be able to store incoming data.
@@ -57,14 +78,14 @@ To resolve this, either:
 - Add a new schema entry with a future `from` date that uses `store: tsdb` and `schema: v13` or newer. See [Changing the schema](#changing-the-schema) below.
 - Or, set `allow_structured_metadata: false` in the `limits_config` block (or pass `-validation.allow-structured-metadata=false`) until you can complete the schema migration.
 
-For background, refer to [Structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) and the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#structured-metadata-open-telemetry-schemas-and-indexes).
+For background, refer to [Structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) and the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-3.x/#structured-metadata-open-telemetry-schemas-and-indexes).
 {{< /admonition >}}
 
-## Deprecated `boltdb-shipper` store
+## Legacy index types are not supported
 
-`store: boltdb-shipper` is a deprecated index type. It is still accepted for existing Loki 3.x installs that have not yet migrated, but it must not be used for new installs, and it is being removed in Loki 4.0.
+Loki 4.0 removes `boltdb-shipper` and the other legacy index types (Google BigTable, Apache Cassandra, Amazon DynamoDB, and the gRPC store). `tsdb` is the only valid value for `store`. Loki fails to start if any `schema_config` entry, including entries for past periods, still refers to one of these removed types.
 
-`boltdb-shipper` also does not support structured metadata or native OTLP ingestion, both of which require `tsdb`. If you are running `boltdb-shipper`, refer to [Single Store BoltDB (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) and plan to migrate to `tsdb` using the guidance in [Changing the schema](#changing-the-schema) below.
+If you are migrating from one of these legacy index types, refer to [Migrate to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/) and complete the migration on Loki 3.x before you upgrade to Loki 4.0.
 
 ## Changing the schema
 
@@ -90,19 +111,19 @@ Here are items to consider when changing the schema; if schema changes are not d
 
 ## Schema configuration example
 
-This example shows a schema change: data ingested before `2022-01-20` used schema `v12`, and data ingested on or after that date uses schema `v13`. Both periods use `tsdb` as the store and `gcs` as the object store; only the schema version changes.
+This example shows a schema change: data ingested before `2024-04-08` used schema `v12`, and data ingested on or after that date uses schema `v13`. Both periods use `tsdb` as the store and `gcs` as the object store; only the schema version changes.
 
 ```yaml
 schema_config:
   configs:
-    - from: "2020-07-31"
+    - from: "2022-04-07"
       index:
         period: 24h
         prefix: loki_ops_index_
       object_store: gcs
       schema: v12
       store: tsdb
-    - from: "2022-01-20"
+    - from: "2024-04-08"
       index:
         period: 24h
         prefix: loki_ops_index_

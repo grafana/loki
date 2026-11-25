@@ -104,6 +104,12 @@ message IndexFilter {
   // source_index_paths lists the paths of every index object of the source
   // index.
   repeated string source_index_paths = 4;
+  // source_index_paths_in_key_order is true if source_index_paths lists the
+  // index objects in posting key order, with ranges that do not overlap. The
+  // worker then reads them as one sequence. A coordinator that predates the
+  // field leaves it false, and the worker merges the index objects in any
+  // order.
+  bool source_index_paths_in_key_order = 5;
 }
 
 // DeletionSweep applies delete requests to the objects of one tenant.

@@ -51,8 +51,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, errors.New("no object store bucket configured")
 	}
 
-	// Classify sections from all runs, grouped by source object.
-	objects, layout, err := c.classifyRuns(ctx, node)
+	objects, runs, layout, err := c.classifyRuns(ctx, node)
 	if err != nil {
 		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
@@ -63,7 +62,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, objects, node.KeySpan, keepAll, out); err != nil {
+	if err := c.mergePostingsInto(ctx, runs, node.KeySpan, keepAll, out); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
@@ -125,20 +124,42 @@ func statsSources(node *physical.IndexMerge, objects []objectSections) ([]object
 // of the tenant. A merge over every key takes every postings section of each
 // object.
 //
+// classifyRuns also returns the postings sections of each run of node, in
+// run order, for a merge that reads each run as one sequence. It returns an
+// error if an object appears in more than one run, or in two places of one
+// run.
+//
 // classifyRuns also returns the stream layout of the source indexes. It
 // returns an error if they record different layouts, or if only some record
 // one.
-func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, streams.Layout, error) {
+func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, [][]sourceSection, streams.Layout, error) {
 	// Deduplicate source objects by path. One object may be referenced by
-	// multiple SectionRefs in the same or different runs; we open and scan it
-	// exactly once.
+	// several SectionRefs of one run; we open and scan it exactly once.
 	objects := make(map[string]*dataobj.Object)
 	// referenced holds the referenced section indexes of each object. Only a
 	// merge with a bounded key span uses it.
 	referenced := make(map[string]map[int64]struct{})
+	// runPaths holds the paths of the objects of each run, in run order.
+	runPaths := make([][]string, len(node.Runs))
+	// runOf maps the path of each object to the index of its run.
+	runOf := make(map[string]int)
 
-	for _, runRef := range node.Runs {
+	for runIdx, runRef := range node.Runs {
 		for _, sectionRef := range runRef.Sections {
+			// A run reads its objects one after another in key order, so the
+			// sections of one object must be next to each other in one run.
+			// An object in two runs would merge its rows twice.
+			path := sectionRef.ObjectPath
+			if owner, seen := runOf[path]; seen {
+				last := runPaths[owner][len(runPaths[owner])-1]
+				if owner != runIdx || last != path {
+					return nil, nil, streams.Layout{}, fmt.Errorf("object %q of run %d appears in more than one place of the runs of the merge, also in run %d", path, runIdx, owner)
+				}
+			} else {
+				runOf[path] = runIdx
+				runPaths[runIdx] = append(runPaths[runIdx], path)
+			}
+
 			if referenced[sectionRef.ObjectPath] == nil {
 				referenced[sectionRef.ObjectPath] = make(map[int64]struct{})
 			}
@@ -148,7 +169,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, indexPrefetchBytes)
 			if openErr != nil {
-				return nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
+				return nil, nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
 			objects[sectionRef.ObjectPath] = obj
 		}
@@ -192,10 +213,10 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 		}
 		if !node.KeySpan.IsAll() && found != len(referenced[path]) {
-			return nil, streams.Layout{}, fmt.Errorf("object %q: %d of the %d referenced sections are not postings sections of tenant %q", path, len(referenced[path])-found, len(referenced[path]), node.Tenant)
+			return nil, nil, streams.Layout{}, fmt.Errorf("object %q: %d of the %d referenced sections are not postings sections of tenant %q", path, len(referenced[path])-found, len(referenced[path]), node.Tenant)
 		}
 		if err := layout.add(ctx, path, obj, node.Tenant); err != nil {
-			return nil, streams.Layout{}, err
+			return nil, nil, streams.Layout{}, err
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
 			grouped = append(grouped, group)
@@ -204,9 +225,20 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	merged, err := layout.shared()
 	if err != nil {
-		return nil, streams.Layout{}, err
+		return nil, nil, streams.Layout{}, err
 	}
-	return grouped, merged, nil
+
+	byPath := make(map[string]objectSections, len(grouped))
+	for _, group := range grouped {
+		byPath[group.path] = group
+	}
+	runs := make([][]sourceSection, len(runPaths))
+	for i, paths := range runPaths {
+		for _, path := range paths {
+			runs[i] = append(runs[i], sectionsOf(path, byPath[path].postings)...)
+		}
+	}
+	return grouped, runs, merged, nil
 }
 
 // sourceLayout collects the stream layouts that the source index objects of
@@ -252,11 +284,10 @@ func (s *sourceLayout) shared() (streams.Layout, error) {
 }
 
 // objectSections holds one source object's mergable sections, split by type and
-// kept in section order. A single object's same-type sections are contiguous,
-// non-overlapping slices of that object's sorted row stream (the section
-// builders write every row in sorted order, then split into sections at size
-// boundaries), so they can be concatenated in section order — see
-// [sectionConcatSeq].
+// kept in section order. The section builders write every row in sorted order
+// and then split it into sections by size. So the same-type sections of one
+// object are slices of one sorted row stream, and a [sectionConcatSeq] can
+// read them in section order.
 type objectSections struct {
 	path     string
 	postings []*dataobj.Section
@@ -266,19 +297,24 @@ type objectSections struct {
 // keepAll keeps every row, whatever log object the row references.
 func keepAll(string) bool { return true }
 
-// mergePostingsInto merges the postings rows of all source index objects
-// whose posting key is in keySpan, with a K-way loser-tree merge. It writes a
-// row to out only if keep returns true for the log object path of the row.
+// mergePostingsInto merges the postings rows of runs whose posting key is in
+// keySpan, with a K-way loser-tree merge. It writes a row to out only if keep
+// returns true for the log object path of the row.
+//
+// Each run holds postings sections in posting key order, for example the
+// sections of every index object of one index run. The merge reads each run
+// as one sequence, so it holds one section reader per run, not one per index
+// object. It returns an error if a run is not in order.
 //
 // The readers skip the pages that hold no key of keySpan, so a task of a
 // merge split by key span reads little more than its own range.
-func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSections, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
-	readers := postingsSequences(ctx, objects, keySpan)
+func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
+	readers := postingsSequences(ctx, runs, keySpan)
 	if len(readers) == 0 {
 		return nil
 	}
 
-	// Drive a K-way merge over the per-object sequences via a loser tree.
+	// Drive a K-way merge over the per-run sequences via a loser tree.
 	tree := loser.New(
 		readers,
 		heapVal[postings.Row]{isMax: true},
@@ -332,24 +368,24 @@ func (c *Context) mergePostingsInto(ctx context.Context, objects []objectSection
 	return nil
 }
 
-// postingsSequences returns one sequence over the postings rows of each object
+// postingsSequences returns one sequence over the postings rows of each run
 // that has postings sections, for the K-way merge. The sequences return only
-// the rows whose posting key is in keySpan.
-func postingsSequences(ctx context.Context, objects []objectSections, keySpan postings.KeySpan) []sequence[postings.Row] {
+// the rows whose posting key is in keySpan, and fail on a row out of order.
+func postingsSequences(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan) []sequence[postings.Row] {
 	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
 		return openPostingsReader(ctx, sec, keySpan)
 	}
-	readers := make([]sequence[postings.Row], 0, len(objects))
-	for _, obj := range objects {
-		if len(obj.postings) == 0 {
+	readers := make([]sequence[postings.Row], 0, len(runs))
+	for _, run := range runs {
+		if len(run) == 0 {
 			continue
 		}
 		readers = append(readers, &sectionConcatSeq[postings.Row]{
-			ctx:        ctx,
-			objectPath: obj.path,
-			sections:   obj.postings,
-			seqIdx:     len(readers),
-			open:       open,
+			ctx:      ctx,
+			sections: run,
+			seqIdx:   len(readers),
+			open:     open,
+			compare:  comparePostingsRow,
 		})
 	}
 	return readers
@@ -365,11 +401,10 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 			continue
 		}
 		readers = append(readers, &sectionConcatSeq[stats.Stat]{
-			ctx:        ctx,
-			objectPath: obj.path,
-			sections:   obj.stats,
-			seqIdx:     len(readers),
-			open:       openStatsReader,
+			ctx:      ctx,
+			sections: sectionsOf(obj.path, obj.stats),
+			seqIdx:   len(readers),
+			open:     openStatsReader,
 		})
 	}
 	if len(readers) == 0 {
@@ -429,23 +464,48 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 	return nil
 }
 
-// sectionConcatSeq lazily concatenates the row readers of one source object's
-// same-type sections, read in section order, exposing them to the K-way merge
-// as a single sequence[R]. Only one section reader is open at a time, so K such
-// sequences hold K Arrow batches concurrently instead of one batch per section
-// across the whole task — the core of the index-merge memory reduction.
-// sectionConcatSeq satisfies sequence[R] (iter.CloseIterator[R] plus Index).
+// sourceSection is one section of a source index object.
+type sourceSection struct {
+	objectPath string
+	section    *dataobj.Section
+}
+
+// sectionsOf tags each of sections with path, the path of the source index
+// object that holds them.
+func sectionsOf(path string, sections []*dataobj.Section) []sourceSection {
+	out := make([]sourceSection, len(sections))
+	for i, section := range sections {
+		out[i] = sourceSection{objectPath: path, section: section}
+	}
+	return out
+}
+
+// sectionConcatSeq lazily concatenates the row readers of same-type sections,
+// read in order, and exposes them to the K-way merge as a single sequence[R].
+// The sections can come from several index objects, for example every index
+// object of one run. Only one section reader is open at a time, so K such
+// sequences hold K section readers at once, whatever the number of sections
+// and index objects. sectionConcatSeq satisfies sequence[R]
+// (iter.CloseIterator[R] plus Index).
 type sectionConcatSeq[R any] struct {
-	ctx        context.Context
-	objectPath string // source object path, for error context
-	sections   []*dataobj.Section
-	open       func(context.Context, *dataobj.Section) (iter.CloseIterator[R], error)
-	seqIdx     int
+	ctx      context.Context
+	sections []sourceSection
+	open     func(context.Context, *dataobj.Section) (iter.CloseIterator[R], error)
+	seqIdx   int
+
+	// compare, if set, makes the sequence fail on a row that sorts below the
+	// row before it. The output builders also reject rows out of order, but
+	// only this check can name the source objects. It also sees the rows that
+	// the merge does not keep.
+	compare func(a, b R) int
 
 	idx int                   // index of the section currently being read
-	cur iter.CloseIterator[R] // reader for sections[idx-1]; nil until first Next / between sections
+	cur iter.CloseIterator[R] // reader for sections[idx]; nil until first Next / between sections
 	row R                     // current row, valid after Next returns true
 	err error
+
+	hasRow     bool
+	rowSection int // index of the section of row
 }
 
 // Index returns this sequence's stable index in the merge, for tiebreak ordering.
@@ -469,15 +529,21 @@ func (s *sectionConcatSeq[R]) Next() bool {
 			if s.idx >= len(s.sections) {
 				return false
 			}
-			it, err := s.open(s.ctx, s.sections[s.idx])
+			source := s.sections[s.idx]
+			it, err := s.open(s.ctx, source.section)
 			if err != nil {
-				s.err = fmt.Errorf("opening section %d/%d of object %q: %w", s.idx, len(s.sections), s.objectPath, err)
+				s.err = fmt.Errorf("opening section %d/%d of the sequence, of object %q: %w", s.idx, len(s.sections), source.objectPath, err)
 				return false
 			}
 			s.cur = it
 		}
 		if s.cur.Next() {
-			s.row = s.cur.At()
+			row := s.cur.At()
+			if s.compare != nil && s.hasRow && s.compare(row, s.row) < 0 {
+				s.err = fmt.Errorf("a row of section %d/%d of the sequence, of object %q, sorts below the row before it, of object %q", s.idx, len(s.sections), s.sections[s.idx].objectPath, s.sections[s.rowSection].objectPath)
+				return false
+			}
+			s.row, s.hasRow, s.rowSection = row, true, s.idx
 			return true
 		}
 		// Current section drained or errored: capture any error, close, advance.
