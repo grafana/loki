@@ -28,12 +28,8 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"matching selector with 1 matcher",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -44,12 +40,8 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"matching selector with 1 negative matcher",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NEQ,
-							Name:  "env",
-							Value: "dev",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchNotEqual, "env", "dev"),
 					},
 				},
 			},
@@ -60,17 +52,9 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"non matching selector with multiple matchers",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "host",
-							Value: "host2",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchEqual, "host", "host2"),
 					},
 				},
 			},
@@ -81,26 +65,14 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"one of multiple selectors matching",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NEQ,
-							Name:  "env",
-							Value: "prod",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
 					},
 				},
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "host",
-							Value: "host1",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchEqual, "host", "host1"),
 					},
 				},
 			},
@@ -111,12 +83,8 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"non matching selector",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -127,12 +95,8 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"regex selector with no matching labels",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_RE,
-							Name:  "environment",
-							Value: "dev.*",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchRegexp, "environment", "dev.*"),
 					},
 				},
 			},
@@ -143,64 +107,10 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 			"negative regex selector without matching labels",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NRE,
-							Name:  "environment",
-							Value: "dev.*",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchNotRegexp, "environment", "dev.*"),
 					},
 				},
-			},
-			labels.FromStrings("host", "host1", "env", "prod"),
-			false,
-		},
-		{
-			"invalid label matcher type",
-			[]*types.LabelPolicy{
-				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LabelMatcherType(1000),
-							Name:  "env",
-							Value: "prod",
-						},
-					},
-				},
-			},
-			labels.FromStrings("host", "host1", "env", "prod"),
-			true,
-		},
-		{
-			"invalid regex",
-			[]*types.LabelPolicy{
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
-			},
-			labels.FromStrings("host", "(", "env", "prod"),
-			true,
-		},
-		{
-			"invalid matcher after a matching one",
-			[]*types.LabelPolicy{
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}, {Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
-			},
-			labels.FromStrings("host", "host1", "env", "prod"),
-			true,
-		},
-		{
-			"matching selector after an invalid one",
-			[]*types.LabelPolicy{
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}}},
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
-			},
-			labels.FromStrings("host", "host1", "env", "prod"),
-			false,
-		},
-		{
-			"matcher of an invalid selector repeated in a valid one",
-			[]*types.LabelPolicy{
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_RE, Name: "host", Value: "("}, {Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
-				{Selector: []*types.LabelMatcher{{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"}}},
 			},
 			labels.FromStrings("host", "host1", "env", "prod"),
 			false,
@@ -208,7 +118,7 @@ func TestChunkFiltererShouldFilter(t *testing.T) {
 		{
 			"selector with no matchers",
 			[]*types.LabelPolicy{
-				{Selector: []*types.LabelMatcher{}},
+				{Selector: []*labels.Matcher{}},
 			},
 			labels.FromStrings("host", "host1", "env", "prod"),
 			false,
@@ -230,12 +140,8 @@ func BenchmarkShouldFilter(b *testing.B) {
 	lps := make(LabelPolicySet)
 	lps["tenant"] = []*types.LabelPolicy{
 		{
-			Selector: []*types.LabelMatcher{
-				{
-					Type:  types.LABEL_MATCHER_TYPE_NRE,
-					Name:  "environment",
-					Value: "dev.*",
-				},
+			Selector: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotRegexp, "environment", "dev.*"),
 			},
 		},
 	}
@@ -271,12 +177,8 @@ func TestChunkFilterer_RequiredLabelNames(t *testing.T) {
 			"policy with one selector",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -287,17 +189,9 @@ func TestChunkFilterer_RequiredLabelNames(t *testing.T) {
 			"policy with multiple selectors",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "host",
-							Value: "host2",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchEqual, "host", "host2"),
 					},
 				},
 			},
@@ -308,47 +202,19 @@ func TestChunkFilterer_RequiredLabelNames(t *testing.T) {
 			"multiple policies",
 			[]*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_NEQ,
-							Name:  "env",
-							Value: "prod",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
 					},
 				},
 				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "env",
-							Value: "dev",
-						},
-						{
-							Type:  types.LABEL_MATCHER_TYPE_EQ,
-							Name:  "host",
-							Value: "host1",
-						},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchEqual, "host", "host1"),
 					},
 				},
 			},
 			labels.FromStrings("host", "host3", "env", "dev"),
 			[]string{"env", "host"},
-		},
-		{
-			"invalid label matcher type",
-			[]*types.LabelPolicy{
-				{
-					Selector: []*types.LabelMatcher{
-						{
-							Type:  types.LabelMatcherType(1000),
-							Name:  "env",
-							Value: "prod",
-						},
-					},
-				},
-			},
-			labels.FromStrings("host", "host1", "env", "prod"),
-			[]string{"env"},
 		},
 	}
 	for _, tt := range tests {
@@ -363,14 +229,13 @@ func TestChunkFilterer_RequiredLabelNames(t *testing.T) {
 }
 
 func TestChunkFilterer_PushableLabelMatchers(t *testing.T) {
-	policy := func(matchers ...*types.LabelMatcher) *types.LabelPolicy {
+	policy := func(matchers ...*labels.Matcher) *types.LabelPolicy {
 		return &types.LabelPolicy{Selector: matchers}
 	}
-	envDev := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"}
-	secretNotTrue := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "secret", Value: "true"}
-	appRegexp := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_RE, Name: "app", Value: "a|d"}
-	teamAny := &types.LabelMatcher{Type: types.LABEL_MATCHER_TYPE_RE, Name: "team", Value: ".*"}
-	invalid := &types.LabelMatcher{Type: types.LabelMatcherType(1000), Name: "env", Value: "dev"}
+	envDev := labels.MustNewMatcher(labels.MatchEqual, "env", "dev")
+	secretNotTrue := labels.MustNewMatcher(labels.MatchNotEqual, "secret", "true")
+	appRegexp := labels.MustNewMatcher(labels.MatchRegexp, "app", "a|d")
+	teamAny := labels.MustNewMatcher(labels.MatchRegexp, "team", ".*")
 
 	testCases := []struct {
 		name     string
@@ -396,10 +261,6 @@ func TestChunkFilterer_PushableLabelMatchers(t *testing.T) {
 			want:     []string{`team=~".*"`, `env="dev"`},
 		},
 		{
-			name:     "returns no matcher when a matcher of the policy cannot be converted",
-			policies: []*types.LabelPolicy{policy(envDev, invalid)},
-		},
-		{
 			name:     "returns no matcher when the only policy has no matcher",
 			policies: []*types.LabelPolicy{policy()},
 		},
@@ -417,7 +278,6 @@ func TestChunkFilterer_PushableLabelMatchers(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			filterer := &ChunkFilterer{policies: testCase.policies}
-			filterer.loadMatchers()
 
 			matchers := filterer.PushableLabelMatchers()
 			var got []string
@@ -463,8 +323,8 @@ func TestRequestChunkFilterer_ForRequest(t *testing.T) {
 			name: "with LBAC policies returns non-nil filterer",
 			policies: LabelPolicySet{
 				"test-tenant": {
-					{Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"},
+					{Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 					}},
 				},
 			},

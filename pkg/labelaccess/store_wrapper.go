@@ -2,12 +2,9 @@ package labelaccess
 
 import (
 	"context"
+	"slices"
 
 	"github.com/go-kit/log/level"
-
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
-
-	//"github.com/grafana/backend-enterprise-libs/enterprise/admin/types"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -47,17 +44,7 @@ func (w *StoreWrapper) LabelValuesForMetricName(ctx context.Context, orgID strin
 
 	var result util.UniqueStrings
 	for _, p := range policies {
-		policyMatchers := make([]*labels.Matcher, len(p.Selector))
-		for i, lm := range p.Selector {
-			matcher, err := types.LabelMatcherToPromLabel(lm)
-			policyMatchers[i] = matcher
-			if err != nil {
-				// This shouldn't happen: log it and do not match
-				_ = level.Debug(util_log.Logger).Log("msg", "unable to encode matcher as Prometheus matcher", "label", labelName, "err", err)
-				break
-			}
-		}
-		policyMatchers = append(policyMatchers, matchers...)
+		policyMatchers := slices.Concat(p.Selector, matchers)
 		_ = level.Debug(util_log.Logger).Log("msg", "fetching label values", "org_id", orgID, "label", labelName, "matchers", len(policyMatchers))
 
 		labelValues, err := w.Store.LabelValuesForMetricName(ctx, orgID, from, through, metricName, labelName, policyMatchers...)

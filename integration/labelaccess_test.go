@@ -35,11 +35,7 @@ func buildLBACPolicyHeaders(tenantID string, policies []types.LabelPolicy) []str
 	headers := make([]string, len(policies))
 	for i := range policies {
 		matchers := make([]string, len(policies[i].Selector))
-		for j, selector := range policies[i].Selector {
-			matcher, err := types.LabelMatcherToPromLabel(selector)
-			if err != nil {
-				panic(err)
-			}
+		for j, matcher := range policies[i].Selector {
 			matchers[j] = matcher.String()
 		}
 		headers[i] = fmt.Sprintf("%s:%s", tenantID, url.PathEscape("{"+strings.Join(matchers, ", ")+"}"))
@@ -55,15 +51,7 @@ func newPolicy(selector string) types.LabelPolicy {
 	if err != nil {
 		panic(err)
 	}
-	policy := types.LabelPolicy{Selector: make([]*types.LabelMatcher, len(matchers))}
-	for i, m := range matchers {
-		lm, err := types.LabelMatcherFromPromLabel(m)
-		if err != nil {
-			panic(err)
-		}
-		policy.Selector[i] = lm
-	}
-	return policy
+	return types.LabelPolicy{Selector: matchers}
 }
 
 var (

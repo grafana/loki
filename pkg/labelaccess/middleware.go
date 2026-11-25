@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -118,15 +117,7 @@ func modifyVolumeQuery(r *http.Request, policySet LabelPolicySet) error {
 		return nil
 	}
 
-	policy := policies[0]
-	lbacMatchers := make([]*labels.Matcher, 0, len(policy.Selector))
-	for _, lm := range policy.Selector {
-		m, err := types.LabelMatcherToPromLabel(lm)
-		if err != nil {
-			return fmt.Errorf("lbac middleware: failed to convert label matcher for volume query: %w", err)
-		}
-		lbacMatchers = append(lbacMatchers, m)
-	}
+	lbacMatchers := policies[0].Selector
 
 	if len(lbacMatchers) == 0 {
 		return nil

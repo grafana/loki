@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,8 +27,8 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
 			query: `{job="varlog"} |= "line"`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -46,8 +47,8 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
 			query: `{__aggregated_metric__="varlog_service"}`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -59,14 +60,14 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
 			query: `{__aggregated_metric__="varlog_service"}`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
-						{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "classification", Value: "secret"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+						labels.MustNewMatcher(labels.MatchNotEqual, "classification", "secret"),
 					},
 				},
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_RE, Name: "classification", Value: "secre.*"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchRegexp, "classification", "secre.*"),
 					},
 				},
 			},
@@ -78,8 +79,8 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
 			query: `{__aggregated_metric__="varlog_service"} |= "some text"`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -91,8 +92,8 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
 			query: `sum by (job) (count_over_time({__aggregated_metric__="varlog_service"}[5m]))`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 			},
@@ -110,14 +111,14 @@ func TestModifyAggregatedMetricsQuery(t *testing.T) {
       )`,
 			policies: []*types.LabelPolicy{
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "dev"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
 					},
 				},
 				{
-					Selector: []*types.LabelMatcher{
-						{Type: types.LABEL_MATCHER_TYPE_EQ, Name: "env", Value: "prod"},
-						{Type: types.LABEL_MATCHER_TYPE_NEQ, Name: "classification", Value: "secret"},
+					Selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+						labels.MustNewMatcher(labels.MatchNotEqual, "classification", "secret"),
 					},
 				},
 			},
