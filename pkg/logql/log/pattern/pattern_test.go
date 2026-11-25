@@ -192,6 +192,22 @@ func Test_matcher_Matches(t *testing.T) {
 	}
 }
 
+func TestMatcher_Reset(t *testing.T) {
+	t.Run("drops the references to the input of the last match", func(t *testing.T) {
+		m, err := New("<a> <b>")
+		require.NoError(t, err)
+
+		require.Equal(t, [][]byte{[]byte("foo"), []byte("bar")}, m.Matches([]byte("foo bar")))
+		require.NotNil(t, m.captures[:cap(m.captures)][0])
+
+		m.Reset()
+
+		for i, capture := range m.captures[:cap(m.captures)] {
+			require.Nil(t, capture, "capture %d", i)
+		}
+	})
+}
+
 var res [][]byte
 
 func Benchmark_matcher_Matches(b *testing.B) {

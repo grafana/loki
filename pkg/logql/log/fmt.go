@@ -268,7 +268,10 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 			smp.Put(m)
 		}
 	}()
-	if err := lf.Execute(lf.buf, m); err != nil {
+	err := lf.Execute(lf.buf, m)
+	// The template reads the line only during Execute. Drop it, so the formatter does not retain it.
+	lf.currentLine = nil
+	if err != nil {
 		lbs.SetErr(errTemplateFormat, err)
 		return line, true
 	}
@@ -472,6 +475,8 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		}
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
+	// The templates read the line only during the loop. Drop it, so the formatter does not retain it.
+	lf.currentLine = nil
 	return l, true
 }
 

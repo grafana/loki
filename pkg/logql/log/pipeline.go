@@ -22,6 +22,10 @@ type StreamPipeline interface {
 	BaseLabels() LabelsResult
 	// Process processes a log line and returns the transformed line and the labels.
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
+	//
+	// Process must not retain the input line, or any portion of it, after it returns. The returned
+	// line can alias the input line. The caller must not overwrite the input line until it has
+	// finished with the returned line.
 	Process(ts int64, line []byte, structuredMetadata labels.Labels) (resultLine []byte, resultLabels LabelsResult, matches bool)
 	ProcessString(ts int64, line string, structuredMetadata labels.Labels) (resultLine string, resultLabels LabelsResult, matches bool)
 	ReferencedStructuredMetadata() bool
@@ -35,6 +39,9 @@ type Stage interface {
 	// labels through lbs: it can add, remove, or replace a label, or set __error__. It returns the
 	// resulting line and whether the line passes the stage. A false result means the line is filtered
 	// out, and the returned line is then unspecified.
+	//
+	// A stage must not retain the input line, or any portion of it, after it returns. The returned
+	// line can alias the input line. The next stage gets the returned line as its input.
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 
 	RequiredLabelNames() []string
