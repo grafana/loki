@@ -117,6 +117,15 @@ func (m *Matcher) Matches(in []byte) [][]byte {
 	return captures
 }
 
+// Reset drops the references that the matcher retains to the input of the last call of Matches. It
+// invalidates the captures that Matches returned.
+func (m *Matcher) Reset() {
+	// Matches writes the captures, which point into the input, to the array of m.captures. Without
+	// Reset, the matcher keeps the input alive until the next call of Matches. Matches appends to a
+	// local slice of that array, so m.captures keeps length zero. Clear the whole capacity.
+	clear(m.captures[:cap(m.captures)])
+}
+
 func (m *Matcher) Names() []string {
 	return m.names
 }
