@@ -1,6 +1,7 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
-(import 'grafana-builder/grafana.libsonnet') {
+(import 'grafana-builder/grafana.libsonnet') +
+(import 'databases.libsonnet') + {
   // Override the dashboard constructor to add:
   // - default tags,
   // - some links that propagate the selected cluster.
@@ -373,21 +374,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
   // Shared building blocks for the "Resources" dashboards.
   //
 
-  // Regex matching the "type" label on the loki_autoscaler_* metrics, per
-  // component. Follows the naming convention emitted by the loki-autoscaler
-  // exporter.
-  autoscalerType:: {
-    gateway: 'cortex_gateway(_internal)?',
-    distributor: 'distributor',
-    query_frontend: 'query-frontend',
-    query_scheduler: 'query-scheduler',
-    querier: 'querier',
-    index_gateway: 'index-gateway',
-    bloom_gateway: 'bloom-gateway',
-    ingester: '(partition-)?ingester',
-    ruler: 'ruler',
-  },
-
   // withNoValue replaces the "No data" a panel renders when its query
   // returns nothing with a custom message.
   withNoValue(text):: {
@@ -432,38 +418,30 @@ local utils = import 'mixin-utils/utils.libsonnet';
       '{{%s}}' % $._config.per_job_label
     ),
 
-  minReplicasPanel(component)::
-    $.panel('Min Replicas') +
-    $.newStatPanel(
-      'sum(loki_autoscaler_min_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
-      unit='short',
-      decimals=0,
-      novalue='Not auto-scaled',
-    ),
-
-  maxReplicasPanel(component)::
-    $.panel('Max Replicas') +
-    $.newStatPanel(
-      'sum(loki_autoscaler_max_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
-      unit='short',
-      decimals=0,
-      novalue='Not auto-scaled',
-    ),
-
-  // autoscalingPanels returns the leading Min/Max Replicas panels + spans for
-  // a component's row, or nothing at all when autoscaling_metrics is disabled.
+  // autoscalingPanels returns the leading Replicas / Desired replicas /
+  // Autoscaler failures panels + spans for a component's row, or nothing at
+  // all when autoscaling_metrics is disabled. The panels come from the shared
+  // grafana-databases-lib instance in databases.libsonnet.
   //
   // The panels are rendered whether or not the component is actually
-  // auto-scaled: when the autoscaler exports no metrics for it they display
-  // "Not auto-scaled" instead of a number, so there is no build-time list of
-  // auto-scaled components to keep in sync.
+  // auto-scaled: without an HPA the library's panels display "Not auto-scaled"
+  // instead of data, so there is no build-time list of auto-scaled components
+  // to keep in sync.
   autoscalingPanels(component)::
+    local legacy = (import 'grafana-databases-lib/main.libsonnet').legacy;
     if !$._config.autoscaling_metrics then
       { panels: [], spans: [] }
     else
       {
-        panels: [$.minReplicasPanel(component), $.maxReplicasPanel(component)],
-        spans: [2, 2],
+        panels: [
+          legacy.panel(panel)
+          for panel in [
+            $._databases.autoscaling.panels[component].replicas,
+            $._databases.autoscaling.panels[component].desiredReplicas,
+            $._databases.autoscaling.panels[component].failures,
+          ]
+        ],
+        spans: [4, 4, 4],
       },
 
   diskWritesPanel(matcher)::
@@ -489,9 +467,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
   //   autoscaling_metrics off (OSS default):
   //     Line 1: [RunningPods=4, OOMs=4, CPU=4]
   //     Line 2: [Memory ws=6, Memory heap=6]
-  //   autoscaling_metrics on:
-  //     Line 1: [MinReplicas=2, MaxReplicas=2, RunningPods=4, CPU=4]
-  //     Line 2: [OOMs=4, Memory ws=4, Memory heap=4]
+  //   autoscaling_metrics on adds a leading line:
+  //     Line 1: [Replicas=4, Desired replicas=4, Autoscaler failures=4]
+  //     then the same two lines as above.
   // trailingPanels/trailingSpans are appended after the core panels (e.g.
   // Disk Writes/Reads/Space, Rules), and are expected to add up to 12.
   componentRow(
@@ -506,19 +484,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
     trailingSpans=[],
   )::
     local as = $.autoscalingPanels(autoscalingComponent);
-    local hasAS = std.length(as.panels) > 0;
     local oomPanel = $.oomKilledPanel(oomMatcher);
     local podsPanel = $.runningPodsPanel(runningPodsMatcher);
-    local corePanels =
-      if hasAS then
-        // Autoscaling-on layout: replicas/status on line 1 with RunningPods
-        // and CPU; OOMs + memory on line 2.
-        as.panels + [podsPanel, cpuPanel, oomPanel, memoryPanel, goHeapPanel]
-      else
-        // Autoscaling-off layout: RunningPods/OOMs/CPU on line 1; memory on
-        // line 2.
-        [podsPanel, oomPanel, cpuPanel, memoryPanel, goHeapPanel];
-    local coreSpans = if hasAS then as.spans + [4, 4, 4, 4, 4] else [4, 4, 4, 6, 6];
+    // The autoscaling panels, if any, lead; the rest of the layout is the same either way.
+    local corePanels = as.panels + [podsPanel, oomPanel, cpuPanel, memoryPanel, goHeapPanel];
+    local coreSpans = as.spans + [4, 4, 4, 6, 6];
     local spans = coreSpans + trailingSpans;
     local row = std.foldl(
       function(r, p) r.addPanel(p),

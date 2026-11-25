@@ -71,8 +71,25 @@
       enabled: false,
     },
 
-    // Enable panels that depend on autoscaler metrics
-    // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
+    // Enable panels that depend on the HPAs of auto-scaled components (kube-state-metrics
+    // kube_horizontalpodautoscaler_*).
     autoscaling_metrics: false,
+
+    // KEDA names the HPA behind a ScaledObject "keda-hpa-<ScaledObject name>".
+    autoscaling_hpa_prefix: 'keda-hpa-',
+
+    // HPA name (without the prefix) of each component, as a regex. Components
+    // without an HPA show "Not auto-scaled".
+    autoscaling_hpa_names: {
+      gateway: 'cortex-gw(-internal)?',
+      distributor: 'distributor',
+      query_frontend: 'query-frontend',
+      query_scheduler: 'query-scheduler',
+      querier: 'querier.*',
+      index_gateway: 'index-gateway',
+      bloom_gateway: 'bloom-gateway',
+      ingester: 'partition-ingester.*',
+      ruler: 'ruler',
+    },
   },
 }
