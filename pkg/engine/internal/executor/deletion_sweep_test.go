@@ -97,7 +97,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 		_, err := runLogged(t, cfg, &physical.DeletionSweep{Tenant: "t1"}, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
 		require.NoError(t, err)
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep candidate" kind=log path=`+orphan+" last_modified=")
-		require.NotContains(t, logs.String(), `msg="deletion sweep deleted candidates (max 5)"`)
+		require.NotContains(t, logs.String(), `msg="deletion sweep deleted candidates (logs max 5 failures)"`)
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep finished" outcome=scanned dry_run=true candidates=1 duration=`)
 		requireOrphanExists(t, bucket, true)
 	})
@@ -111,7 +111,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 
 		_, err := runLogged(t, cfg, &physical.DeletionSweep{Tenant: "t1", Delete: true}, log.NewLogfmtLogger(log.NewSyncWriter(&logs)))
 		require.NoError(t, err)
-		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep deleted candidates (max 5)" candidates=1 deleted_log_objects=1`)
+		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep deleted candidates (logs max 5 failures)" candidates=1 deleted_log_objects=1`)
 		require.NotContains(t, logs.String(), "deletion sweep candidate")
 		require.Contains(t, logs.String(), `tenant=t1 msg="deletion sweep finished" outcome=scanned dry_run=false candidates=1 duration=`)
 		requireOrphanExists(t, bucket, false)
