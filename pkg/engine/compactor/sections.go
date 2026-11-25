@@ -429,7 +429,30 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 // stats rows of run, and the shard buckets of run.
 //
 // It returns no references and the zero ShardBuckets if run has no stats
-// section for tenant.
+// section for tenant. It returns the errors of [readLogSections].
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+	read, err := readLogSections(ctx, bucket, tenant, run)
+	if err != nil || !read.hasLayout {
+		return nil, indexpointers.ShardBuckets{}, err
+	}
+	return read.sections, indexpointers.NewShardBuckets(read.layout.ShardLayout()), nil
+}
+
+// logSectionsRead is what the stats sections of one index run say about the
+// log sections that the run indexes.
+type logSectionsRead struct {
+	// layout is the stream layout of the run. It has no meaning when
+	// hasLayout is false. A run without a layout has no stats section for
+	// the tenant, and sections is empty.
+	layout    streams.Layout
+	hasLayout bool
+
+	// sections has one bounded reference per log section, sorted by log
+	// object path and section index.
+	sections []v2.Section[logSortPrefix]
+}
+
+// readLogSections reads the stats sections of run for tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
 //   - records a run length other than the number of index objects of run,
@@ -437,21 +460,18 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+func readLogSections(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (logSectionsRead, error) {
 	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
+		return logSectionsRead{}, err
 	}
 	layout, ok, err := indexLayoutOfRun(ctx, tenant, opened)
-	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
-	}
-	if !ok {
-		return nil, indexpointers.ShardBuckets{}, nil
+	if err != nil || !ok {
+		return logSectionsRead{}, err
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
+		return logSectionsRead{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
 	}
 
 	folder := newLogSectionFolder(labelNames)
@@ -461,11 +481,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 				continue
 			}
 			if err := folder.addSection(ctx, section); err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
+				return logSectionsRead{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
 			}
 		}
 	}
-	return folder.refs(), indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+	return logSectionsRead{layout: layout, hasLayout: true, sections: folder.refs()}, nil
 }
 
 // logSectionID identifies one section of a logs object.
