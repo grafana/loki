@@ -31,8 +31,8 @@ type row struct {
 
 // A rowsBatchIterator iterates over the rows of one [rowsBatch], in record order.
 //
-// It owns the batch. Close releases the batch, and the iterator must not be used after that. The
-// zero value owns no batch: Next returns false and Close does nothing.
+// It owns the batch. Close releases the batch. After Close, Next returns false and At returns the
+// zero row. The zero value owns no batch, so it behaves the same.
 //
 // A rowsBatchIterator is for a single goroutine. Keep the value that newRowsBatchIterator returns,
 // and do not copy it, because a copy would share the ownership of the batch.
@@ -111,7 +111,7 @@ func (it *rowsBatchIterator) At() *row { return &it.curr }
 // Close releases the batch, and gives the scratch builder back to the pool. A second Close does
 // nothing.
 //
-// The metadata of a row owns its data, so a row that the consumer kept stays valid.
+// The metadata of a row owns its data and stays valid after Close. The line does not.
 func (it *rowsBatchIterator) Close() {
 	if it.batch == nil {
 		return

@@ -28,7 +28,7 @@ const (
 	// DefaultMaxConcurrency is how many logs sections the reader scans at once.
 	DefaultMaxConcurrency = 16
 
-	// DefaultReadBatchSize is how many records one section read decodes and sends at a time.
+	// DefaultReadBatchSize is the most records that one section read decodes and sends at a time.
 	DefaultReadBatchSize = 1024
 )
 
@@ -48,10 +48,10 @@ const (
 // complete, so a consumer must not depend on the order. The sample iterator does not, and the
 // data-object tier is never deduplicated against another source.
 //
-// The number of batches in flight is bounded. The channel holds at most maxConcurrency of them.
-// Each scan holds one while it reads, and the consumer holds one. The plan does grow with the
-// stream count: every queued task references the decoded streams of its object, one label set
-// each.
+// The number of batches in flight is bounded by 2*maxConcurrency+1. The channel holds up to
+// maxConcurrency of them, each scan holds one while it reads, and the consumer holds one. The
+// queued tasks grow with the stream count: every task references the decoded streams of its
+// object, one label set each.
 //
 // nextRowsBatch is for the single consumer goroutine only. Err and Close are safe to call from
 // another one.

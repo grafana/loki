@@ -15,10 +15,8 @@ var _ iter.SampleIterator = (*SampleIterator)(nil)
 // SampleIterator turns the rows of the batches of a [LogReader] into samples. It applies the LogQL
 // sample extractor to each row and emits at most one sample per row.
 //
-// It takes the batches from the reader one at a time, and reads the rows of each through a
-// [rowsBatchIterator]. It closes that iterator, and so releases the batch, when Next reads past the
-// last row. Close releases the batch that it is still reading. The samples that the iterator emits
-// own their data.
+// Close releases the batch that the iterator is still reading, and closes the reader. The samples
+// that the iterator emits own their data.
 //
 // Next, At, Labels, StreamHash and Close are for a single goroutine. Err is safe to call from
 // another one.
@@ -29,9 +27,9 @@ var _ iter.SampleIterator = (*SampleIterator)(nil)
 // hash zero is what allows the read to skip the message column for a count or a rate, whose
 // samples could not be hashed anyway.
 //
-// The iterator passes no line to the extractor when no stage reads it. The extractor must then
-// come from the query that [ProjectionPlan.UnpushedExpr] returns, or from the whole query when
-// that is nil.
+// The read returns no line when no stage reads it, and the extractor then gets a nil line. The
+// extractor must then come from the query that [ProjectionPlan.UnpushedExpr] returns, or from the
+// whole query when that is nil.
 //
 // It inherits the reader's lack of order (see [LogReader]). A consumer that needs
 // timestamp order must sort.
@@ -84,10 +82,9 @@ func (it *SampleIterator) Next() bool {
 	}
 
 	for {
-		// Look up the extractor of a stream once for each run of rows of that stream, and when there
-		// is no extractor yet.
 		for it.rows.Next() {
 			currRow := it.rows.At()
+			// Look up the extractor once for each run of rows of one stream, and when there is none yet.
 			if !it.hasCurrExtractor || currRow.startsRun {
 				it.initExtractorFor(currRow.stream)
 			}

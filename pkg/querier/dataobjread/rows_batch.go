@@ -55,25 +55,27 @@ type streamRun struct {
 }
 
 // init stores the records that a read into b.alloc returned, and splits them into stream runs, each
-// with the identity of its stream. The batch must come from the pool, with no records.
-//
-// The layouts that the production builder writes keep the records of one stream together, so a
-// batch holds few runs. The stream lookup here runs once for each run, not once for each record.
-// So does the extractor lookup in the consumer. An interleaved layout gives up to one run for each
-// record. That costs time but stays correct.
+// with the identity of its stream. The batch must come from the pool, with no records. init
+// panics when the batch already holds records or runs, or sits in the pool.
 //
 // init fails when the records have no stream ID array or no timestamp array, because the loop and
 // the iterator read them without a nil check. It also fails on a record whose stream the task did
-// not plan to read. The read matches only the task's streams, so an unexpected ID means that broke,
-// and dropping the record would under-count the query without saying so.
+// not plan to read. The read matches only the task's streams, so an unexpected ID means that the
+// read broke its stream filter. Dropping the record would under-count the query without saying so.
 //
 // On error the batch holds no records, and it can hold some of the runs. The caller must release
 // the batch, which drops them.
 func (b *rowsBatch) init(task ReadTask, records *logs.RecordBatch) error {
+	if b.pooled || b.records != nil || len(b.streamRuns) > 0 {
+		panic("dataobjread: batch initialised twice")
+	}
 	if records.StreamID == nil || records.Timestamp == nil {
 		return fmt.Errorf("data object %q logs section %d returned a batch without the stream ID or timestamp column", task.objectPath, task.sectionIdx)
 	}
 
+	// The layouts that the production builder writes keep the records of one stream together, so a
+	// batch holds few runs, and the stream lookup runs once for each run. An interleaved layout gives
+	// up to one run for each record. That costs time but stays correct.
 	var lastStreamID int64
 	for i := range records.Rows {
 		streamID := records.StreamID.Get(i)
@@ -117,19 +119,15 @@ func (b *rowsBatch) line(i int) []byte {
 	return value[:len(value):len(value)]
 }
 
-// reset drops the records and reclaims the memory of the batch.
-//
-// It calls Reclaim and never Trim, so the batch keeps every region that it allocated. The next read
-// into the batch then needs no allocation for them. The garbage collector frees a batch that stays
-// idle in the pool.
-//
-// It clears the runs, because they hold the labels of a stream. That includes the runs that a failed
-// init left in the batch.
+// reset drops the records and reclaims the memory of the batch for the next read into it. The batch
+// keeps the regions that it allocated.
 func (b *rowsBatch) reset() {
+	// Reclaim keeps every region. Trim would free them, and the next read would allocate them again.
 	b.alloc.Reclaim()
 	b.records = nil
 	b.hasLine = false
 	b.hasMetadata = false
+	// The runs hold the labels of a stream. Clear them, including the runs that a failed init left.
 	clear(b.streamRuns)
 	b.streamRuns = b.streamRuns[:0]
 }
@@ -137,10 +135,10 @@ func (b *rowsBatch) reset() {
 // release reclaims the memory of the batch and returns the batch to its pool. The consumer must not
 // use the batch, its arrays, or any line of it afterwards.
 //
-// release panics on a second call before the pool hands the batch out again, because the ownership
-// rules broke. It checks before it touches the memory, so the second call changes nothing. The
-// check does not catch every batch with two owners. The rule rests on the scans and the consumer.
-// A scan either sends a batch or releases it, never both. The consumer releases each batch that it
+// release panics when the batch is already in the pool, because two owners released it. The check
+// runs before release touches the memory, so the second call changes nothing. It cannot catch a
+// second release after the pool hands the batch out again. That case rests on the rule that a scan
+// either sends a batch or releases it, never both, and the consumer releases each batch that it
 // receives once.
 func (b *rowsBatch) release() {
 	if b.pooled {

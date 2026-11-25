@@ -324,7 +324,7 @@ func TestSampleIterator(t *testing.T) {
 		require.Equal(t, 2, reader.closes)
 	})
 
-	t.Run("a real read with a parser and a filter yields the samples of the rows that pass, though released batches are overwritten", func(t *testing.T) {
+	t.Run("a real read with a parser and a filter yields the samples of the rows that pass, at every batch size and section layout", func(t *testing.T) {
 		const (
 			streamCount      = 3
 			entriesPerStream = 40
@@ -401,6 +401,56 @@ func TestSampleIterator(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	t.Run("a real read that the consumer stops part-way closes without an error", func(t *testing.T) {
+		const query = `count_over_time({app=~".+"}[1m])`
+
+		var streams []logproto.Stream
+		for s := range 3 {
+			stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+			for i := range 40 {
+				stream.Entries = append(stream.Entries, entry(t, i+1, "line"))
+			}
+			streams = append(streams, stream)
+		}
+		fixture := planReaderFixture(t, query, newObjectsFixtureWithOptions(t, []objtest.Option{objtest.WithTargetSectionSize(1 << 10)}, streams...))
+		require.Greater(t, len(fixture.tasks), 1)
+
+		for _, batchSize := range []int{1, 3, DefaultReadBatchSize} {
+			for _, samplesRead := range []int{0, 1, 7, 100} {
+				reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, NewMetrics(nil))
+				it := NewSampleIterator(reader, sampleExtractor(t, query))
+
+				for range samplesRead {
+					it.Next()
+				}
+				require.NoError(t, it.Close(), "batch size %d, %d samples read", batchSize, samplesRead)
+				require.NoError(t, it.Err(), "batch size %d, %d samples read", batchSize, samplesRead)
+				require.False(t, it.Next(), "batch size %d, %d samples read", batchSize, samplesRead)
+			}
+		}
+	})
+
+	t.Run("a scan that fails while the others succeed ends the read with its error", func(t *testing.T) {
+		const query = `count_over_time({app=~".+"}[1m])`
+
+		fixture := newReaderFixture(t, query,
+			logproto.Stream{Labels: `{app="a"}`, Entries: []logproto.Entry{entry(t, 1, "one"), entry(t, 2, "two")}},
+			logproto.Stream{Labels: `{app="b"}`, Entries: []logproto.Entry{entry(t, 1, "three")}},
+		)
+		broken := fixture.tasks[0]
+		broken.sectionIdx = 999
+		tasks := append(slices.Clone(fixture.tasks), broken)
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(tasks...), DefaultMaxConcurrency, 1, NewMetrics(nil))
+		it := NewSampleIterator(reader, sampleExtractor(t, query))
+
+		for it.Next() {
+		}
+		require.ErrorContains(t, it.Err(), "holds no logs section 999")
+		require.ErrorContains(t, it.Close(), "holds no logs section 999")
+		require.False(t, it.Next())
 	})
 
 	t.Run("a sample stays intact after its batch is released and overwritten", func(t *testing.T) {
