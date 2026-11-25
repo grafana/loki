@@ -29,6 +29,12 @@ const (
 // goroutine. The task slots of the tenant admit the tasks of every job by
 // priority, so the slots stay busy while any job has a task to run.
 //
+// Leases coordinate the jobs of one process. If two planners compact one
+// tenant, their jobs can do the same work, and only one swap applies. The
+// ToC writer reports an identical swap as already applied, which counts as a
+// noop, and rejects a swap whose sources another swap removed, which counts
+// as a failed job.
+//
 // A planned job keeps its place until it runs. Later scans plan every index
 // run that no planned job leases. These are fresh ingest, the outputs of
 // committed jobs, and index runs that earlier scans left unmerged. Only this
@@ -56,12 +62,12 @@ type pairCompactor struct {
 	// IndexMerge task. 0 disables the split.
 	maxIndexTaskSize uint64
 
-	slots  *taskSlots
-	leases *runLeases
-	jobs   sync.WaitGroup
+	slots       *taskSlots
+	leases      *runLeases
+	runningJobs sync.WaitGroup
 
 	// plannedJobs counts the jobs that start received. It sets the plan
-	// order of each job. Only the scan goroutine uses it.
+	// order of each job. Only the goroutine of run uses it.
 	plannedJobs uint64
 }
 
@@ -101,71 +107,36 @@ func (c *coordinator) newPairCompactor(tenant string) *pairCompactor {
 	}
 }
 
-// run scans the tenant every rescanInterval until ctx is cancelled, or
-// until every compaction phase of the tenant is disabled. It scans only while
-// log compaction is enabled, because every merge rewrites log data. A tenant
-// with only index compaction enabled gets no compaction.
+// run plans and starts jobs for the tenant every rescanInterval, until ctx is
+// cancelled or log compaction of the tenant is disabled. The supervisor starts
+// run again if log compaction comes back on.
 //
-// Jobs that did not start stop when ctx is cancelled, when log compaction is
-// disabled, and when run returns. A job that started runs its tasks to
-// completion and swaps the ToC. run returns after every job ends.
+// Jobs that did not start stop when run returns. A job that started runs its
+// tasks to completion and swaps the ToC. run returns after every job ends.
 func (p *pairCompactor) run(ctx context.Context) {
-	jobs := newJobsContext(ctx)
+	jobsCtx, stopJobs := context.WithCancel(ctx)
 	defer func() {
-		jobs.stop()
-		p.jobs.Wait()
+		stopJobs()
+		p.runningJobs.Wait()
 	}()
 
-	var warnedIndexOnly bool
-	for ctx.Err() == nil {
-		runIndex, runLog := p.limits.CompactionPhases(p.tenant)
-		if !runIndex && !runLog {
+	for jobsCtx.Err() == nil {
+		if _, runLog := p.limits.CompactionPhases(p.tenant); !runLog {
+			level.Info(p.logger).Log("msg", "pair-compaction: stopping, because log compaction is disabled for the tenant")
 			return
 		}
-		if runLog {
-			warnedIndexOnly = false
-			p.scan(jobs.ctx)
-		} else {
-			jobs.restart()
-			if !warnedIndexOnly {
-				level.Warn(p.logger).Log("msg", "pair-compaction: tenant has index compaction enabled but log compaction disabled, so plan-version 2 does not compact it")
-				warnedIndexOnly = true
-			}
-		}
-		p.sleep(ctx, p.rescanInterval)
+		p.planAndStart(jobsCtx)
+		p.sleep(jobsCtx, p.rescanInterval)
 	}
 }
 
-// jobsContext is the context of the jobs that the compactor planned. Its
-// cancellation stops the jobs that did not start.
-type jobsContext struct {
-	parent context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-func newJobsContext(parent context.Context) *jobsContext {
-	ctx, cancel := context.WithCancel(parent)
-	return &jobsContext{parent: parent, ctx: ctx, cancel: cancel}
-}
-
-// stop cancels the context.
-func (j *jobsContext) stop() { j.cancel() }
-
-// restart cancels the context and replaces it with a new one for the jobs
-// that later scans plan.
-func (j *jobsContext) restart() {
-	j.cancel()
-	j.ctx, j.cancel = context.WithCancel(j.parent)
-}
-
-// scan plans every window of the tenant, newest first, and starts the jobs it
+// planAndStart plans every window of the tenant, newest first, and starts the jobs it
 // plans. It returns the number of jobs it started. A window that fails to plan
 // does not stop the other windows.
 //
-// scan sets the last plan timestamp of the tenant only if it planned every
+// planAndStart sets the last plan timestamp of the tenant only if it planned every
 // index run of every window.
-func (p *pairCompactor) scan(ctx context.Context) int {
+func (p *pairCompactor) planAndStart(ctx context.Context) int {
 	var (
 		started  int
 		complete = true
@@ -211,7 +182,7 @@ func (p *pairCompactor) start(ctx context.Context, job pairJob) bool {
 	}
 	planOrder := p.plannedJobs
 	p.plannedJobs++
-	p.jobs.Go(func() {
+	p.runningJobs.Go(func() {
 		// Release only after the swap. A scan takes its lease snapshot
 		// before it reads the ToC. If the lease ended before the swap, a
 		// scan could see the lease free and then read a ToC that still

@@ -48,7 +48,7 @@ type PairPlanConfig struct {
 	Now time.Time
 }
 
-// PairPlan is the work that the coupled planner (plan version 2) would start
+// PairPlan is the work that the coupled planner (planner version 2) would start
 // in one window of a tenant.
 type PairPlan struct {
 	// IndexRuns is the number of index runs in the ToC of the window.

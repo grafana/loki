@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -242,7 +243,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		MaxRunsPerTask:       2,
 		LogMaxRunsPerTask:    2,
 		LogMinCompactionSize: 1,
-		PlanVersion:          1,
+		PlannerVersion:       1,
 		Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
 		TaskRetryMinBackoff:  time.Millisecond,
 		TaskRetryMaxBackoff:  time.Millisecond,
@@ -2988,6 +2989,54 @@ func TestDiscoverTenants(t *testing.T) {
 	})
 }
 
+func TestCompactionEnabled(t *testing.T) {
+	newLimits := func(index, logs bool) *fakeLimits {
+		limits := newFakeLimits()
+		if index {
+			limits.index["acme"] = true
+		}
+		limits.setLog("acme", logs)
+		return limits
+	}
+	tests := []struct {
+		name           string
+		plannerVersion uint
+		index, logs    bool
+		want           bool
+	}{
+		{name: "planner version 1 runs a tenant with only index compaction", plannerVersion: plannerVersionPhased, index: true, want: true},
+		{name: "planner version 1 skips a tenant with no compaction", plannerVersion: plannerVersionPhased},
+		{name: "planner version 2 runs a tenant with log compaction", plannerVersion: plannerVersionCoupled, index: true, logs: true, want: true},
+		{name: "planner version 2 skips a tenant with only index compaction", plannerVersion: plannerVersionCoupled, index: true},
+		{name: "planner version 2 skips a tenant with no compaction", plannerVersion: plannerVersionCoupled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, time.Now, newLimits(test.index, test.logs))
+			c.cfg.PlannerVersion = test.plannerVersion
+			require.Equal(t, test.want, c.compactionEnabled("acme"))
+		})
+	}
+
+	t.Run("planner version 2 warns once for a tenant with only index compaction and again after it changes", func(t *testing.T) {
+		limits := newLimits(true, false)
+		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, time.Now, limits)
+		c.cfg.PlannerVersion = plannerVersionCoupled
+		var logs bytes.Buffer
+		c.logger = log.NewLogfmtLogger(&logs)
+
+		c.compactionEnabled("acme")
+		c.compactionEnabled("acme")
+		require.Equal(t, 1, strings.Count(logs.String(), "does not compact it"))
+
+		limits.setLog("acme", true)
+		c.compactionEnabled("acme")
+		limits.setLog("acme", false)
+		c.compactionEnabled("acme")
+		require.Equal(t, 2, strings.Count(logs.String(), "does not compact it"))
+	})
+}
+
 func TestRunTenant(t *testing.T) {
 	t.Run("deletes the tenant's metrics when the loop exits", func(t *testing.T) {
 		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, time.Now, newFakeLimits("acme"))
@@ -3029,7 +3078,7 @@ func TestRunTenant(t *testing.T) {
 		require.Zero(t, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
 	})
 
-	t.Run("runs the coupled planner under plan version 2 and deletes its metrics when it stops", func(t *testing.T) {
+	t.Run("runs the coupled planner under planner version 2 and deletes its metrics when it stops", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairs(t, bucket, "indexes/a", "indexes/b")
 		c := newPairTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true})

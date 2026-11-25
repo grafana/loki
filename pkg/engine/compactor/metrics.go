@@ -228,15 +228,15 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		pairJobsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_pair_jobs_total",
-			Help: "Jobs of the coupled planner (plan-version 2) by kind and outcome. kind = merge (K pairs into one pair) or split (one index run into one pair per log run). outcome = committed (the ToC swap applied), noop (dry run, or the ToC already held the swap), stale (the ToC no longer listed every source index when the job started), or failed. A job that a shutdown or disabled log compaction stops before its first task records no outcome.",
+			Help: "Jobs of the coupled planner (planner version 2) by kind and outcome. kind = merge (K pairs into one pair) or split (one index run into one pair per log run). outcome = committed (the ToC swap applied), noop (dry run, or the ToC already held the swap), stale (the ToC no longer listed every source index when the job started), or failed. A job that a shutdown or disabled log compaction stops before its first task records no outcome.",
 		}, []string{labelTenant, labelKind, labelOutcome}),
 		pairSkippedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_pair_skipped_indexes_total",
-			Help: "Index runs that the coupled planner (plan-version 2) skipped in a scan, by reason. read_failed = the read of its stats failed, no_stats = it has no stats rows, shared_log_object = it shares a log object with another index run, unknown_pair = a planned merge held a log object of no pair. Each scan counts the index run again, so a nonzero rate means an index run that stays uncompacted. Corrupt index runs count in loki_dataobj_compaction_corrupt_indexes_total instead.",
+			Help: "Index runs that the coupled planner (planner version 2) skipped in a scan, by reason. read_failed = the read of its stats failed, no_stats = it has no stats rows, shared_log_object = it shares a log object with another index run, unknown_pair = a planned merge held a log object of no pair. Each scan counts the index run again, so a nonzero rate means an index run that stays uncompacted. Corrupt index runs count in loki_dataobj_compaction_corrupt_indexes_total instead.",
 		}, []string{labelTenant, labelReason}),
 		pairLegacyIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_pair_legacy_index_runs",
-			Help: "Index runs over more than one log run that the last scan of the coupled planner (plan-version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
+			Help: "Index runs over more than one log run that the last scan of the coupled planner (planner version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
 		}, []string{labelTenant, labelWindowLookback}),
 	}
 }

@@ -33,7 +33,7 @@ func newPairTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRu
 	limits := newFakeLimits("acme")
 	limits.setLog("acme", true)
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(imWindow().Add(time.Hour)), limits)
-	c.cfg.PlanVersion = planVersionCoupled
+	c.cfg.PlannerVersion = plannerVersionCoupled
 	return c
 }
 
@@ -133,7 +133,7 @@ func pairJobsCount(c *coordinator, kind, outcome string) float64 {
 	return testutil.ToFloat64(c.metrics.pairJobsTotal.WithLabelValues("acme", kind, outcome))
 }
 
-func TestPairCompactorScan(t *testing.T) {
+func TestPairCompactorPlanAndStart(t *testing.T) {
 	// splitLogMerge seeds two pairs whose merge runs as two LogMerge tasks
 	// of 200 bytes each, and the indexes of those tasks.
 	splitLogMerge := func(t *testing.T, bucket objstore.Bucket) []string {
@@ -154,8 +154,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Equal(t, []string{"log-merge"}, actorsOf(runner.snapshot()))
 		swaps := replacer.snapshot()
@@ -184,8 +184,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		calls := runner.snapshot()
 		require.Equal(t, []string{"log-merge", "log-merge", "index-merge"}, actorsOf(calls))
@@ -213,8 +213,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
@@ -232,8 +232,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
@@ -249,8 +249,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
@@ -266,8 +266,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
@@ -308,8 +308,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		calls := runner.snapshot()
 		require.Equal(t, []string{"index-filter", "index-filter"}, actorsOf(calls))
@@ -344,8 +344,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindSplit, pairJobOutcomeFailed))
@@ -364,8 +364,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.WindowLookback = 1
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		for _, call := range runner.snapshot() {
 			root, err := call.plan.Root()
@@ -386,14 +386,14 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, runner, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
 		require.Empty(t, p.leases.snapshot().indexes)
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 	})
 
 	t.Run("a ToC swap error counts a failed job and frees the sources", func(t *testing.T) {
@@ -405,8 +405,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, &fakeRunner{respond: responder.respond}, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Len(t, replacer.snapshot(), 1)
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
@@ -421,8 +421,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, &fakeRunner{respond: responder.respond}, &fakeReplacer{swapped: false})
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeNoop))
 		require.Zero(t, testutil.ToFloat64(c.metrics.indexesRemovedTotal.WithLabelValues("acme")))
@@ -440,10 +440,10 @@ func TestPairCompactorScan(t *testing.T) {
 		c := newPairTestCoordinator(t, bucket, &fakeRunner{respond: responder.respond}, replacer)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(t.Context()))
-		require.Equal(t, 0, p.scan(t.Context()))
+		require.Equal(t, 1, p.planAndStart(t.Context()))
+		require.Equal(t, 0, p.planAndStart(t.Context()))
 		unblockOnce.Do(func() { close(unblock) })
-		p.jobs.Wait()
+		p.runningJobs.Wait()
 		require.Len(t, replacer.snapshot(), 1)
 	})
 
@@ -463,8 +463,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 		p = c.newPairCompactor("acme")
 
-		require.Equal(t, 2, p.scan(t.Context()))
-		p.jobs.Wait()
+		require.Equal(t, 2, p.planAndStart(t.Context()))
+		p.runningJobs.Wait()
 
 		calls := runner.snapshot()
 		require.Equal(t, []string{"log-merge", "log-merge", "log-merge", "log-merge"}, actorsOf(calls))
@@ -497,11 +497,11 @@ func TestPairCompactorScan(t *testing.T) {
 		p := c.newPairCompactor("acme")
 		scanCtx, cancel := context.WithCancel(t.Context())
 
-		require.Equal(t, 2, p.scan(scanCtx))
+		require.Equal(t, 2, p.planAndStart(scanCtx))
 		<-started
 		cancel()
 		unblockOnce.Do(func() { close(unblock) })
-		p.jobs.Wait()
+		p.runningJobs.Wait()
 
 		require.Len(t, runner.snapshot(), 1)
 		require.Len(t, replacer.snapshot(), 1)
@@ -524,8 +524,8 @@ func TestPairCompactorScan(t *testing.T) {
 		c.cfg.LogMaxTaskSize = flagext.Bytes(200)
 		p := c.newPairCompactor("acme")
 
-		require.Equal(t, 1, p.scan(scanCtx))
-		p.jobs.Wait()
+		require.Equal(t, 1, p.planAndStart(scanCtx))
+		p.runningJobs.Wait()
 
 		require.Equal(t, []string{"log-merge", "log-merge", "index-merge"}, actorsOf(runner.snapshot()))
 		require.Len(t, replacer.snapshot(), 1)
@@ -545,11 +545,11 @@ func TestPairCompactorScan(t *testing.T) {
 		p := c.newPairCompactor("acme")
 		lastPlan := func() float64 { return testutil.ToFloat64(c.metrics.lastPlanTimestampSeconds.WithLabelValues("acme")) }
 
-		p.scan(t.Context())
+		p.planAndStart(t.Context())
 		require.Zero(t, lastPlan())
 
 		failRead.Store(false)
-		p.scan(t.Context())
+		p.planAndStart(t.Context())
 		require.Equal(t, float64(imWindow().Add(time.Hour).Unix()), lastPlan())
 	})
 }
@@ -595,21 +595,22 @@ func TestPairCompactorRun(t *testing.T) {
 		p := c.newPairCompactor("acme")
 		ctx, cancel := context.WithCancel(t.Context())
 		p.sleep = func(context.Context, time.Duration) {
-			p.jobs.Wait()
+			p.runningJobs.Wait()
 			cancel()
 		}
 		p.run(ctx)
 	}
 
-	t.Run("run plans no job while log compaction is disabled", func(t *testing.T) {
+	t.Run("run returns without a job while log compaction is disabled", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairs(t, bucket, "indexes/a", "indexes/b")
 		runner := &fakeRunner{}
 		c := newPairTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true})
-		limits := newFakeLimits("acme")
-		c.limits = limits
+		c.limits = newFakeLimits("acme")
+		p := c.newPairCompactor("acme")
+		p.sleep = func(context.Context, time.Duration) { t.Fatal("run must return before its first sleep") }
 
-		runOneScan(t, c)
+		p.run(t.Context())
 
 		require.Empty(t, runner.snapshot())
 	})
@@ -627,15 +628,15 @@ func TestPairCompactorRun(t *testing.T) {
 		require.Len(t, replacer.snapshot(), 1)
 	})
 
-	t.Run("disabling log compaction stops the jobs that did not start and enabling it plans them again", func(t *testing.T) {
+	t.Run("disabling log compaction makes run return, after the started job commits and the jobs that did not start stop", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairs(t, bucket, "indexes/a", "indexes/b", "indexes/c", "indexes/d")
 		seedTaskIndex(t, bucket, "indexes/out", map[string]int64{"logs/out": 400})
-		started := make(chan struct{}, 8)
+		started := make(chan struct{}, 2)
 		unblock := make(chan struct{})
 		var unblockOnce sync.Once
 		defer unblockOnce.Do(func() { close(unblock) })
-		responder := &pairResponder{logMerges: slices.Repeat([]string{"indexes/out"}, 8), onLogMerge: func(int) {
+		responder := &pairResponder{logMerges: []string{"indexes/out", "indexes/out"}, onLogMerge: func(int) {
 			started <- struct{}{}
 			<-unblock
 		}}
@@ -647,36 +648,18 @@ func TestPairCompactorRun(t *testing.T) {
 		limits.setLog("acme", true)
 		c.limits = limits
 		p := c.newPairCompactor("acme")
-		ctx, cancel := context.WithCancel(t.Context())
-		var (
-			sleeps          int
-			callsWhileOff   int
-			swapsWhileOff   int
-			stoppedJobsDone bool
-		)
+		var sleeps int
 		p.sleep = func(context.Context, time.Duration) {
 			sleeps++
-			switch sleeps {
-			case 1:
-				<-started
-				limits.setLog("acme", false)
-			case 2:
-				unblockOnce.Do(func() { close(unblock) })
-				p.jobs.Wait()
-				callsWhileOff, swapsWhileOff = len(runner.snapshot()), len(replacer.snapshot())
-				stoppedJobsDone = true
-				limits.setLog("acme", true)
-			default:
-				p.jobs.Wait()
-				cancel()
-			}
+			<-started
+			limits.setLog("acme", false)
+			unblockOnce.Do(func() { close(unblock) })
 		}
 
-		p.run(ctx)
+		p.run(t.Context())
 
-		require.True(t, stoppedJobsDone)
-		require.Equal(t, 1, callsWhileOff)
-		require.Equal(t, 1, swapsWhileOff)
-		require.Greater(t, len(replacer.snapshot()), swapsWhileOff)
+		require.Equal(t, 1, sleeps)
+		require.Len(t, runner.snapshot(), 1)
+		require.Len(t, replacer.snapshot(), 1)
 	})
 }

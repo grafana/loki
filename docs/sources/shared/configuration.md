@@ -1201,14 +1201,15 @@ dataobj:
     [enabled: <boolean> | default = false]
 
     # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
-    # dispatched by the coordinator. With plan-version 2, the per-tenant cap on
-    # concurrent compaction tasks of every kind. 0 means unlimited (one
+    # dispatched by the coordinator. With planner version 2, the per-tenant cap
+    # on concurrent compaction tasks of every kind. 0 means unlimited (one
     # goroutine per task with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
     # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
-    # by the coordinator. 0 means unlimited. Plan-version 2 ignores this flag.
+    # by the coordinator. 0 means unlimited. Planner version 2 ignores this
+    # flag.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
 
@@ -1308,18 +1309,18 @@ dataobj:
     # CLI flag: -dataobj.compaction.dry-run
     [dry_run: <boolean> | default = false]
 
-    # Experimental: Planner of each tenant. 1 alternates IndexMerge and LogMerge
-    # phases. 2 merges log and index pairs: each merge rewrites
-    # logs.max-runs-per-task pairs of one size level into one pair. A LogMerge
-    # runs first. An IndexMerge of its outputs follows only if the LogMerge
-    # wrote more than one index. Version 2 compacts only tenants with log
-    # compaction enabled. Tenants with only index compaction enabled get no
-    # compaction.
-    # CLI flag: -dataobj.compaction.plan-version
-    [plan_version: <int> | default = 1]
+    # Experimental: Planner version of each tenant. Planner version 1 alternates
+    # IndexMerge and LogMerge phases. Planner version 2 merges log and index
+    # pairs: each merge rewrites logs.max-runs-per-task pairs of one size level
+    # into one pair. A LogMerge runs first. An IndexMerge of its outputs follows
+    # only if the LogMerge wrote more than one index. Planner version 2 compacts
+    # only tenants with log compaction enabled. Tenants with only index
+    # compaction enabled get no compaction.
+    # CLI flag: -dataobj.compaction.planner-version
+    [planner_version: <int> | default = 1]
 
-    # Experimental: How often plan-version 2 scans the windows of a tenant and
-    # plans new merges. Merges planned by earlier scans keep running between
+    # Experimental: How often planner version 2 scans the windows of a tenant
+    # and plans new merges. Merges planned by earlier scans keep running between
     # scans.
     # CLI flag: -dataobj.compaction.rescan-interval
     [rescan_interval: <duration> | default = 5m]

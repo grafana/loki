@@ -26,8 +26,8 @@ func (s *compactionScenario) compactPairsUntilIdle(tenant string) {
 	s.t.Helper()
 	p := s.coordinator.newPairCompactor(tenant)
 	for range 10 {
-		started := p.scan(s.ctx)
-		p.jobs.Wait()
+		started := p.planAndStart(s.ctx)
+		p.runningJobs.Wait()
 		s.requirePairs(tenant)
 		for _, kind := range []string{pairJobKindMerge, pairJobKindSplit} {
 			for _, outcome := range []string{pairJobOutcomeFailed, pairJobOutcomeStale, pairJobOutcomeNoop} {
@@ -116,7 +116,7 @@ func TestE2EPairCompaction(t *testing.T) {
 
 			scenario, sourceLines := newFiveSourceScenario(ctx, t, tenant, layout)
 			c := scenario.coordinator
-			c.cfg.PlanVersion = planVersionCoupled
+			c.cfg.PlannerVersion = plannerVersionCoupled
 			c.cfg.LogMaxTaskSize = flagext.Bytes(test.logMaxTaskSize)
 			c.cfg.MaxTaskSize = flagext.Bytes(test.indexMaxTaskSize)
 			if test.levelBase != 0 {
@@ -179,14 +179,14 @@ func newFiveSourceScenario(ctx context.Context, t *testing.T, tenant string, lay
 }
 
 func TestE2EPairCompactionRun(t *testing.T) {
-	t.Run("coordinator Run with plan version 2 converges five pairs to one pair on a real worker", func(t *testing.T) {
+	t.Run("coordinator Run with planner version 2 converges five pairs to one pair on a real worker", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		const tenant = "acme"
 		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:app"})
 		scenario, sourceLines := newFiveSourceScenario(ctx, t, tenant, layout)
 		c := scenario.coordinator
-		c.cfg.PlanVersion = planVersionCoupled
+		c.cfg.PlannerVersion = plannerVersionCoupled
 		c.cfg.RescanInterval = 10 * time.Millisecond
 		c.cfg.PollingInterval = time.Hour
 		c.sleep = sleepUntil

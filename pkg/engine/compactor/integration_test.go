@@ -76,11 +76,11 @@ func newCompactionScenario(ctx context.Context, t *testing.T, input scenarioInpu
 	return s
 }
 
-// compactUntilIdle compacts tenant with the planner of the plan version of
+// compactUntilIdle compacts tenant with the planner of the planner version of
 // the coordinator, until the planner has no work.
 func (s *compactionScenario) compactUntilIdle(tenant string) {
 	s.t.Helper()
-	if s.coordinator.cfg.PlanVersion == planVersionCoupled {
+	if s.coordinator.cfg.PlannerVersion == plannerVersionCoupled {
 		s.compactPairsUntilIdle(tenant)
 		return
 	}
@@ -246,10 +246,10 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 		},
 	}
 
-	for _, planVersion := range planVersions {
+	for _, plannerVersion := range plannerVersions {
 		for _, test := range tests {
-			t.Run(fmt.Sprintf("plan version %d: %s", planVersion, test.name), func(t *testing.T) {
-				testLogCompactionSortSchemaGroup(t, planVersion, test.indexGroups, test.expectedIndexes, test.expectedLayouts)
+			t.Run(fmt.Sprintf("planner version %d: %s", plannerVersion, test.name), func(t *testing.T) {
+				testLogCompactionSortSchemaGroup(t, plannerVersion, test.indexGroups, test.expectedIndexes, test.expectedLayouts)
 			})
 		}
 	}
@@ -264,9 +264,9 @@ type sortSchemaIndexGroup struct {
 }
 
 // testLogCompactionSortSchemaGroup seeds one index per group, compacts until
-// idle with the planner of planVersion, and checks that the window ends with
+// idle with the planner of plannerVersion, and checks that the window ends with
 // expectedIndexes indexes of expectedLayouts.
-func testLogCompactionSortSchemaGroup(t *testing.T, planVersion uint, indexGroups []sortSchemaIndexGroup, expectedIndexes int, expectedLayouts []streams.Layout) {
+func testLogCompactionSortSchemaGroup(t *testing.T, plannerVersion uint, indexGroups []sortSchemaIndexGroup, expectedIndexes int, expectedLayouts []streams.Layout) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -301,7 +301,7 @@ func testLogCompactionSortSchemaGroup(t *testing.T, planVersion uint, indexGroup
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: tocIndexes})
 	c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
 	c.limits = integrationLimits{}
-	c.cfg.PlanVersion = planVersion
+	c.cfg.PlannerVersion = plannerVersion
 
 	before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 	require.Len(t, before, len(indexGroups))
@@ -461,8 +461,8 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
 }
 
-// planVersions are the plan versions that the end-to-end tests run with.
-var planVersions = []uint{planVersionPhased, planVersionCoupled}
+// plannerVersions are the planner versions that the end-to-end tests run with.
+var plannerVersions = []uint{plannerVersionPhased, plannerVersionCoupled}
 
 func TestE2ECompactionConvergence(t *testing.T) {
 	fiveSourceLayouts := func(shardLayout streams.ShardLayout) []streams.Layout {
@@ -473,20 +473,20 @@ func TestE2ECompactionConvergence(t *testing.T) {
 	// outputs then merge into level 3, and the lone level 1 run is filtered
 	// again. The coupled planner needs no filters.
 	levelTasks := map[uint]map[string]int{
-		planVersionPhased:  {"log-merge": 3, "index-filter": 2},
-		planVersionCoupled: {"log-merge": 3},
+		plannerVersionPhased:  {"log-merge": 3, "index-filter": 2},
+		plannerVersionCoupled: {"log-merge": 3},
 	}
 	// The coupled planner merges five pairs in four merges. Each merge runs
 	// as several LogMerge tasks, so each also runs one IndexMerge.
 	splitTasks := map[uint]map[string]int{
-		planVersionPhased:  {"log-merge": 13, "index-filter": 2},
-		planVersionCoupled: {"log-merge": 12, "index-merge": 4},
+		plannerVersionPhased:  {"log-merge": 13, "index-filter": 2},
+		plannerVersionCoupled: {"log-merge": 12, "index-merge": 4},
 	}
 
-	for _, planVersion := range planVersions {
-		t.Run(fmt.Sprintf("plan version %d", planVersion), func(t *testing.T) {
+	for _, plannerVersion := range plannerVersions {
+		t.Run(fmt.Sprintf("planner version %d", plannerVersion), func(t *testing.T) {
 			t.Run("equal sort layouts converge to one sorted run", func(t *testing.T) {
-				runConvergenceTest(t, convergenceCase{planVersion: planVersion, layouts: fiveSourceLayouts(streams.DefaultShardLayout())})
+				runConvergenceTest(t, convergenceCase{plannerVersion: plannerVersion, layouts: fiveSourceLayouts(streams.DefaultShardLayout())})
 			})
 
 			t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
@@ -494,12 +494,12 @@ func TestE2ECompactionConvergence(t *testing.T) {
 				// ratio of 2 puts fresh runs in level 1, a merge of two in
 				// level 2, and a merge of two level 2 runs in level 3.
 				runConvergenceTest(t, convergenceCase{
-					planVersion: planVersion,
-					layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
-					levelBase:   100_000,
-					levelRatio:  2,
-					wantRunsEnd: 2,
-					wantTasks:   levelTasks[planVersion],
+					plannerVersion: plannerVersion,
+					layouts:        fiveSourceLayouts(streams.DefaultShardLayout()),
+					levelBase:      100_000,
+					levelRatio:     2,
+					wantRunsEnd:    2,
+					wantTasks:      levelTasks[plannerVersion],
 				})
 			})
 
@@ -507,10 +507,10 @@ func TestE2ECompactionConvergence(t *testing.T) {
 				// A 100KB maximum splits the merges into many tasks. Their
 				// disjoint outputs still converge to one sorted run.
 				runConvergenceTest(t, convergenceCase{
-					planVersion: planVersion,
-					layouts:     fiveSourceLayouts(streams.DefaultShardLayout()),
-					maxTaskSize: 100_000,
-					wantTasks:   splitTasks[planVersion],
+					plannerVersion: plannerVersion,
+					layouts:        fiveSourceLayouts(streams.DefaultShardLayout()),
+					maxTaskSize:    100_000,
+					wantTasks:      splitTasks[plannerVersion],
 				})
 			})
 
@@ -518,26 +518,26 @@ func TestE2ECompactionConvergence(t *testing.T) {
 				shardLayout := streams.MustShardLayoutFromBuckets(buckets)
 
 				t.Run(fmt.Sprintf("equal sort layouts with %d shard buckets converge to one sorted run", buckets), func(t *testing.T) {
-					runConvergenceTest(t, convergenceCase{planVersion: planVersion, layouts: fiveSourceLayouts(shardLayout)})
+					runConvergenceTest(t, convergenceCase{plannerVersion: plannerVersion, layouts: fiveSourceLayouts(shardLayout)})
 				})
 
 				t.Run(fmt.Sprintf("runs spread across size levels converge with %d shard buckets", buckets), func(t *testing.T) {
 					runConvergenceTest(t, convergenceCase{
-						planVersion: planVersion,
-						layouts:     fiveSourceLayouts(shardLayout),
-						levelBase:   100_000,
-						levelRatio:  2,
-						wantRunsEnd: 2,
-						wantTasks:   levelTasks[planVersion],
+						plannerVersion: plannerVersion,
+						layouts:        fiveSourceLayouts(shardLayout),
+						levelBase:      100_000,
+						levelRatio:     2,
+						wantRunsEnd:    2,
+						wantTasks:      levelTasks[plannerVersion],
 					})
 				})
 
 				t.Run(fmt.Sprintf("a merge above the maximum task size splits into key range tasks that keep every record once with %d shard buckets", buckets), func(t *testing.T) {
 					runConvergenceTest(t, convergenceCase{
-						planVersion: planVersion,
-						layouts:     fiveSourceLayouts(shardLayout),
-						maxTaskSize: 100_000,
-						wantTasks:   splitTasks[planVersion],
+						plannerVersion: plannerVersion,
+						layouts:        fiveSourceLayouts(shardLayout),
+						maxTaskSize:    100_000,
+						wantTasks:      splitTasks[plannerVersion],
 					})
 				})
 			}
@@ -547,8 +547,8 @@ func TestE2ECompactionConvergence(t *testing.T) {
 
 // convergenceCase configures runConvergenceTest.
 type convergenceCase struct {
-	// planVersion selects the planner.
-	planVersion uint
+	// plannerVersion selects the planner.
+	plannerVersion uint
 
 	layouts []streams.Layout
 
@@ -603,7 +603,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	}
 
 	scenario := newCompactionScenario(ctx, t, input)
-	scenario.coordinator.cfg.PlanVersion = test.planVersion
+	scenario.coordinator.cfg.PlannerVersion = test.plannerVersion
 	if test.levelBase != 0 {
 		strategy, err := v2.NewSizeLeveledStrategy(test.levelBase, test.levelRatio, scenario.coordinator.cfg.LogMaxRunsPerTask)
 		require.NoError(t, err)
@@ -611,7 +611,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	}
 	scenario.coordinator.cfg.LogMaxTaskSize = flagext.Bytes(test.maxTaskSize)
 	actors := recordLogActors(scenario.coordinator)
-	if test.planVersion == planVersionCoupled {
+	if test.plannerVersion == plannerVersionCoupled {
 		actors = recordActors(scenario.coordinator.pairDispatcher)
 	}
 	indexes := scenario.stored.Indexes(ctx, t, tenant)
@@ -667,7 +667,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 		requireSingleSortedRun(t, scenario, finalIndexes, tenant, test.layouts[0], len(sourceLines))
 		return
 	}
-	if test.planVersion == planVersionCoupled {
+	if test.plannerVersion == plannerVersionCoupled {
 		logRuns := scenario.requirePairs(tenant)
 		require.Len(t, logRuns, test.wantRunsEnd)
 		require.False(t, scenario.coordinator.logMergePlanningStrategy.NeedsCompaction(logRuns), "every size level must hold fewer than k pairs")
@@ -1075,14 +1075,14 @@ func storeIntegrationObject(ctx context.Context, t *testing.T, bucket objstore.B
 }
 
 func TestE2ECompactionLegacyObjects(t *testing.T) {
-	for _, planVersion := range planVersions {
-		t.Run(fmt.Sprintf("plan version %d compacts legacy objects with a new object of the same layout until idle", planVersion), func(t *testing.T) {
-			testCompactLegacyObjects(t, planVersion)
+	for _, plannerVersion := range plannerVersions {
+		t.Run(fmt.Sprintf("planner version %d compacts legacy objects with a new object of the same layout until idle", plannerVersion), func(t *testing.T) {
+			testCompactLegacyObjects(t, plannerVersion)
 		})
 	}
 }
 
-func testCompactLegacyObjects(t *testing.T, planVersion uint) {
+func testCompactLegacyObjects(t *testing.T, plannerVersion uint) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -1125,7 +1125,7 @@ func testCompactLegacyObjects(t *testing.T, planVersion uint) {
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: {index}})
 	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
 	c.limits = integrationLimits{}
-	c.cfg.PlanVersion = planVersion
+	c.cfg.PlannerVersion = plannerVersion
 	stored := &compactortest.Scenario{Bucket: bucket, Window: window}
 	scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
 	scenario.compactUntilIdle(tenant)

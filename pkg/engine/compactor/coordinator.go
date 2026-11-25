@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -59,6 +60,10 @@ type coordinator struct {
 	// sweeps dispatches the deletion sweeps. It is nil if the deletion sweep
 	// is disabled.
 	sweeps *sweepScheduler
+
+	// indexOnlyTenants holds the tenants that planner version 2 skips,
+	// because they have only index compaction enabled.
+	indexOnlyTenants indexOnlyTenants
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -137,7 +142,7 @@ func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
 		"polling_interval", c.cfg.PollingInterval,
-		"plan_version", c.cfg.PlanVersion,
+		"planner_version", c.cfg.PlannerVersion,
 	)
 	compaction := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
 	g, gctx := errgroup.WithContext(ctx)
@@ -163,19 +168,56 @@ func (c *coordinator) windows() []time.Time {
 	return out
 }
 
-// compactionEnabled reports whether tenant may run any compaction phase. Log
-// compaction implies index compaction, so the index phase decides.
+// compactionEnabled reports whether the planner of cfg.PlannerVersion has work
+// to do for tenant, so the supervisor runs a worker for it.
+//
+// Planner version 1 runs any tenant with a compaction phase enabled. Log
+// compaction implies index compaction, so the index phase decides. Planner
+// version 2 runs only tenants with log compaction enabled, because every merge
+// rewrites log data. It warns once for each tenant that has only index
+// compaction enabled, because that tenant gets no compaction.
 func (c *coordinator) compactionEnabled(tenant string) bool {
-	runIndex, _ := c.limits.CompactionPhases(tenant)
-	return runIndex
+	runIndex, runLog := c.limits.CompactionPhases(tenant)
+	if c.cfg.PlannerVersion != plannerVersionCoupled {
+		return runIndex
+	}
+	c.indexOnlyTenants.observe(c.logger, tenant, runIndex && !runLog)
+	return runLog
 }
 
-// runTenant runs the compaction loop of cfg.PlanVersion for tenant until ctx
+// indexOnlyTenants holds the tenants that planner version 2 warned about,
+// because they have only index compaction enabled.
+//
+// indexOnlyTenants is safe for concurrent use.
+type indexOnlyTenants struct {
+	warnedMu sync.Mutex
+	warned   map[string]struct{}
+}
+
+// observe warns once when tenant becomes index only, and forgets tenant when
+// it no longer is, so a later change warns again.
+func (t *indexOnlyTenants) observe(logger log.Logger, tenant string, indexOnly bool) {
+	t.warnedMu.Lock()
+	defer t.warnedMu.Unlock()
+	_, warned := t.warned[tenant]
+	switch {
+	case indexOnly && !warned:
+		if t.warned == nil {
+			t.warned = make(map[string]struct{})
+		}
+		t.warned[tenant] = struct{}{}
+		level.Warn(logger).Log("msg", "pair-compaction: tenant has index compaction enabled but log compaction disabled, so planner version 2 does not compact it", "tenant", tenant)
+	case !indexOnly && warned:
+		delete(t.warned, tenant)
+	}
+}
+
+// runTenant runs the compaction loop of cfg.PlannerVersion for tenant until ctx
 // is cancelled. It deletes the tenant's per-tenant metric series when the loop
 // exits.
 func (c *coordinator) runTenant(ctx context.Context, tenant string) {
 	defer c.metrics.deleteTenant(tenant)
-	if c.cfg.PlanVersion == planVersionCoupled {
+	if c.cfg.PlannerVersion == plannerVersionCoupled {
 		c.newPairCompactor(tenant).run(ctx)
 		return
 	}
