@@ -40,7 +40,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		wantSectionPredicates []string
 
 		// wantNeedReturningLine is true when the unpushed query or a delete may read the line, so
-		// the returned records include it.
+		// the returned rows include it.
 		wantNeedReturningLine bool
 
 		// wantUnpushedExpr is the query without the line filter stages the read applies or that keep

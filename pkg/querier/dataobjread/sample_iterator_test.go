@@ -2,16 +2,25 @@ package dataobjread
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestSampleIterator(t *testing.T) {
-	newIterator := func(t *testing.T, query string, reader recordReader) *SampleIterator {
+	pool := newRowsBatchPool()
+
+	newIterator := func(t *testing.T, query string, reader rowsBatchReader) *SampleIterator {
 		t.Helper()
 		expr, err := syntax.ParseSampleExpr(query)
 		require.NoError(t, err)
@@ -21,10 +30,10 @@ func TestSampleIterator(t *testing.T) {
 	}
 
 	t.Run("it emits one sample per line with the stream's streamHash", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{
-			record(t, `{app="a"}`, 1, "one"),
-			record(t, `{app="a"}`, 2, "two"),
-		}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+		)}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		var got []sampleRow
@@ -44,7 +53,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("a sample is never given a hash, because nothing deduplicates this band", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.True(t, it.Next())
@@ -52,10 +61,10 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("a line the pipeline drops yields no sample", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{
-			record(t, `{app="a"}`, 1, "keep me"),
-			record(t, `{app="a"}`, 2, "drop me"),
-		}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "keep me"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "drop me"},
+		)}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"} |= "keep" [1m]))`, reader)
 
 		require.True(t, it.Next())
@@ -67,11 +76,11 @@ func TestSampleIterator(t *testing.T) {
 	t.Run("two streams sharing a streamHash each get their own extractor", func(t *testing.T) {
 		// A stream-hash collision is what the labels.Equal guard in the extractor cache exists
 		// for, so force one: same hash, different labels.
-		first := record(t, `{app="a"}`, 1, "one")
-		second := record(t, `{app="b"}`, 2, "two")
-		second.streamHash = first.streamHash
-
-		reader := &fakeRecordReader{records: []LogRecord{first, second}}
+		hash := streamHashOf(`{app="a"}`)
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, streamHash: hash, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="b"}`, streamHash: hash, timestampSec: 2, line: "two"},
+		)}}
 		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
 
 		var gotLabels []string
@@ -84,12 +93,12 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("records from interleaved streams are each labelled with their own stream", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{
-			record(t, `{app="a"}`, 1, "one"),
-			record(t, `{app="b"}`, 1, "two"),
-			record(t, `{app="a"}`, 2, "three"),
-			record(t, `{app="b"}`, 2, "four"),
-		}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 1, line: "two"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "three"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 2, line: "four"},
+		)}}
 		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
 
 		var gotLabels []string
@@ -101,9 +110,9 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("structured metadata reaches the output labels", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{
-			record(t, `{app="a"}`, 1, "one", `{level="error"}`),
-		}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one", metadata: `{level="error"}`},
+		)}}
 		it := newIterator(t, `count_over_time({app="a"}[1m])`, reader)
 
 		require.True(t, it.Next())
@@ -111,7 +120,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("it reports nothing before the first Next", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.Zero(t, it.At())
@@ -120,7 +129,7 @@ func TestSampleIterator(t *testing.T) {
 	})
 
 	t.Run("it reports nothing once exhausted", func(t *testing.T) {
-		reader := &fakeRecordReader{records: []LogRecord{record(t, `{app="a"}`, 1, "one")}}
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})}}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.True(t, it.Next())
@@ -132,7 +141,7 @@ func TestSampleIterator(t *testing.T) {
 
 	t.Run("it forwards the reader's error", func(t *testing.T) {
 		wantErr := errors.New("scan failed")
-		reader := &fakeRecordReader{err: wantErr}
+		reader := &fakeRowsBatchReader{err: wantErr}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.False(t, it.Next())
@@ -141,62 +150,493 @@ func TestSampleIterator(t *testing.T) {
 
 	t.Run("Close closes the reader and forwards its error", func(t *testing.T) {
 		wantErr := errors.New("close failed")
-		reader := &fakeRecordReader{closeErr: wantErr}
+		reader := &fakeRowsBatchReader{closeErr: wantErr}
 		it := newIterator(t, `sum by (app) (count_over_time({app="a"}[1m]))`, reader)
 
 		require.ErrorIs(t, it.Close(), wantErr)
 		require.True(t, reader.closed)
 	})
+
+	t.Run("it emits the samples of every batch in the order of the batches", func(t *testing.T) {
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{
+			newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"}, testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"}),
+			newTestBatch(t, pool, testRow{streamLabels: `{app="b"}`, timestampSec: 3, line: "three"}),
+		}}
+		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
+
+		var got []string
+		for it.Next() {
+			got = append(got, fmt.Sprintf("%s@%d", it.Labels(), it.At().Timestamp/1e9))
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, []string{`{app="a"}@1`, `{app="a"}@2`, `{app="b"}@3`}, got)
+	})
+
+	t.Run("a row with an empty line yields a sample", func(t *testing.T) {
+		batch := newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: ""},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+		)
+		it := newIterator(t, `sum(bytes_over_time({app="a"}[1m]))`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		var got []float64
+		for it.Next() {
+			got = append(got, it.At().Value)
+		}
+		require.Equal(t, []float64{0, 3}, got)
+	})
+
+	t.Run("a batch without a message column yields a sample for each row", func(t *testing.T) {
+		batch := newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+		)
+		batch.records.Message = nil
+		batch.hasLine = false
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		var got []float64
+		for it.Next() {
+			got = append(got, it.At().Value)
+		}
+		require.Equal(t, []float64{1, 1}, got)
+	})
+
+	t.Run("a line that the batch does not carry reaches the pipeline as no line", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "twelve bytes"})
+		batch.hasLine = false
+		it := newIterator(t, `sum(bytes_over_time({app="a"}[1m]))`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.True(t, it.Next())
+		require.Zero(t, it.At().Value)
+	})
+
+	t.Run("a line reaches the pipeline when the batch carries it", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "twelve bytes"})
+		it := newIterator(t, `sum(bytes_over_time({app="a"}[1m]))`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.True(t, it.Next())
+		require.EqualValues(t, len("twelve bytes"), it.At().Value)
+	})
+
+	t.Run("a stream that continues in the next batch keeps its labels and its stream hash", func(t *testing.T) {
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{
+			newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"}),
+			newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"}),
+		}}
+		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
+
+		var got []sampleRow
+		for it.Next() {
+			got = append(got, sampleRow{Labels: it.Labels(), TimestampSec: it.At().Timestamp / 1e9, Value: it.At().Value, StreamHash: it.StreamHash()})
+		}
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(`{app="a"}`)},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(`{app="a"}`)},
+		}, got)
+	})
+
+	t.Run("each row gets its own structured metadata, and a row without a value gets none", func(t *testing.T) {
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one", metadata: `{level="error"}`},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 3, line: "three", metadata: `{level="info"}`},
+		)}}
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, reader)
+
+		var got []string
+		for it.Next() {
+			got = append(got, it.Labels())
+		}
+		require.Equal(t, []string{`{app="a", level="error"}`, `{app="a"}`, `{app="a", level="info"}`}, got)
+	})
+
+	t.Run("it releases a batch after reading its last row, and not before", func(t *testing.T) {
+		first := newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+		)
+		second := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 3, line: "three"})
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{first, second}})
+
+		require.True(t, it.Next())
+		require.True(t, it.Next())
+		require.False(t, first.pooled, "the iterator has returned the last row of the batch, but not moved past it")
+
+		require.True(t, it.Next())
+		require.True(t, first.pooled)
+		require.False(t, second.pooled)
+
+		require.False(t, it.Next())
+		require.True(t, second.pooled)
+	})
+
+	t.Run("it releases a batch in which the pipeline drops every row", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "drop me"})
+		it := newIterator(t, `count_over_time({app="a"} |= "keep" [1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.False(t, it.Next())
+		require.True(t, batch.pooled)
+	})
+
+	t.Run("Close releases the batch that the iterator is reading", func(t *testing.T) {
+		batch := newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"},
+		)
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.True(t, it.Next())
+		require.False(t, batch.pooled)
+
+		require.NoError(t, it.Close())
+		require.True(t, batch.pooled)
+	})
+
+	t.Run("it reports nothing after Close", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Close())
+		require.Zero(t, it.At())
+		require.Empty(t, it.Labels())
+		require.Zero(t, it.StreamHash())
+	})
+
+	t.Run("Next returns false after Close", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.NoError(t, it.Close())
+		require.False(t, it.Next())
+		require.Zero(t, it.At())
+	})
+
+	t.Run("a second Close closes the reader again and does not release a batch twice", func(t *testing.T) {
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"})
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{batch}}
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, reader)
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Close())
+		require.NoError(t, it.Close())
+		require.Equal(t, 2, reader.closes)
+	})
+
+	t.Run("a real read with a parser and a filter yields the samples of the rows that pass, though released batches are overwritten", func(t *testing.T) {
+		const (
+			streamCount      = 3
+			entriesPerStream = 40
+		)
+		levels := []string{"info", "error"}
+		statuses := []string{"200", "500", "404"}
+
+		for _, tc := range []struct {
+			name  string
+			query string
+			line  func(level, status string) string
+		}{
+			{
+				name:  "a logfmt pipeline yields the samples of the rows that pass",
+				query: `sum by (app, level, pod) (count_over_time({app=~".+"} | logfmt | status="500" [1m]))`,
+				line:  func(level, status string) string { return fmt.Sprintf("level=%s status=%s msg=request", level, status) },
+			},
+			{
+				name:  "a json pipeline yields the samples of the rows that pass",
+				query: `sum by (app, level, pod) (count_over_time({app=~".+"} | json | status="500" [1m]))`,
+				line:  func(level, status string) string { return fmt.Sprintf(`{"level":%q,"status":%q}`, level, status) },
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var (
+					streams []logproto.Stream
+					want    []sampleRow
+				)
+				for s := range streamCount {
+					streamLabels := fmt.Sprintf(`{app="app-%d"}`, s)
+					stream := logproto.Stream{Labels: streamLabels}
+					for i := range entriesPerStream {
+						level, status := levels[i%len(levels)], statuses[i%len(statuses)]
+
+						var metadata []string
+						wantLabels := fmt.Sprintf(`{app="app-%d", level=%q}`, s, level)
+						if i%4 == 0 {
+							metadata = []string{"pod", "p1"}
+							wantLabels = fmt.Sprintf(`{app="app-%d", level=%q, pod="p1"}`, s, level)
+						}
+						stream.Entries = append(stream.Entries, entry(t, i+1, tc.line(level, status), metadata...))
+
+						if status == "500" {
+							want = append(want, sampleRow{Labels: wantLabels, TimestampSec: at(i + 1).Unix(), Value: 1, StreamHash: streamHashOf(streamLabels)})
+						}
+					}
+					streams = append(streams, stream)
+				}
+				require.NotEmpty(t, want)
+
+				for _, layout := range []struct {
+					name          string
+					opts          []objtest.Option
+					multipleTasks bool
+				}{
+					{name: "in sections that each hold one stream", opts: []objtest.Option{objtest.WithTargetSectionSize(1 << 10)}, multipleTasks: true},
+					{name: "in one section that holds every stream", opts: nil, multipleTasks: false},
+				} {
+					fixture := planReaderFixture(t, tc.query, newObjectsFixtureWithOptions(t, layout.opts, streams...))
+					require.Equal(t, layout.multipleTasks, len(fixture.tasks) > 1, layout.name)
+
+					for _, batchSize := range []int{1, 3, DefaultReadBatchSize} {
+						reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, NewMetrics(nil))
+						it := NewSampleIterator(reader, sampleExtractor(t, tc.query))
+
+						var got []sampleRow
+						for it.Next() {
+							got = append(got, sampleRow{Labels: it.Labels(), TimestampSec: it.At().Timestamp / 1e9, Value: it.At().Value, StreamHash: it.StreamHash()})
+						}
+						require.NoError(t, it.Err())
+						require.NoError(t, it.Close())
+						require.ElementsMatch(t, want, got, "%s, batch size %d", layout.name, batchSize)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a sample stays intact after its batch is released and overwritten", func(t *testing.T) {
+		skipWithoutPoisoning(t)
+		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one", metadata: `{level="error"}`})
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		require.True(t, it.Next())
+		sample, sampleLabels, streamHash := it.At(), it.Labels(), it.StreamHash()
+		require.False(t, it.Next())
+		require.True(t, batch.pooled)
+
+		require.Equal(t, logproto.Sample{Timestamp: 1e9, Value: 1}, sample)
+		require.Equal(t, `{app="a", level="error"}`, sampleLabels)
+		require.Equal(t, streamHashOf(`{app="a"}`), streamHash)
+	})
+
+	t.Run("the rows after a line that the pipeline drops still yield samples, across streams", func(t *testing.T) {
+		batch := newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "keep one"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "drop two"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 3, line: "keep three"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 4, line: "drop four"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 5, line: "keep five"},
+		)
+		it := newIterator(t, `count_over_time({app=~".+"} |= "keep" [1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
+
+		var got []string
+		for it.Next() {
+			got = append(got, fmt.Sprintf("%s@%d", it.Labels(), it.At().Timestamp/1e9))
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, []string{`{app="a"}@1`, `{app="a"}@3`, `{app="b"}@5`}, got)
+		require.True(t, batch.pooled)
+	})
+
+	t.Run("rows from interleaved streams each report their own stream hash", func(t *testing.T) {
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{newTestBatch(t, pool,
+			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 1, line: "two"},
+			testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "three"},
+			testRow{streamLabels: `{app="b"}`, timestampSec: 2, line: "four"},
+		)}}
+		it := newIterator(t, `count_over_time({app=~".+"}[1m])`, reader)
+
+		var got []sampleRow
+		for it.Next() {
+			got = append(got, sampleRow{Labels: it.Labels(), TimestampSec: it.At().Timestamp / 1e9, Value: it.At().Value, StreamHash: it.StreamHash()})
+		}
+		require.NoError(t, it.Err())
+
+		a, b := streamHashOf(`{app="a"}`), streamHashOf(`{app="b"}`)
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: a},
+			{Labels: `{app="b"}`, TimestampSec: 1, Value: 1, StreamHash: b},
+			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: a},
+			{Labels: `{app="b"}`, TimestampSec: 2, Value: 1, StreamHash: b},
+		}, got)
+	})
 }
 
-// fakeRecordReader replays a fixed set of records, so a test can drive the sample iterator with
-// records the read path would not produce.
-type fakeRecordReader struct {
-	records []LogRecord
-	pos     int
+// BenchmarkSampleIterator measures the read path from the sections to the samples, without the
+// store and the range-vector layer above it.
+func BenchmarkSampleIterator(b *testing.B) {
+	queries := []struct{ name, expr string }{
+		{"count", `sum(count_over_time({app=~".+"}[1m]))`},
+		{"bytes", `sum(bytes_over_time({app=~".+"}[1m]))`},
+		{"line-filter-keeps-every-line", `sum(count_over_time({app=~".+"} |= "level=" [1m]))`},
+		{"logfmt-filter", `sum(count_over_time({app=~".+"} | logfmt | status="500" [1m]))`},
+		{"metadata-filter", `sum(count_over_time({app=~".+"} | detected_level="error" [1m]))`},
+	}
+	shapes := []struct {
+		name                    string
+		streamCount, entryCount int
+		sectionSize             flagext.Bytes
+	}{
+		{"streams=20,entries=10000,sections=one", 20, 10_000, 0},
+		{"streams=2000,entries=100,sections=many", 2_000, 100, 1 << 20},
+	}
+
+	metrics := NewMetrics(nil)
+	for _, shape := range shapes {
+		var opts []objtest.Option
+		if shape.sectionSize > 0 {
+			opts = append(opts, objtest.WithTargetSectionSize(shape.sectionSize))
+		}
+		streams, _ := benchmarkStreams(shape.streamCount, shape.entryCount)
+		objects := newObjectsFixtureWithOptions(b, opts, streams...)
+
+		for _, query := range queries {
+			fixture := planReaderFixture(b, query.expr, objects)
+
+			b.Run(fmt.Sprintf("%s/query=%s", shape.name, query.name), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					reader := NewLogReader(b.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+					it := NewSampleIterator(reader, sampleExtractor(b, query.expr))
+
+					var samples int
+					for it.Next() {
+						_ = it.At()
+						_ = it.Labels()
+						samples++
+					}
+					require.NoError(b, it.Err())
+					require.NoError(b, it.Close())
+					require.Positive(b, samples)
+					b.ReportMetric(float64(samples), "samples/op")
+				}
+			})
+		}
+	}
+}
+
+// sampleExtractor returns the extractor that the store builds for query: the extractor of the
+// unpushed part, or of the whole query when the plan removes no line filter stage.
+func sampleExtractor(t testing.TB, query string) syntax.SampleExtractor {
+	t.Helper()
+
+	expr, err := syntax.ParseSampleExpr(query)
+	require.NoError(t, err)
+	extractor, err := expr.Extractor()
+	require.NoError(t, err)
+
+	projection, err := NewProjectionPlan(expr, nil)
+	require.NoError(t, err)
+	if unpushed := projection.UnpushedExpr(); unpushed != nil {
+		extractor, err = unpushed.Extractor()
+		require.NoError(t, err)
+	}
+	return extractor
+}
+
+// fakeRowsBatchReader replays a fixed set of batches, so a test can drive the sample iterator with
+// batches the read path would not produce.
+type fakeRowsBatchReader struct {
+	batches []*rowsBatch
 	err     error
 
 	closed   bool
+	closes   int
 	closeErr error
 }
 
-func (r *fakeRecordReader) Next() bool {
-	if r.pos >= len(r.records) {
-		return false
+func (r *fakeRowsBatchReader) nextRowsBatch() *rowsBatch {
+	if len(r.batches) == 0 {
+		return nil
 	}
-	r.pos++
-	return true
+	batch := r.batches[0]
+	r.batches = r.batches[1:]
+	return batch
 }
 
-func (r *fakeRecordReader) At() LogRecord { return r.records[r.pos-1] }
+func (r *fakeRowsBatchReader) Err() error { return r.err }
 
-func (r *fakeRecordReader) Err() error { return r.err }
-
-func (r *fakeRecordReader) Close() error {
+func (r *fakeRowsBatchReader) Close() error {
 	r.closed = true
+	r.closes++
 	return r.closeErr
 }
 
-// record builds one decoded log line for the given stream. Both streamLabels and the optional
-// metadata are LogQL label sets.
-func record(t *testing.T, streamLabels string, timestampSec int64, line string, metadata ...string) LogRecord {
+// testRow is one row of a batch that [newTestBatch] builds. A zero streamHash means the stable hash
+// of the stream labels. streamLabels and metadata are LogQL label sets.
+type testRow struct {
+	streamLabels string
+	streamHash   uint64
+	timestampSec int64
+	line         string
+	metadata     string
+}
+
+// newTestBatch returns a batch from pool that holds the rows, with arrays in the memory of the
+// batch. Consecutive rows of one stream form one run. The batch needs the lines.
+func newTestBatch(t *testing.T, pool *rowsBatchPool, rows ...testRow) *rowsBatch {
 	t.Helper()
-	require.LessOrEqual(t, len(metadata), 1, "a line carries one structured-metadata label set")
+	require.NotEmpty(t, rows)
 
-	parsedStreamLabels, err := syntax.ParseLabels(streamLabels)
-	require.NoError(t, err)
-
-	parsedMetadata := labels.EmptyLabels()
-	if len(metadata) == 1 {
-		parsedMetadata, err = syntax.ParseLabels(metadata[0])
+	batch := pool.get()
+	var (
+		timestamps = columnar.NewNumberBuilder[int64](&batch.alloc)
+		messages   = columnar.NewUTF8Builder(&batch.alloc)
+		metadata   = make([]labels.Labels, len(rows))
+		names      []string
+		runs       []streamRun
+	)
+	for i, row := range rows {
+		streamLabels, err := syntax.ParseLabels(row.streamLabels)
 		require.NoError(t, err)
+		streamHash := row.streamHash
+		if streamHash == 0 {
+			streamHash = labels.StableHash(streamLabels)
+		}
+
+		timestamps.AppendValue(row.timestampSec * 1e9)
+		messages.AppendValue([]byte(row.line))
+
+		metadata[i] = labels.EmptyLabels()
+		if row.metadata != "" {
+			metadata[i], err = syntax.ParseLabels(row.metadata)
+			require.NoError(t, err)
+		}
+		metadata[i].Range(func(l labels.Label) {
+			if !slices.Contains(names, l.Name) {
+				names = append(names, l.Name)
+			}
+		})
+
+		if n := len(runs); n > 0 && runs[n-1].stream.streamHash == streamHash && labels.Equal(runs[n-1].stream.streamLabels, streamLabels) {
+			runs[n-1].end = i + 1
+			continue
+		}
+		runs = append(runs, streamRun{stream: objectStream{streamLabels: streamLabels, streamHash: streamHash}, start: i, end: i + 1})
 	}
 
-	return LogRecord{
-		streamHash:   labels.StableHash(parsedStreamLabels),
-		streamLabels: parsedStreamLabels,
-		timestamp:    timestampSec * 1e9,
-		line:         []byte(line),
-		metadata:     parsedMetadata,
+	slices.Sort(names)
+	columns := make([]logs.MetadataColumn, 0, len(names))
+	for _, name := range names {
+		values := columnar.NewUTF8Builder(&batch.alloc)
+		for _, rowMetadata := range metadata {
+			if !rowMetadata.Has(name) {
+				values.AppendNull()
+				continue
+			}
+			values.AppendValue([]byte(rowMetadata.Get(name)))
+		}
+		columns = append(columns, logs.MetadataColumn{Name: name, Values: values.Build()})
 	}
+
+	batch.records = &logs.RecordBatch{
+		Rows:      len(rows),
+		Timestamp: timestamps.BuildArray().(*columnar.Number[int64]),
+		Message:   messages.Build(),
+		Metadata:  columns,
+	}
+	batch.streamRuns = runs
+	batch.hasLine = true
+	batch.hasMetadata = len(columns) > 0
+	return batch
 }
