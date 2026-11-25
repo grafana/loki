@@ -2,10 +2,13 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -128,4 +131,91 @@ func TestQueryIndex(t *testing.T) {
 	mint, maxt := reader.Bounds()
 	require.Equal(t, int64(1), mint)
 	require.Equal(t, int64(50), maxt)
+}
+
+// closeTrackingReader wraps every postings list its reader hands out, to
+// count which of them get closed. Postings fails on call failOn, if set.
+type closeTrackingReader struct {
+	IndexReader
+	calls, failOn  int
+	opened, closed int
+}
+
+type closeTrackingPostings struct {
+	index.Postings
+	r      *closeTrackingReader
+	closed bool
+}
+
+func (p *closeTrackingPostings) Close() {
+	if !p.closed {
+		p.closed = true
+		p.r.closed++
+	}
+	p.Postings.Close()
+}
+
+func (r *closeTrackingReader) Postings(name string, filter index.FingerprintFilter, values ...string) (index.Postings, error) {
+	r.calls++
+	if r.calls == r.failOn {
+		return nil, errors.New("postings failed")
+	}
+	p, err := r.IndexReader.Postings(name, filter, values...)
+	if err != nil {
+		return nil, err
+	}
+	r.opened++
+	return &closeTrackingPostings{Postings: p, r: r}, nil
+}
+
+func TestPostingsAreClosedWhenQueriesFinish(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "api"),
+		labels.MustNewMatcher(labels.MatchRegexp, "id", "1.*"),
+	}
+	// readOne stops after the first series, leaving every list part-read.
+	readOne := func(p index.Postings) error {
+		p.Next()
+		return p.Err()
+	}
+	inner := newPostingsReaderSpy(t).IndexReader
+
+	for _, tc := range []struct {
+		name   string
+		failOn int
+		query  func(r IndexReader) error
+	}{
+		{name: "sharded forPostings", query: func(r IndexReader) error {
+			return (&TSDBIndex{reader: r}).forPostings(context.Background(), index.NewShard(0, 4), 0, 10, matchers, readOne)
+		}},
+		{name: "cached forPostings", query: func(r IndexReader) error {
+			c := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+			idx := &TSDBIndex{reader: r, postingsCache: c, postingsID: "file"}
+			return idx.forPostings(context.Background(), index.NewShard(0, 4), 0, 10, matchers, readOne)
+		}},
+		{name: "label values", query: func(r IndexReader) error {
+			_, err := labelValuesWithMatchers(r, "id", matchers...)
+			return err
+		}},
+		{name: "label names", query: func(r IndexReader) error {
+			_, err := labelNamesWithMatchers(r, matchers...)
+			return err
+		}},
+		{name: "second matcher fails", failOn: 2, query: func(r IndexReader) error {
+			_, err := PostingsForMatchers(r, nil, matchers...)
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &closeTrackingReader{IndexReader: inner, failOn: tc.failOn}
+			err := tc.query(r)
+			if tc.failOn > 0 {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Positive(t, r.opened)
+			require.Equal(t, r.opened, r.closed, "every postings list must be closed")
+		})
+	}
 }

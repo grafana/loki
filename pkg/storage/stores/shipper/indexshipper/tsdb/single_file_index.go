@@ -330,6 +330,8 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 	})
 }
 
+// forPostings calls fn with the postings matching matchers.
+// fn must not keep the postings as they are closed when fn returns.
 func (i *TSDBIndex) forPostings(
 	ctx context.Context,
 	fpFilter index.FingerprintFilter,
@@ -353,6 +355,7 @@ func (i *TSDBIndex) forPostings(
 	if err != nil {
 		return err
 	}
+	defer p.Close()
 	return fn(p)
 }
 

@@ -71,8 +71,16 @@ type IndexReader interface {
 
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
-func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ...*labels.Matcher) (index.Postings, error) {
+// The caller must Close them once done iterating.
+func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ...*labels.Matcher) (_ index.Postings, err error) {
 	var its, notIts []index.Postings
+	defer func() {
+		if err != nil {
+			for _, p := range append(its, notIts...) {
+				p.Close()
+			}
+		}
+	}()
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.
 	labelMustBeSet := make(map[string]bool, len(ms))
@@ -292,6 +300,7 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	if err != nil {
 		return nil, err
 	}
+	defer p.Close()
 
 	scan := r.NewSeriesScan()
 	defer scan.Close()
@@ -326,6 +335,7 @@ func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]strin
 	if err != nil {
 		return nil, err
 	}
+	defer p.Close()
 
 	var postings []storage.SeriesRef
 	for p.Next() {
