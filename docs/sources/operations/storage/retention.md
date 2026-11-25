@@ -32,7 +32,7 @@ If the Compactor falls behind on either schedule, it runs the corresponding oper
 Both compaction and retention are idempotent, which means once the action has been performed, if the action is performed multiple times, it has no further effect on logs after the first time it is performed. If the Compactor restarts, it continues from where it left off.
 
 {{< admonition type="note" >}}
-Changes to your retention period are not retroactive, that is, they are not applied to logs that have already been ingested.
+Changes to your retention period apply only to future compaction cycles. Logs ingested before a retention change keep their original retention window until the next compaction run applies the new period. For example, reducing retention from 30 days to 7 days will not immediately delete old logs — they remain until the compactor processes the table containing them.
 {{< /admonition >}}
 
 The Compactor's algorithm to apply retention is as follows:
