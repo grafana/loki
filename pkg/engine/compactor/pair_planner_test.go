@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
@@ -194,6 +195,22 @@ func TestPlanPairWindow(t *testing.T) {
 		require.Equal(t, 3, plan.indexRuns)
 		require.Empty(t, plan.jobs)
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.pairSkippedIndexesTotal.WithLabelValues("acme", pairSkipReasonReadFailed)))
+	})
+
+	t.Run("skips and counts as corrupt a legacy index run whose index objects have no posting key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildIndexWithStatsAndPostings(ctx, t, bucket, "acme", "indexes/run-a", pairStats(schema, testLogObject{"logs/x", "a", "c"}))
+		buildIndexWithStatsAndPostings(ctx, t, bucket, "acme", "indexes/run-b", pairStats(schema, testLogObject{"logs/y", "b", "d"}))
+		pointer := func(path string) indexpointers.IndexPointer {
+			return indexpointers.IndexPointer{Path: path, StartTs: imWindow().Add(time.Hour), EndTs: imWindow().Add(2 * time.Hour), RunID: 1, RunLength: 2}
+		}
+		writeToCWithPointers(ctx, t, bucket, "acme", imWindow(), pointer("indexes/run-a"), pointer("indexes/run-b"))
+		c := newCoordinator(t, bucket)
+
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		require.Empty(t, plan.jobs)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelPairMerge)))
 	})
 
 	t.Run("skips and counts a corrupt index run", func(t *testing.T) {

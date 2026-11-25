@@ -121,6 +121,21 @@ func waitForQueuedWaits(slots *taskSlots, n int) {
 	}
 }
 
+// waitForNoQueuedWaits blocks until slots holds no waits, or for at most five
+// seconds.
+func waitForNoQueuedWaits(slots *taskSlots) {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		slots.slotsMu.Lock()
+		queued := len(slots.waits)
+		slots.slotsMu.Unlock()
+		if queued == 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func actorsOf(calls []runCall) []string {
 	actors := make([]string, len(calls))
 	for i, call := range calls {
@@ -652,8 +667,15 @@ func TestPairCompactorRun(t *testing.T) {
 		p.sleep = func(context.Context, time.Duration) {
 			sleeps++
 			<-started
+			waitForQueuedWaits(p.slots, 1)
 			limits.setLog("acme", false)
-			unblockOnce.Do(func() { close(unblock) })
+			// Unblock the started job only after run stopped the job that
+			// waits for its slot. Otherwise that job could take the slot
+			// first.
+			go func() {
+				waitForNoQueuedWaits(p.slots)
+				unblockOnce.Do(func() { close(unblock) })
+			}()
 		}
 
 		p.run(t.Context())

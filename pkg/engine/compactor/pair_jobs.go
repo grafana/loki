@@ -114,7 +114,10 @@ func (s *pairSplit) execute(ctx context.Context, env jobEnv) ([]metastore.IndexR
 	plans := make([]*physical.Plan, len(s.logRuns))
 	planned := make([]plannedRun, len(s.logRuns))
 	for i, run := range s.logRuns {
-		task := indexFilterForUnmerged(s.source, []*compactionv2pb.RunRef{{Sections: run.Sections()}})
+		task, err := indexFilterForUnmerged(s.source, []*compactionv2pb.RunRef{{Sections: run.Sections()}})
+		if err != nil {
+			return nil, 0, fmt.Errorf("index filter of log run %d: %w", i, err)
+		}
 		plans[i] = task.physicalPlan(env.tenant, s.window)
 		planned[i] = plannedRun{timeRange: task.inputTimeRange(), shardBuckets: s.shardBuckets}
 	}

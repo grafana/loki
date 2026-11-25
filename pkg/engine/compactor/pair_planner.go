@@ -291,6 +291,13 @@ func (p *pairPlanner) classifyCandidates(logger log.Logger, tenant string, windo
 			continue
 		}
 		if len(logRuns) > 1 {
+			// An IndexFilter reads the source index run as one sequence in
+			// posting key order, so a run that has no such order can't be
+			// split. No retry fixes it.
+			if _, err := sourcePathsInKeyOrder(candidate.indexRun); err != nil {
+				skipCorruptIndex(logger, p.metrics, tenant, window, candidate.indexRun.String(), phaseLabelPairMerge, err)
+				continue
+			}
 			out.splits = append(out.splits, &pairSplit{
 				window:       window,
 				source:       candidate.indexRun,
