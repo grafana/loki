@@ -201,7 +201,7 @@ func TestColumnReader_errors(t *testing.T) {
 
 		err := read(t, cr, len(columnReaderTestStrings)+1)
 
-		require.EqualError(t, err, fmt.Sprintf("page ended at row %d of %d: unexpected EOF (EOF)", realRows, realRows+1))
+		require.EqualError(t, err, fmt.Sprintf("page has %d rows, fewer than the %d in its descriptor: unexpected EOF", realRows, realRows+1))
 		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 		require.NotErrorIs(t, err, io.EOF)
 	})

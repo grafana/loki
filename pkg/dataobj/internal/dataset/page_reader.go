@@ -24,8 +24,10 @@ type pageReader struct {
 	presenceDec *bitmapDecoder
 	valuesDec   valueDecoder
 
-	pageRow int64
-	nextRow int64
+	pageRow int64 // Number of rows of the page that the decoders have read or skipped.
+	nextRow int64 // Row of the page where the next Read starts. Seek and Read move it.
+
+	rowCount int64 // Number of rows that the descriptor of the page declares.
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
@@ -40,9 +42,23 @@ func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression data
 // Read returns an array of up to the next count values from the page.
 // At the end of the page, Read returns nil, io.EOF.
 //
+// A page can hold a different number of rows than its descriptor declares.
+// Read then returns an error that wraps [io.ErrUnexpectedEOF]. Read finds the
+// difference only when it reaches the declared row count or the end of the page.
+//
 // If there was an error reading the page, Read returns the error with
-// no array.
-func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
+// no array. After an error other than [io.EOF], a retry of Read reads the same
+// rows again.
+func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count int) (arr columnar.Array, err error) {
+	// A failed read can leave the decoders ahead of pageRow. This deferred reset
+	// makes the next call initialize the reader again. A retry then reads the
+	// same rows again and never returns wrong rows.
+	defer func() {
+		if err != nil && !errors.Is(err, io.EOF) {
+			pr.ready = false
+		}
+	}()
+
 	// We need to initialize our readers before we can read from the page.
 	//
 	// If we've seeked backwards and our page row is now ahead of the row we want
@@ -61,7 +77,7 @@ func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count i
 	}
 
 	// Do the real read now.
-	arr, err := pr.readColumnar(alloc, count, false)
+	arr, err = pr.readColumnar(alloc, count, false)
 	if arr != nil {
 		pr.nextRow += int64(arr.Len())
 	}
@@ -92,7 +108,13 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool
 	gotCount := bm.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
-	} else if gotCount == 0 && errors.Is(err, io.EOF) {
+	}
+
+	if rowCountErr := pr.checkRowCount(gotCount, errors.Is(err, io.EOF)); rowCountErr != nil {
+		return nil, rowCountErr
+	}
+
+	if gotCount == 0 && errors.Is(err, io.EOF) {
 		// If we've hit EOF, we can immediately close the inner reader to release
 		// any resources back, rather than waiting for the next call to
 		// [pageReader.init] to do it.
@@ -138,7 +160,47 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool
 	return materializeSparseArray(alloc, pr.lastPhysicalType, bm, values)
 }
 
+// checkRowCount returns an error if the presence bitmap and the page descriptor
+// disagree on the row count.
+//
+// decoded is the number of rows that the last decode of the presence bitmap
+// wrote. hitEOF reports whether that decode returned [io.EOF]. That happens
+// when the bitmap ends before the decode gets all the rows it asked for.
+//
+// checkRowCount finds a mismatch only when a read reaches or exceeds the
+// declared row count, or hits [io.EOF]. A read that ends before the declared
+// row count and before the end of the bitmap raises no error.
+func (pr *pageReader) checkRowCount(decoded int, hitEOF bool) error {
+	// The page checksum covers the page bytes and not the descriptor. A
+	// descriptor with a wrong row count passes the checksum. The column reader
+	// derives the row ranges of the pages from the descriptor counts, so every
+	// later page shifts.
+	//
+	// If the checksum is in the page, a descriptor that points to another page
+	// also passes the checksum.
+	//
+	// The check cannot detect a descriptor that points to another page with the
+	// same row count.
+
+	rows := pr.pageRow + int64(decoded)
+
+	switch {
+	// A decode that stops exactly at the declared row count gets no io.EOF,
+	// even when the bitmap holds more rows. Exhausted finds those rows.
+	case rows > pr.rowCount, rows == pr.rowCount && !pr.presenceDec.Exhausted():
+		return fmt.Errorf("page has more rows than the %d in its descriptor: %w", pr.rowCount, io.ErrUnexpectedEOF)
+
+	case rows < pr.rowCount && hitEOF:
+		return fmt.Errorf("page has %d rows, fewer than the %d in its descriptor: %w", rows, pr.rowCount, io.ErrUnexpectedEOF)
+	}
+	return nil
+}
+
 func (pr *pageReader) init(ctx context.Context) error {
+	// The close below releases the buffer that the decoders read from. A failure
+	// before the end of init must not leave the reader ready on that buffer.
+	pr.ready = false
+
 	// Close any existing reader from a previous pageReader init. Even though
 	// this also happens in [pageReader.Close], we want to do it here as well in
 	// case we seeked backwards in a file.
@@ -179,6 +241,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 	pr.lastPhysicalType = pr.physicalType
 	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
+	pr.rowCount = int64(memPage.Desc.RowCount)
 	return nil
 }
 

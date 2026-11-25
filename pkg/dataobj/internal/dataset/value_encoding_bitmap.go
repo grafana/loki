@@ -690,6 +690,14 @@ func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 	return nil
 }
 
+// Exhausted reports whether dec has no values left to decode.
+func (dec *bitmapDecoder) Exhausted() bool {
+	// Every bitpacked set holds eight values, because the encoder writes a
+	// partial last set as RLE runs. So setSize above 0 always means that values
+	// are left.
+	return dec.runLength == 0 && dec.sets == 0 && dec.setSize == 0 && dec.off >= len(dec.data)
+}
+
 // Reset resets dec to read from data.
 func (dec *bitmapDecoder) Reset(data []byte) {
 	dec.data = data
