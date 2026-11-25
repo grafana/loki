@@ -1,19 +1,25 @@
 ---
-title: Troubleshoot Logline
-menuTitle: Troubleshooting
-description: Diagnose high Logline consumption lag, protect query results, and tune extraction and merge parallelism during catch-up.
+title: Tune Logline
+menuTitle: Tuning
+description: Tune Logline query acceleration by identifying high consumption lag and adjusting extraction and merge parallelism.
 weight: 20
 ---
 
-# Troubleshoot Logline
+# Tune Logline
 
-This page explains how to investigate high consumption lag and recover indexing throughput. For the architecture and query examples, refer to [Logline](../). For prerequisites and deployment steps, refer to [Configure Logline]({{< relref "./configure.md" >}}).
+{{< admonition type="warning" >}}
+Logline is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Logline requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
+{{< /admonition >}}
+
+This page explains how to investigate high consumption lag and recover indexing throughput when using Logline for query acceleration. For the architecture and query examples, refer to [Logline](../). For prerequisites and deployment steps, refer to [Configure Logline]({{< relref "./configure.md" >}}).
 
 ## High consumption lag
 
 Logline builders consume log records from Kafka and turn them into indexes. Consumption lag grows when they cannot keep up with incoming records. Common causes include CPU limits, slow local merges, insufficient scratch disk space, failed uploads, and repeated restarts.
 
 High lag is not just a performance problem. In live mode, it can also affect which logs queries return.
+
+If index coverage is uncertain, protect query results before tuning. Identify the bottleneck, then apply only the extraction or merge changes that address it; you don't need to change both settings. Verify recovery before restoring live queries.
 
 ### How lag can cause missing query results
 
@@ -25,7 +31,7 @@ If Logline consumption lag exceeds `querier.query_ingesters_within`, matching lo
 
 For example, with a 3-hour recent-data window and a 4-hour indexing delay, an eligible live query for logs from 3.5 hours ago can return incomplete results. This does not necessarily mean the logs have been lost: the query can find them through the normal path when Logline narrowing is disabled.
 
-Consumption lag alone does not measure the full delay before an index is usable. Account for all of the following:
+The index availability delay is the total time from a record being written to Kafka until query components can use its index and current hints. Consumption lag measures only part of this delay. When setting a positive value for `querier.query_ingesters_within`, allow for all of the following:
 
 - Time waiting to consume Kafka records.
 - Time accumulating data before a flush.
@@ -33,9 +39,9 @@ Consumption lag alone does not measure the full delay before an index is usable.
 - Time until query components discover those files.
 - Staleness of cached hints.
 
-Keep that end-to-end delay comfortably below the recent-data window. A lag metric below the window is not, by itself, evidence that index coverage is complete. Late-arriving and replayed logs also need separate validation because log timestamps and Kafka record timestamps can differ.
+Keep the total index availability delay comfortably below `querier.query_ingesters_within`, the protected recent-data window. A consumption lag metric below the window is not, by itself, evidence that index coverage is complete. Late-arriving and replayed logs also need separate validation because log timestamps and Kafka record timestamps can differ.
 
-### 1. Protect query results while recovering
+### Protect query results while recovering
 
 Disable live narrowing while coverage is uncertain. For an individual request, send `X-Logline-Index: off`.
 
@@ -51,7 +57,7 @@ The equivalent flag is `-logline-query.enabled=false`. Keep builders running so 
 
 Do not set `querier.query_ingesters_within: 0` as a workaround. Logline needs a positive value to protect recent query splits. Increasing the window also changes ordinary ingester querying and is not a substitute for restoring complete index coverage.
 
-### 2. Identify the bottleneck
+### Identify the bottleneck
 
 Inspect lag by partition rather than averaging across the builder pool. For example, scope this query to your deployment:
 
@@ -76,7 +82,7 @@ Compare merge time with `logline_index_builder_flush_duration_seconds` and `logl
 
 Adding builder replicas can help when there are enough Kafka partitions to distribute. It does not let multiple builders in the same consumer group process one partition concurrently, so check whether lag is concentrated on a single busy partition.
 
-### 3. Increase extraction parallelism when CPU-bound
+### Increase extraction parallelism when CPU-bound
 
 `logline.builder.extract_threads` controls how many workers extract index terms from incoming logs. It defaults to `1` and accepts values from `1` to `4`. Values above `1` are intended for catch-up, not as a default recommendation for every deployment.
 
@@ -94,7 +100,7 @@ Each extraction worker has its own sort buffers. At the default `postings_buffer
 
 Watch whether lag starts decreasing and whether restarts, memory pressure, or flush backpressure increase. More extraction workers do not help when CPU is already constrained or another stage is limiting progress.
 
-### 4. Increase merge parallelism when flush merging is slow
+### Increase merge parallelism when flush merging is slow
 
 `logline.builder.merge_threads` controls how many index shards a builder merges concurrently during a flush. It defaults to `1`. This is the builder's local merge stage, not the separately deployed `logline-compactor` service.
 
@@ -112,7 +118,7 @@ The equivalent flag is `-logline-builder.merge-threads=2`.
 
 Each concurrent shard merge adds memory use, disk I/O, and open file descriptors. Increase parallelism incrementally and verify that total flush time improves. Adding extraction workers can move the bottleneck to merging, so reassess the whole pipeline after each change.
 
-### 5. Verify recovery before restoring live queries
+### Verify recovery before restoring live queries
 
 Before restoring live mode:
 
@@ -124,12 +130,6 @@ Before restoring live mode:
 
 After catch-up, return temporary `extract_threads` and `merge_threads` changes to their normal values unless ongoing measurements justify keeping them. For scratch disk sizing and other capacity settings, refer to [Sizing and tuning]({{< relref "./configure.md#sizing-and-tuning" >}}).
 
-## Queries do not accelerate
+## Troubleshoot errors
 
-Check the process switch, request header or tenant mode, minimum query size, [supported query examples](../#query-examples), and trusted/recent time boundaries. An unsupported query or a lookup error can run normally without narrowing; this is different from a successful lookup against incomplete index coverage.
-
-Any nonempty `X-Logline-Skip-Cache` header bypasses the hint cache for that request. It does not force index discovery or bypass Loki's normal query results cache. Account for the results cache when comparing accelerated and unaccelerated queries.
-
-## Query results are missing
-
-Disable live narrowing for the affected requests and compare results. Investigate the high-lag scenario above, then check the trusted start date, Kafka input coverage, builder progress, bucket and prefix, discovery snapshots, and retention before re-enabling live mode.
+For specific error messages from builders and query components, refer to [Troubleshoot Logline]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).

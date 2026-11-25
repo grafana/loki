@@ -7,23 +7,31 @@ weight: 10
 
 # Configure Logline
 
+{{< admonition type="warning" >}}
+Logline is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Logline requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
+{{< /admonition >}}
+
 This page covers the prerequisites, deployment steps, tuning, retention, and monitoring for Logline. For an introduction to its architecture and query behavior, refer to [Logline](../).
 
-## Prerequisites and index coverage
+## Prerequisites
 
 Before enabling Logline, you need:
 
-- A Kafka log topic populated by Loki's distributor. Refer to [Kafka-based ingestion]({{< relref "../kafka.md" >}}) for write-path configuration. Logline builders must be able to read every partition containing the logs to be indexed.
+- [Kafka-based ingestion]({{< relref "../kafka.md" >}}) enabled, with a Kafka log topic populated by Loki's distributor. Logline builders must be able to read every partition containing the logs to be indexed.
 - Access to the ingester partition ring through the same `ingester.kafka_ingestion.partition_ring.kvstore` configuration and KV prefix as the ingesters. With memberlist, configure `memberlist.join_members` so builders join the existing cluster. Builders fail startup if the ring remains empty.
 - Object storage configured through `storage_config.object_store`, or `common.storage.object_store`, and the object store selected by the current schema period. Legacy settings such as `storage_config.aws` or `storage_config.gcs` alone are not sufficient. All Logline components must resolve the same bucket and prefix, `logline/` by default.
-- Local scratch storage for index builders, durable job-state storage for the Logline scheduler, and read/write permissions appropriate to each component. The scheduler also needs permission to delete indexes.
-- A deliberate first trusted index date, configured with `-logline-store.min-date`.
+- Writable local scratch storage for each index builder's temporary sort runs and merged output. This is not durable index storage: builders upload completed indexes to object storage and clear the scratch directory at startup. Use a dedicated path with enough free space for the sizing guidance below.
+- Durable, writable job-state storage for the Logline scheduler. Unlike builder scratch space, this directory must survive scheduler restarts so that in-flight compaction jobs are not assigned again.
+- Bucket permissions for each component on the shared Logline prefix: builders need list, read (including object existence checks), and write access; query frontends and queriers need list and read access; compactors need list, read, and write access; the scheduler needs list, read, and delete access. Every component lists the bucket during startup, including components that primarily write indexes.
+- Memory allocated to each builder's container, pod, or host for sort buffers and indexing overhead. Refer to [Sizing and tuning](#sizing-and-tuning) for memory and scratch-storage estimates.
 
-### Choose a trusted start date
+## Choose a complete-coverage start date
+
+As part of the Logline configuration, specify the date from which you can establish complete index coverage for logs eligible for live narrowing. Logline trusts indexes from this date onward; it cannot infer whether historical indexing is complete.
 
 `-logline-store.min-date` is required and uses the format `YYYY-MM-DD`, interpreted as midnight UTC. Builders discard log entries before this date, and queries before it run without Logline narrowing. The current builder requires a date on or after January 1, 2026.
 
-Choose a date from which you can establish complete index coverage. Starting a builder does not backfill logs from object storage. Historical coverage is limited by records available in Kafka and the builder consumer group's offsets. Do not move the trusted date backward without first establishing coverage for the additional period.
+Starting a builder does not backfill logs from object storage. Historical coverage is limited by records available in Kafka and the builder consumer group's offsets. Do not move the trusted date backward without first establishing coverage for the additional period.
 
 {{< admonition type="warning" >}}
 Missing historical indexes are not equivalent to an index lookup error. A successful lookup that finds no indexes or matching documents can produce no hints, causing live queries to skip data. Configure the same trusted date, bucket, and prefix across components, and verify complete coverage before using live mode. An incorrect storage location, missing Kafka records, or prematurely deleted indexes can produce incomplete query results.
@@ -55,7 +63,7 @@ logline:
 
 The equivalent command-line flags are:
 
-```text
+```shell
 -logline-store.min-date=2026-11-01
 -logline-store.bucket-prefix=logline/
 -logline-index.version=v4
@@ -70,7 +78,7 @@ The default index format is `v4`.
 
 Run the `logline-index-builder` target with writable scratch storage:
 
-```text
+```shell
 -target=logline-index-builder
 -logline-builder.scratch-dir=/var/loki/logline-scratch
 ```
@@ -85,14 +93,14 @@ Builders upload indexes before committing Kafka offsets. After a restart or reba
 
 The `logline-scheduler` target plans compaction and deletes expired or superseded indexes. Run exactly one active scheduler per index store, including during upgrades: stop the old instance before starting its replacement. There is no leader election between schedulers. Give it a durable directory for in-flight job state:
 
-```text
+```shell
 -target=logline-scheduler
 -logline-compaction.job-state-dir=/var/loki/logline-jobs
 ```
 
 Run `logline-compactor` workers with the scheduler's HTTP base URL:
 
-```text
+```shell
 -target=logline-compactor
 -logline-compaction.scheduler-address=http://logline-scheduler:3100
 ```
@@ -103,7 +111,7 @@ Use the same index store settings as the builders. Compactors merge compatible i
 
 Enable Logline on query frontends and queriers, with the same shared index settings. Start with header opt-in and dry-run as the process default:
 
-```text
+```shell
 -logline-query.enabled=true
 -logline-query.dry-run=true
 -logline-query.require-opt-in-header=true
@@ -151,9 +159,9 @@ Start with the defaults and measure your ingestion volume, search selectivity, b
 | `-logline-query.max-hint-parallel` | `64` | Maximum concurrent index lookup workers per query. |
 | `-logline-query.hint-cache-ttl` | `2m` | Hint-cache lifetime. Set to `0` to disable hint caching. |
 
-The default builder sort buffers occupy approximately 460 MiB. During a builder swap, two sets can coexist. Budget additional memory for decoding, document metadata, merging, and uploads; the estimated-memory metric is not a total process memory measurement. Increasing extraction or merge parallelism increases resource requirements.
+At the default `postings-buffer-pairs` capacity, each set of builder sort buffers occupies approximately 460 MiB. During a builder swap, two sets can coexist, requiring approximately twice that memory before other overhead. Allocate this memory, plus headroom for decoding, document metadata, merging, and uploads, in the builder's container or pod memory requests and limits, or in the host's memory budget for a non-containerized deployment. If you set Go's `GOMEMLIMIT`, leave room below the container or host limit for memory not covered by `GOMEMLIMIT`; it is a Go runtime setting, not a Logline flag or a hard cap on process memory. The estimated-memory metric is not a total process memory measurement. Increasing extraction or merge parallelism increases resource requirements.
 
-Size builder scratch storage for approximately two to three times `flush-on-max-bytes`, because active runs, retiring runs, and merged output can coexist. At the default threshold, that means approximately 40–60 GiB before additional operational headroom. Builder startup clears its scratch directory, so use a dedicated path that contains no other data.
+Size your builder scratch storage for approximately two to three times `flush-on-max-bytes`, because active runs, retiring runs, and merged output can coexist. At the default threshold, that means approximately 40–60 GiB before additional operational headroom. Builder startup clears its scratch directory, so use a dedicated path that contains no other data.
 
 New indexes become available only after building, uploading, and discovery. Cached hints can delay their use further. A failed background discovery poll keeps the previous snapshot; it does not automatically disable live narrowing.
 
@@ -162,7 +170,7 @@ New indexes become available only after building, uploading, and discovery. Cach
 Logline indexes are shared across tenants. The scheduler uses the longest nonzero `retention_period` from `limits_config` and configured tenant overrides to expire indexes. If no nonzero period is configured, age-based index deletion is disabled. Per-selector `retention_stream` rules are not used to calculate this period.
 
 {{< admonition type="warning" >}}
-A tenant's `retention_period: 0` does not prevent index deletion when the default or another tenant has a positive retention period. For example, a default of `0` and one tenant with `7d` produces 7-day index retention, even if other tenants retain their logs indefinitely.
+A tenant's `retention_period: 0` does not prevent index deletion when the default or another tenant has a positive retention period. For example, with a default of `0`, Tenant A configured with `retention_period: 7d`, and no longer retention period configured, the scheduler applies 7-day retention to all shared Logline indexes, not just indexes for Tenant A. Other tenants might retain their logs indefinitely, but their index coverage older than 7 days is still deleted. Live narrowing over those older logs can then skip data and return incomplete results.
 {{< /admonition >}}
 
 Ensure index retention covers every log time range where live narrowing can apply, including logs retained indefinitely or longer by per-selector retention rules. Do not apply an object storage lifecycle policy that removes indexes while their logs remain queryable through live Logline.
@@ -187,4 +195,4 @@ Monitor both index coverage and query effectiveness:
 
 ## Next steps
 
-For high consumption lag, missing results, or queries that do not accelerate, refer to [Troubleshoot Logline]({{< relref "./troubleshooting.md" >}}).
+For high consumption lag or queries that do not accelerate, refer to [Tune Logline]({{< relref "./tuning.md" >}}). For errors and missing results, refer to [Troubleshoot Logline]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).
