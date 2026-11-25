@@ -76,7 +76,10 @@ func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ..
 	var its, notIts []index.Postings
 	defer func() {
 		if err != nil {
-			for _, p := range append(its, notIts...) {
+			for _, p := range its {
+				p.Close()
+			}
+			for _, p := range notIts {
 				p.Close()
 			}
 		}
