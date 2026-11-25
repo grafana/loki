@@ -108,7 +108,7 @@ func (headSeriesScan) Close() error { return nil }
 
 // Series returns the series for the given reference.
 // lbls can be nil, to indicate that just the chunks are needed.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, _ map[string]struct{}) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {

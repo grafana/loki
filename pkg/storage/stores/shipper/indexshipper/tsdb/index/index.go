@@ -1765,7 +1765,8 @@ func (r *ByteSliceReader) LabelValueFor(id storage.SeriesRef, label string) (str
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+// If by is non-nil, only the label names it contains are decoded into lbls.
+func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (uint64, error) {
 	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
 	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1773,7 +1774,7 @@ func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, by)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -2329,12 +2330,13 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 // Series decodes a series entry from the given byte slice into lbls and chks.
 // lbls can be nil, indicating the caller only wants the chunks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
+// If by is non-nil, only the label names it contains are decoded into lbls.
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (fprint uint64, err error) {
 	var d *encoding.Decbuf
 	if lbls == nil {
 		d, fprint, err = dec.skipSeriesLabels(b)
 	} else {
-		d, fprint, err = dec.prepSeries(b, lbls, nil)
+		d, fprint, err = dec.prepSeries(b, lbls, by)
 	}
 	if err != nil {
 		return 0, err
@@ -2343,7 +2345,8 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 	*chks = (*chks)[:0]
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
-		if lbls == nil {
+		// If we have none of the labels, or only a subset, log the fingerprint instead.
+		if lbls == nil || by != nil {
 			return 0, errors.Wrapf(err, "series footprint %x", fprint)
 		}
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
