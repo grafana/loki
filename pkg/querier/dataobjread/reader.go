@@ -49,9 +49,9 @@ const (
 // data-object tier is never deduplicated against another source.
 //
 // The number of batches in flight is bounded by 2*maxConcurrency+1. The channel holds up to
-// maxConcurrency of them, each scan holds one while it reads, and the consumer holds one. The
-// queued tasks grow with the stream count: every task references the decoded streams of its
-// object, one label set each.
+// maxConcurrency of them. Each scan holds one while it reads. The consumer holds one. The queued
+// tasks grow with the stream count: every task references the decoded streams of its object, one
+// label set each.
 //
 // nextRowsBatch is for the single consumer goroutine only. Err and Close are safe to call from
 // another one.
@@ -314,7 +314,7 @@ func (r *LogReader) setErr(err error) {
 // Closing before the results are drained is not a failure, so Close reports no error for the
 // cancellation it causes.
 //
-// Close does not reclaim a batch that the consumer holds. The consumer releases it.
+// Close does not release a batch that the consumer holds. The consumer releases it.
 func (r *LogReader) Close() error {
 	// Decide, before anything is cancelled, whether a later cancellation is the caller's or
 	// this reader's own. Asking the caller's context is the whole question, and it does not

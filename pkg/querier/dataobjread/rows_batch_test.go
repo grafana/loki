@@ -148,6 +148,43 @@ func TestRowsBatch_Init(t *testing.T) {
 		require.ErrorContains(t, err, "without the stream ID or timestamp column")
 		require.Nil(t, batch.records)
 	})
+
+	t.Run("it panics when the batch already holds records, and keeps them", func(t *testing.T) {
+		batch := pool.get()
+		first := batchOf(t, nil, nil)
+		require.NoError(t, batch.init(task, first))
+
+		require.PanicsWithValue(t, "dataobjread: batch initialised twice", func() {
+			_ = batch.init(task, batchOf(t, []int64{7}, []string{"one"}))
+		})
+		require.Same(t, first, batch.records)
+	})
+
+	t.Run("it panics when a failed init left runs in the batch, because nobody released it", func(t *testing.T) {
+		batch := pool.get()
+		require.Error(t, batch.init(task, batchOf(t, []int64{7, 8, 9999}, []string{"one", "two", "three"})))
+
+		require.PanicsWithValue(t, "dataobjread: batch initialised twice", func() {
+			_ = batch.init(task, batchOf(t, []int64{7}, []string{"one"}))
+		})
+	})
+
+	t.Run("it panics when the batch sits in the pool", func(t *testing.T) {
+		batch := pool.get()
+		batch.release()
+
+		require.PanicsWithValue(t, "dataobjread: batch initialised after release", func() {
+			_ = batch.init(task, batchOf(t, []int64{7}, []string{"one"}))
+		})
+	})
+
+	t.Run("a batch that comes from the pool after a failed init was released initialises", func(t *testing.T) {
+		failed := pool.get()
+		require.Error(t, failed.init(task, batchOf(t, []int64{7, 8, 9999}, []string{"one", "two", "three"})))
+		failed.release()
+
+		require.NoError(t, pool.get().init(task, batchOf(t, []int64{7}, []string{"one"})))
+	})
 }
 
 func TestRowsBatch_Line(t *testing.T) {

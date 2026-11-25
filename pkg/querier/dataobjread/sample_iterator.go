@@ -15,8 +15,7 @@ var _ iter.SampleIterator = (*SampleIterator)(nil)
 // SampleIterator turns the rows of the batches of a [LogReader] into samples. It applies the LogQL
 // sample extractor to each row and emits at most one sample per row.
 //
-// Close releases the batch that the iterator is still reading, and closes the reader. The samples
-// that the iterator emits own their data.
+// The samples that the iterator emits own their data.
 //
 // Next, At, Labels, StreamHash and Close are for a single goroutine. Err is safe to call from
 // another one.
@@ -66,8 +65,7 @@ type SampleIterator struct {
 	hasCurrSample    bool
 }
 
-// NewSampleIterator returns an iterator over the batches of reader. The caller must call Close,
-// which releases the batch that the iterator holds.
+// NewSampleIterator returns an iterator over the batches of reader. The caller must call Close.
 //
 // Outside this package, only a [*LogReader] or a type that embeds it can be the reader, because
 // rowsBatchReader has an unexported method.
@@ -84,7 +82,7 @@ func (it *SampleIterator) Next() bool {
 	for {
 		for it.rows.Next() {
 			currRow := it.rows.At()
-			// Look up the extractor once for each run of rows of one stream, and when there is none yet.
+			// Initialise the extractor once for each run of rows of one stream, and when there is none yet.
 			if !it.hasCurrExtractor || currRow.startsRun {
 				it.initExtractorFor(currRow.stream)
 			}
@@ -131,9 +129,9 @@ func (it *SampleIterator) labelsString(resultLabels logqllog.LabelsResult) strin
 // stream-hash collision cannot apply one stream's extractor to another's lines.
 //
 // Keeping the current extractor pays off when the first run of a batch continues the stream of the
-// last run of the previous batch. Within a batch, the runs already group the rows by stream. The
-// reuse is only an optimisation: logs.SortTimestampDESC interleaves streams, and the labels.Equal
-// check keeps it correct under any layout.
+// last run of the previous batch. Each run holds one stream, so the iterator calls this method once
+// for each run. The reuse is only an optimisation: logs.SortTimestampDESC interleaves streams, and
+// the labels.Equal check keeps it correct under any layout.
 func (it *SampleIterator) initExtractorFor(stream objectStream) {
 	if it.hasCurrExtractor && stream.streamHash == it.currStreamHash && labels.Equal(stream.streamLabels, it.currStreamLabels) {
 		return

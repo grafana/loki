@@ -279,6 +279,19 @@ func TestSampleIterator(t *testing.T) {
 		require.True(t, batch.pooled)
 	})
 
+	t.Run("it releases a batch before it asks the reader for the next one", func(t *testing.T) {
+		reader := &fakeRowsBatchReader{batches: []*rowsBatch{
+			newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"}),
+			newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 2, line: "two"}),
+		}}
+		it := newIterator(t, `count_over_time({app="a"}[1m])`, reader)
+
+		for it.Next() {
+		}
+
+		require.Equal(t, []bool{true, true, true}, reader.previousReleasedOnAsk)
+	})
+
 	t.Run("Close releases the batch that the iterator is reading", func(t *testing.T) {
 		batch := newTestBatch(t, pool,
 			testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one"},
@@ -423,7 +436,7 @@ func TestSampleIterator(t *testing.T) {
 				it := NewSampleIterator(reader, sampleExtractor(t, query))
 
 				for range samplesRead {
-					it.Next()
+					require.True(t, it.Next(), "batch size %d, %d samples read", batchSize, samplesRead)
 				}
 				require.NoError(t, it.Close(), "batch size %d, %d samples read", batchSize, samplesRead)
 				require.NoError(t, it.Err(), "batch size %d, %d samples read", batchSize, samplesRead)
@@ -432,7 +445,7 @@ func TestSampleIterator(t *testing.T) {
 		}
 	})
 
-	t.Run("a scan that fails while the others succeed ends the read with its error", func(t *testing.T) {
+	t.Run("a scan that fails to open its section ends the read with its error", func(t *testing.T) {
 		const query = `count_over_time({app=~".+"}[1m])`
 
 		fixture := newReaderFixture(t, query,
@@ -453,7 +466,7 @@ func TestSampleIterator(t *testing.T) {
 		require.False(t, it.Next())
 	})
 
-	t.Run("a sample stays intact after its batch is released and overwritten", func(t *testing.T) {
+	t.Run("a sample reads the same after its batch is released", func(t *testing.T) {
 		skipWithoutPoisoning(t)
 		batch := newTestBatch(t, pool, testRow{streamLabels: `{app="a"}`, timestampSec: 1, line: "one", metadata: `{level="error"}`})
 		it := newIterator(t, `count_over_time({app="a"}[1m])`, &fakeRowsBatchReader{batches: []*rowsBatch{batch}})
@@ -590,17 +603,24 @@ type fakeRowsBatchReader struct {
 	batches []*rowsBatch
 	err     error
 
+	// served holds the batches that the reader gave out. previousReleasedOnAsk has one element for
+	// each call of nextRowsBatch: whether the iterator had released the previous batch by then.
+	served                []*rowsBatch
+	previousReleasedOnAsk []bool
+
 	closed   bool
 	closes   int
 	closeErr error
 }
 
 func (r *fakeRowsBatchReader) nextRowsBatch() *rowsBatch {
+	r.previousReleasedOnAsk = append(r.previousReleasedOnAsk, len(r.served) == 0 || r.served[len(r.served)-1].pooled)
 	if len(r.batches) == 0 {
 		return nil
 	}
 	batch := r.batches[0]
 	r.batches = r.batches[1:]
+	r.served = append(r.served, batch)
 	return batch
 }
 

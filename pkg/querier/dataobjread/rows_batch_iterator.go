@@ -18,14 +18,15 @@ type row struct {
 	// null or empty message. See [rowsBatch.line].
 	line []byte
 
-	// metadata holds the structured metadata of the record.
+	// metadata holds the structured metadata of the record. It is empty when the batch has no
+	// metadata column.
 	metadata labels.Labels
 
-	// stream is the stream of the record.
+	// stream is the stream of the run that holds the record.
 	stream objectStream
 
 	// startsRun is true for the first row of each run of rows of one stream. A consumer that does
-	// work once for each stream can do it on these rows only.
+	// work once for each run can do it on these rows only.
 	startsRun bool
 }
 
@@ -34,8 +35,8 @@ type row struct {
 // It owns the batch. Close releases the batch. After Close, Next returns false and At returns the
 // zero row. The zero value owns no batch, so it behaves the same.
 //
-// A rowsBatchIterator is for a single goroutine. Keep the value that newRowsBatchIterator returns,
-// and do not copy it, because a copy would share the ownership of the batch.
+// A rowsBatchIterator is for a single goroutine. Do not copy it after newRowsBatchIterator returns
+// it, because a copy would share the ownership of the batch.
 type rowsBatchIterator struct {
 	batch *rowsBatch
 
@@ -111,7 +112,8 @@ func (it *rowsBatchIterator) At() *row { return &it.curr }
 // Close releases the batch, and gives the scratch builder back to the pool. A second Close does
 // nothing.
 //
-// The metadata of a row owns its data and stays valid after Close. The line does not.
+// Close also zeroes the current row. Metadata that the caller kept stays valid, because the labels
+// own their data. A line that the caller kept does not.
 func (it *rowsBatchIterator) Close() {
 	if it.batch == nil {
 		return
