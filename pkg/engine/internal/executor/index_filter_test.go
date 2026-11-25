@@ -514,7 +514,7 @@ func TestDoIndexFilter(t *testing.T) {
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v2"`)
+		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v4"`)
 	})
 
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {

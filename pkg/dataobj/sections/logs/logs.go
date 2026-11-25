@@ -18,12 +18,10 @@ import (
 // rows from a logs section.
 var RegionRead = "logs.Reader.Read"
 
-// schemaSortVersion is the section type version for logs sections written in
-// schema sort order. It has format version 2. It must differ
-// from every columnar format version, so callers can detect the sort contract
-// from the object header alone, without opening the section. The stream layout
-// that orders the rows is in the tenant's streams section.
-const schemaSortVersion uint32 = 3
+// legacySchemaSortVersion is the section version that older writers gave to
+// logs sections in schema sort order. Those sections have format version 2.
+// Writers no longer write it, and readers still accept it.
+const legacySchemaSortVersion uint32 = 3
 
 var sectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
@@ -31,16 +29,10 @@ var sectionType = dataobj.SectionType{
 	Version:   columnar.DefaultFormatVersion,
 }
 
-var schemaSortSectionType = dataobj.SectionType{
-	Namespace: format.SectionNamespace,
-	Kind:      format.LogsSectionKind,
-	Version:   schemaSortVersion,
-}
-
 // formatVersionOf returns the format version of a logs section with the given
 // section version.
 func formatVersionOf(sectionVersion uint32) uint32 {
-	if sectionVersion == schemaSortVersion {
+	if sectionVersion == legacySchemaSortVersion {
 		return columnar.FormatVersionDescriptorChecksum
 	}
 	return sectionVersion

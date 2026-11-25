@@ -13,7 +13,7 @@ import (
 )
 
 func TestOpen(t *testing.T) {
-	for _, version := range []uint32{columnar.FormatVersionDescriptorChecksum, schemaSortVersion, columnar.FormatVersionPageChecksum} {
+	for _, version := range []uint32{columnar.FormatVersionDescriptorChecksum, legacySchemaSortVersion, columnar.FormatVersionPageChecksum} {
 		t.Run(fmt.Sprintf("opens a section of version %d and reads its rows", version), func(t *testing.T) {
 			objBuilder := dataobj.NewBuilder(nil)
 			require.NoError(t, objBuilder.Append(versionSectionBuilder{version: version}))

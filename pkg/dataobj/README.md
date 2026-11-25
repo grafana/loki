@@ -130,11 +130,11 @@ The section version is the `version` of the section type in the file metadata. I
 
 | Section version | Page checksum | Written by |
 |---|---|---|
-| 2 | In the page descriptor | Streams, stats, postings, index pointers and watermarks sections. Logs sections that are not in schema sort order. |
-| 3 | In the page descriptor | Logs sections in schema sort order. |
-| 4 | In the page | No writer yet. Readers accept it. |
+| 2 | In the page descriptor | Older writers. All columnar sections. |
+| 3 | In the page descriptor | Older writers. Logs sections in schema sort order only. |
+| 4 | In the page | Current writers. All columnar sections. |
 
-Readers accept section versions 2 and 4 for every columnar section, and version 3 for logs sections. Version 3 only marks the schema sort order of a logs section. It has format version 2.
+Readers accept section versions 2 and 4 for every columnar section, and version 3 for logs sections. Version 3 only marked the schema sort order of a logs section. It has format version 2. Writers no longer write it.
 
 A reader that does not know a section version fails when it opens the section. A data object can hold sections of different versions.
 
@@ -278,7 +278,7 @@ When flushing, the builder:
 2. Creates separate columns for each field (stream_id, timestamp, metadata, message)
 3. Splits columns into pages
 4. Compresses the values of each page independently (zstd)
-5. Computes the CRC32C checksum of each page
+5. Computes the CRC32C checksum of each page and writes it as the last four bytes of the page
 
 #### 3. Writing to Data Object
 
