@@ -20,11 +20,11 @@ import (
 // holds a log line, so it can be flushed.
 func newTestMockBuilder(t *testing.T) *mockBuilder {
 	t.Helper()
-	realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
+	realBuilder, err := logsobj.NewBuilder("test", testBuilderCfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	b := &mockBuilder{builder: realBuilder}
 	now := time.Now()
-	require.NoError(t, b.Append("test", logproto.Stream{
+	require.NoError(t, b.Append(logproto.Stream{
 		Labels:  `{foo="bar"}`,
 		Entries: []logproto.Entry{{Timestamp: now, Line: "baz"}},
 	}, now))

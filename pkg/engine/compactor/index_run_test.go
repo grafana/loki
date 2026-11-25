@@ -99,8 +99,8 @@ func TestIndexRun_CheckLength(t *testing.T) {
 
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "plain"}}})
+	group.add(indexRunRead{run: indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}}})
+	group.add(indexRunRead{run: runOfPath("plain")})
 
 	t.Run("counts the index objects of one run as one run", func(t *testing.T) {
 		got, err := group.countRuns([]string{"run/a", "run/b", "plain"})
@@ -137,7 +137,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
@@ -147,7 +147,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.False(t, exists)
 	})

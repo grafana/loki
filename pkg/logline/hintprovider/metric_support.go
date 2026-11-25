@@ -16,6 +16,12 @@ func SupportedMetricQuery(expr syntax.Expr, ngramLength, maxConjunctions int) ne
 func metricLogSelector(expr syntax.Expr) (syntax.Expr, bool) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
+		// Unlike other aggregations, absent_over_time returns a 1 for an empty window,
+		// and each wrapper (sum, stddev, topk, ...) turns that into a different result.
+		// We'd have to handle each one, so for now, we don't support wrapped absent_over_time.
+		if r, ok := e.Left.(*syntax.RangeAggregationExpr); ok && r.Operation == syntax.OpRangeTypeAbsent {
+			return nil, false
+		}
 		return metricLogSelector(e.Left)
 	case *syntax.RangeAggregationExpr:
 		// Left is the offset range. Left.Left is the log selector inside it,

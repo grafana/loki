@@ -3,20 +3,23 @@ package labelaccess
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type RequestChunkFilterer struct{}
 
 func (r *RequestChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
-	f := filtererForRequest(ctx)
+	f := cachedFiltererForRequest(ctx)
 	if f == nil {
 		// Return nil chunk.Filterer instead of (*ChunkFilterer)(nil)
 		// to avoid typed nil wrapped in interface issues.
@@ -25,10 +28,50 @@ func (r *RequestChunkFilterer) ForRequest(ctx context.Context) chunk.Filterer {
 	return f
 }
 
-// filtererForRequest extracts LBAC policies from the context and returns a ChunkFilterer.
+var filtererCache = func() *lru.Cache[filtererCacheKey, *ChunkFilterer] {
+	c, err := lru.New[filtererCacheKey, *ChunkFilterer](1024)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}()
+
+type filtererCacheKey struct {
+	tenant   string
+	policies string
+}
+
+// cachedFiltererForRequest extracts LBAC policies from the context and returns a ChunkFilterer.
 // It returns nil, which disables filtering, when the context has no policy for
 // the tenant or when it cannot read the policies or the tenant.
-func filtererForRequest(ctx context.Context) *ChunkFilterer {
+// Avoids additional work by using a cached filterer when possible.
+func cachedFiltererForRequest(ctx context.Context) *ChunkFilterer {
+	headers := httpreq.ExtractAllHeaders(ctx)
+	if headers == nil {
+		return nil
+	}
+	lbacHeaderValues := headers.Values(HTTPHeaderKey)
+	if len(lbacHeaderValues) == 0 {
+		return nil
+	}
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		_ = level.Debug(util_log.Logger).Log("msg", "unable to find instance name", "err", err)
+		return nil
+	}
+
+	// ExtractLabelMatchersFromHeaders splits every header value on commas, so joining several values
+	// with a comma does not change what they parse to.
+	key := filtererCacheKey{tenant: tenant, policies: strings.Join(lbacHeaderValues, ",")}
+	if cf, ok := filtererCache.Get(key); ok {
+		return cf
+	}
+	cf := filtererForRequest(ctx, tenant)
+	filtererCache.Add(key, cf)
+	return cf
+}
+
+func filtererForRequest(ctx context.Context, instanceName string) *ChunkFilterer {
 	// Extract policies from context
 	instancePolicyMap, err := ExtractLabelMatchersContext(ctx)
 	if err != nil {
@@ -37,12 +80,6 @@ func filtererForRequest(ctx context.Context) *ChunkFilterer {
 			return nil
 		}
 		_ = level.Debug(util_log.Logger).Log("msg", "unable to find instance policy map in context", "err", err)
-		return nil
-	}
-
-	instanceName, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		_ = level.Debug(util_log.Logger).Log("msg", "unable to find instance name", "err", err)
 		return nil
 	}
 

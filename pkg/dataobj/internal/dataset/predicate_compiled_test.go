@@ -89,7 +89,7 @@ func TestCompilePredicate(t *testing.T) {
 
 				cp, err := compilePredicate(tc.pred, lookup)
 				require.NoError(t, err)
-				require.Equal(t, tc.want, cp.eval(row))
+				require.Equal(t, tc.want, cp.evalRow(row))
 			})
 		}
 	})
@@ -110,11 +110,11 @@ func TestCompilePredicate(t *testing.T) {
 		}, lookup)
 		require.NoError(t, err)
 
-		require.True(t, cp.eval(Row{Values: []Value{Int64Value(5)}}))
+		require.True(t, cp.evalRow(Row{Values: []Value{Int64Value(5)}}))
 		require.Same(t, colA.(*MemColumn), gotColumn.(*MemColumn))
 		require.Equal(t, int64(5), gotValue.Int64())
 
-		require.False(t, cp.eval(Row{Values: []Value{Int64Value(2)}}))
+		require.False(t, cp.evalRow(Row{Values: []Value{Int64Value(2)}}))
 	})
 
 	t.Run("returns an error when a predicate references a column outside the lookup", func(t *testing.T) {
@@ -142,6 +142,13 @@ func TestCompilePredicate(t *testing.T) {
 				require.ErrorContains(t, err, "not found in RowReader columns")
 			})
 		}
+	})
+
+	t.Run("returns an error when a func predicate has no Keep function", func(t *testing.T) {
+		column := testColumn(datasetmd.PHYSICAL_TYPE_INT64)
+
+		_, err := compilePredicate(FuncPredicate{Column: column}, map[Column]int{column: 0})
+		require.EqualError(t, err, `func predicate on column "" has no Keep function`)
 	})
 
 	t.Run("panics on an unsupported predicate type", func(t *testing.T) {

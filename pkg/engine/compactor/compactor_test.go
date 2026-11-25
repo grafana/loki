@@ -76,7 +76,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		LogMaxRunsPerTask:         defaultLogMaxRunsPerTask,
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
-		PlanVersion:               defaultPlanVersion,
+		PlannerVersion:            defaultPlannerVersion,
 	}
 
 	bucket := objstore.NewInMemBucket()

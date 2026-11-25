@@ -9,6 +9,7 @@ The `dataobj` package provides a container format for storing and retrieving str
 - [Architecture Overview](#architecture-overview)
 - [Key Concepts](#key-concepts)
 - [File Format Structure](#file-format-structure)
+- [Columnar Section Format](#columnar-section-format)
 - [Encoding Process](#encoding-process)
 - [Decoding Process](#decoding-process)
 - [Section Types](#section-types)
@@ -93,7 +94,8 @@ This separation allows reading section metadata without loading the entire data 
 Most section implementations use columnar storage via the `internal/dataset` package:
 - Data is organized into **columns** (e.g., timestamp, stream_id, message)
 - Columns are split into **pages** for efficient random access
-- Pages can be compressed (typically with zstd)
+- Each page has a presence bitmap and the values. The values can be compressed (typically with zstd)
+- Each page has a CRC32C checksum that readers verify
 - Supports predicates for filtering during reads
 
 ---
@@ -107,7 +109,7 @@ Offset  | Content
 --------|----------------------------------------------------------
 0       | Magic bytes: "DOBJ" (4 bytes)
 4       | File Metadata Size (uint32, little-endian)
-8       | Format Version (varint)
+8       | File Format Version (varint)
 ...     | File Metadata (protobuf-encoded)
 ...     | [Section Metadata Region - All sections concatenated]
 ...     | [Section Data Region - All sections concatenated]
@@ -115,6 +117,100 @@ Offset  | Content
 ```
 
 File Metadata Structure (Protobuf) can be found in the `pkg/dataobj/internal/metadata` package.
+
+---
+
+## Columnar Section Format
+
+The logs, streams, stats, postings, index pointers and watermarks sections share one encoding. It is implemented in `pkg/dataobj/sections/internal/columnar`. This part describes that encoding.
+
+### Section Versions
+
+The section version is the `version` of the section type in the file metadata. It decides the format of the pages, which is the format version. Section version 3 has format version 2.
+
+| Section version | Page checksum | Written by |
+|---|---|---|
+| 2 | In the page descriptor | Older writers. All columnar sections. |
+| 3 | In the page descriptor | Older writers. Logs sections in schema sort order only. |
+| 4 | In the page | Current writers. All columnar sections. |
+
+Readers accept section versions 2 and 4 for every columnar section, and version 3 for logs sections. Version 3 only marked the schema sort order of a logs section. It has format version 2. Writers no longer write it.
+
+A reader that does not know a section version fails when it opens the section. A data object can hold sections of different versions.
+
+### Section Layout
+
+A columnar section has a data region and a metadata region.
+
+```
+Data region                      Metadata region
+┌──────────────────────────┐     ┌──────────────────────────────────┐
+│ Column 0                 │     │ ColumnMetadata of column 0       │
+│   Page 0, Page 1, ...    │     │ ColumnMetadata of column 1       │
+│ Column 1                 │     │ ...                              │
+│   Page 0, Page 1, ...    │     │ SectionMetadata                  │
+│ ...                      │     └──────────────────────────────────┘
+└──────────────────────────┘
+```
+
+- The data region holds the columns one after the other. A column holds its pages one after the other, in row order.
+- In format version 2, the metadata region starts with the format version, 2, as a uvarint. This includes logs sections of version 3. Readers do not use it: they take the version from the section type. It exists for readers of the first data object format, which kept the version in the metadata. Format version 4 does not have it.
+- `ColumnMetadata` and `SectionMetadata` are protobuf messages. Each one starts with its size as a uvarint.
+- `SectionMetadata` lists the columns. Each column descriptor has the offset and length of its `ColumnMetadata` in the metadata region.
+- `ColumnMetadata` has one page descriptor for each page of the column.
+- The extension data of the section, in the file metadata, holds the offset and length of `SectionMetadata` in the metadata region.
+- Offsets in the metadata region are relative to the start of that region. The offset of a page is relative to the start of the data region.
+
+### Page Descriptor
+
+| Field | Meaning |
+|---|---|
+| `uncompressed_size` | Size of the page before compression: the presence bitmap size, the presence bitmap and the values. |
+| `rows_count` | Number of rows in the page, NULLs included. |
+| `values_count` | Number of values in the page, without NULLs. |
+| `encoding` | Encoding of the values: plain, delta or bitmap. |
+| `data_offset` | Offset of the page in the data region. |
+| `data_size` | Size of the page in the data region: the page after compression and, in format version 4, its four-byte checksum. Readers use it to read the page. |
+| `statistics` | Optional minimum and maximum value of the page. |
+| `deprecated_crc32` | CRC32C of the page. Section versions 2 and 3 only. Readers use it for those pages. |
+
+The compression is a property of the column, not of the page. Older writers also wrote the size of the page after compression, as `compressed_size` (field 2, now reserved). It has the same value as `data_size` in section versions 2 and 3. Readers do not use it.
+
+### Page Layout
+
+The layout of a page depends on the format version.
+
+Format version 2 (section versions 2 and 3). The page has no checksum. The page descriptor holds the CRC32C and `data_size` is the size of the page.
+
+```
+┌──────────────────────────────┬─────────────────┬────────┐
+│ uvarint presence bitmap size │ presence bitmap │ values │
+└──────────────────────────────┴─────────────────┴────────┘
+```
+
+Format version 4 (section version 4). A four-byte CRC32C footer ends the page. The page descriptor has no checksum and `data_size` includes the footer.
+
+```
+┌──────────────────────────────┬─────────────────┬────────┬────────┐
+│ uvarint presence bitmap size │ presence bitmap │ values │ CRC32C │
+└──────────────────────────────┴─────────────────┴────────┴────────┘
+└───────────────── covered by the CRC32C ─────────────────┘
+```
+
+- The presence bitmap has one entry for each row: 1 if the row has a value, 0 if it is NULL. It is never compressed.
+- The values are the non-NULL values in row order. The encoding of the page, for example plain for binary values and delta for integers, turns them into bytes. The compression of the column then compresses those bytes.
+- The CRC32C is the footer of a page of format version 4. It is little-endian.
+
+### Page Checksum
+
+A reader verifies the checksum of a page when it opens the page. The checksum is the CRC32C (Castagnoli) of the page bytes. It does not cover the page descriptor.
+
+- Section versions 2 and 3: the descriptor holds the checksum. The reader compares it with the CRC32C of the `data_size` bytes at `data_offset`.
+- Section version 4: the checksum is the last four bytes of the page, little-endian, and covers the bytes before it. The descriptor has no checksum, and `data_size` includes the four bytes.
+
+In the descriptor, the checksum takes about six bytes for each page in the metadata region. A reader downloads the descriptors of every column it reads. Section version 4 moves the checksum into the page to make the descriptors smaller.
+
+In section versions 2 and 3, the checksum in the descriptor also detects a descriptor that points at another valid page. Section version 4 does not detect this, because the checksum is part of the page.
 
 ---
 
@@ -181,7 +277,8 @@ When flushing, the builder:
 1. Converts buffered records into columnar format
 2. Creates separate columns for each field (stream_id, timestamp, metadata, message)
 3. Splits columns into pages
-4. Compresses each page independently (zstd)
+4. Compresses the values of each page independently (zstd)
+5. Computes the CRC32C checksum of each page and writes it as the last four bytes of the page
 
 #### 3. Writing to Data Object
 
@@ -190,7 +287,7 @@ The data object builder:
 2. Builds file metadata with section layout information
 
 Column metadata includes:
-- Page descriptors (offset, size, row count, compression)
+- Page descriptors (sizes, row and value counts, encoding, offset, statistics and, in section versions 2 and 3, the checksum)
 - Column statistics (min/max values)
 - Encoding information
 
@@ -261,13 +358,13 @@ Opening process:
 The decoder:
 1. Validates magic bytes ("DOBJ")
 2. Reads metadata size from the header, right after the magic bytes
-3. Reads the format version, then the protobuf metadata that follows it
+3. Reads the file format version, then the protobuf metadata that follows it
 4. Uses the header size to compute where the section metadata region starts
 
 #### 3. Opening a Section
 
 Section opening:
-1. Validates section type and version
+1. Validates the section type and version (columnar sections accept section versions 2 and 4, logs sections also 3)
 2. Reads extension data for quick access to section metadata
 3. Decodes section metadata (columnar structure)
 
@@ -276,7 +373,7 @@ Section opening:
 Reading process:
 1. Resolves the projected columns of the section
 2. Maps predicates to internal dataset predicates
-3. Reads pages in batches (with prefetching)
+3. Reads pages in batches (with prefetching), and verifies the checksum of each page when it opens it
 4. Applies predicates at page and row level
 5. Decodes the rows into records
 

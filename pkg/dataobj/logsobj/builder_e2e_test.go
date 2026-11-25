@@ -34,7 +34,7 @@ import (
 // test should be updated to also run with AppendUnordered for
 // schema sort cases.
 func TestBuilder_EndToEnd(t *testing.T) {
-	tenants := []string{"t1", "t2", "t10"}
+	const tenant = "t1"
 	apps := []string{"zoo", "alpha", "middle"}
 	instances := []string{"b", "a"}
 	schemaLabels := []string{"label:app"}
@@ -50,13 +50,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		SectionStripeMergeLimit: 2,
 	}
 
-	makeOverrides := func() TenantOverrides {
-		overrides := tenantOverrides{}
-		for _, tenant := range tenants {
-			overrides[tenant] = schemaLabels
-		}
-		return overrides
-	}
+	overrides := tenantOverrides{tenant: schemaLabels}
 
 	appendDataset := func(t *testing.T, b *Builder) {
 		t.Helper()
@@ -64,12 +58,10 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		rng := rand.New(rand.NewSource(42))
 		refTime := time.Date(2025, time.September, 17, 12, 0, 0, 0, time.UTC)
 
-		// 1000 entries across 3 tenants (~333 per tenant) with ~1 KiB lines
-		// and 64 KiB sections gives ~5 sections per tenant.
+		// 1000 entries with ~1 KiB lines and 64 KiB sections give ~15 sections.
 		const numEntries = 1000
 
 		for i := range numEntries {
-			tenant := tenants[rng.Intn(len(tenants))]
 			app := apps[rng.Intn(len(apps))]
 			instance := instances[rng.Intn(len(instances))]
 			// [-64s, +63s] window around refTime; narrow enough to guarantee timestamp ties.
@@ -82,7 +74,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 				md = append(md, push.LabelAdapter{Name: "span_id", Value: fmt.Sprintf("span-%04d", i)})
 			}
 
-			require.NoError(t, b.Append(tenant, logproto.Stream{
+			require.NoError(t, b.Append(logproto.Stream{
 				Labels: fmt.Sprintf(`{app=%q,instance=%q}`, app, instance),
 				Entries: []push.Entry{{
 					Timestamp:          ts,
@@ -93,9 +85,7 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		}
 	}
 
-	overrides := makeOverrides()
-
-	b, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	b, err := NewBuilder(tenant, baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 	require.NoError(t, err)
 	appendDataset(t, b)
 
@@ -103,36 +93,28 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	intermediateByTenant := make(map[string][]builderE2EResolvedRecord, len(tenants))
-	for _, tenant := range tenants {
-		require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
-		require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
-
-		for _, sec := range obj1.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == tenant
-		}) {
-			assertBuilderE2EOrdered(t, resolveTenantLogsSection(t, obj1, tenant, sec), schemaLabels)
-		}
-		intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
+	require.Equal(t, 1, countTenantSections(obj1, tenant, streams.CheckSection))
+	require.Greater(t, countTenantSections(obj1, tenant, logs.CheckSection), 1)
+	for _, sec := range obj1.Sections().Filter(logs.CheckSection) {
+		assertBuilderE2EOrdered(t, resolveTenantLogsSection(t, obj1, tenant, sec), schemaLabels)
 	}
+	intermediate := resolveTenantLogs(t, obj1, tenant)
 
-	sortBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	sortBuilder, err := NewBuilder(tenant, baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 	require.NoError(t, err)
 	appendDataset(t, sortBuilder)
 	obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	defer closer2.Close()
 
-	require.ElementsMatch(t, obj1.Tenants(), obj2.Tenants())
-	for _, tenant := range tenants {
-		require.Equal(t, 1, countTenantSections(obj2, tenant, streams.CheckSection))
-		require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
-		assertBuilderE2ESchemaLabels(t, obj2, tenant, schemaLabels)
+	require.Equal(t, []string{tenant}, obj2.Tenants())
+	require.Equal(t, 1, countTenantSections(obj2, tenant, streams.CheckSection))
+	require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
+	assertBuilderE2ESchemaLabels(t, obj2, tenant, schemaLabels)
 
-		got := resolveTenantLogs(t, obj2, tenant)
-		assertBuilderE2ESameContent(t, intermediateByTenant[tenant], got)
-		assertBuilderE2EOrdered(t, got, schemaLabels)
-	}
+	got := resolveTenantLogs(t, obj2, tenant)
+	assertBuilderE2ESameContent(t, intermediate, got)
+	assertBuilderE2EOrdered(t, got, schemaLabels)
 }
 
 type builderE2EResolvedRecord struct {

@@ -195,14 +195,14 @@ func TestDoIndexFilter(t *testing.T) {
 		uploadFilterSourceIndex(t, bucket, path, objBuilder)
 	}
 
-	t.Run("keeps the rows of the listed objects from every index object of a run, in key order", func(t *testing.T) {
+	t.Run("keeps the rows of the listed objects from every index object of a run in key order", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c"}
 		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b", "logs/c"})
 		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"}, SourcesInKeyOrder: true,
 			ObjectPaths: []string{"logs/a", "logs/c"},
 		}))
 		require.NoError(t, err)
@@ -219,6 +219,35 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/c"}, statsPaths)
 	})
 
+	t.Run("merges the index objects of the run in any order when the plan does not say they are in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			ObjectPaths: []string{"logs/a"},
+		}))
+		require.NoError(t, err)
+		rows := readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path)
+		require.Len(t, rows, 2)
+		require.True(t, slices.IsSortedFunc(rows, postings.CompareRows))
+	})
+
+	t.Run("returns an error when the index objects of the run are not in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b"}
+		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/b"})
+		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"}, SourcesInKeyOrder: true,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, `a row of section 1/2 of the sequence, of object "indexes/run/a", sorts below the row before it, of object "indexes/run/z"`)
+	})
+
 	t.Run("reports the posting key bounds of the kept postings rows only", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objects := []string{"logs/a", "logs/b", "logs/c"}
@@ -226,12 +255,40 @@ func TestDoIndexFilter(t *testing.T) {
 		runSource(t, bucket, "indexes/run/a", "app", objects, []string{"logs/a"})
 
 		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/z", "indexes/run/a"},
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"}, SourcesInKeyOrder: true,
 			ObjectPaths: []string{"logs/a", "logs/b"},
 		}))
 		require.NoError(t, err)
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "logs/a"}, artifact.PostingKeys.Min())
 		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "logs/b"}, artifact.PostingKeys.Max())
+	})
+
+	t.Run("writes a run of several index objects whose rows together are the kept rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		var objects []string
+		for i := range 300 {
+			objects = append(objects, fmt.Sprintf("logs/%04d", i))
+		}
+		runSource(t, bucket, "indexes/run/a", "app", objects, objects)
+		kept := objects[:200]
+
+		artifacts, err := newSplittingContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a"}, ObjectPaths: kept,
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+		var postingsPaths, statsPaths []string
+		for _, artifact := range artifacts {
+			for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path) {
+				postingsPaths = append(postingsPaths, row.ObjectPath)
+			}
+			for _, row := range readAllStatsRowsFromBucket(t, bucket, artifact.Path) {
+				statsPaths = append(statsPaths, row.ObjectPath)
+			}
+		}
+		slices.Sort(statsPaths)
+		require.Equal(t, kept, postingsPaths)
+		require.Equal(t, kept, statsPaths)
 	})
 
 	t.Run("returns an error when no index object of a run has stats rows of a listed object", func(t *testing.T) {
@@ -241,7 +298,7 @@ func TestDoIndexFilter(t *testing.T) {
 		runSource(t, bucket, "indexes/run/z", "zone", objects, []string{"logs/a"})
 
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
-			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"},
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{"indexes/run/a", "indexes/run/z"}, SourcesInKeyOrder: true,
 			ObjectPaths: []string{"logs/b"},
 		})
 		require.ErrorContains(t, err, "no stats rows for object \"logs/b\"")
@@ -457,7 +514,7 @@ func TestDoIndexFilter(t *testing.T) {
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPaths: []string{sourcePath},
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v2"`)
+		require.EqualError(t, err, `filtering source index "indexes/source": unknown section "github.com/grafana/loki/indexpointers@v4"`)
 	})
 
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {

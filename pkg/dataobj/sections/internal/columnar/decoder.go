@@ -19,19 +19,23 @@ import (
 // A Decoder allows reading an encoded dataset-based section.
 type Decoder struct {
 	sr dataobj.SectionReader
+
+	formatVersion uint32
 }
 
 // NewDecoder creates a new [Decoder] for the given [dataobj.SectionReader]. The
-// formatVersion argument must denote the format version of the data being
-// decoded.
+// formatVersion argument is the format version of the data being decoded.
 //
 // NewDecoder returns an error if the format version is not supported.
 func NewDecoder(reader dataobj.SectionReader, formatVersion uint32) (*Decoder, error) {
-	if formatVersion != FormatVersion {
+	if !IsSupportedVersion(formatVersion) {
 		return nil, fmt.Errorf("unsupported format version %d", formatVersion)
 	}
 
-	return &Decoder{sr: reader}, nil
+	return &Decoder{
+		sr:            reader,
+		formatVersion: formatVersion,
+	}, nil
 }
 
 // SectionMetadata returns the metadata for the section.
@@ -111,6 +115,9 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 // ReadPages reads the provided set of pages, iterating over their data matching
 // the argument order. If an error is encountered while retrieving pages, an
 // error is emitted from the sequence and iteration stops.
+//
+// ReadPages emits one error and no pages if a page does not fit in the data
+// region of the section.
 func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		region := xcap.RegionFromContext(ctx)
@@ -119,8 +126,18 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 			region.Record(dataobj.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
 		}()
 
+		// A page descriptor can be corrupt. Check each page against the data region before the
+		// loop allocates its buffer. A corrupt size would force a huge allocation or a panic.
+		dataSize := dec.sr.DataSize()
 		ranges := make([]rangeio.Range, 0, len(pages))
-		for _, page := range pages {
+		for i, page := range pages {
+			// Subtract instead of add, so a large offset or size cannot overflow. DataSize is
+			// negative for a region larger than math.MaxInt64 bytes. Reject it first, because
+			// uint64(dataSize) would wrap to a huge value.
+			if dataSize < 0 || page.DataOffset > uint64(dataSize) || page.DataSize > uint64(dataSize)-page.DataOffset {
+				return fmt.Errorf("page %d is outside the data region: offset=%d size=%d region length=%d", i, page.DataOffset, page.DataSize, dataSize)
+			}
+
 			ranges = append(ranges, rangeio.Range{
 				Data:   make([]byte, page.DataSize),
 				Offset: int64(page.DataOffset),

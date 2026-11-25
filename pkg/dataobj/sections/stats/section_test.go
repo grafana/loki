@@ -24,7 +24,7 @@ func (rawColumnsSectionBuilder) Type() dataobj.SectionType { return sectionType 
 func (rawColumnsSectionBuilder) Reset() {}
 
 func (b rawColumnsSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
 	for _, logicalType := range b.logicalTypes {
 		builder, err := dataset.NewColumnBuilder(logicalType, dataset.BuilderOptions{
@@ -39,7 +39,7 @@ func (b rawColumnsSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) 
 		if err := builder.Append(0, dataset.BinaryValue([]byte("objects/a"))); err != nil {
 			return 0, err
 		}
-		if err := encodeColumn(&enc, ColumnTypeInvalid, builder); err != nil {
+		if err := encodeColumn(enc, ColumnTypeInvalid, builder); err != nil {
 			return 0, err
 		}
 	}

@@ -304,9 +304,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 
 		builders := m.getBuilders()
 		require.Len(t, builders, 1)
-		ranges := builders[0].TimeRanges()
-		require.Len(t, ranges, 1)
-		require.Equal(t, testWindow2, ranges[0].MinTime.UTC().Truncate(metastore.MetastoreWindowSize))
+		require.Equal(t, testWindow2, builders[0].TimeRange().MinTime.UTC().Truncate(metastore.MetastoreWindowSize))
 		require.Equal(t, 1.0, testutil.ToFloat64(proc.metrics.droppedRecords))
 		require.Equal(t, int64(10), proc.lastOffset)
 	})

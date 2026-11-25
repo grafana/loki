@@ -110,6 +110,12 @@ func (mc *collector) Process(ctx context.Context) error {
 	return g.Wait()
 }
 
+// Collect sends the scheduler metrics to ch.
+//
+// Collect must not hold a scheduler lock while it sends to ch. A send can
+// block until the registry evaluates earlier metrics, and the load GaugeFunc
+// takes resourcesMut. A pending writer blocks that read lock, and the writer
+// waits for the lock that Collect holds, so the scheduler deadlocks.
 func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 	mc.load.Collect(ch)
 	mc.loadAverage.Collect(ch)
@@ -120,11 +126,9 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
-	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
-	defer guard.RUnlock()
-
 	var tasksInflight, streamsInflight int
 
+	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
 	for _, t := range mc.sched.tasks {
 		if t.Queued() && !t.HasResult() {
 			tasksInflight++
@@ -135,6 +139,7 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 			streamsInflight++
 		}
 	}
+	guard.RUnlock()
 
 	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(tasksInflight))
 	ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(streamsInflight))
@@ -162,10 +167,12 @@ func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {
 
 func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
 	guard := mc.sched.assignMut.RLock("collector_assign_stats")
-	defer guard.RUnlock()
+	readyWorkers := len(mc.sched.connectedWorkers)
+	taskQueue := mc.sched.taskQueue.Len()
+	guard.RUnlock()
 
-	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.connectedWorkers)))
-	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(mc.sched.taskQueue.Len()))
+	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(readyWorkers))
+	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(taskQueue))
 }
 
 func (mc *collector) Describe(ch chan<- *prometheus.Desc) {

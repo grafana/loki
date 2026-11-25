@@ -366,7 +366,12 @@ func (col *repeatedColumnBuffer) writeByteArray(levels columnLevels, value []byt
 }
 
 func (col *repeatedColumnBuffer) writeNull(levels columnLevels) {
-	col.writeLevel(levels)
+	// At the max definition level the value cannot be null (e.g. a null
+	// element in a list of required values), so the base column must still
+	// hold a value for it, otherwise all the values after it are shifted.
+	if col.writeLevel(levels) {
+		col.base.writeNull(levels)
+	}
 }
 
 func (col *repeatedColumnBuffer) ReadValuesAt(values []Value, offset int64) (int, error) {

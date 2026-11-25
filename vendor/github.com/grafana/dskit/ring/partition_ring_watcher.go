@@ -125,6 +125,8 @@ func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) erro
 	if err != nil {
 		return errors.Wrap(err, "failed to create partition ring from descriptor")
 	}
+	// Only this goroutine replaces w.ring, so it can read it without the lock.
+	newRing.inheritShards(w.ring)
 	w.ringMx.Lock()
 	oldRing := w.ring
 	w.ring = newRing

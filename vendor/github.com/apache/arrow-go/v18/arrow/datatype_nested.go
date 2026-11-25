@@ -182,7 +182,7 @@ func FixedSizeListOfField(n int32, f Field) *FixedSizeListType {
 	if f.Type == nil {
 		panic("arrow: nil DataType")
 	}
-	if n <= 0 {
+	if n < 0 {
 		panic("arrow: invalid size")
 	}
 	return &FixedSizeListType{n: n, elem: f}
@@ -192,13 +192,13 @@ func FixedSizeListOfField(n int32, f Field) *FixedSizeListType {
 // For example, if t represents int32, FixedSizeListOf(10, t) represents [10]int32.
 //
 // FixedSizeListOf panics if t is nil or invalid.
-// FixedSizeListOf panics if n is <= 0.
+// FixedSizeListOf panics if n is negative.
 // NullableElem defaults to true
 func FixedSizeListOf(n int32, t DataType) *FixedSizeListType {
 	if t == nil {
 		panic("arrow: nil DataType")
 	}
-	if n <= 0 {
+	if n < 0 {
 		panic("arrow: invalid size")
 	}
 	return &FixedSizeListType{n: n, elem: Field{Name: "item", Type: t, Nullable: true}}
@@ -210,7 +210,7 @@ func FixedSizeListOfNonNullable(n int32, t DataType) *FixedSizeListType {
 	if t == nil {
 		panic("arrow: nil DataType")
 	}
-	if n <= 0 {
+	if n < 0 {
 		panic("arrow: invalid size")
 	}
 	return &FixedSizeListType{n: n, elem: Field{Name: "item", Type: t, Nullable: false}}

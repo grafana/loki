@@ -94,6 +94,8 @@ func (t *stringType) ConvertValue(val Value, typ Type) (Value, error) {
 		tz := t2.tz()
 		if isMicros(t2.Unit) {
 			return convertTimeMicrosToString(val, tz)
+		} else if isNanos(t2.Unit) {
+			return convertTimeNanosToString(val, tz)
 		} else {
 			return convertTimeMillisToString(val, tz)
 		}

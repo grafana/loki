@@ -27,13 +27,25 @@ var TypeRegistry = &smithy.TypeRegistry{
 			Schema: schemas.IDPRejectedClaimException,
 			New:    func() any { return &types.IDPRejectedClaimException{} },
 		},
+		"com.amazonaws.sts#InsufficientSessionLifetimeException": {
+			Schema: schemas.InsufficientSessionLifetimeException,
+			New:    func() any { return &types.InsufficientSessionLifetimeException{} },
+		},
 		"com.amazonaws.sts#InvalidAuthorizationMessageException": {
 			Schema: schemas.InvalidAuthorizationMessageException,
 			New:    func() any { return &types.InvalidAuthorizationMessageException{} },
 		},
+		"com.amazonaws.sts#InvalidContextAssertionException": {
+			Schema: schemas.InvalidContextAssertionException,
+			New:    func() any { return &types.InvalidContextAssertionException{} },
+		},
 		"com.amazonaws.sts#InvalidIdentityTokenException": {
 			Schema: schemas.InvalidIdentityTokenException,
 			New:    func() any { return &types.InvalidIdentityTokenException{} },
+		},
+		"com.amazonaws.sts#InvalidSubjectCredentialsException": {
+			Schema: schemas.InvalidSubjectCredentialsException,
+			New:    func() any { return &types.InvalidSubjectCredentialsException{} },
 		},
 		"com.amazonaws.sts#JWTPayloadSizeExceededException": {
 			Schema: schemas.JWTPayloadSizeExceededException,

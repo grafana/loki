@@ -45,8 +45,6 @@ type MergeBuilder struct {
 	// object it builds.
 	wroteStats bool
 
-	unflushedSizeEstimate int
-
 	state builderState
 }
 
@@ -111,14 +109,12 @@ func (b *MergeBuilder) AppendStat(tenantID string, stat stats.Stat) error {
 	}
 
 	tenantStats := b.stats
-	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
 	tenantStats.Append(stat)
 
-	postAppendSizeEstimate := tenantStats.EstimatedSize()
-	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+	sectionSize := tenantStats.EstimatedSize()
 
-	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantStats); err != nil {
 			return err
 		}
@@ -143,16 +139,14 @@ func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.
 	}
 
 	tenantPostings := b.postings
-	preSize := tenantPostings.EstimatedSize()
 
 	if err := tenantPostings.AppendLabelEntry(entry); err != nil {
 		return err
 	}
 
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
+	sectionSize := tenantPostings.EstimatedSize()
 
-	if postSize > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantPostings); err != nil {
 			return err
 		}
@@ -175,17 +169,15 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	}
 
 	tenantPostings := b.postings
-	preSize := tenantPostings.EstimatedSize()
 
 	if err := tenantPostings.AppendBloomEntry(entry); err != nil {
 		return err
 	}
 
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
+	sectionSize := tenantPostings.EstimatedSize()
 
 	// Cut a section at the target size; see AppendPostingsLabelEntry.
-	if postSize > int(b.cfg.TargetSectionSize) {
+	if sectionSize > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(tenantPostings); err != nil {
 			return err
 		}
@@ -199,9 +191,13 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	return nil
 }
 
+// estimatedSize returns the estimated size of the object that the builder
+// builds: the estimated sizes of the sections that it holds, and the encoded
+// size of the sections that it already cut.
 func (b *MergeBuilder) estimatedSize() int {
 	var size int
-	size += b.unflushedSizeEstimate
+	size += b.stats.EstimatedSize()
+	size += b.postings.EstimatedSize()
 	size += b.builder.Bytes()
 	b.metrics.sizeEstimate.Set(float64(size))
 	return size
@@ -296,7 +292,6 @@ func (b *MergeBuilder) Reset() {
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
-	b.unflushedSizeEstimate = 0
 	b.builderFull = false
 	b.wroteStats = false
 	b.state = builderStateEmpty

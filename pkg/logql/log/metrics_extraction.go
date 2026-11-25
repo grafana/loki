@@ -40,6 +40,9 @@ type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
 	// Process extracts the sample for a log line. It returns the zero sample and
 	// false when it extracts none. A true result always carries non-nil Labels.
+	//
+	// The line is only valid until Process returns. The caller can reuse or overwrite its memory
+	// right after. So Process must not retain the line, or any portion of it.
 	Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool)
 	// ProcessString extracts the sample for a log line. It returns the zero sample
 	// and false when it extracts none. A true result always carries non-nil Labels.

@@ -20,12 +20,19 @@ const (
 	labelReason  = "reason"
 	labelPhase   = "phase"
 	labelActor   = "actor"
+	labelKind    = "kind"
+
+	// labelWindowLookback is the position of a ToC window in a pass: 0 for
+	// the current window, 1 for the window before it, and so on up to the
+	// configured window lookback.
+	labelWindowLookback = "window_lookback"
 )
 
 // Values of the phase label of corruptIndexesTotal.
 const (
 	phaseLabelIndexMerge = "index_merge"
 	phaseLabelLogMerge   = "log_merge"
+	phaseLabelPairMerge  = "pair_merge"
 )
 
 // Values of the reason label of logMergeFailedIndexesTotal.
@@ -40,7 +47,7 @@ const (
 type coordinatorMetrics struct {
 	unconsolidatedBacklog      *prometheus.GaugeVec // tenant
 	oldestBacklogLogAgeSeconds *prometheus.GaugeVec // tenant
-	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
+	indexesPerTenantWindow     *prometheus.GaugeVec // tenant, window_lookback
 
 	// cyclesTotal counts worker-loop phase iterations by outcome.
 	// outcome=compacted|converged|failed
@@ -112,6 +119,18 @@ type coordinatorMetrics struct {
 	// exactly one object. It is summed over every index in every window, as of
 	// the last LogMerge phase that planned without an error.
 	singleObjectLogRuns *prometheus.GaugeVec // tenant
+
+	// pairJobsTotal counts the jobs of the coupled planner by kind and
+	// outcome.
+	pairJobsTotal *prometheus.CounterVec // tenant, kind, outcome
+
+	// pairSkippedIndexesTotal counts the index runs that the coupled planner
+	// skipped, by reason.
+	pairSkippedIndexesTotal *prometheus.CounterVec // tenant, reason
+
+	// pairLegacyIndexRuns is the number of legacy index runs that the last
+	// scan of the coupled planner left as they are, per window.
+	pairLegacyIndexRuns *prometheus.GaugeVec // tenant, window_lookback
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -127,8 +146,8 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant index count for the current ToC window. The index objects of one run count as one index. Bounded cardinality (1 series per tenant).",
-		}, []string{labelTenant}),
+			Help: "Per-tenant index count for each ToC window that IndexMerge compacts. window_lookback is 0 for the current window and N for the window N windows before it. The index objects of one run count as one index. Bounded cardinality (window lookback + 1 series per tenant).",
+		}, []string{labelTenant, labelWindowLookback}),
 
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
@@ -207,6 +226,18 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_single_object_log_runs",
 			Help: "Log runs of the tenant that hold exactly one object, summed over every index in every compacted window. Includes indexes that need no compaction. Excludes corrupt indexes, which loki_dataobj_compaction_corrupt_indexes_total reports. Set only when a LogMerge phase plans every index without an error, at the same time as loki_dataobj_compaction_last_plan_timestamp_seconds.",
 		}, []string{labelTenant}),
+		pairJobsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_pair_jobs_total",
+			Help: "Jobs of the coupled planner (planner version 2) by kind and outcome. kind = merge (K pairs into one pair) or split (one index run into one pair per log run). outcome = committed (the ToC swap applied), noop (dry run, or the ToC already held the swap), stale (the ToC no longer listed every source index when the job started), or failed. A job that a shutdown or disabled log compaction stops before its first task records no outcome.",
+		}, []string{labelTenant, labelKind, labelOutcome}),
+		pairSkippedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_pair_skipped_indexes_total",
+			Help: "Index runs that the coupled planner (planner version 2) skipped in a scan, by reason. read_failed = the read of its stats failed, no_stats = it has no stats rows, shared_log_object = it shares a log object with another index run, unknown_pair = a planned merge held a log object of no pair. Each scan counts the index run again, so a nonzero rate means an index run that stays uncompacted. Corrupt index runs count in loki_dataobj_compaction_corrupt_indexes_total instead.",
+		}, []string{labelTenant, labelReason}),
+		pairLegacyIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pair_legacy_index_runs",
+			Help: "Index runs over more than one log run that the last scan of the coupled planner (planner version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
+		}, []string{labelTenant, labelWindowLookback}),
 	}
 }
 
@@ -301,7 +332,7 @@ func (m *coordinatorMetrics) recordTenantCycle(
 func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
-	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.indexesPerTenantWindow.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.singleObjectLogRuns.DeleteLabelValues(tenant)
@@ -314,6 +345,9 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.tasksTotal.DeleteLabelValues(tenant)
 	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairJobsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairSkippedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairLegacyIndexRuns.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge
@@ -342,7 +376,7 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 		}, []string{labelTenant}),
 		outputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_uncompressed",
-			Help:    "Estimated in-memory size of the IndexMerge builder (postings + stats sections, pre-encoding) at Flush. One observation per task.",
+			Help:    "Estimated size of the index objects of a successful IndexMerge task at flush, summed over the index objects of the run of the task. Sections that the builder holds count before encoding, and sections that it already cut count as encoded. One observation per task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 		logMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{

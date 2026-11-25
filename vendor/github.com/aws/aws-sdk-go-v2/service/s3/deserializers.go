@@ -136,6 +136,11 @@ func awsRestxml_deserializeOpHttpBindingsAbortMultipartUploadOutput(v *AbortMult
 		v.RequestCharged = types.RequestCharged(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 
@@ -1215,6 +1220,11 @@ func awsRestxml_deserializeOpHttpBindingsCreateMultipartUploadOutput(v *CreateMu
 	if headerValues := response.Header.Values("x-amz-server-side-encryption-aws-kms-key-id"); len(headerValues) != 0 {
 		headerValues[0] = strings.TrimSpace(headerValues[0])
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
+	}
+
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
 	}
 
 	return nil
@@ -12172,6 +12182,11 @@ func awsRestxml_deserializeOpHttpBindingsListPartsOutput(v *ListPartsOutput, res
 		v.RequestCharged = types.RequestCharged(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 func awsRestxml_deserializeOpDocumentListPartsOutput(v **ListPartsOutput, decoder smithyxml.NodeDecoder) error {
@@ -15972,6 +15987,11 @@ func awsRestxml_deserializeOpHttpBindingsUploadPartOutput(v *UploadPartOutput, r
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
 	}
 
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
+	}
+
 	return nil
 }
 
@@ -16132,6 +16152,11 @@ func awsRestxml_deserializeOpHttpBindingsUploadPartCopyOutput(v *UploadPartCopyO
 	if headerValues := response.Header.Values("x-amz-server-side-encryption-aws-kms-key-id"); len(headerValues) != 0 {
 		headerValues[0] = strings.TrimSpace(headerValues[0])
 		v.SSEKMSKeyId = ptr.String(headerValues[0])
+	}
+
+	if headerValues := response.Header.Values("x-amz-version-id"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.VersionId = ptr.String(headerValues[0])
 	}
 
 	return nil
@@ -20656,6 +20681,12 @@ func awsRestxml_deserializeDocumentEncryptionConfiguration(v **types.EncryptionC
 				sv.ReplicaKmsKeyID = ptr.String(xtv)
 			}
 
+		case strings.EqualFold("UseSourceMultiRegionKey", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentUseSourceMultiRegionKey(&sv.UseSourceMultiRegionKey, nodeDecoder); err != nil {
+				return err
+			}
+
 		default:
 			// Do nothing and ignore the unexpected tag element
 			err = decoder.Decoder.Skip()
@@ -24576,6 +24607,19 @@ func awsRestxml_deserializeDocumentMultipartUpload(v **types.MultipartUpload, de
 				sv.UploadId = ptr.String(xtv)
 			}
 
+		case strings.EqualFold("VersionId", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				sv.VersionId = ptr.String(xtv)
+			}
+
 		default:
 			// Do nothing and ignore the unexpected tag element
 			err = decoder.Decoder.Skip()
@@ -27403,6 +27447,86 @@ func awsRestxml_deserializeDocumentReplicationConfiguration(v **types.Replicatio
 	return nil
 }
 
+func awsRestxml_deserializeDocumentReplicationPrefixList(v *[]string, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv []string
+	if *v == nil {
+		sv = make([]string, 0)
+	} else {
+		sv = *v
+	}
+
+	originalDecoder := decoder
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		memberDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+		decoder = memberDecoder
+		switch {
+		case strings.EqualFold("Prefix", t.Name.Local):
+			var col string
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				col = xtv
+			}
+			sv = append(sv, col)
+
+		default:
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestxml_deserializeDocumentReplicationPrefixListUnwrapped(v *[]string, decoder smithyxml.NodeDecoder) error {
+	var sv []string
+	if *v == nil {
+		sv = make([]string, 0)
+	} else {
+		sv = *v
+	}
+
+	switch {
+	default:
+		var mv string
+		t := decoder.StartEl
+		_ = t
+		val, err := decoder.Value()
+		if err != nil {
+			return err
+		}
+		if val == nil {
+			break
+		}
+		{
+			xtv := string(val)
+			mv = xtv
+		}
+		sv = append(sv, mv)
+	}
+	*v = sv
+	return nil
+}
 func awsRestxml_deserializeDocumentReplicationRule(v **types.ReplicationRule, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -27547,6 +27671,12 @@ func awsRestxml_deserializeDocumentReplicationRuleAndOperator(v **types.Replicat
 		originalDecoder := decoder
 		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
 		switch {
+		case strings.EqualFold("Not", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentReplicationRuleNotOperator(&sv.Not, nodeDecoder); err != nil {
+				return err
+			}
+
 		case strings.EqualFold("Prefix", t.Name.Local):
 			val, err := decoder.Value()
 			if err != nil {
@@ -27608,6 +27738,12 @@ func awsRestxml_deserializeDocumentReplicationRuleFilter(v **types.ReplicationRu
 				return err
 			}
 
+		case strings.EqualFold("Not", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentReplicationRuleNotOperator(&sv.Not, nodeDecoder); err != nil {
+				return err
+			}
+
 		case strings.EqualFold("Prefix", t.Name.Local):
 			val, err := decoder.Value()
 			if err != nil {
@@ -27624,6 +27760,115 @@ func awsRestxml_deserializeDocumentReplicationRuleFilter(v **types.ReplicationRu
 		case strings.EqualFold("Tag", t.Name.Local):
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
 			if err := awsRestxml_deserializeDocumentTag(&sv.Tag, nodeDecoder); err != nil {
+				return err
+			}
+
+		default:
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestxml_deserializeDocumentReplicationRuleNotOperator(v **types.ReplicationRuleNotOperator, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv *types.ReplicationRuleNotOperator
+	if *v == nil {
+		sv = &types.ReplicationRuleNotOperator{}
+	} else {
+		sv = *v
+	}
+
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		originalDecoder := decoder
+		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
+		switch {
+		case strings.EqualFold("Or", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentReplicationRuleOrOperator(&sv.Or, nodeDecoder); err != nil {
+				return err
+			}
+
+		case strings.EqualFold("Prefix", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				sv.Prefix = ptr.String(xtv)
+			}
+
+		case strings.EqualFold("Tag", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentTag(&sv.Tag, nodeDecoder); err != nil {
+				return err
+			}
+
+		default:
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestxml_deserializeDocumentReplicationRuleOrOperator(v **types.ReplicationRuleOrOperator, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv *types.ReplicationRuleOrOperator
+	if *v == nil {
+		sv = &types.ReplicationRuleOrOperator{}
+	} else {
+		sv = *v
+	}
+
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		originalDecoder := decoder
+		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
+		switch {
+		case strings.EqualFold("Prefix", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentReplicationPrefixListUnwrapped(&sv.Prefixes, nodeDecoder); err != nil {
+				return err
+			}
+
+		case strings.EqualFold("Tag", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentTagSetUnwrapped(&sv.Tags, nodeDecoder); err != nil {
 				return err
 			}
 
@@ -29585,6 +29830,55 @@ func awsRestxml_deserializeDocumentUnsupportedMediaType(v **types.UnsupportedMed
 			{
 				xtv := string(val)
 				sv.Message = ptr.String(xtv)
+			}
+
+		default:
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestxml_deserializeDocumentUseSourceMultiRegionKey(v **types.UseSourceMultiRegionKey, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv *types.UseSourceMultiRegionKey
+	if *v == nil {
+		sv = &types.UseSourceMultiRegionKey{}
+	} else {
+		sv = *v
+	}
+
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		originalDecoder := decoder
+		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
+		switch {
+		case strings.EqualFold("Status", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				sv.Status = types.UseSourceMultiRegionKeyStatus(xtv)
 			}
 
 		default:

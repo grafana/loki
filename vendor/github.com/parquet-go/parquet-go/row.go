@@ -661,7 +661,11 @@ func reconstructFuncOfRepeated(columnIndex uint16, node Node) (uint16, reconstru
 			return nil
 		}
 
-		if columns[0][0].definitionLevel < levels.definitionLevel {
+		// A single value below this definition level is an empty list. More than
+		// one value means the list is present and starts with a null element
+		// (a nil pointer in a repeated fixed-length column). Those elements
+		// belong to this row; dropping them loses every value after the null.
+		if columns[0][0].definitionLevel < levels.definitionLevel && len(columns[0]) == 1 {
 			setMakeSlice(value, 0)
 			return nil
 		}

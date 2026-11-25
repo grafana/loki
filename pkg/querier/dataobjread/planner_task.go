@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 const (
@@ -129,59 +130,72 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// forwardedLineBytes returns the number of line bytes that appendRecords copies for rows.
-func (t ReadTask) forwardedLineBytes(rows []logs.Record) int {
-	if !t.needReturningLine {
+// forwardedLineBytes returns the number of line bytes that appendRecords copies for the rows of
+// batch.
+func (t ReadTask) forwardedLineBytes(batch *logs.RecordBatch) int {
+	if !t.needReturningLine || batch.Message == nil {
 		return 0
 	}
-
-	var size int
-	for i := range rows {
-		size += len(rows[i].Line)
-	}
-	return size
+	return batch.Message.DataLen()
 }
 
-// appendRecords appends one forwardable record per row to dst, attaching each stream's identity.
-// It returns the extended slice.
+// appendRecords appends one forwardable record per row of batch to dst, attaching each stream's
+// identity. It returns the extended slice.
 //
-// A record's line is a copy of row.Line in the spare capacity of lineBuf, so it stays valid when
-// the rows are decoded into again. The line is nil when the task does not need it, or when the
-// row's line is empty.
+// A record's line is a copy of the message in the spare capacity of lineBuf, so it stays valid when
+// the arrays of batch are reused. The line is nil when the task does not need it, or when the
+// message is null or empty. The metadata labels own their strings, so the records do not alias
+// batch.
 //
-// lineBuf must have room for [ReadTask.forwardedLineBytes] bytes. appendRecords fails when it
-// has less, so a line never moves to memory that the caller does not own.
+// lineBuf must have room for [ReadTask.forwardedLineBytes] bytes. appendRecords fails when it has
+// less, so a line never moves to memory that the caller does not own.
 //
-// It fails on a row whose stream the task did not plan to read. The read matches only the
-// task's streams, so an unexpected ID means that broke, and dropping the row would under-count
-// the query without saying so.
-func (t ReadTask) appendRecords(dst []LogRecord, lineBuf []byte, rows []logs.Record) ([]LogRecord, error) {
-	for i := range rows {
-		row := &rows[i]
-		stream, ok := t.streams.admittedByID[row.StreamID]
-		if !ok {
-			return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, row.StreamID)
+// It fails when batch has no stream ID array or no timestamp array. It also fails on a row whose
+// stream the task did not plan to read. The read matches only the task's streams, so an unexpected
+// ID means that broke, and dropping the row would under-count the query without saying so.
+func (t ReadTask) appendRecords(dst []LogRecord, lineBuf []byte, batch *logs.RecordBatch) ([]LogRecord, error) {
+	if batch.StreamID == nil || batch.Timestamp == nil {
+		return nil, fmt.Errorf("data object %q logs section %d returned a batch without the stream ID or timestamp column", t.objectPath, t.sectionIdx)
+	}
+
+	scratch := labelpool.Get()
+	defer labelpool.Put(scratch)
+
+	var (
+		// A section keeps the rows of one stream together, so remember the last stream and skip the
+		// map lookup.
+		lastStreamID int64
+		lastStream   objectStream
+		haveLast     bool
+	)
+	for i := range batch.Rows {
+		streamID := batch.StreamID.Get(i)
+		if !haveLast || streamID != lastStreamID {
+			stream, ok := t.streams.admittedByID[streamID]
+			if !ok {
+				return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, streamID)
+			}
+			lastStreamID, lastStream, haveLast = streamID, stream, true
 		}
 
 		var line []byte
-		if t.needReturningLine && len(row.Line) > 0 {
-			if free := cap(lineBuf) - len(lineBuf); free < len(row.Line) {
-				return nil, fmt.Errorf("line buffer has %d free bytes, but the line of row %d needs %d", free, i, len(row.Line))
+		if t.needReturningLine && batch.Message != nil {
+			if value := batch.Message.Get(i); len(value) > 0 {
+				if free := cap(lineBuf) - len(lineBuf); free < len(value) {
+					return nil, fmt.Errorf("line buffer has %d free bytes, but the line of row %d needs %d", free, i, len(value))
+				}
+				start := len(lineBuf)
+				lineBuf = append(lineBuf, value...)
+				line = lineBuf[start:len(lineBuf):len(lineBuf)]
 			}
-			start := len(lineBuf)
-			lineBuf = append(lineBuf, row.Line...)
-			line = lineBuf[start:len(lineBuf):len(lineBuf)]
 		}
 
 		dst = append(dst, LogRecord{
-			streamHash:   stream.streamHash,
-			streamLabels: stream.streamLabels,
-			timestamp:    row.Timestamp.UnixNano(),
+			streamHash:   lastStream.streamHash,
+			streamLabels: lastStream.streamLabels,
+			timestamp:    batch.Timestamp.Get(i),
 			line:         line,
-			// Metadata needs no copy. The symbolizer clones every string it interns and
-			// the labels builder allocates its result, so forwarded metadata outlives
-			// the reader safely.
-			metadata: row.Metadata,
+			metadata:     batch.MetadataLabels(i, scratch),
 		})
 	}
 	return dst, nil

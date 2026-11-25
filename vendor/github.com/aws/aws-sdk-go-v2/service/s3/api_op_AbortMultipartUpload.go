@@ -194,6 +194,14 @@ type AbortMultipartUploadOutput struct {
 	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
+	// Version ID of the object.
+	//
+	// Returns the Version ID of the object for the aborted multipart upload, if
+	// bucket versioning is enabled.
+	//
+	// This functionality is not supported for directory buckets.
+	VersionId *string
+
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
 

@@ -13,10 +13,46 @@ import (
 // Marshal converts a Go value to variant binary encoding, returning the
 // metadata and value byte slices.
 func Marshal(v any) (metadata, value []byte, err error) {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			rv = reflect.Value{}
+			break
+		}
+		rv = rv.Elem()
+	}
+
+	needsEncoder := false
+	switch rv.Kind() {
+	case reflect.Array, reflect.Slice:
+		needsEncoder = rv.Type().Elem().Kind() != reflect.Uint8 && rv.Len() != 0
+	case reflect.Map:
+		needsEncoder = rv.Len() != 0
+	case reflect.Struct:
+		needsEncoder = rv.Type() != reflect.TypeFor[time.Time]()
+	}
+
+	if !needsEncoder {
+		val, err := goToVariantReflect(rv)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Primitives and empty containers use an empty, sorted dictionary.
+		return []byte{0x11, 0, 0}, Encode(nil, val), nil
+	}
+
 	var b MetadataBuilder
 	enc := getEncoder(&b)
 
-	start, end, err := enc.encodeReflect(reflect.ValueOf(v))
+	var start, end int
+	switch rv.Kind() {
+	case reflect.Array, reflect.Slice:
+		start, end, err = enc.encodeSliceArray(rv)
+	case reflect.Map:
+		start, end, err = enc.encodeMapObject(rv)
+	case reflect.Struct:
+		start, end, err = enc.encodeStructObject(rv)
+	}
 	if err != nil {
 		releaseEncoder(enc)
 		return nil, nil, err
@@ -50,10 +86,10 @@ func Unmarshal(metadata, value []byte) (any, error) {
 	return v.GoValue(), nil
 }
 
-// goToVariant converts a Go value to a variant Value. Marshal encodes
-// through the streaming encoder instead (see encodeReflect); this tree
-// walk backs ValueOf, whose callers need the Value tree to make per-field
-// decisions before encoding. The two must map Go types identically.
+// goToVariant converts a Go value to a variant Value. This tree walk backs
+// ValueOf, whose callers need the Value tree to make per-field decisions
+// before encoding. Marshal also uses it for primitives and empty containers,
+// and uses encodeReflect for other values. The two must map Go types identically.
 func goToVariant(v any) (Value, error) {
 	if v == nil {
 		return Null(), nil

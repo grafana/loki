@@ -12,12 +12,35 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
+func TestDecode(t *testing.T) {
+	t.Run("decodes a message larger than the size that Decode reserves", func(t *testing.T) {
+		want := &datasetmd.ColumnMetadata{Pages: []*datasetmd.PageDesc{{
+			Statistics: &datasetmd.Statistics{MinValue: make([]byte, maxDecodeSizeHint+1)},
+		}}}
+		var buf bytes.Buffer
+		require.NoError(t, Encode(&buf, want))
+		var got datasetmd.ColumnMetadata
+
+		require.NoError(t, Decode(&buf, &got))
+
+		require.Equal(t, want, &got)
+	})
+
+	t.Run("returns an error, and does not panic, when the size is larger than the stream", func(t *testing.T) {
+		var got datasetmd.ColumnMetadata
+		const size = 1 << 62
+
+		err := Decode(bytes.NewReader(binary.AppendUvarint(nil, size)), &got)
+
+		require.EqualError(t, err, "read proto message: got=0 want=4611686018427387904")
+	})
+}
+
 func TestDecodeBytes(t *testing.T) {
 	want := &datasetmd.ColumnMetadata{}
 	for i := range 3 {
 		want.Pages = append(want.Pages, &datasetmd.PageDesc{
 			UncompressedSize: 1 << 20,
-			CompressedSize:   300000 + uint64(i),
 			RowsCount:        10000,
 			DataOffset:       uint64(i) * 300000,
 			DataSize:         300000 + uint64(i),

@@ -942,7 +942,7 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				fp, err := scan.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				fp, err := scan.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, nil)
 
 				if err != nil {
 					_ = scan.Close()

@@ -38,7 +38,6 @@ type (
 	PageStats struct {
 		UncompressedSize uint64
 		CompressedSize   uint64
-		CRC32            uint32
 		RowsCount        uint64
 		Encoding         string
 		DataOffset       uint64
@@ -89,8 +88,7 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 		for _, pages := range pageSets[i] {
 			columnStats.Pages = append(columnStats.Pages, PageStats{
 				UncompressedSize: pages.UncompressedSize,
-				CompressedSize:   pages.CompressedSize,
-				CRC32:            pages.Crc32,
+				CompressedSize:   pages.DataSize,
 				RowsCount:        pages.RowsCount,
 				Encoding:         pages.Encoding.String(),
 				DataOffset:       pages.DataOffset,

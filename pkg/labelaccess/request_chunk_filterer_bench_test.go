@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/loki/v3/pkg/labelaccess/types"
 )
@@ -62,4 +63,75 @@ func BenchmarkChunkFilterer_ShouldFilterSeries(b *testing.B) {
 		}
 	}
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*numSeries), "ns/series")
+}
+
+// benchPolicies returns numPolicies policies, each with numMatchers label matchers that cycle
+// through equality, negative equality, regex and negative regex. The regex values are
+// alternations of regexValues values, as access policies commonly allow a list of values.
+func benchPolicies(numPolicies, numMatchers, regexValues int) []*types.LabelPolicy {
+	matcherTypes := []types.LabelMatcherType{
+		types.LABEL_MATCHER_TYPE_EQ,
+		types.LABEL_MATCHER_TYPE_RE,
+		types.LABEL_MATCHER_TYPE_NEQ,
+		types.LABEL_MATCHER_TYPE_NRE,
+	}
+	policies := make([]*types.LabelPolicy, 0, numPolicies)
+	for p := 0; p < numPolicies; p++ {
+		selector := make([]*types.LabelMatcher, 0, numMatchers)
+		for m := 0; m < numMatchers; m++ {
+			typ := matcherTypes[m%len(matcherTypes)]
+			value := fmt.Sprintf("value-%d-%d", p, m)
+			if typ == types.LABEL_MATCHER_TYPE_RE || typ == types.LABEL_MATCHER_TYPE_NRE {
+				values := make([]string, 0, regexValues)
+				for v := 0; v < regexValues; v++ {
+					values = append(values, fmt.Sprintf("value-%d-%d-%d", p, m, v))
+				}
+				value = strings.Join(values, "|")
+			}
+			selector = append(selector, &types.LabelMatcher{Type: typ, Name: fmt.Sprintf("label_%d", m), Value: value})
+		}
+		policies = append(policies, &types.LabelPolicy{Selector: selector})
+	}
+	return policies
+}
+
+// benchServerContext returns a context as ServerLBACInterceptor hands it to a gRPC handler: the
+// policies arrive as gRPC metadata and are re-injected as the label policy header.
+func benchServerContext(b *testing.B, policies []*types.LabelPolicy) context.Context {
+	b.Helper()
+	encoded := make([]string, 0, len(policies))
+	for _, p := range policies {
+		v, err := policyToHeaderValue(tenantID, p)
+		require.NoError(b, err)
+		encoded = append(encoded, v)
+	}
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(lowerLBACHeaderName, strings.Join(encoded, ",")))
+	ctx, err := extractFromGRPCRequest(ctx)
+	require.NoError(b, err)
+	return ctx
+}
+
+// BenchmarkRequestChunkFilterer_ForRequest measures one ForRequest call. The index gateway makes
+// one such call for every TSDB index file a request reads, so a request makes many of them.
+func BenchmarkRequestChunkFilterer_ForRequest(b *testing.B) {
+	for _, tc := range []struct {
+		name                                  string
+		numPolicies, numMatchers, regexValues int
+	}{
+		{name: "small", numPolicies: 1, numMatchers: 1, regexValues: 1},
+		{name: "medium", numPolicies: 3, numMatchers: 3, regexValues: 5},
+		{name: "large", numPolicies: 10, numMatchers: 5, regexValues: 20},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			ctx := benchServerContext(b, benchPolicies(tc.numPolicies, tc.numMatchers, tc.regexValues))
+			filterer := &RequestChunkFilterer{}
+			require.NotNil(b, filterer.ForRequest(ctx))
+
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = filterer.ForRequest(ctx)
+			}
+		})
+	}
 }

@@ -93,7 +93,7 @@ func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*datao
 func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := logsobj.NewBuilder(benchTenant, logsobj.BuilderBaseConfig{
 		TargetPageSize:          128 * 1024,
 		TargetObjectSize:        1 << 30, // 1 GiB ceiling
 		TargetSectionSize:       logsSectionSize,
@@ -148,7 +148,7 @@ func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamC
 			}
 		}
 
-		require.NoError(tb, builder.Append(benchTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
+		require.NoError(tb, builder.Append(logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
 	obj, closer, err := builder.FlushAndSort(context.Background())
