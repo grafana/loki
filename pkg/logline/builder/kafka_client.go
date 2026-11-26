@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"cmp"
 	"fmt"
 	"strings"
 	"time"
@@ -94,9 +93,7 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 	}
 
 	if s.cfg.Kafka.SASLUsername != "" && s.cfg.Kafka.SASLPassword.String() != "" {
-		mechanism := cmp.Or(s.cfg.Kafka.SASLMechanism, kafka.SASLMechanismPlain)
-		level.Info(s.logger).Log("msg", "enabling SASL authentication", "mechanism", mechanism, "username", s.cfg.Kafka.SASLUsername)
-		switch mechanism {
+		switch s.cfg.Kafka.SASLMechanism {
 		case kafka.SASLMechanismScramSHA256:
 			opts = append(opts, kgo.SASL(scram.Auth{
 				User: s.cfg.Kafka.SASLUsername,

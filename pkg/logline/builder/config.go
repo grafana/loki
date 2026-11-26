@@ -79,11 +79,9 @@ type KafkaConfig struct {
 	ClientID    string        `yaml:"client_id"`
 	DialTimeout time.Duration `yaml:"dial_timeout"`
 
-	SASLUsername string         `yaml:"sasl_username"`
-	SASLPassword flagext.Secret `yaml:"sasl_password"`
-	// SASLMechanism defaults to the root kafka_config mechanism when unset.
-	// An empty mechanism after inheritance uses PLAIN for backward compatibility.
-	SASLMechanism string `yaml:"sasl_mechanism"`
+	SASLUsername  string         `yaml:"sasl_username"`
+	SASLPassword  flagext.Secret `yaml:"sasl_password"`
+	SASLMechanism string         `yaml:"sasl_mechanism"`
 
 	// ConsumerGroupName is the group every builder replica joins.
 	ConsumerGroupName string `yaml:"consumer_group_name"`

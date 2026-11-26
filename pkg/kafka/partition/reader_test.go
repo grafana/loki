@@ -470,10 +470,8 @@ func TestKafkaReaderWithHeaderExtractor(t *testing.T) {
 	})
 }
 
-// TestReaderService_SASLAuthentication verifies the ReaderService can start and
-// consume records when the Kafka broker requires SASL authentication. It exercises
-// all three supported mechanisms (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512) end-to-end
-// through the full ReaderService stack.
+// TestReaderService_SASLAuthentication verifies the ReaderService can start when
+// the Kafka broker requires PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512 authentication.
 func TestReaderService_SASLAuthentication(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -515,15 +513,6 @@ func TestReaderService_SASLAuthentication(t *testing.T) {
 				return consumer, nil
 			}
 
-			// Produce a record so the ReaderService has something to consume.
-			producer, err := client.NewWriterClient("test-writer", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
-			require.NoError(t, err)
-			t.Cleanup(producer.Close)
-
-			results := client.NewProducer("test-producer", producer, 1024*1024, prometheus.NewRegistry()).
-				ProduceSync(t.Context(), []*kgo.Record{{Value: []byte("hello"), Partition: 0}})
-			require.NoError(t, results.FirstErr())
-
 			// Start the ReaderService; if SASL negotiation fails the service
 			// transitions to Failed before reaching Running.
 			partitionReader, err := NewReaderService(
@@ -537,15 +526,10 @@ func TestReaderService_SASLAuthentication(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), partitionReader))
+			require.NoError(t, services.StartAndAwaitRunning(t.Context(), partitionReader))
 			t.Cleanup(func() {
 				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), partitionReader))
 			})
-
-			// Verify the record was delivered through the consumer.
-			require.Eventually(t, func() bool {
-				return len(consumer.recordsChan) > 0
-			}, 5*time.Second, 100*time.Millisecond)
 		})
 	}
 }

@@ -197,7 +197,7 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		}),
 	}
 
-	// SASL plain auth.
+	// SASL authentication.
 	if cfg.SASLUsername != "" && cfg.SASLPassword.String() != "" {
 		switch cfg.SASLMechanism {
 		case kafka.SASLMechanismScramSHA256:

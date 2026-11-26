@@ -57,12 +57,9 @@ type Config struct {
 	ReaderConfig ClientConfig `yaml:"reader_config"`
 	WriterConfig ClientConfig `yaml:"writer_config"`
 
-	SASLUsername string         `yaml:"sasl_username"`
-	SASLPassword flagext.Secret `yaml:"sasl_password"`
-	// SASLMechanism controls the SASL authentication mechanism. Supported values:
-	// "PLAIN" (default), "SCRAM-SHA-256", "SCRAM-SHA-512".
-	// An empty string is treated as "PLAIN" for backward compatibility.
-	SASLMechanism string `yaml:"sasl_mechanism"`
+	SASLUsername  string         `yaml:"sasl_username"`
+	SASLPassword  flagext.Secret `yaml:"sasl_password"`
+	SASLMechanism string         `yaml:"sasl_mechanism"`
 
 	ConsumerGroup                     string        `yaml:"consumer_group"`
 	ConsumerGroupOffsetCommitInterval time.Duration `yaml:"consumer_group_offset_commit_interval"`
