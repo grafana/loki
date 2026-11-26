@@ -499,14 +499,16 @@ func TestFilterForTimeRange(t *testing.T) {
 			input:   mkRefs(0, 5),
 			from:    2,
 			through: 3,
-			exp:     mkChks(2, 3),
+			// [1, 2] ends on from, so its last entry is in range.
+			exp: mkChks(1, 3),
 		},
 		{
 			desc:    "left overlap",
 			input:   mkRefs(0, 5),
 			from:    3,
 			through: 7,
-			exp:     mkChks(3, 5),
+			// [2, 3] ends on from, so its last entry is in range.
+			exp: mkChks(2, 5),
 		},
 		{
 			desc:    "right overlap",
@@ -530,6 +532,22 @@ func TestFilterForTimeRange(t *testing.T) {
 				{ChunkRef: logproto.ChunkRef{From: 2, Through: 2}},
 				{ChunkRef: logproto.ChunkRef{From: 3, Through: 3}},
 				{ChunkRef: logproto.ChunkRef{From: 4, Through: 4}},
+			},
+		},
+		{
+			// A multi-entry chunk whose last entry is exactly at from must be kept,
+			// or a query or split that starts on that entry loses it.
+			desc: "multi-entry ref ending at from",
+			input: []*logproto.ChunkRef{
+				{From: 1, Through: 2}, // ends before from
+				{From: 1, Through: 3}, // last entry at from
+				{From: 2, Through: 5}, // spans from
+			},
+			from:    3,
+			through: 4,
+			exp: []chunk.Chunk{
+				{ChunkRef: logproto.ChunkRef{From: 1, Through: 3}},
+				{ChunkRef: logproto.ChunkRef{From: 2, Through: 5}},
 			},
 		},
 	} {
