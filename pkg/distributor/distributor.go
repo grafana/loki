@@ -964,6 +964,10 @@ func (d *Distributor) processStreamEntries(
 	var entriesKept, unexpandedSize, expandedSize int
 	tenantID := vContext.userID
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	// Only field discovery reads an entry's structured metadata as labels.Labels, so the
+	// normalized metadata is converted to labels only when it runs.
+	needMetadataLabels := shouldDiscoverLevels || fieldDetector.shouldDiscoverGenericFields()
+	var metadataBuilder labels.ScratchBuilder
 	var duplicateTimestamps duplicateTimestampTracker
 
 	// The push parsers reserve the backfill label for X-Loki-Backfill-Shard.
@@ -1015,11 +1019,10 @@ func (d *Distributor) processStreamEntries(
 					normalizedSharedMetadataSize = resourceMetadata.normalizedSize + scopeMetadata.normalizedSize
 				}
 
-				structuredMetadata, _, err := d.normalizeStructuredMetadata(entry.StructuredMetadata, tenantID, format, false)
+				structuredMetadata, err := d.normalizeEntryStructuredMetadata(&entry, tenantID, format, needMetadataLabels, &metadataBuilder)
 				if err != nil {
 					return streamStats{}, err
 				}
-				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
 
 				fieldDetector.discoverFields(ctx, lbs, &entry, structuredMetadata, sharedMetadata...)
 				if vContext.incrementDuplicateTimestamps {
@@ -1081,6 +1084,83 @@ func (d *Distributor) normalizeMetadataGroup(group *metadataGroup, tenantID, for
 	group.labels = metadata
 	group.normalized = true
 	return nil
+}
+
+// normalizeEntryStructuredMetadata normalizes entry.StructuredMetadata in place, with the same
+// result as normalizeStructuredMetadata followed by logproto.CopyToLabelAdapters. When withLabels is
+// true it also returns the normalized metadata as labels, built with b; otherwise it returns empty
+// labels.
+//
+// Most metadata needs no normalization, as the OTLP push parser already names attributes the way
+// normalizeStructuredMetadata does. For such metadata it only sorts the entries by name, in place,
+// which avoids building a labels.Builder and sanitizing every name for every entry.
+func (d *Distributor) normalizeEntryStructuredMetadata(entry *logproto.Entry, tenantID, format string, withLabels bool, b *labels.ScratchBuilder) (labels.Labels, error) {
+	if !structuredMetadataIsNormalized(entry.StructuredMetadata) {
+		structuredMetadata, _, err := d.normalizeStructuredMetadata(entry.StructuredMetadata, tenantID, format, false)
+		if err != nil {
+			return labels.EmptyLabels(), err
+		}
+		entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
+		return structuredMetadata, nil
+	}
+
+	// This is the sort logproto.FromLabelAdaptersToLabels applies, so entries with duplicate
+	// names end up in the same order as on the slow path.
+	slices.SortFunc(entry.StructuredMetadata, func(a, b logproto.LabelAdapter) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	if !withLabels || len(entry.StructuredMetadata) == 0 {
+		return labels.EmptyLabels(), nil
+	}
+	b.Reset()
+	for _, l := range entry.StructuredMetadata {
+		b.Add(l.Name, l.Value)
+	}
+	return b.Labels(), nil
+}
+
+// structuredMetadataIsNormalized reports whether normalizeStructuredMetadata, called without level
+// normalization, would return metadata unchanged apart from its order.
+func structuredMetadataIsNormalized(metadata []logproto.LabelAdapter) bool {
+	for _, l := range metadata {
+		// normalizeStructuredMetadata drops empty values and replaces invalid UTF-8.
+		if l.Value == "" || strings.ContainsRune(l.Value, utf8.RuneError) {
+			return false
+		}
+		if !labelNameIsNormalized(l.Name) {
+			return false
+		}
+	}
+	return true
+}
+
+// labelNameIsNormalized reports whether otlptranslator.LabelNamer{}.Build(name) returns name itself
+// without an error. Build keeps a name when it is made only of ASCII letters, digits and
+// underscores, does not start with a digit, is not only underscores, and has no repeated
+// underscores, outside the leading and trailing "__" of a reserved name such as "__name__".
+func labelNameIsNormalized(name string) bool {
+	if name == "" || (name[0] >= '0' && name[0] <= '9') {
+		return false
+	}
+	onlyUnderscores := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c == '_':
+		case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'):
+			onlyUnderscores = false
+		default:
+			return false
+		}
+	}
+	if onlyUnderscores {
+		return false
+	}
+	// Build collapses repeated underscores, except for the "__" that mark a reserved name.
+	if len(name) >= 4 && strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__") {
+		name = name[2 : len(name)-2]
+	}
+	return !strings.Contains(name, "__")
 }
 
 // normalizeStructuredMetadata normalizes names and values without changing the input.
