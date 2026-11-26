@@ -1662,7 +1662,7 @@ PUT /loki/api/v1/delete
 Create a new delete request for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 Query parameters:
 
@@ -1702,7 +1702,7 @@ GET /loki/api/v1/delete
 List the existing delete requests for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 List the existing delete requests using the following API:
 
@@ -1744,9 +1744,9 @@ DELETE /loki/api/v1/delete
 Remove a delete request for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
+Loki allows cancellation of a delete request without the `force` query parameter only while the request is unprocessed and within the `delete_request_cancel_period` set by the YAML configuration or the equivalent command line option when invoking Loki. After that period elapses, or once the request has started or partially completed processing, pass the `force=true` query parameter to the API to cancel it. A delete request that has already been fully processed can no longer be canceled, even with `force=true`.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 Cancel a delete request using this compactor endpoint:
 
@@ -1757,10 +1757,7 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled.
-  {{< admonition type="note" >}}
-  some data from the request may still be deleted and the deleted request will be listed as 'processed'.
-  {{< /admonition >}}
+- `force=<boolean>`: When true, allows cancellation of a delete request that is past the `delete_request_cancel_period` or that has already started processing. The canceled request is removed from the store and will no longer appear in list results. However, any data that the compactor already deleted while processing earlier shards of the request is not restored.
 
 A 204 response indicates success.
 
