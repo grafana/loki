@@ -55,8 +55,6 @@ WAL entry records refer to a stream by a local reference; a separate series reco
 
 The ingester briefly pauses writes and stream removal while it rotates the WAL for a checkpoint, then serializes the checkpoint concurrently with new writes. When a flushed stream is removed from memory, the ingester keeps its definition and counter until a later successful checkpoint supersedes the WAL records that refer to it. A stream that returns before then continues its previous counter.
 
-Each completed checkpoint logs `checkpoint stream definitions retained` with the number of `streams` and of `empty_streams`, which are streams kept only for their definition after their chunks flushed.
-
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.

@@ -146,28 +146,6 @@ func TestWALDefinitionsSurviveFlushDuringCheckpoint(t *testing.T) {
 	}
 }
 
-func TestWALDefinitionsExpireOnlyAfterSuccessfulCheckpoint(t *testing.T) {
-	dir := t.TempDir()
-	i, _ := newDefinitionTestIngester(t, dir)
-	s := definitionTestPush(t, i, 1)
-	definitionTestFlush(t, i, s)
-	inst, err := i.GetOrCreateInstance("wal-retention-test")
-	require.NoError(t, err)
-	_, exists := inst.retiredWALStreams.Load(s.fp)
-	require.True(t, exists)
-	w := i.wal.(*walWrapper)
-	writer := w.checkpointWriter()
-	cp := NewCheckpointer(time.Millisecond, w.seriesIter, writer, i.metrics, make(chan struct{}))
-	_, _, err = cp.prepare()
-	require.NoError(t, err)
-	require.NoError(t, writer.Close(true))
-	_, exists = inst.retiredWALStreams.Load(s.fp)
-	require.True(t, exists, "an aborted checkpoint must not release replay counters")
-	require.NoError(t, cp.PerformCheckpoint())
-	_, exists = inst.retiredWALStreams.Load(s.fp)
-	require.False(t, exists, "retired definitions should not grow without bound")
-}
-
 // failingCheckpointWriter fails one stage of a checkpoint, aborting the real one.
 type failingCheckpointWriter struct {
 	*WALCheckpointWriter

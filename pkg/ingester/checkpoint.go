@@ -199,10 +199,9 @@ type streamInstance struct {
 }
 
 type streamIterator struct {
-	instances    []streamInstance
-	retired      []retiredWALStreamRef
-	count        int
-	emptyStreams int
+	instances []streamInstance
+	retired   []retiredWALStreamRef
+	count     int
 
 	current Series
 	buffer  []chunkWithBuffer
@@ -259,12 +258,9 @@ func (s *streamIterator) Next() bool {
 	// remove the first stream
 	s.instances[0].streams = s.instances[0].streams[1:]
 
+	// Streams flushed during checkpointing are still written: records after the
+	// checkpoint boundary need their definition and replay counter.
 	stream.chunkMtx.Lock()
-	if len(stream.chunks) < 1 {
-		// A flush during checkpointing must not erase the definition or replay
-		// counter needed by records written after the checkpoint boundary.
-		s.emptyStreams++
-	}
 	defer stream.chunkMtx.Unlock()
 
 	chunks, err := toWireChunks(stream.chunks, s.buffer)
@@ -697,7 +693,6 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	defer func() {
 		if committed {
 			iter.forgetRetired()
-			level.Info(util_log.Logger).Log("msg", "checkpoint stream definitions retained", "streams", iter.count, "empty_streams", iter.emptyStreams)
 		}
 		if err != nil {
 			c.metrics.checkpointCreationFail.Inc()
