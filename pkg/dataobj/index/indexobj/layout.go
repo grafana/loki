@@ -187,7 +187,7 @@ func legacySortSchema(ctx context.Context, obj *dataobj.Object, tenant string) (
 			return "", fmt.Errorf("opening stats section: %w", err)
 		}
 		err = func() (err error) {
-			reader := stats.NewRowReader(ctx, opened)
+			reader := stats.NewRowReader(ctx, opened, nil)
 			defer util.CloseAndHandleError(reader, &err)
 			for reader.Next() {
 				row := reader.At()

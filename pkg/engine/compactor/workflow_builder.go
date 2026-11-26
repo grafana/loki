@@ -23,13 +23,15 @@ import (
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
-	task *compactionv2pb.TaskSpec,
+	task indexMergeTask,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
-		Runs:           task.Runs,
+		Runs:           task.spec.Runs,
+		KeySpan:        task.keySpan,
+		StatsSources:   task.statsSources,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -57,13 +59,14 @@ func buildLogMergePlan(
 
 // buildIndexFilterPlan returns a single-root physical.Plan holding one
 // IndexFilter node that keeps the rows of objectPaths from the index objects
-// at sourceIndexPaths.
+// at sourceIndexPaths. sourceIndexPaths must be in posting key order.
 func buildIndexFilterPlan(tenant string, sourceIndexPaths, objectPaths []string) *physical.Plan {
 	node := &physical.IndexFilter{
-		NodeID:           ulid.Make(),
-		Tenant:           tenant,
-		SourceIndexPaths: sourceIndexPaths,
-		ObjectPaths:      objectPaths,
+		NodeID:            ulid.Make(),
+		Tenant:            tenant,
+		SourceIndexPaths:  sourceIndexPaths,
+		SourcesInKeyOrder: true,
+		ObjectPaths:       objectPaths,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -71,11 +74,13 @@ func buildIndexFilterPlan(tenant string, sourceIndexPaths, objectPaths []string)
 }
 
 // buildDeletionSweepPlan returns a single-root physical.Plan holding one
-// DeletionSweep node for tenant.
-func buildDeletionSweepPlan(tenant string) *physical.Plan {
+// DeletionSweep node for tenant. The sweep deletes its deletion candidates
+// only if deleteCandidates is true.
+func buildDeletionSweepPlan(tenant string, deleteCandidates bool) *physical.Plan {
 	node := &physical.DeletionSweep{
 		NodeID: ulid.Make(),
 		Tenant: tenant,
+		Delete: deleteCandidates,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -83,15 +88,15 @@ func buildDeletionSweepPlan(tenant string) *physical.Plan {
 }
 
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
-// and drains the pipeline. Success requires exactly one artifact followed by
-// successful pipeline completion.
+// and drains the pipeline. Success requires exactly one result record
+// followed by successful pipeline completion.
 func runPlan(
 	ctx context.Context,
 	logger log.Logger,
 	runner workflow.Runner,
 	opts workflow.Options,
 	plan *physical.Plan,
-) (*v2.ResultArtifact, error) {
+) ([]v2.ResultArtifact, error) {
 	wf, err := workflow.New(ctx, opts, logger, runner, plan)
 	if err != nil {
 		return nil, fmt.Errorf("workflow.New: %w", err)
@@ -106,8 +111,9 @@ func runPlan(
 }
 
 // readCompactionResult owns the pipeline and returned records. It decodes the
-// artifact before releasing its record, but does not return it until EOF.
-func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) (*v2.ResultArtifact, error) {
+// artifacts of the one result record before releasing it, but does not return
+// them until EOF.
+func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) ([]v2.ResultArtifact, error) {
 	reader := executor.TranslateEOF(pipeline)
 	defer reader.Close()
 
@@ -115,7 +121,7 @@ func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) (*v2.
 		return nil, fmt.Errorf("pipeline.Open: %w", err)
 	}
 
-	var result v2.ResultArtifact
+	var result []v2.ResultArtifact
 	haveResult := false
 	for {
 		if err := ctx.Err(); err != nil {
@@ -132,7 +138,7 @@ func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) (*v2.
 			if !haveResult {
 				return nil, fmt.Errorf("compaction job produced no result record")
 			}
-			return &result, nil
+			return result, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("pipeline.Read: %w", err)
@@ -143,7 +149,7 @@ func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) (*v2.
 			}
 			return nil, fmt.Errorf("compaction job produced more than one result record")
 		}
-		err = result.FromRecordBatch(rec)
+		result, err = v2.DecodeResultArtifacts(rec)
 		if rec != nil {
 			rec.Release()
 		}

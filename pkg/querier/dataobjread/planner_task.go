@@ -3,7 +3,6 @@ package dataobjread
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -106,7 +105,7 @@ type ReadTask struct {
 	metadataNames []string
 	predicates    []logs.RowPredicate
 
-	// needReturningLine is true when the returned records should carry the line.
+	// needReturningLine is true when the returned rows should carry the line.
 	needReturningLine bool
 
 	start, end time.Time
@@ -127,64 +126,6 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 		IncludeEnd:   false,
 	})
 	return append(predicates, t.predicates...)
-}
-
-// forwardedLineBytes returns the number of line bytes that appendRecords copies for rows.
-func (t ReadTask) forwardedLineBytes(rows []logs.Record) int {
-	if !t.needReturningLine {
-		return 0
-	}
-
-	var size int
-	for i := range rows {
-		size += len(rows[i].Line)
-	}
-	return size
-}
-
-// appendRecords appends one forwardable record per row to dst, attaching each stream's identity.
-// It returns the extended slice.
-//
-// A record's line is a copy of row.Line in the spare capacity of lineBuf, so it stays valid when
-// the rows are decoded into again. The line is nil when the task does not need it, or when the
-// row's line is empty.
-//
-// lineBuf must have room for [ReadTask.forwardedLineBytes] bytes. appendRecords fails when it
-// has less, so a line never moves to memory that the caller does not own.
-//
-// It fails on a row whose stream the task did not plan to read. The read matches only the
-// task's streams, so an unexpected ID means that broke, and dropping the row would under-count
-// the query without saying so.
-func (t ReadTask) appendRecords(dst []LogRecord, lineBuf []byte, rows []logs.Record) ([]LogRecord, error) {
-	for i := range rows {
-		row := &rows[i]
-		stream, ok := t.streams.admittedByID[row.StreamID]
-		if !ok {
-			return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, row.StreamID)
-		}
-
-		var line []byte
-		if t.needReturningLine && len(row.Line) > 0 {
-			if free := cap(lineBuf) - len(lineBuf); free < len(row.Line) {
-				return nil, fmt.Errorf("line buffer has %d free bytes, but the line of row %d needs %d", free, i, len(row.Line))
-			}
-			start := len(lineBuf)
-			lineBuf = append(lineBuf, row.Line...)
-			line = lineBuf[start:len(lineBuf):len(lineBuf)]
-		}
-
-		dst = append(dst, LogRecord{
-			streamHash:   stream.streamHash,
-			streamLabels: stream.streamLabels,
-			timestamp:    row.Timestamp.UnixNano(),
-			line:         line,
-			// Metadata needs no copy. The symbolizer clones every string it interns and
-			// the labels builder allocates its result, so forwarded metadata outlives
-			// the reader safely.
-			metadata: row.Metadata,
-		})
-	}
-	return dst, nil
 }
 
 // TaskIterator streams read tasks from the planner to the reader. The planner fills it from a

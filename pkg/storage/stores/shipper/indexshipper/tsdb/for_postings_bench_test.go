@@ -43,7 +43,9 @@ func (z *zipfDistribution) sample() int {
 //   - cluster: cluster-00 -> cluster-39, zipf distributed.
 //   - namespace: namespace-a000 -> namespace-h599, zipf distributed.
 //   - pod: pod-000000 -> pod-249999, unique per series.
-func buildIndex(b *testing.B) *TSDBIndex {
+//
+// It returns the index's path.
+func buildIndex(b *testing.B) string {
 	b.Helper()
 	const (
 		numClusters   = 40
@@ -76,11 +78,7 @@ func buildIndex(b *testing.B) *TSDBIndex {
 		}, dir, dir)
 	})
 	require.NoError(b, err)
-
-	idx, _, err := NewTSDBIndexFromFile(id.Path(), index.MmapOptions{})
-	require.NoError(b, err)
-	b.Cleanup(func() { _ = idx.Close() })
-	return idx
+	return id.Path()
 }
 
 // BenchmarkTSDBIndex_forPostings aims to measure forPostings
@@ -88,7 +86,7 @@ func buildIndex(b *testing.B) *TSDBIndex {
 func BenchmarkTSDBIndex_forPostings(b *testing.B) {
 	const shardFactor = 256
 
-	idx := buildIndex(b)
+	path := buildIndex(b)
 
 	cases := []struct {
 		name     string
@@ -123,27 +121,41 @@ func BenchmarkTSDBIndex_forPostings(b *testing.B) {
 		},
 	}
 
-	for _, tc := range cases {
-		b.Run(tc.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				n := 0
-				for i := range shardFactor {
-					shard := index.ShardAnnotation{Shard: uint32(i), Of: shardFactor}
-					err := idx.forPostings(context.Background(), shard, 0, 0, tc.matchers, func(p index.Postings) error {
-						for p.Next() {
-							n++
+	readers := []struct {
+		name string
+		opts index.ReaderOptions
+	}{
+		{name: "mmap", opts: index.MmapOptions{}},
+		{name: "stream", opts: index.DefaultStreamOptions()},
+	}
+
+	for _, r := range readers {
+		idx, _, err := NewTSDBIndexFromFile(path, r.opts)
+		require.NoError(b, err)
+		b.Cleanup(func() { _ = idx.Close() })
+
+		for _, tc := range cases {
+			b.Run(r.name+"/"+tc.name, func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					n := 0
+					for i := range shardFactor {
+						shard := index.ShardAnnotation{Shard: uint32(i), Of: shardFactor}
+						err := idx.forPostings(context.Background(), shard, 0, 0, tc.matchers, func(p index.Postings) error {
+							for p.Next() {
+								n++
+							}
+							return p.Err()
+						})
+						if err != nil {
+							b.Fatal(err)
 						}
-						return p.Err()
-					})
-					if err != nil {
-						b.Fatal(err)
+					}
+					if n == 0 {
+						b.Fatal("no series matched")
 					}
 				}
-				if n == 0 {
-					b.Fatal("no series matched")
-				}
-			}
-		})
+			})
+		}
 	}
 }

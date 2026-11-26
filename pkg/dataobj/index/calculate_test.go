@@ -116,7 +116,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	}
 	require.NotEmpty(t, second)
 
-	logBuilder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+	logBuilder, err := logsobj.NewBuilder("tenant-1", logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
 		TargetSectionSize:       1 << 21,
@@ -127,7 +127,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 
 	ts := time.Unix(10, 0).UTC()
 	for _, lbls := range []labels.Labels{first, second} {
-		require.NoError(t, logBuilder.Append("tenant-1", logproto.Stream{
+		require.NoError(t, logBuilder.Append(logproto.Stream{
 			Labels: lbls.String(),
 			Entries: []push.Entry{{
 				Timestamp: ts,
@@ -464,7 +464,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		sec, err := stats.Open(ctx, section)
 		require.NoError(t, err)
-		reader := stats.NewRowReader(ctx, sec)
+		reader := stats.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			row := reader.At()
 			require.Equal(t, path, row.ObjectPath)

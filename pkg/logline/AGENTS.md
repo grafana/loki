@@ -16,11 +16,11 @@ review.
 
 | Version | Status | On-disk format | Extractor |
 | --- | --- | --- | --- |
-| v3 | Current (`CurrentVersion`) | footer 4 | v3 |
-| v4 | Supported | v3 bytes | packed numeric terms |
+| v3 | Supported | footer 4 | v3 |
+| v4 | Current (`CurrentVersion`) | v3 bytes | packed numeric terms |
 | v5 | In development. Do not set `-logline-index.version=v5` | footer 5; postings hold cells of the index's day and there is no document table | v4's extractor, forked into `internal/v5` |
 
-v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v4"` so a binary upgrade does not write it.
 
 A v5 document ID is a cell of the index's day: `bucket << document_shard_bits | document shard`. The footer records the document interval, the shard bits, and the day start, and `DocumentLayout(reader)` maps a cell to its bucket's time range. `Reader.Documents()` is nil for v5, so code that maps document IDs to time must check `VersionHasDocumentTable` or `DocumentLayout` first. v5 indexes written before day-relative cells have footer 4: the v5 reader refuses them, and `ValidateIndexHeader` reports them from `meta.json` without opening the file.
 

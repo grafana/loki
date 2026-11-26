@@ -37,11 +37,9 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		)
 		require.NoError(t, err)
 		t.Cleanup(client.Close)
-		partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc("dataobj-builder-0")
-		require.NoError(t, err)
 		r := newRequiredReplicasReporter(
 			kafkav2.NewOffsetReader(client, testTopic),
-			partitionToConsumerGroup,
+			builderConsumerGroup,
 			interval,
 			log.NewNopLogger(),
 			prometheus.NewRegistry(),
@@ -62,12 +60,12 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		}
 	}
 
-	// commit commits offset for the builder of partition. A builder commits the
-	// offset of the last record it consumed.
-	commit := func(t *testing.T, client *kgo.Client, r *requiredReplicasReporter, partition int32, offset int64) {
+	// commit commits offset for the builder of partition to the shared group. A
+	// builder commits the offset of the last record it consumed.
+	commit := func(t *testing.T, client *kgo.Client, partition int32, offset int64) {
 		t.Helper()
 		committer := kafkav2.NewCommitter(kadm.NewClient(client))
-		require.NoError(t, committer.Commit(t.Context(), testTopic, partition, r.partitionToConsumerGroup(partition), offset))
+		require.NoError(t, committer.Commit(t.Context(), testTopic, partition, builderConsumerGroup, offset))
 	}
 
 	// deleteRecordsBefore moves the start offset of partition to offset, as
@@ -118,8 +116,8 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		_, client, r := newTestReporter(t, time.Minute)
 		produce(t, client, 0, 3)
 		produce(t, client, 4, 5)
-		commit(t, client, r, 0, 2)
-		commit(t, client, r, 4, 4)
+		commit(t, client, 0, 2)
+		commit(t, client, 4, 4)
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 1)
 	})
@@ -127,9 +125,27 @@ func TestRequiredReplicasReporter(t *testing.T) {
 	t.Run("reports the partition plus one when its builder has unread records", func(t *testing.T) {
 		_, client, r := newTestReporter(t, time.Minute)
 		produce(t, client, 3, 5)
-		commit(t, client, r, 3, 3)
+		commit(t, client, 3, 3)
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 4)
+	})
+
+	t.Run("reports the lagging partition plus one when a higher partition is caught up", func(t *testing.T) {
+		_, client, r := newTestReporter(t, time.Minute)
+		produce(t, client, 1, 3)
+		produce(t, client, 6, 3)
+		commit(t, client, 1, 0)
+		commit(t, client, 6, 2)
+		require.NoError(t, r.refresh(t.Context()))
+		requireReplicas(t, r, 2)
+	})
+
+	t.Run("ignores offsets committed to other consumer groups", func(t *testing.T) {
+		_, client, r := newTestReporter(t, time.Minute)
+		produce(t, client, 2, 3)
+		require.NoError(t, kafkav2.NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 2, "dataobj-builder-2", 2))
+		require.NoError(t, r.refresh(t.Context()))
+		requireReplicas(t, r, 3)
 	})
 
 	t.Run("reports the partition plus one when its builder never committed", func(t *testing.T) {
@@ -150,7 +166,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 	t.Run("reports the partition plus one when records remain after a start offset above the committed offset", func(t *testing.T) {
 		_, client, r := newTestReporter(t, time.Minute)
 		produce(t, client, 2, 5)
-		commit(t, client, r, 2, 0)
+		commit(t, client, 2, 0)
 		deleteRecordsBefore(t, client, 2, 3)
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 3)
@@ -159,7 +175,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 	t.Run("reports one when retention deleted every record after the committed offset", func(t *testing.T) {
 		_, client, r := newTestReporter(t, time.Minute)
 		produce(t, client, 2, 5)
-		commit(t, client, r, 2, 0)
+		commit(t, client, 2, 0)
 		deleteRecordsBefore(t, client, 2, 5)
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 1)
@@ -170,7 +186,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		produce(t, client, 2, 1)
 		produce(t, client, 7, 1)
 		produce(t, client, 9, 1)
-		commit(t, client, r, 9, 0)
+		commit(t, client, 9, 0)
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 8)
 	})
@@ -252,37 +268,6 @@ func TestRequiredReplicasReporter(t *testing.T) {
 
 		produce(t, client, 5, 1)
 		requireReplicasEventually(6)
-	})
-}
-
-func TestNewPartitionToConsumerGroupFunc(t *testing.T) {
-	t.Run("returns the instance name with the partition ID replaced", func(t *testing.T) {
-		consumerGroup, err := newPartitionToConsumerGroupFunc("dataobj-builder-0")
-		require.NoError(t, err)
-		require.Equal(t, "dataobj-builder-0", consumerGroup(0))
-		require.Equal(t, "dataobj-builder-7", consumerGroup(7))
-		require.Equal(t, "dataobj-builder-123", consumerGroup(123))
-	})
-
-	t.Run("keeps every part of the instance name before the partition ID", func(t *testing.T) {
-		consumerGroup, err := newPartitionToConsumerGroupFunc("dataobj-builder-zone-a-12")
-		require.NoError(t, err)
-		require.Equal(t, "dataobj-builder-zone-a-3", consumerGroup(3))
-	})
-
-	t.Run("returns an error when the instance name has no partition ID", func(t *testing.T) {
-		_, err := newPartitionToConsumerGroupFunc("dataobj-builder")
-		require.Error(t, err)
-	})
-
-	t.Run("returns an error when the partition ID has leading zeros", func(t *testing.T) {
-		_, err := newPartitionToConsumerGroupFunc("dataobj-builder-007")
-		require.Error(t, err)
-	})
-
-	t.Run("returns an error for a local hostname", func(t *testing.T) {
-		_, err := newPartitionToConsumerGroupFunc("laptop.local")
-		require.Error(t, err)
 	})
 }
 

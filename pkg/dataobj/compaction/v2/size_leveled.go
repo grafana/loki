@@ -59,8 +59,8 @@ func NewSizeLeveledStrategy(base, ratio uint64, k int) (*SizeLeveledStrategy, er
 	return &SizeLeveledStrategy{base: base, ratio: ratio, k: k}, nil
 }
 
-// level returns the level that holds a run of the given size.
-func (s *SizeLeveledStrategy) level(size uint64) int {
+// Level returns the level that holds a run of the given uncompressed size.
+func (s *SizeLeveledStrategy) Level(size uint64) int {
 	level := 1
 	for bound := s.base; size >= bound; level++ {
 		// The next bound would overflow uint64, so no size can reach it.
@@ -78,7 +78,7 @@ func (s *SizeLeveledStrategy) level(size uint64) int {
 func (s *SizeLeveledStrategy) groupByLevels(runs []Run) [][]Run {
 	var levels [][]Run
 	for _, run := range runs {
-		i := s.level(run.Size()) - 1
+		i := s.Level(run.Size()) - 1
 		if i >= len(levels) {
 			levels = append(levels, make([][]Run, i+1-len(levels))...)
 		}
@@ -134,7 +134,7 @@ func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*compact
 			for _, run := range group {
 				mergedSize += run.Size()
 			}
-			outputLevel := uint32(s.level(mergedSize))
+			outputLevel := uint32(s.Level(mergedSize))
 			for _, task := range Plan(group, tenant, s.k) {
 				task.OutputLevel = outputLevel
 				merges = append(merges, task)

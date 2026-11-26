@@ -1093,3 +1093,74 @@ func TestNewMergedPostingsNoInputs(t *testing.T) {
 		require.Equal(t, EmptyPostings(), p)
 	}
 }
+
+// pooledRange returns pooled postings over the refs from..to-1.
+func pooledRange(from, to uint32) *pooledBigEndianPostings {
+	buf := getPostingsListBuffer(4 * int(to-from))
+	for i := range to - from {
+		binary.BigEndian.PutUint32(buf[4*i:], from+i)
+	}
+	return newPooledBigEndianPostings(buf)
+}
+
+func TestClosePostingsReleasesEveryLeaf(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func(a, b *pooledBigEndianPostings) Postings
+		steps int // Next calls before Close; -1 to drain.
+	}{
+		// a ends first, so intersect and without stop with b part-read.
+		{name: "intersect", steps: -1, build: func(a, b *pooledBigEndianPostings) Postings { return Intersect(a, b) }},
+		{name: "without", steps: -1, build: func(a, b *pooledBigEndianPostings) Postings { return Without(a, b) }},
+		{name: "merge", steps: 1, build: func(a, b *pooledBigEndianPostings) Postings { return Merge(a, b) }},
+		{name: "sharded", steps: -1, build: func(a, b *pooledBigEndianPostings) Postings {
+			return &ShardedPostings{p: Merge(a, b), maxOffset: 120}
+		}},
+		{name: "intersect with empty", build: func(a, b *pooledBigEndianPostings) Postings {
+			return Intersect(a, EmptyPostings(), b)
+		}},
+		{name: "without from empty", build: func(a, b *pooledBigEndianPostings) Postings {
+			b.Close()
+			return Without(EmptyPostings(), a)
+		}},
+		{name: "merge with error", build: func(a, b *pooledBigEndianPostings) Postings {
+			return Merge(a, ErrPostings(errors.New("failed")), b)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := pooledRange(0, 100), pooledRange(50, 200)
+			p := tc.build(a, b)
+			for i := 0; i != tc.steps; i++ {
+				if !p.Next() {
+					break
+				}
+			}
+			if tc.steps != 0 {
+				// Iteration has stopped, but b was abandoned part-read, so only
+				// Close can release it.
+				require.True(t, b.pooled, "b released before Close")
+			}
+			p.Close()
+			require.False(t, a.pooled, "a not released")
+			require.False(t, b.pooled, "b not released")
+		})
+	}
+}
+
+func TestPooledPostingsUnusableAfterClose(t *testing.T) {
+	p := pooledRange(0, 100)
+	require.True(t, p.Next())
+	require.True(t, p.Next())
+	p.Close()
+	require.False(t, p.pooled)
+	require.Nil(t, p.buf)
+
+	// The buffer may already be someone else's: p must not read it.
+	require.False(t, p.Next())
+	require.False(t, p.Seek(50))
+	require.Equal(t, storage.SeriesRef(1), p.At())
+
+	// A second close is a no-op: the buffer has already gone back.
+	p.Close()
+	require.Nil(t, p.buf)
+}

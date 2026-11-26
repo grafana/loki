@@ -102,6 +102,10 @@ a stabilization window for scaling down.
 
 ### KEDA configuration
 
+{{< admonition type="note" >}}
+The `kedaAutoscaling` Helm values described here apply to the community-maintained [Loki Helm chart](https://github.com/grafana-community/helm-charts). If you use the Grafana Enterprise Logs (GEL) Helm chart, it does not include `kedaAutoscaling`; follow the manual example below to write your own KEDA ScaledObject instead.
+{{< /admonition >}}
+
 If you deploy Loki with the Helm chart, you don't need to write your own `KEDA ScaledObject`.
 The chart can generate one for you through the `querier.kedaAutoscaling` values, which already default to a Prometheus trigger on `loki_query_scheduler_inflight_requests` with a Q of 0.75 and an R of 2 minutes.
 Set `querier.kedaAutoscaling.enabled` to `true`, then set `minReplicas` and `maxReplicas` for your workload.
@@ -130,12 +134,12 @@ spec:
     kind: Deployment
     name: querier
   triggers:
-  - metadata:
-      metricName: querier_autoscaling_metric
+  - type: prometheus
+    name: querier_autoscaling_metric
+    metadata:
       query: sum(max_over_time(loki_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[2m]))
       serverAddress: http://prometheus.default:9090/prometheus
       threshold: "4"
-    type: prometheus
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:

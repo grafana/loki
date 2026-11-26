@@ -22,10 +22,11 @@ type Blocks struct {
 // abandon it mid-stream; it has its own error and its own copy of the
 // frame so that it cannot affect the next read.
 type asyncReader struct {
-	mu    sync.Mutex
-	err   error
-	data  chan []byte // uncompressed blocks, in order
-	frame Frame       // copy of the frame: an abandoned reader must not touch the next frame's scratch space, flags, or checksum
+	mu      sync.Mutex
+	err     error
+	data    chan []byte   // uncompressed blocks, in order
+	stopped chan struct{} // closed once the read loop no longer uses the source
+	frame   Frame         // copy of the frame: an abandoned reader must not touch the next frame's scratch space, flags, or checksum
 }
 
 // fail keeps the first error; the read loop stops once one is set.
@@ -92,14 +93,21 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 	}()
 }
 
-func (b *Blocks) close(f *Frame, num int) error {
+// StopR abandons a concurrent read and waits until its goroutines no longer
+// use the source, so the caller may reuse it.
+func (b *Blocks) StopR() {
 	if r := b.reader; r != nil {
-		// abandon the read: fail stops the read loop at its next block,
+		// fail stops the read loop at its next block,
 		// drain unblocks the goroutines and returns their buffers
 		b.reader = nil
 		r.fail(errAbandoned)
 		go r.drain()
+		<-r.stopped
 	}
+}
+
+func (b *Blocks) close(f *Frame, num int) error {
+	b.StopR()
 	if num == 1 {
 		if b.Block != nil {
 			b.Block.Close(f)
@@ -147,7 +155,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	blocks := make(chan chan []byte, num)
 	// data receives the uncompressed blocks.
 	data := make(chan []byte)
-	r := &asyncReader{data: data, frame: *f}
+	r := &asyncReader{data: data, stopped: make(chan struct{}), frame: *f}
 	r.frame.Blocks = Blocks{}
 	b.reader = r
 	f = &r.frame
@@ -175,8 +183,10 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				buf, err := block.Uncompress(f, size.Get(), nil, false)
+				dst := size.Get()
+				buf, err := block.Uncompress(f, dst, nil, false)
 				if err != nil {
+					lz4block.Put(dst)
 					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
@@ -185,6 +195,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				}
 			}()
 		}
+		close(r.stopped)
 		// End the collection loop and the data channel.
 		c := make(chan []byte)
 		blocks <- c
@@ -216,6 +227,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			}
 			if skipBlocks {
 				// A previous error has occurred, skipping remaining channels.
+				lz4block.Put(buf)
 				continue
 			}
 			// Perform checksum now as the blocks are received in order.
@@ -279,6 +291,12 @@ func (b *FrameDataBlock) Close(f *Frame) {
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
+	return b.CompressWithDict(f, src, level, nil, nil)
+}
+
+// CompressWithDict compresses src with dict, if set, using c, which must then
+// be non-nil and is reused across blocks so that dict is indexed once.
+func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.CompressionLevel, c *lz4block.Compressor, dict []byte) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
 		data = data[:cap(data)]
@@ -288,7 +306,11 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	var n int
 	switch level {
 	case lz4block.Fast:
-		n, _ = lz4block.CompressBlock(src, data)
+		if len(dict) > 0 {
+			n, _ = c.CompressBlockWithDict(src, data, dict)
+		} else {
+			n, _ = lz4block.CompressBlock(src, data)
+		}
 	case lz4block.CCompatFast:
 		n, _ = lz4block.CompressBlockCCompat(src, data)
 	default:

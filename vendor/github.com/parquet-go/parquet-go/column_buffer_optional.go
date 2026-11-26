@@ -313,6 +313,14 @@ func (col *optionalColumnBuffer) writeByteArray(levels columnLevels, value []byt
 }
 
 func (col *optionalColumnBuffer) writeNull(levels columnLevels) {
+	if levels.definitionLevel == col.maxDefinitionLevel {
+		// The value cannot be null at the max definition level (e.g. a null
+		// required field of an optional group), write it to the base column
+		// like the other write methods do.
+		col.base.writeNull(levels)
+		col.writeLevel()
+		return
+	}
 	col.definitionLevels.AppendValue(levels.definitionLevel)
 	col.rows.AppendValue(-1)
 }

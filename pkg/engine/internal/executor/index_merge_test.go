@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -138,7 +139,7 @@ var _ sequence[intRecord] = (*trackingSequence[intRecord])(nil)
 // loser-tree helpers as the production merge sites (heapAt, heapLess,
 // closeSeq). It yields every record in sorted order to fn; iteration stops
 // early when fn returns false. It mirrors the inlined loop in
-// mergePostingsIntoBuilder / mergeStatsIntoBuilder so those helpers stay tested
+// mergePostingsInto / mergeStatsInto so those helpers stay tested
 // without a dedicated merge function.
 func drainMerge[R any](ctx context.Context, groups []sequence[R], cmp func(a, b R) int, fn func(R) bool) error {
 	tree := loser.New(groups, heapVal[R]{isMax: true}, heapAt[R], heapLess(cmp), closeSeq[R])
@@ -464,7 +465,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 
 	// 3. Create executor context and run the merger.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	// 4. Verify an artifact was produced and contains both section kinds.
@@ -530,10 +531,10 @@ func TestDoIndexMerge(t *testing.T) {
 		return &physical.IndexMerge{
 			NodeID: ulid.Make(),
 			Tenant: tenant,
-			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: pathA, SectionIndex: 0},
-				{ObjectPath: pathB, SectionIndex: 0},
-			}}},
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathA, SectionIndex: 0}}},
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathB, SectionIndex: 0}}},
+			},
 		}
 	}
 	statRow := func(schema string, labels map[string]string) stats.Stat {
@@ -565,6 +566,376 @@ func TestDoIndexMerge(t *testing.T) {
 
 		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
 		require.ErrorContains(t, err, "records no stream layout")
+	})
+
+	t.Run("reports the posting key bounds of the postings rows of its output", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		observe := func(column string, ts int64) postings.LabelObservation {
+			return postings.LabelObservation{
+				ObjectPath: "log-X", ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, ts)), UncompressedSize: 100,
+			}
+		}
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-a.dat", []postings.LabelObservation{observe("env", 300), observe("app", 200)})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{observe("zone", 100)})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "v"}, artifact.PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "zone", LabelValue: "v"}, artifact.PostingKeys.Max())
+	})
+
+	t.Run("returns an error when two source indexes give one logs section different time ranges for a posting", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		observe := func(logObject string, ts int64) postings.LabelObservation {
+			return postings.LabelObservation{
+				ObjectPath: logObject, ColumnName: "service", LabelValue: "api", StreamID: 1,
+				Time: postings.At(time.Unix(0, ts)), UncompressedSize: 100,
+			}
+		}
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-a.dat", []postings.LabelObservation{observe("log-A", 100)})
+		buildSourcePostingsObject(t, bucket, tenant, "source/index-b.dat", []postings.LabelObservation{observe("log-B", 200), observe("log-A", 300)})
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat"))
+		require.ErrorContains(t, err, `object "log-A", section 0 have different time ranges`)
+	})
+
+	t.Run("reports no posting key bounds when its output has no postings rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-b.dat", streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"}),
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "web"})})
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.True(t, artifact.PostingKeys.IsZero())
+	})
+
+	t.Run("merges the stats rows of a source with those of a source that has an empty stats section that records the same layout", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		buildSourceStatsObject(t, bucket, tenant, "source/index-a.dat", layout,
+			[]stats.Stat{statRow("label:service", map[string]string{"service": "api"})})
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant(tenant)
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "log-X", ColumnName: "service", LabelValue: "api", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		})
+		uploadSections(t, bucket, "source/index-b.dat", stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Len(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path), 1)
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("records the layout of sources that have only empty stats sections", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for _, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: path + "/log", ColumnName: "service", LabelValue: "api", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, stats.NewLayoutSectionBuilder(tenant, layout), postingsBuilder)
+		}
+
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), twoSources("source/index-a.dat", "source/index-b.dat")))
+		require.NoError(t, err)
+		require.Empty(t, readStatsRowsFromBucket(t.Context(), t, bucket, artifact.Path))
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("writes a run of several index objects that together hold the rows of an output of one index object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+		for i, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			for j := range 150 {
+				postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath: fmt.Sprintf("log-%d", i), ColumnName: fmt.Sprintf("c%04d", 2*j+i), LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("log-%d", i), SortSchema: "label:service", Labels: map[string]string{"service": "api"},
+				MinTimestamp: 100, MaxTimestamp: 200, RowCount: 1, UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
+		}
+		node := twoSources("source/index-a.dat", "source/index-b.dat")
+
+		single, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
+		require.NoError(t, err)
+		artifacts, err := newSplittingContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var gotPostings []postings.Row
+		var gotStats []stats.Stat
+		for i, artifact := range artifacts {
+			if i > 0 {
+				require.Negative(t, artifacts[i-1].PostingKeys.Max().Compare(artifact.PostingKeys.Min()))
+			}
+			gotPostings = append(gotPostings, readAllPostingsRowsFromBucket(t.Context(), t, bucket, artifact.Path)...)
+			gotStats = append(gotStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path)...)
+		}
+		require.Equal(t, readAllPostingsRowsFromBucket(t.Context(), t, bucket, single.Path), gotPostings)
+		require.Equal(t, readAllStatsRowsFromBucket(t, bucket, single.Path), gotStats)
+	})
+
+	keySpanSources := func(t *testing.T, bucket objstore.Bucket, layout streams.Layout) *physical.IndexMerge {
+		t.Helper()
+		for i, path := range []string{"source/index-a.dat", "source/index-b.dat"} {
+			postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			postingsBuilder.SetTenant(tenant)
+			for _, column := range []string{"app", "env", "zone"} {
+				postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+					ObjectPath: fmt.Sprintf("log-%d", i), ColumnName: column, LabelValue: fmt.Sprintf("v%d", i), StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), layout)
+			statsBuilder.SetTenant(tenant)
+			statsBuilder.Append(stats.Stat{
+				ObjectPath: fmt.Sprintf("log-%d", i), SortSchema: "label:service", Labels: map[string]string{"service": "api"},
+				MinTimestamp: 100, MaxTimestamp: 200, RowCount: 1, UncompressedSize: 100,
+			})
+			uploadSections(t, bucket, path, postingsBuilder, statsBuilder)
+		}
+		return twoSources("source/index-a.dat", "source/index-b.dat")
+	}
+	keySpan := func(t *testing.T, start, end *postings.Key) postings.KeySpan {
+		t.Helper()
+		span, err := postings.NewKeySpan(start, end)
+		require.NoError(t, err)
+		return span
+	}
+	envKey := postings.Key{Kind: postings.KindLabel, ColumnName: "env"}
+	zoneKey := postings.Key{Kind: postings.KindLabel, ColumnName: "zone"}
+
+	layout := streams.NewLayout(streams.DefaultShardLayout(), []string{"label:service"})
+	readRows := func(t *testing.T, bucket objstore.Bucket, node *physical.IndexMerge) (v2.ResultArtifact, []postings.Row, []stats.Stat) {
+		t.Helper()
+		artifact, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
+		require.NoError(t, err)
+		return artifact, readAllPostingsRowsFromBucket(t.Context(), t, bucket, artifact.Path), readAllStatsRowsFromBucket(t, bucket, artifact.Path)
+	}
+	postingKeys := func(rows []postings.Row) []postings.Key {
+		keys := make([]postings.Key, len(rows))
+		for i, row := range rows {
+			keys[i] = row.Key()
+		}
+		return keys
+	}
+	labelKey := func(column, value string) postings.Key {
+		return postings.Key{Kind: postings.KindLabel, ColumnName: column, LabelValue: value}
+	}
+
+	t.Run("merges only the postings rows in its key span and writes no stats rows but records the layout when it has no stats sources", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &envKey, &zoneKey)
+
+		artifact, rows, statRows := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("env", "v0"), labelKey("env", "v1")}, postingKeys(rows))
+		require.Equal(t, labelKey("env", "v0"), artifact.PostingKeys.Min())
+		require.Equal(t, labelKey("env", "v1"), artifact.PostingKeys.Max())
+		require.Empty(t, statRows)
+		got, ok, err := indexobj.TenantLayout(t.Context(), openObjectFromBucket(t.Context(), t, bucket, artifact.Path), tenant)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, got.Equal(layout))
+	})
+
+	t.Run("writes only the stats rows of its stats sources when its key span has bounds", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &zoneKey, nil)
+		node.StatsSources = []string{"source/index-b.dat"}
+
+		_, rows, statRows := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("zone", "v0"), labelKey("zone", "v1")}, postingKeys(rows))
+		require.Len(t, statRows, 1)
+		require.Equal(t, "log-1", statRows[0].ObjectPath)
+	})
+
+	twoPostingsSections := func(t *testing.T, bucket objstore.Bucket) string {
+		t.Helper()
+		var observations []postings.LabelObservation
+		for _, column := range []string{"app", "zone"} {
+			observations = append(observations, postings.LabelObservation{
+				ObjectPath: "log-" + column, ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		buildSourcePostingsObjectSized(t, bucket, tenant, "source/index-a.dat", 1, observations)
+		sections := openObjectFromBucket(t.Context(), t, bucket, "source/index-a.dat").Sections()
+		require.Len(t, sections, 2, "a section size of 1 puts each posting key in a section of its own")
+		return "source/index-a.dat"
+	}
+	refsTo := func(path string, sectionIndexes ...int64) []*compactionv2pb.RunRef {
+		run := &compactionv2pb.RunRef{}
+		for _, index := range sectionIndexes {
+			run.Sections = append(run.Sections, &compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: index})
+		}
+		return []*compactionv2pb.RunRef{run}
+	}
+
+	t.Run("reads only the referenced postings sections when its key span has bounds", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 1), KeySpan: keySpan(t, nil, &zoneKey)}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorIs(t, err, indexobj.ErrBuilderEmpty, "the referenced section holds only zone, which is outside the span")
+
+		node.Runs = refsTo(path, 0)
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v")}, postingKeys(rows))
+	})
+
+	t.Run("reads every postings section of a referenced object when it merges every key", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 0)}
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("zone", "v")}, postingKeys(rows))
+	})
+
+	t.Run("returns an error when its key span has bounds and a referenced section is not a postings section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := twoPostingsSections(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: refsTo(path, 0, 7), KeySpan: keySpan(t, nil, &zoneKey)}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, "1 of the 2 referenced sections are not postings sections")
+	})
+
+	disjointRun := func(t *testing.T, bucket objstore.Bucket) []*compactionv2pb.SectionRef {
+		t.Helper()
+		for path, column := range map[string]string{"source/run-a.dat": "app", "source/run-z.dat": "zone"} {
+			buildSourcePostingsObject(t, bucket, tenant, path, []postings.LabelObservation{{
+				ObjectPath: "log-" + column, ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			}})
+		}
+		return []*compactionv2pb.SectionRef{{ObjectPath: "source/run-a.dat"}, {ObjectPath: "source/run-z.dat"}}
+	}
+
+	t.Run("reads the index objects of one run as one sequence and merges it with the other runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		buildSourcePostingsObject(t, bucket, tenant, "source/other.dat", []postings.LabelObservation{{
+			ObjectPath: "log-other", ColumnName: "env", LabelValue: "v", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		}})
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/other.dat"}}},
+		}}
+
+		_, runs, _, err := newTestExecutorContext(t, bucket).classifyRuns(t.Context(), node)
+		require.NoError(t, err)
+		require.Len(t, postingsSequences(t.Context(), runs, postings.KeySpan{}, nil), 2, "one sequence for each run, not for each index object")
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("env", "v"), labelKey("zone", "v")}, postingKeys(rows))
+	})
+
+	t.Run("returns an error when the index objects of one run overlap in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		for _, path := range []string{"source/wide-a.dat", "source/wide-b.dat"} {
+			var observations []postings.LabelObservation
+			for _, column := range []string{"app", "zone"} {
+				observations = append(observations, postings.LabelObservation{
+					ObjectPath: path + "/log", ColumnName: column, LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			buildSourcePostingsObject(t, bucket, tenant, path, observations)
+		}
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "source/wide-a.dat"}, {ObjectPath: "source/wide-b.dat"},
+		}}}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `a row of section 1/2 of the sequence, of object "source/wide-b.dat", sorts below the row before it, of object "source/wide-a.dat"`)
+	})
+
+	t.Run("returns an error when an index object is in two runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		require.Len(t, run, 2)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run[:1]},
+			{Sections: run},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 1 appears in more than one place of the runs of the merge, also in run 0`)
+	})
+
+	t.Run("returns an error when the sections of an index object are not next to each other in its run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: append(slices.Clone(run), &compactionv2pb.SectionRef{ObjectPath: "source/run-a.dat", SectionIndex: 1})},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 0 appears in more than one place of the runs of the merge, also in run 0`)
+	})
+
+	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		node.KeySpan = keySpan(t, &zoneKey, nil)
+		node.StatsSources = []string{"source/other.dat"}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `stats source "source/other.dat" is not a source of the merge`)
+	})
+
+	t.Run("writes the rows of a merge over every key when key spans split the merge and share the stats sources", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		node := keySpanSources(t, bucket, layout)
+		_, wantPostings, wantStats := readRows(t, bucket, node)
+
+		var gotPostings []postings.Row
+		var gotStats []stats.Stat
+		for _, part := range []struct {
+			span         postings.KeySpan
+			statsSources []string
+		}{
+			{span: keySpan(t, nil, &envKey), statsSources: []string{"source/index-b.dat"}},
+			{span: keySpan(t, &envKey, &zoneKey)},
+			{span: keySpan(t, &zoneKey, nil), statsSources: []string{"source/index-a.dat"}},
+		} {
+			task := *node
+			task.NodeID = ulid.Make()
+			task.KeySpan = part.span
+			task.StatsSources = part.statsSources
+			_, rows, statRows := readRows(t, bucket, &task)
+			gotPostings = append(gotPostings, rows...)
+			gotStats = append(gotStats, statRows...)
+		}
+		require.Equal(t, wantPostings, gotPostings)
+		require.ElementsMatch(t, wantStats, gotStats)
 	})
 
 	t.Run("releases its scratch space when it succeeds", func(t *testing.T) {
@@ -618,7 +989,7 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 
 	// Run the executor.
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err, "merge should succeed despite a legacy streams section")
 
 	// Verify the output exists.
@@ -931,7 +1302,7 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -981,7 +1352,7 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	require.NotNil(t, sec, "expected stats section in output object")
 
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	var rows []stats.Stat
@@ -1024,7 +1395,8 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		},
 	})
 
-	// Source B has row for (log-A, 0, service, api, sid=99) - overlaps with A's first row.
+	// Source B has row for (log-A, 0, service, api, sid=99) with the time range
+	// of A's first row, so the merge treats it as a repeat of that row.
 	sourceBPath := "source/index-b.dat"
 	buildSourcePostingsObject(t, bucket, "tenant", sourceBPath, []postings.LabelObservation{
 		{
@@ -1033,27 +1405,24 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 			ColumnName:       "service",
 			LabelValue:       "api",
 			StreamID:         99,
-			Time:             postings.At(time.Unix(0, 150)),
+			Time:             postings.At(time.Unix(0, 100)),
 			UncompressedSize: 300,
 		},
 	})
 
-	// Build IndexMerge node with two source objects.
+	// Build IndexMerge node with two source objects. Their key ranges
+	// overlap, so they are two runs.
 	node := &physical.IndexMerge{
 		NodeID: ulid.Make(),
 		Tenant: "tenant",
 		Runs: []*compactionv2pb.RunRef{
-			{
-				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: sourceAPath, SectionIndex: 0},
-					{ObjectPath: sourceBPath, SectionIndex: 0},
-				},
-			},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceAPath, SectionIndex: 0}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceBPath, SectionIndex: 0}}},
 		},
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1151,7 +1520,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1244,7 +1613,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1329,7 +1698,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1367,9 +1736,9 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
-	require.Nil(t, artifacts)
+	require.Zero(t, artifacts)
 }
 
 // TestStatsRowReader_DottedLabelNames tests that label names containing dots
@@ -1411,7 +1780,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a reader and read the row
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	if !reader.Next() {
@@ -1538,7 +1907,7 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
+	artifacts, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, node))
 	require.NoError(t, err)
 
 	require.NoError(t, artifacts.Validate())
@@ -1610,9 +1979,8 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, resultRec, "result record must not be nil")
 
 	// Read the artifacts from the record.
-	var artifacts v2.ResultArtifact
-	require.NoError(t, artifacts.FromRecordBatch(resultRec))
-	require.NoError(t, artifacts.Validate())
+	artifacts, err := oneArtifact(t)(v2.DecodeResultArtifacts(resultRec))
+	require.NoError(t, err)
 
 	// Verify the artifact path matches the content-hash naming scheme.
 	path := artifacts.Path
@@ -1639,10 +2007,14 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawStats, "output must contain a stats section")
 }
 
-// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput and
+// ObserveIndexMergeInput call.
 type recordingIndexMergeObserver struct {
 	tenants                            []string
 	compressedSizes, uncompressedSizes []int64
+
+	inputTenants                                 []string
+	inputCompressedSizes, inputUncompressedSizes []int64
 }
 
 func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
@@ -1651,8 +2023,14 @@ func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, com
 	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
 }
 
-func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
-	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.inputTenants = append(o.inputTenants, tenant)
+	o.inputCompressedSizes = append(o.inputCompressedSizes, compressedBytes)
+	o.inputUncompressedSizes = append(o.inputUncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesSizes(t *testing.T) {
+	t.Run("reports the source page sizes, and the tenant and compressed size of the uploaded index once", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
 		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
@@ -1660,10 +2038,10 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		execCtx := newTestExecutorContext(t, bucket)
 		execCtx.indexMergeObserver = observer
 
-		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+		artifact, err := oneArtifact(t)(execCtx.doIndexMerge(ctx, &physical.IndexMerge{
 			NodeID: ulid.Make(), Tenant: "tenant-1",
 			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
-		})
+		}))
 		require.NoError(t, err)
 
 		attrs, err := bucket.Attributes(ctx, artifact.Path)
@@ -1672,6 +2050,76 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
 		require.Len(t, observer.uncompressedSizes, 1)
 		require.Positive(t, observer.uncompressedSizes[0])
+
+		sourceCompressed, sourceUncompressed := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, sourceCompressed)
+		require.Equal(t, sourceCompressed, totalBytes(observer.inputCompressedSizes))
+		require.Equal(t, sourceUncompressed, totalBytes(observer.inputUncompressedSizes))
+		require.Equal(t, []string{"tenant-1"}, slices.Compact(observer.inputTenants))
+	})
+
+	t.Run("reports fewer source bytes when the key span rules out postings pages", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 1, 4, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		start := postings.Key{Kind: postings.KindLabel, ColumnName: "c0000"}
+		end := postings.Key{Kind: postings.KindLabel, ColumnName: "c0010"}
+		keySpan, err := postings.NewKeySpan(&start, &end)
+		require.NoError(t, err)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		_, err = execCtx.doIndexMerge(t.Context(), &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1", KeySpan: keySpan,
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		sourceCompressed, _ := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, totalBytes(observer.inputCompressedSizes))
+		require.Less(t, totalBytes(observer.inputCompressedSizes), sourceCompressed)
+	})
+
+	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newSplittingContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifacts, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(artifacts), 1)
+
+		var uploaded int64
+		for _, artifact := range artifacts {
+			attrs, err := bucket.Attributes(ctx, artifact.Path)
+			require.NoError(t, err)
+			uploaded += attrs.Size
+		}
+		require.Equal(t, []int64{uploaded}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+		require.Greater(t, observer.uncompressedSizes[0], int64(4096*(len(artifacts)-1)))
 	})
 }
 
@@ -1683,7 +2131,7 @@ func TestExecuteIndexMerge_StreamsLayout(t *testing.T) {
 		for _, path := range paths {
 			node.Runs[0].Sections = append(node.Runs[0].Sections, &compactionv2pb.SectionRef{ObjectPath: path})
 		}
-		artifacts, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		artifacts, err := oneArtifact(t)(newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node))
 		require.NoError(t, err)
 		obj, err := dataobj.FromBucket(t.Context(), bucket, artifacts.Path, 0)
 		require.NoError(t, err)
@@ -1744,13 +2192,34 @@ func (it *closeErrIter) At() int      { return it.rows[it.next-1] }
 func (it *closeErrIter) Err() error   { return nil }
 func (it *closeErrIter) Close() error { return it.closeErr }
 
+// countingIter returns rows and calls onClose when it closes.
+type countingIter struct {
+	rows    []int
+	next    int
+	onClose func()
+}
+
+func (it *countingIter) Next() bool {
+	if it.next >= len(it.rows) {
+		return false
+	}
+	it.next++
+	return true
+}
+
+func (it *countingIter) At() int    { return it.rows[it.next-1] }
+func (it *countingIter) Err() error { return nil }
+func (it *countingIter) Close() error {
+	it.onClose()
+	return nil
+}
+
 func TestSectionConcatSeq(t *testing.T) {
 	t.Run("stops with the close error of a drained section reader", func(t *testing.T) {
 		closeErr := errors.New("close failed")
 		seq := &sectionConcatSeq[int]{
-			ctx:        context.Background(),
-			objectPath: "indexes/a",
-			sections:   []*dataobj.Section{nil, nil},
+			ctx:      context.Background(),
+			sections: []sourceSection{{objectPath: "indexes/a"}, {objectPath: "indexes/a"}},
 			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
 				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
 			},
@@ -1761,4 +2230,125 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
 	})
+
+	inOrderSeq := func(sections ...[]int) *sectionConcatSeq[int] {
+		var refs []sourceSection
+		for i := range sections {
+			refs = append(refs, sourceSection{objectPath: fmt.Sprintf("indexes/%d", i)})
+		}
+		next := 0
+		return &sectionConcatSeq[int]{
+			ctx:      context.Background(),
+			sections: refs,
+			compare:  func(a, b int) int { return a - b },
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				if next >= len(sections) {
+					return nil, errors.New("opened more sections than the sequence holds")
+				}
+				rows := sections[next]
+				next++
+				return &closeErrIter{rows: rows}, nil
+			},
+		}
+	}
+	drain := func(seq *sectionConcatSeq[int]) []int {
+		var rows []int
+		for seq.Next() {
+			rows = append(rows, seq.At())
+		}
+		return rows
+	}
+
+	t.Run("returns the rows of every section in order when each row sorts at or above the row before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 2, 2}, []int{2, 5})
+		require.Equal(t, []int{1, 2, 2, 2, 5}, drain(seq))
+		require.NoError(t, seq.Err())
+	})
+
+	t.Run("keeps at most one section reader open while it reads the sections of several objects", func(t *testing.T) {
+		var open, maxOpen int
+		seq := &sectionConcatSeq[int]{
+			ctx: context.Background(),
+			sections: []sourceSection{
+				{objectPath: "indexes/a"}, {objectPath: "indexes/a"}, {objectPath: "indexes/b"},
+			},
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				open++
+				maxOpen = max(maxOpen, open)
+				return &countingIter{rows: []int{1, 2}, onClose: func() { open-- }}, nil
+			},
+		}
+
+		require.Len(t, drain(seq), 6)
+		require.NoError(t, seq.Err())
+		require.Equal(t, 1, maxOpen)
+		require.Zero(t, open)
+	})
+
+	t.Run("stops with an error that names the object when a section starts below the end of the section before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 4}, []int{3})
+		require.Equal(t, []int{1, 4}, drain(seq))
+		require.ErrorContains(t, seq.Err(), `a row of section 1/2 of the sequence, of object "indexes/1", sorts below the row before it, of object "indexes/0"`)
+	})
+}
+
+// oneArtifact returns a function that takes the results of a task and
+// returns its only artifact, or the error of the task. It returns a function
+// so a call can take the results of the task directly, as in
+// oneArtifact(t)(c.doIndexMerge(ctx, node)).
+func oneArtifact(t testing.TB) func([]v2.ResultArtifact, error) (v2.ResultArtifact, error) {
+	return func(artifacts []v2.ResultArtifact, err error) (v2.ResultArtifact, error) {
+		t.Helper()
+		if err != nil {
+			return v2.ResultArtifact{}, err
+		}
+		require.Len(t, artifacts, 1)
+		return artifacts[0], nil
+	}
+}
+
+// indexPageBytes returns the total compressed and uncompressed size of the pages in the
+// postings and stats sections of tenant in the object at path.
+func indexPageBytes(t *testing.T, bucket objstore.Bucket, tenant, path string) (compressed, uncompressed int64) {
+	t.Helper()
+	obj, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+	require.NoError(t, err)
+	for _, section := range obj.Sections() {
+		if section.Tenant != tenant {
+			continue
+		}
+		switch {
+		case postings.CheckSection(section):
+			opened, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := postings.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		case stats.CheckSection(section):
+			opened, err := stats.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := stats.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		}
+	}
+	return compressed, uncompressed
+}
+
+func totalBytes(values []int64) int64 {
+	var total int64
+	for _, value := range values {
+		total += value
+	}
+	return total
 }

@@ -84,7 +84,7 @@ func NewOffsetReader(client *kgo.Client, topic string) *OffsetReader {
 // the partition. The offset is -1 if the group has no committed offset for the
 // partition.
 func (r *OffsetReader) LastCommittedOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error) {
-	offsets, err := r.LastCommittedOffsets(ctx, map[int32]string{partition: consumerGroup})
+	offsets, err := r.LastCommittedOffsets(ctx, consumerGroup, []int32{partition})
 	if err != nil {
 		return 0, err
 	}
@@ -140,34 +140,29 @@ func (r *OffsetReader) listedOffsets(listed kadm.ListedOffsets, err error) (map[
 // with no committed offset.
 const noCommittedOffset = int64(-1)
 
-// LastCommittedOffsets returns the last committed offset for each partition
-// in groups, keyed by partition. groups maps each partition to the consumer
-// group that consumes it. It sends one request per group coordinator.
+// LastCommittedOffsets returns the last committed offset of consumerGroup for
+// each of the partitions, keyed by partition.
 //
-// The offset is -1 if the group has no committed offset for its partition.
-func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, groups map[int32]string) (map[int32]int64, error) {
-	offsets := make(map[int32]int64, len(groups))
-	if len(groups) == 0 {
+// The offset is -1 if the group has no committed offset for the partition.
+func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, consumerGroup string, partitions []int32) (map[int32]int64, error) {
+	offsets := make(map[int32]int64, len(partitions))
+	if len(partitions) == 0 {
 		return offsets, nil
 	}
-	// Name the partitions of each group rather than ask for every committed
-	// offset of the group. That keeps the load on the broker low.
-	partitions := make(map[string][]int32)
-	for partition, group := range groups {
-		// The broker omits the partitions of a group that does not exist.
+	// The broker omits the partitions of a group that does not exist.
+	for _, partition := range partitions {
 		offsets[partition] = noCommittedOffset
-		partitions[group] = append(partitions[group], partition)
 	}
+	// Name the partitions rather than ask for every committed offset of the
+	// group. That keeps the load on the broker low.
+	topic := kmsg.NewOffsetFetchRequestGroupTopic()
+	topic.Topic = r.topic
+	topic.Partitions = partitions
+	reqGroup := kmsg.NewOffsetFetchRequestGroup()
+	reqGroup.Group = consumerGroup
+	reqGroup.Topics = []kmsg.OffsetFetchRequestGroupTopic{topic}
 	req := kmsg.NewPtrOffsetFetchRequest()
-	for group, groupPartitions := range partitions {
-		topic := kmsg.NewOffsetFetchRequestGroupTopic()
-		topic.Topic = r.topic
-		topic.Partitions = groupPartitions
-		reqGroup := kmsg.NewOffsetFetchRequestGroup()
-		reqGroup.Group = group
-		reqGroup.Topics = []kmsg.OffsetFetchRequestGroupTopic{topic}
-		req.Groups = append(req.Groups, reqGroup)
-	}
+	req.Groups = []kmsg.OffsetFetchRequestGroup{reqGroup}
 
 	for _, shard := range r.client.RequestSharded(ctx, req) {
 		if shard.Err != nil {

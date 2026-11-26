@@ -605,3 +605,5 @@ func (st *sectionStatsTracker) OnColumnPredicateBuilt(c dataset.Column, pages da
 	st.columnNamePages.Total = pages.Total
 	st.columnNamePages.Relevant += pages.Relevant
 }
+
+func (st *sectionStatsTracker) OnPagesDownloaded(int64, int64) {}

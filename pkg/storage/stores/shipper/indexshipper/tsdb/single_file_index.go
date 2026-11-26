@@ -260,7 +260,7 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 		defer scan.Close()
 
 		for p.Next() {
-			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks, nil)
 			if err != nil {
 				return err
 			}
@@ -284,22 +284,41 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 }
 
 // Same as ForSeries, but the callback fn does not take a Labels parameter.
-func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+// If filterer is non-nil, it is applied to each series, only decoding the labels needed by the filterer.
+func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, filterer chunk.Filterer, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
+
+	// Only decode labels needed by the filterer.
+	var (
+		lbls *labels.Labels
+		by   map[string]struct{}
+	)
+	if filterer != nil {
+		lbls = new(labels.Labels)
+		names := filterer.RequiredLabelNames()
+		by = make(map[string]struct{}, len(names))
+		for _, n := range names {
+			by[n] = struct{}{}
+		}
+	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
 		for p.Next() {
-			hash, err := scan.Series(p.At(), int64(from), int64(through), nil, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), lbls, &chks, by)
 			if err != nil {
 				return err
 			}
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
+				continue
+			}
+
+			if filterer != nil && filterer.ShouldFilter(*lbls) {
 				continue
 			}
 
@@ -311,6 +330,8 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 	})
 }
 
+// forPostings calls fn with the postings matching matchers.
+// fn must not keep the postings as they are closed when fn returns.
 func (i *TSDBIndex) forPostings(
 	ctx context.Context,
 	fpFilter index.FingerprintFilter,
@@ -334,6 +355,7 @@ func (i *TSDBIndex) forPostings(
 	if err != nil {
 		return err
 	}
+	defer p.Close()
 	return fn(p)
 }
 
@@ -364,15 +386,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	if f := i.getChunkFilter(); f != nil {
 		filterer = f.ForRequest(ctx)
 	}
-	var err error
-	if filterer != nil {
-		// We need to fetch labels to pass to the filterer, even though we don't look at them in the callback.
-		err = i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-			return addChunksToResult(fp, chks)
-		}, matchers...)
-	} else {
-		err = i.forSeriesNoLabels(ctx, fpFilter, from, through, addChunksToResult, matchers...)
-	}
+	err := i.forSeriesNoLabels(ctx, fpFilter, filterer, from, through, addChunksToResult, matchers...)
 	return res, err
 }
 

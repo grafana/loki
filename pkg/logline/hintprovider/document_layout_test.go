@@ -83,7 +83,7 @@ func writeV5TestIndex(t *testing.T, indexStore *store.Store, hash, needle string
 
 // TestLoglineHintProvider_ProvideHints_V5Cells checks that v5 hints come from
 // the footer's layout and the matching cells, one range per document shard,
-// and that QueryHints sends their time union over the wire.
+// and that QueryHints sends them over the wire.
 func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	const needle = "9fA81cD2Ef0077aa"
 	day := time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC)
@@ -123,8 +123,9 @@ func TestLoglineHintProvider_ProvideHints_V5Cells(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{
-		{Start: t0, End: t0.Add(16 * time.Second)},
-		{Start: t0.Add(160 * time.Second), End: t0.Add(176 * time.Second)},
+		{Start: t0, End: t0.Add(16 * time.Second), DocumentShard: 3, DocumentShardBits: v5TestShardBits},
+		{Start: t0.Add(160 * time.Second), End: t0.Add(176 * time.Second), DocumentShard: 3, DocumentShardBits: v5TestShardBits},
+		{Start: t0, End: t0.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: v5TestShardBits},
 	}, FromProtoRanges(resp.TimeRanges))
 }
 

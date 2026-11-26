@@ -18,23 +18,24 @@ import (
 // rows from a logs section.
 var RegionRead = "logs.Reader.Read"
 
-// schemaSortVersion is the section type version for logs sections written in
-// schema sort order. It must differ from columnar.FormatVersion, so callers
-// can detect the sort contract from the object header alone, without opening
-// the section. The stream layout that orders the rows is in the tenant's
-// streams section.
-const schemaSortVersion uint32 = 3
+// legacySchemaSortVersion is the section version that older writers gave to
+// logs sections in schema sort order. Those sections have format version 2.
+// Writers no longer write it, and readers still accept it.
+const legacySchemaSortVersion uint32 = 3
 
 var sectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
 	Kind:      format.LogsSectionKind,
-	Version:   columnar.FormatVersion,
+	Version:   columnar.DefaultFormatVersion,
 }
 
-var schemaSortSectionType = dataobj.SectionType{
-	Namespace: format.SectionNamespace,
-	Kind:      format.LogsSectionKind,
-	Version:   schemaSortVersion,
+// formatVersionOf returns the format version of a logs section with the given
+// section version.
+func formatVersionOf(sectionVersion uint32) uint32 {
+	if sectionVersion == legacySchemaSortVersion {
+		return columnar.FormatVersionDescriptorChecksum
+	}
+	return sectionVersion
 }
 
 // CheckSection returns true if section is a logs section.
@@ -53,11 +54,13 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
-	if section.Type.Version != columnar.FormatVersion && section.Type.Version != schemaSortVersion {
+
+	formatVersion := formatVersionOf(section.Type.Version)
+	if !columnar.IsSupportedVersion(formatVersion) {
 		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
+	dec, err := columnar.NewDecoder(section.Reader, formatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
@@ -101,6 +104,14 @@ func (s *Section) init() error {
 // Unrecognized columns (e.g., when running older code against newer sterams
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// NumRows returns the number of rows in the section.
+func (s *Section) NumRows() int {
+	if len(s.columns) == 0 {
+		return 0
+	}
+	return int(s.columns[0].inner.Metadata().RowsCount)
+}
 
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -66,6 +67,10 @@ type WorkerParams struct {
 	// NewLogMergeObserver returns the LogMerge observer for each worker
 	// thread. Optional; nil disables observation.
 	NewLogMergeObserver executor.NewLogMergeObserverFunc
+
+	// DeletionSweepMetrics is shared by the deletion sweeps of all worker
+	// threads. Optional. A DeletionSweep task that deletes fails if it is nil.
+	DeletionSweepMetrics *deletion.SweepMetrics
 }
 
 // Worker requests tasks from a scheduler and executes them. Task results are
@@ -128,8 +133,9 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		LogsobjCfg:     params.LogsobjCfg,
 		BuilderMetrics: builderMetrics,
 
-		IndexMergeObserver:  params.IndexMergeObserver,
-		NewLogMergeObserver: params.NewLogMergeObserver,
+		IndexMergeObserver:   params.IndexMergeObserver,
+		NewLogMergeObserver:  params.NewLogMergeObserver,
+		DeletionSweepMetrics: params.DeletionSweepMetrics,
 	})
 	if err != nil {
 		return nil, err

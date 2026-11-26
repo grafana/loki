@@ -12,6 +12,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// NewOnPagesDownloadedFunc returns a stats tracker for
+// [RemappedSection.StatsTracker]. It calls fn with the compressed and the
+// uncompressed size of each batch of pages that the reader of the section
+// downloads. It returns nil if fn is nil.
+func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64)) dataset.RowReaderStatsTracker {
+	return dataset.NewOnPagesDownloadedFunc(fn)
+}
+
 // RemappedSection pairs a logs section with its source object's local-to-global
 // stream IDs. Global IDs must be ranked in physical stream order.
 type RemappedSection struct {
@@ -22,6 +30,10 @@ type RemappedSection struct {
 	// Remap needs no entry for them. Records of any other stream must be in
 	// Remap, so a record of an unknown stream still fails the merge.
 	DropStreamIDs []int64
+
+	// StatsTracker is optional. The reader of the section reports its stats
+	// to it.
+	StatsTracker dataset.RowReaderStatsTracker
 }
 
 // Run is a sequence of sections sorted by global stream ID ascending, then
@@ -227,7 +239,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize 
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize, input.DropStreamIDs)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, nil, input.DropStreamIDs, input.StatsTracker)
 	if err != nil {
 		return nil, err
 	}

@@ -127,8 +127,6 @@ import (
 //
 //   - HTTP Status Code: 409 Conflict
 //
-//   - SOAP Fault Code Prefix: Client
-//
 //   - Code: GlacierExpeditedRetrievalNotAvailable
 //
 //   - Cause: expedited retrievals are currently not available. Try again later.
@@ -137,8 +135,6 @@ import (
 //     retrievals.)
 //
 //   - HTTP Status Code: 503
-//
-//   - SOAP Fault Code Prefix: N/A
 //
 // The following operations are related to RestoreObject :
 //

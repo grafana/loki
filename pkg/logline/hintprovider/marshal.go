@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -60,6 +61,29 @@ func toProtoIndexMeta(m store.Meta) logproto.IndexMeta {
 		ShardValue:     int64(m.ShardValue),
 		IndexHeader:    toProtoHeader(m.IndexHeader),
 	}
+}
+
+// ToProtoConjunctions converts planned needles to their wire form, where each
+// inner list is wrapped in a logproto.Conjunction.
+func ToProtoConjunctions(c needle.Conjunctions) []logproto.Conjunction {
+	out := make([]logproto.Conjunction, len(c))
+	for i, needles := range c {
+		out[i] = logproto.Conjunction{Needles: needles}
+	}
+	return out
+}
+
+// fromProtoConjunctions rebuilds the needles a frontend planned. A nil result
+// means the request carried none.
+func fromProtoConjunctions(c []logproto.Conjunction) needle.Conjunctions {
+	if len(c) == 0 {
+		return nil
+	}
+	out := make(needle.Conjunctions, len(c))
+	for i, conjunction := range c {
+		out[i] = conjunction.Needles
+	}
+	return out
 }
 
 func ToProtoIndexMetas(ms []store.Meta) []logproto.IndexMeta {

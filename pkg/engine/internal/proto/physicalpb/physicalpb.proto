@@ -53,7 +53,23 @@ message IndexMerge {
   // Pinned at plan time so the executor and pointer swap target the
   // same window regardless of clock drift between planning and execution.
   int64 toc_window_start_unix_nanos = 2;
+  // runs holds the runs of a merge over every posting key. A merge with a
+  // posting key bound holds its runs in bounded_runs instead.
   repeated proto.RunRef runs = 3;
+  // start_posting_key and end_posting_key limit the merge to the postings
+  // rows whose posting key is in [start, end). Each holds an encoded posting
+  // key. An empty bound is open.
+  bytes start_posting_key = 4;
+  bytes end_posting_key = 5;
+  // bounded_runs holds the runs of a merge with a posting key bound. A worker
+  // that does not know the bounds then finds no runs and fails the task. It
+  // does not merge every key, which would repeat the rows of the other tasks
+  // of the merge.
+  repeated proto.RunRef bounded_runs = 6;
+  // stats_source_paths are the source index objects whose stats rows a merge
+  // with a posting key bound merges. A merge without bounds merges the stats
+  // rows of every source.
+  repeated string stats_source_paths = 7;
 }
 
 // LogMerge represents one K-way sort-merge task over LOG sections
@@ -88,9 +104,21 @@ message IndexFilter {
   // source_index_paths lists the paths of every index object of the source
   // index.
   repeated string source_index_paths = 4;
+  // source_index_paths_in_key_order is true if source_index_paths lists the
+  // index objects in posting key order, with ranges that do not overlap. The
+  // worker then reads them as one sequence. A coordinator that predates the
+  // field leaves it false, and the worker merges the index objects in any
+  // order.
+  bool source_index_paths_in_key_order = 5;
 }
 
-// DeletionSweep applies delete requests to the objects of one tenant.
+// DeletionSweep finds the objects of one tenant that no ToC can reach, and
+// acts on the deletion candidates.
 message DeletionSweep {
   string tenant = 1;
+  // delete makes the sweep delete its deletion candidates. If it is false,
+  // the sweep only logs them. A planner that does not know the field sends
+  // false, so an older planner gets a dry run. An older worker ignores the
+  // field and does a dry run.
+  bool delete = 2;
 }

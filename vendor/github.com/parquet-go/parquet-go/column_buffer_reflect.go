@@ -857,6 +857,14 @@ func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc
 			}
 
 		case reflect.Array:
+			// reflect.Value.Bytes panics on unaddressable arrays; values
+			// extracted from an interface or a map are never addressable,
+			// so they must be copied to an addressable value first.
+			if !value.CanAddr() {
+				u := reflect.New(value.Type()).Elem()
+				u.Set(value)
+				value = u
+			}
 			col.writeByteArray(levels, value.Bytes())
 			return
 

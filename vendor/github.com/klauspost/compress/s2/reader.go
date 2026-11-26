@@ -184,6 +184,7 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.j = 0
 	r.blockStart = 0
 	r.readHeader = r.ignoreStreamID
+	r.snappyFrame = false
 }
 
 func (r *Reader) readFull(p []byte, allowEOF bool) (ok bool) {
@@ -206,12 +207,20 @@ func (r *Reader) skippable(tmp []byte, n int, allowEOF bool, id uint8) (ok bool)
 		return false
 	}
 	if fn := r.skippableCB[id-0x80]; fn != nil {
-		rd := io.LimitReader(r.r, int64(n))
+		rd := &io.LimitedReader{R: r.r, N: int64(n)}
 		r.err = fn(rd)
+		if r.err == io.EOF && rd.N > 0 {
+			// The stream ended inside the chunk.
+			r.err = ErrCorrupt
+		}
 		if r.err != nil {
 			return false
 		}
 		_, r.err = io.CopyBuffer(io.Discard, rd, tmp)
+		if r.err == nil && rd.N > 0 {
+			// The stream ended inside the chunk.
+			r.err = ErrCorrupt
+		}
 		return r.err == nil
 	}
 	if rs, ok := r.r.(io.ReadSeeker); ok {
@@ -814,6 +823,8 @@ func (r *Reader) Skip(n int64) error {
 					return r.err
 				}
 			}
+
+			r.snappyFrame = string(r.buf[:len(magicBody)]) == magicBodySnappy
 
 			continue
 		}

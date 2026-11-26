@@ -371,6 +371,7 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 		{"final millisecond of the day", HintTimeRange{Start: d11.Add(-time.Millisecond), End: d11}},
 		{"unconstrained passthrough covering last millisecond", passthroughForInclusiveThrough(d11.Add(-time.Millisecond))},
 		{"spans a whole day", HintTimeRange{Start: d10.Add(23 * time.Hour), End: d12.Add(time.Hour)}},
+		{"keeps the document shard", HintTimeRange{Start: d11.Add(-10 * time.Minute), End: d11.Add(10 * time.Minute), DocumentShard: 17, DocumentShardBits: 5}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var union []HintTimeRange
@@ -387,6 +388,8 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 						"payload %v starts before its day %s", p, day[0])
 					require.False(t, p.End.After(day[1]),
 						"payload %v ends after its day %s", p, day[1])
+					require.Equal(t, tc.input.documentShardKey(), p.documentShardKey(),
+						"payload %v lost its document shard", p)
 				}
 				union = append(union, payload...)
 			}
@@ -456,7 +459,7 @@ func TestBuildHintCacheLogicalKey_HashRoundTrip(t *testing.T) {
 	day := "2026-03-10"
 	logical := buildHintCacheLogicalKey(tenant, query, minDate, day)
 
-	require.Equal(t, "logline:1:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", logical)
+	require.Equal(t, "logline:2:tenant-a:{job=\"api\"} |= \"error\":2026-03-08:2026-03-10", logical)
 	require.Equal(t, cache.HashKey(logical), buildDayWindows(tenant, query,
 		minDate,
 		time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC),
@@ -652,11 +655,17 @@ func TestCachedHints_JSONRoundTrip(t *testing.T) {
 			End:    time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
 			Source: "debug-source",
 		},
+		{
+			Start:             time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
+			End:               time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
+			DocumentShard:     17,
+			DocumentShardBits: 5,
+		},
 	}
 
 	encoded, err := marshalCachedHints(input)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"r":[{"s":1773108000000,"e":1773108300000}]}`, string(encoded))
+	require.JSONEq(t, `{"r":[{"s":1773108000000,"e":1773108300000},{"s":1773108000000,"e":1773108300000,"d":17,"n":5}]}`, string(encoded))
 
 	decoded, err := unmarshalCachedHints(encoded)
 	require.NoError(t, err)
@@ -664,6 +673,12 @@ func TestCachedHints_JSONRoundTrip(t *testing.T) {
 		{
 			Start: time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
+		},
+		{
+			Start:             time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
+			End:               time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
+			DocumentShard:     17,
+			DocumentShardBits: 5,
 		},
 	}, decoded)
 

@@ -1,4 +1,4 @@
-//go:build purego && parquet.bloom.no_unroll
+//go:build purego && parquet.bloom.no_unroll && (!amd64 || !goexperiment.simd)
 
 package bloom
 

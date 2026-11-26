@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"time"
@@ -341,8 +342,12 @@ func (z *Reader) WriteTo(w io.Writer) (int64, error) {
 		total += n
 		z.size += uint32(n)
 		if err != nil {
-			z.err = err
-			return total, z.err
+			// z.err doubles as the end-of-stream marker. Wrap with %w so a
+			// writer's io.EOF stays identifiable as a write failure and is
+			// not mistaken for a clean end of the input (io.EOF) or reported
+			// to later calls as truncated input (io.ErrUnexpectedEOF).
+			z.err = fmt.Errorf("gzip: %w", err)
+			return total, err
 		}
 
 		// Finished file; check checksum + size.
@@ -364,6 +369,10 @@ func (z *Reader) WriteTo(w io.Writer) (int64, error) {
 
 		// File is ok; check if there is another.
 		if !z.multistream {
+			// Match Read: mark the reader as ended, so a later Read
+			// returns io.EOF instead of interpreting the bytes after
+			// the member as a checksum.
+			z.err = io.EOF
 			return total, nil
 		}
 		crcWriter.Reset()

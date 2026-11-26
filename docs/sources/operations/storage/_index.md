@@ -5,7 +5,7 @@ description: Describes the Loki storage needs and supported stores.
 ---
 # Manage storage
 
-You can read a high level overview of Loki storage [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/)
+For a high level overview of Loki storage, refer to [Storage](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/).
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
@@ -29,7 +29,7 @@ For more information:
 
 ### ✅ Supported index stores
 
-- [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
+- [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the only supported index store.
 
 ### ✅ Supported and recommended chunks stores
 
@@ -39,10 +39,11 @@ For more information:
 - [IBM Cloud Object Storage (COS)](https://www.ibm.com/cloud/object-storage)
 - [Baidu Object Storage](https://intl.cloud.baidu.com/product/bos.html)
 - [Alibaba Object Storage Service (OSS)](https://www.alibabacloud.com/product/object-storage-service)
+- [OpenStack Swift](https://docs.openstack.org/swift/latest/)
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
 
-- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - S3 API compatible storage, such as [MinIO](https://min.io/)
 
 ## Cloud Storage Permissions
@@ -54,6 +55,7 @@ When using S3 as object storage, the following permissions are needed:
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`
+- `s3:DeleteObject` (required when running the compactor, for retention, index compaction, and log deletion)
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 

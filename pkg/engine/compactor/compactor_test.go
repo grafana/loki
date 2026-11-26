@@ -76,7 +76,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		LogMaxRunsPerTask:         defaultLogMaxRunsPerTask,
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
-		PlanVersion:               defaultPlanVersion,
+		PlannerVersion:            defaultPlannerVersion,
 	}
 
 	bucket := objstore.NewInMemBucket()
@@ -123,6 +123,15 @@ func TestConfig_Validate_DisabledCompaction(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.Enabled = true
 		cfg.DeletionSweep.Enabled = true
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("accepts the deletion sweep without dry run when compaction is enabled", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		cfg.DeletionSweep.DryRun = false
 		require.NoError(t, cfg.Validate())
 	})
 }

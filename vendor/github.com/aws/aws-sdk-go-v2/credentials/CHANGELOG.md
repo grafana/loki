@@ -1,3 +1,15 @@
+# v1.21.3 (2026-11-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.21.2 (2026-11-18)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.21.1 (2026-11-16)
+
+* **Bug Fix**: Refresh login credentials in the region stored in the cached token's `signInRegion` field.
+
 # v1.21.0 (2026-11-10)
 
 * **Feature**: Make Retry Behavior 2.1 the default for standard and adaptive retry modes and remove the AWS_NEW_RETRIES_2026 flag. A retry costs 14 tokens, or 5 for a throttling error. Backoff uses a 50ms base, or 1s for throttling errors, and honors the x-amz-retry-after header. DynamoDB and DynamoDB Streams default to 4 attempts and a 25ms base. Long-polling operations (SQS ReceiveMessage, SFN GetActivityTask, SWF PollForActivityTask and PollForDecisionTask) back off when the retry quota is exhausted. HTTP 429 responses that don't deserialize to a modeled error type, including those from IMDS, are retried as throttling errors, as are HTTP 429 responses from the endpoint credentials provider. StandardOptions.RetryTimeoutCost and StandardOptions.Timeouts are deprecated and no longer used.

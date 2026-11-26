@@ -22,7 +22,7 @@ import (
 
 func newTestSweepScheduler(maxConcurrent int, bucket objstore.BucketReader, limits Limits, run runFunc) *sweepScheduler {
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
-	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal)
+	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent, DryRun: true}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal)
 }
 
 // sweepRecorder records the time and the plan of each sweep. Its respond
@@ -32,10 +32,10 @@ type sweepRecorder struct {
 	times   []time.Time
 	plans   []*physical.Plan
 	opts    []workflow.Options
-	respond func(ctx context.Context, n int) (*v2.ResultArtifact, error)
+	respond func(ctx context.Context, n int) ([]v2.ResultArtifact, error)
 }
 
-func (r *sweepRecorder) run(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+func (r *sweepRecorder) run(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 	r.mu.Lock()
 	r.times = append(r.times, time.Now())
 	r.plans = append(r.plans, plan)
@@ -45,7 +45,7 @@ func (r *sweepRecorder) run(ctx context.Context, opts workflow.Options, plan *ph
 	if r.respond != nil {
 		return r.respond(ctx, n)
 	}
-	return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
+	return []v2.ResultArtifact{{Path: "deletion/t/files.jsonl.gz"}}, nil
 }
 
 func (r *sweepRecorder) calls() int {
@@ -91,11 +91,11 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 			start := time.Now().Truncate(time.Hour)
 			ctx, cancel := context.WithCancel(t.Context())
 			recorder := &sweepRecorder{}
-			recorder.respond = func(context.Context, int) (*v2.ResultArtifact, error) {
+			recorder.respond = func(context.Context, int) ([]v2.ResultArtifact, error) {
 				if recorder.calls() == 3 {
 					cancel()
 				}
-				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
+				return []v2.ResultArtifact{{Path: "deletion/t/files.jsonl.gz"}}, nil
 			}
 			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
@@ -117,13 +117,13 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 			start := time.Now().Truncate(time.Hour)
 			ctx, cancel := context.WithCancel(t.Context())
 			recorder := &sweepRecorder{}
-			recorder.respond = func(context.Context, int) (*v2.ResultArtifact, error) {
+			recorder.respond = func(context.Context, int) ([]v2.ResultArtifact, error) {
 				if recorder.calls() == 2 {
 					cancel()
 				} else {
 					time.Sleep(90 * time.Minute)
 				}
-				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
+				return []v2.ResultArtifact{{Path: "deletion/t/files.jsonl.gz"}}, nil
 			}
 			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
@@ -138,7 +138,7 @@ func TestSweepScheduler_RunTenant(t *testing.T) {
 			start := time.Now().Truncate(time.Hour)
 			ctx, cancel := context.WithCancel(t.Context())
 			recorder := &sweepRecorder{}
-			recorder.respond = func(context.Context, int) (*v2.ResultArtifact, error) {
+			recorder.respond = func(context.Context, int) ([]v2.ResultArtifact, error) {
 				if recorder.calls() == 2 {
 					cancel()
 				}
@@ -177,12 +177,35 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 		require.Contains(t, logs.String(), fmt.Sprintf(`msg="dispatching deletion sweep" tenant=a minute=%d`, sweepMinute("a")))
 	})
 
+	for _, tc := range []struct {
+		name       string
+		dryRun     bool
+		wantDelete bool
+	}{
+		{"dispatches a plan that only logs the candidates when dry run is on", true, false},
+		{"dispatches a plan that deletes the candidates when dry run is off", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &sweepRecorder{}
+			metrics := newCoordinatorMetrics(prometheus.NewRegistry())
+			cfg := DeletionSweepConfig{MaxConcurrentSweeps: 1, DryRun: tc.dryRun}
+			s := newSweepScheduler(cfg, log.NewNopLogger(), objstore.NewInMemBucket(), newFakeLimits(), recorder.run, metrics.taskAttemptsTotal)
+
+			s.sweep(t.Context(), "a")
+
+			require.Len(t, recorder.plans, 1)
+			root, err := recorder.plans[0].Root()
+			require.NoError(t, err)
+			require.Equal(t, &physical.DeletionSweep{NodeID: root.ID(), Tenant: "a", Delete: tc.wantDelete}, root)
+		})
+	}
+
 	t.Run("waits for a free slot when the maximum number of sweeps runs", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			release := make(chan struct{})
-			recorder := &sweepRecorder{respond: func(context.Context, int) (*v2.ResultArtifact, error) {
+			recorder := &sweepRecorder{respond: func(context.Context, int) ([]v2.ResultArtifact, error) {
 				<-release
-				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
+				return []v2.ResultArtifact{{Path: "deletion/t/files.jsonl.gz"}}, nil
 			}}
 			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 
@@ -202,7 +225,7 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			var sweepErr error
-			recorder := &sweepRecorder{respond: func(runCtx context.Context, _ int) (*v2.ResultArtifact, error) {
+			recorder := &sweepRecorder{respond: func(runCtx context.Context, _ int) ([]v2.ResultArtifact, error) {
 				<-runCtx.Done()
 				sweepErr = runCtx.Err()
 				return nil, sweepErr
@@ -223,9 +246,9 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 	t.Run("returns without a sweep when the context ends while it waits for a slot", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			release := make(chan struct{})
-			recorder := &sweepRecorder{respond: func(context.Context, int) (*v2.ResultArtifact, error) {
+			recorder := &sweepRecorder{respond: func(context.Context, int) ([]v2.ResultArtifact, error) {
 				<-release
-				return &v2.ResultArtifact{Path: "deletion/t/files.jsonl.gz"}, nil
+				return []v2.ResultArtifact{{Path: "deletion/t/files.jsonl.gz"}}, nil
 			}}
 			s := newTestSweepScheduler(1, objstore.NewInMemBucket(), newFakeLimits(), recorder.run)
 

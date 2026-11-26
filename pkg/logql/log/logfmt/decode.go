@@ -35,9 +35,12 @@ func NewDecoder(line []byte) *Decoder {
 	return dec
 }
 
+// Reset makes the decoder read line from its start. It also clears the key, the value and the
+// error. The decoder retains line until the next Reset, so Reset(nil) makes it drop the line.
 func (dec *Decoder) Reset(line []byte) {
 	dec.pos = 0
 	dec.line = line
+	dec.key, dec.value = nil, nil
 	dec.err = nil
 }
 

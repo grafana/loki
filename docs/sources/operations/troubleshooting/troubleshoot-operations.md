@@ -620,6 +620,8 @@ A request was made to Loki without the required `X-Scope-OrgID` header. In multi
   auth_enabled: false
   ```
 
+  When auth is disabled, all requests are attributed to a single tenant. The tenant ID defaults to `fake` and can be changed with the `no_auth_tenant` configuration option. For more information, refer to [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/).
+
 **Properties:**
 
 - Enforced by: Authentication middleware

@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// columnReader is not safe for concurrent use.
 type columnReader struct {
 	column      Column
 	initialized bool // Whether the column reader has been initialized.
@@ -165,7 +166,31 @@ func (cr *columnReader) readPage(ctx context.Context, alloc *memory.Allocator, c
 	if err != nil && !errors.Is(err, io.EOF) {
 		return arr, err
 	}
+
+	// An io.EOF before the last row of the page is an error. The next call
+	// would find the same page and read it again, without end.
+	//
+	// The page reader reports a page with a different number of rows than its
+	// descriptor declares as [io.ErrUnexpectedEOF]. So this io.EOF comes from
+	// loading the page.
+	if page := cr.ranges[cr.pageIndex]; err != nil && page.Contains(uint64(cr.nextRow)) {
+		return arr, fmt.Errorf("page ended at row %d of %d: %w (%v)", uint64(cr.nextRow)-page.Start, page.End-page.Start, io.ErrUnexpectedEOF, err)
+	}
 	return arr, nil
+}
+
+// PageRanges returns the row range of each page of the column, in order. The
+// ranges are contiguous and start at row 0. The first call after a Reset lists
+// the pages, which can read from the object store. The returned slice belongs to
+// the reader and stays valid until the next call of [columnReader.Reset]. The
+// caller must not modify it.
+func (cr *columnReader) PageRanges(ctx context.Context) ([]rangeset.Range, error) {
+	if !cr.initialized {
+		if err := cr.init(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return cr.ranges, nil
 }
 
 // nextPage returns the page where cr.nextRow is contained. If cr.nextRow is

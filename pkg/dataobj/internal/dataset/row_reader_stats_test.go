@@ -26,6 +26,8 @@ func (r *recordingStatsTracker) OnColumnPredicateBuilt(col Column, stats ColumnR
 	})
 }
 
+func (r *recordingStatsTracker) OnPagesDownloaded(int64, int64) {}
+
 // TestBuildColumnPredicateRanges_ReportsPageStats verifies that the stats
 // tracker receives the column's total page count and only the pages that
 // survive page-level pruning as relevant. Pages that lack min/max stats are

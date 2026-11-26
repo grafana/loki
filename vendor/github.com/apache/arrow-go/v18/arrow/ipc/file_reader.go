@@ -237,7 +237,8 @@ func NewMappedFileReader(data []byte, opts ...Option) (*FileReader, error) {
 				maxMetadataSize: cfg.maxMetadataSize,
 				maxBodySize:     cfg.maxBodySize,
 			},
-			mem: cfg.alloc,
+			memo: dictutils.NewMemo(),
+			mem:  cfg.alloc,
 		}
 	)
 
@@ -601,8 +602,8 @@ func (src *ipcSource) buffer(i int) *memory.Buffer {
 		if uncompressedSize != -1 {
 			raw = memory.NewResizableBuffer(src.mem)
 			raw.Resize(int(uncompressedSize))
-			src.codec.Reset(bytes.NewReader(body[8:]))
-			if _, err := io.ReadFull(src.codec, raw.Bytes()); err != nil {
+			if err := src.codec.Decompress(raw.Bytes(), body[8:]); err != nil {
+				raw.Release()
 				panic(err)
 			}
 		} else {

@@ -1,12 +1,14 @@
 package physicalpb
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/oklog/ulid/v2"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
@@ -33,11 +35,26 @@ func (n *Node_IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 // MarshalPhysical converts a protobuf IndexMerge into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	keySpan, err := postings.DecodeKeySpan(n.StartPostingKey, n.EndPostingKey)
+	if err != nil {
+		return nil, fmt.Errorf("IndexMerge key span: %w", err)
+	}
+	runs := n.Runs
+	if !keySpan.IsAll() {
+		if len(n.Runs) > 0 {
+			return nil, errors.New("IndexMerge with a key span holds runs in runs instead of bounded_runs")
+		}
+		runs = n.BoundedRuns
+	} else if len(n.BoundedRuns) > 0 {
+		return nil, errors.New("IndexMerge without a key span holds runs in bounded_runs")
+	}
 	return &physical.IndexMerge{
 		NodeID:         nodeID,
 		Tenant:         n.Tenant,
 		ToCWindowStart: n.TocWindowStartUnixNanos,
-		Runs:           copyRunRefs(n.Runs),
+		Runs:           copyRunRefs(runs),
+		KeySpan:        keySpan,
+		StatsSources:   slices.Clone(n.StatsSourcePaths),
 	}, nil
 }
 
@@ -108,10 +125,11 @@ func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, err
 // MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
 func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexFilter{
-		NodeID:           nodeID,
-		Tenant:           n.Tenant,
-		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
-		ObjectPaths:      slices.Clone(n.ObjectPaths),
+		NodeID:            nodeID,
+		Tenant:            n.Tenant,
+		SourceIndexPaths:  slices.Clone(n.SourceIndexPaths),
+		SourcesInKeyOrder: n.SourceIndexPathsInKeyOrder,
+		ObjectPaths:       slices.Clone(n.ObjectPaths),
 	}, nil
 }
 
@@ -125,5 +143,6 @@ func (n *DeletionSweep) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error)
 	return &physical.DeletionSweep{
 		NodeID: nodeID,
 		Tenant: n.Tenant,
+		Delete: n.Delete,
 	}, nil
 }

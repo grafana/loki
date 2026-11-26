@@ -57,6 +57,7 @@ func TestConfig_ForPeriod(t *testing.T) {
 		PerIndexOwnership:         true,
 		TenantFilter:              filterTenants,
 		SkipInitialQueryReadiness: true,
+		DropFilter:                filterTenants,
 	}
 
 	t.Run("with per-index ownership a sharded period reads the sharded copy with the filters", func(t *testing.T) {
@@ -65,6 +66,7 @@ func TestConfig_ForPeriod(t *testing.T) {
 		require.True(t, cfg.PerIndexOwnership)
 		require.NotNil(t, cfg.TenantFilter)
 		require.True(t, cfg.SkipInitialQueryReadiness)
+		require.NotNil(t, cfg.DropFilter)
 	})
 
 	t.Run("with per-index ownership another period reads path_prefix without the filters", func(t *testing.T) {
@@ -73,5 +75,6 @@ func TestConfig_ForPeriod(t *testing.T) {
 		require.False(t, cfg.PerIndexOwnership)
 		require.Nil(t, cfg.TenantFilter)
 		require.False(t, cfg.SkipInitialQueryReadiness)
+		require.Nil(t, cfg.DropFilter)
 	})
 }

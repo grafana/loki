@@ -294,6 +294,7 @@ func TestTailQueryCloseResponseBeforeCancellation(t *testing.T) {
 	serverConn, initialConn := newTailTestConnection(t)
 	require.NoError(t, serverConn.Close())
 	responseRead := make(chan struct{})
+	printed := make(chan struct{})
 	writeContext := make(chan error, 1)
 	stopChan := make(chan os.Signal, 1)
 	upgrader := websocket.Upgrader{}
@@ -316,7 +317,7 @@ func TestTailQueryCloseResponseBeforeCancellation(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
-			transport = &closeResponseConn{Conn: conn, responseRead: responseRead, ctx: ctx, writeContext: writeContext}
+			transport = &closeResponseConn{Conn: conn, responseRead: responseRead, ctx: ctx, writeContext: writeContext, printed: printed, stopChan: stopChan}
 			return transport, nil
 		}}
 		conn, _, err := dialer.DialContext(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
@@ -332,7 +333,7 @@ func TestTailQueryCloseResponseBeforeCancellation(t *testing.T) {
 	}}
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- (&Query{Quiet: true}).tailQuery(0, c, &interruptOutput{stopChan: stopChan}, initialConn, stopChan)
+		errChan <- (&Query{Quiet: true}).tailQuery(0, c, &printedOutput{printed: printed}, initialConn, stopChan)
 	}()
 	select {
 	case err := <-errChan:
@@ -348,12 +349,30 @@ func TestTailQueryCloseResponseBeforeCancellation(t *testing.T) {
 	}
 }
 
+// closeResponseConn requests shutdown from the tail loop's next read after the
+// entry is printed, so the loop is guaranteed to be reading when the peer's
+// close response arrives.
 type closeResponseConn struct {
 	net.Conn
-	armed        bool
-	responseRead <-chan struct{}
-	ctx          context.Context
-	writeContext chan<- error
+	armed         bool
+	responseRead  <-chan struct{}
+	ctx           context.Context
+	writeContext  chan<- error
+	printed       <-chan struct{}
+	stopChan      chan<- os.Signal
+	stopRequested bool
+}
+
+func (c *closeResponseConn) Read(p []byte) (int, error) {
+	if c.armed && !c.stopRequested {
+		select {
+		case <-c.printed:
+			c.stopRequested = true
+			c.stopChan <- os.Interrupt
+		default:
+		}
+	}
+	return c.Conn.Read(p)
 }
 
 func (c *closeResponseConn) Write(p []byte) (int, error) {
@@ -451,5 +470,15 @@ type interruptOutput struct {
 
 func (o *interruptOutput) FormatAndPrintln(_ time.Time, _ loghttp.LabelSet, _ int, _ string) error {
 	o.stopChan <- os.Interrupt
+	return nil
+}
+
+type printedOutput struct {
+	output.LogOutput
+	printed chan struct{}
+}
+
+func (o *printedOutput) FormatAndPrintln(_ time.Time, _ loghttp.LabelSet, _ int, _ string) error {
+	close(o.printed)
 	return nil
 }

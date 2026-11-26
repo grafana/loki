@@ -146,3 +146,40 @@ func requireEqualLogs(t *testing.T, obj *dataobj.Object) {
 
 	require.Equal(t, expectedRecords, actualRecords)
 }
+
+func TestMergeObjects(t *testing.T) {
+	build := func(tenant, app string) *dataobj.Object {
+		lr := NewLogsFixtureBuilder(t)
+		lr.ForStream(`{app="`+app+`"}`).Entry(10, "{}", app+" line")
+		obj, closer := DataObject(t,
+			StreamsSection(t, tenant, lr.Streams()),
+			LogsSection(t, tenant, lr.Logs()),
+		)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	t.Run("keeps the sections of every object and puts the streams sections first", func(t *testing.T) {
+		merged, closer := MergeObjects(t, build("a", "first"), build("b", "second"))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		var got []string
+		for _, sec := range merged.Sections() {
+			kind := "logs"
+			if streams.CheckSection(sec) {
+				kind = "streams"
+			}
+			got = append(got, kind+"/"+sec.Tenant)
+		}
+		require.Equal(t, []string{"streams/a", "streams/b", "logs/a", "logs/b"}, got)
+	})
+
+	t.Run("keeps the rows of each tenant", func(t *testing.T) {
+		merged, closer := MergeObjects(t, build("a", "first"), build("b", "second"))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		require.Equal(t, "first line", string(ReadTenantLogs(t, merged, "a")[0].Line))
+		require.Equal(t, "second line", string(ReadTenantLogs(t, merged, "b")[0].Line))
+		require.Equal(t, "second", ReadTenantStreams(t, merged, "b")[0].Labels.Get("app"))
+	})
+}

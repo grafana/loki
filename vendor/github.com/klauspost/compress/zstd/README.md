@@ -136,9 +136,11 @@ The goal will be to keep the default efficiency at the default zstd (level 3).
 However the encoding should never be assumed to remain the same, 
 and you should not use hashes of compressed output for similarity checks.
 
-The Encoder can be assumed to produce the same output from the exact same code version.
-However, the may be modes in the future that break this, 
-although they will not be enabled without an explicit option.   
+Encoder output is deterministic only within a single version: the same version, options and input always give the same output.
+Any release, including a patch release, may change the output, for example to compress better,
+so do not compare hashes of compressed output across versions.
+
+Future options may make output non-deterministic even within a version, but they will never be enabled by default.
 
 This encoder is not designed to (and will probably never) output the exact same bitstream as the reference encoder.
 
