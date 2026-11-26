@@ -21,6 +21,34 @@ import (
 // validation before it got here.
 var shardLabels = mustParseLabels(`{app="a"}`)
 
+// shardNestedForTest also assigns labels to exercise output identities and contents.
+func shardNestedForTest(stream logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
+	return packedShardsForTest(stream, lbls, shards, startShard, 0)
+}
+
+func packedShardsForTest(stream logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int, target uint64) []logproto.InternalStreamAdapter {
+	size := 0
+	if target > 0 {
+		size = expandedShardSize(stream)
+	}
+	var out []logproto.InternalStreamAdapter
+	if target > 0 {
+		out = packNested(stream, shards, size, target)
+	} else {
+		out = shardNested(stream, shards)
+	}
+	labelShards(out, lbls, shards, startShard)
+	return out
+}
+
+func shardEntryCounts(out []logproto.InternalStreamAdapter) []int {
+	var counts []int
+	for _, shard := range out {
+		counts = append(counts, shard.EntryCount())
+	}
+	return counts
+}
+
 func buildEntry(line string) push.Entry {
 	return push.Entry{Timestamp: time.Unix(0, 1).UTC(), Line: line}
 }
@@ -263,7 +291,7 @@ func TestShardNested(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := tc.buildStream()
-			shards := shardNested(input, shardLabels, tc.shards, tc.startShard)
+			shards := shardNestedForTest(input, shardLabels, tc.shards, tc.startShard)
 
 			for i, name := range tc.wantNames {
 				require.Equal(t, name, shards[i].Labels, "shard %d name", i)
@@ -303,7 +331,7 @@ func TestShardNestedRepeatsAGroupOnlyWhereItStraddlesAShard(t *testing.T) {
 		{3, 3, 7, 5},
 	} {
 		input := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
-		shards := shardNested(input, shardLabels, tc.shards, 0)
+		shards := shardNestedForTest(input, shardLabels, tc.shards, 0)
 
 		source := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
 		requireShardsCarryTheStream(t, source, shards)
@@ -331,7 +359,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 		{name: "a stream of no groups", stream: logproto.InternalStreamAdapter{Labels: `{app="a"}`}, shards: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Nil(t, shardNested(tc.stream, shardLabels, tc.shards, 0),
+			require.Nil(t, shardNestedForTest(tc.stream, shardLabels, tc.shards, 0),
 				"nothing to divide, so the caller keeps the stream it has")
 		})
 	}
@@ -344,11 +372,11 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	for _, packed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("packed=%t", packed), func(t *testing.T) {
 			shardStream := func(stream logproto.InternalStreamAdapter, count int) []logproto.InternalStreamAdapter {
-				var quotas []int
+				var target uint64
 				if packed {
-					quotas = packedShardQuotas(stream, expandedShardSize(stream), count, uint64((expandedShardSize(stream)+count-1)/count))
+					target = uint64((expandedShardSize(stream) + count - 1) / count)
 				}
-				return shardNestedWithQuotas(stream, shardLabels, count, 0, quotas)
+				return packedShardsForTest(stream, shardLabels, count, 0, target)
 			}
 			for _, shards := range []int{1, 2, 5} {
 				input := buildGroupedStream(2, 2, 3)
@@ -452,7 +480,7 @@ func BenchmarkRateSharding(b *testing.B) {
 		b.Run(shape.name+"/nested", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				out := shardNested(nested, shardLabels, shards, 0)
+				out := shardNestedForTest(nested, shardLabels, shards, 0)
 				if len(out) != shards {
 					b.Fatalf("got %d shards", len(out))
 				}
@@ -472,7 +500,7 @@ func expandedShardSize(stream logproto.InternalStreamAdapter) int {
 	return size
 }
 
-func TestPackedShardQuotas(t *testing.T) {
+func TestPackedSharding(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		sizes  []int
@@ -485,13 +513,13 @@ func TestPackedShardQuotas(t *testing.T) {
 		{"back heavy", []int{10, 10, 10, 10, 10, 10, 10, 10, 10, 90}, 10, 100, []int{9, 1}},
 		{"oversized entry", []int{900, 1, 1, 1, 1}, 10, 100, []int{1, 4}},
 		{"zero byte entries", []int{0, 0, 0, 0}, 10, 100, []int{4}},
-		{"zero target", []int{10}, 10, 0, nil},
+		{"zero target distributes entries evenly", []int{90, 10, 10, 10}, 3, 0, []int{2, 1, 1}},
 		{"zero shards", []int{10}, 0, 100, nil},
 		{"empty", nil, 10, 100, nil},
 		{"one shard", []int{100, 1, 1}, 1, 10, []int{3}},
 		{"entry boundary needs extra output", []int{60, 60, 60}, 10, 100, []int{1, 1, 1}},
 		{"recommended count caps fanout", []int{80, 80, 80, 80}, 3, 100, []int{1, 2, 1}},
-		{"binding ceiling shares excess", []int{20, 20, 20, 20, 20, 20, 20, 20, 20, 20}, 3, 10, []int{3, 4, 3}},
+		{"shard limit shares excess", []int{20, 20, 20, 20, 20, 20, 20, 20, 20, 20}, 3, 10, []int{3, 4, 3}},
 		{"ceiling avoids a large tail", []int{128, 256, 192, 64, 256, 64, 64, 256}, 4, 128, []int{2, 2, 2, 2}},
 		{"average equals target", []int{60, 60, 60, 60, 60}, 3, 100, []int{2, 1, 2}},
 		{"target above max int", []int{1, 2, 3}, 10, ^uint64(0), []int{3}},
@@ -502,16 +530,12 @@ func TestPackedShardQuotas(t *testing.T) {
 				entries[i] = buildEntry(strings.Repeat("x", size))
 			}
 			input := *logproto.FromStream(logproto.Stream{Labels: shardLabels.String(), Entries: entries})
-			quotas := packedShardQuotas(input, expandedShardSize(input), tc.shards, tc.target)
-			require.Equal(t, tc.want, quotas)
-			if len(quotas) == 0 {
+			out := packedShardsForTest(input, shardLabels, tc.shards, tc.shards-1, tc.target)
+			require.Equal(t, tc.want, shardEntryCounts(out))
+			if tc.shards <= 0 {
 				return
 			}
-			out := shardNestedWithQuotas(input, shardLabels, tc.shards, tc.shards-1, quotas)
 			requireShardsCarryTheStream(t, input, out)
-			for i := range out {
-				require.Equal(t, quotas[i], out[i].EntryCount())
-			}
 		})
 	}
 	t.Run("shared and entry metadata contribute to size", func(t *testing.T) {
@@ -520,15 +544,15 @@ func TestPackedShardQuotas(t *testing.T) {
 		input.ResourceLogs[0].ScopeLogs[0].Attrs = buildNestedAttrs("s", strings.Repeat("s", 9))
 		input.ResourceLogs[0].ScopeLogs[0].Entries[0].StructuredMetadata = buildNestedAttrs("e", strings.Repeat("e", 101))
 		require.Equal(t, 306, expandedShardSize(input))
-		require.Equal(t, []int{1, 3}, packedShardQuotas(input, 306, 4, 153))
+		require.Equal(t, []int{1, 3}, shardEntryCounts(packedShardsForTest(input, shardLabels, 4, 0, 153)))
 	})
 	t.Run("group boundaries and empty groups", func(t *testing.T) {
 		input := buildGroupedStream(4, 3, 7)
 		input.ResourceLogs = append([]logproto.ResourceLogs{{}}, input.ResourceLogs...)
 		input.ResourceLogs[1].ScopeLogs = append([]logproto.ScopeLogs{{}}, input.ResourceLogs[1].ScopeLogs...)
 		for count := 1; count <= input.EntryCount(); count++ {
-			quotas := packedShardQuotas(input, expandedShardSize(input), count, 100)
-			out := shardNestedWithQuotas(input, shardLabels, count+5, 3, quotas)
+			out := packNested(input, count, expandedShardSize(input), 100)
+			labelShards(out, shardLabels, count+5, 3)
 			requireShardsCarryTheStream(t, input, out)
 			require.LessOrEqual(t, attrCopies(out), 4+12+2*(count-1))
 		}
@@ -551,24 +575,14 @@ func BenchmarkPackedRateSharding(b *testing.B) {
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						if target == 0 {
-							start := tracker.LastShardNum("tenant", input.Hash)
-							out := shardNested(input, shardLabels, shape.shards, start)
-							tracker.SetLastShardNum("tenant", input.Hash, start+len(out))
-							continue
-						}
-						entries := input.EntryCount()
-						count := min(shape.shards, entries)
-						var quotas []int
+						var out []logproto.InternalStreamAdapter
 						if target > 0 {
-							quotas = packedShardQuotas(input, size, shape.shards, uint64(target))
-							count = len(quotas)
+							out = packNested(input, shape.shards, size, uint64(target))
+						} else {
+							out = shardNested(input, shape.shards)
 						}
-						start := tracker.Reserve("tenant", input.Hash, shape.shards, count, target > 0)
-						out := shardNestedWithQuotas(input, shardLabels, shape.shards, start, quotas)
-						if len(out) != count {
-							b.Fatal("unexpected fanout")
-						}
+						start := tracker.Reserve("tenant", input.Hash, shape.shards, len(out), target > 0)
+						labelShards(out, shardLabels, shape.shards, start)
 					}
 				})
 			}
@@ -576,7 +590,7 @@ func BenchmarkPackedRateSharding(b *testing.B) {
 	}
 }
 
-func FuzzPackedShardQuotas(f *testing.F) {
+func FuzzPackedSharding(f *testing.F) {
 	f.Add([]byte{0, 0, 255, 0, 0}, uint8(3))
 	f.Add([]byte{255, 1, 1, 1, 1}, uint8(2))
 	f.Add([]byte{0, 0, 0, 0, 0}, uint8(3))
@@ -589,16 +603,9 @@ func FuzzPackedShardQuotas(f *testing.F) {
 			input.ResourceLogs[0].ScopeLogs[0].Entries[i].Line = strings.Repeat("x", int(size)*16)
 		}
 		count := min(int(n)+1, len(data))
-		quotas := packedShardQuotas(input, expandedShardSize(input), count, 1024)
-		require.NotEmpty(t, quotas)
-		require.LessOrEqual(t, len(quotas), count)
-		total := 0
-		for _, quota := range quotas {
-			require.Positive(t, quota)
-			total += quota
-		}
-		require.Equal(t, len(data), total)
-		out := shardNestedWithQuotas(input, shardLabels, count, 0, quotas)
+		out := packedShardsForTest(input, shardLabels, count, 0, 1024)
+		require.NotEmpty(t, out)
+		require.LessOrEqual(t, len(out), count)
 		requireShardsCarryTheStream(t, input, out)
 	})
 }
@@ -640,14 +647,11 @@ func TestPackedShardingPreservesNestedEntries(t *testing.T) {
 		require.NoError(t, err)
 		entries, size := input.EntryCount(), expandedShardSize(input)
 		totalShards := 1 + rng.IntN(37)
-		quotas := packedShardQuotas(input, size, totalShards, uint64(1+rng.IntN(64*1024)))
-		count := len(quotas)
-		if count == 0 {
-			require.Zero(t, entries)
-			continue
+		out := packedShardsForTest(input, shardLabels, totalShards, rng.IntN(totalShards), uint64(1+rng.IntN(64*1024)))
+		require.LessOrEqual(t, len(out), min(entries, totalShards))
+		if entries > 0 {
+			require.NotEmpty(t, out)
 		}
-		out := shardNestedWithQuotas(input, shardLabels, totalShards, rng.IntN(totalShards), quotas)
-		require.Len(t, out, count)
 		requireShardsCarryTheStream(t, input, out)
 		after, err := input.Marshal()
 		require.NoError(t, err)

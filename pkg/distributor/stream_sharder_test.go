@@ -3,8 +3,10 @@ package distributor
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,7 +151,7 @@ func TestStreamSharder_ShardByRate(t *testing.T) {
 			if len(s.streams) > 1 {
 				wantLastShard = len(s.streams)
 			}
-			require.Equal(t, wantLastShard, s.d.shardTracker.LastShardNum(streamSharderTestTenant, stream.Hash))
+			require.Equal(t, wantLastShard, shardCounter(s.d.shardTracker, streamSharderTestTenant, stream.Hash))
 		})
 	}
 }
@@ -357,7 +359,7 @@ func TestStreamSharder_Packing(t *testing.T) {
 						require.Equal(t, tc.recommendedShards, s.shadowCandidates[0].rateStoreShards)
 					}
 					require.Len(t, s.streams, tc.wantShards)
-					require.Equal(t, tc.wantShards, s.d.shardTracker.LastShardNum(streamSharderTestTenant, tc.input.Hash))
+					require.Equal(t, tc.wantShards, shardCounter(s.d.shardTracker, streamSharderTestTenant, tc.input.Hash))
 					var streams []logproto.InternalStreamAdapter
 					for _, ks := range s.streams {
 						require.Equal(t, "policy", ks.Policy)
@@ -463,7 +465,43 @@ func TestStreamSharder_PackingRotation(t *testing.T) {
 				outputs = append(outputs, stream.Stream)
 			}
 			requireShardsCarryTheStream(t, input, outputs)
-			require.Equal(t, 7+len(tc.wantEntries), s.d.shardTracker.LastShardNum(streamSharderTestTenant, input.Hash))
+			require.Equal(t, 7+len(tc.wantEntries), shardCounter(s.d.shardTracker, streamSharderTestTenant, input.Hash))
+		})
+	}
+}
+
+func TestStreamSharder_ConcurrentReservations(t *testing.T) {
+	const pushes, entries = 100, 3
+	for _, packed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("packed=%t", packed), func(t *testing.T) {
+			s := newTestStreamSharder(false, 1, time.Now())
+			s.d.cfg.PackStreams = packed
+			s.d.shardTracker.seed = 1
+			stream := *logproto.FromStream(logproto.Stream{
+				Labels: shardLabels.String(), Hash: labels.StableHash(shardLabels),
+				Entries: []logproto.Entry{buildEntry("a"), buildEntry("b"), buildEntry("c")},
+			})
+			cfg := shardstreams.Config{DesiredRate: 1}
+			outputs := make(chan []KeyedStream, pushes)
+			var wg sync.WaitGroup
+			for range pushes {
+				wg.Go(func() {
+					outputs <- s.d.shardStreamToCount(stream, shardLabels, streamSharderTestTenant, "", cfg, pushes*entries, entries)
+				})
+			}
+			wg.Wait()
+			close(outputs)
+			seen := make(map[string]bool)
+			for out := range outputs {
+				require.Len(t, out, entries)
+				for _, shard := range out {
+					require.Equal(t, 1, shard.Stream.EntryCount())
+					require.False(t, seen[shard.Stream.Labels], "concurrent reservations reused %s", shard.Stream.Labels)
+					seen[shard.Stream.Labels] = true
+				}
+			}
+			require.Len(t, seen, pushes*entries)
+			require.Equal(t, pushes*entries, shardCounter(s.d.shardTracker, streamSharderTestTenant, stream.Hash))
 		})
 	}
 }

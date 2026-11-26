@@ -489,13 +489,13 @@ func TestTimeShardsCanThemselvesBeRateSharded(t *testing.T) {
 	lines := map[string]int{}
 	for i := range timeShards {
 		for _, shards := range [][]logproto.InternalStreamAdapter{
-			shardNested(timeShards[i].stream, shardLabels, 1, 0),
-			shardNested(timeShards[i].stream, shardLabels, 3, 0),
+			shardNestedForTest(timeShards[i].stream, shardLabels, 1, 0),
+			shardNestedForTest(timeShards[i].stream, shardLabels, 3, 0),
 		} {
 			require.NotEmpty(t, shards)
 			requireShardsCarryTheStream(t, timeShards[i].stream, shards)
 		}
-		for _, shard := range shardNested(timeShards[i].stream, shardLabels, 3, 0) {
+		for _, shard := range shardNestedForTest(timeShards[i].stream, shardLabels, 3, 0) {
 			for j := range shard.ResourceLogs {
 				for k := range shard.ResourceLogs[j].ScopeLogs {
 					for _, entry := range shard.ResourceLogs[j].ScopeLogs[k].Entries {

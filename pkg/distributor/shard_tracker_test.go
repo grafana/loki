@@ -8,24 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShardTracker(t *testing.T) {
-	cases := []struct {
-		tenant string
-		hash   uint64
-		shard  int
-	}{
-		{"tenant 1", 0, 5},
-		{"tenant 1", 1, 6},
-		{"tenant 2", 0, 7},
-		{"tenant 2", 1, 8},
-	}
-	st := NewShardTracker()
-	for _, tc := range cases {
-		st.SetLastShardNum(tc.tenant, tc.hash, tc.shard)
-	}
-	for _, tc := range cases {
-		require.Equal(t, tc.shard, st.LastShardNum(tc.tenant, tc.hash))
-	}
+// shardCounter is used after all reservations have completed.
+func shardCounter(tracker *ShardTracker, tenant string, hash uint64) int {
+	return int(tracker.currentShard[hash&uint64(tracker.size-1)][tenant])
 }
 
 func TestShardTrackerReserve(t *testing.T) {

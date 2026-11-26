@@ -1483,25 +1483,17 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.La
 	}
 
 	var shards []logproto.InternalStreamAdapter
-	var start int
 	packing := d.cfg.PackStreams && shardStreamsCfg.DesiredRate > 0
 	if packing {
-		quotas := packedShardQuotas(stream, pushSize, totalShards, uint64(shardStreamsCfg.DesiredRate))
-		if len(quotas) == 0 {
-			return nil
-		}
-		start = d.shardTracker.Reserve(tenantID, stream.Hash, totalShards, len(quotas), true)
-		shards = shardNestedWithQuotas(stream, lbls, totalShards, start, quotas)
+		shards = packNested(stream, totalShards, pushSize, uint64(shardStreamsCfg.DesiredRate))
 	} else {
-		if d.cfg.PackStreams {
-			// During config reloads, the limits service may still recommend multiple shards
-			// while our desired_rate is zero. Reserve atomically to avoid rewinding packed pushes.
-			start = d.shardTracker.Reserve(tenantID, stream.Hash, totalShards, min(totalShards, stream.EntryCount()), false)
-		} else {
-			start = d.shardTracker.LastShardNum(tenantID, stream.Hash)
-		}
-		shards = shardNested(stream, lbls, totalShards, start)
+		shards = shardNested(stream, totalShards)
 	}
+	if len(shards) == 0 {
+		return nil
+	}
+	start := d.shardTracker.Reserve(tenantID, stream.Hash, totalShards, len(shards), packing)
+	labelShards(shards, lbls, totalShards, start)
 
 	derivedStreams := make([]KeyedStream, 0, len(shards))
 	for i := range shards {
@@ -1515,10 +1507,6 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.La
 		if shardStreamsCfg.LoggingEnabled {
 			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shards[i].Labels)
 		}
-	}
-
-	if !d.cfg.PackStreams {
-		d.shardTracker.SetLastShardNum(tenantID, stream.Hash, start+len(shards))
 	}
 
 	return derivedStreams

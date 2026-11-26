@@ -72,19 +72,3 @@ func (t *ShardTracker) Reserve(tenant string, streamHash uint64, totalShards, co
 	phase := xxhash.Sum64(key[:]) % total
 	return int((start%total + phase) % total)
 }
-
-// LastShardNum reads the shared rotation for the legacy assignment path.
-func (t *ShardTracker) LastShardNum(tenant string, streamHash uint64) int {
-	i := streamHash & uint64(t.size-1)
-	t.locks[i].Lock()
-	defer t.locks[i].Unlock()
-	return int(t.currentShard[i][tenant])
-}
-
-// SetLastShardNum updates the shared rotation for the legacy assignment path.
-func (t *ShardTracker) SetLastShardNum(tenant string, streamHash uint64, shardNum int) {
-	i := streamHash & uint64(t.size-1)
-	t.locks[i].Lock()
-	defer t.locks[i].Unlock()
-	t.currentShard[i][tenant] = uint64(shardNum)
-}

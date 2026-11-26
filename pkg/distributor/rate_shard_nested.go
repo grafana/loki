@@ -12,86 +12,36 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-// shardNested divides entries into contiguous, equal-count shards, with any remainder
-// assigned to the leading shards. Shard numbers wrap at shards, starting at startShard.
-// Shared attributes repeat across shard boundaries; entry slices alias the input.
-func shardNested(stream logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
-	return shardNestedWithQuotas(stream, lbls, shards, startShard, nil)
-}
-
-// shardNestedWithQuotas assigns contiguous runs using per-shard entry counts.
-// Nil quotas distribute entries evenly, with the remainder in the leading shards.
-func shardNestedWithQuotas(stream logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int, quotas []int) []logproto.InternalStreamAdapter {
+// shardNested divides entries into contiguous, equal-count shards.
+// Shared attributes repeat at shard boundaries; entry slices alias the input.
+func shardNested(stream logproto.InternalStreamAdapter, shards int) []logproto.InternalStreamAdapter {
 	total := stream.EntryCount()
 	if total == 0 || shards < 1 {
 		return nil
 	}
 
-	// Limit outputs to nonempty shards, but keep numbering over the full shard range.
-	count := shards
-	if count > total {
-		count = total
-	}
-	if quotas != nil {
-		count = len(quotas)
-	}
-
-	// Without explicit quotas, distribute the remainder across the leading shards.
-	base, remainder := total/count, total%count
-	shardQuota := func(shard int) int {
-		if quotas != nil {
-			return quotas[shard]
-		}
-		if shard < remainder {
-			return base + 1
-		}
-		return base
-	}
-
-	// Render labels once, then substitute each shard number.
-	template := labels.NewBuilder(lbls).Set(constants.StreamShardLabel, ingester.ShardLbPlaceholder).Labels()
-	pattern := template.String()
-
+	count := min(shards, total)
 	out := make([]logproto.InternalStreamAdapter, count)
-	for i := range out {
-		out[i].Labels, out[i].Hash = shardIdentity(template, pattern, (startShard+i)%shards)
-	}
-
+	base, remainder := total/count, total%count
 	shard, placed := 0, 0
+
 	for _, sourceResource := range stream.ResourceLogs {
-		// Create groups only when entries reach them, reopening them at shard boundaries.
 		var resource *logproto.ResourceLogs
-
 		for _, sourceScope := range sourceResource.ScopeLogs {
-			var scope *logproto.ScopeLogs
-
 			remaining := sourceScope.Entries
-
 			for len(remaining) > 0 {
-				if placed == shardQuota(shard) && shard+1 < count {
-					shard, placed = shard+1, 0
-					resource, scope = nil, nil
+				quota := base
+				if shard < remainder {
+					quota++
 				}
-
-				acceptEntries := len(remaining)
-				// Respect each quota; the last shard takes the remainder.
-				if shardCapacityLeft := shardQuota(shard) - placed; shard+1 < count && acceptEntries > shardCapacityLeft {
-					acceptEntries = shardCapacityLeft
+				if placed == quota && shard+1 < count {
+					shard++
+					placed = 0
+					resource = nil
+					continue
 				}
-
-				if resource == nil {
-					out[shard].ResourceLogs = append(out[shard].ResourceLogs,
-						logproto.ResourceLogs{Attrs: sourceResource.Attrs})
-					resource = &out[shard].ResourceLogs[len(out[shard].ResourceLogs)-1]
-				}
-				if scope == nil {
-					resource.ScopeLogs = append(resource.ScopeLogs,
-						logproto.ScopeLogs{Attrs: sourceScope.Attrs})
-					scope = &resource.ScopeLogs[len(resource.ScopeLogs)-1]
-				}
-
-				// Cap capacity so appends cannot overwrite the next shard's entries.
-				scope.Entries = remaining[:acceptEntries:acceptEntries]
+				acceptEntries := min(len(remaining), quota-placed)
+				resource = appendShardEntries(&out[shard], resource, sourceResource.Attrs, sourceScope.Attrs, remaining[:acceptEntries])
 				remaining = remaining[acceptEntries:]
 				placed += acceptEntries
 			}
@@ -100,73 +50,119 @@ func shardNestedWithQuotas(stream logproto.InternalStreamAdapter, lbls labels.La
 	return out
 }
 
-// shardIdentity returns the labels and hash for a shard number.
-func shardIdentity(template labels.Labels, pattern string, shardNumber int) (string, uint64) {
-	shardLabel := strconv.Itoa(shardNumber)
-
-	return strings.Replace(pattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		labels.StableHash(labels.NewBuilder(template).Set(constants.StreamShardLabel, shardLabel).Labels())
-}
-
-// packedShardQuotas returns entry counts for contiguous shards targeting targetBytes
-// in expanded bytes. Entries stay indivisible; the shard limit can raise the target.
-func packedShardQuotas(stream logproto.InternalStreamAdapter, expandedBytes, maxShards int, targetBytes uint64) []int {
-	entryCount := stream.EntryCount()
-	if maxShards <= 0 || entryCount == 0 || targetBytes == 0 {
+// packNested groups consecutive entries by expanded size within the shard limit.
+// targetBytes must be positive; large pushes remain byte-balanced across available shards.
+// Shared attributes repeat across boundaries; entry slices alias the input.
+func packNested(stream logproto.InternalStreamAdapter, shards, expandedBytes int, targetBytes uint64) []logproto.InternalStreamAdapter {
+	total := stream.EntryCount()
+	if total == 0 || shards < 1 {
 		return nil
 	}
-	maxShards = min(maxShards, entryCount)
-	if maxShards == 1 || uint64(expandedBytes) <= targetBytes {
-		return []int{entryCount}
-	}
 
-	quotas := make([]int, 1, min(maxShards, 16))
-	remainingEntries := entryCount
+	count := min(shards, total)
+	capacity := count
+	if uint64(expandedBytes) <= targetBytes {
+		count, capacity = 1, 1
+	} else {
+		capacity = int(min(uint64(count), 1+(uint64(expandedBytes)-1)/targetBytes))
+	}
+	out := make([]logproto.InternalStreamAdapter, 1, capacity)
 	remainingBytes := uint64(expandedBytes)
 
-	// Use the remaining average when it reaches targetBytes, allowing small overshoots.
+	// Raise the target to the remaining average when the shard limit requires it.
 	targetForRemaining := func() (uint64, bool) {
 		if remainingBytes == 0 {
 			return targetBytes, false
 		}
-		remainingShards := maxShards - len(quotas) + 1
+		remainingShards := count - len(out) + 1
 		averageShardBytes := 1 + (remainingBytes-1)/uint64(remainingShards)
 		return max(targetBytes, averageShardBytes), averageShardBytes >= targetBytes
 	}
 
 	shardTargetBytes, allowTargetOvershoot := targetForRemaining()
 	var currentShardBytes uint64
-	for _, resource := range stream.ResourceLogs {
-		resourceAttrBytes := util.StructuredMetadataSize(resource.Attrs)
-		for _, scope := range resource.ScopeLogs {
-			sharedAttrBytes := resourceAttrBytes + util.StructuredMetadataSize(scope.Attrs)
+	placed := 0
 
-			for i := range scope.Entries {
-				entryBytes := uint64(sharedAttrBytes + util.EntryTotalSize(&scope.Entries[i]))
-				shardIndex := len(quotas) - 1
-				startNewShard := currentShardBytes > shardTargetBytes
-				if !startNewShard && entryBytes > shardTargetBytes-currentShardBytes {
-					remainingCapacity := shardTargetBytes - currentShardBytes
-					overshootBytes := entryBytes - remainingCapacity
-					// Allow overshoot only when it is no larger than the unused capacity.
-					startNewShard = !allowTargetOvershoot || overshootBytes > remainingCapacity
+	for _, sourceResource := range stream.ResourceLogs {
+		var resource *logproto.ResourceLogs
+		resourceAttrBytes := 0
+		if count > 1 {
+			resourceAttrBytes = util.StructuredMetadataSize(sourceResource.Attrs)
+		}
+		for _, sourceScope := range sourceResource.ScopeLogs {
+			sharedAttrBytes := 0
+			if count > 1 {
+				sharedAttrBytes = resourceAttrBytes + util.StructuredMetadataSize(sourceScope.Attrs)
+			}
+			remaining := sourceScope.Entries
+			for len(remaining) > 0 {
+				acceptEntries := len(remaining)
+				if len(out) < count {
+					acceptEntries = 0
+					for i := range remaining {
+						entryBytes := uint64(sharedAttrBytes + util.EntryTotalSize(&remaining[i]))
+						startNewShard := currentShardBytes > shardTargetBytes
+						if !startNewShard && entryBytes > shardTargetBytes-currentShardBytes {
+							remainingCapacity := shardTargetBytes - currentShardBytes
+							overshootBytes := entryBytes - remainingCapacity
+							// Allow overshoot only when it is no larger than the unused capacity.
+							startNewShard = !allowTargetOvershoot || overshootBytes > remainingCapacity
+						}
+						if placed+acceptEntries > 0 && startNewShard {
+							break
+						}
+						currentShardBytes += entryBytes
+						acceptEntries++
+					}
 				}
-				if quotas[shardIndex] > 0 && startNewShard {
+				if acceptEntries > 0 {
+					resource = appendShardEntries(&out[len(out)-1], resource, sourceResource.Attrs, sourceScope.Attrs, remaining[:acceptEntries])
+					remaining = remaining[acceptEntries:]
+					placed += acceptEntries
+				}
+				if len(remaining) > 0 {
+					out = append(out, logproto.InternalStreamAdapter{})
 					remainingBytes -= currentShardBytes
-					quotas = append(quotas, 0)
-					shardIndex++
-					currentShardBytes = 0
+					currentShardBytes, placed = 0, 0
 					shardTargetBytes, allowTargetOvershoot = targetForRemaining()
+					resource = nil
 				}
-				if len(quotas) == maxShards {
-					quotas[shardIndex] = remainingEntries
-					return quotas
-				}
-				quotas[shardIndex]++
-				currentShardBytes += entryBytes
-				remainingEntries--
 			}
 		}
 	}
-	return quotas
+	return out
+}
+
+// appendShardEntries creates the resource on first use and preserves the scope's attributes.
+// Entry capacity is capped so appends cannot overwrite another shard's entries.
+func appendShardEntries(shard *logproto.InternalStreamAdapter, resource *logproto.ResourceLogs, resourceAttrs, scopeAttrs []logproto.LabelAdapter, entries []logproto.Entry) *logproto.ResourceLogs {
+	if resource == nil {
+		shard.ResourceLogs = append(shard.ResourceLogs, logproto.ResourceLogs{Attrs: resourceAttrs})
+		resource = &shard.ResourceLogs[len(shard.ResourceLogs)-1]
+	}
+	resource.ScopeLogs = append(resource.ScopeLogs, logproto.ScopeLogs{
+		Attrs:   scopeAttrs,
+		Entries: entries[:len(entries):len(entries)],
+	})
+	return resource
+}
+
+// labelShards assigns identities after the output count is known and reserved.
+func labelShards(out []logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) {
+	if len(out) == 0 {
+		return
+	}
+	template := labels.NewBuilder(lbls).Set(constants.StreamShardLabel, ingester.ShardLbPlaceholder).Labels()
+	pattern := template.String()
+	for i := range out {
+		out[i].Labels, out[i].Hash = shardIdentity(template, pattern, (startShard+i)%shards)
+	}
+}
+
+// shardIdentity returns the labels and hash for a shard number.
+func shardIdentity(template labels.Labels, pattern string, shardNumber int) (string, uint64) {
+	shardLabel := strconv.Itoa(shardNumber)
+
+	return strings.Replace(pattern, ingester.ShardLbPlaceholder, shardLabel, 1),
+		labels.StableHash(labels.NewBuilder(template).Set(constants.StreamShardLabel, shardLabel).Labels())
 }
