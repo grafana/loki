@@ -1,6 +1,7 @@
 package postings
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -101,8 +102,8 @@ func (r *RowReader) next() (Row, error) {
 // the last Next call returned false.
 //
 // The record does not use the memory of the batch, so it stays valid after
-// later calls to Next. A retained record keeps the binary values of its whole
-// batch alive.
+// later calls to Next. A retained record keeps the strings and stream ID
+// bitmaps of its batch alive.
 func (r *RowReader) At() Row { return r.cur }
 
 // Err returns any error that caused iteration to end. nil on natural EOF.
@@ -160,8 +161,8 @@ func checkRecordBatch(columns []*Column, rb *columnar.RecordBatch) error {
 // or a column that rb does not hold decodes as the zero value. rb must pass
 // [checkRecordBatch], and i must be in the range [0, rb.NumRows()).
 //
-// decodeRow copies strings and byte slices into values, so the Row stays valid
-// after the memory of rb is reused.
+// decodeRow copies strings and stream ID bitmaps into values, so the Row stays
+// valid after the memory of rb is reused.
 func decodeRow(columns []*Column, rb *columnar.RecordBatch, i int, values *rowValues) Row {
 	var row Row
 	for c, col := range columns {
@@ -186,7 +187,9 @@ func decodeRow(columns []*Column, rb *columnar.RecordBatch, i int, values *rowVa
 		case ColumnTypeStreamIDBitmap:
 			row.StreamIDBitmap = values.bytes(binaryAt(arr, i))
 		case ColumnTypeBloomFilter:
-			row.BloomFilter = values.bytes(binaryAt(arr, i))
+			// Copy each bloom filter on its own. They can be tens of kilobytes
+			// each, and a value in rowValues keeps every value of its batch alive.
+			row.BloomFilter = bytes.Clone(binaryAt(arr, i))
 		case ColumnTypeUncompressedSize:
 			row.UncompressedSize = int64At(arr, i)
 		case ColumnTypeMinTimestamp:
@@ -219,20 +222,21 @@ func binaryAt(arr columnar.Array, i int) []byte {
 // row takes no allocation of its own.
 //
 // rowValues never writes bytes that it returned. So a value stays valid after
-// later copies and after reset.
-//
-// A retained value keeps the buffer of its whole batch alive, bloom filters
-// included. This costs little, because the index merge keeps almost every row
-// until its output flushes.
+// later copies and after reset. A retained value keeps the buffer of its batch
+// alive.
 type rowValues struct {
 	buf []byte
 }
 
-// reset starts a new buffer with room for the binary values of rb. It does not
-// reuse the previous buffer, because rows can still hold values in it.
+// reset starts a new buffer with room for the string and stream ID bitmap
+// values of rb. It does not reuse the previous buffer, because rows can still
+// hold values in it.
 func (v *rowValues) reset(columns []*Column, rb *columnar.RecordBatch) {
 	var size int
-	for i := range columns {
+	for i, col := range columns {
+		if col.Type == ColumnTypeBloomFilter {
+			continue
+		}
 		if arr, ok := rb.Column(int64(i)).(*columnar.UTF8); ok {
 			size += arr.DataLen()
 		}
