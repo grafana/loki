@@ -545,7 +545,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, predicates []*labels.Matcher)
 	// matchers are predicates from outside the stream selector, so a name may
 	// resolve to either a stream label or a parsed/metadata label. Report which
 	// ones occur as stream labels here so the caller can resolve the collision.
-	matchersInLabelNames, err := s.labelNameHits(ctx)
+	matchersInLabelNames, err := s.labelNameHits(ctx, predicates)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -577,7 +577,15 @@ func bloomMatchPredicate(kindCol, nameCol, bloomCol *Column, matchers []*labels.
 // labelNameHits scans the section once for all matcher names (kind=Label AND
 // name IN names), returning per section the matcher names that appear as a
 // stream label there.
-func (s *Scanner) labelNameHits(ctx context.Context) (map[SectionRef]map[string]struct{}, error) {
+//
+// The name strings in the result are the names of predicates, not strings of
+// the rows, so the result does not keep the batches of the scan alive.
+func (s *Scanner) labelNameHits(ctx context.Context, predicates []*labels.Matcher) (map[SectionRef]map[string]struct{}, error) {
+	names := make(map[string]string, len(predicates))
+	for _, p := range predicates {
+		names[p.Name] = p.Name
+	}
+
 	lr := NewRowReader(ctx, s.readers.LabelNames)
 
 	hits := make(map[SectionRef]map[string]struct{})
@@ -589,9 +597,13 @@ func (s *Scanner) labelNameHits(ctx context.Context) (map[SectionRef]map[string]
 			set = make(map[string]struct{})
 			hits[ownRef(ref)] = set
 		}
-		if _, ok := set[row.ColumnName]; !ok {
-			set[strings.Clone(row.ColumnName)] = struct{}{}
+		name, ok := names[row.ColumnName]
+		if !ok {
+			// The reader keeps only the rows of predicate names, so this copy
+			// runs only if the reader breaks that.
+			name = strings.Clone(row.ColumnName)
 		}
+		set[name] = struct{}{}
 	}
 	return hits, lr.Err()
 }
