@@ -1239,7 +1239,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil)
+	builder, _, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
@@ -1678,7 +1678,7 @@ func BenchmarkSetupBuilder(b *testing.B) {
 		before := heapAlloc()
 		b.StartTimer()
 
-		builder, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant, nil)
+		builder, _, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
 		require.NoError(b, err)
 
 		b.StopTimer()

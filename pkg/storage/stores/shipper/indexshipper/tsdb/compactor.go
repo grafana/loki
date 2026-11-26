@@ -207,6 +207,8 @@ func (t *tableCompactor) CompactTable() error {
 	// go through all the users having index in the multi-tenant indexes and setup builder for each user
 	// builder would combine users index from multi-tenant indexes and the existing compacted index(es)
 	t.compactedIndexes = make(map[string]compactor.CompactedIndex, len(userIDs))
+	// distinctKB and distinctLines sum what the merges add, counted once the whole table has succeeded.
+	var distinctKB, distinctLines uint64
 	for _, userID := range userIDs {
 		existingUserIndexSet, ok := t.existingUserIndexSet[userID]
 		if !ok {
@@ -222,10 +224,11 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices, t.dedupe)
+		builder, kb, lines, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices)
 		if err != nil {
 			return err
 		}
+		distinctKB, distinctLines = distinctKB+kb, distinctLines+lines
 
 		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
 		t.compactedIndexes[userID] = compactedIndex
@@ -247,7 +250,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{}, nil)
+		builder, _, _, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
 		if err != nil {
 			return err
 		}
@@ -264,6 +267,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 	}
+	t.dedupe.distinct(distinctKB, distinctLines)
 	return nil
 }
 
@@ -305,8 +309,8 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 
 // setupBuilder creates a Builder for a single user.
 // It combines the users index from multiTenantIndexes and its existing compacted index(es)
-// It counts the chunk entries from multiTenantIndexes that dedupe keeps into dedupe.
-func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index, dedupe *dedupeMetrics) (*Builder, error) {
+// It also returns the KB and lines of the chunk entries from multiTenantIndexes that dedupe keeps.
+func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, uint64, uint64, error) {
 	// listedKB and listedLines sum the chunk entries read from multiTenantIndexes.
 	var listedKB, listedLines uint64
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
@@ -323,22 +327,21 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 	}
 
 	// download all the existing compacted indexes and add them to the builder
 	for _, sourceIndex := range sourceIndexes {
 		if err := processSourceIndex(ctx, sourceIndex, sourceIndexSet, builder); err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 	}
 
 	// finalize the chunks to remove the duplicates and sort them
 	droppedKB, droppedLines := builder.FinalizeChunks()
-	dedupe.distinct(listedKB-min(droppedKB, listedKB), listedLines-min(droppedLines, listedLines))
 
-	return builder, nil
+	return builder, listedKB - min(droppedKB, listedKB), listedLines - min(droppedLines, listedLines), nil
 }
 
 type compactedIndex struct {
