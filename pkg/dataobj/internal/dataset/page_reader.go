@@ -42,9 +42,10 @@ func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression data
 // Read returns an array of up to the next count values from the page.
 // At the end of the page, Read returns nil, io.EOF.
 //
-// A page can hold a different number of rows than its descriptor declares.
-// Read then returns an error that wraps [io.ErrUnexpectedEOF]. Read finds the
-// difference only when it reaches the declared row count or the end of the page.
+// A corrupt object can have a page with a different number of rows than its
+// descriptor declares. Read then returns an error that wraps
+// [io.ErrUnexpectedEOF]. Read finds the difference only when it reaches the
+// declared row count or the end of the page.
 //
 // If there was an error reading the page, Read returns the error with
 // no array. After an error other than [io.EOF], a retry of Read reads the same
@@ -435,6 +436,7 @@ func (pr *pageReader) Reset(page Page, physicalType datasetmd.PhysicalType, comp
 
 	pr.pageRow = 0
 	pr.nextRow = 0
+	pr.rowCount = 0
 
 	// Close the underlying reader if one is open so resources get released
 	// sooner.

@@ -385,6 +385,52 @@ func TestPageReader_RowCount(t *testing.T) {
 	}
 }
 
+func TestPageReader_EndOfPage(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+
+	newReader := func(t *testing.T) (*pageReader, *countingPage) {
+		page := &countingPage{MemPage: buildPage(t, format.ColumnarVersionPageChecksum, opts, pageReaderTestStrings)}
+		return newPageReader(page, opts.Type.Physical, opts.Compression), page
+	}
+
+	t.Run("returns io.EOF without loading the page again when a read follows the end of the page", func(t *testing.T) {
+		var alloc memory.Allocator
+		pr, page := newReader(t)
+
+		_, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+		require.Equal(t, 1, page.loads)
+
+		for range 2 {
+			arr, err := pr.Read(t.Context(), &alloc, 4)
+			require.Nil(t, arr)
+			require.Equal(t, io.EOF, err)
+		}
+		require.Equal(t, 1, page.loads)
+	})
+
+	t.Run("loads the page again when a read follows a seek to the start after the end of the page", func(t *testing.T) {
+		var alloc memory.Allocator
+		pr, page := newReader(t)
+
+		_, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+
+		_, err = pr.Seek(0, io.SeekStart)
+		require.NoError(t, err)
+
+		arr, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+		require.Equal(t, pageReaderTestStrings, convertToStrings(t, arr))
+		require.Equal(t, 2, page.loads)
+	})
+}
+
 // buildPage returns a page of the given columnar format version that holds the
 // strings in. See [buildNullablePage].
 func buildPage(t testing.TB, version uint32, opts BuilderOptions, in []string) *MemPage {
@@ -512,4 +558,15 @@ func convertToStrings(t *testing.T, arr columnar.Array) []string {
 		out = append(out, string(utf8Arr.Get(i)))
 	}
 	return out
+}
+
+// countingPage is a memory page that counts how many times a reader loads it.
+type countingPage struct {
+	*MemPage
+	loads int
+}
+
+func (p *countingPage) ReadPage(ctx context.Context) (PageData, error) {
+	p.loads++
+	return p.MemPage.ReadPage(ctx)
 }
