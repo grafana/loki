@@ -12,9 +12,9 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
-// batchReader is the batch-level reader consumed by [RowReader]. [*Reader]
-// implements it; tests substitute a fake to exercise batch-boundary handling
-// (e.g. empty, non-EOF batches).
+// batchReader reads batches of rows for [RowReader]. Read can return an empty
+// batch with a nil error, and [RowReader] skips it. At the end of the section,
+// Read returns [io.EOF].
 type batchReader interface {
 	Open(ctx context.Context) error
 	Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error)
@@ -93,11 +93,9 @@ func (r *RowReader) next() (Stat, error) {
 			r.batch = nil
 		}
 
-		// Read batches until one contains rows or the reader reaches EOF. The
-		// underlying reader may return an empty (0-row) batch without io.EOF
-		// when a read window is fully filtered out; that means "keep reading",
-		// not "end of section". Treating an empty non-EOF batch as EOF would
-		// silently drop every row after the first fully-filtered batch.
+		// Skip an empty batch with a nil error. batchReader allows it, and stopping
+		// there would drop the rows of later batches. An empty batch with io.EOF
+		// ends the section.
 		for r.batch == nil {
 			batch, err := r.reader.Read(r.ctx, 8192)
 			if err != nil && !errors.Is(err, io.EOF) {

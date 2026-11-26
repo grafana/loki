@@ -12,10 +12,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-// scriptedReader is a batchReader that returns a fixed sequence of batches, then
-// io.EOF. It lets us exercise batch-boundary handling that the real reader can't
-// currently produce (empty, non-EOF batches only arise from predicate filtering,
-// which the stats reader does not use today).
+// scriptedReader is a batchReader that returns a fixed list of batches, then
+// io.EOF. It can return an empty batch with a nil error, which [Reader] never
+// does.
 type scriptedReader struct {
 	batches []arrow.RecordBatch
 	i       int
@@ -43,10 +42,6 @@ func pathRows(paths ...string) arrowtest.Rows {
 	return rows
 }
 
-// TestRowReader_SkipsEmptyNonEOFBatches guards against the reader treating an
-// empty (0-row) batch without io.EOF as end-of-section. The underlying reader
-// may return such a batch when a read window is fully filtered out; the rows in
-// later batches must still be returned rather than silently dropped.
 func TestRowReader_SkipsEmptyNonEOFBatches(t *testing.T) {
 	alloc := memory.DefaultAllocator
 	schema := pathRows("/a", "/b").Schema()
@@ -68,9 +63,7 @@ func TestRowReader_SkipsEmptyNonEOFBatches(t *testing.T) {
 		"rows after leading empty (non-EOF) batches must not be dropped")
 }
 
-// TestRowReader_NonEmptyBatchWithEOF ensures a batch that arrives together with
-// io.EOF is still fully consumed before iteration ends.
-func TestRowReader_NonEmptyBatchWithEOF(t *testing.T) {
+func TestRowReader_ReadsEveryRowOfOneBatch(t *testing.T) {
 	rows := pathRows("/a", "/b")
 	fake := &scriptedReader{batches: []arrow.RecordBatch{
 		rows.Record(memory.DefaultAllocator, rows.Schema()),
