@@ -637,9 +637,9 @@ func TestCompactor_Compact(t *testing.T) {
 						n := uint64(2 * numUsers)
 						require.Equal(t, float64(n*listed*1024), testutil.ToFloat64(dedupe.listedBytes))
 						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)*1024), testutil.ToFloat64(dedupe.distinctBytes))
-						// The inline counters see no re-uploads here, so they must agree.
-						require.Equal(t, testutil.ToFloat64(dedupe.listedBytes), testutil.ToFloat64(dedupe.inline.listedBytes))
-						require.Equal(t, testutil.ToFloat64(dedupe.distinctBytes), testutil.ToFloat64(dedupe.inline.listedBytes)-testutil.ToFloat64(dedupe.inline.dedupedBytes))
+						// The unfiltered counters see no re-uploads here, so they must agree.
+						require.Equal(t, testutil.ToFloat64(dedupe.listedBytes), testutil.ToFloat64(dedupe.unfiltered.listedBytes))
+						require.Equal(t, testutil.ToFloat64(dedupe.distinctBytes), testutil.ToFloat64(dedupe.unfiltered.listedBytes)-testutil.ToFloat64(dedupe.unfiltered.dedupedBytes))
 					}
 
 					// verify that we have CompactedIndex for numUsers
