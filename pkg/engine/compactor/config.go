@@ -188,9 +188,9 @@ type DeletionSweepConfig struct {
 	// storage.
 	MaxConcurrentSweeps int `yaml:"max_concurrent_sweeps"`
 
-	// DryRun must be true when the sweep is enabled, so that no operator
-	// expects deletes. Sweeps log a summary and examples of the deletion
-	// candidates and delete nothing.
+	// DryRun makes sweeps log a summary and examples of the deletion
+	// candidates, and delete nothing. If DryRun is false, sweeps delete the
+	// candidates.
 	DryRun bool `yaml:"dry_run"`
 }
 
@@ -327,7 +327,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
 		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep lists the tenant directories and reads the table of contents (ToC) files and index objects of the tenant.")
 	f.BoolVar(&cfg.DeletionSweep.DryRun, prefix+"deletion-sweep.dry-run", true,
-		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. A candidate is an object that no table of contents (ToC) file could reach in two sweeps, at least 23 hours apart. Only true is supported.")
+		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. If false, delete the candidates. A candidate is an object that no table of contents (ToC) file could reach in two sweeps, at least 23 hours apart.")
 
 	// These configs do not have defaults in the flagset so default values must be Set before registering
 	// the flags to be documented correctly.
@@ -424,9 +424,6 @@ func (cfg *Config) Validate() error {
 	if cfg.DeletionSweep.Enabled && cfg.DeletionSweep.MaxConcurrentSweeps < 1 {
 		return errInvalidMaxConcurrentSweeps
 	}
-	if cfg.DeletionSweep.Enabled && !cfg.DeletionSweep.DryRun {
-		return errDeletionSweepDryRunRequired
-	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -458,5 +455,4 @@ var (
 	errInvalidRescanInterval               = errors.New("dataobj.compaction.rescan_interval must be > 0 when planner_version is 2")
 	errInvalidMaxConcurrentSweeps          = errors.New("dataobj.compaction.deletion_sweep.max_concurrent_sweeps must be >= 1 when the deletion sweep is enabled")
 	errDeletionSweepRequiresCompaction     = errors.New("dataobj.compaction.deletion_sweep.enabled requires dataobj.compaction.enabled")
-	errDeletionSweepDryRunRequired         = errors.New("dataobj.compaction.deletion_sweep.dry_run must be true, because deletion sweeps do not delete objects")
 )

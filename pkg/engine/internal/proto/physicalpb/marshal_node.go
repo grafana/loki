@@ -143,5 +143,6 @@ func (n *DeletionSweep) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error)
 	return &physical.DeletionSweep{
 		NodeID: nodeID,
 		Tenant: n.Tenant,
+		Delete: n.Delete,
 	}, nil
 }

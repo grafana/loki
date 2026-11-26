@@ -1354,9 +1354,9 @@ dataobj:
       [max_concurrent_sweeps: <int> | default = 4]
 
       # Experimental: Log a summary and examples of the deletion candidates,
-      # instead of deleting them. A candidate is an object that no table of
-      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
-      # Only true is supported.
+      # instead of deleting them. If false, delete the candidates. A candidate
+      # is an object that no table of contents (ToC) file could reach in two
+      # sweeps, at least 23 hours apart.
       # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
       [dry_run: <boolean> | default = true]
 
@@ -4721,9 +4721,9 @@ shard_streams:
 # Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
 # finds the objects of the tenant that no table of contents (ToC) file can
 # reach. An object that two sweeps, at least 23 hours apart, both find
-# unreachable is a deletion candidate. Sweeps log a summary and examples of the
-# candidates, and delete nothing. The sweep also needs
-# -dataobj.compaction.deletion-sweep.enabled.
+# unreachable is a deletion candidate. Sweeps delete the candidates, or only log
+# them if -dataobj.compaction.deletion-sweep.dry-run is true. The sweep also
+# needs -dataobj.compaction.deletion-sweep.enabled.
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
 

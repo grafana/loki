@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -9,6 +10,11 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
@@ -53,6 +59,8 @@ func unreachable(scanned, reachable []string) ([]string, error) {
 type candidates struct {
 	// previousPaths is the number of paths in the previous file list.
 	previousPaths int
+	// previousCreatedAt is the creation time of the previous file list.
+	previousCreatedAt time.Time
 
 	logObjects   []string
 	indexObjects []string
@@ -61,6 +69,16 @@ type candidates struct {
 // count returns the number of candidates.
 func (c candidates) count() int {
 	return len(c.logObjects) + len(c.indexObjects)
+}
+
+// add adds p to the log objects or the index objects. The caller adds the
+// paths in sorted order, so that each kind stays sorted.
+func (c *candidates) add(p string) {
+	if isIndexObject(p) {
+		c.indexObjects = append(c.indexObjects, p)
+	} else {
+		c.logObjects = append(c.logObjects, p)
+	}
 }
 
 // findCandidates returns the paths that previous yields and that current
@@ -96,11 +114,7 @@ func findCandidates(previous iter.Seq2[string, error], current []string) (candid
 			i++
 		}
 		if i < len(current) && current[i] == p {
-			if isIndexObject(p) {
-				result.indexObjects = append(result.indexObjects, p)
-			} else {
-				result.logObjects = append(result.logObjects, p)
-			}
+			result.add(p)
 			i++
 		}
 	}
@@ -122,6 +136,51 @@ func (c candidates) examples(random io.Reader) (logObjects, indexObjects []strin
 		return nil, nil, err
 	}
 	return logObjects, indexObjects, nil
+}
+
+// LogCandidates logs up to examplesPerKind random log objects and up to
+// examplesPerKind random index objects of paths. Each line holds the last
+// modification time and size of the object. An operator uses the lines to
+// check the deletion candidates of a dry run by hand.
+//
+// paths are sorted and relative to the root of bucket, for example the
+// SweepResult.Candidates of a sweep. LogCandidates logs nothing for empty
+// paths.
+//
+// LogCandidates logs an error instead of returning it. The sweep already
+// stored its file list, and the lines are only for a manual check. So an
+// error here must not fail the sweep.
+func LogCandidates(ctx context.Context, bucket objstore.BucketReader, paths []string, logger log.Logger) {
+	var cands candidates
+	for _, p := range paths {
+		cands.add(p)
+	}
+	logObjects, indexObjects, err := cands.examples(rand.Reader)
+	if err != nil {
+		level.Warn(logger).Log("msg", "deletion sweep cannot pick example candidates", "err", err)
+		return
+	}
+	logExamples(ctx, bucket, logger, kindIndex, indexObjects)
+	logExamples(ctx, bucket, logger, kindLog, logObjects)
+}
+
+// logExamples logs one line for each path, with its last modification time
+// and size.
+func logExamples(ctx context.Context, bucket objstore.BucketReader, logger log.Logger, kind string, paths []string) {
+	for _, p := range paths {
+		attrs, err := bucket.Attributes(ctx, p)
+		if err != nil {
+			level.Warn(logger).Log("msg", "deletion sweep candidate", "kind", kind, "path", p, "err", err)
+			continue
+		}
+		level.Info(logger).Log(
+			"msg", "deletion sweep candidate",
+			"kind", kind,
+			"path", p,
+			"last_modified", attrs.LastModified.UTC().Format(time.RFC3339),
+			"size", attrs.Size,
+		)
+	}
 }
 
 // sample returns n distinct random elements of the sorted paths, or a copy

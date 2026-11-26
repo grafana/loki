@@ -125,6 +125,15 @@ func TestConfig_Validate_DisabledCompaction(t *testing.T) {
 		cfg.DeletionSweep.Enabled = true
 		require.NoError(t, cfg.Validate())
 	})
+
+	t.Run("accepts the deletion sweep without dry run when compaction is enabled", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.Enabled = true
+		cfg.DeletionSweep.Enabled = true
+		cfg.DeletionSweep.DryRun = false
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 // TestConfig_Validate_EnabledRejectsBadValues captures the validation
