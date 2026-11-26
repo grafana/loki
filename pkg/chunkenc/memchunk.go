@@ -1816,7 +1816,7 @@ func (e *entryBufferedIterator) Next() bool {
 			return true
 		}
 
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, log.UnsafeBytes{UnsafeData: e.currLine}, e.currStructuredMetadata)
 		if !matches {
 			continue
 		}
@@ -1824,7 +1824,7 @@ func (e *entryBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
 		e.cur.Timestamp = time.Unix(0, e.currTs)
-		e.cur.Line = string(newLine)
+		e.cur.Line = string(newLine.UnsafeData)
 		e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(lbs.StructuredMetadata())
 		e.cur.Parsed = logproto.FromLabelsToLabelAdapters(lbs.Parsed())
 
@@ -1873,7 +1873,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		sample, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		sample, ok := e.extractor.Process(e.currTs, log.UnsafeBytes{UnsafeData: e.currLine}, e.currStructuredMetadata)
 		if !ok {
 			continue
 		}

@@ -230,6 +230,30 @@ func TestStreamSampleExtractor_LineRetention(t *testing.T) {
 			lines: []string{`plain AAAA`, `second CCCC`},
 		},
 		{
+			query: `count_over_time({app="foo"} |~ ".+" [1m])`,
+			lines: []string{`plain line AAAA`, `second CCCC`},
+		},
+		{
+			query: `count_over_time({app="foo"} |~ "AAAA|CCCC" [1m])`,
+			lines: []string{`plain line AAAA`, `second CCCC`, `third DDDD`},
+		},
+		{
+			query: `count_over_time({app="foo"} |= "AAAA" or "CCCC" [1m])`,
+			lines: []string{`plain line AAAA`, `second CCCC`, `third DDDD`},
+		},
+		{
+			query: `count_over_time({app="foo"} !~ "AAAA|CCCC" [1m])`,
+			lines: []string{`plain line AAAA`, `second CCCC`, `third DDDD`},
+		},
+		{
+			query: `count_over_time({app="foo"} |~ "AAAA.*CCCC" [1m])`,
+			lines: []string{`first AAAA then CCCC`, `second CCCC`},
+		},
+		{
+			query: `count_over_time({app="foo"} |~ "(?i)aaaa" [1m])`,
+			lines: []string{`plain line AaAa`, `second CCCC`},
+		},
+		{
 			query: `count_over_time({app="foo"} | pattern "<lvl> <msg>" | lvl="info" [1m])`,
 			lines: []string{`info hello world AAAA`, `warn second CCCC`},
 		},
@@ -256,7 +280,7 @@ func TestStreamSampleExtractor_LineRetention(t *testing.T) {
 		copy(buf, line)
 		ref := weak.Make(&buf[0])
 
-		sample, ok := extractor.Process(1, buf, labels.FromStrings("sm", "meta"))
+		sample, ok := extractor.Process(1, log.UnsafeBytes{UnsafeData: buf}, labels.FromStrings("sm", "meta"))
 		if ok {
 			_ = sample.Labels.String()
 		}

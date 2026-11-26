@@ -520,8 +520,8 @@ func Test_lineFormatter_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			builder.Reset()
-			outLine, _ := tt.fmter.Process(tt.ts, tt.in, builder)
-			require.Equal(t, tt.want, outLine)
+			outLine, _ := tt.fmter.Process(tt.ts, UnsafeBytes{UnsafeData: tt.in}, builder)
+			require.Equal(t, tt.want, outLine.UnsafeData)
 			require.Equal(t, tt.wantLbs, builder.LabelsResult().Labels())
 		})
 	}
@@ -776,7 +776,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			builder := NewBaseLabelsBuilder().ForLabels(tt.in, labels.StableHash(tt.in))
 			builder.Reset()
-			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
+			_, _ = tt.fmter.Process(1661518453244672570, UnsafeBytes{UnsafeData: []byte("test line")}, builder)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
 		})
 	}
@@ -974,8 +974,8 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, _ := decolorizer.Process(0, tt.src, nil)
-			require.Equal(t, tt.expected, result)
+			result, _ := decolorizer.Process(0, UnsafeBytes{UnsafeData: tt.src}, nil)
+			require.Equal(t, tt.expected, result.UnsafeData)
 		})
 	}
 }
@@ -999,7 +999,7 @@ func TestMapPoolPanic(_ *testing.T) {
 	tmpl := `[1m{{if .level }}{{alignRight 5 .level}}{{else if .severity}}{{alignRight 5 .severity}}{{end}}[0m [90m[{{alignRight 10 .resources_service_instance_id}}{{if .attributes_thread_name}}/{{alignRight 20 .attributes_thread_name}}{{else if eq "java" .resources_telemetry_sdk_language }}                    {{end}}][0m [36m{{if .instrumentation_scope_name }}{{alignRight 40 .instrumentation_scope_name}}{{end}}[0m {{.body}} {{if .traceid}} [37m[3m[traceid={{.traceid}}]{{end}}`
 	a := newMustLineFormatter(tmpl)
 	a.Process(0,
-		[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
+		UnsafeBytes{UnsafeData: []byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null")},
 		builder,
 	)
 
@@ -1009,7 +1009,7 @@ func TestMapPoolPanic(_ *testing.T) {
 			wg.Wait()
 			a := newMustLineFormatter(tmpl)
 			a.Process(0,
-				[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
+				UnsafeBytes{UnsafeData: []byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null")},
 				builder,
 			)
 			wgFinished.Done()

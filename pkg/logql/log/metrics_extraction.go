@@ -22,11 +22,11 @@ const (
 )
 
 // LineExtractor extracts a float64 from a log line.
-type LineExtractor func([]byte) float64
+type LineExtractor func(UnsafeBytes) float64
 
 var (
-	CountExtractor LineExtractor = func(_ []byte) float64 { return 1. }
-	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
+	CountExtractor LineExtractor = func(_ UnsafeBytes) float64 { return 1. }
+	BytesExtractor LineExtractor = func(line UnsafeBytes) float64 { return float64(len(line.UnsafeData)) }
 )
 
 // SampleExtractor creates StreamSampleExtractor that can extract samples for a given log stream.
@@ -43,9 +43,12 @@ type StreamSampleExtractor interface {
 	//
 	// The line is only valid until Process returns. The caller can reuse or overwrite its memory
 	// right after. So Process must not retain the line, or any portion of it.
-	Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool)
+	Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool)
 	// ProcessString extracts the sample for a log line. It returns the zero sample
 	// and false when it extracts none. A true result always carries non-nil Labels.
+	//
+	// The line is only valid until ProcessString returns. The caller can reuse or overwrite its
+	// memory right after. So ProcessString must not retain the line, or any portion of it.
 	ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool)
 	ReferencedStructuredMetadata() bool
 }
@@ -183,7 +186,7 @@ func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.builder.referencedStructuredMetadata
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
 
@@ -202,7 +205,7 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMet
 
 func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return l.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -220,7 +223,7 @@ type noopConstantLabelStreamExtractor struct {
 	builder       *LabelsBuilder
 }
 
-func (e *noopConstantLabelStreamExtractor) Process(_ int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (e *noopConstantLabelStreamExtractor) Process(_ int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	groupedLabels := e.groupedLabels
 	if structuredMetadataHasError(structuredMetadata) {
 		e.builder.Reset()
@@ -232,7 +235,7 @@ func (e *noopConstantLabelStreamExtractor) Process(_ int64, line []byte, structu
 
 func (e *noopConstantLabelStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// We can use unsafeGetBytes() since we have the guarantee that the line won't be mutated.
-	return e.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return e.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 }
 
 func (e *noopConstantLabelStreamExtractor) BaseLabels() LabelsResult {
@@ -259,7 +262,7 @@ type filteredConstantLabelStreamExtractor struct {
 	builder       *LabelsBuilder
 }
 
-func (e *filteredConstantLabelStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (e *filteredConstantLabelStreamExtractor) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// The base builder is shared among extractors for different log streams, so we have to Reset
 	// it each time, right before using it.
 	e.builder.Reset()
@@ -284,7 +287,7 @@ func (e *filteredConstantLabelStreamExtractor) Process(ts int64, line []byte, st
 }
 
 func (e *filteredConstantLabelStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
-	return e.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return e.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 }
 
 func (e *filteredConstantLabelStreamExtractor) BaseLabels() LabelsResult {
@@ -370,7 +373,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
@@ -402,7 +405,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 
 func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return l.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -463,7 +466,7 @@ func (d *distinctValueSampleExtractor) ReferencedStructuredMetadata() bool {
 	return d.baseBuilder.referencedStructuredMetadata
 }
 
-func (d *streamDistinctValueSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (d *streamDistinctValueSampleExtractor) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	d.builder.Reset()
 	d.builder.Add(StructuredMetadataLabel, structuredMetadata)
 	_, ok := d.preStage.Process(ts, line, d.builder)
@@ -482,7 +485,7 @@ func (d *streamDistinctValueSampleExtractor) Process(ts int64, line []byte, stru
 }
 
 func (d *streamDistinctValueSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
-	return d.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return d.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 }
 
 func (d *streamDistinctValueSampleExtractor) BaseLabels() LabelsResult {
@@ -535,7 +538,7 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue

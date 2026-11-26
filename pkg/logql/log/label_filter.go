@@ -87,7 +87,7 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 	}
 }
 
-func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (b *BinaryLabelFilter) Process(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	line, lok := b.Left.Process(ts, line, lbs)
 	if !b.And && lok {
 		return line, true
@@ -132,7 +132,7 @@ type NoopLabelFilter struct {
 	*labels.Matcher
 }
 
-func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+func (NoopLabelFilter) Process(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
 	return line, true
 }
 
@@ -189,7 +189,7 @@ func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFi
 	}
 }
 
-func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *BytesLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
@@ -267,7 +267,7 @@ func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *Du
 	}
 }
 
-func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (d *DurationLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
@@ -339,7 +339,7 @@ func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLa
 	}
 }
 
-func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (n *NumericLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	v, ok := lbs.Get(n.Name)
 	if !ok {
 		// we have not found this label.
@@ -422,7 +422,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 	}
 }
 
-func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s *StringLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
@@ -467,7 +467,7 @@ func (s *LineFilterLabelFilter) String() string {
 	return s.Matcher.String()
 }
 
-func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s *LineFilterLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	v := labelValue(s.Name, lbs)
 	return line, s.Filter.Filter(unsafeGetBytes(v))
 }

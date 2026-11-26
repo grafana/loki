@@ -128,7 +128,7 @@ func shouldParseLine(t *testing.T, query string, stream, metadata labels.Labels,
 	lb := log.NewBaseLabelsBuilder().ForLabels(stream, stream.Hash())
 	lb.Add(log.StructuredMetadataLabel, metadata)
 
-	l := []byte(line)
+	l := log.UnsafeBytes{UnsafeData: []byte(line)}
 	for _, s := range stages {
 		switch s.(type) {
 		case *log.JSONParser, *log.LogfmtParser, *log.RegexpParser, *log.PatternParser, *log.UnpackParser,
@@ -165,7 +165,7 @@ func TestLabelFilterHints_LineFilterBeforeParser(t *testing.T) {
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			h := log.NewLabelFilterHints(stagesFor(t, tc.query))
-			require.Equal(t, tc.want, h.ShouldParseLine([]byte(`{"tenantId":"zzz"}`), lb))
+			require.Equal(t, tc.want, h.ShouldParseLine(log.UnsafeBytes{UnsafeData: []byte(`{"tenantId":"zzz"}`)}, lb))
 		})
 	}
 }
@@ -231,14 +231,14 @@ func TestLabelFilterHints_SameResults(t *testing.T) {
 				plain := log.NewStreamPipeline(stagesFor(t, query), log.NewBaseLabelsBuilder().ForLabels(s, s.Hash()))
 				for _, m := range metadata {
 					for _, line := range lines {
-						wantLine, wantLabels, wantOK := plain.Process(0, []byte(line), m)
-						gotLine, gotLabels, gotOK := hinted.Process(0, []byte(line), m)
+						wantLine, wantLabels, wantOK := plain.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, m)
+						gotLine, gotLabels, gotOK := hinted.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, m)
 						msg := fmt.Sprintf("stream=%s metadata=%s line=%q", s, m, line)
 						require.Equal(t, wantOK, gotOK, msg)
 						if !wantOK {
 							continue
 						}
-						require.Equal(t, string(wantLine), string(gotLine), msg)
+						require.Equal(t, string(wantLine.UnsafeData), string(gotLine.UnsafeData), msg)
 						require.Equal(t, wantLabels.String(), gotLabels.String(), msg)
 					}
 				}
@@ -311,7 +311,7 @@ func BenchmarkLabelFilterHints_ShouldParseLine(b *testing.B) {
 				p := pipelineFor(b, q.query).ForStream(stream)
 				b.ReportAllocs()
 				for b.Loop() {
-					p.Process(0, l.line, labels.EmptyLabels())
+					p.Process(0, log.UnsafeBytes{UnsafeData: l.line}, labels.EmptyLabels())
 				}
 			})
 		}

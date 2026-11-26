@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func Test_Extractor(t *testing.T) {
@@ -179,7 +180,7 @@ func TestLabelAggregationExtractorGrouping(t *testing.T) {
 			require.NoError(t, err)
 			ex, err := expr.Extractor()
 			require.NoError(t, err)
-			sample, ok := ex.ForStream(stream).Process(0, []byte("line"), labels.EmptyLabels())
+			sample, ok := ex.ForStream(stream).Process(0, log.UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 			require.True(t, ok)
 			require.Equal(t, tc.want, sample.Labels.Labels())
 		})

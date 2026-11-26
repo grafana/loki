@@ -410,13 +410,13 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	line := entry.Line
 	parser := "json"
 	jsonParser := logql_log.NewJSONParser(true)
-	_, jsonSuccess := jsonParser.Process(0, []byte(line), lblBuilder)
+	_, jsonSuccess := jsonParser.Process(0, logql_log.UnsafeBytes{UnsafeData: []byte(line)}, lblBuilder)
 	if !jsonSuccess || lblBuilder.HasErr() {
 		lblBuilder.Reset()
 
 		logFmtParser := logql_log.NewLogfmtParser(false, false)
 		parser = "logfmt"
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		_, logfmtSuccess := logFmtParser.Process(0, logql_log.UnsafeBytes{UnsafeData: []byte(line)}, lblBuilder)
 		if !logfmtSuccess || lblBuilder.HasErr() {
 			return parsed, nil
 		}
